@@ -47,6 +47,8 @@ const BASE = process.env.HARNESS_BASE || "http://127.0.0.1:5199";
 const ONLY = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const SHOOT = process.argv.includes("--shoot");
 const ART = path.resolve(import.meta.dirname, "artifacts/ported");
+const WIDTHS = (process.env.DRIVE_WIDTHS || "1600,720").split(",").map(Number);
+const SPINE_AT = process.env.SPINE_AT || "/operator/fleet/systems-check";
 
 /**
  * Every BESPOKE address, with the floor its content must clear.
@@ -68,6 +70,7 @@ const ADDRESSES = [
   { at: "/operator/campaigns/active", floor: 300, must: ["Everything", "campaigns"] },
   { at: "/operator/campaigns/catalog", floor: 200, must: [] },
   { at: "/operator/campaigns/sales", floor: 200, must: ["No target is set"] },
+  { at: "/operator/campaigns/social", floor: 300, must: ["Connect an account", "Representative"] },
   // Layer 3c — Marketplace
   // "Search the marketplace" is a PLACEHOLDER attribute, not text — asserting it as content was
   // the drive being wrong about the DOM, not the surface being wrong. Placeholders are checked
@@ -105,6 +108,7 @@ const ADDRESSES = [
   // Already wired
   { at: "/operator/fleet/systems-check", floor: 300, must: [] },
   { at: "/operator/fleet/directory", floor: 100, must: [] },
+  { at: "/operator/fleet/history", floor: 150, must: ["Run history", "Clean"] },
 ];
 
 function chromePath() {
@@ -178,7 +182,7 @@ if (SHOOT) fs.mkdirSync(ART, { recursive: true });
 
 for (const spec of list) {
   for (const theme of ["dark", "light"]) {
-    for (const width of [1600, 720]) {
+    for (const width of WIDTHS) {
       const page = await browser.newPage();
       const r = await drive(page, spec.at, theme, width);
       const tag = `${spec.at} · ${theme} · ${width}px`;
@@ -217,6 +221,109 @@ for (const spec of list) {
   }
 }
 
+/** Reduced motion and keyboard focus are interaction states, not source-code claims. */
+for (const spec of list) {
+  const page = await browser.newPage();
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`${BASE}/?at=${encodeURIComponent(spec.at)}&theme=dark`, {
+    waitUntil: "networkidle",
+  });
+  await page.waitForTimeout(450);
+
+  const problems = [];
+  const settled = await page.evaluate(() => {
+    const surface = document.querySelector("[data-surface-slot]");
+    return {
+      found: !!surface,
+      runningAnimations: surface?.getAnimations({ subtree: true }).filter((a) => a.playState === "running").length ?? 0,
+      hScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  if (!settled.found) problems.push("surface did not render with reduced motion requested");
+  if (settled.runningAnimations) problems.push(`${settled.runningAnimations} surface animation(s) kept running`);
+  if (settled.hScroll > 0) problems.push(`document scrolls horizontally by ${settled.hScroll}px`);
+
+  let focus = null;
+  for (let i = 0; i < 60 && !focus; i++) {
+    await page.keyboard.press("Tab");
+    focus = await page.evaluate(() => {
+      const surface = document.querySelector("[data-surface-slot]");
+      const active = document.activeElement;
+      if (!surface?.contains(active) || !(active instanceof HTMLElement)) return null;
+      const style = getComputedStyle(active);
+      return {
+        name: active.getAttribute("aria-label") || active.textContent?.trim() || active.tagName,
+        visible: active.matches(":focus-visible"),
+        outline: `${style.outlineStyle} ${style.outlineWidth}`,
+      };
+    });
+  }
+  if (!focus) problems.push("keyboard traversal never reached an enabled surface control");
+  else if (!focus.visible || /none 0px/.test(focus.outline)) {
+    problems.push(`surface focus was not visibly indicated on ${focus.name}`);
+  }
+
+  const tag = `${spec.at} · reduced motion + keyboard focus`;
+  rows.push({ tag, ok: problems.length === 0 });
+  if (problems.length) {
+    fails.push(`${tag}\n      ${problems.join("\n      ")}`);
+    console.log(`FAIL  ${tag}\n      ${problems.join("\n      ")}`);
+  } else {
+    console.log(`pass  ${tag}  (settled · no overflow · focus visible on ${focus.name})`);
+  }
+  await page.close();
+}
+
+if (list.some((spec) => spec.at === "/operator/fleet/history")) {
+  for (const state of ["loading", "empty"]) {
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 900, height: 1000 });
+    await page.route("**/rest/v1/**", async (route) => {
+      if (state === "loading") await new Promise((resolve) => setTimeout(resolve, 2500));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "content-range": "*/0" },
+        body: "[]",
+      });
+    });
+    await page.goto(`${BASE}/?at=${encodeURIComponent("/operator/fleet/history")}&theme=dark`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const problems = [];
+    if (state === "loading") {
+      const loading = page.locator('[aria-label="Reading run history"][aria-busy="true"]');
+      if (!(await loading.waitFor({ state: "visible", timeout: 1800 }).then(() => true).catch(() => false))) {
+        problems.push("the loading arm never became visible");
+      }
+    } else {
+      const empty = page.getByText("No run has been recorded here yet.");
+      if (!(await empty.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) {
+        problems.push("the empty arm never became visible");
+      }
+    }
+    const hScroll = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    if (hScroll > 0) problems.push(`document scrolls horizontally by ${hScroll}px`);
+    if (SHOOT) {
+      await page.screenshot({ path: path.join(ART, `operator_fleet_history.${state}.png`) });
+    }
+
+    const tag = `/operator/fleet/history · ${state} state`;
+    rows.push({ tag, ok: problems.length === 0 });
+    if (problems.length) {
+      fails.push(`${tag}\n      ${problems.join("\n      ")}`);
+      console.log(`FAIL  ${tag}\n      ${problems.join("\n      ")}`);
+    } else {
+      console.log(`pass  ${tag}  (visible · no document overflow)`);
+    }
+    await page.close();
+  }
+}
+
 /**
  * THE SPINE FOLD, DRIVEN. Owner, live, 2026-08-24: *"I cannot fold Paige's chat in."*
  *
@@ -230,7 +337,7 @@ for (const spec of list) {
 {
   const page = await browser.newPage();
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto(`${BASE}/?at=/operator/fleet/systems-check&theme=dark`, {
+  await page.goto(`${BASE}/?at=${encodeURIComponent(SPINE_AT)}&theme=dark`, {
     waitUntil: "networkidle",
   });
   await page.waitForTimeout(600);

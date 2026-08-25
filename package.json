@@ -24,7 +24,7 @@
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
-    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs",
+    "smoke:fleet-directory-v3": "node scripts/fleet-directory-v3-smoke.mjs",
     "harness:serve": "vite --config scripts/live-drive/harness/mount/vite.config.ts",
     "lint:alias-ratchet": "node scripts/ci/alias-ratchet.mjs",
     "lint:pg-tokens": "node scripts/ci/pg-token-parity.mjs",

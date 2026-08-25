@@ -1,631 +1,296 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
-import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
-import { FleetTenantsRail, type RailTenant } from "@/operator/surfaces/FleetTenantsRail";
-import { viewPath } from "@/operator/shell/operatorAddress";
-import { cn } from "@/lib/utils";
+import { isInternal, useFleet, type FleetTenant } from "@/operator/data/useFleet";
 
 /**
- * RULING D (Claude Design, 2026-08-23) — THE GOLD ACT MUST LAND.
- * "`/operator/provisioning` isn't a slot — provisioning belongs in Fleet. Point it there or
- * remove the act. A gold affordance that 404s spends the design's scarcest signal on nothing."
+ * Fleet · Directory — authoritative v3 source:
+ * `docs/design-references/cd-packs/super-admin-shell-v3/PAIGE Super Admin Shell v3.dc.html`
+ * markup 956–1008 · builder `fleetVals` 8269–8362 (ROUTE-MAP.md 40).
  *
- * Built through `viewPath()` off the IA rather than typed as a literal, which is what let the
- * old address rot into a 404 unnoticed: a view that is renamed or removed in
- * `operatorIA.ts` now breaks the build here instead of shipping a dead gold button.
- * `OperatorShell.test.tsx` asserts this exact address resolves through `operatorAddress.ts`.
- *
- * RULING E (same day) — PAIGE IS NOT A DESTINATION, so there is no `/operator/paige` here and
- * there must never be one again. "She's the spine. A reference to her is not a route, it's an
- * action that opens the spine and focuses the command bar… The pack has no address for her
- * because there isn't one." The rail's "Take it to the workspace" control was REMOVED with the
- * route (not repointed, not disabled) because a control that opens an empty spine asserts a
- * capability that isn't there. When PAIGE is genuinely wired into the spine this returns as a
- * CONTROL that expands the spine and focuses the command bar — never as a URL. A later session
- * finding itself reaching for `/operator/paige` is the signal she has been modelled as a place
- * again; take it to CD instead of writing the route.
- */
-const PROVISION_AT = viewPath("fleet", "Directory");
-
-/**
- * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
- * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
- * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
- * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
- * for regions that genuinely recede (a well, an inset strip, a sunken list).
- *
- * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
- * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. Separation on a
- * raised plate is `--pg-rim` PLUS `--pg-lift-1`: the rim is a seated inset pair (a top highlight
- * and a bottom shade, L21/L28) and the lift is the outer cast (L22/L29). Carrying the rim alone
- * left only insets, which read as a plain outline against the 1.5px border — the "hairline
- * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
- * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
- *
- * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[shadow:var(--pg-rim)]`
- * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
- * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
- * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
- * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on every one
- * of these plates in BOTH themes. All the separation on screen was the 1.5px border — which is
- * exactly why it read as "a plain border." The `shadow:` data-type hint
- * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
- * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
- */
-/**
- * Fleet Console — Claude Design's `isFleet` block (Super Admin Shell.dc.html ~7826-7877), on
- * the real fleet: the FLEET eyebrow + title row with the Field/Table view toggle and gold
- * primary CTA, the four-tile KPI strip, the filter-chip + search row, the Field view's orbit
- * visualization (`FleetOrbit`) or the Table view's tenant list, and the 296px right rail
- * carrying "Needs you today".
- *
- * §13 — WHAT IT SHOWS IS WHAT THE PLATFORM KNOWS. CD's pack ships mock rows with dollar MRR on
- * every tenant, a "FLEET MRR" KPI, a per-row MRR column, and a synthesized "Her read" paragraph.
- * None of that ships here. The §57 anchor case was exactly this class of defect — a Fleet
- * surface showing $397/$149 against tenants with no paid subscription. Money Spine is a
- * separately-scoped, deferred effort (owner ruling 2026-08-19: "I don't care about the money
- * spine right now") — so every dollar figure below is an honest "—", not a stand-in, and CD's
- * invented "Her read" narrative and named "Needs you today" scenarios (Ashford Wellness, Verde
- * Landscaping, Ridgeline Collective) are dropped rather than ported — those are mock findings
- * about tenants that do not exist here, and shipping them would put fabricated words in Paige's
- * mouth (§13/§14). The label, the geometry and the interaction are CD's; the figures are ours.
+ * This replaces the retired pack's orbit / Field / Table console. The v3 tree, composition
+ * bar, internal-account toggle, seat bars, risk count, and audited Enter rows are driven by
+ * the existing `useFleet` adapter. No v3 tenant fixture or figure is copied into runtime.
  */
 
-const TIER_LABEL_ORDER = ["Agency", "Solo", "Enterprise", "Sub-account"] as const;
-type TierLabel = (typeof TIER_LABEL_ORDER)[number];
+type FleetKind = "Agency" | "Sub-account" | "Standalone" | "Internal" | "Enterprise";
+type Grade = "Nominal" | "At risk" | "Internal";
 
-const TIER_PILL: Record<TierLabel, string> = {
-  Agency: "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]",
-  Solo: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
-  Enterprise: "bg-[hsl(var(--gold-dark)/0.14)] text-[hsl(var(--gold-dark))]",
-  "Sub-account": "bg-[var(--pg-workspace)] text-muted-foreground",
+type DirectoryRow = {
+  tenant: FleetTenant;
+  kind: FleetKind;
+  grade: Grade;
+  depth: 0 | 1;
+  last: boolean;
+  note: string;
 };
 
-/** CD renders a coloured initials plate per tenant; derive it rather than store it. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "—";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-/**
- * Health is DERIVED from facts on the row — an active tenant with people and clients is
- * healthy, one with nobody in it is not. It is deliberately NOT a score we invent: every
- * input is a real column, and CD's three-way pill (Healthy/Watch/At risk) is what this maps
- * to — "risk" is CD's `t.risk` flag, "watch" is CD's amber middle state.
- */
-function health(t: FleetTenant): { label: string; tone: "ok" | "warn" | "risk" } {
-  if (t.status && t.status !== "active") return { label: "At risk", tone: "risk" };
-  if (t.seats === 0) return { label: "At risk", tone: "risk" };
-  if (t.customers === 0) return { label: "Watch", tone: "warn" };
-  return { label: "Healthy", tone: "ok" };
-}
-
-const HEALTH_PILL: Record<"ok" | "warn" | "risk", string> = {
-  ok: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
-  warn: "bg-[hsl(var(--warning)/0.16)] text-[hsl(var(--gold-dark))]",
-  risk: "bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]",
+const KIND_TONE: Record<Exclude<FleetKind, "Enterprise">, string> = {
+  Agency: "#7C6CE0",
+  "Sub-account": "#2F6B8F",
+  Standalone: "#3F7F5C",
+  Internal: "var(--pg-line-strong)",
 };
 
-type Filter = "All" | "Agency" | "Solo" | "Enterprise" | "At risk";
-const FILTERS: readonly Filter[] = ["All", "Agency", "Solo", "Enterprise", "At risk"];
-
-/**
- * The fleet is ordered by TOPOLOGY, not by creation date: each top-level tenant, then its own
- * sub-accounts directly beneath it (§51). A child whose parent is filtered out still appears,
- * at top level, so a search can never silently swallow a tenant.
- */
-function byTopology(rows: readonly FleetTenant[]): FleetTenant[] {
-  const present = new Set(rows.map((t) => t.id));
-  const roots = rows.filter((t) => !t.parentTenantId || !present.has(t.parentTenantId));
-  const childrenOf = new Map<string, FleetTenant[]>();
-  rows.forEach((t) => {
-    if (!t.parentTenantId || !present.has(t.parentTenantId)) return;
-    const kids = childrenOf.get(t.parentTenantId) ?? [];
-    kids.push(t);
-    childrenOf.set(t.parentTenantId, kids);
-  });
-  return roots.flatMap((r) => [r, ...(childrenOf.get(r.id) ?? [])]);
+function kindOf(tenant: FleetTenant, nested: boolean): FleetKind {
+  if (isInternal(tenant)) return "Internal";
+  if (nested) return "Sub-account";
+  if (tenant.accountType === "agency") return "Agency";
+  if (tenant.accountType === "enterprise") return "Enterprise";
+  return "Standalone";
 }
 
-/** CD's tier label (TIER_INK's four keys), derived from the real record — never a plan name. */
-function tierLabel(t: FleetTenant, isNested: boolean): TierLabel {
-  if (isNested) return "Sub-account";
-  if (t.accountType === "agency") return "Agency";
-  if (t.accountType === "enterprise") return "Enterprise";
-  return "Solo";
+function gradeOf(tenant: FleetTenant): Grade {
+  if (isInternal(tenant)) return "Internal";
+  if ((tenant.status && tenant.status !== "active") || tenant.seats === 0) return "At risk";
+  return "Nominal";
+}
+
+function gradeTone(grade: Grade): string {
+  if (grade === "At risk") return "var(--pg-warning)";
+  if (grade === "Internal") return "var(--pg-violet)";
+  return "var(--pg-positive)";
+}
+
+function directoryRows(tenants: FleetTenant[]): DirectoryRow[] {
+  const children = new Map<string, FleetTenant[]>();
+  const present = new Set(tenants.map((tenant) => tenant.id));
+  for (const tenant of tenants) {
+    if (!tenant.parentTenantId || !present.has(tenant.parentTenantId)) continue;
+    const group = children.get(tenant.parentTenantId) ?? [];
+    group.push(tenant);
+    children.set(tenant.parentTenantId, group);
+  }
+
+  const rows: DirectoryRow[] = [];
+  for (const tenant of tenants) {
+    if (tenant.parentTenantId && present.has(tenant.parentTenantId)) continue;
+    const nested = children.get(tenant.id) ?? [];
+    rows.push({
+      tenant,
+      kind: kindOf(tenant, false),
+      grade: gradeOf(tenant),
+      depth: 0,
+      last: false,
+      note: nested.length ? `Parent of ${nested.length}` : "",
+    });
+    nested.forEach((child, index) =>
+      rows.push({
+        tenant: child,
+        kind: kindOf(child, true),
+        grade: gradeOf(child),
+        depth: 1,
+        last: index === nested.length - 1,
+        note: "Under the agency",
+      }),
+    );
+  }
+  return rows;
+}
+
+export function FleetDirectoryView({
+  tenants,
+  classificationVisible,
+  loading = false,
+  error = null,
+  onEnter,
+}: {
+  tenants: FleetTenant[];
+  classificationVisible: boolean;
+  loading?: boolean;
+  error?: string | null;
+  onEnter: (tenant: FleetTenant) => void;
+}) {
+  const [showInternal, setShowInternal] = useState(false);
+  const internalCount = useMemo(
+    () => (classificationVisible ? tenants.filter(isInternal).length : null),
+    [classificationVisible, tenants],
+  );
+  const live = useMemo(
+    () => (classificationVisible ? tenants.filter((tenant) => !isInternal(tenant)) : tenants),
+    [classificationVisible, tenants],
+  );
+  const shown = useMemo(
+    () => (showInternal || !classificationVisible ? tenants : live),
+    [classificationVisible, live, showInternal, tenants],
+  );
+  const rows = useMemo(() => directoryRows(shown), [shown]);
+  const maxSeats = Math.max(...shown.map((tenant) => tenant.seats), 1);
+  const risk = classificationVisible ? live.filter((tenant) => gradeOf(tenant) === "At risk").length : null;
+
+  const composition = useMemo(() => {
+    const values = (["Agency", "Sub-account", "Standalone", "Internal"] as const).map((kind) => {
+      const count = kind === "Internal"
+        ? showInternal && internalCount !== null
+          ? internalCount
+          : 0
+        : live.filter((tenant) => kindOf(tenant, Boolean(tenant.parentTenantId)) === kind).length;
+      return { kind, count, tone: KIND_TONE[kind] };
+    });
+    return values.filter((item) => item.count > 0);
+  }, [internalCount, live, showInternal]);
+
+  return (
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="fleet-directory-title">
+      <div className="flex-none border-b border-[var(--pg-line)] pb-[15px]">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+          <b id="fleet-directory-title" className="text-[12px] font-medium">The fleet</b>
+          <small className="min-w-0 text-[10.5px] text-[var(--pg-faint)]">
+            {loading
+              ? "—"
+              : `${classificationVisible ? live.length : "—"} live · ${shown.length} shown · entering performs an audited act-as`}
+          </small>
+          <button
+            type="button"
+            disabled={!classificationVisible}
+            aria-pressed={showInternal}
+            onClick={() => setShowInternal((visible) => !visible)}
+            title={!classificationVisible ? "Internal classification is not readable at this access level." : undefined}
+            className="ml-auto min-h-[24px] flex-none whitespace-nowrap rounded-full border bg-transparent px-2.5 text-[10px] font-medium disabled:cursor-not-allowed"
+            style={{
+              borderColor: showInternal ? "var(--pg-violet)" : "var(--pg-line)",
+              color: showInternal ? "var(--pg-violet)" : "var(--pg-muted)",
+            }}
+          >
+            {classificationVisible
+              ? showInternal
+                ? "Hide internal"
+                : `Show ${internalCount ?? "—"} internal`
+              : "Show — internal"}
+          </button>
+        </div>
+
+        <div className="mt-3 flex h-1.5 gap-px overflow-hidden rounded-full" aria-label="Fleet composition">
+          {composition.length ? (
+            composition.map((item) => (
+              <i
+                key={item.kind}
+                title={`${item.kind} · ${item.count}`}
+                className="min-w-0"
+                style={{ flex: item.count, background: item.tone }}
+              />
+            ))
+          ) : (
+            <i className="flex-1 bg-[var(--pg-line-soft)]" />
+          )}
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap gap-x-[15px] gap-y-1">
+          {composition.map((item) => (
+            <span key={item.kind} className="inline-flex items-center gap-1.5">
+              <i className="h-1.5 w-1.5 rotate-45" style={{ background: item.tone }} />
+              <small className="whitespace-nowrap text-[10.5px] text-[var(--pg-muted)]">{item.kind}</small>
+              <small className="font-mono text-[10px] text-[var(--pg-faint)]">{item.count}</small>
+            </span>
+          ))}
+          <small className="ml-auto whitespace-nowrap text-[10.5px] font-medium" style={{ color: risk ? "var(--pg-warning)" : "var(--pg-faint)" }}>
+            {risk ?? "—"} at risk
+          </small>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto pt-0.5 [scrollbar-gutter:stable]">
+        {loading && (
+          <div aria-busy="true" aria-label="Reading the fleet">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="flex items-center gap-3 border-b border-[var(--pg-line-soft)] py-3">
+                <span className="h-1.5 w-1.5 animate-pulse rotate-45 bg-[var(--pg-line-strong)]" />
+                <span className="h-3 w-52 animate-pulse rounded bg-[var(--pg-surface)]" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && error && (
+          <div role="alert" className="py-8 text-[12px] text-[var(--pg-negative)]">
+            The fleet could not be read. {error}
+          </div>
+        )}
+
+        {!loading && !error && rows.length === 0 && (
+          <p className="py-8 text-[12px] text-[var(--pg-faint)]">No tenant has been recorded here yet.</p>
+        )}
+
+        {!loading &&
+          !error &&
+          rows.map((row) => (
+            <div
+              key={row.tenant.id}
+              className="relative flex min-w-0"
+              style={{ paddingLeft: row.depth ? 22 : 0 }}
+            >
+              {row.depth === 1 && (
+                <i
+                  className="absolute left-2 top-0 w-px bg-[var(--pg-line-strong)]"
+                  style={{ bottom: row.last ? "50%" : 0 }}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => onEnter(row.tenant)}
+                className="flex min-w-0 flex-1 flex-col border-0 border-b border-[var(--pg-line-soft)] bg-transparent px-0 py-[9px] text-left"
+              >
+                <span className="flex min-w-0 items-center gap-[9px]">
+                  <i className="h-1.5 w-1.5 flex-none rotate-45" style={{ background: gradeTone(row.grade) }} />
+                  <b className="min-w-0 truncate text-[12.5px] font-medium">{row.tenant.name}</b>
+                  <small className="min-h-[17px] flex-none whitespace-nowrap rounded-full border border-[var(--pg-line)] px-1.5 text-[9px] leading-[17px] text-[var(--pg-faint)]">
+                    {row.kind}
+                  </small>
+                </span>
+                <span className="mt-[5px] flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1">
+                  <span className="flex items-center gap-[7px]">
+                    <span className="h-[3px] w-[52px] flex-none overflow-hidden rounded-full bg-[var(--pg-line)]">
+                      <i
+                        className="block h-full bg-[var(--pg-gold-deep)]"
+                        style={{ width: row.tenant.seats ? `${Math.max(6, (row.tenant.seats / maxSeats) * 100)}%` : 0 }}
+                      />
+                    </span>
+                    <small className="whitespace-nowrap font-mono text-[10.5px] text-[var(--pg-muted)]">
+                      {row.tenant.seats ? `${row.tenant.seats} ${row.tenant.seats === 1 ? "seat" : "seats"}` : "no seats"}
+                    </small>
+                  </span>
+                  <small className="min-w-0 truncate text-[10.5px] text-[var(--pg-faint)]">{row.note}</small>
+                  <small className="whitespace-nowrap text-[10px] font-medium" style={{ color: gradeTone(row.grade) }}>{row.grade}</small>
+                  <small className="ml-auto whitespace-nowrap text-[10.5px] text-[var(--pg-faint)]">Enter →</small>
+                </span>
+              </button>
+            </div>
+          ))}
+
+        {!loading && !error && (
+          <p className="mt-[15px] max-w-[66ch] text-[10.5px] leading-[1.55] text-[var(--pg-faint)]">
+            Act-as grants no tenant_members row, and exit returns active_tenant_id to NULL. Seats read from the tenant record; grade counts zero active seats. Platform fixtures are hidden by default and revealed by the chip.
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSeeRevenue: boolean }) {
-  const navigate = useNavigate();
-  /**
-   * Which tenant is open, read back off the URL rather than held in a second piece of state. The
-   * field's click and the directory's "Enter" both write `?tenant=`, so the URL is already the one
-   * home for this (§18) — mirroring it into local state would let the two disagree on a back/forward.
-   */
-  const [searchParams] = useSearchParams();
-  const selectedTenantId = searchParams.get("tenant");
-
   const { tenants, classificationVisible, loading, error } = useFleet(true);
   const { switchTenant } = useTenantContext();
 
-  /**
-   * ACT AS a tenant — the "logged act" CD's directory copy promises, and the thing the rail's
-   * own foot ("Entering a tenant puts you in their shell with their data. Every session is
-   * recorded in Governance.") has been claiming since this surface shipped.
-   *
-   * It goes through `switchTenant`, the SAME control the header TenantSwitcher already drives,
-   * which for platform staff now routes to the audited `operator_enter_tenant` RPC. Deliberately
-   * NOT a second act-as path of its own: a Fleet-only route beside the existing switcher would
-   * mean two ways to enter a tenant with only one of them audited — an audit trail that looks
-   * complete while a quiet route stays open (§18).
-   *
-   * NOTHING NAVIGATES. Act-as is a SCOPE CHANGE, not a journey — `switchTenant` already runs the
-   * audited RPC, commits `activeTenantId` to the one shared provider, and invalidates every query,
-   * so all consumers re-read under the new scope synchronously. The old code followed that with
-   * `window.location.assign("/admin")`, which was the one-way door: no exit control existed on the
-   * far side, and the operator had left the console entirely.
-   *
-   * The comment that justified the hard navigate ("every PER-INSTANCE `useTenantContext` has to
-   * re-read") described the architecture as it was BEFORE 2026-07-28. `useTenantContext` became a
-   * real provider mounted once at the app root that day; the reload has been redundant since, and
-   * the stale comment is why nobody noticed. Verified against the provider, not assumed.
-   *
-   * The deeper correction: admin is not a URL, so act-as was never a navigation. The pack models
-   * it as three scope states on the band above the shell (`P.SCOPES` — rest / read / act), where
-   * scope is BROADCAST rather than routed, which is also why detach works across windows.
-   *
-   * INTERIM, Round 0 → Round 1: the band that reports "Acting as …" and carries the Exit control
-   * is drawn in the pack and built with the shell in Round 1. Until it lands, this toast is the
-   * only signal that scope moved — deliberately the same transient class as the failure toast
-   * below, NOT a stand-in for the band. Round 1 replaces it with the persistent band; do not grow
-   * it into a bespoke exit affordance in the meantime (§30 — the exit gets drawn once, from the
-   * pack, rather than invented here and discarded there).
-   */
   const enterTenant = useCallback(
-    async (id: string) => {
-      const name = tenants.find((t) => t.id === id)?.name ?? "that tenant";
-      const ok = await switchTenant(id);
-      if (!ok) {
-        // Never pretend. A refused switch leaves scope exactly where it was.
-        toast.error(`Couldn't enter ${name}.`);
+    async (tenant: FleetTenant) => {
+      const entered = await switchTenant(tenant.id);
+      if (!entered) {
+        toast.error(`Couldn't enter ${tenant.name}.`);
         return;
       }
-      toast.success(`Acting as ${name}. Everything you do here is recorded.`);
+      toast.success(`Acting as ${tenant.name}. Everything you do here is recorded.`);
     },
-    [switchTenant, tenants],
-  );
-  const [view, setView] = useState<"field" | "table">("field");
-  const [filter, setFilter] = useState<Filter>("All");
-  const [q, setQ] = useState("");
-  /**
-   * Platform fixtures and test accounts are hidden by default and revealed by a chip — never
-   * dropped. Hiding them keeps the console reporting the real fleet; keeping the chip means no
-   * shipped row is silently removed and the operator can always see everything (§58).
-   */
-  const [showInternal, setShowInternal] = useState(false);
-
-  /**
-   * The fleet as the platform actually runs it: customers, not our own fixtures.
-   *
-   * When the classification is not readable at this tier, NOTHING is filtered — filtering on an
-   * answer we never received would silently drop or keep the wrong rows. The header says so
-   * instead, so a scoped operator knows the count includes fixtures rather than believing it is
-   * the customer fleet.
-   */
-  const fleet = useMemo(
-    () =>
-      showInternal || !classificationVisible ? tenants : tenants.filter((t) => !isInternal(t)),
-    [tenants, showInternal, classificationVisible],
-  );
-  const internalCount = useMemo(
-    () => (classificationVisible ? tenants.filter(isInternal).length : 0),
-    [tenants, classificationVisible],
-  );
-
-  /** Which fleet rows are nested (a sub-account whose parent is also in the fleet). */
-  const nestedIds = useMemo(() => {
-    const present = new Set(fleet.map((t) => t.id));
-    return new Set(fleet.filter((t) => t.parentTenantId && present.has(t.parentTenantId)).map((t) => t.id));
-  }, [fleet]);
-
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return byTopology(
-      fleet.filter((t) => {
-        if (needle && !`${t.name} ${t.slug ?? ""}`.toLowerCase().includes(needle)) return false;
-        if (filter === "At risk") return health(t).tone === "risk";
-        if (filter === "All") return true;
-        return tierLabel(t, nestedIds.has(t.id)) === filter;
-      }),
-    );
-  }, [fleet, filter, q, nestedIds]);
-
-  // CD: subCount = TENANTS.reduce((a,t) => a + t.subs, 0) — real, the count of rows with a
-  // parent present in the fleet.
-  const subCount = useMemo(() => fleet.filter((t) => nestedIds.has(t.id)).length, [fleet, nestedIds]);
-  const atRiskTenants = useMemo(() => fleet.filter((t) => health(t).tone === "risk"), [fleet]);
-
-  /** The directory's rows — the same derivation the table uses, computed once (§18). */
-  const railRows: RailTenant[] = useMemo(
-    () =>
-      rows.map((t) => ({
-        tenant: t,
-        tier: tierLabel(t, nestedIds.has(t.id)),
-        health: health(t),
-        beneath: fleet.filter((x) => x.parentTenantId === t.id).length,
-      })),
-    [rows, nestedIds, fleet],
-  );
-
-  const orbitNodes: OrbitNode[] = useMemo(
-    () =>
-      rows.map((t) => ({
-        id: t.id,
-        name: t.name,
-        tier: tierLabel(t, nestedIds.has(t.id)),
-        // Real, non-financial weight — team + clients. Never a stand-in for revenue (§13).
-        weight: t.seats + t.customers,
-        needsYou: health(t).tone === "risk",
-      })),
-    [rows, nestedIds],
+    [switchTenant],
   );
 
   return (
-    /**
-     * FINDING 2 (Claude Design, 2026-08-23) — ONE RIGHT COLUMN, AND IT IS THE SPINE.
-     * CD: *"a surface growing a second one is the shell fighting itself… let the rest be
-     * workspace content — not a column."* The two-column flex row that wrapped this surface and
-     * a 312px `<aside>` is gone; `FleetTenantsRail`'s remaining blocks now flow at the foot of
-     * this one column. Paige's read is not among them — it is spine content, and does not
-     * render on a surface (see `FleetTenantsRail`).
-     */
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <>
-        {/* ── title row ─────────────────────────────────────────────── */}
-        <div className="flex flex-none flex-wrap items-start gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5">
-              <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">
-                FLEET
-              </span>
-              <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">Fleet Console</span>
-            </div>
-            <div className="mt-1.5 text-[length:var(--pg-t-body)] text-muted-foreground">
-              {loading
-                ? "Reading the fleet…"
-                : error
-                  ? "The fleet could not be read."
-                  : "Every tenant on the platform, and the door into each one." +
-                    (classificationVisible
-                      ? ""
-                      : " Platform fixtures cannot be told apart at your access level, so any are counted here.")}
-            </div>
-          </div>
-          <div className="ml-auto flex min-w-0 flex-none items-center gap-2.5">
-            {/* CD's Field/Table view toggle. */}
-            <div className="flex flex-none items-center gap-0.5 rounded-[9px] border border-border bg-[color-mix(in_srgb,var(--pg-workspace)_50%,transparent)] p-0.5">
-              {(["field", "table"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setView(v)}
-                  aria-pressed={view === v}
-                  className={cn(
-                    "rounded-[7px] px-2.5 py-1 text-[length:var(--pg-t-label)] font-medium capitalize transition-colors",
-                    view === v ? "bg-[var(--pg-raised)] text-foreground shadow-[shadow:var(--pg-rim)]" : "text-muted-foreground",
-                  )}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate(PROVISION_AT)}
-              className="whitespace-nowrap rounded-[9px] bg-cd-gold px-3.5 py-2 text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Provision a tenant
-            </button>
-          </div>
-        </div>
-
-        {/* ── KPI strip (CD's flKpis) ───────────────────────────────── */}
-        <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
-          {[
-            { label: "TENANTS", value: loading ? "—" : String(fleet.length), unit: `${loading ? "—" : subCount} sub-accounts beneath` },
-            // Money Spine deferred (owner ruling 2026-08-19) — no billing table read here.
-            // CD's unit asserts a growth rate ("up 6.2% on last month") we have not measured,
-            // so it is dropped rather than shown against an em dash (§13).
-            { label: "FLEET MRR", value: "—", unit: "not tracked yet" },
-            { label: "AT RISK", value: loading ? "—" : String(atRiskTenants.length), unit: atRiskTenants.length ? "needs a look" : "none flagged" },
-            // CD's provisioning-decision queue has no live writer (§18 — same honest gap
-            // `useOperatorChrome` already states for the rail badge), so this stays absent.
-            { label: "WAITING ON YOU", value: "—", unit: "not connected yet" },
-          ].map((k) => (
-            <div
-              key={k.label}
-              className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]"
-            >
-              <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
-                {k.label}
-              </div>
-              <div className="mt-1 flex min-w-0 items-baseline gap-2">
-                <span className="whitespace-nowrap text-[length:var(--pg-t-title)] font-bold tabular-nums tracking-[-0.02em]">
-                  {k.value}
-                </span>
-                <span className="truncate text-[length:var(--pg-t-label)] text-muted-foreground">{k.unit}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── filters + search ──────────────────────────────────────── */}
-        <div className="flex flex-none flex-wrap items-center gap-2">
-          {FILTERS.map((f) => {
-            const on = filter === f;
-            return (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                aria-pressed={on}
-                className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  on
-                    ? "border-border-strong bg-[var(--pg-workspace)] text-foreground"
-                    : "border-border bg-[var(--pg-raised)] text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {f}
-              </button>
-            );
-          })}
-          {internalCount > 0 && (
-            /* The escape hatch for the rows above: our own fixtures and test accounts are out
-               of the fleet count by default, and one click puts them back (§58). */
-            <button
-              type="button"
-              onClick={() => setShowInternal((v) => !v)}
-              aria-pressed={showInternal}
-              className={cn(
-                "whitespace-nowrap rounded-full border px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                showInternal
-                  ? "border-border-strong bg-[var(--pg-workspace)] text-foreground"
-                  : "border-dashed border-border bg-[var(--pg-raised)] text-muted-foreground hover:text-foreground",
-              )}
-              title="Platform fixtures and test accounts. Hidden from the fleet count so the console reports real tenants."
-            >
-              {showInternal ? "Hide" : "Show"} internal ({internalCount})
-            </button>
-          )}
-          <div className="ml-auto flex min-w-0 flex-none items-center gap-2 rounded-full border border-border bg-[var(--pg-surface)] px-3 py-1.5">
-            <span aria-hidden className="flex-none text-[length:var(--pg-t-label)] text-muted-foreground">⌕</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search tenants, owners, domains"
-              aria-label="Search tenants, owners, domains"
-              className="w-44 bg-transparent text-[length:var(--pg-t-label)] outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-        </div>
-
-        {/* ── field view: the orbit ─────────────────────────────────── */}
-        {view === "field" && (
-          <div className="flex min-h-0 flex-1 flex-col">
-            {/* CD's field container is dark regardless of page theme — a canvas host, not a
-                themed panel — so it renders on the platform's own `--rail` token (the exact
-                dark indigo the pack hardcodes as #191231), never a raw hex. */}
-            <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-[15px] bg-[var(--pg-nav)] shadow-[shadow:var(--pg-lift-3)]">
-              {loading ? (
-                <div className="flex flex-1 items-center justify-center">
-                  <div className="h-40 w-40 animate-pulse rounded-full bg-white/10" />
-                </div>
-              ) : error ? (
-                <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                  <div>
-                    <div className="text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--rail-foreground))]">
-                      The fleet could not be read.
-                    </div>
-                    <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-[hsl(var(--rail-muted))]">
-                      {error}
-                    </div>
-                  </div>
-                </div>
-              ) : rows.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                  <div className="text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--rail-muted))]">
-                    {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
-                  </div>
-                </div>
-              ) : (
-                <FleetOrbit
-                  nodes={orbitNodes}
-                  selectedId={selectedTenantId}
-                  onSelect={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
-                />
-              )}
-              {/* CD's top scrim overlay: eyebrow/title/meta on the left, tier legend on the right. */}
-              <div
-                className="pointer-events-none absolute inset-x-0 top-0 flex items-start gap-3 px-4 pb-6 pt-3.5"
-                style={{
-                  background:
-                    "linear-gradient(180deg, hsl(var(--rail)/0.94) 0%, hsl(var(--rail)/0.94) 74%, hsl(var(--rail)/0.6) 88%, hsl(var(--rail)/0) 100%)",
-                }}
-              >
-                <div className="min-w-0">
-                  <div className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.16em] text-[hsl(var(--rail-foreground))]/70">
-                    EVERY TENANT ON THE PLATFORM
-                  </div>
-                  <div className="mt-1 text-[length:var(--pg-t-lead)] font-semibold text-[hsl(var(--rail-foreground))]">
-                    The fleet, by weight
-                  </div>
-                  <div className="mt-1 font-mono text-[length:var(--pg-t-label)] text-[hsl(var(--rail-foreground))]/70">
-                    {loading ? "—" : rows.length} tenants · node size is team + clients · ringed
-                    nodes need you
-                  </div>
-                </div>
-                <div className="ml-auto flex flex-none flex-col items-end gap-1">
-                  {(
-                    [
-                      ["Agency", "hsl(var(--primary))"],
-                      ["Solo", "hsl(var(--success))"],
-                      ["Enterprise", "hsl(var(--gold-dark))"],
-                      ["Sub-account", "hsl(var(--rail-muted))"],
-                      ["Needs you", "hsl(var(--warning))"],
-                    ] as const
-                  ).map(([label, color]) => (
-                    <div key={label} className="flex items-center gap-1.5">
-                      <span className="whitespace-nowrap text-[length:var(--pg-t-label)] text-[hsl(var(--rail-foreground))]/60">
-                        {label}
-                      </span>
-                      <span
-                        aria-hidden
-                        className="h-2 w-2 flex-none rounded-full"
-                        style={{ backgroundColor: color }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex-none pb-1 pt-2 text-center text-[length:var(--pg-t-label)] text-muted-foreground">
-              Drag to orbit · hover a node to name it · click to open the tenant
-            </div>
-          </div>
-        )}
-
-        {/* ── table view ─────────────────────────────────────────────── */}
-        {view === "table" && (
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
-            <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3.5 py-2">
-              <div className="min-w-0 flex-[2.1] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
-              <div className="min-w-0 flex-[0.9] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
-              <div className="min-w-0 flex-[0.9] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">MRR</div>
-              <div className="min-w-0 flex-[0.8] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">BENEATH</div>
-              <div className="min-w-0 flex-1 text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">HEALTH</div>
-              <div className="min-w-0 flex-[0.9] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">LAST ACTIVE</div>
-              <div className="w-[76px] flex-none" />
-            </div>
-
-            {loading && (
-              <div className="space-y-px">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5">
-                    <div className="h-7 w-7 flex-none animate-pulse rounded-[9px] bg-[var(--pg-workspace)]" />
-                    <div className="h-3 w-40 animate-pulse rounded bg-[var(--pg-workspace)]" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!loading && error && (
-              <div className="px-4 py-10 text-center">
-                <div className="text-[length:var(--pg-t-body)] font-semibold">The fleet could not be read.</div>
-                <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">{error}</div>
-              </div>
-            )}
-
-            {!loading && !error && rows.length === 0 && (
-              <div className="px-4 py-10 text-center">
-                <div className="text-[length:var(--pg-t-body)] font-semibold">
-                  {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
-                </div>
-                <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">
-                  {tenants.length === 0
-                    ? "Provisioned tenants appear here as soon as they exist."
-                    : "Clear the filter or search to see the whole fleet."}
-                </div>
-              </div>
-            )}
-
-            {!loading &&
-              !error &&
-              rows.map((t) => {
-                const h = health(t);
-                const nested = nestedIds.has(t.id);
-                const tier = tierLabel(t, nested);
-                const beneath = fleet.filter((x) => x.parentTenantId === t.id).length;
-                return (
-                  <div
-                    key={t.id}
-                    className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5 transition-colors last:border-b-0 hover:bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)]"
-                  >
-                    <div className="flex min-w-0 flex-[2.1] items-center gap-2.5">
-                      {nested && (
-                        <span
-                          aria-hidden
-                          className="ml-1 h-4 w-3 flex-none rounded-bl-[4px] border-b border-l border-border"
-                        />
-                      )}
-                      <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-[var(--pg-workspace)] text-[length:var(--pg-t-label)] font-bold text-foreground/70">
-                        {initials(t.name)}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-[length:var(--pg-t-body)] font-semibold">{t.name}</span>
-                          {isInternal(t) && (
-                            <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[length:var(--pg-t-label)] font-semibold uppercase tracking-wide text-muted-foreground">
-                              Internal
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 truncate font-mono text-[length:var(--pg-t-label)] text-muted-foreground">
-                          {t.slug ?? "—"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-[0.9]">
-                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold", TIER_PILL[tier])}>
-                        {tier}
-                      </span>
-                    </div>
-                    {/* Money Spine deferred — no MRR read (§13). */}
-                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[length:var(--pg-t-label)] text-muted-foreground">—</div>
-                    <div className="min-w-0 flex-[0.8] text-right font-mono text-[length:var(--pg-t-label)] tabular-nums">
-                      {beneath || "—"}
-                    </div>
-                    <div className="flex min-w-0 flex-1 items-center justify-end">
-                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold", HEALTH_PILL[h.tone])}>
-                        {h.label}
-                      </span>
-                    </div>
-                    {/* No last-activity read wired yet — honest absence, never "today" (§13). */}
-                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[length:var(--pg-t-label)] text-muted-foreground">—</div>
-                    <div className="w-[76px] flex-none text-right">
-                      <button
-                        type="button"
-                        onClick={() => void enterTenant(t.id)}
-                        className="rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[shadow:var(--pg-inset)]"
-                      >
-                        Enter →
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </>
-
-      {/* ── what needs you, and the directory. WORKSPACE CONTENT (Finding 2), not a column. ── */}
-      <FleetTenantsRail
-        rows={railRows}
-        filtered={filter !== "All" || q.trim().length > 0}
-        loading={loading}
-        onOpenTenant={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
-        onEnterTenant={(id) => void enterTenant(id)}
-        onProvision={() => navigate(PROVISION_AT)}
-        onOpenCheck={() => navigate("/operator/fleet/systems-check")}
-      />
-    </div>
+    <FleetDirectoryView
+      tenants={tenants}
+      classificationVisible={classificationVisible}
+      loading={loading}
+      error={error}
+      onEnter={(tenant) => void enterTenant(tenant)}
+    />
   );
 }

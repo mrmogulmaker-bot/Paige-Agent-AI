@@ -105,7 +105,8 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
   },
   "campaigns/pipeline": { panels: ["fleet/prospects"], carries: ["fleet/prospects"] },
   "campaigns/social": {
-    panels: ["growth/social", "growth/brand-kit", "growth/assets"],
+    // BUILD-ORDER Layer 3e — v3 `socialVals` (7433–7564), not the retired Growth panels.
+    bespoke: "SocialSurface",
     carries: ["growth/social", "growth/brand-kit", "growth/assets"],
   },
   "campaigns/performance": {

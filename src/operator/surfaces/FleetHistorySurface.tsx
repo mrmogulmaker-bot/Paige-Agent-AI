@@ -1,172 +1,212 @@
-import { useSystemsCheckHistory } from "@/operator/data/useSystemsCheckHistory";
-import { cn } from "@/lib/utils";
+import { useMemo, useState } from "react";
+
+import {
+  useSystemsCheckHistory,
+  type FleetHistoryEvent,
+} from "@/operator/data/useSystemsCheckHistory";
 
 /**
- * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
- * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
- * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
- * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
- * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ * Fleet · History — authoritative v3 source:
+ * `docs/design-references/cd-packs/super-admin-shell-v3/PAIGE Super Admin Shell v3.dc.html`
+ * markup 910–954 · builder `runsVals` 7624–7699 (ROUTE-MAP.md 37).
  *
- * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
- * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. Separation on a
- * raised plate is `--pg-rim` PLUS `--pg-lift-1`: the rim is a seated inset pair (a top highlight
- * and a bottom shade, L21/L28) and the lift is the outer cast (L22/L29). Carrying the rim alone
- * left only insets, which read as a plain outline against the 1.5px border — the "hairline
- * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
- * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
- *
- * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[shadow:var(--pg-rim)]`
- * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
- * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
- * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
- * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on every one
- * of these plates in BOTH themes. All the separation on screen was the 1.5px border — which is
- * exactly why it read as "a plain border." The `shadow:` data-type hint
- * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
- * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
+ * Structure is transcribed from v3. Values come only from `paige_systems_check_run` and
+ * `paige_alert_firing`; the pack's generated 36-run illustration is never shipped.
  */
 
-/**
- * Fleet Console — History (CD's `SC_HISTORY`, `Super Admin Shell.dc.html` 6769-6857,
- * ported structurally in `fleetSpecs.ts`'s `fleet/history` entry). "Every check that has
- * run, newest first, with what it found."
- *
- * §30/§58 — same chrome-wraps-engine pattern as Systems Check: the pack's title/subtitle/
- * chip/block copy ports verbatim; the feed is real operator-scope run history
- * (`useSystemsCheckHistory`), not CD's mock `SC_HISTORY` fixture rows.
- *
- * §13 — a run with `completed_at = null` is honestly "still running," never rendered as
- * a pass or a fail it hasn't reached yet.
- */
+type Filter = "Complete" | "Firing" | "In flight" | "Clean";
 
-function toneFor(passCount: number, failCount: number, completedAt: string | null): "ok" | "warn" | "risk" | "unknown" {
-  if (!completedAt) return "unknown";
-  if (failCount > 0) return "risk";
-  if (passCount > 0) return "ok";
-  return "unknown";
-}
+const FILTERS: ReadonlyArray<{ label: string; value: Filter }> = [
+  { label: "Full sweep", value: "Complete" },
+  { label: "Firing", value: "Firing" },
+  { label: "In flight", value: "In flight" },
+  { label: "Clean", value: "Clean" },
+];
 
-const TONE_DOT: Record<"ok" | "warn" | "risk" | "unknown", string> = {
-  ok: "bg-[hsl(var(--success))]",
-  warn: "bg-[hsl(var(--warning))]",
-  risk: "bg-[hsl(var(--destructive))]",
-  unknown: "bg-[color-mix(in_srgb,var(--pg-muted)_40%,transparent)]",
+const TONE: Record<Filter, string> = {
+  Complete: "var(--pg-positive)",
+  Firing: "var(--pg-warning)",
+  "In flight": "var(--pg-violet)",
+  Clean: "var(--pg-line-strong)",
 };
 
-const TONE_PILL: Record<"ok" | "warn" | "risk" | "unknown", string> = {
-  ok: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
-  warn: "bg-[hsl(var(--warning)/0.16)] text-[hsl(var(--gold-dark))]",
-  risk: "bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]",
-  unknown: "bg-[var(--pg-workspace)] text-muted-foreground",
-};
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function timeOf(iso: string): string {
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime())) return "—";
+  return value.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function FleetHistorySurface() {
-  const { runs, loading, error } = useSystemsCheckHistory(true);
+function matches(event: FleetHistoryEvent, filter: Filter | null): boolean {
+  if (!filter) return true;
+  if (filter === "Complete") return event.kind === "Full sweep";
+  return event.outcome === filter;
+}
+
+export function FleetHistoryView({
+  events,
+  total,
+  loading = false,
+  error = null,
+}: {
+  events: FleetHistoryEvent[];
+  total: number | null;
+  loading?: boolean;
+  error?: string | null;
+}) {
+  const [filter, setFilter] = useState<Filter | null>(null);
+  const matching = useMemo(() => events.filter((event) => matches(event, filter)), [events, filter]);
+  const rows = matching.slice(0, 9);
+  const oldest = events.at(-1);
+  const newest = events[0];
+
+  const counts = useMemo(
+    () => ({
+      Complete: events.filter((event) => event.kind === "Full sweep").length,
+      Firing: events.filter((event) => event.outcome === "Firing").length,
+      "In flight": events.filter((event) => event.outcome === "In flight").length,
+      // The evaluator stores firings, not no-fire cycles. Zero would be a fabricated reading.
+      Clean: null,
+    }),
+    [events],
+  );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3.5">
-      {/* ── title row ─────────────────────────────────────────────── */}
-      <div className="flex flex-none flex-wrap items-start gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">PLATFORM</span>
-            <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">History</span>
-          </div>
-          <div className="mt-1.5 text-[length:var(--pg-t-body)] text-muted-foreground">
-            Every check that has run, newest first, with what it found.
-          </div>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="fleet-history-title">
+      <div className="flex-none border-b border-[var(--pg-line)] pb-3.5">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+          <b id="fleet-history-title" className="text-[12px] font-medium">Run history</b>
+          <small className="min-w-0 text-[10.5px] text-[var(--pg-faint)]">
+            {loading ? "—" : `${total ?? "—"} records · newest first, capped at 100`}
+          </small>
         </div>
-        <div className="ml-auto flex-none">
-          <span className="whitespace-nowrap rounded-full border border-border bg-[var(--pg-raised)] px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium text-muted-foreground">
-            {loading ? "—" : runs.length} events
-          </span>
+
+        <div className="mt-[13px] flex h-[30px] items-end gap-0.5" aria-label="Run cadence">
+          {events.length === 0 ? (
+            <span className="h-px flex-1 bg-[var(--pg-line-soft)]" />
+          ) : (
+            events
+              .slice()
+              .reverse()
+              .map((event) => (
+                <span
+                  key={event.id}
+                  className="min-w-[3px] flex-1"
+                  title={`${timeOf(event.at)} · ${event.kind} · ${event.outcome}`}
+                  style={{
+                    height: event.kind === "Full sweep" ? 30 : event.outcome === "Firing" ? 22 : 13,
+                    background: TONE[event.outcome],
+                    opacity: matches(event, filter) ? 1 : 0.22,
+                  }}
+                />
+              ))
+          )}
+        </div>
+
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 font-mono text-[10px] text-[var(--pg-faint)]">
+          <small>{oldest ? timeOf(oldest.at) : "—"}</small>
+          <small>{newest ? timeOf(newest.at) : "—"}</small>
+        </div>
+
+        <div className="mt-[9px] flex flex-wrap items-center gap-x-3 gap-y-1.5" aria-label="Filter run history">
+          {FILTERS.map(({ label, value }) => {
+            const unavailable = value === "Clean";
+            const active = filter === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                disabled={unavailable}
+                aria-pressed={active}
+                title={unavailable ? "No-fire evaluator cycles are not recorded." : undefined}
+                onClick={() => setFilter(active ? null : value)}
+                className="inline-flex min-h-[22px] items-center gap-1.5 whitespace-nowrap rounded-full border bg-transparent px-2 text-[10.5px] font-medium disabled:cursor-not-allowed"
+                style={{
+                  borderColor: active ? "var(--pg-gold)" : "transparent",
+                  color: active ? "var(--pg-ink)" : "var(--pg-muted)",
+                  opacity: unavailable ? 0.62 : 1,
+                }}
+              >
+                <i className="h-1.5 w-1.5 rotate-45" style={{ background: TONE[value] }} />
+                {label}
+                <small className="ml-1 font-mono text-[10px] text-[var(--pg-faint)]">
+                  {counts[value] ?? "—"}
+                </small>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* ── the feed ─────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
-        <div className="border-b border-border px-3.5 py-3">
-          <div className="text-[length:var(--pg-t-body)] font-semibold">Check history</div>
-          <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Every sweep, every failure, every recovery.</div>
-        </div>
-
+      <div className="min-h-0 flex-1 overflow-auto pt-0.5 [scrollbar-gutter:stable]">
         {loading && (
-          <div className="space-y-px">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-4 py-3">
-                <div className="h-2.5 w-2.5 flex-none animate-pulse rounded-full bg-[var(--pg-workspace)]" />
-                <div className="h-3 w-64 animate-pulse rounded bg-[var(--pg-workspace)]" />
+          <div className="space-y-px" aria-busy="true" aria-label="Reading run history">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="flex items-center gap-3 border-b border-[var(--pg-line-soft)] py-3">
+                <span className="h-1.5 w-1.5 animate-pulse rotate-45 bg-[var(--pg-line-strong)]" />
+                <span className="h-3 w-48 animate-pulse rounded bg-[var(--pg-surface)]" />
               </div>
             ))}
           </div>
         )}
 
         {!loading && error && (
-          <div className="px-4 py-10 text-center">
-            <div className="text-[length:var(--pg-t-body)] font-semibold">The history could not be read.</div>
-            <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">{error}</div>
+          <div role="alert" className="py-4 text-[12px] text-[var(--pg-negative)]">
+            {events.length > 0
+              ? "Some run history could not be read; the available records remain below."
+              : "The run history could not be read."} {error}
           </div>
         )}
 
-        {!loading && !error && runs.length === 0 && (
-          <div className="px-4 py-10 text-center text-[length:var(--pg-t-body)] font-semibold text-muted-foreground">
-            No sweep has been recorded here yet.
-          </div>
+        {!loading && !error && events.length === 0 && (
+          <p className="py-8 text-[12px] text-[var(--pg-faint)]">No run has been recorded here yet.</p>
+        )}
+
+        {!loading && events.length > 0 && rows.length === 0 && (
+          <p className="py-8 text-[12px] text-[var(--pg-faint)]">No matching run is recorded.</p>
         )}
 
         {!loading &&
-          !error &&
-          runs.map((r) => {
-            const tone = toneFor(r.passCount, r.failCount, r.completedAt);
-            return (
-              <div
-                key={r.id}
-                className="flex min-w-0 items-start gap-2.5 border-b border-border/60 px-4 py-3 last:border-b-0"
-              >
-                <span className={cn("mt-1.5 h-2 w-2 flex-none rounded-full", TONE_DOT[tone])} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span
-                      className={cn(
-                        "whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold",
-                        TONE_PILL[tone],
-                      )}
-                    >
-                      {r.completedAt ? "Sweep" : "Running"}
-                    </span>
-                    <span className="ml-auto flex-none whitespace-nowrap font-mono text-[length:var(--pg-t-label)] text-muted-foreground">
-                      {formatWhen(r.startedAt)}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-[length:var(--pg-t-body)] font-semibold leading-[1.35]">
-                    {r.completedAt
-                      ? `${r.passCount}/${r.checkCount} checks passed`
-                      : `Sweeping ${r.checkCount || "—"} checks…`}
-                  </div>
-                  {r.failCount > 0 && (
-                    <div className="mt-[3px] text-[length:var(--pg-t-label)] leading-[1.45] text-muted-foreground">
-                      {r.failCount} {r.failCount === 1 ? "finding" : "findings"} need a look.
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          rows.map((event) => (
+            <div
+              key={event.id}
+              className="flex min-w-0 items-center justify-between gap-3.5 border-b border-[var(--pg-line-soft)] py-[9px]"
+            >
+              <span className="flex min-w-0 items-center gap-2.5">
+                <i className="h-1.5 w-1.5 flex-none rotate-45" style={{ background: TONE[event.outcome] }} />
+                <b className="flex-none font-mono text-[12px] font-medium tracking-[-0.01em]">{timeOf(event.at)}</b>
+                <small className="hidden min-h-[17px] flex-none rounded-full border border-[var(--pg-line)] px-1.5 text-[9px] leading-[17px] text-[var(--pg-faint)] min-[520px]:block">
+                  {event.kind}
+                </small>
+                <small className="min-w-[132px] flex-1 truncate text-[10.5px] text-[var(--pg-faint)]">{event.detail}</small>
+              </span>
+              <span className="flex flex-none items-center gap-3.5">
+                <small className="whitespace-nowrap font-mono text-[10.5px] text-[var(--pg-muted)]">{event.duration}</small>
+                <small className="whitespace-nowrap text-[10px] font-medium" style={{ color: TONE[event.outcome] }}>
+                  {event.outcome}
+                </small>
+                <button
+                  type="button"
+                  disabled
+                  title="Systems sweep details are not mounted in this surface."
+                  className="whitespace-nowrap border-0 bg-transparent text-[10.5px] text-[var(--pg-faint)] disabled:cursor-not-allowed"
+                >
+                  Open —
+                </button>
+              </span>
+            </div>
+          ))}
+
+        {!loading && (events.length > 0 || !error) && (
+          <p className="mt-[15px] max-w-[66ch] text-[10.5px] leading-[1.55] text-[var(--pg-faint)]">
+            A run in flight reads still running, never a verdict it has not reached. Full sweeps and alert firings read from the platform record. No-fire evaluator cycles are not stored, so Clean remains —. Showing {rows.length} of {matching.length} matching records.
+          </p>
+        )}
       </div>
-      <div className="flex-none text-[length:var(--pg-t-label)] text-muted-foreground">
-        Retained indefinitely.
-      </div>
-    </div>
+    </section>
   );
+}
+
+export default function FleetHistorySurface() {
+  const history = useSystemsCheckHistory(true);
+  return <FleetHistoryView {...history} />;
 }

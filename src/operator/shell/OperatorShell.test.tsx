@@ -81,18 +81,17 @@ describe("the operator shell renders the pack's geometry", () => {
    * Asserted against the SOURCE because the previous address looked right and 404'd: an eye on the
    * button proves nothing, and only `operatorAddress.ts` can say whether a link lands.
    */
-  it("every operator address Fleet Console navigates to resolves to a real slot (Rulings D + E)", () => {
+  it("the v3 Fleet directory carries no retired or invented operator address", () => {
     const src = readFileSync(resolve(process.cwd(), "src/operator/surfaces/FleetConsole.tsx"), "utf8");
-    const body = src.slice(src.indexOf("const PROVISION_AT"));
 
     // Ruling E: she is the spine, not a place. No route to her, in code or in a literal.
-    expect(body).not.toContain("/operator/paige");
-    // Ruling D: the dead address is gone and the act is built off the IA, not typed as a literal.
-    expect(body).not.toContain("/operator/provisioning");
-    expect(body).toContain("navigate(PROVISION_AT)");
+    expect(src).not.toContain("/operator/paige");
+    // `fleetVals` has no provisioning control; the retired console must not put it back.
+    expect(src).not.toContain("/operator/provisioning");
+    expect(src).not.toContain("PROVISION_AT");
 
-    const provision = viewPath("fleet", "Directory");
-    const [, , section, view] = provision.split("/");
+    const directory = viewPath("fleet", "Directory");
+    const [, , section, view] = directory.split("/");
     const address = resolveOperatorAddress(section, view);
     expect(address.kind).toBe("resolved");
     expect(address.kind === "resolved" && address.stale).toBe(false);
