@@ -212,32 +212,47 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Deno check (affected edge functions)
+      # RATCHET, not a wall — and never a relaxation. The all-or-nothing form of this check
+      # turned red on the first PR to touch a function carrying inherited debt, for errors the
+      # PR did not write; the pressure that creates is to weaken the gate, which is the one
+      # outcome that must not happen. So the SAME pinned check runs on the PR base and on the
+      # head, and only NEW or INCREASED diagnostics fail.
+      #
+      # Two rules stop it becoming a rubber stamp:
+      #   - A module-resolution failure is never ratchetable. It is not a type-check result; it
+      #     means the file was not checked at all. On the head that is fatal. On the base it
+      #     means the baseline is unknowable, so NOTHING is credited and the head must be clean.
+      #   - An inherited diagnostic is inherited only while its origin file is byte-identical
+      #     across the two legs. A CHANGED shared dependency is candidate code, not baseline.
+      #
+      # No continue-on-error, no `exit 0`, no advisory green, no per-PR exception. Both legs are
+      # uploaded as evidence so a reviewer can read what each actually produced.
+      - name: Deno ratchet (affected edge functions — fails on NEW or increased diagnostics)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        env:
+          BASE: ${{ steps.mergebase.outputs.mb }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -uo pipefail
-          failed=0
-          while read -r fn; do
-            [ -n "$fn" ] || continue
-            entry="supabase/functions/$fn/index.ts"
-            if [ ! -f "$entry" ]; then
-              # A function can be affected-by-import yet have no index.ts (deleted in this PR).
-              # Say so rather than silently counting it as checked.
-              echo "::notice::skipping $fn — no $entry (deleted or entry-less)"
-              continue
-            fi
-            echo "--- deno check $entry"
-            # Remote deps are fetched fresh; --no-lock because these functions have no committed
-            # deno.lock and a lockfile mismatch would fail for a reason unrelated to type safety.
-            deno check --no-lock "$entry" || failed=1
-          done < affected_fns.txt
-          if [ "$failed" -ne 0 ]; then
-            echo "::error::deno check failed for at least one affected edge function (see above)."
-            exit 1
-          fi
-          echo "All affected edge functions type-check."
+          node scripts/ci/deno-edge-ratchet.mjs \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --functions "$(tr '\n' ' ' < affected_fns.txt)" \
+            --out deno-ratchet-evidence
+
+      - name: Upload Deno ratchet evidence (base and head legs)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deno-ratchet-evidence
+          path: deno-ratchet-evidence/
+          if-no-files-found: warn
 
       # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----
+      - name: Deno ratchet contract tests
+        if: ${{ !cancelled() }}
+        run: npm run test:deno-ratchet
+
       - name: Typecheck (ratchet — fails on NEW type errors only)
         if: ${{ !cancelled() }}
         run: npm run ci:tsc

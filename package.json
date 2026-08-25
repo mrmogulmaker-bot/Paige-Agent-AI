@@ -33,7 +33,8 @@
     "pack:keys": "node scripts/pack/key-xref.mjs",
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
-    "lint:operator-reach": "node scripts/ci/operator-reachability.mjs"
+    "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
+    "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
