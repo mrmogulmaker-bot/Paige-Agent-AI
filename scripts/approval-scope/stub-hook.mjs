@@ -15,7 +15,9 @@ export async function resolve(specifier, context, nextResolve) {
     return { url: "stub:supabase", shortCircuit: true };
   }
   if (specifier.endsWith("/cors")) return { url: "stub:cors", shortCircuit: true };
-  if (specifier.startsWith("npm:zod")) return { url: "stub:zod", shortCircuit: true };
+  // Both spellings: the esm.sh pinned form paige-bridge now uses, and the npm: form
+  // other functions still carry.
+  if (/(^npm:zod|esm\.sh\/zod)/.test(specifier)) return { url: "stub:zod", shortCircuit: true };
   if (specifier.endsWith("finance-gate.ts")) return { url: "stub:finance", shortCircuit: true };
   if (specifier.endsWith("model-router.ts")) return { url: "stub:router", shortCircuit: true };
   if (specifier.startsWith("npm:") || specifier.startsWith("https://")) {

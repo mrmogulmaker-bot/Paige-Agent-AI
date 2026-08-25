@@ -4,7 +4,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { z } from "npm:zod@3.23.8";
+// Deno-resolvable pinned form (esm.sh), same 3.23.8 as before. The `npm:` specifier
+// does not resolve under `deno check` without a node_modules dir, and that resolution
+// failure aborts the check for the WHOLE file — masking any real type error in it.
+// `complete-signup` already imports this exact version this way; every other zod
+// consumer in supabase/functions uses the esm.sh form too.
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
