@@ -40,6 +40,7 @@ import { PLATFORM } from "@/lib/platform/identity";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AgentPresenceProvider, AgentPresence } from "@/components/ui/paige";
 import { useIsPaigeActive } from "@/hooks/useIsPaigeActive";
+import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
 
 /**
  * Height (rem) of THIS shell's fixed top bar on md+ (where the presence rail shows):
@@ -425,6 +426,42 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     : (adminNavItems.find((i) => isActive(i.href))?.label
         ?? activeHubs.find(hubIsActive)?.label
         ?? "Admin");
+
+  // Tenant Command Center Shell v3. The operator console deliberately remains on
+  // the existing branch below: this handoff changes tenant presentation only and
+  // keeps every server-side route guard, RLS boundary and live page mounted where
+  // it already lives. Studio also remains immersive and owns its whole viewport.
+  if (!godMode) {
+    return (
+      <AgentPresenceProvider launcherEnabled={false} hasChatBody={!isStudio}>
+        <VoiceDeviceProvider>
+          <DialPadSurface />
+          <IncomingCallOverlay />
+          <LiveTranscriptPanel />
+          {isStudio ? (
+            <div className="h-dvh min-h-0 overflow-hidden bg-background">{children}</div>
+          ) : (
+            <TenantCommandCenterShell
+              accountName={activeTenant?.name ?? PLATFORM.name}
+              accountType={activeTenant?.account_type}
+              providedBy={providedBy}
+              userRole={effectiveRole}
+              accountControls={
+                <>
+                  <AccountSwitcher />
+                  {isPlatformStaff && <TenantSwitcher />}
+                </>
+              }
+              onSignOut={() => void handleSignOut()}
+              signingOut={isSigningOut}
+            >
+              {children}
+            </TenantCommandCenterShell>
+          )}
+        </VoiceDeviceProvider>
+      </AgentPresenceProvider>
+    );
+  }
 
   return (
     // launcherEnabled={!isStudio}: ⌘K only acts where the launcher renders — on Studio
