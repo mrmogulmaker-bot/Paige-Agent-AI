@@ -126,11 +126,33 @@
 .tcs-context span { grid-column: 1 / -1; overflow: hidden; color: var(--pg-muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; text-overflow: ellipsis; }
 .tcs-context strong { overflow: hidden; font: 600 14px/1.25 var(--pg-font-display); white-space: nowrap; text-overflow: ellipsis; }
 .tcs-context small { padding-left: 8px; border-left: 1px solid var(--pg-line); color: var(--pg-faint); font-size: 10px; text-transform: capitalize; white-space: nowrap; }
-.tcs-command-actions { min-width: 0; display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 7px; }
+.tcs-command-field {
+  display: flex;
+  min-width: 180px;
+  min-height: 40px;
+  flex: 1;
+  align-items: center;
+  gap: 11px;
+  padding: 0 13px;
+  overflow: hidden;
+  border: 1px solid var(--pg-line);
+  border-radius: var(--pg-r-pill);
+  color: var(--pg-faint);
+  background: transparent;
+  box-shadow: none;
+  cursor: text;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.tcs-command-field:hover, .tcs-command-field[aria-expanded="true"] { border-color: var(--pg-line-strong); background: var(--pg-surface); box-shadow: var(--pg-e1); }
+.tcs-command-glyph { display: inline-grid; width: 22px; height: 22px; flex: none; place-items: center; color: var(--pg-gold-deep); }
+.tcs-command-glyph[data-state="charged"] { color: var(--pg-gold-core); }
+.tcs-command-field > span { min-width: 0; flex: 1; overflow: hidden; font-size: 13px; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
+.tcs-command-field > kbd { flex: none; color: var(--pg-faint); background: transparent; font: 10px var(--pg-font-data); }
+.tcs-command-actions { min-width: 0; display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 7px; }
 .tcs-account-controls { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .tcs-account-controls:empty { display: none; }
 .tcs-account-controls button { min-height: 34px; max-width: 190px; padding-inline: 10px; border: 1px solid var(--pg-line) !important; border-radius: var(--pg-r-chip) !important; color: var(--pg-ink-2) !important; background: var(--pg-surface) !important; }
-.tcs-command-actions > button:not(.tcs-paige-button) {
+.tcs-command-actions > button {
   width: 34px;
   height: 34px;
   padding: 0;
@@ -139,24 +161,7 @@
   border-color: var(--pg-line) !important;
   border-radius: var(--pg-r-chip) !important;
 }
-.tcs-command-actions > button:not(.tcs-paige-button):hover { color: var(--pg-ink) !important; background: var(--pg-raised) !important; border-color: var(--pg-line-strong) !important; }
-.tcs-paige-button {
-  display: inline-flex;
-  height: 38px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px 0 6px;
-  border: 1px solid var(--pg-line-authority);
-  border-radius: var(--pg-r-chip);
-  color: var(--pg-ink);
-  background: var(--pg-raised);
-  box-shadow: var(--pg-lift-1);
-  font-size: 12px;
-  font-weight: 600;
-}
-.tcs-paige-button:hover { border-color: var(--pg-gold); box-shadow: var(--pg-lift-2); }
-.tcs-paige-button > [data-cm] { width: 27px !important; height: 27px !important; }
-.tcs-paige-button > svg { width: 14px; height: 14px; color: var(--pg-muted); }
+.tcs-command-actions > button:hover { color: var(--pg-ink) !important; background: var(--pg-raised) !important; border-color: var(--pg-line-strong) !important; }
 
 .tcs-main { min-width: 0; min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; background: var(--pg-canvas); overscroll-behavior: contain; }
 
@@ -173,6 +178,7 @@
   animation: tcs-materialize 180ms cubic-bezier(.22, 1, .36, 1) both;
 }
 .tcs-paige-header { display: flex; min-height: 66px; align-items: center; gap: 10px; padding: 10px 10px 10px 13px; border-bottom: 1px solid var(--pg-line); background: var(--pg-spine); }
+.tcs-paige-mark { display: inline-grid; width: 24px; height: 24px; flex: none; place-items: center; color: var(--pg-gold-deep); }
 .tcs-paige-header > div { min-width: 0; display: flex; flex: 1; flex-direction: column; }
 .tcs-paige-header strong { font: 700 13px/1 var(--pg-font-display); letter-spacing: .11em; }
 .tcs-paige-header span { margin-top: 5px; color: var(--pg-muted); font-size: 10px; }
@@ -204,8 +210,8 @@
   .tcs-nav-links { padding-inline: 7px; }
   .tcs-brand { padding-inline: 6px; }
   .tcs-command-row { min-height: 58px; padding-inline: 10px; }
-  .tcs-context span, .tcs-context small, .tcs-command-actions > .tcs-icon-button, .tcs-account-controls { display: none; }
-  .tcs-paige-button span { display: none; }
+  .tcs-context, .tcs-command-actions > .tcs-icon-button, .tcs-account-controls { display: none; }
+  .tcs-command-field { min-width: 0; }
   .tcs-paige { width: calc(100% - var(--tcs-rail)); }
 }
 

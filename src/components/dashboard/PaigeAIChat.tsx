@@ -4,7 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send, Loader2, Clock, Paperclip } from "lucide-react";
-import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { parsePaigeChatError } from "@/lib/paigeChatError";
@@ -839,28 +838,16 @@ const PaigeAIChatInner = ({
                 key={message.id}
                 className={cn(
                   "flex min-w-0",
-                  cd ? "gap-[11px]" : "gap-3",
-                  message.role === "user" ? "flex-row-reverse" : "flex-row",
+                  message.role === "user" ? "flex-row-reverse" : "w-full flex-row",
                 )}
               >
-                {message.role === "assistant" && (
-                  <img
-                    src={paigeAvatar}
-                    alt={persona.name || "Paige"}
-                    className={cn(
-                      "rounded-full border-2 border-primary",
-                      cd ? "mt-px h-6 w-6 flex-none" : "w-10 h-10",
-                    )}
-                  />
-                )}
                 <div
                   className={cn(
                     "group relative",
                     // CD's operator thread: the operator's own turn is the warm
                     // right-aligned bubble (cream ground, hairline border, one square
-                    // corner); Paige's answer carries NO card at all — her avatar,
-                    // her name and the words, the way the pack draws it. The app
-                    // presentation is untouched for every tenant mount.
+                    // corner); Paige's answer carries NO card or portrait — her name
+                    // and words use the full message width without an avatar gutter.
                     cd
                       ? message.role === "user"
                         ? "max-w-[76%] min-w-0 rounded-[14px_14px_4px_14px] border border-border bg-muted px-[13px] py-2.5 text-[13.5px] leading-[1.6]"
@@ -970,11 +957,12 @@ const PaigeAIChatInner = ({
               </div>
             ))}
 
-            {/* #11/#12 — live thinking timer + conversation-compacting card. Aligned under the
-                assistant bubbles (avatar gutter). The card renders only when the server streams a
-                compacting frame; this surface persists threads, so it can genuinely fold (§13). */}
+            {/* #11/#12 — live thinking timer + conversation-compacting card. It aligns
+                directly with PAIGE's messages; no portrait gutter is reserved. The card
+                renders only when the server streams a compacting frame, so this surface
+                persists threads and can genuinely fold (§13). */}
             {(isLoading || compacting) && (
-              <div className={cn("flex flex-col gap-2", cd ? "pl-[35px]" : "pl-[52px]")}>
+              <div className="flex flex-col gap-2">
                 <PaigeThinkingIndicator
                   active={isLoading}
                   writing={writingPhase}
