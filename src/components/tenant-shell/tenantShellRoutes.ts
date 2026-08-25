@@ -30,6 +30,23 @@ const TENANT_BRANCHES: Record<TenantDestination, { slug: string; aliases: string
   insights: { slug: "analytics", aliases: [] },
   settings: { slug: "setup", aliases: ["marketplace", "business-vault", "integrations", "team"] },
 };
+
+/** Translate internal account_type values into the owner-locked tenant-facing taxonomy. */
+export function tenantAccountTypeLabel(accountType?: string | null): string {
+  switch (accountType?.trim().toLowerCase()) {
+    case "standalone":
+      return "Solo";
+    case "sub_account":
+      return "Business";
+    case "agency":
+      return "Agency";
+    case "enterprise":
+      return "Enterprise";
+    default:
+      return accountType?.split("_").join(" ") || "tenant";
+  }
+}
+
 /**
  * The tenant platform's six global destinations. Existing pages remain mounted at
  * their canonical routes; aliases only answer the shell question "where am I?".

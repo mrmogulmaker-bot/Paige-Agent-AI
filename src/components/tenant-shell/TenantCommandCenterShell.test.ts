@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TENANT_SHELL_DESTINATIONS,
   resolveTenantShellDestination,
+  tenantAccountTypeLabel,
   tenantShellDestinationsForPath,
 } from "./tenantShellRoutes";
 
@@ -16,6 +17,15 @@ describe("tenant Command Center shell routing", () => {
       "Settings",
     ]);
     expect(TENANT_SHELL_DESTINATIONS.some(({ label }) => label === "Fleet")).toBe(false);
+  });
+
+  it.each([
+    ["standalone", "Solo"],
+    ["sub_account", "Business"],
+    ["agency", "Agency"],
+    ["enterprise", "Enterprise"],
+  ])("renders the internal %s account type as %s", (accountType, label) => {
+    expect(tenantAccountTypeLabel(accountType)).toBe(label);
   });
 
   it("keeps Delivery with Clients while Calendar owns tasks and scheduling routes", () => {

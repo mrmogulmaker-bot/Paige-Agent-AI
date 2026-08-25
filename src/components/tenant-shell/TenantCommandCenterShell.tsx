@@ -16,7 +16,11 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { useAgentPresence } from "@/components/ui/paige";
 import { CommandGlyph, CommandMark } from "@/operator/shell/CommandMark";
-import { resolveTenantShellDestination, tenantShellDestinationsForPath } from "./tenantShellRoutes";
+import {
+  resolveTenantShellDestination,
+  tenantAccountTypeLabel,
+  tenantShellDestinationsForPath,
+} from "./tenantShellRoutes";
 import "./tenant-command-center-shell.css";
 
 const NAV_PREF_KEY = "paige.tenantShell.navExpanded";
@@ -250,7 +254,7 @@ export function TenantCommandCenterShell({
           <div className="tcs-context">
             <span>{accountName}</span>
             <strong>{destination.label}</strong>
-            <small>{providedBy ? `Provided by ${providedBy}` : accountType?.split("_").join(" ") || "tenant"}</small>
+            <small>{providedBy ? `Provided by ${providedBy}` : tenantAccountTypeLabel(accountType)}</small>
           </div>
           <TenantPaigeCommandField expanded={railExpanded} onOpen={openPaige} />
           <div className="tcs-command-actions">
