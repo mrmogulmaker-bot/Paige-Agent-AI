@@ -33,6 +33,7 @@ export interface ResolvedTenantAccountContext {
 }
 
 const TENANT_ROUTE_PATTERN = /^\/(agency|business|enterprise|solo)\/([^/]+)/;
+const AGENCY_ACTING_CHILD_ROUTE_PATTERN = /^\/agency\/([^/]+)\/sub\/(\d+)(?:\/|$)/;
 
 const TENANT_BRANCHES: Record<TenantDestination, { slug: string; aliases: string[] }> = {
   command: { slug: "command-center", aliases: ["paige", "trust-compass", "automations"] },
@@ -132,13 +133,30 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   },
 ];
 
+/**
+ * Resolve only the address prefix owned by the current tenant route. Identity
+ * and authorization remain server-derived in the route owner; this helper
+ * preserves an already-confirmed acting-child address when building links.
+ */
+function tenantRoutePrefixForPath(pathname: string): string | null {
+  const actingChildMatch = pathname.match(AGENCY_ACTING_CHILD_ROUTE_PATTERN);
+  if (actingChildMatch) {
+    const [, parentAccount, childAccount] = actingChildMatch;
+    return `/agency/${parentAccount}/sub/${childAccount}`;
+  }
+
+  const tenantMatch = pathname.match(TENANT_ROUTE_PATTERN);
+  if (!tenantMatch) return null;
+
+  const [, routeRoot, account] = tenantMatch as [string, TenantRouteRoot, string];
+  return `/${routeRoot}/${account}`;
+}
+
 /** Keep the six shell homes inside the route tree that owns the active account. */
 export function tenantShellDestinationsForPath(pathname: string): TenantShellDestination[] {
-  const match = pathname.match(TENANT_ROUTE_PATTERN);
-  if (!match) return TENANT_SHELL_DESTINATIONS;
+  const root = tenantRoutePrefixForPath(pathname);
+  if (!root) return TENANT_SHELL_DESTINATIONS;
 
-  const [, routeRoot, account] = match as [string, TenantRouteRoot, string];
-  const root = `/${routeRoot}/${account}`;
   return TENANT_SHELL_DESTINATIONS.map((destination) => {
     const branch = TENANT_BRANCHES[destination.id];
     return {

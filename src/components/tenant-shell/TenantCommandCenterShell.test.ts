@@ -112,15 +112,34 @@ describe("tenant Command Center shell routing", () => {
   });
 
   it.each([
-    ["/business/9082725/command-center", "/business/9082725/clients"],
-    ["/agency/1924546/command-center", "/agency/1924546/clients"],
-    ["/solo/42/command-center", "/solo/42/clients"],
-    ["/enterprise/7/command-center", "/enterprise/7/clients"],
-  ])("keeps all six destinations inside the current account tree: %s", (pathname, clientsHref) => {
+    ["/business/9082725/command-center", "/business/9082725"],
+    ["/agency/1924546/command-center", "/agency/1924546"],
+    ["/agency/1924546/sub/9082725/command-center", "/agency/1924546/sub/9082725"],
+    ["/solo/42/command-center", "/solo/42"],
+    ["/enterprise/7/command-center", "/enterprise/7"],
+  ])("keeps all six destinations inside the current account tree: %s", (pathname, routePrefix) => {
     const destinations = tenantShellDestinationsForPath(pathname);
     expect(destinations).toHaveLength(6);
-    expect(destinations.find(({ id }) => id === "clients")?.href).toBe(clientsHref);
+    expect(destinations.map(({ id, href }) => [id, href])).toEqual([
+      ["command", `${routePrefix}/command-center`],
+      ["clients", `${routePrefix}/clients`],
+      ["calendar", `${routePrefix}/calendar`],
+      ["studio", `${routePrefix}/growth`],
+      ["insights", `${routePrefix}/analytics`],
+      ["settings", `${routePrefix}/setup`],
+    ]);
     expect(destinations.every(({ label }) => label !== "Fleet")).toBe(true);
+  });
+
+  it.each([
+    ["command", "command-center"],
+    ["clients", "clients"],
+    ["calendar", "calendar"],
+    ["studio", "growth"],
+    ["insights", "analytics"],
+    ["settings", "setup"],
+  ])("keeps acting-child %s navigation active inside the actor-namespaced tree", (destination, slug) => {
+    expect(resolveTenantShellDestination(`/agency/1924546/sub/9082725/${slug}`).id).toBe(destination);
   });
 
   it("folds legacy tenant branches into one of the six capability homes", () => {
