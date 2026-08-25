@@ -60,6 +60,7 @@ const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface
 const CampaignsActive = lazy(() => import("@/operator/surfaces/campaigns/CampaignsActive"));
 const CatalogSurface = lazy(() => import("@/operator/surfaces/campaigns/CatalogSurface"));
 const SalesSurface = lazy(() => import("@/operator/surfaces/campaigns/SalesSurface"));
+const SocialSurface = lazy(() => import("@/operator/surfaces/campaigns/SocialSurface"));
 const PeopleSurface = lazy(() => import("@/operator/surfaces/relationships/PeopleSurface"));
 const ConversationsSurface = lazy(
   () => import("@/operator/surfaces/relationships/ConversationsSurface"),
@@ -187,6 +188,7 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
         {bespoke === "CampaignsActive" && <CampaignsActive />}
         {bespoke === "CatalogSurface" && <CatalogSurface />}
         {bespoke === "SalesSurface" && <SalesSurface />}
+        {bespoke === "SocialSurface" && <SocialSurface />}
 
         {/* THE RELATIONSHIPS GROUP · BUILD-ORDER Layer 3a, ported as ONE group for the same
             reason as the money spine: they share a contract. A thread points at a person, a
