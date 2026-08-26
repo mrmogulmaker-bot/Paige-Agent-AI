@@ -36,6 +36,8 @@ export type RouteTierKey =
 export interface SubTab {
   /** URL segment `/agency/{n}/{branch}/{slug}` — human mental-model word, url-safe. */
   slug: string;
+  /** Previously shipped URL segments that resolve to this canonical subtab. */
+  aliases?: string[];
   /** Rail glyph, where the tier's design gives one (the operator settings back-menu). */
   glyph?: string;
   /** The screen's internal sub-tab id (its `useState` value). May differ from slug. */
@@ -150,23 +152,16 @@ export const SOLO_BRANCHES: Branch[] = [
   },
   {
     slug: "clients", key: "clients", label: "Clients", group: "main",
-    // Source: src/solo/conversations.tsx (ClientsHub). Solo owns a direct client book, so it
-    // carries Delivery + Client Portal where the agency tree carries sub-account management.
-    // SINGULAR `pipeline` is deliberate and is the ONE shared-concept slug that differs from
-    // agency's (`pipelines`): a solo operator runs one pipeline, an agency views many across a
-    // book, and each tier's slug matches its own visible label. Do NOT "align" them — agency's
-    // URLs have shipped (§58) and the divergence is semantic, not drift.
-    // OUT OF SCOPE (§13, so the next slice doesn't think this branch is fully mapped): the
-    // `convo` sub-tab renders a nested 6-destination strip of its own (Manual Actions, Snippets,
-    // Trigger Links, Analytics, Settings — conversations.tsx `Conversations`). That is a 4th URL
-    // level; `useSubtabRoute` reads splat index [1] only, so those stay local state for now.
-    // Same shape in `paige`: the Sub-Agents and Skills consoles carry their own nested strips.
+    // Owner-approved relationship workspace. Pipeline remains under Campaigns. Delivery is
+    // preserved in its legacy implementation but is not a Clients subtab. Hidden compatibility
+    // entries keep previously copied URLs resolvable without presenting them as current IA.
     subtabs: [
       { slug: "people", key: "people", label: "People" },
-      { slug: "pipeline", key: "pipe", label: "Pipeline" },
-      { slug: "conversations", key: "convo", label: "Conversations" },
-      { slug: "delivery", key: "deliv", label: "Delivery" },
-      { slug: "client-portal", key: "portal", label: "Client Portal" },
+      { slug: "conversations", key: "conversations", label: "Conversations" },
+      { slug: "calendar", key: "calendar", label: "Calendar" },
+      { slug: "portal", aliases: ["client-portal"], key: "portal", label: "Portal" },
+      { slug: "pipeline", key: "pipe", label: "Pipeline", hidden: true },
+      { slug: "delivery", key: "deliv", label: "Delivery", hidden: true },
     ],
   },
   {
@@ -303,13 +298,17 @@ export const AGENCY_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "clients", key: "fleet", label: "Clients", group: "main",
-    // Labels are the agency variant; own-account mode relabels sub-accounts→"Clients",
-    // pipelines→"Pipeline" (slugs stay stable).
+    slug: "clients", key: "fleet", label: "Relationships", group: "main",
+    // Agency Parent and Enterprise own Relationships. Portal is addressable only for a
+    // server-confirmed acting child and remains hidden from parent navigation.
     subtabs: [
-      { slug: "sub-accounts", key: "directory", label: "Sub-accounts" },
-      { slug: "pipelines", key: "pipes", label: "Pipelines" },
-      { slug: "conversations", key: "convos", label: "Conversations" },
+      { slug: "people", key: "people", label: "People" },
+      { slug: "conversations", key: "conversations", label: "Conversations" },
+      { slug: "calendar", key: "calendar", label: "Calendar" },
+      { slug: "segments", key: "segments", label: "Segments" },
+      { slug: "portal", key: "portal", label: "Portal", hidden: true },
+      { slug: "sub-accounts", key: "directory", label: "Sub-accounts", hidden: true },
+      { slug: "pipelines", key: "pipes", label: "Pipelines", hidden: true },
     ],
   },
   {
@@ -407,6 +406,29 @@ export const AGENCY_BRANCHES: Branch[] = [
     ],
   },
 ];
+
+/**
+ * Direct Sub-account compatibility tree. It keeps the shared AgencyApp screen keys while
+ * presenting the owner-approved Clients matrix. The route is an address only; AgencyApp's
+ * server-resolved tenant context remains the authority for every read.
+ */
+export const SUB_ACCOUNT_BRANCHES: Branch[] = AGENCY_BRANCHES.map((branch) =>
+  branch.slug === "clients"
+    ? {
+        ...branch,
+        label: "Clients",
+        subtabs: [
+          { slug: "people", key: "people", label: "People" },
+          { slug: "conversations", key: "conversations", label: "Conversations" },
+          { slug: "calendar", key: "calendar", label: "Calendar" },
+          { slug: "portal", key: "portal", label: "Portal" },
+          { slug: "segments", key: "segments", label: "Segments", hidden: true },
+          { slug: "sub-accounts", key: "directory", label: "Sub-accounts", hidden: true },
+          { slug: "pipelines", key: "pipes", label: "Pipelines", hidden: true },
+        ],
+      }
+    : branch,
+);
 
 /**
  * OPERATOR_BRANCHES — the Platform Operator (God-tier) tree. **17 branches / 78 sub-tabs.**
@@ -637,7 +659,7 @@ export const TIER_TREES: Record<RouteTierKey, TierTree> = {
   // : "sub_account", …)`. Thread the tier through SoloApp the same way BEFORE
   // mounting it at /business; it was left hardcoded here only because there is
   // no second mount to parameterize against yet.
-  sub_account: { root: "/business", branches: AGENCY_BRANCHES },
+  sub_account: { root: "/business", branches: SUB_ACCOUNT_BRANCHES },
 };
 
 /** The tree for a tier. */
@@ -675,7 +697,7 @@ export function defaultSubtabSlug(tier: RouteTierKey, branchSlug: string): strin
 
 /** Resolve a sub-tab URL slug → its SubTab within a branch (null if not a sub-tab). */
 export function subtabBySlug(tier: RouteTierKey, branchSlug: string, subSlug: string): SubTab | null {
-  return branchBySlug(tier, branchSlug)?.subtabs?.find((s) => s.slug === subSlug) ?? null;
+  return branchBySlug(tier, branchSlug)?.subtabs?.find((s) => s.slug === subSlug || s.aliases?.includes(subSlug)) ?? null;
 }
 
 /** Resolve a screen's internal sub-tab key → its SubTab (for state→URL migration sites). */

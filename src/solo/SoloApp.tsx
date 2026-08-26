@@ -6,12 +6,15 @@ import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
 import { PaigeHub } from "./paigehub";
 import { TrustCompass } from "./compass";
 import { AutomationsHub } from "./automations-build";
+import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
+import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import { ClientsHub } from "./conversations";
 import { GrowthHub } from "./growth2";
 import { CalendarHub } from "./calendar-book";
@@ -32,6 +35,8 @@ import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPane
 
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
+
+const SoloClientsRoute=({openPaige})=>{const[tab]=useSubtabRoute("solo","clients","people");return isLegacyRelationshipOwner("solo",tab)?<ClientsHub openPaige={openPaige}/>:<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={openPaige}/>};
 
 const Rail=({route,go,collapsed,setCollapsed,homeCount})=>{const w=collapsed?70:238;
 const Item=([k,label,Icn])=>{const on=route===k;
@@ -171,7 +176,7 @@ const theme=resolvedTheme==='light'?'light':'dark';
 const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
