@@ -461,7 +461,6 @@ describe("tenant route owners preserve the newest authenticated account context"
     ).toEqual([
       "/agency/700001/sub/700002/command-center",
       "/agency/700001/sub/700002/clients",
-      "/agency/700001/sub/700002/calendar",
       "/agency/700001/sub/700002/growth",
       "/agency/700001/sub/700002/analytics",
       "/agency/700001/sub/700002/setup",
@@ -491,7 +490,6 @@ describe("tenant route owners preserve the newest authenticated account context"
     ).toEqual([
       "/agency/600001/command-center",
       "/agency/600001/clients",
-      "/agency/600001/calendar",
       "/agency/600001/growth",
       "/agency/600001/analytics",
       "/agency/600001/setup",

@@ -1,6 +1,5 @@
 import {
   BarChart3,
-  CalendarDays,
   Settings,
   Sparkles,
   Users,
@@ -8,7 +7,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-type TenantDestination = "command" | "clients" | "calendar" | "studio" | "insights" | "settings";
+type TenantDestination = "command" | "clients" | "studio" | "insights" | "settings";
+type TenantBranch = TenantDestination | "calendar";
 
 export interface TenantShellDestination {
   id: TenantDestination;
@@ -35,7 +35,7 @@ export interface ResolvedTenantAccountContext {
 const TENANT_ROUTE_PATTERN = /^\/(agency|business|enterprise|solo)\/([^/]+)/;
 const AGENCY_ACTING_CHILD_ROUTE_PATTERN = /^\/agency\/([^/]+)\/sub\/(\d+)(?:\/|$)/;
 
-const TENANT_BRANCHES: Record<TenantDestination, { slug: string; aliases: string[] }> = {
+const TENANT_BRANCHES: Record<TenantBranch, { slug: string; aliases: string[] }> = {
   command: { slug: "command-center", aliases: ["paige", "trust-compass", "automations"] },
   clients: { slug: "clients", aliases: ["client-support", "billing"] },
   calendar: { slug: "calendar", aliases: [] },
@@ -80,8 +80,8 @@ export function resolveTenantAccountContext(
 }
 
 /**
- * The tenant platform's six global destinations. Existing pages remain mounted at
- * their canonical routes; aliases only answer the shell question "where am I?".
+ * The tenant platform's five global destinations. Calendar remains mounted at its
+ * canonical route, but its visible owner is the Clients or Relationships surface.
  */
 export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   { id: "command", label: "Command Center", href: "/admin", icon: Sparkles, aliases: ["/admin/playbook"] },
@@ -91,13 +91,6 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
     href: "/admin/clients-hub",
     icon: Users,
     aliases: ["/admin/contacts", "/admin/clients", "/admin/leads", "/admin/pipeline"],
-  },
-  {
-    id: "calendar",
-    label: "Calendar",
-    href: "/admin/calendar",
-    icon: CalendarDays,
-    aliases: ["/admin/bookings", "/admin/planning", "/admin/tasks"],
   },
   {
     id: "studio",
@@ -152,7 +145,13 @@ export function tenantRoutePrefixForPath(pathname: string): string | null {
   return `/${routeRoot}/${account}`;
 }
 
-/** Keep the six shell homes inside the route tree that owns the active account. */
+/** Build the canonical Calendar address without making Calendar a visible shell home. */
+export function tenantCalendarHrefForPath(pathname: string): string {
+  const root = tenantRoutePrefixForPath(pathname);
+  return root ? `${root}/${TENANT_BRANCHES.calendar.slug}` : "/admin/calendar";
+}
+
+/** Keep the five visible shell homes inside the route tree that owns the active account. */
 export function tenantShellDestinationsForPath(
   pathname: string,
   accountType?: string | null,
@@ -186,6 +185,17 @@ export function resolveTenantShellDestination(
   accountType?: string | null,
 ): TenantShellDestination {
   const destinations = tenantShellDestinationsForPath(pathname, accountType);
+  const clientsDestination = destinations.find(({ id }) => id === "clients") ?? destinations[0];
+  const tenantRoot = tenantRoutePrefixForPath(pathname);
+  const canonicalCalendarHref = tenantCalendarHrefForPath(pathname);
+  const isCalendarAddress = tenantRoot
+    ? pathMatches(pathname, canonicalCalendarHref)
+    : ["/admin/calendar", "/admin/bookings", "/admin/planning", "/admin/tasks"].some((href) =>
+        pathMatches(pathname, href),
+      );
+
+  if (isCalendarAddress) return clientsDestination;
+
   return (
     destinations.find(
       (destination) =>

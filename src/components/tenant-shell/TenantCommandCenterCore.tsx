@@ -20,6 +20,7 @@ import {
 import type { AgencyShellCtx } from "@/agency/data/useAgencyRoster";
 import {
   resolveTenantAccountContext,
+  tenantCalendarHrefForPath,
   tenantShellDestinationsForPath,
   type TenantAccountContext,
 } from "./tenantShellRoutes";
@@ -126,7 +127,7 @@ export function TenantCommandCenterCore({
   const location = useLocation();
   const destinations = tenantShellDestinationsForPath(location.pathname);
   const clientsHref = destinations.find((item) => item.id === "clients")?.href ?? "/admin/clients-hub";
-  const calendarHref = destinations.find((item) => item.id === "calendar")?.href ?? "/admin/calendar";
+  const calendarHref = tenantCalendarHrefForPath(location.pathname);
   const settingsHref = destinations.find((item) => item.id === "settings")?.href ?? "/admin/setup";
   const [window, setWindow] = useState<"today" | "week" | "all">("today");
   const [expandedId, setExpandedId] = useState<string | null>(null);
