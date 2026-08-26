@@ -13,6 +13,7 @@ describe("tenant canonical Calendar source contract", () => {
   const solo = source("src/solo/SoloApp.tsx");
   const agency = source("src/agency/AgencyApp.tsx");
   const adapter = source("src/components/tenant-calendar/TenantCanonicalCalendarWorkspace.tsx");
+  const manager = source("src/components/admin/calendar/CalendarsPanel.tsx");
   const css = source("src/components/tenant-calendar/tenant-canonical-calendar.css");
 
   it("retires both fixture Calendar owners in favor of one canonical adapter", () => {
@@ -24,10 +25,12 @@ describe("tenant canonical Calendar source contract", () => {
     expect(adapter).not.toContain("PaigeWorkspace");
   });
 
-  it("renders exactly the approved six Calendar destinations", () => {
+  it("keeps the canonical six views and gates the approved seventh Settings view to Solo Clients", () => {
     expect([...calendar.matchAll(/<TabsTrigger\s+value="([a-z-]+)"/g)].map((match) => match[1])).toEqual([
-      "calendar", "agenda", "tasks", "booking", "availability", "connections",
+      "calendar", "agenda", "tasks", "booking", "availability", "connections", "settings",
     ]);
+    expect(calendar).toContain('{soloSettings && <TabsTrigger value="settings"');
+    expect(adapter).toContain('soloSettings={soloClientsOwner}');
   });
 
   it("keeps bookings, dated plan items, and configuration on their canonical seams", () => {
@@ -35,8 +38,18 @@ describe("tenant canonical Calendar source contract", () => {
     expect(calendar).toContain('supabase.rpc("create_internal_booking"');
     expect(calendar).toContain('supabase.rpc("admin_set_booking_status"');
     expect(calendar).toContain("usePlanList({");
-    expect(calendar).toContain("<CalendarsPanel />");
+    expect(calendar).toContain("<CalendarsPanel activeTenantId={activeTenantId} />");
     expect(calendar).not.toContain("illustrative");
+  });
+
+  it("pins the scheduling manager to the accepted account and reports failed reads distinctly", () => {
+    expect(manager).toContain('calendarsQuery.eq("tenant_id", activeTenantId)');
+    expect(manager).toContain('groupsQuery.eq("tenant_id", activeTenantId)');
+    expect(manager).toContain('query.eq("tenant_id", activeTenantId)');
+    expect(manager).toContain("loadSeq.current");
+    expect(manager).toContain("Scheduling calendars couldn't load");
+    expect(manager).toContain("No empty state or calendar count is inferred");
+    expect(manager).toContain('truth: "PARTIAL"');
   });
 
   it("pins calendar metadata and mutations to the server-resolved active tenant", () => {

@@ -32,7 +32,7 @@ vi.mock("@/pages/admin/ClientsConversations", async () => {
 });
 vi.mock("@/pages/admin/CalendarAdmin", async () => {
   const ReactModule = await import("react");
-  return { default: class MockCalendar extends ReactModule.Component { mountId = ++ownerHarness.calendars; render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId }); } } };
+  return { default: class MockCalendar extends ReactModule.Component<{ soloSettings?: boolean }> { mountId = ++ownerHarness.calendars; render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId, "data-solo-settings": String(Boolean(this.props.soloSettings)) }); } } };
 });
 vi.mock("@/pages/admin/PortalStudio", async () => {
   const ReactModule = await import("react");
@@ -149,7 +149,21 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).not.toContain("Supplied Person");
   });
 
-  it("hands off to the canonical Calendar owner with the active account-tree return address", () => {
+  it("mounts the canonical Solo Calendar directly with the approved Settings view and no intermediary", async () => {
+    useSubtabRoute.mockReturnValue(["calendar", vi.fn()]);
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter initialEntries={["/solo/42/clients/calendar"]}><TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()} /></MemoryRouter>));
+    await vi.waitFor(() => expect(host.querySelector("[data-mocked-calendar]")).not.toBeNull());
+    expect(host.textContent).not.toContain("Open full Calendar");
+    expect(host.textContent).not.toContain("Relationship association is not yet provable");
+    expect(host.textContent).not.toContain("Your client book");
+    expect(host.querySelector(".trc-workspace--calendar")).not.toBeNull();
+    expect(host.querySelector("[data-mocked-calendar]")?.getAttribute("data-solo-settings")).toBe("true");
+    act(() => root.unmount());
+  });
+
+  it("preserves the existing partial Calendar lens outside the Solo slice", () => {
     useSubtabRoute.mockReturnValue(["calendar", vi.fn()]);
     const html = render("/agency/1/sub/2/clients/calendar", "agency");
     expect(html).toContain("Open full Calendar");

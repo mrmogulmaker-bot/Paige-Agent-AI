@@ -34,7 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   CalendarDays, CalendarRange, CalendarX2, ChevronLeft, ChevronRight, Clock,
-  Plus, Loader2, ListChecks, Users, Cable, AlertCircle,
+  Plus, Loader2, ListChecks, Users, Cable, AlertCircle, Settings,
 } from "lucide-react";
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
@@ -108,7 +108,7 @@ function headerLabel(view: ViewMode, cursor: Date): string {
   return `${s.toLocaleDateString([], { month: "short", day: "numeric" })} – ${e.toLocaleDateString([], { month: sameMonth ? undefined : "short", day: "numeric", year: "numeric" })}`;
 }
 
-export type TenantCalendarTab = "calendar" | "agenda" | "tasks" | "booking" | "availability" | "connections";
+export type TenantCalendarTab = "calendar" | "agenda" | "tasks" | "booking" | "availability" | "connections" | "settings";
 
 interface CalendarAdminProps {
   /** Server-resolved tenant authority supplied by a tenant route owner. */
@@ -118,6 +118,8 @@ interface CalendarAdminProps {
   connectionsHref?: string;
   openPaige?: () => void;
   tenantMode?: boolean;
+  /** Solo-only approved coordinator; defaults off so shared tiers remain unchanged. */
+  soloSettings?: boolean;
 }
 
 export default function CalendarAdmin({
@@ -127,6 +129,7 @@ export default function CalendarAdmin({
   connectionsHref = "/admin/setup/integrations",
   openPaige,
   tenantMode = false,
+  soloSettings = false,
 }: CalendarAdminProps = {}) {
   const tenantContext = useTenantContext();
   const activeTenantId = suppliedTenantId ?? tenantContext.activeTenantId;
@@ -455,6 +458,7 @@ export default function CalendarAdmin({
           <TabsTrigger value="booking" className="gap-1.5"><CalendarRange className="h-4 w-4" /> Booking pages</TabsTrigger>
           <TabsTrigger value="availability" className="gap-1.5"><Clock className="h-4 w-4" /> Availability</TabsTrigger>
           <TabsTrigger value="connections" className="gap-1.5"><Cable className="h-4 w-4" /> Connections</TabsTrigger>
+          {soloSettings && <TabsTrigger value="settings" className="gap-1.5"><Settings className="h-4 w-4" /> Settings</TabsTrigger>}
         </TabsList>
 
         {/* CALENDAR VIEW */}
@@ -668,7 +672,7 @@ export default function CalendarAdmin({
             label="LIVE"
             detail="Internal booking pages and rules use the existing Calendar configuration owner. External provider imports remain unavailable unless explicitly connected."
           />
-          <CalendarsPanel />
+          <CalendarsPanel activeTenantId={activeTenantId} />
         </TabsContent>
 
         {/* AVAILABILITY — a lens into the same manager, never another rules store. */}
@@ -677,7 +681,7 @@ export default function CalendarAdmin({
             label="PARTIAL"
             detail="Stored Calendar availability rules are editable here. Provider free/busy coverage depends on the signed-in user's connected provider."
           />
-          <CalendarsPanel />
+          <CalendarsPanel activeTenantId={activeTenantId} />
         </TabsContent>
 
         {/* CONNECTIONS — signpost only. Calendar/meeting connect flows live in the
@@ -701,6 +705,30 @@ export default function CalendarAdmin({
             </Button>
           </SectionCard>
         </TabsContent>
+
+        {soloSettings && (
+          <TabsContent value="settings" className="space-y-4" data-calendar-settings>
+            <DataTruthNotice
+              label="PARTIAL"
+              detail="Scheduling calendars use the existing tenant-scoped manager. Richer lifecycle, payments, Service, and hostless Event types remain proposed or unavailable rather than being simulated."
+            />
+            <section className="grid gap-3 rounded-xl border bg-card p-4 md:grid-cols-3" aria-label="Calendar settings owners">
+              <button type="button" className="rounded-lg border p-3 text-left hover:bg-muted/40" onClick={() => setTab("availability")}>
+                <strong className="block text-sm">Availability</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">Reusable hours and date exceptions remain with Availability.</span>
+              </button>
+              <button type="button" className="rounded-lg border p-3 text-left hover:bg-muted/40" onClick={() => setTab("booking")}>
+                <strong className="block text-sm">Booking pages</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">Public page, form, branding, and URL remain with Booking pages.</span>
+              </button>
+              <button type="button" className="rounded-lg border p-3 text-left hover:bg-muted/40" onClick={() => setTab("connections")}>
+                <strong className="block text-sm">Connections</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">Provider authorization and conflict calendars remain in Settings.</span>
+              </button>
+            </section>
+            <CalendarsPanel activeTenantId={activeTenantId} />
+          </TabsContent>
+        )}
       </Tabs>
 
       {!tenantMode && <BookingDetailDialog

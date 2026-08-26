@@ -1,4 +1,5 @@
 import { CalendarDays, ShieldAlert } from "lucide-react";
+import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import CalendarAdmin, { type TenantCalendarTab } from "@/pages/admin/CalendarAdmin";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -8,6 +9,7 @@ import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellR
 export interface TenantCanonicalCalendarWorkspaceProps {
   tier: Extract<RouteTierKey, "solo" | "agency">;
   openPaige?: () => void;
+  owner?: "direct" | "clients";
 }
 
 function CalendarBoundary({ kind }: { kind: "loading" | "permission" }) {
@@ -39,23 +41,38 @@ function CalendarBoundary({ kind }: { kind: "loading" | "permission" }) {
  * The URL is used only to preserve the already-authorized account tree while
  * navigating. Every read/write receives the server-resolved activeTenantId.
  */
-export function TenantCanonicalCalendarWorkspace({ tier, openPaige }: TenantCanonicalCalendarWorkspaceProps) {
+export function TenantCanonicalCalendarWorkspace({ tier, openPaige, owner = "direct" }: TenantCanonicalCalendarWorkspaceProps) {
   const { activeTenantId, loading, accountContextLoading } = useTenantContext();
   const location = useLocation();
   const navigate = useNavigate();
   const routeRoot = tenantRoutePrefixForPath(location.pathname);
   const calendarRoot = routeRoot ? `${routeRoot}/calendar` : null;
+  const clientsCalendarRoot = routeRoot ? `${routeRoot}/clients/calendar` : null;
   const tail = calendarRoot && location.pathname.startsWith(`${calendarRoot}/`)
     ? location.pathname.slice(calendarRoot.length + 1).split("/")[0]
     : null;
-  const activeTab = (tail
-    ? subtabBySlug(tier, "calendar", tail)?.key
-    : "calendar") as TenantCalendarTab;
+  const requestedClientTab = new URLSearchParams(location.search).get("calendarView");
+  const soloClientsOwner = tier === "solo" && (owner === "clients" || location.pathname === clientsCalendarRoot);
+  const resolvedDirectTab = tail === "settings" && tier === "solo"
+    ? "settings"
+    : tail ? subtabBySlug(tier, "calendar", tail)?.key : "calendar";
+  const activeTab = ((soloClientsOwner ? requestedClientTab : resolvedDirectTab) || "calendar") as TenantCalendarTab;
+
+  useEffect(() => {
+    if (tier !== "solo" || owner !== "direct" || !calendarRoot || !clientsCalendarRoot) return;
+    if (!location.pathname.startsWith(calendarRoot)) return;
+    const view = resolvedDirectTab || "calendar";
+    navigate(`${clientsCalendarRoot}?calendarView=${view}`, { replace: true });
+  }, [calendarRoot, clientsCalendarRoot, location.pathname, navigate, owner, resolvedDirectTab, tier]);
 
   if (loading || accountContextLoading) return <CalendarBoundary kind="loading" />;
   if (!activeTenantId) return <CalendarBoundary kind="permission" />;
 
   const onTabChange = (tab: TenantCalendarTab) => {
+    if (soloClientsOwner && clientsCalendarRoot) {
+      navigate(`${clientsCalendarRoot}?calendarView=${tab}`);
+      return;
+    }
     const slug = subtabByKey(tier, "calendar", tab)?.slug;
     if (!slug || !calendarRoot) return;
     navigate(`${calendarRoot}/${slug}`);
@@ -70,6 +87,7 @@ export function TenantCanonicalCalendarWorkspace({ tier, openPaige }: TenantCano
       connectionsHref={routeRoot ? `${routeRoot}/integrations` : "/admin/setup/integrations"}
       openPaige={openPaige}
       tenantMode
+      soloSettings={soloClientsOwner}
     />
   );
 }

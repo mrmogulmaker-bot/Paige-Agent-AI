@@ -201,9 +201,6 @@ vi.mock("@/agency/team", () => ({ default: () => null }));
 vi.mock("@/agency/vault", () => ({ default: () => null }));
 vi.mock("@/agency/setup", () => ({ default: () => null }));
 vi.mock("@/agency/integrations", () => ({ default: () => null }));
-vi.mock("@/components/tenant-relationships/TenantRelationshipsClientsWorkspace", () => ({
-  TenantRelationshipsClientsWorkspace: () => null,
-}));
 vi.mock("@/pages/admin/CalendarAdmin", () => ({
   default: ({ activeTenantId, activeTab, connectionsHref }: {
     activeTenantId: string;
