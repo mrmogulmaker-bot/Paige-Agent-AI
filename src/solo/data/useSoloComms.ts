@@ -21,9 +21,10 @@
  * verified session/RLS. Honest degrade (§13): a failed read surfaces an error and
  * an empty/`null` shape, never a fabricated domain or plan.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { createSettingsRequestGate } from "../settings-contract";
 
 export interface SoloDomain {
   id: string;
@@ -116,14 +117,23 @@ export function useSoloComms(): SoloCommsData {
     defaultSender: null,
   });
   const [billing, setBilling] = useState<SoloBillingPlan | null>(null);
+  const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
+  const requestGate = useRef(createSettingsRequestGate());
 
   const load = useCallback(async () => {
+    const requestToken = requestGate.current.begin();
+    // Clear the previous account before the next account resolves. Nothing tenant-derived
+    // is allowed to remain visible during the switch.
+    setLoadedTenantId(null);
+    setDomains([]);
+    setSending({ fromName: null, supportEmail: null, defaultSender: null });
+    setBilling(null);
+    setError(null);
     if (!tenantId) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    setError(null);
     try {
       // Sending identity is meaningful on every tier; billing is skipped for a
       // sub-account (its plan is the parent agency's — §217/§38).
@@ -143,6 +153,7 @@ export function useSoloComms(): SoloCommsData {
               supabase.rpc("is_current_user_tenant_admin" as any),
             ]),
       ]);
+      if (!requestGate.current.isCurrent(requestToken)) return;
 
       // --- sending identity ---
       if (domainRes.error) throw domainRes.error;
@@ -220,16 +231,20 @@ export function useSoloComms(): SoloCommsData {
           hasActiveSub,
         });
       }
+      setLoadedTenantId(tenantId);
     } catch (e) {
+      if (!requestGate.current.isCurrent(requestToken)) return;
       setError(e instanceof Error ? e.message : "Couldn't load your comms settings.");
     } finally {
-      setLoading(false);
+      if (requestGate.current.isCurrent(requestToken)) setLoading(false);
     }
   }, [tenantId, isSubAccount]);
 
   useEffect(() => {
+    const activeGate = requestGate.current;
     if (tenantLoading) return;
     void load();
+    return () => activeGate.clear();
   }, [tenantLoading, load]);
 
   const refresh = useCallback(() => {
@@ -237,7 +252,15 @@ export function useSoloComms(): SoloCommsData {
   }, [load]);
 
   return useMemo(
-    () => ({ loading: loading || tenantLoading, error, isSubAccount, domains, sending, billing, refresh }),
-    [loading, tenantLoading, error, isSubAccount, domains, sending, billing, refresh],
+    () => ({
+      loading: loading || tenantLoading || Boolean(tenantId && loadedTenantId !== tenantId),
+      error,
+      isSubAccount,
+      domains: loadedTenantId === tenantId ? domains : [],
+      sending: loadedTenantId === tenantId ? sending : { fromName: null, supportEmail: null, defaultSender: null },
+      billing: loadedTenantId === tenantId ? billing : null,
+      refresh,
+    }),
+    [loading, tenantLoading, tenantId, loadedTenantId, error, isSubAccount, domains, sending, billing, refresh],
   );
 }
