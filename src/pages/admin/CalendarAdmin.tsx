@@ -416,7 +416,11 @@ export default function CalendarAdmin({
   const requiredReadError = bookingsError || calendarsError;
 
   return (
-    <PageShell width="wide">
+    <PageShell
+      width="wide"
+      fill={tenantMode}
+      className={tenantMode ? "tcal-shell !space-y-0" : undefined}
+    >
       <PageHeader
         variant="plain"
         eyebrow="Time & commitments"
@@ -429,17 +433,22 @@ export default function CalendarAdmin({
             <Plus className="h-4 w-4 mr-1.5" /> New appointment
           </Button>
         }
+        className={tenantMode ? "tcal-header" : undefined}
       />
 
-      {(tab === "calendar" || tab === "agenda") && <StatRow>
-        <StatTile label="Today" value={stats.today} icon={CalendarDays} hint="scheduled" loading={statsLoading} />
-        <StatTile label="This week" value={stats.week} icon={CalendarRange} hint="in range" loading={statsLoading} />
-        <StatTile label="Upcoming" value={stats.upcoming} icon={Clock} hint="still to come" loading={statsLoading} />
-        <StatTile label="Cancelled / no-show" value={stats.off} icon={CalendarX2} intent={stats.off > 0 ? "negative" : "neutral"} loading={statsLoading} />
-      </StatRow>}
+      {(tab === "calendar" || tab === "agenda") && (
+        <div className={tenantMode ? "tcal-summary" : undefined}>
+          <StatRow>
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="Today" value={stats.today} icon={CalendarDays} hint="scheduled" loading={statsLoading} />
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="This week" value={stats.week} icon={CalendarRange} hint="in range" loading={statsLoading} />
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="Upcoming" value={stats.upcoming} icon={Clock} hint="still to come" loading={statsLoading} />
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="Cancelled / no-show" value={stats.off} icon={CalendarX2} intent={stats.off > 0 ? "negative" : "neutral"} loading={statsLoading} />
+          </StatRow>
+        </div>
+      )}
 
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList className="h-auto max-w-full justify-start overflow-x-auto" aria-label="Calendar views">
+      <Tabs value={tab} onValueChange={setTab} className={tenantMode ? "tcal-tabs-root" : "space-y-4"}>
+        <TabsList className={tenantMode ? "tcal-tablist h-auto max-w-full justify-start overflow-x-auto" : "h-auto max-w-full justify-start overflow-x-auto"} aria-label="Calendar views">
           <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> Calendar</TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5"><ListChecks className="h-4 w-4" /> Agenda</TabsTrigger>
           <TabsTrigger value="tasks" className="gap-1.5"><ListChecks className="h-4 w-4" /> Tasks</TabsTrigger>
@@ -449,26 +458,29 @@ export default function CalendarAdmin({
         </TabsList>
 
         {/* CALENDAR VIEW */}
-        <TabsContent value="calendar" className="space-y-4">
-          <DataTruthNotice
-            label="LIVE"
-            detail="Bookings come from the tenant-scoped booking service. Dated tasks are a distinct plan overlay for the signed-in user."
-          />
-          {plansError && !requiredReadError && (
+        <TabsContent value="calendar" className={tenantMode ? "tcal-calendar-panel" : "space-y-4"}>
+          <div className={tenantMode ? "tcal-truth-stack" : "contents"}>
             <DataTruthNotice
-              label={plansForbidden ? "UNAVAILABLE" : "PARTIAL"}
-              detail="Bookings remain live. The dated task overlay is unavailable for this view."
+              label="LIVE"
+              detail="Bookings come from the tenant-scoped booking service. Dated tasks are a distinct plan overlay for the signed-in user."
             />
-          )}
+            {plansError && !requiredReadError && (
+              <DataTruthNotice
+                label={plansForbidden ? "UNAVAILABLE" : "PARTIAL"}
+                detail="Bookings remain live. The dated task overlay is unavailable for this view."
+              />
+            )}
+          </div>
           {requiredReadError ? (
             <CalendarReadState
               title="Calendar couldn't load"
               description="No events or counts are inferred from a failed required read."
               onRetry={() => { void loadCalendars(); void loadBookings(); }}
+              className={tenantMode ? "tcal-read-state" : undefined}
             />
           ) : (
           <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className={tenantMode ? "tcal-toolbar" : "flex flex-wrap items-center justify-between gap-3"}>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => nav(0)}>Today</Button>
               <div className="flex items-center">
@@ -886,13 +898,14 @@ function DataTruthNotice({ label, detail }: { label: "LIVE" | "PARTIAL" | "UNAVA
   );
 }
 
-function CalendarReadState({ title, description, onRetry }: {
+function CalendarReadState({ title, description, onRetry, className }: {
   title: string;
   description: string;
   onRetry: () => void;
+  className?: string;
 }) {
   return (
-    <SectionCard>
+    <SectionCard className={className}>
       <EmptyState
         icon={AlertCircle}
         title={title}

@@ -49,8 +49,34 @@ describe("tenant canonical Calendar source contract", () => {
   it("preserves bounded scrolling, responsive reflow, keyboard controls, and reduced motion", () => {
     expect(css).toContain("overflow-y: auto");
     expect(css).toContain("@media (max-width: 1279px)");
-    expect(css).toContain("@media (max-width: 899px)");
+    expect(css).toContain("@media (max-width: 1023px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(source("src/components/admin/calendar/CalendarGrid.tsx")).toContain('event.key === "Enter" || event.key === " "');
+  });
+
+  it("gives the tenant Calendar a compact, viewport-owned working hierarchy without hiding information", () => {
+    expect(calendar).toContain('className={tenantMode ? "tcal-shell !space-y-0" : undefined}');
+    expect(calendar).toContain('className={tenantMode ? "tcal-header" : undefined}');
+    expect(calendar).toContain('className={tenantMode ? "tcal-summary" : undefined}');
+    expect(calendar).toContain('className={tenantMode ? "tcal-tabs-root" : "space-y-4"}');
+    expect(calendar).toContain('className={tenantMode ? "tcal-calendar-panel" : "space-y-4"}');
+    expect(calendar).toContain('className={tenantMode ? "tcal-toolbar" : "flex flex-wrap items-center justify-between gap-3"}');
+    expect(calendar).toContain('className={tenantMode ? "tcal-read-state" : undefined}');
+
+    expect(css).toContain('grid-template-areas: "header summary" "tabs tabs"');
+    expect(css).toContain("container-type: inline-size");
+    expect(css).toContain("@container (max-width: 900px)");
+    expect(css).toContain(".tcal-read-state");
+    expect(css).toContain("grid-area: board");
+    expect(css).toContain("min-height: 0");
+    expect(css).toContain("overflow-y: auto");
+    expect(css).not.toMatch(/\.tcal-(?:header|summary|truth|toolbar|board)[^{]*\{[^}]*display:\s*none/s);
+
+    for (const copy of [
+      "Today", "This week", "Upcoming", "Cancelled / no-show",
+      "LIVE", "PARTIAL", "UNAVAILABLE", "New appointment", "Add task",
+    ]) {
+      expect(calendar).toContain(copy);
+    }
   });
 });
