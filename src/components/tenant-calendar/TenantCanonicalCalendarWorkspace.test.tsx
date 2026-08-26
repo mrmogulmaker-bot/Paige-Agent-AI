@@ -21,12 +21,13 @@ vi.mock("@/hooks/useTenantContext", () => ({
 }));
 
 vi.mock("@/pages/admin/CalendarAdmin", () => ({
-  default: function CalendarAdminMock({ activeTenantId, activeTab, onTabChange, connectionsHref, openPaige }: {
+  default: function CalendarAdminMock({ activeTenantId, activeTab, onTabChange, connectionsHref, openPaige, soloSettings }: {
     activeTenantId: string;
     activeTab: string;
     onTabChange: (tab: string) => void;
     connectionsHref: string;
     openPaige?: () => void;
+    soloSettings?: boolean;
   }) {
     React.useEffect(() => {
       harness.mounts.push(activeTenantId);
@@ -38,6 +39,7 @@ vi.mock("@/pages/admin/CalendarAdmin", () => ({
         data-tenant={activeTenantId}
         data-tab={activeTab}
         data-connections={connectionsHref}
+        data-solo-settings={String(Boolean(soloSettings))}
       >
         <button type="button" onClick={() => onTabChange("booking")}>Booking pages</button>
         {openPaige && <button type="button" data-ask-paige onClick={openPaige}>Ask PAIGE</button>}
@@ -51,7 +53,8 @@ import { TenantCanonicalCalendarWorkspace } from "./TenantCanonicalCalendarWorks
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function LocationProbe() {
-  return <output data-path={useLocation().pathname} />;
+  const location = useLocation();
+  return <output data-path={`${location.pathname}${location.search}`} />;
 }
 
 let container: HTMLDivElement;
@@ -136,6 +139,17 @@ describe("TenantCanonicalCalendarWorkspace", () => {
 
     expect(openPaige).toHaveBeenCalledTimes(1);
     expect(container.querySelectorAll("[data-calendar-admin]")).toHaveLength(1);
+  });
+
+  it("routes Solo compatibility addresses into the Clients-owned Calendar and resolves Settings", () => {
+    mount("/solo/101/calendar/settings", "solo");
+
+    expect(container.querySelector("[data-path]")?.getAttribute("data-path")).toBe(
+      "/solo/101/clients/calendar?calendarView=settings",
+    );
+    const calendar = container.querySelector("[data-calendar-admin]");
+    expect(calendar?.getAttribute("data-tab")).toBe("settings");
+    expect(calendar?.getAttribute("data-solo-settings")).toBe("true");
   });
 
   it("remounts the canonical owner when authenticated tenant scope changes", () => {

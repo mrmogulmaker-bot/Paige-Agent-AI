@@ -14,7 +14,7 @@
  * (null-tenant) calendars. On create we register the creator as a calendar_host
  * so the booking engine has an availability owner.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays, Plus, Copy, ExternalLink, Loader2, Trash2, Pencil, Palette, Globe, Check,
   FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound, ChevronUp, ChevronDown, Clock,
@@ -653,25 +653,40 @@ function DateOverridesEditor({ overrides, onChange }: { overrides: DateOverride[
 
 type BuilderState = { mode: "create"; type?: string } | { mode: "edit"; calendar: CalendarRow };
 
-export default function CalendarsPanel() {
-  const { activeTenantId, isPlatformStaff } = useTenantContext();
+export default function CalendarsPanel({ activeTenantId: suppliedTenantId }: { activeTenantId?: string | null } = {}) {
+  const tenantContext = useTenantContext();
+  const activeTenantId = suppliedTenantId ?? tenantContext.activeTenantId;
+  const { isPlatformStaff } = tenantContext;
   const [rows, setRows] = useState<CalendarRow[]>([]);
   const [groups, setGroups] = useState<CalendarGroup[]>([]);
   const [people, setPeople] = useState<PersonRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CalendarRow | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
   const [typeChooser, setTypeChooser] = useState(false);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
-    const [{ data, error }, { data: grp }] = await Promise.all([
-      supabase.from("calendars").select(SELECT_COLS).order("created_at", { ascending: false }),
-      supabase.from("calendar_groups").select("id, name, tenant_id").order("name"),
-    ]);
-    if (error) toast.error(error.message);
-    const calRows = (data as CalendarRow[]) ?? [];
+    setLoadError(null);
+    setRows([]);
+    setGroups([]);
+    setPeople([]);
+    let calendarsQuery = supabase.from("calendars").select(SELECT_COLS).order("created_at", { ascending: false });
+    let groupsQuery = supabase.from("calendar_groups").select("id, name, tenant_id").order("name");
+    calendarsQuery = activeTenantId ? calendarsQuery.eq("tenant_id", activeTenantId) : calendarsQuery.is("tenant_id", null);
+    groupsQuery = activeTenantId ? groupsQuery.eq("tenant_id", activeTenantId) : groupsQuery.is("tenant_id", null);
+    const [{ data, error }, { data: grp, error: groupError }] = await Promise.all([calendarsQuery, groupsQuery]);
+    if (seq !== loadSeq.current) return;
+    if (error || groupError) {
+      setLoadError(error?.message ?? groupError?.message ?? "Calendar settings could not load");
+      setLoading(false);
+      return;
+    }
+    const calRows = (data as unknown as CalendarRow[]) ?? [];
     setRows(calRows);
     setGroups((grp as CalendarGroup[]) ?? []);
 
@@ -679,6 +694,7 @@ export default function CalendarsPanel() {
     const owners = Array.from(new Set(calRows.map((c) => c.created_by).filter(Boolean))) as string[];
     if (owners.length) {
       const { data: profs } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", owners);
+      if (seq !== loadSeq.current) return;
       type Prof = { user_id: string; full_name: string | null; avatar_url: string | null };
       const nameMap = new Map(((profs as Prof[] | null) ?? []).map((p) => [p.user_id, p]));
       const counts = new Map<string, number>();
@@ -693,12 +709,17 @@ export default function CalendarsPanel() {
       setPeople([]);
     }
     setLoading(false);
-  }, []);
+  }, [activeTenantId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { loadSeq.current += 1; };
+  }, [load]);
 
   const assignGroup = async (calId: string, groupId: string | null) => {
-    const { error } = await supabase.from("calendars").update({ group_id: groupId }).eq("id", calId);
+    let query = supabase.from("calendars").update({ group_id: groupId }).eq("id", calId);
+    query = activeTenantId ? query.eq("tenant_id", activeTenantId) : query.is("tenant_id", null);
+    const { error } = await query;
     if (error) { toast.error(error.message); return; }
     setRows((r) => r.map((x) => x.id === calId ? { ...x, group_id: groupId } : x));
   };
@@ -749,7 +770,9 @@ export default function CalendarsPanel() {
               <Switch
                 checked={c.enabled}
                 onCheckedChange={async (v) => {
-                  const { error } = await supabase.from("calendars").update({ enabled: v }).eq("id", c.id);
+                  let query = supabase.from("calendars").update({ enabled: v }).eq("id", c.id);
+                  query = activeTenantId ? query.eq("tenant_id", activeTenantId) : query.is("tenant_id", null);
+                  const { error } = await query;
                   if (error) toast.error(error.message);
                   else setRows((r) => r.map((x) => x.id === c.id ? { ...x, enabled: v } : x));
                 }}
@@ -836,7 +859,13 @@ export default function CalendarsPanel() {
           </div>
         )}
 
-        {loading ? (
+        {loadError ? (
+          <div className="rounded-lg border border-destructive/30 p-8 text-center" role="alert">
+            <p className="text-sm font-medium">Scheduling calendars couldn't load</p>
+            <p className="mt-1 text-xs text-muted-foreground">No empty state or calendar count is inferred from this failed account-scoped read.</p>
+            <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>Retry</Button>
+          </div>
+        ) : loading ? (
           <div className="py-10 flex items-center justify-center gap-2 text-muted-foreground text-sm">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading calendars…
           </div>
@@ -909,7 +938,9 @@ export default function CalendarsPanel() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 const t = deleteTarget!; setDeleteTarget(null);
-                const { error } = await supabase.from("calendars").delete().eq("id", t.id);
+                let query = supabase.from("calendars").delete().eq("id", t.id);
+                query = activeTenantId ? query.eq("tenant_id", activeTenantId) : query.is("tenant_id", null);
+                const { error } = await query;
                 if (error) toast.error(error.message);
                 else { setRows((r) => r.filter((x) => x.id !== t.id)); toast.success("Calendar deleted"); }
               }}>
@@ -1261,10 +1292,10 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost, calendarTimez
 
 // GHL-style "Choose calendar type" step — opens on New calendar, then the builder.
 const TYPE_CARDS = [
-  { value: "personal", icon: UserRound, title: "Personal booking", desc: "Schedules one-on-one meetings with a specific team member.", eg: "Client meetings, private consultations." },
-  { value: "round_robin", icon: Repeat, title: "Round robin", desc: "Distributes appointments among team members in a rotating order.", eg: "Sales calls, onboarding sessions." },
-  { value: "event", icon: GraduationCap, title: "Class booking", desc: "One host meets with multiple participants.", eg: "Webinars, group training, online classes." },
-  { value: "collective", icon: UsersRound, title: "Collective booking", desc: "Multiple hosts meet with one participant.", eg: "Panel interviews, committee reviews." },
+  { value: "personal", icon: UserRound, title: "Personal booking", desc: "Schedules one-on-one meetings with a specific team member.", eg: "Client meetings, private consultations.", truth: "LIVE" },
+  { value: "round_robin", icon: Repeat, title: "Round robin", desc: "Distributes appointments among team members in a rotating order.", eg: "Sales calls, onboarding sessions.", truth: "LIVE" },
+  { value: "event", icon: GraduationCap, title: "Class booking", desc: "One host meets with multiple participants. Internal quick-create parity and direct end-to-end coverage remain incomplete.", eg: "Webinars, group training, online classes.", truth: "PARTIAL" },
+  { value: "collective", icon: UsersRound, title: "Collective booking", desc: "Multiple required hosts meet with one participant. Internal quick-create parity and direct end-to-end coverage remain incomplete.", eg: "Panel interviews, committee reviews.", truth: "PARTIAL" },
 ];
 
 function CalendarTypeChooser({ open, onOpenChange, onPick }: {
@@ -1286,7 +1317,7 @@ function CalendarTypeChooser({ open, onOpenChange, onPick }: {
                   <t.icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <div className="font-semibold text-sm">{t.title}</div>
+                  <div className="flex items-center gap-2"><span className="font-semibold text-sm">{t.title}</span><Badge variant="outline" className="text-[9px]">{t.truth}</Badge></div>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.desc}</p>
                   <p className="text-xs text-muted-foreground/70 mt-1">E.g.: {t.eg}</p>
                 </div>
@@ -1460,7 +1491,9 @@ function CalendarBuilderSheet({
     if (isEdit && existing) {
       const desiredSlug = slugify(slugInput);
       const patchWithSlug = desiredSlug && desiredSlug !== existing.slug ? { ...patch, slug: desiredSlug } : patch;
-      const { data, error } = await supabase.from("calendars").update(patchWithSlug).eq("id", existing.id).select(SELECT_COLS).single();
+      let query = supabase.from("calendars").update(patchWithSlug as never).eq("id", existing.id);
+      query = tenantId ? query.eq("tenant_id", tenantId) : query.is("tenant_id", null);
+      const { data, error } = await query.select(SELECT_COLS).single();
       setSaving(false);
       if (error || !data) {
         if ((error as { code?: string })?.code === "23505") toast.error("That booking link is taken — pick another.");
@@ -1468,7 +1501,7 @@ function CalendarBuilderSheet({
         return;
       }
       toast.success("Calendar saved");
-      onSaved(data as CalendarRow, false);
+      onSaved(data as unknown as CalendarRow, false);
       onOpenChange(false);
       return;
     }
@@ -1482,7 +1515,7 @@ function CalendarBuilderSheet({
     // availability, so its public booking link should accept bookings right away
     // (toggle it back to Draft on the card to unpublish).
     const { data, error } = await supabase
-      .from("calendars").insert({ tenant_id: tenantId, slug, enabled: true, ...patch }).select(SELECT_COLS).single();
+      .from("calendars").insert({ tenant_id: tenantId, slug, enabled: true, ...patch } as never).select(SELECT_COLS).single();
     if (error || !data) {
       setSaving(false);
       if ((error as { code?: string })?.code === "23505") toast.error("That booking link is taken — pick another.");
@@ -1497,14 +1530,16 @@ function CalendarBuilderSheet({
       ? (await supabase.from("calendar_hosts").insert({ calendar_id: data.id, user_id: uid, priority: 0 })).error
       : new Error("no-session");
     if (hostErr) {
-      await supabase.from("calendars").delete().eq("id", data.id);
+      let rollback = supabase.from("calendars").delete().eq("id", data.id);
+      rollback = tenantId ? rollback.eq("tenant_id", tenantId) : rollback.is("tenant_id", null);
+      await rollback;
       setSaving(false);
       toast.error(uid ? "Couldn't finish setting up the calendar — please try again." : "Session expired — please sign in again.");
       return;
     }
     setSaving(false);
     toast.success("Calendar created and live — its booking link is ready to share");
-    onSaved(data as CalendarRow, true);
+    onSaved(data as unknown as CalendarRow, true);
   };
 
   return (

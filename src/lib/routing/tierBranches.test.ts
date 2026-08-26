@@ -356,7 +356,12 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
   function screenKeys(file: string, branchSlug: string): string[] {
     const src = readFileSync(resolve(process.cwd(), file), "utf8");
     if (branchSlug === "calendar") {
-      return [...src.matchAll(/<TabsTrigger\s+value=["']([a-z-]+)["']/g)].map((match) => match[1]);
+      // Settings is an explicitly Solo-Clients-owned conditional view. It is
+      // routed by the canonical adapter's query state so the shared Solo /
+      // Sub-account address registry remains unchanged for every other tier.
+      return [...src.matchAll(/<TabsTrigger\s+value=["']([a-z-]+)["']/g)]
+        .map((match) => match[1])
+        .filter((key) => key !== "settings");
     }
     // Anchor on the routed hook call (tolerant of spacing after commas).
     const hook = new RegExp(

@@ -22,6 +22,7 @@ import {
   workspaceTabs,
   type WorkspaceTab,
 } from "./workspaceModel";
+import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
 import "./tenant-relationships-clients-workspace.css";
 
 const CanonicalConversations = lazy(() => import("@/pages/admin/ClientsConversations"));
@@ -108,6 +109,7 @@ export function TenantRelationshipsClientsWorkspace({
   }
 
   const workspaceName = variant === "relationships" ? "Relationships" : "Clients";
+  const soloCalendar = routeTier === "solo" && activeTab === "calendar";
   const proof = activeTab === null
     ? { label: "View · UNAVAILABLE", tone: "unavailable" as const }
     : activeTab === "segments"
@@ -117,14 +119,14 @@ export function TenantRelationshipsClientsWorkspace({
       : { label: `${tabs.find(({ id }) => id === activeTab)?.label ?? workspaceName} · PARTIAL`, tone: "partial" as const };
 
   return (
-    <section className="trc-workspace" data-relationship-workspace data-variant={variant}>
-      <header className="trc-heading">
+    <section className={`trc-workspace${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
+      <header className={`trc-heading${soloCalendar ? " trc-heading--calendar" : ""}`}>
         <div>
           <span>{workspaceName} · {activeTenant.name}</span>
-          <h1>{variant === "relationships" ? "The relationship book" : "Your client book"}</h1>
-          <p>{variant === "relationships"
+          <h1>{soloCalendar ? "Calendar" : variant === "relationships" ? "The relationship book" : "Your client book"}</h1>
+          {!soloCalendar && <p>{variant === "relationships"
             ? "People and activity across the server-authorized book, with ownership intact."
-            : "One trustworthy record for every client relationship this account serves."}</p>
+            : "One trustworthy record for every client relationship this account serves."}</p>}
         </div>
         <ProofPill tone={proof.tone}>{proof.label}</ProofPill>
       </header>
@@ -150,7 +152,7 @@ export function TenantRelationshipsClientsWorkspace({
 
       <div
         id="trc-panel"
-        className="trc-panel"
+        className={`trc-panel${soloCalendar ? " trc-panel--calendar" : ""}`}
         role="tabpanel"
         aria-labelledby={activeTab ? `trc-tab-${activeTab}` : undefined}
         aria-label={activeTab ? undefined : "Unavailable relationship view"}
@@ -163,7 +165,7 @@ export function TenantRelationshipsClientsWorkspace({
         {activeTab === "conversations" && (
           <ConversationsView variant={variant} data={data} openPaige={openPaige} activeTenantId={activeTenantId} />
         )}
-        {activeTab === "calendar" && <CalendarLens key={activeTenantId} activeTenantId={activeTenantId} returnAddress={calendarReturnAddress} />}
+        {activeTab === "calendar" && <CalendarLens key={activeTenantId} routeTier={routeTier} activeTenantId={activeTenantId} returnAddress={calendarReturnAddress} openPaige={openPaige} />}
         {activeTab === "segments" && <SegmentsView />}
         {activeTab === "portal" && <PortalView key={activeTenantId} activeTenantId={activeTenantId} data={data} selectedContactId={selectedContactId} />}
       </div>
@@ -232,8 +234,20 @@ function ConversationsView({ variant, openPaige, activeTenantId }: { variant: Re
   );
 }
 
-function CalendarLens({ activeTenantId, returnAddress }: { activeTenantId: string; returnAddress: string }) {
+function CalendarLens({ routeTier, activeTenantId, returnAddress, openPaige }: {
+  routeTier: Extract<RouteTierKey, "agency" | "enterprise" | "solo" | "sub_account">;
+  activeTenantId: string;
+  returnAddress: string;
+  openPaige: () => void;
+}) {
   const [fullCalendarOpen, setFullCalendarOpen] = useState(false);
+  if (routeTier === "solo") {
+    return (
+      <div className="trc-canonical-mount trc-canonical-mount--direct" data-calendar-owner="clients" data-return-address={returnAddress}>
+        <TenantCanonicalCalendarWorkspace tier="solo" owner="clients" openPaige={openPaige} />
+      </div>
+    );
+  }
   return (
     <div className="trc-calendar-lens">
       <div className="trc-two-column">
