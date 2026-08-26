@@ -62,6 +62,49 @@ describe("tenant Command Center core workspace", () => {
     act(() => root.unmount());
   });
 
+  it.each([
+    ["/solo/42/command-center", "/solo/42/calendar"],
+    ["/business/9082725/command-center", "/business/9082725/calendar"],
+    ["/agency/1924546/command-center", "/agency/1924546/calendar"],
+    [
+      "/agency/1924546/sub/9082725/command-center",
+      "/agency/1924546/sub/9082725/calendar",
+    ],
+    ["/enterprise/7/command-center", "/enterprise/7/calendar"],
+  ])("keeps Calendar attention links inside the active account tree at %s", (pathname, expectedHref) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+
+    act(() => root.render(
+      <MemoryRouter initialEntries={[pathname]}>
+        <TenantCommandCenterCore
+          accountContext={{ accountName: "Supplied account", accountType: "standalone" }}
+          openPaige={vi.fn()}
+          data={{
+            greeting: { name: "Owner", dateLabel: "Today", summary: "Review today's work." },
+            metrics: [],
+            approvals: [],
+            attention: { tasks_due: 2, upcoming_sessions_7d: 1 },
+            attentionState: "LIVE",
+            departments: [],
+            departmentState: "UNAVAILABLE",
+            loading: false,
+            approve: vi.fn(),
+            decline: vi.fn(),
+            refresh: vi.fn(),
+          }}
+        />
+      </MemoryRouter>,
+    ));
+
+    const attentionHrefs = Array.from(host.querySelectorAll("a"))
+      .filter((link) => /Tasks due|Sessions this week/.test(link.textContent ?? ""))
+      .map((link) => link.getAttribute("href"));
+    expect(attentionHrefs).toEqual([expectedHref, expectedHref]);
+    expect(attentionHrefs).not.toContain("/admin/calendar");
+    act(() => root.unmount());
+  });
+
   it("keeps secondary ownership out of Command Center and reuses the live Systems Check", () => {
     const agency = source("src/agency/CommandCenter.tsx");
     const solo = source("src/solo/CommandCenter.tsx");

@@ -8,15 +8,15 @@ import {
 } from "./tenantShellRoutes";
 
 describe("tenant Command Center shell routing", () => {
-  it("exposes the ruled six tenant destinations and never Fleet", () => {
+  it("exposes the ruled five tenant destinations and keeps Calendar under Clients or Relationships", () => {
     expect(TENANT_SHELL_DESTINATIONS.map(({ label }) => label)).toEqual([
       "Command Center",
       "Clients",
-      "Calendar",
       "Studio",
       "Insights",
       "Settings",
     ]);
+    expect(TENANT_SHELL_DESTINATIONS.map(({ id }) => id)).not.toContain("calendar");
     expect(TENANT_SHELL_DESTINATIONS.some(({ label }) => label === "Fleet")).toBe(false);
   });
 
@@ -103,10 +103,12 @@ describe("tenant Command Center shell routing", () => {
     });
   });
 
-  it("keeps Delivery with Clients while Calendar owns tasks and scheduling routes", () => {
+  it("keeps Delivery and canonical Calendar addresses under Clients ownership", () => {
     expect(resolveTenantShellDestination("/admin/clients-hub/delivery").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/planning").id).toBe("calendar");
-    expect(resolveTenantShellDestination("/admin/bookings").id).toBe("calendar");
+    expect(resolveTenantShellDestination("/admin/calendar").id).toBe("clients");
+    expect(resolveTenantShellDestination("/admin/planning").id).toBe("clients");
+    expect(resolveTenantShellDestination("/admin/bookings").id).toBe("clients");
+    expect(resolveTenantShellDestination("/admin/tasks").id).toBe("clients");
   });
 
   it("keeps the client relationship surfaces under Clients", () => {
@@ -128,13 +130,12 @@ describe("tenant Command Center shell routing", () => {
     ["/agency/1924546/sub/9082725/command-center", "/agency/1924546/sub/9082725"],
     ["/solo/42/command-center", "/solo/42"],
     ["/enterprise/7/command-center", "/enterprise/7"],
-  ])("keeps all six destinations inside the current account tree: %s", (pathname, routePrefix) => {
+  ])("keeps all five visible destinations inside the current account tree: %s", (pathname, routePrefix) => {
     const destinations = tenantShellDestinationsForPath(pathname);
-    expect(destinations).toHaveLength(6);
+    expect(destinations).toHaveLength(5);
     expect(destinations.map(({ id, href }) => [id, href])).toEqual([
       ["command", `${routePrefix}/command-center`],
       ["clients", `${routePrefix}/clients`],
-      ["calendar", `${routePrefix}/calendar`],
       ["studio", `${routePrefix}/growth`],
       ["insights", `${routePrefix}/analytics`],
       ["settings", `${routePrefix}/setup`],
@@ -145,7 +146,6 @@ describe("tenant Command Center shell routing", () => {
   it.each([
     ["agency", "command", "command-center"],
     ["agency", "clients", "clients"],
-    ["agency", "calendar", "calendar"],
     ["agency", "studio", "growth"],
     ["agency", "insights", "analytics"],
     ["agency", "settings", "setup"],
@@ -153,7 +153,19 @@ describe("tenant Command Center shell routing", () => {
     expect(resolveTenantShellDestination(`/${root}/1924546/sub/9082725/${slug}`).id).toBe(destination);
   });
 
-  it("folds legacy tenant branches into one of the six capability homes", () => {
+  it.each([
+    ["/solo/42/calendar/agenda", "standalone", "Clients"],
+    ["/business/9082725/calendar/availability", "sub_account", "Clients"],
+    ["/agency/1924546/calendar/tasks", "agency", "Relationships"],
+    ["/agency/1924546/sub/9082725/calendar/connections", "sub_account", "Clients"],
+    ["/enterprise/7/calendar/booking-pages", "enterprise", "Relationships"],
+  ])("keeps direct Calendar address %s visible through its relationship owner", (pathname, accountType, label) => {
+    const destination = resolveTenantShellDestination(pathname, accountType);
+    expect(destination.id).toBe("clients");
+    expect(destination.label).toBe(label);
+  });
+
+  it("folds legacy tenant branches into one of the five visible capability homes", () => {
     expect(resolveTenantShellDestination("/business/9082725/paige").id).toBe("command");
     expect(resolveTenantShellDestination("/business/9082725/client-support").id).toBe("clients");
     expect(resolveTenantShellDestination("/business/9082725/business-vault").id).toBe("settings");
