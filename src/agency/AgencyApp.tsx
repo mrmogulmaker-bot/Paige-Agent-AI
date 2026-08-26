@@ -26,6 +26,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import "./agency-tokens.css";
@@ -48,6 +49,8 @@ import CommandCenter from "./CommandCenter";
 import PaigeHub from "./paige";
 import TrustCompass from "./compass";
 import AutomationsHub from "./automations";
+import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
+import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import ClientsHub from "./clients";
 import CalendarHub from "./calendar";
 import ClientSupport from "./support";
@@ -268,6 +271,14 @@ const Stub = ({ route }) => {
   );
 };
 
+const AgencyClientsRoute = ({ tier, isAgency, acting, openAsk, enterSubaccount }) => {
+  const [tab] = useSubtabRoute(tier, "clients", "people");
+  if (isLegacyRelationshipOwner(tier, tab)) {
+    return <ClientsHub isAgency={isAgency} acting={acting} openAsk={openAsk} enterSubaccount={enterSubaccount} />;
+  }
+  return <TenantRelationshipsClientsWorkspace routeTier={tier} openPaige={openAsk} />;
+};
+
 // ── AgencyApp (root) ─────────────────────────────────────────────────────────
 const AgencyAppContent = ({ mode = "agency" }) => {
   const isAgency = mode === "agency";
@@ -338,7 +349,14 @@ const AgencyAppContent = ({ mode = "agency" }) => {
   // top-level URL guard below and the act-as flow.
   // tier-feature-exempt: tier ROUTING (identifying which of the caller's own tenants
   // IS their agency/enterprise identity), not a §60 feature-availability decision.
-  const ownAgencyTenant = (tenants || []).find(t => t.account_type === "agency" || t.account_type === "enterprise") ?? null;
+  const managerTenants = (tenants || []).filter(t => t.account_type === "agency" || t.account_type === "enterprise");
+  // tier-feature-exempt: authenticated account-owner routing, not feature availability.
+  const ownAgencyTenant =
+    (activeTenant?.account_type === "agency" || activeTenant?.account_type === "enterprise" ? activeTenant : null) ??
+    (activeTenant?.parent_tenant_id
+      ? managerTenants.find(t => t.id === activeTenant.parent_tenant_id) ?? null
+      : null) ??
+    (managerTenants.length === 1 ? managerTenants[0] : null);
   // §65 R3c-i — the sub-account's OWN address for the top-level ownership guard
   // below. In subaccount mode there is no "acting" concept, so activeTenant IS
   // the caller's own tenant (unlike agency mode, where activeTenant becomes the
@@ -664,7 +682,7 @@ const AgencyAppContent = ({ mode = "agency" }) => {
     paige: <PaigeHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     compass: <TrustCompass isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     autos: <AutomationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
-    fleet: <ClientsHub isAgency={isAgency} acting={acting} openAsk={openAsk} enterSubaccount={enterSubaccount} />,
+    fleet: <AgencyClientsRoute tier={tier} isAgency={isAgency} acting={acting} openAsk={openAsk} enterSubaccount={enterSubaccount} />,
     calendar: <CalendarHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     support: <ClientSupport isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     growth: <GrowthHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,

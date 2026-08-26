@@ -21,6 +21,17 @@ describe("tenant Command Center shell routing", () => {
   });
 
   it.each([
+    ["/agency/1924546/clients", "agency", "Relationships"],
+    ["/agency/7000001/clients", "enterprise", "Relationships"],
+    ["/solo/42/clients", "standalone", "Clients"],
+    ["/business/9082725/clients", "sub_account", "Clients"],
+    ["/agency/1924546/sub/9082725/clients", "sub_account", "Clients"],
+  ])("presents the approved relationship home at %s", (pathname, accountType, expected) => {
+    const destinations = tenantShellDestinationsForPath(pathname, accountType);
+    expect(destinations.find(({ id }) => id === "clients")?.label).toBe(expected);
+  });
+
+  it.each([
     ["standalone", "Solo"],
     ["sub_account", "Sub-account"],
     ["agency", "Agency Parent"],
@@ -132,14 +143,14 @@ describe("tenant Command Center shell routing", () => {
   });
 
   it.each([
-    ["command", "command-center"],
-    ["clients", "clients"],
-    ["calendar", "calendar"],
-    ["studio", "growth"],
-    ["insights", "analytics"],
-    ["settings", "setup"],
-  ])("keeps acting-child %s navigation active inside the actor-namespaced tree", (destination, slug) => {
-    expect(resolveTenantShellDestination(`/agency/1924546/sub/9082725/${slug}`).id).toBe(destination);
+    ["agency", "command", "command-center"],
+    ["agency", "clients", "clients"],
+    ["agency", "calendar", "calendar"],
+    ["agency", "studio", "growth"],
+    ["agency", "insights", "analytics"],
+    ["agency", "settings", "setup"],
+  ])("keeps %s acting-child %s navigation active inside the actor-namespaced tree", (root, destination, slug) => {
+    expect(resolveTenantShellDestination(`/${root}/1924546/sub/9082725/${slug}`).id).toBe(destination);
   });
 
   it("folds legacy tenant branches into one of the six capability homes", () => {

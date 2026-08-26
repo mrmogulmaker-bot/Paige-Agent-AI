@@ -153,11 +153,20 @@ function tenantRoutePrefixForPath(pathname: string): string | null {
 }
 
 /** Keep the six shell homes inside the route tree that owns the active account. */
-export function tenantShellDestinationsForPath(pathname: string): TenantShellDestination[] {
+export function tenantShellDestinationsForPath(
+  pathname: string,
+  accountType?: string | null,
+): TenantShellDestination[] {
   const root = tenantRoutePrefixForPath(pathname);
-  if (!root) return TENANT_SHELL_DESTINATIONS;
+  const relationshipLabel = ["agency", "enterprise"].includes(accountType?.trim().toLowerCase() ?? "")
+    ? "Relationships"
+    : "Clients";
+  const destinations = TENANT_SHELL_DESTINATIONS.map((destination) =>
+    destination.id === "clients" ? { ...destination, label: relationshipLabel } : destination,
+  );
+  if (!root) return destinations;
 
-  return TENANT_SHELL_DESTINATIONS.map((destination) => {
+  return destinations.map((destination) => {
     const branch = TENANT_BRANCHES[destination.id];
     return {
       ...destination,
@@ -172,8 +181,11 @@ function pathMatches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function resolveTenantShellDestination(pathname: string): TenantShellDestination {
-  const destinations = tenantShellDestinationsForPath(pathname);
+export function resolveTenantShellDestination(
+  pathname: string,
+  accountType?: string | null,
+): TenantShellDestination {
+  const destinations = tenantShellDestinationsForPath(pathname, accountType);
   return (
     destinations.find(
       (destination) =>

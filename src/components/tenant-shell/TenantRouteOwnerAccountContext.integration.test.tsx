@@ -201,6 +201,9 @@ vi.mock("@/agency/team", () => ({ default: () => null }));
 vi.mock("@/agency/vault", () => ({ default: () => null }));
 vi.mock("@/agency/setup", () => ({ default: () => null }));
 vi.mock("@/agency/integrations", () => ({ default: () => null }));
+vi.mock("@/components/tenant-relationships/TenantRelationshipsClientsWorkspace", () => ({
+  TenantRelationshipsClientsWorkspace: () => null,
+}));
 
 import { TenantProvider, useTenantContext } from "@/hooks/useTenantContext";
 import SoloEntry from "@/solo/SoloEntry";
@@ -300,6 +303,14 @@ function accountTier() {
   return container.querySelector("[data-tenant-account-tier]")?.textContent ?? "";
 }
 
+function shellAccountName() {
+  return container.querySelector(".tcs-context > span")?.textContent ?? "";
+}
+
+function shellAccountTier() {
+  return container.querySelector(".tcs-context > small")?.textContent ?? "";
+}
+
 beforeEach(() => {
   harness.loads = [makeDeferred<LoadResult>(), makeDeferred<LoadResult>()];
   harness.currentLoad = -1;
@@ -394,6 +405,31 @@ describe("tenant route owners preserve the newest authenticated account context"
     expect(container.querySelector("[data-provider-tenant-id]")?.getAttribute("data-provider-tenant-id")).toBe(child.id);
     expect(accountName()).toBe("Acting Child");
     expect(accountTier()).toBe("Sub-account");
+  });
+
+  it("keeps Enterprise on the existing agency compatibility owner with Enterprise identity", async () => {
+    const enterprise = tenant({
+      id: "enterprise-parent",
+      name: "Enterprise Parent",
+      account_type: "enterprise",
+      account_number: 600001,
+    });
+    mount("/agency/600001/clients/people", <Route path="/agency/*" element={<AgencyEntry />} />);
+    await startOverlappingLoads();
+    await resolveLoad(1, loadResult(enterprise.id, [enterprise]));
+
+    expect(shellAccountName()).toBe("Enterprise Parent");
+    expect(shellAccountTier()).toBe("Enterprise");
+    expect(
+      Array.from(container.querySelectorAll('nav[aria-label="Tenant workspace"] a')).map((link) => link.getAttribute("href")),
+    ).toEqual([
+      "/agency/600001/command-center",
+      "/agency/600001/clients",
+      "/agency/600001/calendar",
+      "/agency/600001/growth",
+      "/agency/600001/analytics",
+      "/agency/600001/setup",
+    ]);
   });
 
   it("never commits an older authenticated subject after a different user signs in", async () => {

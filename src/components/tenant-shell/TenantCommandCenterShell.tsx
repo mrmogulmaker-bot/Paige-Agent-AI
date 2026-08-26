@@ -100,8 +100,8 @@ export function TenantCommandCenterShell({
   const { railExpanded, expandRail, collapseRail } = useAgentPresence();
   const [navExpanded, setNavExpanded] = useState(readNavPreference);
   const [announcement, setAnnouncement] = useState("PAIGE workspace ready");
-  const destinations = tenantShellDestinationsForPath(location.pathname);
-  const destination = resolveTenantShellDestination(location.pathname);
+  const destinations = tenantShellDestinationsForPath(location.pathname, accountType);
+  const destination = resolveTenantShellDestination(location.pathname, accountType);
   const isDark = resolvedTheme !== "light";
   const detached = new URLSearchParams(location.search).get("paigeSurface") === "detached";
 
