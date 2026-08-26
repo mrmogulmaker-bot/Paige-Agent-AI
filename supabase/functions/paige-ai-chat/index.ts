@@ -1220,22 +1220,32 @@ JSON:`;
     // (hashed query, no raw text or content leaves the tenant boundary).
     let tenantKbContext = "";
     try {
-      if (lastUserMessage && lastUserMessage.content?.trim()) {
-        // §9/§51 — the ONLY tenant this handler may search is the caller's ACTIVE one,
-        // already resolved above by get_paige_persona_context() (migration 20260802133000),
-        // which honours profiles.active_tenant_id. That is exactly what the RPC's own guard
-        // (migration 20260720224948) compares p_tenant_id against.
-        //
-        // This previously read tenant_members with an UNORDERED .limit(1) that ignored the
-        // active tenant. For anyone holding more than one membership — every Agency Parent,
-        // because agency_enter_subaccount() writes a membership row — that could name a
-        // DIFFERENT tenant than the guard expects, so the RPC raised KB_FORBIDDEN and Paige
-        // silently answered with NO knowledge at all (§13: the failure was invisible).
-        //
-        // §18 — one home. Do NOT reintroduce a local tenant pick, a helper, or a fallback
-        // here; if this value is wrong, the persona resolver is the thing to fix.
-        const tenantId = personaCtx.tenant_id;
+      // §9/§51 — the ONLY tenant this handler may search is the caller's ACTIVE one,
+      // already resolved above by get_paige_persona_context() (migration 20260802133000),
+      // which honours profiles.active_tenant_id. It is derived SERVER-SIDE from the verified
+      // JWT; no tenant identifier from the request body, the URL, or the browser reaches here.
+      //
+      // WHAT THIS REPLACED, AND WHY IT WAS A CONFIDENTIALITY DEFECT, NOT A SILENT FAILURE.
+      // This block used to pick its tenant with an UNORDERED `tenant_members … limit(1)` that
+      // ignored active_tenant_id. For anyone holding more than one membership — every Agency
+      // Parent, because agency_enter_subaccount() writes a membership row — that names a tenant
+      // the caller is *a member of* but is NOT currently operating as.
+      //
+      // Crucially the RPC's own guard did NOT catch it on this path. `supabase` is the
+      // SERVICE-ROLE client (line ~510); `match_tenant_knowledge`'s guard (migration
+      // 20260720224948) is explicitly exempt when `auth.uid()` IS NULL, which is exactly the
+      // service-role case. So the wrong account's private chunks were retrieved and placed in
+      // the prompt — a cross-account confidentiality defect, not a fail-closed no-op.
+      //
+      // §18 — one home. Do NOT reintroduce a local tenant pick, a resolver helper, or a
+      // fallback here; if this value is wrong, the persona resolver is the thing to fix.
+      const tkTenantId = personaCtx.tenant_id;
 
+      // Unresolved authoritative scope does NO tenant work: no embedding (a paid call), no
+      // retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator — must
+      // never be handed some arbitrary account's knowledge, and `null` is not a scope to
+      // search. Fail closed and silent rather than substituting anything (§9/§13).
+      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
@@ -1244,10 +1254,17 @@ JSON:`;
           // RETURNS (source_tier, doc_id, chunk_id, title, content, similarity).
           // Over-fetch, then filter by similarity in TS — the RPC has no
           // p_min_similarity param (passing one 404s the call → silent no-op).
-          const { data: tkRows, error: tkErr } = await supabase.rpc(
+          //
+          // DEFENCE IN DEPTH — this goes through `supabaseClient` (the caller's JWT), NOT the
+          // service-role `supabase`. With a real auth.uid() the RPC's guard engages and
+          // independently re-checks p_tenant_id against current_user_tenant_id(), so a future
+          // regression in the resolution above is refused by the database instead of silently
+          // returning another account's chunks. Do not switch this back to a service-role
+          // client: that disables the guard by construction.
+          const { data: tkRows, error: tkErr } = await supabaseClient.rpc(
             "match_tenant_knowledge",
             {
-              p_tenant_id: tenantId,
+              p_tenant_id: tkTenantId,
               p_query_embedding: tkEmbedding as unknown as string,
               p_match_count: 8,
             },
@@ -1261,7 +1278,7 @@ JSON:`;
             // to no-KB rather than failing the turn.)
             console.error(
               "[paige] match_tenant_knowledge REFUSED — no knowledge context for this turn",
-              JSON.stringify({ tenant_id: tenantId, code: (tkErr as any)?.code ?? null, message: tkErr.message }),
+              JSON.stringify({ tenant_id: tkTenantId, code: (tkErr as any)?.code ?? null, message: tkErr.message }),
             );
           } else {
             const MIN_SIM = 0.7;
@@ -1286,8 +1303,13 @@ JSON:`;
                   .map((b) => b.toString(16).padStart(2, "0")).join("");
                 const sims = kept.map((r: any) => Number(r.similarity) || 0);
                 const topSim = sims.length ? Math.max(...sims) : 0;
+                // §9 — telemetry is stamped with the SAME authoritative tenant that was
+                // searched, never a separately-derived one, so the audit trail can never
+                // disagree with what actually happened. Written through the service-role
+                // client deliberately: kb_query_telemetry's RLS admits only the tenant's own
+                // members, and this insert is downstream of the validated caller scope above.
                 await supabase.from("kb_query_telemetry").insert({
-                  tenant_id: tenantId,
+                  tenant_id: tkTenantId,
                   query_hash: queryHash,
                   query_length: tkQuery.length,
                   query_intent_tags: [],
