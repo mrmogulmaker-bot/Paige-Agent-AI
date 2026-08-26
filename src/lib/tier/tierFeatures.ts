@@ -63,6 +63,7 @@ export type Feature =
   | "people_crm"
   | "pipeline"
   | "conversations"
+  | "calendar"
   // Creation surfaces — Vibe Studio + Campaigns (the Growth hub). solo · sub_account ·
   // enterprise · god; NOT agency (owner ruling 2026-08-11 — an agency manages
   // sub-accounts, it doesn't run its own campaigns/creative book).
@@ -171,6 +172,7 @@ const TENANT_WORKING: readonly Feature[] = [
   "people_crm",
   "pipeline",
   "conversations",
+  "calendar",
 ];
 
 /**
