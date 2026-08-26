@@ -1215,19 +1215,26 @@ JSON:`;
     }
 
     // ===== Tenant Knowledge Base (3-tier: tenant private ∪ global canon) =====
-    // Uses the new multi-tenant KB. Resolves the caller's tenant, runs the
+    // Uses the new multi-tenant KB. Searches the caller's ACTIVE tenant, runs the
     // hybrid match_tenant_knowledge RPC, and logs metadata-only telemetry
     // (hashed query, no raw text or content leaves the tenant boundary).
     let tenantKbContext = "";
     try {
       if (lastUserMessage && lastUserMessage.content?.trim()) {
-        const { data: membership } = await supabase
-          .from("tenant_members")
-          .select("tenant_id")
-          .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
-        const tenantId = (membership as any)?.tenant_id ?? null;
+        // §9/§51 — the ONLY tenant this handler may search is the caller's ACTIVE one,
+        // already resolved above by get_paige_persona_context() (migration 20260802133000),
+        // which honours profiles.active_tenant_id. That is exactly what the RPC's own guard
+        // (migration 20260720224948) compares p_tenant_id against.
+        //
+        // This previously read tenant_members with an UNORDERED .limit(1) that ignored the
+        // active tenant. For anyone holding more than one membership — every Agency Parent,
+        // because agency_enter_subaccount() writes a membership row — that could name a
+        // DIFFERENT tenant than the guard expects, so the RPC raised KB_FORBIDDEN and Paige
+        // silently answered with NO knowledge at all (§13: the failure was invisible).
+        //
+        // §18 — one home. Do NOT reintroduce a local tenant pick, a helper, or a fallback
+        // here; if this value is wrong, the persona resolver is the thing to fix.
+        const tenantId = personaCtx.tenant_id;
 
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
@@ -1246,7 +1253,16 @@ JSON:`;
             },
           );
           if (tkErr) {
-            console.warn("[paige] match_tenant_knowledge error:", tkErr.message);
+            // §13 — an authorization refusal here is NOT routine. It means the tenant this
+            // handler asked for is not the one the RPC's guard will allow, and the visible
+            // symptom is Paige answering with no knowledge and no complaint. Log it at ERROR
+            // with the refused scope so it is diagnosable from the function logs instead of
+            // being read as ordinary noise. (Behaviour is unchanged: retrieval still degrades
+            // to no-KB rather than failing the turn.)
+            console.error(
+              "[paige] match_tenant_knowledge REFUSED — no knowledge context for this turn",
+              JSON.stringify({ tenant_id: tenantId, code: (tkErr as any)?.code ?? null, message: tkErr.message }),
+            );
           } else {
             const MIN_SIM = 0.7;
             const kept = (Array.isArray(tkRows) ? tkRows : [])
