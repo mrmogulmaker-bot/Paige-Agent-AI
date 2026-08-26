@@ -15,6 +15,7 @@ describe("tenant canonical Calendar source contract", () => {
   const adapter = source("src/components/tenant-calendar/TenantCanonicalCalendarWorkspace.tsx");
   const manager = source("src/components/admin/calendar/CalendarsPanel.tsx");
   const css = source("src/components/tenant-calendar/tenant-canonical-calendar.css");
+  const clientsCss = source("src/components/tenant-relationships/tenant-relationships-clients-workspace.css");
 
   it("retires both fixture Calendar owners in favor of one canonical adapter", () => {
     expect(solo).not.toContain('from "./calendar-book"');
@@ -91,5 +92,20 @@ describe("tenant canonical Calendar source contract", () => {
     ]) {
       expect(calendar).toContain(copy);
     }
+  });
+
+  it("reflows the Solo Clients Calendar from its real center width at 1366px", () => {
+    const viewportWidth = 1366;
+    const expandedNavigationWidth = 216;
+    const expandedPaigeWidth = 355;
+    const centerWorkspaceWidth = viewportWidth - expandedNavigationWidth - expandedPaigeWidth;
+
+    expect(centerWorkspaceWidth).toBe(795);
+    expect(centerWorkspaceWidth).toBeLessThan(900);
+    expect(clientsCss).toMatch(/\.trc-canonical-mount--direct\s*\{[^}]*container-name:\s*solo-calendar-mount/s);
+    expect(clientsCss).toMatch(/\.trc-canonical-mount--direct\s*\{[^}]*container-type:\s*inline-size/s);
+    expect(clientsCss).toMatch(
+      /@container\s+solo-calendar-mount\s*\(max-width:\s*900px\)[\s\S]*?\.trc-canonical-mount--direct\s+\.tcal-shell\s*\{[^}]*display:\s*flex/s,
+    );
   });
 });

@@ -120,16 +120,18 @@ export function TenantRelationshipsClientsWorkspace({
 
   return (
     <section className={`trc-workspace${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
-      <header className={`trc-heading${soloCalendar ? " trc-heading--calendar" : ""}`}>
-        <div>
-          <span>{workspaceName} · {activeTenant.name}</span>
-          <h1>{soloCalendar ? "Calendar" : variant === "relationships" ? "The relationship book" : "Your client book"}</h1>
-          {!soloCalendar && <p>{variant === "relationships"
-            ? "People and activity across the server-authorized book, with ownership intact."
-            : "One trustworthy record for every client relationship this account serves."}</p>}
-        </div>
-        <ProofPill tone={proof.tone}>{proof.label}</ProofPill>
-      </header>
+      {!soloCalendar && (
+        <header className="trc-heading">
+          <div>
+            <span>{workspaceName} · {activeTenant.name}</span>
+            <h1>{variant === "relationships" ? "The relationship book" : "Your client book"}</h1>
+            <p>{variant === "relationships"
+              ? "People and activity across the server-authorized book, with ownership intact."
+              : "One trustworthy record for every client relationship this account serves."}</p>
+          </div>
+          <ProofPill tone={proof.tone}>{proof.label}</ProofPill>
+        </header>
+      )}
 
       <div className="trc-tabs" role="tablist" aria-label={`${workspaceName} views`}>
         {tabs.map((tab, index) => (
