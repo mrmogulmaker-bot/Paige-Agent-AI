@@ -52,7 +52,7 @@ import AutomationsHub from "./automations";
 import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
 import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import ClientsHub from "./clients";
-import CalendarHub from "./calendar";
+import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
 import ClientSupport from "./support";
 import GrowthHub from "./growth";
 import Analytics2 from "./analytics";
@@ -683,7 +683,7 @@ const AgencyAppContent = ({ mode = "agency" }) => {
     compass: <TrustCompass isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     autos: <AutomationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     fleet: <AgencyClientsRoute tier={tier} isAgency={isAgency} acting={acting} openAsk={openAsk} enterSubaccount={enterSubaccount} />,
-    calendar: <CalendarHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    calendar: <TenantCanonicalCalendarWorkspace tier="agency" openPaige={openAsk} />,
     support: <ClientSupport isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     growth: <GrowthHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     analytics: <Analytics2 isAgency={isAgency} acting={acting} openAsk={openAsk} />,

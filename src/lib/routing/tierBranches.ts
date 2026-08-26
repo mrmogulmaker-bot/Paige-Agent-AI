@@ -166,14 +166,15 @@ export const SOLO_BRANCHES: Branch[] = [
   },
   {
     slug: "calendar", key: "cal", label: "Calendar", group: "main",
-    // Source: src/solo/calendar-book.tsx. Solo has a Routing sub-tab the agency tree lacks.
+    // One canonical Calendar owner. Legacy slugs remain aliases so copied links
+    // resolve without preserving the retired fixture IA.
     subtabs: [
-      { slug: "schedule", key: "sch", label: "Schedule" },
-      { slug: "booking-links", key: "links", label: "Booking links" },
-      { slug: "routing", key: "route", label: "Routing" },
-      { slug: "availability", key: "avail", label: "Availability" },
-      { slug: "requests", key: "req", label: "Requests" },
-      { slug: "settings", key: "set", label: "Settings" },
+      { slug: "week", aliases: ["calendar", "schedule"], key: "calendar", label: "Calendar" },
+      { slug: "agenda", aliases: ["requests"], key: "agenda", label: "Agenda" },
+      { slug: "tasks", key: "tasks", label: "Tasks" },
+      { slug: "booking-pages", aliases: ["booking-links", "routing"], key: "booking", label: "Booking pages" },
+      { slug: "availability", key: "availability", label: "Availability" },
+      { slug: "connections", aliases: ["settings"], key: "connections", label: "Connections" },
     ],
   },
   {
@@ -314,11 +315,12 @@ export const AGENCY_BRANCHES: Branch[] = [
   {
     slug: "calendar", key: "calendar", label: "Calendar", group: "main",
     subtabs: [
-      { slug: "schedule", key: "schedule", label: "Schedule" },
-      { slug: "booking-links", key: "links", label: "Booking links" },
-      { slug: "availability", key: "avail", label: "Availability" },
-      { slug: "requests", key: "requests", label: "Requests" },
-      { slug: "settings", key: "settings", label: "Settings" },
+      { slug: "week", aliases: ["calendar", "schedule"], key: "calendar", label: "Calendar" },
+      { slug: "agenda", aliases: ["requests"], key: "agenda", label: "Agenda" },
+      { slug: "tasks", key: "tasks", label: "Tasks" },
+      { slug: "booking-pages", aliases: ["booking-links"], key: "booking", label: "Booking pages" },
+      { slug: "availability", key: "availability", label: "Availability" },
+      { slug: "connections", aliases: ["settings"], key: "connections", label: "Connections" },
     ],
   },
   // Client Support has NO sub-tabs (single ticket surface + status filter chips).

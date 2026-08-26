@@ -130,7 +130,7 @@ describe("Sub-tab tree (§65 3-level, agency verified 2026-08-17)", () => {
     expect(count("paige")).toBe(6);
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(7);
-    expect(count("calendar")).toBe(5);
+    expect(count("calendar")).toBe(6);
     expect(count("growth")).toBe(7);
     expect(count("analytics")).toBe(6);
     expect(count("marketplace")).toBe(6);
@@ -218,7 +218,8 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     roundTrip("paige", "knowledge", "know");
     roundTrip("automations", "library", "lib");
     roundTrip("clients", "pipeline", "pipe");
-    roundTrip("calendar", "booking-links", "links");
+    expect(subtabBySlug("solo", "calendar", "booking-links")?.key).toBe("booking");
+    expect(subtabByKey("solo", "calendar", "booking")?.slug).toBe("booking-pages");
     roundTrip("growth", "overview", "ov");
     roundTrip("analytics", "market-watch", "mkt");
     roundTrip("integrations", "web-automator", "auto");
@@ -242,8 +243,8 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     ]);
     expect(branchBySlug("agency", "clients")?.subtabs?.map((s) => s.slug))
       .toEqual(["people", "conversations", "calendar", "segments", "portal", "sub-accounts", "pipelines"]);
-    // Solo calendar has Routing; agency does not.
-    expect(subtabBySlug("solo", "calendar", "routing")?.key).toBe("route");
+    // The retired Solo-only Routing URL remains a booking-page compatibility alias.
+    expect(subtabBySlug("solo", "calendar", "routing")?.key).toBe("booking");
     expect(subtabBySlug("agency", "calendar", "routing")).toBeNull();
     // Marketplace: curated + publish are agency-only.
     expect(subtabBySlug("agency", "marketplace", "curated")).not.toBeNull();
@@ -275,9 +276,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       ["paige", "actions", "act", "actions"],
       ["paige", "paige-team", "team", "pteam"],
       ["automations", "library", "lib", "library"],
-      ["calendar", "schedule", "sch", "schedule"],
-      ["calendar", "requests", "req", "requests"],
-      ["calendar", "settings", "set", "settings"],
+      ["calendar", "schedule", "calendar", "calendar"],
+      ["calendar", "requests", "agenda", "agenda"],
+      ["calendar", "settings", "connections", "connections"],
       ["growth", "overview", "ov", "overview"],
       ["growth", "brand-kit", "brand", "brand"], // same on both — asserted below as equal
       ["analytics", "retention", "ret", "retain"],
@@ -332,7 +333,7 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     "command-center": "src/solo/CommandCenter.tsx",
     paige: "src/solo/paigehub.tsx",
     automations: "src/solo/automations-build.tsx",
-    calendar: "src/solo/calendar-book.tsx",
+    calendar: "src/pages/admin/CalendarAdmin.tsx",
     growth: "src/solo/growth2.tsx",
     analytics: "src/solo/analytics2.tsx",
     marketplace: "src/solo/marketplace.tsx",
@@ -354,6 +355,9 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
   /** The tab keys the SCREEN actually renders for `branchSlug`, read from source. */
   function screenKeys(file: string, branchSlug: string): string[] {
     const src = readFileSync(resolve(process.cwd(), file), "utf8");
+    if (branchSlug === "calendar") {
+      return [...src.matchAll(/<TabsTrigger\s+value=["']([a-z-]+)["']/g)].map((match) => match[1]);
+    }
     // Anchor on the routed hook call (tolerant of spacing after commas).
     const hook = new RegExp(
       `useSubtabRoute\\(\\s*["']solo["']\\s*,\\s*["']${branchSlug}["']`,

@@ -81,6 +81,12 @@ function EventBlock({ ev, style, onClick }: { ev: GridEvent; style: React.CSSPro
     return (
       <div
         onClick={onClick}
+        onKeyDown={onClick ? (event) => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); }
+        } : undefined}
+        role={onClick ? "button" : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        aria-label={onClick ? `${ev.title}, ${fmtTime(ev.start)}` : undefined}
         className={`absolute rounded-md border border-dashed px-1.5 py-0.5 overflow-hidden text-[11px] leading-tight ${onClick ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
         style={{
           ...style,
@@ -107,6 +113,12 @@ function EventBlock({ ev, style, onClick }: { ev: GridEvent; style: React.CSSPro
   return (
     <div
       onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); }
+      } : undefined}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `${ev.title}, ${fmtTime(ev.start)} to ${fmtTime(ev.end)}` : undefined}
       className={`absolute rounded-md px-1.5 py-1 overflow-hidden text-[11px] leading-tight ${onClick ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
       style={{
         ...style,
@@ -185,7 +197,14 @@ function useNowMinutes(active: boolean): number | null {
   return mins;
 }
 
-export function CalendarGrid({ view, cursor, events, onEventClick }: { view: ViewMode; cursor: Date; events: GridEvent[]; onEventClick?: (id: string) => void }) {
+export function CalendarGrid({ view, cursor, events, onEventClick, workWeek = false }: {
+  view: ViewMode;
+  cursor: Date;
+  events: GridEvent[];
+  onEventClick?: (id: string) => void;
+  /** Tenant Calendar follows the approved five-weekday field; admin remains seven-day. */
+  workWeek?: boolean;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (view !== "month" && scrollRef.current) {
@@ -195,7 +214,10 @@ export function CalendarGrid({ view, cursor, events, onEventClick }: { view: Vie
 
   if (view === "month") return <MonthView cursor={cursor} events={events} onEventClick={onEventClick} />;
 
-  const days = view === "day" ? [startOfDay(cursor)] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cursor), i));
+  const weekStart = workWeek ? addDays(startOfWeek(cursor), 1) : startOfWeek(cursor);
+  const days = view === "day"
+    ? [startOfDay(cursor)]
+    : Array.from({ length: workWeek ? 5 : 7 }, (_, i) => addDays(weekStart, i));
   const today = new Date();
 
   return (
@@ -264,6 +286,12 @@ function MonthView({ cursor, events, onEventClick }: { cursor: Date; events: Gri
               <div className="space-y-0.5">
                 {list.slice(0, 3).map((e) => (
                   <div key={e.id} onClick={onEventClick ? () => onEventClick(e.id) : undefined}
+                    onKeyDown={onEventClick ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEventClick(e.id); }
+                    } : undefined}
+                    role={onEventClick ? "button" : undefined}
+                    tabIndex={onEventClick ? 0 : undefined}
+                    aria-label={onEventClick ? `${e.title}, ${fmtTime(e.start)}` : undefined}
                     className={`flex items-center gap-1 text-[10px] truncate ${onEventClick ? "cursor-pointer hover:opacity-70" : ""} ${e.kind === "plan" && e.status === "done" ? "line-through opacity-60" : ""}`}
                     title={`${e.title} · ${fmtTime(e.start)}`}>
                     {/* Plan items get a hollow ring; bookings a solid dot. */}

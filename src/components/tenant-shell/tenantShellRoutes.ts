@@ -138,7 +138,7 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
  * and authorization remain server-derived in the route owner; this helper
  * preserves an already-confirmed acting-child address when building links.
  */
-function tenantRoutePrefixForPath(pathname: string): string | null {
+export function tenantRoutePrefixForPath(pathname: string): string | null {
   const actingChildMatch = pathname.match(AGENCY_ACTING_CHILD_ROUTE_PATTERN);
   if (actingChildMatch) {
     const [, parentAccount, childAccount] = actingChildMatch;

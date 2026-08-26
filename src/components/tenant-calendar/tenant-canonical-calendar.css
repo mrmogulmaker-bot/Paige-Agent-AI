@@ -1,0 +1,102 @@
+.tcal-board {
+  display: grid;
+  grid-template-areas: "filters canvas inspector";
+  grid-template-columns: 210px minmax(0, 1fr) 260px;
+  min-width: 0;
+  gap: 12px;
+  align-items: start;
+}
+
+.tcal-canvas {
+  position: relative;
+  grid-area: canvas;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tcal-filters {
+  grid-area: filters;
+  min-width: 0;
+  max-height: 650px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tcal-inspector {
+  grid-area: inspector;
+  min-width: 0;
+  max-height: 650px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid hsl(var(--border));
+  border-radius: .65rem;
+  background: hsl(var(--card));
+  padding: 16px;
+}
+
+.tcal-kicker {
+  margin: 0 0 16px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.tcal-inspector-item {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: .55rem;
+  background: hsl(var(--background));
+  padding: 12px;
+  text-align: left;
+}
+
+.tcal-inspector-item:hover,
+.tcal-inspector-item:focus-visible {
+  border-color: hsl(var(--primary));
+  outline: none;
+}
+
+.tcal-inspector-item span,
+.tcal-inspector-item small {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+@media (max-width: 1279px) {
+  .tcal-board {
+    grid-template-areas:
+      "filters canvas"
+      "inspector inspector";
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .tcal-inspector { max-height: 220px; }
+}
+
+@media (max-width: 899px) {
+  .tcal-board {
+    grid-template-areas:
+      "canvas"
+      "filters"
+      "inspector";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tcal-filters,
+  .tcal-inspector { max-height: 260px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tcal-board *,
+  .tcal-board *::before,
+  .tcal-board *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

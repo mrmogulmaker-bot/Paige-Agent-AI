@@ -204,10 +204,25 @@ vi.mock("@/agency/integrations", () => ({ default: () => null }));
 vi.mock("@/components/tenant-relationships/TenantRelationshipsClientsWorkspace", () => ({
   TenantRelationshipsClientsWorkspace: () => null,
 }));
+vi.mock("@/pages/admin/CalendarAdmin", () => ({
+  default: ({ activeTenantId, activeTab, connectionsHref }: {
+    activeTenantId: string;
+    activeTab: string;
+    connectionsHref: string;
+  }) => (
+    <output
+      data-canonical-calendar
+      data-calendar-tenant={activeTenantId}
+      data-calendar-tab={activeTab}
+      data-calendar-connections={connectionsHref}
+    />
+  ),
+}));
 
 import { TenantProvider, useTenantContext } from "@/hooks/useTenantContext";
 import SoloEntry from "@/solo/SoloEntry";
 import AgencyEntry from "@/agency/AgencyEntry";
+import BusinessEntry from "@/business/BusinessEntry";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -327,6 +342,57 @@ afterEach(() => {
 });
 
 describe("tenant route owners preserve the newest authenticated account context", () => {
+  it.each([
+    ["Solo", "/solo/424242/calendar/agenda", "solo", "agenda"],
+    ["Agency Parent", "/agency/700001/calendar/tasks", "agency", "tasks"],
+    ["direct Sub-account", "/business/700002/calendar/availability", "sub_account", "availability"],
+    ["Enterprise compatibility", "/agency/600001/calendar/booking-pages", "enterprise", "booking"],
+  ] as const)("mounts the canonical Calendar through the real %s route owner", async (_label, path, accountType, tab) => {
+    const routeTenant = tenant({
+      id: `calendar-${accountType}`,
+      name: `${accountType} Calendar Account`,
+      account_type: accountType,
+      account_number: Number(path.split("/")[2]),
+    });
+    const route = path.startsWith("/solo/")
+      ? <Route path="/solo/*" element={<SoloEntry />} />
+      : path.startsWith("/business/")
+        ? <Route path="/business/*" element={<BusinessEntry />} />
+        : <Route path="/agency/*" element={<AgencyEntry />} />;
+    mount(path, route);
+    await startOverlappingLoads();
+    await resolveLoad(1, loadResult(routeTenant.id, [routeTenant]));
+
+    const calendar = container.querySelector("[data-canonical-calendar]");
+    expect(calendar?.getAttribute("data-calendar-tenant")).toBe(routeTenant.id);
+    expect(calendar?.getAttribute("data-calendar-tab")).toBe(tab);
+    expect(container.querySelectorAll("[data-canonical-calendar]")).toHaveLength(1);
+  });
+
+  it("mounts the canonical Calendar for the authenticated acting child, never the parent", async () => {
+    const parent = tenant({ id: "calendar-parent", name: "Calendar Parent", account_type: "agency", account_number: 700001 });
+    const child = tenant({
+      id: "calendar-child",
+      name: "Calendar Child",
+      account_type: "sub_account",
+      parent_tenant_id: parent.id,
+      account_number: 700002,
+    });
+    mount(
+      "/agency/700001/sub/700002/calendar/connections",
+      <Route path="/agency/*" element={<AgencyEntry />} />,
+    );
+    await startOverlappingLoads();
+    await resolveLoad(1, loadResult(child.id, [parent, child]));
+
+    const calendar = container.querySelector("[data-canonical-calendar]");
+    expect(calendar?.getAttribute("data-calendar-tenant")).toBe(child.id);
+    expect(calendar?.getAttribute("data-calendar-tenant")).not.toBe(parent.id);
+    expect(calendar?.getAttribute("data-calendar-connections")).toBe(
+      "/agency/700001/sub/700002/integrations",
+    );
+  });
+
   it("resolves the real Solo owner chain asynchronously and rejects a stale empty load", async () => {
     const solo = tenant({
       id: "solo-async",

@@ -17,7 +17,7 @@ import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relatio
 import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import { ClientsHub } from "./conversations";
 import { GrowthHub } from "./growth2";
-import { CalendarHub } from "./calendar-book";
+import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
 import { Analytics2 } from "./analytics2";
 import { Marketplace } from "./marketplace";
 import { VaultView } from "./vault";
@@ -176,7 +176,7 @@ const theme=resolvedTheme==='light'?'light':'dark';
 const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
