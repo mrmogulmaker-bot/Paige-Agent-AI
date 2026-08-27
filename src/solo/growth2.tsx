@@ -206,13 +206,13 @@ return <div key={i} className="card" style={{background:'var(--surface-2)',paddi
 <div className="row" style={{marginTop:9,paddingTop:9,borderTop:'1px solid var(--line-soft)',gap:6,color:'var(--violet)',fontSize:12}}><Ic.spark size={13}/>Follow-up drafted · {d.age}</div></div>)}
 <button className="btn btn-s" style={{justifyContent:'center',border:'1px dashed var(--line)',background:'none'}}><Ic.plus size={13}/>Add</button></div></div>})}</div></Wrap>};
 
-const openStudio=()=>window.dispatchEvent(new CustomEvent('paige-studio'));
+const openStudio=(event)=>window.dispatchEvent(new CustomEvent('paige-studio',{detail:{returnFocus:event.currentTarget}}));
 export const GrowthHub=()=>{const[tab,setTab]=useSubtabRoute("solo","growth","ov");
 const tabs=[['ov','Overview',()=><Ic.bolt size={14}/>],['brand','Brand Kit',()=><Ic.spark size={14}/>],['soc','Social',()=><Ic.users size={14}/>],
 ['pg','Pages',()=><Ic.grid size={14}/>],['fn','Funnels',()=><Ic.trend size={14}/>],['fm','Forms',()=><Ic.doc size={14}/>],['ext','Builders',()=><Ic.store size={14}/>]];
 return <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:0,minWidth:0,alignItems:'stretch'}}>
 <SubTabs tabs={tabs} cur={tab} set={setTab} right={<><button className="btn btn-s"><Ic.clock size={13}/>Last 7 days</button>
-<button className="btn btn-s btn-p" onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></>}/>
+<button className="btn btn-s btn-p" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></>}/>
 <Wrap><PageHead eyebrow="Campaigns" title={(tabs.find(t=>t[0]===tab)||[])[1]}
 sub="Live campaigns, pages, funnels, forms, and the builders you already pay for — every one reporting into pipeline and Paige's workflows."/>
 <Campaigns tab={tab}/></Wrap></div>};
