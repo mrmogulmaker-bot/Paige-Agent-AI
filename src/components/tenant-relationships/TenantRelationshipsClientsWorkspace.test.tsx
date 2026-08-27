@@ -32,7 +32,7 @@ vi.mock("@/pages/admin/ClientsConversations", async () => {
 });
 vi.mock("@/pages/admin/CalendarAdmin", async () => {
   const ReactModule = await import("react");
-  return { default: class MockCalendar extends ReactModule.Component<{ soloSettings?: boolean }> { mountId = ++ownerHarness.calendars; render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId, "data-solo-settings": String(Boolean(this.props.soloSettings)) }); } } };
+  return { default: class MockCalendar extends ReactModule.Component<{ soloSettings?: boolean }> { mountId = ++ownerHarness.calendars; render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId, "data-solo-settings": String(Boolean(this.props.soloSettings)) }, ReactModule.createElement("h1", null, "Calendar")); } } };
 });
 vi.mock("@/pages/admin/PortalStudio", async () => {
   const ReactModule = await import("react");
@@ -159,6 +159,10 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(host.textContent).not.toContain("Relationship association is not yet provable");
     expect(host.textContent).not.toContain("Your client book");
     expect(host.querySelector(".trc-workspace--calendar")).not.toBeNull();
+    expect(host.querySelector(".trc-heading")).toBeNull();
+    expect(host.querySelectorAll("h1")).toHaveLength(1);
+    expect(host.querySelector("h1")?.textContent).toBe("Calendar");
+    expect(Array.from(host.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent)).toEqual(["People", "Conversations", "Calendar", "Portal"]);
     expect(host.querySelector("[data-mocked-calendar]")?.getAttribute("data-solo-settings")).toBe("true");
     act(() => root.unmount());
   });
