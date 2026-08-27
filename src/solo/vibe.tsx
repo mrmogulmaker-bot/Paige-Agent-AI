@@ -22,7 +22,7 @@ const ink='#0A0818',panel='rgba(255,255,255,.06)',line='rgba(255,255,255,.12)',t
 return <div style={{position:'fixed',inset:0,zIndex:80,display:'grid',gridTemplateColumns:'244px minmax(0,1fr)',background:ink,color:txt,overflow:'hidden'}}>
 <div style={{borderRight:'1px solid '+line,padding:'14px 14px 16px',display:'flex',flexDirection:'column',gap:14}}>
 <button onClick={onBack} className="row" style={{gap:8,color:dim,fontSize:12.5,padding:'2px 4px'}}>
-<span style={{transform:'rotate(180deg)',display:'flex'}}><Ic.chev size={14}/></span>Back to Growth
+<span style={{transform:'rotate(180deg)',display:'flex'}}><Ic.chev size={14}/></span>Back to Campaigns
 <span className="mono" style={{marginLeft:'auto',fontSize:10.5,border:'1px solid '+line,borderRadius:5,padding:'1px 5px'}}>Esc</span></button>
 <div className="row" style={{gap:9,padding:'0 4px'}}><Logo size={22}/><span style={{fontWeight:600,fontSize:14.5,letterSpacing:'-.02em'}}>Vibe Studio</span></div>
 <button className="btn" style={{justifyContent:'center',background:'var(--gold-bright)',borderColor:'var(--gold-bright)',color:'#2A1C00',fontWeight:600,height:40,borderRadius:12}}><Ic.plus size={16}/>New project</button>

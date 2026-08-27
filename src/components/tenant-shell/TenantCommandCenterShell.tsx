@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
@@ -110,6 +110,8 @@ export function TenantCommandCenterShell({
   const { railExpanded, expandRail, collapseRail } = useAgentPresence();
   const [navExpanded, setNavExpanded] = useState(readNavPreference);
   const [announcement, setAnnouncement] = useState("PAIGE workspace ready");
+  const mainNavigationRef = useRef<HTMLDivElement>(null);
+  const focusReturnDestination = useRef<string | null>(null);
   const destinations = tenantShellDestinationsForPath(location.pathname, accountType);
   const destination = resolveTenantShellDestination(location.pathname, accountType);
   const isDark = resolvedTheme !== "light";
@@ -159,14 +161,33 @@ export function TenantCommandCenterShell({
     expandRail();
   }, [expandRail, location.pathname, location.search, navigate]);
 
+  const queueSoloContextualExit = useCallback(() => {
+    if (!location.pathname.startsWith("/solo/") || !contextualNavigation) return;
+    focusReturnDestination.current = destination.id;
+    setAnnouncement(`${contextualNavigation.label} navigation closed`);
+  }, [contextualNavigation, destination.id, location.pathname]);
+
+  useEffect(() => {
+    if (contextualNavigation || !focusReturnDestination.current) return;
+    const pendingDestination = focusReturnDestination.current;
+    const frame = window.requestAnimationFrame(() => {
+      const target = mainNavigationRef.current?.querySelector<HTMLElement>(
+        `[data-tenant-destination="${pendingDestination}"]`,
+      );
+      target?.focus();
+      focusReturnDestination.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [contextualNavigation]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && contextualNavigation && !event.defaultPrevented) {
-        const target = event.target as HTMLElement | null;
-        if (target?.matches("input, textarea, select, [contenteditable='true']") || target?.closest("[role='dialog']")) return;
+        const target = event.target;
+        if (target instanceof Element && (target.matches("input, textarea, select, [contenteditable='true']") || target.closest("[role='dialog']"))) return;
         event.preventDefault();
+        queueSoloContextualExit();
         navigate(contextualNavigation.backHref);
-        setAnnouncement(`${contextualNavigation.label} navigation closed`);
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.key !== "\\") return;
@@ -177,7 +198,7 @@ export function TenantCommandCenterShell({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closePaige, contextualNavigation, navExpanded, navigate, openPaige, railExpanded, setNavigation]);
+  }, [closePaige, contextualNavigation, navExpanded, navigate, openPaige, queueSoloContextualExit, railExpanded, setNavigation]);
 
   if (detached) {
     return (
@@ -217,10 +238,10 @@ export function TenantCommandCenterShell({
           </button>
         </div>
 
-        <div className="tcs-nav-links" data-contextual-navigation={contextualNavigation ? contextualNavigation.label : undefined}>
+        <div ref={mainNavigationRef} className="tcs-nav-links" data-contextual-navigation={contextualNavigation ? contextualNavigation.label : undefined}>
           {contextualNavigation ? (
             <>
-              <Link className="tcs-context-back" to={contextualNavigation.backHref} title={!navExpanded ? contextualNavigation.backLabel : undefined}>
+              <Link className="tcs-context-back" to={contextualNavigation.backHref} onClick={queueSoloContextualExit} title={!navExpanded ? contextualNavigation.backLabel : undefined}>
                 <ArrowLeft aria-hidden />
                 <span>{contextualNavigation.backLabel}</span>
               </Link>
@@ -239,7 +260,7 @@ export function TenantCommandCenterShell({
           ) : destinations.map(({ id, label, href, icon: Icon }) => {
               const active = destination.id === id;
               return (
-                <Link key={id} to={href} className={active ? "is-active" : undefined} aria-current={active ? "page" : undefined} title={!navExpanded ? label : undefined}>
+                <Link key={id} to={href} data-tenant-destination={id} className={active ? "is-active" : undefined} aria-current={active ? "page" : undefined} title={!navExpanded ? label : undefined}>
                   <Icon aria-hidden />
                   <span>{label}</span>
                   <i aria-hidden />
