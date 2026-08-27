@@ -26,6 +26,7 @@ vi.mock("@/components/admin/voice/IncomingCallOverlay", () => ({ IncomingCallOve
 vi.mock("@/components/admin/voice/LiveTranscriptPanel", () => ({ LiveTranscriptPanel: () => null }));
 vi.mock("@/solo/CommandCenter", () => ({ CommandHub: () => null }));
 vi.mock("@/solo/paigehub", () => ({ PaigeHub: () => null }));
+vi.mock("@/solo/SoloPaigeWorkspace", () => ({ SoloPaigeWorkspace: () => <div data-solo-paige-test-workspace /> }));
 vi.mock("@/solo/compass", () => ({ TrustCompass: () => null }));
 vi.mock("@/solo/automations-build", () => ({ AutomationsHub: () => null }));
 vi.mock("@/components/tenant-relationships/TenantRelationshipsClientsWorkspace", () => ({ TenantRelationshipsClientsWorkspace: () => null }));
@@ -224,9 +225,16 @@ describe("tenant PAIGE command field", () => {
 
   it("routes the command field into expandRail instead of another chat instance", () => {
     const shell = source("src/components/tenant-shell/TenantCommandCenterShell.tsx");
+    const solo = source("src/solo/SoloApp.tsx");
     expect(shell).toMatch(/const openPaige = useCallback\(\(\) => \{\s*expandRail\(\)/);
-    expect(shell).toContain("<TenantPaigeCommandField expanded={railExpanded} onOpen={openPaige} />");
+    expect(shell).toMatch(/<TenantPaigeCommandField[^>]*expanded=\{railExpanded \|\| paigeFull\}[^>]*onOpen=\{openPaige\}/);
     expect(shell.match(/function PaigeWorkspace\(/g)).toHaveLength(1);
+    expect(shell).toContain("soloPaigeWorkspace");
+    expect(shell).toContain("paigeFull");
+    expect(shell).toContain('!railExpanded || paigeOverlay ? "0px"');
+    expect(solo).not.toContain("paige:<PaigeHub/>");
+    expect(solo).toContain("<SoloPaigeWorkspace");
+    expect(solo.match(/<SoloPaigeWorkspace/g)).toHaveLength(1);
   });
 });
 

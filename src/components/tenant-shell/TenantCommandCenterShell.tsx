@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
@@ -7,8 +7,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  LockKeyhole,
   LogOut,
   Moon,
+  Maximize2,
+  Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
   Sun,
@@ -64,14 +67,22 @@ export interface TenantCommandCenterShellProps {
     activeId: string;
     items: Array<{ id: string; label: string; href: string; icon: LucideIcon }>;
   };
+  /** Solo-only presentation slot. Other tiers keep the current shared chat. */
+  soloPaigeWorkspace?: ReactNode;
+  /** The Solo /paige route displays the same persistent workspace at full size. */
+  paigeFull?: boolean;
+  paigeFullHref?: string;
+  paigeReturnHref?: string;
 }
 
 export function TenantPaigeCommandField({
   expanded,
   onOpen,
+  autoFocus = false,
 }: {
   expanded: boolean;
   onOpen: () => void;
+  autoFocus?: boolean;
 }) {
   return (
     <button
@@ -82,6 +93,7 @@ export function TenantPaigeCommandField({
       aria-expanded={expanded}
       aria-controls="tenant-paige-workspace"
       aria-label="Direct PAIGE"
+      autoFocus={autoFocus}
     >
       <span className="tcs-command-glyph" data-state={expanded ? "charged" : "dormant"}>
         <CommandGlyph size={18} />
@@ -102,6 +114,10 @@ export function TenantCommandCenterShell({
   onSignOut,
   signingOut = false,
   contextualNavigation,
+  soloPaigeWorkspace,
+  paigeFull = false,
+  paigeFullHref,
+  paigeReturnHref,
 }: TenantCommandCenterShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -109,9 +125,13 @@ export function TenantCommandCenterShell({
   const { resolvedTheme, setTheme } = useTheme();
   const { railExpanded, expandRail, collapseRail } = useAgentPresence();
   const [navExpanded, setNavExpanded] = useState(readNavPreference);
+  const [paigeWide, setPaigeWide] = useState(false);
+  const [paigeOverlay, setPaigeOverlay] = useState(false);
+  const [paigeFocusToken, setPaigeFocusToken] = useState(0);
   const [announcement, setAnnouncement] = useState("PAIGE workspace ready");
   const mainNavigationRef = useRef<HTMLDivElement>(null);
   const focusReturnDestination = useRef<string | null>(null);
+  const paigeReturnPath = useRef<string | null>(null);
   const destinations = tenantShellDestinationsForPath(location.pathname, accountType);
   const destination = resolveTenantShellDestination(location.pathname, accountType);
   const isDark = resolvedTheme !== "light";
@@ -132,6 +152,58 @@ export function TenantCommandCenterShell({
     collapseRail();
     setAnnouncement("PAIGE conversation folded; your thread is preserved");
   }, [collapseRail]);
+
+  const focusPaigeCommand = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>("[data-tenant-paige-command]")?.focus();
+      });
+    });
+  }, []);
+
+  const leavePaigeFull = useCallback(() => {
+    const target = paigeReturnPath.current ?? paigeReturnHref;
+    paigeReturnPath.current = null;
+    if (target) navigate(target);
+    setPaigeWide(true);
+    expandRail();
+    setAnnouncement("PAIGE returned to the expanded workspace");
+  }, [expandRail, navigate, paigeReturnHref]);
+
+  const togglePaigeFull = useCallback(() => {
+    if (paigeFull) {
+      leavePaigeFull();
+      return;
+    }
+    if (!paigeFullHref) return;
+    paigeReturnPath.current = `${location.pathname}${location.search}`;
+    navigate(paigeFullHref);
+    expandRail();
+    setAnnouncement("PAIGE opened in the full workspace");
+  }, [expandRail, leavePaigeFull, location.pathname, location.search, navigate, paigeFull, paigeFullHref]);
+
+  const foldSoloPaige = useCallback(() => {
+    setPaigeFocusToken((token) => token + 1);
+    if (paigeFull) {
+      const target = paigeReturnPath.current ?? paigeReturnHref;
+      paigeReturnPath.current = null;
+      if (target) navigate(target);
+    }
+    collapseRail();
+    setAnnouncement("PAIGE folded; your conversation is preserved");
+    focusPaigeCommand();
+  }, [collapseRail, focusPaigeCommand, navigate, paigeFull, paigeReturnHref]);
+
+  useEffect(() => {
+    if (!paigeFocusToken || paigeFull || railExpanded) return;
+    const restore = () => document.querySelector<HTMLElement>("[data-tenant-paige-command]")?.focus({ preventScroll: true });
+    const frame = window.requestAnimationFrame(restore);
+    const settledTimer = window.setTimeout(restore, 150);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settledTimer);
+    };
+  }, [location.pathname, navExpanded, paigeFocusToken, paigeFull, paigeOverlay, railExpanded]);
 
   const detachPaige = useCallback(() => {
     const next = new URL(window.location.href);
@@ -181,6 +253,18 @@ export function TenantCommandCenterShell({
   }, [contextualNavigation]);
 
   useEffect(() => {
+    if (!soloPaigeWorkspace || typeof window.matchMedia !== "function") return;
+    const narrowViewport = window.matchMedia("(max-width: 1080px)");
+    const protectConversationMeasure = () => {
+      setPaigeOverlay(narrowViewport.matches);
+      if (narrowViewport.matches) setNavExpanded(false);
+    };
+    protectConversationMeasure();
+    narrowViewport.addEventListener("change", protectConversationMeasure);
+    return () => narrowViewport.removeEventListener("change", protectConversationMeasure);
+  }, [soloPaigeWorkspace]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && contextualNavigation && !event.defaultPrevented) {
         const target = event.target;
@@ -188,6 +272,13 @@ export function TenantCommandCenterShell({
         event.preventDefault();
         queueSoloContextualExit();
         navigate(contextualNavigation.backHref);
+        return;
+      }
+      if (event.key === "Escape" && soloPaigeWorkspace && (railExpanded || paigeFull) && !event.defaultPrevented) {
+        const target = event.target;
+        if (target instanceof Element && target.closest("[role='dialog']")) return;
+        event.preventDefault();
+        foldSoloPaige();
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.key !== "\\") return;
@@ -198,13 +289,13 @@ export function TenantCommandCenterShell({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closePaige, contextualNavigation, navExpanded, navigate, openPaige, queueSoloContextualExit, railExpanded, setNavigation]);
+  }, [closePaige, contextualNavigation, foldSoloPaige, navExpanded, navigate, openPaige, paigeFull, queueSoloContextualExit, railExpanded, setNavigation, soloPaigeWorkspace]);
 
   if (detached) {
     return (
       <div data-pg={isDark ? "dark" : "light"} data-tenant-shell data-paige-popout>
         <span className="tcs-sr-live" aria-live="polite">{announcement}</span>
-        <PaigeWorkspace onFold={redockPaige} onDetach={redockPaige} detached />
+        <PaigeWorkspace onFold={redockPaige} onDetach={redockPaige} detached content={soloPaigeWorkspace} />
       </div>
     );
   }
@@ -215,7 +306,14 @@ export function TenantCommandCenterShell({
       data-tenant-shell
       data-nav={navExpanded ? "expanded" : "compact"}
       data-paige={railExpanded ? "open" : "closed"}
+      data-paige-full={paigeFull ? "true" : "false"}
+      data-solo-paige={soloPaigeWorkspace ? "true" : "false"}
+      data-paige-size={paigeWide ? "expanded" : "docked"}
       data-reduced-motion={reduceMotion ? "true" : "false"}
+      style={soloPaigeWorkspace ? ({
+        "--tcs-paige": paigeFull ? "minmax(0, 1fr)" : !railExpanded || paigeOverlay ? "0px" : paigeWide ? "minmax(620px, 52vw)" : "minmax(440px, 34vw)",
+        ...(paigeFull ? { gridTemplateColumns: "var(--tcs-rail) 0 minmax(0, 1fr)" } : {}),
+      } as CSSProperties) : undefined}
     >
       <span className="tcs-sr-live" aria-live="polite">{announcement}</span>
       <a className="tcs-skip" href="#tenant-shell-main">Skip to content</a>
@@ -300,14 +398,14 @@ export function TenantCommandCenterShell({
         </div>
       </nav>
 
-      <section className="tcs-canvas">
+      <section className="tcs-canvas" style={paigeFull ? { visibility: "hidden", pointerEvents: "none" } : undefined}>
         <header className="tcs-command-row">
           <div className="tcs-context">
             <span>{accountName}</span>
             <strong>{destination.label}</strong>
             <small>{providedBy ? `Provided by ${providedBy}` : tenantAccountTypeLabel(accountType)}</small>
           </div>
-          <TenantPaigeCommandField expanded={railExpanded} onOpen={openPaige} />
+          <TenantPaigeCommandField key={`${paigeFull ? "full" : "panel"}:${paigeFocusToken}`} expanded={railExpanded || paigeFull} onOpen={openPaige} autoFocus={!!soloPaigeWorkspace && !paigeFull && !railExpanded && paigeFocusToken > 0} />
           <div className="tcs-command-actions">
             <div className="tcs-account-controls" aria-label="Account context controls">{accountControls}</div>
             <DialPadTrigger />
@@ -318,8 +416,19 @@ export function TenantCommandCenterShell({
         <main id="tenant-shell-main" className="tcs-main">{children}</main>
       </section>
 
-      {railExpanded && <button className="tcs-paige-backdrop" onClick={closePaige} aria-label="Fold PAIGE conversation" />}
-      {railExpanded && <PaigeWorkspace onFold={closePaige} onDetach={detachPaige} />}
+      {railExpanded && !paigeFull && <button className="tcs-paige-backdrop" onClick={soloPaigeWorkspace ? foldSoloPaige : closePaige} aria-label="Fold PAIGE conversation" />}
+      {soloPaigeWorkspace ? (
+        <PaigeWorkspace
+          onFold={foldSoloPaige}
+          onDetach={detachPaige}
+          onToggleFull={togglePaigeFull}
+          onToggleWide={() => setPaigeWide((wide) => !wide)}
+          full={paigeFull}
+          wide={paigeWide}
+          hidden={!railExpanded && !paigeFull}
+          content={soloPaigeWorkspace}
+        />
+      ) : railExpanded ? <PaigeWorkspace onFold={closePaige} onDetach={detachPaige} /> : null}
     </div>
   );
 }
@@ -328,20 +437,42 @@ function PaigeWorkspace({
   onFold,
   onDetach,
   detached = false,
+  full = false,
+  hidden = false,
+  content,
+  onToggleFull,
+  onToggleWide,
+  wide = false,
 }: {
   onFold: () => void;
   onDetach: () => void;
   detached?: boolean;
+  full?: boolean;
+  hidden?: boolean;
+  content?: ReactNode;
+  onToggleFull?: () => void;
+  onToggleWide?: () => void;
+  wide?: boolean;
 }) {
   return (
-    <aside id="tenant-paige-workspace" className="tcs-paige" aria-label="PAIGE command workspace">
+    <aside id="tenant-paige-workspace" className="tcs-paige" aria-label="PAIGE command workspace" data-solo-paige={content ? "true" : undefined} data-full={full ? "true" : "false"} data-wide={wide ? "true" : "false"} hidden={hidden} style={full ? { position: "relative", inset: "auto", width: "auto", gridColumn: "3" } : undefined}>
       <header className="tcs-paige-header">
         <span className="tcs-paige-mark"><CommandGlyph size={20} /></span>
         <div>
           <strong>PAIGE</strong>
           <span>Your live operating partner</span>
         </div>
-        <button
+        {content && <span className="tcs-paige-authority" style={{ display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto", padding: "5px 8px", border: "1px solid var(--pg-line)", borderRadius: 999, color: "var(--pg-ink-2)", background: "var(--pg-surface)", fontSize: 10, whiteSpace: "nowrap" }}><LockKeyhole aria-hidden size={13} />Ask first</span>}
+        {content && !full && onToggleWide && (
+          <button type="button" className="tcs-icon-button" onClick={onToggleWide} aria-label={wide ? "Return PAIGE to docked panel" : "Expand PAIGE panel"} title={wide ? "Return to docked panel" : "Expand panel"}>
+            {wide ? <PanelLeftClose aria-hidden /> : <PanelLeftOpen aria-hidden />}
+          </button>
+        )}
+        {content && onToggleFull ? (
+          <button type="button" className="tcs-icon-button" onClick={onToggleFull} aria-label={full ? "Return PAIGE to expanded panel" : "Open PAIGE in full panel"} title={full ? "Return to expanded panel" : "Open full panel"}>
+            {full ? <Minimize2 aria-hidden /> : <Maximize2 aria-hidden />}
+          </button>
+        ) : <button
           type="button"
           className="tcs-icon-button"
           onClick={onDetach}
@@ -349,15 +480,15 @@ function PaigeWorkspace({
           title={detached ? "Dock PAIGE" : "Open in new window"}
         >
           {detached ? <ChevronLeft aria-hidden /> : <ExternalLink aria-hidden />}
-        </button>
+        </button>}
         {!detached && (
           <button type="button" className="tcs-icon-button" onClick={onFold} aria-label="Fold PAIGE conversation" title="Fold PAIGE">
             <ChevronRight aria-hidden />
           </button>
         )}
       </header>
-      <div className="tcs-paige-body">
-        <Suspense
+      <div className="tcs-paige-body" style={content ? { padding: 0 } : undefined}>
+        {content ?? <Suspense
           fallback={
             <div className="tcs-paige-loading" role="status">
               <CommandMark state="dormant" size={24} />
@@ -371,7 +502,7 @@ function PaigeWorkspace({
             enableHistory
             renderRail={() => null}
           />
-        </Suspense>
+        </Suspense>}
       </div>
     </aside>
   );
