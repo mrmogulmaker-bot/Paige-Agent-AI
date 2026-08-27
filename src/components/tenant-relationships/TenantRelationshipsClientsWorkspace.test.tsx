@@ -227,7 +227,7 @@ describe("tenant Relationships / Clients workspace", () => {
     const paige = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Open PAIGE workspace"));
     await act(async () => paige?.click());
     expect(openPaige).toHaveBeenCalledTimes(1);
-    const back = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Back to People"));
+    const back = host.querySelector<HTMLButtonElement>(".trc-record-back");
     await act(async () => back?.click());
     await vi.waitFor(() => expect(document.activeElement).toBe(input));
     act(() => root.unmount());
@@ -245,7 +245,7 @@ describe("tenant Relationships / Clients workspace", () => {
     await act(async () => personButton?.click());
     expect(host.querySelector("[data-solo-client-record]")?.getAttribute("data-record-selected")).toBe("true");
     expect(host.querySelector("[data-location]")?.textContent).toContain("person=p-1");
-    const back = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Back to People"));
+    const back = host.querySelector<HTMLButtonElement>(".trc-record-back");
     expect(back?.getAttribute("aria-label")).toBe("Back to People list");
     await act(async () => back?.click());
     await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-person-select")));
@@ -253,6 +253,95 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(host.querySelector("[data-location]")?.textContent).not.toContain("person=");
     act(() => root.unmount());
     host.remove();
+  });
+
+  it("uses the approved compact record header and a People-local responsive overlay contract", () => {
+    const html = render("/solo/42/clients/people?person=p-1");
+    const css = readFileSync(resolve("src/components/tenant-relationships/tenant-relationships-clients-workspace.css"), "utf8");
+    expect(html).toContain('data-record-layout="docked"');
+    expect(html).toContain('aria-label="Back to People list"');
+    expect(html).toContain("Read · LIVE");
+    expect(html).toContain("Enrichment · UNAVAILABLE");
+    expect(html.match(/Open PAIGE workspace/g)).toHaveLength(1);
+    expect(css).toMatch(/\.trc-record-header\s*\{[^}]*grid-template-columns:[^}]*padding:\s*7px 10px/);
+    expect(css).toMatch(/\.trc-record-avatar\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/);
+    expect(css).toMatch(/\.trc-solo-people\[data-record-layout="overlay"\][\s\S]*\.trc-client-record\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0/);
+    expect(css).toMatch(/data-record-selected="false"[\s\S]*\.trc-client-record\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/@container solo-people-workspace \(max-width: 920px\)/);
+  });
+
+  it("makes only the covered narrow list inert and restores the exact originating row", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const originalInnerWidth = window.innerWidth;
+    let resizeCallback: ResizeObserverCallback | null = null;
+    let observerDisconnected = false;
+    class NarrowResizeObserver {
+      private callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) { this.callback = callback; resizeCallback = callback; }
+      observe(target: Element) {
+        this.callback([{ target, contentRect: { width: 1000 } as DOMRectReadOnly } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() { observerDisconnected = true; }
+    }
+    globalThis.ResizeObserver = NarrowResizeObserver as unknown as typeof ResizeObserver;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1366 });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    try {
+      useSubtabRoute.mockImplementation((_tier: string, _branch: string, initial: string) => React.useState(initial));
+      useTenantRelationshipsData.mockReturnValue({
+        ...baseData,
+        people: [
+          baseData.people[0],
+          { ...baseData.people[0], id: "p-2", name: "Second Supplied Person", email: "second@example.test" },
+        ],
+      });
+      document.body.append(host);
+      await act(async () => root.render(<MemoryRouter initialEntries={["/solo/42/clients/people"]}><TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()} /></MemoryRouter>));
+      const workspace = host.querySelector<HTMLElement>("[data-solo-client-record]");
+      const rows = host.querySelectorAll<HTMLButtonElement>(".trc-person-select");
+      const list = host.querySelector<HTMLElement>(".trc-client-list");
+      expect(workspace?.dataset.recordLayout).toBe("docked");
+      rows[1]?.focus();
+      await act(async () => rows[1]?.click());
+      expect(list?.inert).toBe(false);
+      expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
+      await act(async () => host.querySelector<HTMLButtonElement>(".trc-record-back")?.click());
+      await vi.waitFor(() => expect(document.activeElement).toBe(rows[1]));
+      await act(async () => rows[1]?.click());
+      expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
+
+      rows[1]?.focus();
+      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 800 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+      expect(workspace?.dataset.recordLayout).toBe("overlay");
+      expect(list?.inert).toBe(true);
+      expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
+      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+      expect(workspace?.dataset.recordLayout).toBe("docked");
+      expect(list?.inert).toBe(false);
+
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+      await act(async () => window.dispatchEvent(new Event("resize")));
+      expect(workspace?.dataset.recordLayout).toBe("overlay");
+      expect(list?.inert).toBe(true);
+      await act(async () => host.querySelector<HTMLButtonElement>(".trc-record-back")?.click());
+      await vi.waitFor(() => expect(document.activeElement).toBe(rows[1]));
+      expect(list?.inert).toBe(false);
+
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
+      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+      expect(workspace?.dataset.recordLayout).toBe("overlay");
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 1536 });
+      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+      expect(workspace?.dataset.recordLayout).toBe("docked");
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+      globalThis.ResizeObserver = originalResizeObserver;
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+    }
+    expect(observerDisconnected).toBe(true);
   });
 
   it("clears search, selection, URL, and focus state when the authenticated Solo account changes", async () => {
@@ -323,9 +412,9 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(css).toMatch(/\.trc-workspace--people\s*\{[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/);
     expect(css).toMatch(/\.trc-panel--people\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/);
     expect(css).toContain("container-name: solo-people-workspace");
-    expect(css).toMatch(/@container solo-people-workspace \(max-width: 800px\)/);
+    expect(css).toMatch(/@container solo-people-workspace \(max-width: 920px\)/);
     expect(css).toMatch(/trc-client-workspace[^{]*\{[^}]*grid-row:\s*3/);
-    expect(css).toMatch(/data-record-selected="true"[\s\S]*trc-client-list[\s\S]*display:\s*none/);
+    expect(css).toMatch(/data-record-layout="overlay"[\s\S]*data-record-selected="true"[\s\S]*trc-client-record[\s\S]*position:\s*absolute/);
     expect(css).toMatch(/:focus-visible/);
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toContain("container-name: solo-calendar-mount");

@@ -293,6 +293,9 @@ function SoloPeopleView({
   onClearContact: () => void;
 }) {
   const [search, setSearch] = useState("");
+  const [recordLayout, setRecordLayout] = useState<"docked" | "overlay">("docked");
+  const workspaceRef = useRef<HTMLElement | null>(null);
+  const listRef = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const lastSelectedId = useRef<string | null>(null);
@@ -315,6 +318,31 @@ function SoloPeopleView({
   }, [data.people, query]);
 
   useEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const updateLayout = (width: number) => setRecordLayout(window.innerWidth < 1190 || width < 920 ? "overlay" : "docked");
+    const measure = () => updateLayout(workspace.getBoundingClientRect().width || workspace.clientWidth);
+    measure();
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(([entry]) => updateLayout(entry?.contentRect.width ?? workspace.clientWidth));
+    observer?.observe(workspace);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const covered = Boolean(selected && recordLayout === "overlay");
+    if (covered && list.contains(document.activeElement)) backRef.current?.focus();
+    list.inert = covered;
+  }, [recordLayout, selected]);
+
+  useEffect(() => {
     if (!deepLinkedContactId) dismissedDeepLinkId.current = null;
   }, [deepLinkedContactId]);
 
@@ -323,11 +351,13 @@ function SoloPeopleView({
     onSelectContact(deepLinked.id);
   }, [deepLinkDismissed, deepLinked, onSelectContact, selectedContactId]);
 
-  useEffect(() => {
+  const setBackButton = (node: HTMLButtonElement | null) => {
+    backRef.current = node;
+    if (!node) return;
     const selectedId = selected?.id ?? null;
-    if (selectedId && focusedSelectedId.current !== selectedId) backRef.current?.focus();
+    if (selectedId && focusedSelectedId.current !== selectedId) node.focus();
     focusedSelectedId.current = selectedId;
-  }, [selected?.id]);
+  };
 
   useEffect(() => {
     if (selected || !restoreFocusId.current) return;
@@ -345,6 +375,7 @@ function SoloPeopleView({
   const returnToList = () => {
     dismissedDeepLinkId.current = deepLinkedContactId;
     restoreFocusId.current = lastSelectedId.current ?? selected?.id ?? null;
+    focusedSelectedId.current = null;
     onClearContact();
   };
 
@@ -357,9 +388,11 @@ function SoloPeopleView({
 
   return (
     <section
+      ref={workspaceRef}
       className="trc-solo-people"
       data-solo-client-record
       data-record-selected={selected ? "true" : "false"}
+      data-record-layout={recordLayout}
       data-active-tenant={activeTenantId}
       aria-label="People client relationship workspace"
     >
@@ -384,7 +417,11 @@ function SoloPeopleView({
       )}
 
       <div className="trc-client-workspace">
-        <section className="trc-client-list" aria-labelledby="trc-client-list-title">
+        <section
+          ref={listRef}
+          className="trc-client-list"
+          aria-labelledby="trc-client-list-title"
+        >
           <header>
             <div><h2 id="trc-client-list-title">Loaded clients</h2><span>{people.length} of {data.people.length}</span></div>
             <p aria-live="polite">{query ? `${people.length} search result${people.length === 1 ? "" : "s"}` : `${people.length} loaded authorized record${people.length === 1 ? "" : "s"}`}</p>
@@ -425,7 +462,7 @@ function SoloPeopleView({
           {selected ? (
             <ClientRecord
               person={selected}
-              backRef={backRef}
+              backRef={setBackButton}
               onBack={returnToList}
               openPaige={openPaige}
             />
@@ -451,7 +488,7 @@ function ClientRecord({
   openPaige,
 }: {
   person: ReturnType<typeof useTenantRelationshipsData>["people"][number];
-  backRef: React.RefObject<HTMLButtonElement>;
+  backRef: (node: HTMLButtonElement | null) => void;
   onBack: () => void;
   openPaige: () => void;
 }) {
@@ -459,19 +496,18 @@ function ClientRecord({
   return (
     <div className="trc-record-scroll">
       <header className="trc-record-header">
-        <button ref={backRef} type="button" className="trc-record-back" aria-label="Back to People list" onClick={onBack}><ArrowLeft aria-hidden /> Back to People</button>
+        <button ref={backRef} type="button" className="trc-record-back" aria-label="Back to People list" onClick={onBack}><ArrowLeft aria-hidden /> People</button>
         <div className="trc-record-identity">
           <span className="trc-record-avatar" aria-hidden>{isBusiness ? <Building2 /> : <UserRound />}</span>
           <div>
-            <span>{isBusiness ? "Business profile" : "Person profile"} · PARTIAL · derived</span>
             <h2 id="trc-record-title">{person.name}</h2>
-            <p>{[person.title, !isBusiness ? person.company : null].filter(Boolean).join(" · ") || person.relationship}</p>
+            <p>{[isBusiness ? "Business profile" : "Person profile", person.title, !isBusiness ? person.company : null, "PARTIAL", "derived"].filter(Boolean).join(" · ")}</p>
           </div>
-          <ProofPill tone="live">Authorized read · LIVE</ProofPill>
+          <ProofPill tone="live">Read · LIVE</ProofPill>
         </div>
         <div className="trc-record-actions">
           <button type="button" onClick={openPaige}><Sparkles aria-hidden /> Open PAIGE workspace</button>
-          <span>Selected-client enrichment · UNAVAILABLE</span>
+          <span>Enrichment · UNAVAILABLE</span>
         </div>
       </header>
 
