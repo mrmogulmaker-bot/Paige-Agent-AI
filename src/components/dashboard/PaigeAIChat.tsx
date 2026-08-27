@@ -70,6 +70,40 @@ const safeUuid = (): string => {
 const mkMsg = (m: Omit<Message, "id" | "ts"> & Partial<Pick<Message, "id" | "ts">>): Message =>
   ({ ...m, id: m.id ?? safeUuid(), ts: m.ts ?? Date.now() });
 
+export type PaigeRequestTicket = {
+  generation: number;
+  scopeEpoch: string | null;
+  signal: AbortSignal;
+};
+
+/**
+ * A tiny client-side acceptance fence for Solo's active-account boundary. It is
+ * deliberately not an identity resolver: the epoch comes from useTenantContext,
+ * while the server and RLS remain authoritative for every read and write.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- exported for deterministic stale-request contract tests
+export function createPaigeRequestFence() {
+  let generation = 0;
+  let controller: AbortController | null = null;
+
+  return {
+    begin(scopeEpoch: string | null): PaigeRequestTicket {
+      controller?.abort();
+      controller = new AbortController();
+      generation += 1;
+      return { generation, scopeEpoch, signal: controller.signal };
+    },
+    invalidate(): void {
+      generation += 1;
+      controller?.abort();
+      controller = null;
+    },
+    isCurrent(ticket: PaigeRequestTicket, scopeEpoch: string | null): boolean {
+      return !ticket.signal.aborted && ticket.generation === generation && ticket.scopeEpoch === scopeEpoch;
+    },
+  };
+}
+
 // Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
 // none of these and behave exactly as before.
 export interface PaigeAIChatProps {
@@ -142,6 +176,13 @@ export interface PaigeAIChatProps {
   activeThreadId?: string | null;
   /** Fires whenever the selection moves (resume, pick, new chat, lazy create). */
   onActiveThreadIdChange?: (id: string | null) => void;
+  /**
+   * Solo-only opt-in for active-account invalidation, stream cancellation, and
+   * late-result rejection. The accepted epoch is read from authenticated tenant
+   * context inside this component; callers cannot supply authority through props.
+   * Omitted by every existing non-Solo caller, preserving their current behavior.
+   */
+  soloTenantSafety?: boolean;
 }
 
 /** Everything a caller-supplied history rail needs, and nothing it could corrupt. */
@@ -177,6 +218,7 @@ const PaigeAIChatInner = ({
   composerFootNote,
   activeThreadId: controlledThreadId,
   onActiveThreadIdChange,
+  soloTenantSafety = false,
 }: PaigeAIChatProps) => {
   /** Claude Design's operator chrome. Presentation only — never a second engine. */
   const cd = presentation === "operator";
@@ -258,9 +300,65 @@ const PaigeAIChatInner = ({
   const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [historyHydrated, setHistoryHydrated] = useState(false);
+  const [historyTransitioning, setHistoryTransitioning] = useState(false);
   // CD's reasoning strip is a disclosure, not an always-open list. Collapsed at rest.
   const [traceOpen, setTraceOpen] = useState(false);
   const openingGreeting = greeting ?? "Hey, how can I help?";
+  const requestFenceRef = useRef(createPaigeRequestFence());
+  const acceptedEpochRef = useRef<string | null>(activeTenantId);
+  const [cancelled, setCancelled] = useState(false);
+  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | null>(null);
+  const retryTurnRef = useRef<{ base: Message[]; rollback: Message[]; userText: string; doc?: AttachedDocument | null } | null>(null);
+
+  const ticketAccepted = useCallback(
+    (ticket: PaigeRequestTicket | null) =>
+      !ticket || requestFenceRef.current.isCurrent(ticket, acceptedEpochRef.current),
+    [],
+  );
+
+  const cancelSoloRequest = useCallback(() => {
+    if (!soloTenantSafety) return;
+    requestFenceRef.current.invalidate();
+    setIsLoading(false);
+    setStreamingThreadId(null);
+    setWritingPhase(false);
+    setCompacting(null);
+    setCancelled(true);
+    setConnectionIssue(null);
+    setHistoryTransitioning(false);
+  }, [soloTenantSafety]);
+
+  // Account changes are a hard frontend isolation boundary. Invalidate first, then
+  // clear every account-derived or account-authored state before the new query can
+  // hydrate. The key on SoloPaigeWorkspace also remounts this tree synchronously;
+  // this engine-level guard rejects work that outlives that presentation boundary.
+  useEffect(() => {
+    if (!soloTenantSafety || acceptedEpochRef.current === activeTenantId) return;
+    acceptedEpochRef.current = activeTenantId;
+    requestFenceRef.current.invalidate();
+    hydratedFromRef.current = null;
+    setActiveThreadId(null);
+    setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
+    setInput("");
+    setAttachedDoc(null);
+    setIsLoading(false);
+    setStreamingThreadId(null);
+    setSteps([]);
+    setWritingPhase(false);
+    setCompacting(null);
+    setCancelled(false);
+    setConnectionIssue(null);
+    retryTurnRef.current = null;
+    setHistoryHydrated(false);
+    setHistoryTransitioning(false);
+    setMobileRailOpen(false);
+  }, [activeTenantId, openingGreeting, setActiveThreadId, setAttachedDoc, soloTenantSafety]);
+
+  useEffect(() => {
+    if (!soloTenantSafety) return;
+    const requestFence = requestFenceRef.current;
+    return () => requestFence.invalidate();
+  }, [soloTenantSafety]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -317,26 +415,58 @@ const PaigeAIChatInner = ({
     // parent has already moved `activeThreadId` to this id before we load it, so an
     // `id === activeThreadId` guard would early-return and the transcript would never
     // arrive. `isLoading` still protects a streaming reply from being clobbered.
-    if (id === hydratedFromRef.current || isLoading) return;
+    if (id === hydratedFromRef.current) return;
+    if (soloTenantSafety && !activeTenantId) return;
+    if (isLoading) {
+      if (!soloTenantSafety) return;
+      cancelSoloRequest();
+    }
+    const previousTranscriptThreadId = hydratedFromRef.current;
+    const requestTicket = soloTenantSafety
+      ? requestFenceRef.current.begin(activeTenantId)
+      : null;
+    if (soloTenantSafety) {
+      setHistoryTransitioning(true);
+      setCancelled(false);
+      setActiveThreadId(id);
+    }
     try {
       const turns = await threadsApi.loadTurns(id);
+      if (!ticketAccepted(requestTicket)) return;
       const hydrated = turnsToMessages(turns);
       setMessages(hydrated.length ? hydrated : [mkMsg({ role: "assistant", content: openingGreeting })]);
       hydratedFromRef.current = id;
-      setActiveThreadId(id);
+      if (!soloTenantSafety) setActiveThreadId(id);
       setSteps([]);
+      if (soloTenantSafety) {
+        setConnectionIssue(null);
+        retryTurnRef.current = null;
+      }
     } catch (e) {
+      if (!ticketAccepted(requestTicket)) return;
+      if (soloTenantSafety) setActiveThreadId(previousTranscriptThreadId);
       console.error("[PaigeAIChat] load thread failed:", e);
       toast({ title: "Couldn't open that chat", description: "Give it another try in a moment.", variant: "destructive" });
+    } finally {
+      if (ticketAccepted(requestTicket)) setHistoryTransitioning(false);
     }
   };
 
   const startNewChat = () => {
-    if (isLoading) return; // let the current reply finish before switching context
+    if (isLoading) {
+      if (!soloTenantSafety) return; // legacy callers keep the current behavior
+      cancelSoloRequest();
+    } else if (soloTenantSafety) {
+      requestFenceRef.current.invalidate();
+    }
     hydratedFromRef.current = null;
     setActiveThreadId(null);
     setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
     setSteps([]);
+    setCancelled(false);
+    setConnectionIssue(null);
+    retryTurnRef.current = null;
+    setHistoryTransitioning(false);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
@@ -364,7 +494,11 @@ const PaigeAIChatInner = ({
   // `hydratedFromRef`, not on `activeThreadId`, because our own writes already set both
   // — without that guard this would re-load in a loop. Never interrupts a live reply.
   useEffect(() => {
-    if (!enableHistory || !isThreadControlled || isLoading) return;
+    if (!enableHistory || !isThreadControlled) return;
+    if (isLoading) {
+      if (!soloTenantSafety) return;
+      cancelSoloRequest();
+    }
     if (controlledThreadId === hydratedFromRef.current) return;
     if (controlledThreadId) {
       void selectThread(controlledThreadId);
@@ -375,7 +509,7 @@ const PaigeAIChatInner = ({
       setSteps([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, isThreadControlled, controlledThreadId, isLoading]);
+  }, [cancelSoloRequest, controlledThreadId, enableHistory, isLoading, isThreadControlled, soloTenantSafety]);
 
   // One turn runner, reused by send + regenerate. `base` ends at the user turn to
   // answer; `rollback` is the list restored if the turn fails; `userText` seeds the
@@ -383,16 +517,36 @@ const PaigeAIChatInner = ({
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
   const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null) => {
+    if (soloTenantSafety && !activeTenantId) return;
+    retryTurnRef.current = { base, rollback, userText, doc };
+    setConnectionIssue(null);
+    if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
+      setConnectionIssue("offline");
+      return;
+    }
     const newMessages = base;
+    const requestTicket = soloTenantSafety
+      ? requestFenceRef.current.begin(activeTenantId)
+      : null;
     setIsLoading(true);
+    setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
     setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
     setCompacting(null); // #12 — clear any prior turn's compacting card
+    const timeoutId = soloTenantSafety ? window.setTimeout(() => {
+      if (!ticketAccepted(requestTicket)) return;
+      requestFenceRef.current.invalidate();
+      setIsLoading(false);
+      setStreamingThreadId(null);
+      setWritingPhase(false);
+      setConnectionIssue("timeout");
+    }, 45_000) : null;
     const assistantId = safeUuid();
     const assistantTs = Date.now();
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      if (!ticketAccepted(requestTicket)) return;
       
       if (!session) {
         toast({
@@ -412,6 +566,7 @@ const PaigeAIChatInner = ({
         try {
           if (!threadId) {
             threadId = await threadsApi.ensureThread(userText);
+            if (!ticketAccepted(requestTicket)) return;
             // The transcript on screen IS this new thread's — mark it hydrated so the
             // controlled-sync effect below doesn't immediately re-load and wipe it.
             hydratedFromRef.current = threadId;
@@ -419,6 +574,7 @@ const PaigeAIChatInner = ({
           }
           setStreamingThreadId(threadId);
         } catch (e) {
+          if (!ticketAccepted(requestTicket)) return;
           console.error("[PaigeAIChat] ensureThread failed:", e);
           toast({ title: "Couldn't start that chat", description: "Give it another try in a moment.", variant: "destructive" });
           setMessages(rollback);
@@ -456,8 +612,11 @@ const PaigeAIChatInner = ({
               : {}),
             ...getUserClock(),
           }),
+          ...(requestTicket ? { signal: requestTicket.signal } : {}),
         }
       );
+
+      if (!ticketAccepted(requestTicket)) return;
 
       if (!response.ok) {
         if (response.status === 429) {
@@ -473,6 +632,7 @@ const PaigeAIChatInner = ({
         // #587 — read the structured { code, reason, recommendation } body and show the SPECIFIC
         // message (e.g. a 15 MB size limit) instead of a generic "Failed to send message" toast.
         const chatErr = await parsePaigeChatError(response);
+        if (!ticketAccepted(requestTicket)) return;
         toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
         setMessages(rollback);
         setIsLoading(false);
@@ -497,6 +657,7 @@ const PaigeAIChatInner = ({
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
+        if (!ticketAccepted(requestTicket)) return;
         if (done) break;
 
         textBuffer += decoder.decode(value, { stream: true });
@@ -518,6 +679,7 @@ const PaigeAIChatInner = ({
 
           try {
             const parsed = JSON.parse(jsonStr);
+            if (!ticketAccepted(requestTicket)) return;
             // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
             if (parsed.paige_step) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
@@ -568,6 +730,7 @@ const PaigeAIChatInner = ({
         }
       }
 
+      if (!ticketAccepted(requestTicket)) return;
       setIsLoading(false);
       if (enableHistory) {
         setStreamingThreadId(null);
@@ -575,9 +738,18 @@ const PaigeAIChatInner = ({
         // turn + title write run in the edge fn's waitUntil after the stream
         // closes, so refresh once now and again shortly to catch that commit.
         threadsApi.onTurnPersisted();
-        window.setTimeout(() => threadsApi.onTurnPersisted(), 1800);
+        window.setTimeout(() => {
+          if (ticketAccepted(requestTicket)) threadsApi.onTurnPersisted();
+        }, 1800);
       }
     } catch (error) {
+      if (!ticketAccepted(requestTicket)) return;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setIsLoading(false);
+        setStreamingThreadId(null);
+        setCancelled(true);
+        return;
+      }
       console.error("Chat error:", error);
       toast({
         title: "Error",
@@ -587,6 +759,8 @@ const PaigeAIChatInner = ({
       setMessages(rollback);
       setIsLoading(false);
       if (enableHistory) setStreamingThreadId(null);
+    } finally {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
     }
   };
 
@@ -595,7 +769,7 @@ const PaigeAIChatInner = ({
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
-    if ((!text && !currentDoc) || isLoading) return;
+    if ((!text && !currentDoc) || isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId))) return;
     const rollback = messages;
     const userContent = text || (currentDoc ? `Analyze this document: ${currentDoc.name}` : "");
     const base = [
@@ -655,13 +829,15 @@ const PaigeAIChatInner = ({
 
   // CD's trace label, computed from the REAL streamed steps — how many of her
   // departments actually worked this turn, never a written-in number (§13/§14).
-  const traceDepartments = new Set(steps.filter((st) => st.kind !== "thought").map((st) => st.group)).size;
+  const visibleSteps = soloTenantSafety ? steps.filter((step) => step.kind !== "thought") : steps;
+  const traceDepartments = new Set(visibleSteps.map((st) => st.group)).size;
   const traceLabel =
-    steps.length === 0
+    visibleSteps.length === 0
       ? `${persona.name || "Paige"} is getting started`
       : traceDepartments > 0
         ? `${traceDepartments} ${traceDepartments === 1 ? "department" : "departments"} worked on this`
-        : `${steps.length} ${steps.length === 1 ? "step" : "steps"} so far`;
+        : `${visibleSteps.length} ${visibleSteps.length === 1 ? "step" : "steps"} so far`;
+  const composerBlocked = isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId));
 
   // The composer's pieces, built once and arranged by presentation. Both chromes
   // drive the SAME handlers — one engine, two frames (§18: no forked composer).
@@ -701,7 +877,7 @@ const PaigeAIChatInner = ({
           ? "min-h-[2.25rem] min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           : "min-h-[2.5rem] flex-1",
       )}
-      disabled={isLoading}
+      disabled={composerBlocked}
     />
   );
 
@@ -713,7 +889,7 @@ const PaigeAIChatInner = ({
       variant="ghost"
       size="icon"
       aria-label="Attach a document"
-      disabled={isLoading}
+      disabled={composerBlocked}
       title="Attach a PDF, image, or Word document"
       className={cd ? "h-[27px] w-[27px] rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted" : undefined}
     >
@@ -723,11 +899,11 @@ const PaigeAIChatInner = ({
 
   /* Hold-to-dictate — neutral/indigo mic, never gold. Dictated words append into
      the composer; the operator edits before sending. */
-  const micButton = (
+  const micButton = soloTenantSafety ? null : (
     <DictationMicButton
       onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
       onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
-      disabled={isLoading}
+      disabled={composerBlocked}
     />
   );
 
@@ -753,7 +929,7 @@ const PaigeAIChatInner = ({
   };
 
   return (
-    <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
+    <div data-solo-chat-engine={soloTenantSafety ? "true" : undefined} className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
       <div className={enableHistory ? (cd ? "flex h-full min-h-0 gap-3.5" : "flex h-full min-h-0 gap-4 px-3 pt-3 md:px-4") : "flex flex-col h-full"}>
         {/* History rail. The caller may draw its own (the operator console draws
             Claude Design's) — it gets the SAME live threads and the SAME handlers,
@@ -794,7 +970,7 @@ const PaigeAIChatInner = ({
         )}
 
         {enableHistory && (
-          <div className={cn("mb-3 flex items-center gap-2", cd ? "lg:hidden" : "md:hidden")}>
+          <div data-solo-mobile-history={soloTenantSafety ? "true" : undefined} className={cn("mb-3 flex items-center gap-2", cd ? "lg:hidden" : "md:hidden")}>
             <Button variant="outline" size="sm" onClick={() => setMobileRailOpen(true)}>
               <PanelLeft className="mr-2 h-4 w-4" /> Chats
             </Button>
@@ -828,6 +1004,7 @@ const PaigeAIChatInner = ({
           {focusBanner}
           <div
             ref={scrollRef}
+            data-paige-transcript-scroll={soloTenantSafety ? "true" : undefined}
             className={cn(
               "flex-1 min-h-0 overflow-y-auto",
               cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
@@ -872,7 +1049,7 @@ const PaigeAIChatInner = ({
                             <Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium leading-snug">{q.summary}</p>
-                              <p className="text-xs text-muted-foreground">Paige queued this — it's waiting on you. Approve it in your Live desk and it goes out.</p>
+                              <p className="text-xs text-muted-foreground">{soloTenantSafety ? "PAIGE queued this approval. This conversation remains the canonical record; nothing proceeds until the existing approval flow confirms it." : "Paige queued this — it's waiting on you. Approve it in your Live desk and it goes out."}</p>
                             </div>
                           </div>
                         ))}
@@ -966,10 +1143,29 @@ const PaigeAIChatInner = ({
                 <PaigeThinkingIndicator
                   active={isLoading}
                   writing={writingPhase}
-                  thoughts={thinkingThoughts}
+                  thoughts={soloTenantSafety ? [] : thinkingThoughts}
                   personaName={persona.name}
                 />
                 <PaigeCompactingCard signal={compacting} personaName={persona.name} />
+              </div>
+            )}
+            {soloTenantSafety && cancelled && !isLoading && (
+              <div role="status" className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+                Response stream cancelled locally. No later chunks will appear here; server-side work cancellation is not confirmed.
+              </div>
+            )}
+            {soloTenantSafety && !activeTenantId && (
+              <div role="status" className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+                Resolving the active account before PAIGE can send or load a conversation.
+              </div>
+            )}
+            {soloTenantSafety && connectionIssue && (
+              <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
+                <Button type="button" variant="outline" size="sm" disabled={!activeTenantId} onClick={() => {
+                  const retry = retryTurnRef.current;
+                  if (retry) void streamTurn(retry.base, retry.rollback, retry.userText, retry.doc);
+                }}>Retry</Button>
               </div>
             )}
           </div>
@@ -980,7 +1176,7 @@ const PaigeAIChatInner = ({
               here, because the engine streams a trace per TURN and never persists it,
               so the strip sits with the live turn instead of under an old answer, and
               the meter reads "—" rather than a plausible latency (§13). */}
-          {!hideReasoningStrip && cd && (isLoading || steps.length > 0) && (
+          {!hideReasoningStrip && cd && (isLoading || visibleSteps.length > 0) && (
             <div className="flex-none border-t border-border px-3.5 py-2">
               <button
                 type="button"
@@ -1001,15 +1197,15 @@ const PaigeAIChatInner = ({
               </button>
               {traceOpen && (
                 <div className="mt-1.5 border-l-2 border-[hsl(var(--primary)/0.35)] pl-[11px]">
-                  <StepTimeline steps={steps} loading={isLoading} />
+                  <StepTimeline steps={visibleSteps} loading={isLoading} />
                 </div>
               )}
             </div>
           )}
 
-          {!hideReasoningStrip && !cd && (isLoading || steps.length > 0) && (
+          {!hideReasoningStrip && !cd && (isLoading || visibleSteps.length > 0) && (
             <div className="border-t border-border px-4 pt-3">
-              <PaigeReasoningStrip steps={steps} loading={isLoading} personaName={persona.name} />
+              <PaigeReasoningStrip steps={visibleSteps} loading={isLoading} personaName={persona.name} />
             </div>
           )}
 
@@ -1117,18 +1313,21 @@ const PaigeAIChatInner = ({
                     </span>
                     {micButton}
                     <Button
-                      onClick={() => handleSend()}
-                      disabled={isLoading || (!input.trim() && !attachedDoc)}
+                      onClick={() => (soloTenantSafety && isLoading ? cancelSoloRequest() : handleSend())}
+                      disabled={soloTenantSafety ? (!isLoading && (composerBlocked || (!input.trim() && !attachedDoc))) : isLoading || (!input.trim() && !attachedDoc)}
                       variant="gold"
                       size="sm"
+                      aria-label={soloTenantSafety && isLoading ? "Cancel PAIGE response" : "Send message"}
                       className="h-[29px] flex-none gap-1.5 rounded-[9px] px-3.5 text-[12px] font-semibold"
                     >
-                      {isLoading ? (
+                      {isLoading && !soloTenantSafety ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+                      ) : isLoading ? (
+                        <span aria-hidden className="text-[10px] leading-none">■</span>
                       ) : (
                         <span aria-hidden className="text-[10px] leading-none">↑</span>
                       )}
-                      Send
+                      {soloTenantSafety && isLoading ? "Cancel" : "Send"}
                     </Button>
                   </div>
                 </>
@@ -1138,13 +1337,13 @@ const PaigeAIChatInner = ({
                   {attachButton}
                   {micButton}
                   <Button
-                    onClick={() => handleSend()}
-                    disabled={isLoading || (!input.trim() && !attachedDoc)}
+                    onClick={() => (soloTenantSafety && isLoading ? cancelSoloRequest() : handleSend())}
+                    disabled={soloTenantSafety ? (!isLoading && (composerBlocked || (!input.trim() && !attachedDoc))) : isLoading || (!input.trim() && !attachedDoc)}
                     variant="gold"
                     size="icon"
-                    aria-label="Send message"
+                    aria-label={soloTenantSafety && isLoading ? "Cancel PAIGE response" : "Send message"}
                   >
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Send className="w-4 h-4" />}
+                    {isLoading && !soloTenantSafety ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : isLoading ? <span aria-hidden>■</span> : <Send className="w-4 h-4" />}
                   </Button>
                 </>
               )}
