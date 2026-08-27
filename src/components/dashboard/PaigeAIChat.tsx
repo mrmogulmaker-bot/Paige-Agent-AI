@@ -3,7 +3,7 @@ import { PaigeReasoningStrip, StepTimeline, upsertStep, type PaigeStep } from "@
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Clock, Paperclip } from "lucide-react";
+import { Send, Loader2, Clock, Paperclip, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { parsePaigeChatError } from "@/lib/paigeChatError";
@@ -245,6 +245,7 @@ const PaigeAIChatInner = ({
     mkMsg({ role: "assistant", content: greeting ?? "Hey, how can I help?" }),
   ]);
   const [input, setInput] = useState("");
+  const [dictationGeneration, setDictationGeneration] = useState(0);
   const [slashActive, setSlashActive] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<PaigeStep[]>([]);
@@ -306,6 +307,7 @@ const PaigeAIChatInner = ({
   const openingGreeting = greeting ?? "Hey, how can I help?";
   const requestFenceRef = useRef(createPaigeRequestFence());
   const acceptedEpochRef = useRef<string | null>(activeTenantId);
+  const dictationGenerationRef = useRef(0);
   const [cancelled, setCancelled] = useState(false);
   const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | null>(null);
   const retryTurnRef = useRef<{ base: Message[]; rollback: Message[]; userText: string; doc?: AttachedDocument | null } | null>(null);
@@ -335,6 +337,8 @@ const PaigeAIChatInner = ({
   useEffect(() => {
     if (!soloTenantSafety || acceptedEpochRef.current === activeTenantId) return;
     acceptedEpochRef.current = activeTenantId;
+    dictationGenerationRef.current += 1;
+    setDictationGeneration(dictationGenerationRef.current);
     requestFenceRef.current.invalidate();
     hydratedFromRef.current = null;
     setActiveThreadId(null);
@@ -770,6 +774,12 @@ const PaigeAIChatInner = ({
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
     const currentDoc = overrideText === undefined ? attachedDoc : null;
     if ((!text && !currentDoc) || isLoading || (soloTenantSafety && (historyTransitioning || !activeTenantId))) return;
+    // An accepted send closes the current dictation generation before clearing
+    // the composer. A delayed provider final can never become the next draft.
+    if (soloTenantSafety) {
+      dictationGenerationRef.current += 1;
+      setDictationGeneration(dictationGenerationRef.current);
+    }
     const rollback = messages;
     const userContent = text || (currentDoc ? `Analyze this document: ${currentDoc.name}` : "");
     const base = [
@@ -871,7 +881,7 @@ const PaigeAIChatInner = ({
           : `Message ${persona.name || "Paige"} — type / for commands`
       }
       className={cn(
-        "max-h-40 resize-none",
+        "min-w-0 max-h-40 resize-none",
         cd
           // Inside CD's frame the input carries no border of its own.
           ? "min-h-[2.25rem] min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -898,14 +908,43 @@ const PaigeAIChatInner = ({
   );
 
   /* Hold-to-dictate — neutral/indigo mic, never gold. Dictated words append into
-     the composer; the operator edits before sending. */
-  const micButton = soloTenantSafety ? null : (
+     the composer; the operator edits before sending. The callback closes over the
+     authenticated epoch so a late prior-account final cannot enter the new composer. */
+  const dictationEpoch = activeTenantId;
+  const micButton = (
     <DictationMicButton
-      onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
+      key={soloTenantSafety ? `${dictationEpoch ?? "resolving"}:${dictationGeneration}` : "shared"}
+      scopeEpoch={soloTenantSafety ? dictationEpoch : null}
+      showStatus={soloTenantSafety}
+      onText={(seg) => {
+        if (soloTenantSafety && acceptedEpochRef.current !== dictationEpoch) return;
+        if (soloTenantSafety && dictationGenerationRef.current !== dictationGeneration) return;
+        setInput((prev) => appendDictation(prev, seg));
+      }}
       onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
       disabled={composerBlocked}
     />
   );
+
+  const clearComposerButton = soloTenantSafety && input ? (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      aria-label="Clear unsent message"
+      title="Clear the unsent message"
+      className={cd ? "h-[27px] w-[27px] flex-none rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted" : "flex-none"}
+      onClick={() => {
+        dictationGenerationRef.current += 1;
+        setDictationGeneration(dictationGenerationRef.current);
+        setInput("");
+        setAttachedDoc(null);
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }}
+    >
+      <X className="h-4 w-4" aria-hidden />
+    </Button>
+  ) : null;
 
   // Built once and reused by BOTH the rail and the header — so a caller's header
   // that draws its own "new thread" button (CD's pack does) and a caller's rail
@@ -1311,6 +1350,7 @@ const PaigeAIChatInner = ({
                     <span className="ml-auto flex-none font-mono text-[9.5px] text-muted-foreground">
                       ⌘↵ to send
                     </span>
+                    {clearComposerButton}
                     {micButton}
                     <Button
                       onClick={() => (soloTenantSafety && isLoading ? cancelSoloRequest() : handleSend())}
@@ -1335,6 +1375,7 @@ const PaigeAIChatInner = ({
                 <>
                   {composerTextarea}
                   {attachButton}
+                  {clearComposerButton}
                   {micButton}
                   <Button
                     onClick={() => (soloTenantSafety && isLoading ? cancelSoloRequest() : handleSend())}
