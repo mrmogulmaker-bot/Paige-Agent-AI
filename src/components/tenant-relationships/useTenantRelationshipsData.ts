@@ -157,4 +157,3 @@ export function useTenantRelationshipsData({
     retryPortal: portal.refetch,
   };
 }
-
