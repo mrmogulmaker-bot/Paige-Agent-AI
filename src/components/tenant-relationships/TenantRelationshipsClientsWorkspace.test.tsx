@@ -312,7 +312,16 @@ describe("tenant Relationships / Clients workspace", () => {
   });
 
   it("encodes narrow record-first containment, visible focus, and reduced-motion behavior without changing Calendar geometry", () => {
+    const html = render("/solo/42/clients/people?person=p-1");
     const css = readFileSync(resolve("src/components/tenant-relationships/tenant-relationships-clients-workspace.css"), "utf8");
+    expect(html).toContain("trc-workspace--people");
+    expect(html).toContain("trc-panel--people");
+    useSubtabRoute.mockReturnValue(["conversations", vi.fn()]);
+    expect(render("/solo/42/clients/conversations")).not.toMatch(/trc-(workspace|panel)--people/);
+    useSubtabRoute.mockReturnValue(["people", vi.fn()]);
+    expect(render("/agency/1/sub/2/clients/people", "agency")).not.toMatch(/trc-(workspace|panel)--people/);
+    expect(css).toMatch(/\.trc-workspace--people\s*\{[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/);
+    expect(css).toMatch(/\.trc-panel--people\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/);
     expect(css).toContain("container-name: solo-people-workspace");
     expect(css).toMatch(/@container solo-people-workspace \(max-width: 800px\)/);
     expect(css).toMatch(/trc-client-workspace[^{]*\{[^}]*grid-row:\s*3/);
