@@ -20,6 +20,39 @@ describe("tenant Command Center shell routing", () => {
     expect(TENANT_SHELL_DESTINATIONS.some(({ label }) => label === "Fleet")).toBe(false);
   });
 
+  it("gives Solo the approved six durable work homes without a top-level Studio", () => {
+    const destinations = tenantShellDestinationsForPath("/solo/42/command-center", "standalone");
+
+    expect(destinations.map(({ label }) => label)).toEqual([
+      "Command Center",
+      "Clients",
+      "Campaigns",
+      "Marketplace",
+      "Analytics",
+      "Settings",
+    ]);
+    expect(destinations.map(({ id, href }) => [id, href])).toEqual([
+      ["command", "/solo/42/command-center"],
+      ["clients", "/solo/42/clients"],
+      ["campaigns", "/solo/42/growth"],
+      ["marketplace", "/solo/42/marketplace"],
+      ["analytics", "/solo/42/analytics"],
+      ["settings", "/solo/42/settings"],
+    ]);
+    expect(destinations.some(({ label }) => label === "Studio")).toBe(false);
+    expect(destinations.some(({ label }) => label === "Calendar")).toBe(false);
+  });
+
+  it("does not grant the Solo menu from a URL without authenticated Solo context", () => {
+    expect(tenantShellDestinationsForPath("/solo/42/command-center").map(({ label }) => label)).toEqual([
+      "Command Center",
+      "Clients",
+      "Studio",
+      "Insights",
+      "Settings",
+    ]);
+  });
+
   it.each([
     ["/agency/1924546/clients", "agency", "Relationships"],
     ["/agency/7000001/clients", "enterprise", "Relationships"],
@@ -128,7 +161,6 @@ describe("tenant Command Center shell routing", () => {
     ["/business/9082725/command-center", "/business/9082725"],
     ["/agency/1924546/command-center", "/agency/1924546"],
     ["/agency/1924546/sub/9082725/command-center", "/agency/1924546/sub/9082725"],
-    ["/solo/42/command-center", "/solo/42"],
     ["/enterprise/7/command-center", "/enterprise/7"],
   ])("keeps all five visible destinations inside the current account tree: %s", (pathname, routePrefix) => {
     const destinations = tenantShellDestinationsForPath(pathname);
@@ -141,6 +173,24 @@ describe("tenant Command Center shell routing", () => {
       ["settings", pathname.startsWith("/solo/") ? `${routePrefix}/settings` : `${routePrefix}/setup`],
     ]);
     expect(destinations.every(({ label }) => label !== "Fleet")).toBe(true);
+  });
+
+  it("keeps existing Solo capability addresses while presenting the approved labels", () => {
+    expect(resolveTenantShellDestination("/solo/42/growth", "standalone")).toMatchObject({
+      id: "campaigns",
+      label: "Campaigns",
+      href: "/solo/42/growth",
+    });
+    expect(resolveTenantShellDestination("/solo/42/marketplace", "standalone")).toMatchObject({
+      id: "marketplace",
+      label: "Marketplace",
+      href: "/solo/42/marketplace",
+    });
+    expect(resolveTenantShellDestination("/solo/42/analytics", "standalone")).toMatchObject({
+      id: "analytics",
+      label: "Analytics",
+      href: "/solo/42/analytics",
+    });
   });
 
   it.each([
