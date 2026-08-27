@@ -138,7 +138,7 @@ describe("tenant Command Center shell routing", () => {
       ["clients", `${routePrefix}/clients`],
       ["studio", `${routePrefix}/growth`],
       ["insights", `${routePrefix}/analytics`],
-      ["settings", `${routePrefix}/setup`],
+      ["settings", pathname.startsWith("/solo/") ? `${routePrefix}/settings` : `${routePrefix}/setup`],
     ]);
     expect(destinations.every(({ label }) => label !== "Fleet")).toBe(true);
   });
@@ -169,5 +169,28 @@ describe("tenant Command Center shell routing", () => {
     expect(resolveTenantShellDestination("/business/9082725/paige").id).toBe("command");
     expect(resolveTenantShellDestination("/business/9082725/client-support").id).toBe("clients");
     expect(resolveTenantShellDestination("/business/9082725/business-vault").id).toBe("settings");
+  });
+
+  it("uses the canonical Solo Settings address without changing another tenant tier", () => {
+    expect(
+      tenantShellDestinationsForPath("/solo/42/settings", "standalone")
+        .find(({ id }) => id === "settings")?.href,
+    ).toBe("/solo/42/settings");
+    expect(
+      tenantShellDestinationsForPath("/business/9082725/setup", "sub_account")
+        .find(({ id }) => id === "settings")?.href,
+    ).toBe("/business/9082725/setup");
+  });
+
+  it.each([
+    "/solo/42/settings/setup",
+    "/solo/42/settings/team",
+    "/solo/42/settings/connections",
+    "/solo/42/setup",
+    "/solo/42/team",
+    "/solo/42/integrations",
+    "/solo/42/business-vault",
+  ])("keeps %s inside the single Solo Settings owner", (pathname) => {
+    expect(resolveTenantShellDestination(pathname, "standalone").id).toBe("settings");
   });
 });

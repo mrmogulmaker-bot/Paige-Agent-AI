@@ -214,40 +214,18 @@ export const SOLO_BRANCHES: Branch[] = [
       { slug: "updates", key: "updates", label: "Updates" },
     ],
   },
-  // Business Vault has NO sub-tabs in Solo — its `tabstrip`-classed chip rows are a due-date
-  // bucket FILTER + a bulk-action bar, not destinations (src/solo/vault.tsx).
-  { slug: "business-vault", key: "vault", label: "Business Vault", group: "platform" },
   {
-    slug: "integrations", key: "integrations", label: "Integrations", group: "platform",
-    // Solo's Integrations is FULLY BUILT (src/solo/integrations.tsx) with three real sub-tabs
-    // — unlike the agency twin, which is still a placeholder stub.
+    slug: "settings", key: "settings", label: "Settings", group: "platform",
+    // Owner-locked Solo Settings taxonomy. Previously shipped Setup, Team, Integrations,
+    // and Business Vault paths are compatibility redirects in SoloApp, never parallel owners.
     subtabs: [
-      { slug: "catalog", key: "cat", label: "Catalog" },
-      { slug: "web-automator", key: "auto", label: "Web Automator" },
-      { slug: "activity", key: "act", label: "Activity" },
-    ],
-  },
-  {
-    slug: "team", key: "team", label: "Team", group: "platform",
-    // Source: src/solo/team.tsx. Same six slugs as agency; abbreviated keys.
-    subtabs: [
-      { slug: "roster", key: "roster", label: "Roster" },
-      { slug: "directory", key: "dir", label: "Directory" },
-      { slug: "roles-invites", key: "roles", label: "Roles & invites" },
-      { slug: "workload", key: "work", label: "Workload" },
-      { slug: "performance", key: "perf", label: "Performance" },
-      { slug: "activity", key: "act", label: "Activity" },
-    ],
-  },
-  {
-    slug: "setup", key: "setup", label: "Setup", group: "platform",
-    // Source: src/solo/setup.tsx — FIVE. Presence + Banking are agency-only sub-tabs.
-    subtabs: [
-      { slug: "business", key: "biz", label: "Business" },
-      { slug: "owner", key: "owner", label: "Owner" },
-      { slug: "contacts", key: "contacts", label: "Contacts" },
-      { slug: "people", key: "people", label: "People" },
-      { slug: "comms-data", key: "comms", label: "Comms & data" },
+      { slug: "setup", key: "setup", label: "Setup" },
+      { slug: "team", key: "team", label: "Team" },
+      { slug: "connections", key: "connections", label: "Connections" },
+      { slug: "notifications", key: "notifications", label: "Notifications" },
+      { slug: "security-data", key: "security-data", label: "Security & data" },
+      { slug: "vault", key: "vault", label: "Vault" },
+      { slug: "billing", key: "billing", label: "Billing" },
     ],
   },
 ];

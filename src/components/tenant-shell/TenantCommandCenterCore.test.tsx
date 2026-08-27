@@ -51,7 +51,7 @@ describe("tenant Command Center core workspace", () => {
     expect(host.textContent).toContain("Attention · LIVE");
     expect(host.textContent).not.toMatch(/Bellweather|Ridgeline|Hartwell|Ledgerly/);
     expect(Array.from(host.querySelectorAll("a")).map((link) => link.getAttribute("href"))).toEqual(
-      expect.arrayContaining(["/solo/1971670/clients", "/solo/1971670/calendar", "/solo/1971670/setup"]),
+      expect.arrayContaining(["/solo/1971670/clients", "/solo/1971670/calendar", "/solo/1971670/settings"]),
     );
 
     const command = Array.from(host.querySelectorAll("button")).find((button) =>

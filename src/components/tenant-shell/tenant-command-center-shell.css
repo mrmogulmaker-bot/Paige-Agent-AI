@@ -93,6 +93,8 @@
 .tcs-nav-links a.is-active i { position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; border-radius: var(--pg-r-pill); background: var(--pg-gold-fill); }
 .tcs-nav-links svg, .tcs-nav-action svg { width: 17px; height: 17px; flex: none; }
 .tcs-nav-links span, .tcs-nav-action span { overflow: hidden; text-overflow: ellipsis; }
+.tcs-nav-links .tcs-context-back { min-height: 36px; color: var(--pg-faint); }
+.tcs-context-nav-label { margin: 9px 11px 5px; color: var(--pg-faint); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 
 .tcs-nav-foot { display: flex; flex-direction: column; gap: 3px; padding: 10px; border-top: 1px solid var(--pg-line-soft); }
 .tcs-nav-action { width: 100%; cursor: pointer; }
@@ -105,6 +107,7 @@
 
 [data-nav="compact"] .tcs-brand { justify-content: center; padding-inline: 8px; }
 [data-nav="compact"] .tcs-brand-copy, [data-nav="compact"] .tcs-brand > [data-cm], [data-nav="compact"] .tcs-nav-links span, [data-nav="compact"] .tcs-nav-action span, [data-nav="compact"] .tcs-account-seal > div { display: none; }
+[data-nav="compact"] .tcs-context-nav-label { height: 1px; margin: 5px 9px; overflow: hidden; border-top: 1px solid var(--pg-line-soft); color: transparent; }
 [data-nav="compact"] .tcs-nav-fold { width: 38px; height: 38px; }
 [data-nav="compact"] .tcs-nav-links a, [data-nav="compact"] .tcs-nav-action { justify-content: center; padding-inline: 0; }
 [data-nav="compact"] .tcs-account-seal { justify-content: center; padding-inline: 0; }
