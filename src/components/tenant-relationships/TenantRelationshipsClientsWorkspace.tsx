@@ -148,6 +148,7 @@ export function TenantRelationshipsClientsWorkspace({
   }
 
   const workspaceName = variant === "relationships" ? "Relationships" : "Clients";
+  const soloPeople = routeTier === "solo" && variant === "clients" && activeTab === "people";
   const soloCalendar = routeTier === "solo" && activeTab === "calendar";
   const proof = activeTab === null
     ? { label: "View · UNAVAILABLE", tone: "unavailable" as const }
@@ -160,7 +161,7 @@ export function TenantRelationshipsClientsWorkspace({
       : { label: `${tabs.find(({ id }) => id === activeTab)?.label ?? workspaceName} · PARTIAL`, tone: "partial" as const };
 
   return (
-    <section className={`trc-workspace${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
+    <section className={`trc-workspace${soloPeople ? " trc-workspace--people" : ""}${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
       {!soloCalendar && (
         <header className="trc-heading">
           <div>
@@ -195,7 +196,7 @@ export function TenantRelationshipsClientsWorkspace({
 
       <div
         id="trc-panel"
-        className={`trc-panel${soloCalendar ? " trc-panel--calendar" : ""}`}
+        className={`trc-panel${soloPeople ? " trc-panel--people" : ""}${soloCalendar ? " trc-panel--calendar" : ""}`}
         role="tabpanel"
         aria-labelledby={activeTab ? `trc-tab-${activeTab}` : undefined}
         aria-label={activeTab ? undefined : "Unavailable relationship view"}
