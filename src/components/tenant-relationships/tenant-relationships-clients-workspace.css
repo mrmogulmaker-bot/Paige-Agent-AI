@@ -57,9 +57,13 @@
 .trc-canonical-mount { min-width: 0; overflow: auto; border: 1px solid var(--pg-line); border-radius: var(--pg-r-panel); background: var(--pg-surface); }
 .trc-canonical-mount--direct { height: 100%; min-height: 0; container-name: solo-calendar-mount; container-type: inline-size; border: 0; border-radius: 0; }
 /* The Solo Calendar's center owner narrows independently when the tenant rail
-   and the single PAIGE workspace are expanded. Reflow from that owner width,
-   not from the document viewport, without changing another account tier. */
-@container solo-calendar-mount (max-width: 900px) {
+   and the single PAIGE workspace are expanded. Keep the header and quiet
+   summary in one compact row while that center owner can still hold four
+   readable stat cells; only stack after the owner itself becomes narrow. */
+.trc-canonical-mount--direct .tcal-shell {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, .9fr);
+}
+@container solo-calendar-mount (max-width: 620px) {
   .trc-canonical-mount--direct .tcal-shell { display: flex; min-height: 0; flex-direction: column; gap: 8px; }
 }
 @media (max-width: 900px) { .trc-heading { align-items: flex-start; flex-direction: column; }.trc-people-grid, .trc-two-column { grid-template-columns: 1fr; }.trc-detail-card { display: block; }.trc-audience, .trc-portal-actions { grid-template-columns: 1fr; }.trc-audience section { border-right: 0; border-bottom: 1px solid var(--pg-line); }.trc-audience section:last-child { border-bottom: 0; } }
