@@ -202,7 +202,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
   it("verified Solo counts + first-is-default per the live-screen audit", () => {
     const count = (slug: string) => branchBySlug("solo", slug)?.subtabs?.length ?? 0;
     expect(count("command-center")).toBe(4);
-    expect(count("paige")).toBe(6);
+    expect(count("paige")).toBe(4);
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(6);
     expect(count("calendar")).toBe(6);
@@ -211,7 +211,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("marketplace")).toBe(4);
     expect(count("settings")).toBe(7);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(49);
+    expect(total).toBe(47);
     // first sub-tab is the screen's default (bare branch renders it).
     expect(defaultSubtabSlug("solo", "command-center")).toBe("overview");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
@@ -225,7 +225,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       expect(subtabByKey("solo", branch, key)?.slug, `solo/${branch} key ${key}`).toBe(slug);
     };
     roundTrip("command-center", "systems-check", "sys");
-    roundTrip("paige", "knowledge", "know");
+    roundTrip("paige", "knowledge", "knowledge");
+    roundTrip("paige", "helpers", "helpers");
+    roundTrip("paige", "capabilities", "capabilities");
     roundTrip("automations", "library", "lib");
     roundTrip("clients", "pipeline", "pipe");
     expect(subtabBySlug("solo", "calendar", "booking-links")?.key).toBe("booking");
@@ -237,6 +239,10 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     roundTrip("settings", "billing", "billing");
     expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("The money");
     expect(subtabBySlug("solo", "paige", "nope")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "sub-agents")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "actions")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "skills")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "paige-team")).toBeNull();
     expect(subtabBySlug("solo", "trust-compass", "anything")).toBeNull();
   });
 
@@ -281,10 +287,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     const perTierKeys: Array<[string, string, string, string]> = [
       // [branch, shared slug, solo key, agency key]
       ["command-center", "systems-check", "sys", "systems"],
-      ["paige", "knowledge", "know", "knowledge"],
-      ["paige", "sub-agents", "sub", "agents"],
-      ["paige", "actions", "act", "actions"],
-      ["paige", "paige-team", "team", "pteam"],
+      ["paige", "knowledge", "knowledge", "knowledge"],
       ["automations", "library", "lib", "library"],
       ["calendar", "schedule", "calendar", "calendar"],
       ["calendar", "requests", "agenda", "agenda"],
@@ -329,14 +332,14 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
  * `useSubtabRoute("solo", "<branch>", …)` call and parses the tab strip that
  * immediately follows it — which is precisely the routed component's own strip,
  * never a nested/sibling one (several files carry more than one `const tabs=`:
- * `conversations.tsx` also holds the nested Conversations strip, `paigehub.tsx`
- * the SubAgents and Skills consoles, `CommandCenter.tsx` the inner approvals
+ * `conversations.tsx` also holds the nested Conversations strip, while
+ * `CommandCenter.tsx` holds the inner approvals
  * filter). Then it asserts set-AND-order equality with the registry.
  */
 describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
   const SCREEN_FOR_BRANCH: Record<string, string> = {
     "command-center": "src/solo/CommandCenter.tsx",
-    paige: "src/solo/paigehub.tsx",
+    paige: "src/solo/SoloPaigeWorkspace.tsx",
     automations: "src/solo/automations-build.tsx",
     calendar: "src/pages/admin/CalendarAdmin.tsx",
     growth: "src/solo/growth2.tsx",
@@ -372,6 +375,10 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     ).exec(src);
     if (!hook) throw new Error(`no useSubtabRoute("solo","${branchSlug}") in ${file}`);
     const after = src.slice(hook.index);
+    if (branchSlug === "paige") {
+      const tabs = /const\s+TABS[\s\S]*?=\s*\[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
+      return [...tabs.matchAll(/\{\s*id:\s*["']([A-Za-z0-9_-]+)["']/g)].map((match) => match[1]);
+    }
     // The strip is either `const tabs=[…]` or an inline `tabs={[…]}` (integrations).
     const decl = after.search(/const\s+tabs\s*=\s*\[/);
     const inline = after.search(/tabs=\{\[/);

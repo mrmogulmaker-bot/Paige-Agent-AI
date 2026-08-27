@@ -26,6 +26,7 @@ vi.mock("@/components/admin/voice/IncomingCallOverlay", () => ({ IncomingCallOve
 vi.mock("@/components/admin/voice/LiveTranscriptPanel", () => ({ LiveTranscriptPanel: () => null }));
 vi.mock("@/solo/CommandCenter", () => ({ CommandHub: () => null }));
 vi.mock("@/solo/paigehub", () => ({ PaigeHub: () => null }));
+vi.mock("@/solo/SoloPaigeWorkspace", () => ({ SoloPaigeWorkspace: () => <div data-solo-paige-test-workspace /> }));
 vi.mock("@/solo/compass", () => ({ TrustCompass: () => null }));
 vi.mock("@/solo/automations-build", () => ({ AutomationsHub: () => null }));
 vi.mock("@/components/tenant-relationships/TenantRelationshipsClientsWorkspace", () => ({ TenantRelationshipsClientsWorkspace: () => null }));
@@ -203,6 +204,81 @@ describe("tenant shell owns one PAIGE surface", () => {
 });
 
 describe("tenant PAIGE command field", () => {
+  it("moves the one Solo workspace into a pop-out host instead of loading a second app", () => {
+    const shell = source("src/components/tenant-shell/TenantCommandCenterShell.tsx");
+    expect(shell).toContain('import { createPortal } from "react-dom"');
+    expect(shell).toContain("paigePortalHost");
+    expect(shell).toContain("createPortal(");
+    expect(shell).toContain("popoutReturnFocusRef");
+    expect(shell).toMatch(/if \(soloPaigeWorkspace\)[\s\S]*return;[\s\S]*next\.searchParams\.set\("paigeSurface", "detached"\)/);
+    expect(shell).toContain("if (detached && !soloPaigeWorkspace)");
+    expect(shell.match(/content=\{soloPaigeWorkspace\}/g)).toHaveLength(1);
+  });
+
+  it("keeps the identical mounted Solo workspace connected through pop-out and redock", async () => {
+    const popupDocument = document.implementation.createHTMLDocument("PAIGE popup");
+    let beforeUnload: EventListener | null = null;
+    const popupRecord = {
+      document: popupDocument,
+      closed: false,
+      focus: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: EventListener) => { if (type === "beforeunload") beforeUnload = listener; }),
+      close: vi.fn(() => {
+        popupRecord.closed = true;
+        beforeUnload?.(new Event("beforeunload"));
+      }),
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(popupRecord as unknown as Window);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/command-center"]}>
+          <TenantCommandCenterShell accountName="Solo account" accountType="standalone" userRole="admin" onSignOut={vi.fn()} soloPaigeWorkspace={<input aria-label="Persistent PAIGE draft" defaultValue="Draft survives" />}>
+            <p>Main CRM remains usable</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+    const workspace = host.querySelector("#tenant-paige-workspace");
+    const draft = host.querySelector<HTMLInputElement>('[aria-label="Persistent PAIGE draft"]');
+    expect(workspace).not.toBeNull();
+    expect(draft?.value).toBe("Draft survives");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="Open PAIGE in a new window"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#tenant-paige-workspace")).toBeNull();
+    expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(popupDocument.body.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
+    expect(host.textContent).toContain("Main CRM remains usable");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click();
+      await Promise.resolve();
+    });
+    expect(popupRecord.focus).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".tcs-paige-backdrop")).toBeNull();
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(0);
+    expect(popupDocument.body.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+
+    await act(async () => {
+      popupDocument.body.querySelector<HTMLButtonElement>('[aria-label="Dock PAIGE back into the workspace"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(host.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
+    expect(draft?.value).toBe("Draft survives");
+
+    await act(async () => root.unmount());
+    host.remove();
+    open.mockRestore();
+  });
+
   it("opens the surviving workspace through one restrained command control", () => {
     const onOpen = vi.fn();
     const host = document.createElement("div");
@@ -224,9 +300,16 @@ describe("tenant PAIGE command field", () => {
 
   it("routes the command field into expandRail instead of another chat instance", () => {
     const shell = source("src/components/tenant-shell/TenantCommandCenterShell.tsx");
-    expect(shell).toMatch(/const openPaige = useCallback\(\(\) => \{\s*expandRail\(\)/);
-    expect(shell).toContain("<TenantPaigeCommandField expanded={railExpanded} onOpen={openPaige} />");
+    const solo = source("src/solo/SoloApp.tsx");
+    expect(shell).toMatch(/const openPaige = useCallback\(\(\) => \{[\s\S]*child\.focus\(\);[\s\S]*expandRail\(\)/);
+    expect(shell).toMatch(/<TenantPaigeCommandField[^>]*expanded=\{railExpanded \|\| paigeFull\}[^>]*onOpen=\{openPaige\}/);
     expect(shell.match(/function PaigeWorkspace\(/g)).toHaveLength(1);
+    expect(shell).toContain("soloPaigeWorkspace");
+    expect(shell).toContain("paigeFull");
+    expect(shell).toContain('!railExpanded || paigeOverlay ? "0px"');
+    expect(solo).not.toContain("paige:<PaigeHub/>");
+    expect(solo).toContain("<SoloPaigeWorkspace");
+    expect(solo.match(/<SoloPaigeWorkspace/g)).toHaveLength(1);
   });
 });
 
