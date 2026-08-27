@@ -41,14 +41,18 @@ import { AudioRecorder } from "@/utils/VoiceAudio";
 import { supabase } from "@/integrations/supabase/client";
 
 const DEEPGRAM_SAMPLE_RATE = 16000;
+const TRANSCRIPTION_SETTLE_TIMEOUT_MS = 15_000;
 
 export type DictationStatus = "idle" | "requesting" | "listening" | "transcribing" | "error";
+export type DictationFailure = "permission-denied" | "unsupported" | "provider-failure" | "unavailable";
 
 export interface UseDictationOptions {
   /** Called with each finalized transcript segment (no leading space). */
   onText: (segment: string) => void;
   /** Called with a plain, jargon-free message when dictation fails. */
   onError?: (message: string) => void;
+  /** Authenticated account epoch. A change invalidates the entire recording generation. */
+  scopeEpoch?: string | null;
 }
 
 export interface UseDictationApi {
@@ -57,6 +61,8 @@ export interface UseDictationApi {
   partial: string;
   /** Plain message when status === "error"; null otherwise. */
   error: string | null;
+  /** Stable failure class for accessible, truthful UI copy. */
+  failure: DictationFailure | null;
   /** True while capturing or transcribing. */
   isActive: boolean;
   /** getUserMedia + WebSocket both available in this browser. */
@@ -91,20 +97,20 @@ function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
 }
 
 /** Map any capture/socket failure to a plain, jargon-free message (§3). */
-function describeDictationError(err: unknown): string {
+function describeDictationError(err: unknown): { failure: DictationFailure; message: string } {
   const e = err as { name?: string; message?: string };
   const name = e?.name || "";
   const combined = `${name} ${e?.message || (typeof err === "string" ? err : "")}`.toLowerCase();
   if (name === "NotAllowedError" || combined.includes("permission") || combined.includes("denied")) {
-    return "Microphone access is off. Allow the mic in your browser settings, then try again.";
+    return { failure: "permission-denied", message: "Microphone access is off. Allow the mic in your browser settings, then try again." };
   }
   if (name === "NotFoundError" || combined.includes("no microphone") || combined.includes("notfound")) {
-    return "No microphone found. Connect one and try again.";
+    return { failure: "unavailable", message: "No microphone found. Connect one and try again." };
   }
   if (name === "NotReadableError" || combined.includes("in use") || combined.includes("notreadable")) {
-    return "Your microphone is being used by another app. Close it and try again.";
+    return { failure: "unavailable", message: "Your microphone is being used by another app. Close it and try again." };
   }
-  return "Voice typing isn't available right now. Please try again in a moment.";
+  return { failure: "unavailable", message: "Voice typing isn't available right now. Please try again in a moment." };
 }
 
 function dictateWsUrl(token: string): string | null {
@@ -120,15 +126,25 @@ function dictateWsUrl(token: string): string | null {
   return `${wss}/functions/v1/paige-dictate?${params.toString()}`;
 }
 
-export function useDictation({ onText, onError }: UseDictationOptions): UseDictationApi {
+type DictationRun = {
+  generation: number;
+  scopeEpoch: string | null;
+  released: boolean;
+  recorder: AudioRecorder | null;
+  socket: WebSocket | null;
+  pendingFrames: ArrayBuffer[];
+  settleTimer: ReturnType<typeof setTimeout> | null;
+};
+
+export function useDictation({ onText, onError, scopeEpoch = null }: UseDictationOptions): UseDictationApi {
   const [status, setStatus] = useState<DictationStatus>("idle");
   const [partial, setPartial] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const recorderRef = useRef<AudioRecorder | null>(null);
-  const pendingFrames = useRef<ArrayBuffer[]>([]);
-  const activeRef = useRef(false);
+  const [failure, setFailure] = useState<DictationFailure | null>(null);
+  const generationRef = useRef(0);
+  const currentRunRef = useRef<DictationRun | null>(null);
+  const scopeEpochRef = useRef(scopeEpoch);
+  scopeEpochRef.current = scopeEpoch;
   // Keep the latest callbacks in refs so an inline closure from the consumer
   // never needs to re-subscribe and never goes stale mid-session.
   const onTextRef = useRef(onText);
@@ -141,92 +157,140 @@ export function useDictation({ onText, onError }: UseDictationOptions): UseDicta
     !!navigator.mediaDevices?.getUserMedia &&
     typeof WebSocket !== "undefined";
 
-  const teardown = useCallback(() => {
-    activeRef.current = false;
-    pendingFrames.current = [];
-    try { recorderRef.current?.stop(); } catch { /* best-effort */ }
-    recorderRef.current = null;
-    const ws = wsRef.current;
-    wsRef.current = null;
+  const teardownRun = useCallback((run: DictationRun) => {
+    if (run.settleTimer) clearTimeout(run.settleTimer);
+    run.settleTimer = null;
+    run.pendingFrames = [];
+    try { run.recorder?.stop(); } catch { /* best-effort */ }
+    run.recorder = null;
+    const ws = run.socket;
+    run.socket = null;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       try { ws.close(); } catch { /* best-effort */ }
     }
   }, []);
 
-  const fail = useCallback((message: string) => {
+  const isCurrent = useCallback((run: DictationRun) =>
+    currentRunRef.current === run &&
+    run.generation === generationRef.current &&
+    run.scopeEpoch === scopeEpochRef.current,
+  []);
+
+  const finishRun = useCallback((run: DictationRun) => {
+    if (!isCurrent(run)) return;
+    currentRunRef.current = null;
+    teardownRun(run);
+    setPartial("");
+    setFailure(null);
+    setError(null);
+    setStatus("idle");
+  }, [isCurrent, teardownRun]);
+
+  const failRun = useCallback((run: DictationRun, nextFailure: DictationFailure, message: string) => {
+    if (!isCurrent(run)) return;
+    currentRunRef.current = null;
+    setFailure(nextFailure);
     setError(message);
     setStatus("error");
     setPartial("");
     onErrorRef.current?.(message);
-    teardown();
-  }, [teardown]);
+    teardownRun(run);
+  }, [isCurrent, teardownRun]);
 
   const stop = useCallback(() => {
-    if (!activeRef.current) return;
-    activeRef.current = false;
+    const run = currentRunRef.current;
+    if (!run || run.released) return;
+    run.released = true;
     // Stop the mic immediately; keep the socket open briefly so any trailing
     // final transcript still arrives, then the server closes it.
-    try { recorderRef.current?.stop(); } catch { /* best-effort */ }
-    recorderRef.current = null;
-    const ws = wsRef.current;
+    try { run.recorder?.stop(); } catch { /* best-effort */ }
+    run.recorder = null;
+    const ws = run.socket;
     if (ws && ws.readyState === WebSocket.OPEN) {
       try { ws.send(JSON.stringify({ type: "stop" })); } catch { /* best-effort */ }
     }
+    run.settleTimer = setTimeout(() => {
+      failRun(run, "provider-failure", "Voice typing took too long to finish. Please try again.");
+    }, TRANSCRIPTION_SETTLE_TIMEOUT_MS);
     setPartial("");
-    setStatus((s) => (s === "error" ? s : "idle"));
-  }, []);
+    setStatus((s) => (s === "error" ? s : "transcribing"));
+  }, [failRun]);
 
   const start = useCallback(async () => {
-    if (activeRef.current) return;
-    if (!supported) { fail("Voice typing isn't supported in this browser."); return; }
+    // One provider stream at a time. A released run remains current until its
+    // trailing final/close arrives, preventing old-close/new-socket contamination.
+    if (currentRunRef.current) return;
+    if (!supported) {
+      const message = "Voice typing isn't supported in this browser.";
+      setFailure("unsupported"); setError(message); setStatus("error");
+      onErrorRef.current?.(message);
+      return;
+    }
 
     setError(null);
+    setFailure(null);
     setPartial("");
     setStatus("requesting");
-    activeRef.current = true;
+    const run: DictationRun = {
+      generation: ++generationRef.current,
+      scopeEpoch: scopeEpochRef.current,
+      released: false,
+      recorder: null,
+      socket: null,
+      pendingFrames: [],
+      settleTimer: null,
+    };
+    currentRunRef.current = run;
 
     // Acquire the mic FIRST, inside the caller's gesture (iOS requirement). If
     // the user denies, we never open a needless socket.
     let recorder: AudioRecorder;
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      if (!isCurrent(run)) return;
+      if (run.released) { finishRun(run); return; }
       const token = session?.access_token;
-      if (!token) { fail("Please sign in to use voice typing."); return; }
+      if (!token) { failRun(run, "unavailable", "Please sign in to use voice typing."); return; }
 
       const url = dictateWsUrl(token);
-      if (!url) { fail("Voice typing isn't available right now."); return; }
+      if (!url) { failRun(run, "unavailable", "Voice typing isn't available right now."); return; }
 
       recorder = new AudioRecorder((frame) => {
-        if (!activeRef.current) return;
+        if (!isCurrent(run) || run.released) return;
         const buf = floatTo16BitPCM(frame);
-        const ws = wsRef.current;
+        const ws = run.socket;
         if (ws && ws.readyState === WebSocket.OPEN) ws.send(buf);
-        else pendingFrames.current.push(buf); // buffer until the socket opens
+        else run.pendingFrames.push(buf); // buffer until this run's socket opens
       }, DEEPGRAM_SAMPLE_RATE);
+      // Register before awaiting permission/audio startup so release, unmount,
+      // and account invalidation can stop a partially acquired microphone.
+      run.recorder = recorder;
       await recorder.start();
-      if (!activeRef.current) { try { recorder.stop(); } catch { /* ignore */ } return; }
-      recorderRef.current = recorder;
+      if (!isCurrent(run)) return; // invalidation already tore this run down
+      if (run.released) { finishRun(run); return; }
 
       const ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
-      wsRef.current = ws;
+      run.socket = ws;
 
       ws.onopen = () => {
-        if (!activeRef.current) { try { ws.close(); } catch { /* ignore */ } return; }
+        if (!isCurrent(run)) { try { ws.close(); } catch { /* ignore */ } return; }
         try {
           // Audio is resampled to 16 kHz mono linear16 client-side, so we declare
           // that rate truthfully (server fixes encoding=linear16). Matches the
           // paige-dictate start-frame contract: { type, sampleRate, language? }.
           ws.send(JSON.stringify({ type: "start", sampleRate: DEEPGRAM_SAMPLE_RATE }));
           // Flush frames captured before the socket finished connecting.
-          for (const buf of pendingFrames.current) ws.send(buf);
+          for (const buf of run.pendingFrames) ws.send(buf);
+          if (run.released) ws.send(JSON.stringify({ type: "stop" }));
         } catch { /* best-effort */ }
-        pendingFrames.current = [];
-        setStatus("listening");
+        run.pendingFrames = [];
+        setStatus(run.released ? "transcribing" : "listening");
       };
 
       ws.onmessage = (ev) => {
-        let msg: { type?: string; text?: string; is_final?: boolean; message?: string };
+        if (!isCurrent(run)) return;
+        let msg: { type?: string; text?: string; is_final?: boolean; message?: string; code?: string };
         try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : ""); }
         catch { return; }
         if (msg.type === "transcript") {
@@ -234,46 +298,62 @@ export function useDictation({ onText, onError }: UseDictationOptions): UseDicta
           if (msg.is_final) {
             if (text) onTextRef.current(text);
             setPartial("");
-            if (activeRef.current) setStatus("listening");
+            setStatus(run.released ? "transcribing" : "listening");
           } else {
             setPartial(text);
-            if (activeRef.current) setStatus("transcribing");
+            setStatus(run.released ? "transcribing" : "listening");
           }
         } else if (msg.type === "error") {
           // Never surface raw server/vendor text to the tenant (§3/§45) — log it
           // for debugging, show a plain sentence.
           if (msg.message) console.warn("[dictation] server error:", msg.message);
-          fail("Voice typing hit a snag. Please try again.");
+          const unavailable = msg.code === "not_configured";
+          failRun(run, unavailable ? "unavailable" : "provider-failure", unavailable
+            ? "Voice typing isn't available right now."
+            : "Voice typing hit a snag. Please try again.");
         } else if (msg.type === "ready") {
-          if (activeRef.current) setStatus("listening");
+          setStatus(run.released ? "transcribing" : "listening");
         }
       };
 
       ws.onerror = () => {
-        // A socket error mid-session is only a failure if we were still capturing.
-        if (activeRef.current) fail("Couldn't reach voice typing. Check your connection and try again.");
+        failRun(run, "provider-failure", "Couldn't reach voice typing. Check your connection and try again.");
       };
 
       ws.onclose = (ev) => {
-        if (activeRef.current && !ev.wasClean) {
-          fail("Voice typing disconnected. Please try again.");
-        } else {
-          teardown();
-          setStatus((s) => (s === "error" ? s : "idle"));
-        }
+        if (!isCurrent(run)) return;
+        if (!ev.wasClean || !run.released) failRun(run, "provider-failure", "Voice typing disconnected. Please try again.");
+        else finishRun(run);
       };
     } catch (err) {
-      fail(describeDictationError(err));
+      if (!isCurrent(run)) return;
+      const described = describeDictationError(err);
+      failRun(run, described.failure, described.message);
     }
-  }, [supported, fail, teardown]);
+  }, [supported, failRun, finishRun, isCurrent]);
+
+  useEffect(() => {
+    const run = currentRunRef.current;
+    if (!run || run.scopeEpoch === scopeEpoch) return;
+    generationRef.current += 1;
+    currentRunRef.current = null;
+    teardownRun(run);
+    setStatus("idle"); setPartial(""); setError(null); setFailure(null);
+  }, [scopeEpoch, teardownRun]);
 
   // Clean up on unmount so a mid-dictation navigation never leaks the mic/socket.
-  useEffect(() => () => teardown(), [teardown]);
+  useEffect(() => () => {
+    generationRef.current += 1;
+    const run = currentRunRef.current;
+    currentRunRef.current = null;
+    if (run) teardownRun(run);
+  }, [teardownRun]);
 
   return {
     status,
     partial,
     error,
+    failure,
     isActive: status === "listening" || status === "transcribing" || status === "requesting",
     supported,
     start,

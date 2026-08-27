@@ -10,6 +10,8 @@ import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 const chatHarness = vi.hoisted(() => ({
   tenantId: "account-a" as string | null,
   loadTurns: vi.fn(),
+  ensureThread: vi.fn(),
+  dictationOnText: null as null | ((segment: string) => void),
 }));
 
 vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: null }) }));
@@ -17,6 +19,12 @@ vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => ({ activeTe
 vi.mock("@/hooks/useScopedUserId", () => ({ useScopedUserId: () => "owner-1" }));
 vi.mock("@/lib/playbook", () => ({ usePlaybook: () => ({ persona: { name: "PAIGE" } }) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/components/voice/DictationMicButton", () => ({
+  DictationMicButton: ({ onText }: { onText: (segment: string) => void }) => {
+    chatHarness.dictationOnText = onText;
+    return <button type="button" onClick={() => onText("microphone words")}>Mock hold to dictate</button>;
+  },
+}));
 vi.mock("@/hooks/useChatDocumentUpload", () => ({
   useChatDocumentUpload: () => ({
     attachedDoc: null, isDragOver: false, fileInputRef: { current: null }, acceptString: ".pdf",
@@ -39,7 +47,7 @@ vi.mock("@/hooks/usePaigeThreads", () => ({
       { id: "thread-c", title: "Superseding load", last_message_at: null, message_count: 1, is_archived: false, updated_at: null },
     ],
     isLoading: false, isFetched: true, loadTurns: chatHarness.loadTurns,
-    ensureThread: vi.fn(), onTurnPersisted: vi.fn(), renameThread: vi.fn(), archiveThread: vi.fn(), deleteThread: vi.fn(),
+    ensureThread: chatHarness.ensureThread, onTurnPersisted: vi.fn(), renameThread: vi.fn(), archiveThread: vi.fn(), deleteThread: vi.fn(),
   }),
 }));
 vi.mock("@/components/dashboard/paige/ThreadRail", () => ({
@@ -166,8 +174,12 @@ describe("Solo PAIGE workspace contract", () => {
     expect(shell).not.toContain("soloTenantSafety");
     expect(operator).not.toContain("soloTenantSafety");
     expect(sharedWorkspace).not.toContain("soloTenantSafety");
-    expect(chat).toContain("soloTenantSafety ? null : (");
+    expect(chat).not.toContain("soloTenantSafety ? null : (");
     expect(chat).toContain("<DictationMicButton");
+    expect(chat).toContain("showStatus={soloTenantSafety}");
+    expect(chat).toContain('aria-label="Clear unsent message"');
+    expect(chat).toContain("setAttachedDoc(null)");
+    expect(chat).toContain("A delayed provider final can never become the next draft");
   });
 
   it("aborts and rejects every stale request generation", () => {
@@ -326,6 +338,70 @@ describe("Solo PAIGE workspace contract", () => {
     expect(chat).toContain('navigator.onLine === false');
     expect(chat).toContain('setConnectionIssue("timeout")');
     expect(chat).toContain("server-side work cancellation is not confirmed");
+  });
+
+  it("appends dictation to unsent text without sending and clears it locally with focus restored", async () => {
+    chatHarness.tenantId = "account-a";
+    chatHarness.loadTurns.mockResolvedValue([]);
+    chatHarness.ensureThread.mockClear();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder*="Message"]')!;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      valueSetter.call(composer, "Existing unsent text");
+      composer.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Mock hold to dictate")?.click();
+    });
+    expect(composer.value).toBe("Existing unsent text microphone words");
+    expect(chatHarness.ensureThread).not.toHaveBeenCalled();
+    const releasedRecordingCallback = chatHarness.dictationOnText;
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Clear unsent message"]')?.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(composer.value).toBe("");
+    expect(document.activeElement).toBe(composer);
+    await act(async () => releasedRecordingCallback?.("late words"));
+    expect(composer.value).toBe("");
+    expect(chatHarness.ensureThread).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("rejects a late dictation result after the authenticated account epoch changes", async () => {
+    chatHarness.tenantId = "account-a";
+    chatHarness.loadTurns.mockResolvedValue([]);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const accountACallback = chatHarness.dictationOnText!;
+    chatHarness.tenantId = "account-b";
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => accountACallback("stale account A speech"));
+    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder*="Message"]')!;
+    expect(composer.value).toBe("");
+    expect(host.textContent).not.toContain("stale account A speech");
+    await act(async () => root.unmount());
+    host.remove();
   });
 
   it("preserves the approved prototype lineage in implementation source", () => {
