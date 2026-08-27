@@ -60,6 +60,7 @@ const settlePaigeFocus = async () => {
 const PaigeWorkspaceFixture = () => {
   const surfaces = ["Chat", "Knowledge", "Helpers", "Capabilities"];
   const [activeSurface, setActiveSurface] = useState(surfaces[0]);
+  const [draft, setDraft] = useState("Draft survives folding");
   return (
     <div>
       <div role="tablist" aria-label="PAIGE workspace views">
@@ -76,7 +77,8 @@ const PaigeWorkspaceFixture = () => {
         ))}
       </div>
       <p data-paige-active-surface>{activeSurface}</p>
-      <input aria-label="Persistent PAIGE draft" defaultValue="Draft survives folding" />
+      <input aria-label="Persistent PAIGE draft" value={draft} onChange={(event) => setDraft(event.currentTarget.value)} />
+      <button type="button" onClick={() => setDraft("")}>Clear draft</button>
     </div>
   );
 };
@@ -333,23 +335,32 @@ describe("tenant PAIGE command field", () => {
     expect(shell.match(/content=\{soloPaigeWorkspace\}/g)).toHaveLength(1);
   });
 
-  it("keeps the identical mounted Solo workspace connected through pop-out and redock", async () => {
+  it("keeps the identical mounted Solo workspace interactive after redock and a second pop-out native close", async () => {
     const styles = document.createElement("style");
     styles.textContent = source("src/components/tenant-shell/tenant-command-center-shell.css");
     document.head.appendChild(styles);
-    const popupDocument = document.implementation.createHTMLDocument("PAIGE popup");
-    let beforeUnload: EventListener | null = null;
-    const popupRecord = {
-      document: popupDocument,
-      closed: false,
-      focus: vi.fn(),
-      addEventListener: vi.fn((type: string, listener: EventListener) => { if (type === "beforeunload") beforeUnload = listener; }),
-      close: vi.fn(() => {
-        popupRecord.closed = true;
-        beforeUnload?.(new Event("beforeunload"));
-      }),
-    };
-    const open = vi.spyOn(window, "open").mockReturnValue(popupRecord as unknown as Window);
+    const popupRecords = ["first", "second"].map((name) => {
+      const popupDocument = document.implementation.createHTMLDocument(`PAIGE ${name} popup`);
+      let beforeUnload: EventListener | null = null;
+      const popupRecord = {
+        document: popupDocument,
+        closed: false,
+        focus: vi.fn(),
+        addEventListener: vi.fn((type: string, listener: EventListener) => { if (type === "beforeunload") beforeUnload = listener; }),
+        close: vi.fn(() => {
+          beforeUnload?.(new Event("beforeunload"));
+          popupRecord.closed = true;
+        }),
+        nativeClose: () => {
+          beforeUnload?.(new Event("beforeunload"));
+          popupRecord.closed = true;
+        },
+      };
+      return popupRecord;
+    });
+    const open = vi.spyOn(window, "open")
+      .mockReturnValueOnce(popupRecords[0] as unknown as Window)
+      .mockReturnValueOnce(popupRecords[1] as unknown as Window);
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -357,7 +368,7 @@ describe("tenant PAIGE command field", () => {
     await act(async () => {
       root.render(
         <MemoryRouter initialEntries={["/solo/42/command-center"]}>
-          <TenantCommandCenterShell accountName="Solo account" accountType="standalone" userRole="admin" onSignOut={vi.fn()} soloPaigeWorkspace={<input aria-label="Persistent PAIGE draft" defaultValue="Draft survives" />}>
+          <TenantCommandCenterShell accountName="Solo account" accountType="standalone" userRole="admin" onSignOut={vi.fn()} soloPaigeWorkspace={<PaigeWorkspaceFixture />}>
             <p>Main CRM remains usable</p>
           </TenantCommandCenterShell>
         </MemoryRouter>,
@@ -373,34 +384,65 @@ describe("tenant PAIGE command field", () => {
     const draft = host.querySelector<HTMLInputElement>('[aria-label="Persistent PAIGE draft"]');
     expect(workspace).not.toBeNull();
     expect((workspace as HTMLElement | null)?.hidden).toBe(false);
-    expect(draft?.value).toBe("Draft survives");
+    expect(draft?.value).toBe("Draft survives folding");
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="Open PAIGE in a new window"]')?.click();
       await Promise.resolve();
     });
     expect(host.querySelector("#tenant-paige-workspace")).toBeNull();
-    expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
-    expect(popupDocument.body.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
-    expect(popupDocument.body.querySelector('[aria-label="Fold PAIGE conversation"]')).toBeNull();
+    expect(popupRecords[0].document.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(popupRecords[0].document.body.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
+    expect(popupRecords[0].document.body.querySelector('[aria-label="Fold PAIGE conversation"]')).toBeNull();
     expect(host.textContent).toContain("Main CRM remains usable");
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click();
       await Promise.resolve();
     });
-    expect(popupRecord.focus).toHaveBeenCalledTimes(1);
+    expect(popupRecords[0].focus).toHaveBeenCalledTimes(1);
     expect(host.querySelector(".tcs-paige-backdrop")).toBeNull();
     expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(0);
-    expect(popupDocument.body.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+    expect(popupRecords[0].document.body.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
 
     await act(async () => {
-      popupDocument.body.querySelector<HTMLButtonElement>('[aria-label="Dock PAIGE back into the workspace"]')?.click();
+      popupRecords[0].document.body.querySelector<HTMLButtonElement>('[aria-label="Dock PAIGE back into the workspace"]')?.click();
       await Promise.resolve();
     });
     expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
     expect(host.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
-    expect(draft?.value).toBe("Draft survives");
+    expect(draft?.value).toBe("Draft survives folding");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="Open PAIGE in a new window"]')?.click();
+      await Promise.resolve();
+    });
+    expect(popupRecords[1].document.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
+
+    await act(async () => {
+      popupRecords[1].nativeClose();
+      expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+      await Promise.resolve();
+    });
+
+    for (const activeSurface of ["Chat", "Knowledge", "Helpers", "Capabilities"]) {
+      const surface = Array.from(workspace?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
+        .find((button) => button.textContent === activeSurface);
+      await act(async () => surface?.click());
+      expect(workspace?.querySelector("[data-paige-active-surface]")?.textContent).toBe(activeSurface);
+    }
+
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(draft, "Recovered draft");
+      draft?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(draft?.value).toBe("Recovered draft");
+
+    const clearDraft = Array.from(workspace?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+      .find((button) => button.textContent === "Clear draft");
+    await act(async () => clearDraft?.click());
+    expect(draft?.value).toBe("");
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="Fold PAIGE conversation"]')?.click();
@@ -410,7 +452,8 @@ describe("tenant PAIGE command field", () => {
     expect((workspace as HTMLElement | null)?.hidden).toBe(true);
     expect(workspace && getComputedStyle(workspace).display).toBe("none");
     expect(document.activeElement).toBe(host.querySelector("[data-tenant-paige-command]"));
-    expect(popupRecord.closed).toBe(true);
+    expect(popupRecords[0].closed).toBe(true);
+    expect(popupRecords[1].closed).toBe(true);
 
     await act(async () => root.unmount());
     host.remove();

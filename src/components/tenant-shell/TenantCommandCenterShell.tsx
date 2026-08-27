@@ -217,7 +217,12 @@ export function TenantCommandCenterShell({
     };
   }, [location.pathname, navExpanded, paigeFocusToken, paigeFull, paigeOverlay, railExpanded]);
 
-  const restorePopoutToWorkspace = useCallback(() => {
+  const restorePopoutToWorkspace = useCallback((expectedPopout?: Window | null) => {
+    if (expectedPopout && paigePopoutRef.current !== expectedPopout) return;
+    const portalSlot = paigePortalSlotRef.current;
+    if (paigePortalHost && portalSlot && paigePortalHost.parentNode !== portalSlot) {
+      portalSlot.appendChild(paigePortalHost);
+    }
     paigePopoutRef.current = null;
     setPaigePopout(null);
     expandRail();
@@ -225,7 +230,7 @@ export function TenantCommandCenterShell({
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => popoutReturnFocusRef.current?.focus({ preventScroll: true }));
     });
-  }, [expandRail]);
+  }, [expandRail, paigePortalHost]);
 
   const detachPaige = useCallback((launcher?: HTMLElement) => {
     if (soloPaigeWorkspace) {
@@ -254,7 +259,7 @@ export function TenantCommandCenterShell({
         child.document.body.style.margin = "0";
         child.document.body.style.height = "100vh";
         child.document.body.style.overflow = "hidden";
-        child.addEventListener("beforeunload", restorePopoutToWorkspace, { once: true });
+        child.addEventListener("beforeunload", () => restorePopoutToWorkspace(child), { once: true });
       } catch {
         child.close();
         setAnnouncement("PAIGE could not use that window safely; close it and try again");
@@ -316,7 +321,7 @@ export function TenantCommandCenterShell({
     if (!paigePopout) return;
     paigePopout.document.documentElement.className = document.documentElement.className;
     const checkClosed = window.setInterval(() => {
-      if (paigePopout.closed) restorePopoutToWorkspace();
+      if (paigePopout.closed) restorePopoutToWorkspace(paigePopout);
     }, 400);
     return () => window.clearInterval(checkClosed);
   }, [isDark, paigePopout, restorePopoutToWorkspace]);
