@@ -175,7 +175,31 @@ React.useEffect(() => {
   }
 }, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, legacySettingsDestination, location.search, navigate]);
 const[studio,setStudio]=React.useState(false);
-React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
+const studioReturnFocus=React.useRef(null);
+const studioReturnOwner=React.useRef(null);
+const studioFocusPending=React.useRef(false);
+React.useEffect(()=>{const h=(event)=>{
+  const target=event instanceof CustomEvent?event.detail?.returnFocus:null;
+  const owner=target instanceof HTMLElement?target.closest('[data-tenant-shell]'):null;
+  if(!(target instanceof HTMLButtonElement)||target.disabled||!target.hasAttribute('data-solo-vibe-studio-launcher')||!owner)return;
+  studioReturnFocus.current=target;
+  studioReturnOwner.current=owner;
+  studioFocusPending.current=false;
+  setStudio(true);
+};window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
+const closeStudio=React.useCallback(()=>{studioFocusPending.current=true;setStudio(false)},[]);
+React.useLayoutEffect(()=>{
+  if(studio||!studioFocusPending.current)return;
+  studioFocusPending.current=false;
+  const target=studioReturnFocus.current;
+  const owner=studioReturnOwner.current;
+  studioReturnFocus.current=null;
+  studioReturnOwner.current=null;
+  if(route!=='growth'||!(target instanceof HTMLButtonElement)||!target.isConnected||target.disabled)return;
+  if(!owner?.isConnected||target.closest('[data-tenant-shell]')!==owner||target.closest('[hidden],[aria-hidden="true"],[inert]'))return;
+  target.focus({preventScroll:true});
+},[route,studio]);
+React.useEffect(()=>{if(route==='growth')return;studioFocusPending.current=false;studioReturnFocus.current=null;studioReturnOwner.current=null},[route]);
 const theme=resolvedTheme==='light'?'light':'dark';
 // Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
@@ -201,7 +225,7 @@ onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
 <main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{screens[route]}</main>
-{studio&&<VibeStudio onBack={()=>setStudio(false)}/>}</div></div>
+{studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
 </TenantCommandCenterShell>};
 
 const SoloApp=()=> (

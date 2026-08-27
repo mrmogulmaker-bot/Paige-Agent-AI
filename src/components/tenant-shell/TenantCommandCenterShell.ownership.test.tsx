@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Settings } from "lucide-react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TenantCommandCenterShell, TenantPaigeCommandField } from "./TenantCommandCenterShell";
 
@@ -11,11 +11,37 @@ vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light", setTh
 vi.mock("@/components/admin/AdminBridgeBell", () => ({ AdminBridgeBell: () => null }));
 vi.mock("@/components/admin/voice/DialPadTrigger", () => ({ DialPadTrigger: () => null }));
 vi.mock("@/components/ui/paige", () => ({
+  AgentPresenceProvider: ({ children }: { children: React.ReactNode }) => children,
   useAgentPresence: () => ({ railExpanded: false, expandRail: vi.fn(), collapseRail: vi.fn() }),
 }));
+vi.mock("@/hooks/usePendingApprovals", () => ({ usePendingApprovals: () => ({ items: [] }) }));
+vi.mock("@/hooks/useTenantContext", () => ({
+  useTenantContext: () => ({
+    activeTenant: { account_number: "42", name: "Supplied Solo account", account_type: "standalone", parent_tenant_id: null },
+  }),
+}));
+vi.mock("@/lib/voice/VoiceDeviceProvider", () => ({ VoiceDeviceProvider: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock("@/components/admin/voice/DialPadSurface", () => ({ DialPadSurface: () => null }));
+vi.mock("@/components/admin/voice/IncomingCallOverlay", () => ({ IncomingCallOverlay: () => null }));
+vi.mock("@/components/admin/voice/LiveTranscriptPanel", () => ({ LiveTranscriptPanel: () => null }));
+vi.mock("@/solo/CommandCenter", () => ({ CommandHub: () => null }));
+vi.mock("@/solo/paigehub", () => ({ PaigeHub: () => null }));
+vi.mock("@/solo/compass", () => ({ TrustCompass: () => null }));
+vi.mock("@/solo/automations-build", () => ({ AutomationsHub: () => null }));
+vi.mock("@/components/tenant-relationships/TenantRelationshipsClientsWorkspace", () => ({ TenantRelationshipsClientsWorkspace: () => null }));
+vi.mock("@/solo/conversations", () => ({ ClientsHub: () => null }));
+vi.mock("@/components/tenant-calendar/TenantCanonicalCalendarWorkspace", () => ({ TenantCanonicalCalendarWorkspace: () => null }));
+vi.mock("@/solo/analytics2", () => ({ Analytics2: () => null }));
+vi.mock("@/solo/marketplace", () => ({ Marketplace: () => null }));
+vi.mock("@/solo/settings", () => ({ SoloSettings: () => null }));
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const RouteProbe = () => {
+  const location = useLocation();
+  return <output data-route-probe>{location.pathname}</output>;
+};
 
 describe("tenant shell owns one PAIGE surface", () => {
   it.each([
@@ -55,15 +81,59 @@ describe("tenant shell owns one PAIGE surface", () => {
     const campaigns = source("src/solo/growth2.tsx");
     const vibe = source("src/solo/vibe.tsx");
 
-    expect(campaigns).toContain("window.dispatchEvent(new CustomEvent('paige-studio'))");
+    expect(campaigns).toContain("detail:{returnFocus:event.currentTarget}");
+    expect(campaigns).toContain("data-solo-vibe-studio-launcher");
     expect(campaigns).toContain(">Vibe Studio</button>");
     expect(campaigns).toContain('eyebrow="Campaigns"');
     expect(campaigns).not.toContain('eyebrow="Growth & acquisition"');
     expect(solo).toContain("window.addEventListener('paige-studio',h)");
-    expect(solo).toContain("<VibeStudio onBack={()=>setStudio(false)}/>");
+    expect(solo).toContain("<VibeStudio onBack={closeStudio}/>");
     expect(solo.match(/<VibeStudio/g)).toHaveLength(1);
     expect(vibe).toContain("Back to Campaigns");
     expect(vibe).not.toContain("Back to Growth");
+  });
+
+  it.each(["back", "escape"])("restores the real Campaigns Vibe Studio launcher after %s closes the mounted owner", async (exit) => {
+    const { default: SoloApp } = await import("@/solo/SoloApp");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/growth"]}>
+          <Routes>
+            <Route path="/solo/:account/*" element={<><SoloApp /><RouteProbe /></>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+
+    const launcher = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "Vibe Studio");
+    expect(launcher).toBeTruthy();
+    launcher?.focus();
+    expect(document.activeElement).toBe(launcher);
+    await act(async () => launcher?.click());
+
+    const back = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("Back to Campaigns"));
+    expect(back).toBeTruthy();
+    back?.focus();
+    expect(document.activeElement).toBe(back);
+
+    if (exit === "back") {
+      await act(async () => back?.click());
+    } else {
+      await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    }
+
+    expect(host.textContent).not.toContain("Back to Campaigns");
+    expect(document.activeElement).toBe(launcher);
+    expect(host.querySelector("[data-route-probe]")?.textContent).toBe("/solo/42/growth");
+
+    await act(async () => root.unmount());
+    host.remove();
   });
 
   it("restores focus to the Solo main-menu owner after Back or Escape closes Settings", () => {
