@@ -95,20 +95,24 @@ describe("tenant canonical Calendar source contract", () => {
     }
   });
 
-  it("reflows the Solo Clients Calendar within its center shell track at 1366px", () => {
-    const viewportWidth = 1366;
+  it("keeps the Solo Clients Calendar header and summary compact from the real center track", () => {
     const expandedNavigationWidth = 216;
-    const expandedPaigeWidth = 340;
-    const centerShellTrackWidth = viewportWidth - expandedNavigationWidth - expandedPaigeWidth;
+    const desktopPaigeWidth = Math.max(340, 1536 * 0.26);
+    const desktopCenterTrackWidth = 1536 - expandedNavigationWidth - desktopPaigeWidth;
+    const laptopCenterTrackWidth = 1366 - expandedNavigationWidth - 340;
 
+    expect(shellCss).toMatch(/--tcs-paige:\s*minmax\(340px,\s*26vw\)/);
     expect(shellCss).toMatch(/@media \(max-width: 1366px\)[\s\S]*?--tcs-paige:\s*340px/);
     expect(shellCss).toMatch(/data-nav="expanded"[^}]*--tcs-rail:\s*216px/);
-    expect(centerShellTrackWidth).toBe(810);
-    expect(centerShellTrackWidth).toBeLessThan(900);
+    expect(desktopCenterTrackWidth).toBeCloseTo(920.64, 2);
+    expect(laptopCenterTrackWidth).toBe(810);
     expect(clientsCss).toMatch(/\.trc-canonical-mount--direct\s*\{[^}]*container-name:\s*solo-calendar-mount/s);
     expect(clientsCss).toMatch(/\.trc-canonical-mount--direct\s*\{[^}]*container-type:\s*inline-size/s);
     expect(clientsCss).toMatch(
-      /@container\s+solo-calendar-mount\s*\(max-width:\s*900px\)[\s\S]*?\.trc-canonical-mount--direct\s+\.tcal-shell\s*\{[^}]*display:\s*flex/s,
+      /\.trc-canonical-mount--direct\s+\.tcal-shell\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(360px,\s*\.9fr\)/s,
+    );
+    expect(clientsCss).toMatch(
+      /@container\s+solo-calendar-mount\s*\(max-width:\s*620px\)[\s\S]*?\.trc-canonical-mount--direct\s+\.tcal-shell\s*\{[^}]*display:\s*flex/s,
     );
   });
 });
