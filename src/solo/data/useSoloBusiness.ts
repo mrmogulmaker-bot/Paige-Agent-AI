@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json, TablesUpdate } from "@/integrations/supabase/types";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { createSettingsRequestGate } from "../settings-contract";
 
 /** The brand keys the app already reads/writes. Null when the tenant hasn't set one. */
 export interface SoloBrand {
@@ -102,17 +103,20 @@ export function useSoloBusiness(): SoloBusinessData {
   // The raw brand JSONB exactly as stored, so a Save MERGES (never clobbers keys
   // this slice doesn't render). Held in a ref — it is write-path state, not render.
   const rawBrandRef = useRef<Record<string, unknown>>({});
+  const requestGate = useRef(createSettingsRequestGate());
 
   const load = useCallback(async () => {
-    if (!tenantId) {
-      setLoading(false);
-      setName("");
-      setBrand(EMPTY_BRAND);
-      setIsAdmin(false);
-      return;
-    }
+    const requestToken = requestGate.current.begin();
     setLoading(true);
     setError(null);
+    setName("");
+    setBrand(EMPTY_BRAND);
+    setIsAdmin(false);
+    rawBrandRef.current = {};
+    if (!tenantId) {
+      setLoading(false);
+      return;
+    }
     try {
       const [rowRes, adminRes] = await Promise.all([
         supabase.from("tenants").select("name, brand").eq("id", tenantId).maybeSingle(),
@@ -121,6 +125,7 @@ export function useSoloBusiness(): SoloBusinessData {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types (repo-wide pattern)
         supabase.rpc("is_current_user_tenant_admin" as any),
       ]);
+      if (!requestGate.current.isCurrent(requestToken)) return;
       if (rowRes.error) throw rowRes.error;
       setIsAdmin(adminRes.data === true);
       const rawBrand = asRecord(rowRes.data?.brand);
@@ -137,14 +142,17 @@ export function useSoloBusiness(): SoloBusinessData {
         about: str(rawBrand.about),
       });
     } catch (e) {
+      if (!requestGate.current.isCurrent(requestToken)) return;
       setError(e instanceof Error ? e.message : "Couldn't load your business details.");
     } finally {
-      setLoading(false);
+      if (requestGate.current.isCurrent(requestToken)) setLoading(false);
     }
   }, [tenantId]);
 
   useEffect(() => {
+    const activeGate = requestGate.current;
     void load();
+    return () => activeGate.clear();
   }, [load]);
 
   const saveBusiness = useCallback(

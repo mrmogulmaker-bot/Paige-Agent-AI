@@ -44,6 +44,11 @@ const TENANT_BRANCHES: Record<TenantBranch, { slug: string; aliases: string[] }>
   settings: { slug: "setup", aliases: ["marketplace", "business-vault", "integrations", "team"] },
 };
 
+const SOLO_SETTINGS_BRANCH = {
+  slug: "settings",
+  aliases: ["setup", "business-vault", "integrations", "team"],
+};
+
 /** Translate internal account_type values into the owner-locked tenant-facing taxonomy. */
 export function tenantAccountTypeLabel(accountType?: string | null): string {
   switch (accountType?.trim().toLowerCase()) {
@@ -166,7 +171,9 @@ export function tenantShellDestinationsForPath(
   if (!root) return destinations;
 
   return destinations.map((destination) => {
-    const branch = TENANT_BRANCHES[destination.id];
+    const branch = destination.id === "settings" && root.startsWith("/solo/")
+      ? SOLO_SETTINGS_BRANCH
+      : TENANT_BRANCHES[destination.id];
     return {
       ...destination,
       href: `${root}/${branch.slug}`,

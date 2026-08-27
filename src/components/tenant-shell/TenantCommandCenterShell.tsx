@@ -3,6 +3,7 @@ import { useReducedMotion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -11,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Sun,
+  type LucideIcon,
 } from "lucide-react";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
@@ -55,6 +57,13 @@ export interface TenantCommandCenterShellProps {
   accountControls?: ReactNode;
   onSignOut: () => void;
   signingOut?: boolean;
+  contextualNavigation?: {
+    label: string;
+    backHref: string;
+    backLabel: string;
+    activeId: string;
+    items: Array<{ id: string; label: string; href: string; icon: LucideIcon }>;
+  };
 }
 
 export function TenantPaigeCommandField({
@@ -92,6 +101,7 @@ export function TenantCommandCenterShell({
   accountControls,
   onSignOut,
   signingOut = false,
+  contextualNavigation,
 }: TenantCommandCenterShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -151,6 +161,14 @@ export function TenantCommandCenterShell({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && contextualNavigation && !event.defaultPrevented) {
+        const target = event.target as HTMLElement | null;
+        if (target?.matches("input, textarea, select, [contenteditable='true']") || target?.closest("[role='dialog']")) return;
+        event.preventDefault();
+        navigate(contextualNavigation.backHref);
+        setAnnouncement(`${contextualNavigation.label} navigation closed`);
+        return;
+      }
       if (!(event.metaKey || event.ctrlKey) || event.key !== "\\") return;
       event.preventDefault();
       if (event.altKey) setNavigation(!navExpanded);
@@ -159,7 +177,7 @@ export function TenantCommandCenterShell({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closePaige, navExpanded, openPaige, railExpanded, setNavigation]);
+  }, [closePaige, contextualNavigation, navExpanded, navigate, openPaige, railExpanded, setNavigation]);
 
   if (detached) {
     return (
@@ -199,23 +217,35 @@ export function TenantCommandCenterShell({
           </button>
         </div>
 
-        <div className="tcs-nav-links">
-          {destinations.map(({ id, label, href, icon: Icon }) => {
-            const active = destination.id === id;
-            return (
-              <Link
-                key={id}
-                to={href}
-                className={active ? "is-active" : undefined}
-                aria-current={active ? "page" : undefined}
-                title={!navExpanded ? label : undefined}
-              >
-                <Icon aria-hidden />
-                <span>{label}</span>
-                <i aria-hidden />
+        <div className="tcs-nav-links" data-contextual-navigation={contextualNavigation ? contextualNavigation.label : undefined}>
+          {contextualNavigation ? (
+            <>
+              <Link className="tcs-context-back" to={contextualNavigation.backHref} title={!navExpanded ? contextualNavigation.backLabel : undefined}>
+                <ArrowLeft aria-hidden />
+                <span>{contextualNavigation.backLabel}</span>
               </Link>
-            );
-          })}
+              <p className="tcs-context-nav-label">{contextualNavigation.label}</p>
+              {contextualNavigation.items.map(({ id, label, href, icon: Icon }) => {
+                const active = contextualNavigation.activeId === id;
+                return (
+                  <Link key={id} to={href} className={active ? "is-active" : undefined} aria-current={active ? "page" : undefined} title={!navExpanded ? label : undefined}>
+                    <Icon aria-hidden />
+                    <span>{label}</span>
+                    <i aria-hidden />
+                  </Link>
+                );
+              })}
+            </>
+          ) : destinations.map(({ id, label, href, icon: Icon }) => {
+              const active = destination.id === id;
+              return (
+                <Link key={id} to={href} className={active ? "is-active" : undefined} aria-current={active ? "page" : undefined} title={!navExpanded ? label : undefined}>
+                  <Icon aria-hidden />
+                  <span>{label}</span>
+                  <i aria-hidden />
+                </Link>
+              );
+            })}
         </div>
 
         <div className="tcs-nav-foot">

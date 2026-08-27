@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Bell, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
 import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -20,10 +21,8 @@ import { GrowthHub } from "./growth2";
 import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
 import { Analytics2 } from "./analytics2";
 import { Marketplace } from "./marketplace";
-import { VaultView } from "./vault";
-import { Integrations } from "./integrations";
-import { TeamHub } from "./team";
-import { Setup } from "./setup";
+import { SoloSettings } from "./settings";
+import { SOLO_SETTINGS_DESTINATIONS } from "./settings-contract";
 import { VibeStudio } from "./vibe";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
 import { resolveTenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
@@ -35,6 +34,8 @@ import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPane
 
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
+const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'connections','business-vault':'vault'};
+const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
 
 const SoloClientsRoute=({openPaige})=>{const[tab]=useSubtabRoute("solo","clients","people");return isLegacyRelationshipOwner("solo",tab)?<ClientsHub openPaige={openPaige}/>:<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={openPaige}/>};
 
@@ -127,13 +128,15 @@ const SoloAppContent=()=>{
 // there is no sub-prefix parsing here — this is the simpler leg.
 const urlParams = useParams();
 const navigate = useNavigate();
+const location = useLocation();
 const { expandRail } = useAgentPresence();
 const { resolvedTheme } = useTheme();
 const urlAccount = urlParams.account || null;
 const urlDriven = !!urlAccount;
 const urlBranchSlug = urlDriven ? ((urlParams["*"] || "").split("/")[0] || defaultBranchSlug("solo")) : null;
 const[stateRoute,setStateRoute]=React.useState('home');
-const route = urlDriven ? (branchBySlug("solo", urlBranchSlug)?.key ?? "home") : stateRoute;
+const legacySettingsDestination=LEGACY_SETTINGS[urlBranchSlug]||null;
+const route = urlDriven ? (legacySettingsDestination?'settings':branchBySlug("solo", urlBranchSlug)?.key ?? "home") : stateRoute;
 // Real approvals count for the rail's Command Center badge (§13 — hidden when 0).
 // Own instance (unique realtime topic via the hook's useId); scope:'all' matches
 // the Command Center's own read so the badge and the queue agree.
@@ -165,8 +168,12 @@ React.useEffect(() => {
   }
   if (!urlSplat) {
     navigate(branchPath("solo", urlAccount, defaultBranchSlug("solo")), { replace: true });
+    return;
   }
-}, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, navigate]);
+  if (legacySettingsDestination) {
+    navigate(`/solo/${urlAccount}/settings/${legacySettingsDestination}${location.search}`, { replace: true });
+  }
+}, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, legacySettingsDestination, location.search, navigate]);
 const[studio,setStudio]=React.useState(false);
 React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
 const theme=resolvedTheme==='light'?'light':'dark';
@@ -174,13 +181,22 @@ const theme=resolvedTheme==='light'?'light':'dark';
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
 // and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>expandRail();
-const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
+const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,settings:<SoloSettings/>};
+const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
+const contextualNavigation=route==='settings'&&urlDriven?{
+  label:'Settings',
+  backHref:branchPath('solo',urlAccount,'command-center'),
+  backLabel:'Back to PAIGE',
+  activeId:settingsActive,
+  items:SOLO_SETTINGS_DESTINATIONS.map(item=>({id:item.key,label:item.label,href:`/solo/${urlAccount}/settings/${item.key}${location.search}`,icon:SETTINGS_ICONS[item.key]})),
+}:undefined;
 return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
 userRole="admin"
+contextualNavigation={contextualNavigation}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>

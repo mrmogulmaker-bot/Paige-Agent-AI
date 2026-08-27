@@ -158,6 +158,20 @@ describe("Sub-tab tree (§65 3-level, agency verified 2026-08-17)", () => {
 });
 
 describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", () => {
+  it("makes Settings the one visible Solo owner with the approved seven destinations", () => {
+    const settings = branchBySlug("solo", "settings");
+    expect(settings?.key).toBe("settings");
+    expect(settings?.subtabs?.map(({ slug, label }) => [slug, label])).toEqual([
+      ["setup", "Setup"],
+      ["team", "Team"],
+      ["connections", "Connections"],
+      ["notifications", "Notifications"],
+      ["security-data", "Security & data"],
+      ["vault", "Vault"],
+      ["billing", "Billing"],
+    ]);
+  });
+
   it("sub-tab slugs are unique + url-safe within each Solo branch; keys unique too", () => {
     for (const b of SOLO_BRANCHES) {
       if (!b.subtabs) continue;
@@ -177,13 +191,12 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     }
   });
 
-  it("Solo branches with NO sub-tabs are exactly Trust Compass + Business Vault", () => {
-    // Verified live: solo/compass.tsx has a full-page department drilldown (no sub-tab strip),
-    // and solo/vault.tsx's `tabstrip`-classed chip row is a due-date FILTER, not destinations.
+  it("Solo branches with NO sub-tabs are exactly Trust Compass", () => {
+    // Verified live: solo/compass.tsx has a full-page department drilldown (no sub-tab strip).
+    // Vault is now an owner-locked Settings destination, not a parallel branch.
     const noSub = SOLO_BRANCHES.filter((b) => !b.subtabs).map((b) => b.slug).sort();
-    expect(noSub).toEqual(["business-vault", "trust-compass"]);
-    // ...and the other 11 all DO carry sub-tabs.
-    expect(SOLO_BRANCHES.filter((b) => b.subtabs).length).toBe(11);
+    expect(noSub).toEqual(["trust-compass"]);
+    expect(SOLO_BRANCHES.filter((b) => b.subtabs).length).toBe(9);
   });
 
   it("verified Solo counts + first-is-default per the live-screen audit", () => {
@@ -196,17 +209,14 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("growth")).toBe(7);
     expect(count("analytics")).toBe(6);
     expect(count("marketplace")).toBe(4);
-    expect(count("integrations")).toBe(3);
-    expect(count("team")).toBe(6);
-    expect(count("setup")).toBe(5);
+    expect(count("settings")).toBe(7);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(56);
+    expect(total).toBe(49);
     // first sub-tab is the screen's default (bare branch renders it).
     expect(defaultSubtabSlug("solo", "command-center")).toBe("overview");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
-    expect(defaultSubtabSlug("solo", "setup")).toBe("business");
+    expect(defaultSubtabSlug("solo", "settings")).toBe("setup");
     expect(defaultSubtabSlug("solo", "trust-compass")).toBeNull();
-    expect(defaultSubtabSlug("solo", "business-vault")).toBeNull();
   });
 
   it("subtabBySlug / subtabByKey round-trip across several Solo branches", () => {
@@ -222,9 +232,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(subtabByKey("solo", "calendar", "booking")?.slug).toBe("booking-pages");
     roundTrip("growth", "overview", "ov");
     roundTrip("analytics", "market-watch", "mkt");
-    roundTrip("integrations", "web-automator", "auto");
-    roundTrip("team", "directory", "dir");
-    roundTrip("setup", "comms-data", "comms");
+    roundTrip("settings", "connections", "connections");
+    roundTrip("settings", "security-data", "security-data");
+    roundTrip("settings", "billing", "billing");
     expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("The money");
     expect(subtabBySlug("solo", "paige", "nope")).toBeNull();
     expect(subtabBySlug("solo", "trust-compass", "anything")).toBeNull();
@@ -250,12 +260,12 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(subtabBySlug("agency", "marketplace", "curated")).not.toBeNull();
     expect(subtabBySlug("solo", "marketplace", "curated")).toBeNull();
     expect(subtabBySlug("solo", "marketplace", "publish")).toBeNull();
-    // Setup: presence + banking are agency-only.
-    expect(subtabBySlug("solo", "setup", "presence")).toBeNull();
-    expect(subtabBySlug("solo", "setup", "banking")).toBeNull();
-    // Integrations: a STUB on agency, fully built on Solo (§13 per-tier truth).
+    // Public Presence remains Analytics-owned and banking is not a Solo Settings destination.
+    expect(subtabBySlug("solo", "settings", "presence")).toBeNull();
+    expect(subtabBySlug("solo", "settings", "banking")).toBeNull();
+    // Agency's legacy Integrations branch remains unchanged; Solo has one Settings owner.
     expect(branchBySlug("agency", "integrations")?.subtabs).toBeUndefined();
-    expect(branchBySlug("solo", "integrations")?.subtabs?.length).toBe(3);
+    expect(branchBySlug("solo", "integrations")).toBeNull();
   });
 
   it("keeps the shipped Solo client-portal address as an alias of canonical Portal", () => {
@@ -284,11 +294,6 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       ["analytics", "retention", "ret", "retain"],
       ["analytics", "decisions", "dec", "decide"],
       ["analytics", "market-watch", "mkt", "market"],
-      ["team", "directory", "dir", "directory"],
-      ["team", "workload", "work", "workload"],
-      ["team", "performance", "perf", "performance"],
-      ["team", "activity", "act", "activity"],
-      ["setup", "business", "biz", "business"],
     ];
     for (const [branch, slug, soloKey, agencyKey] of perTierKeys) {
       expect(subtabBySlug("solo", branch, slug)?.key, `solo ${branch}/${slug}`).toBe(soloKey);
@@ -337,9 +342,7 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     growth: "src/solo/growth2.tsx",
     analytics: "src/solo/analytics2.tsx",
     marketplace: "src/solo/marketplace.tsx",
-    integrations: "src/solo/integrations.tsx",
-    team: "src/solo/team.tsx",
-    setup: "src/solo/setup.tsx",
+    settings: "src/solo/settings.tsx",
   };
 
   /** Slice the balanced `[...]` starting at `open`, so nested brackets can't truncate it. */
