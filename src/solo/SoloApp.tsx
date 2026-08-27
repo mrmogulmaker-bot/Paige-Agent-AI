@@ -11,7 +11,7 @@ import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
-import { PaigeHub } from "./paigehub";
+import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 import { TrustCompass } from "./compass";
 import { AutomationsHub } from "./automations-build";
 import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
@@ -135,6 +135,7 @@ const urlAccount = urlParams.account || null;
 const urlDriven = !!urlAccount;
 const urlBranchSlug = urlDriven ? ((urlParams["*"] || "").split("/")[0] || defaultBranchSlug("solo")) : null;
 const[stateRoute,setStateRoute]=React.useState('home');
+const[paigeDockedTab,setPaigeDockedTab]=React.useState('chat');
 const legacySettingsDestination=LEGACY_SETTINGS[urlBranchSlug]||null;
 const route = urlDriven ? (legacySettingsDestination?'settings':branchBySlug("solo", urlBranchSlug)?.key ?? "home") : stateRoute;
 // Real approvals count for the rail's Command Center badge (§13 — hidden when 0).
@@ -156,7 +157,9 @@ const go = (k) => {
 // own account to their own, and canonicalize a bare /solo/{n} -> its default branch.
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
-const { activeTenant } = useTenantContext();
+const { activeTenant, activeTenantId } = useTenantContext();
+const paigeTabEpochRef=React.useRef(activeTenantId);
+React.useLayoutEffect(()=>{if(paigeTabEpochRef.current===activeTenantId)return;paigeTabEpochRef.current=activeTenantId;setPaigeDockedTab('chat')},[activeTenantId]);
 const urlSplat = urlParams["*"] || "";
 React.useEffect(() => {
   if (!urlDriven) return;
@@ -207,7 +210,8 @@ const theme=resolvedTheme==='light'?'light':'dark';
 const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,settings:<SoloSettings/>};
+const accountEpochKey=activeTenantId??'resolving';
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,settings:<SoloSettings/>};
 const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
 const contextualNavigation=route==='settings'&&urlDriven?{
   label:'Settings',
@@ -221,10 +225,14 @@ accountName={accountContext.accountName}
 accountType={accountContext.accountType}
 userRole="admin"
 contextualNavigation={contextualNavigation}
+soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey} full={route==='paige'} dockedTab={paigeDockedTab} onDockedTabChange={setPaigeDockedTab}/>}
+paigeFull={route==='paige'}
+paigeFullHref={urlDriven?`${branchPath('solo',urlAccount,'paige')}/${paigeDockedTab}`:undefined}
+paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
-<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{screens[route]}</main>
+<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
 </TenantCommandCenterShell>};
 

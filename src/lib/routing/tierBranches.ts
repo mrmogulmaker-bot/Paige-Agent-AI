@@ -104,10 +104,10 @@ export interface TierTree {
  * SOLO_BRANCHES — the Solo tree (13). Shared by `solo` AND `sub_account` (§11c/§60).
  * Keys match `src/solo/SoloApp.tsx`'s `screens` registry.
  *
- * Sub-tabs verified screen-by-screen against the Solo screen SOURCE 2026-08-18 (55 across 11
+ * Sub-tabs verified screen-by-screen against the Solo screen SOURCE (47 across 9
  * branches) — a source read, not a browser drive; the §32.c live-drive is owed separately.
  * `tierBranches.test.ts` enforces this by parsing each screen's rendered strip, so the pairing
- * can't silently drift. Solo's internal sub-tab keys are its OWN abbreviations (`know`/`sub`/`pipe`/`sch`/
+ * can't silently drift. Solo's internal sub-tab keys remain screen-owned (`pipe`/`sch`/
  * `ov`/`mkt`/`dir`/`biz`…) and deliberately DIFFER from the agency keys for the same mental-model
  * slug — the two tiers are separate shells with separate `useState` vocabularies. Do NOT
  * "normalize" a Solo key to match its agency twin: the key is what the screen actually switches
@@ -127,15 +127,13 @@ export const SOLO_BRANCHES: Branch[] = [
   },
   {
     slug: "paige", key: "paige", label: "Paige", group: "main",
-    // Source: src/solo/paigehub.tsx. NB `know`/`sub`/`act`/`team` — agency uses
-    // knowledge/agents/actions/pteam for the same slugs.
+    // Source: src/solo/SoloPaigeWorkspace.tsx. Solo intentionally exposes the
+    // customer-facing Chat, Knowledge, Helpers, and Capabilities contract only.
     subtabs: [
       { slug: "chat", key: "chat", label: "Chat" },
-      { slug: "knowledge", key: "know", label: "Knowledge" },
-      { slug: "sub-agents", key: "sub", label: "Sub-Agents" },
-      { slug: "actions", key: "act", label: "Actions" },
-      { slug: "skills", key: "skills", label: "Skills" },
-      { slug: "paige-team", key: "team", label: "Paige Team" },
+      { slug: "knowledge", key: "knowledge", label: "Knowledge" },
+      { slug: "helpers", key: "helpers", label: "Helpers" },
+      { slug: "capabilities", key: "capabilities", label: "Capabilities" },
     ],
   },
   // Trust Compass has NO sub-tabs in Solo (full-page department drilldown, no sub-tab strip).

@@ -180,6 +180,7 @@
   box-shadow: var(--pg-e3);
   animation: tcs-materialize 180ms cubic-bezier(.22, 1, .36, 1) both;
 }
+.tcs-paige[hidden] { display: none; }
 .tcs-paige-header { display: flex; min-height: 66px; align-items: center; gap: 10px; padding: 10px 10px 10px 13px; border-bottom: 1px solid var(--pg-line); background: var(--pg-spine); }
 .tcs-paige-mark { display: inline-grid; width: 24px; height: 24px; flex: none; place-items: center; color: var(--pg-gold-deep); }
 .tcs-paige-header > div { min-width: 0; display: flex; flex: 1; flex-direction: column; }
