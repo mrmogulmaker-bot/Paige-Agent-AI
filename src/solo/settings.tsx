@@ -27,32 +27,36 @@ import { useSoloOwner } from "./data/useSoloOwner";
 import { useSoloComms } from "./data/useSoloComms";
 import {
   createSettingsRequestGate,
+  getCustomDomainPresentation,
+  getManagedIdentityPresentation,
   resolveSoloSettingsEntry,
   SOLO_SETTINGS_DESTINATIONS,
+  type ConnectionStateTone,
+  type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
 import "./settings.css";
 
-type ManagedIdentity = {
-  default_email_sender?: string | null;
-  default_email_domain?: string | null;
-  default_email_kind?: string | null;
-  default_email_status?: string | null;
-};
-
-function Truth({ value }: { value: SettingsTruth }) {
-  return <span className="ss-truth" data-truth={value}>{value}</span>;
+function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
+  return <span className="ss-truth" data-truth={value}>{capability ? `Capability: ${value}` : value}</span>;
 }
 
 function Status({ tone = "neutral", children }: { tone?: string; children: ReactNode }) {
   return <span className="ss-status" data-tone={tone}><i />{children}</span>;
 }
 
-function Card({ title, icon: Icon, truth, children, actions }: { title: string; icon: typeof Building2; truth?: SettingsTruth; children: ReactNode; actions?: ReactNode }) {
+function Card({ title, icon: Icon, truth, capabilityTruth = false, children, actions }: { title: string; icon: typeof Building2; truth?: SettingsTruth; capabilityTruth?: boolean; children: ReactNode; actions?: ReactNode }) {
   return <section className="ss-card">
-    <header><span className="ss-card-icon"><Icon aria-hidden /></span><h2>{title}</h2>{truth && <Truth value={truth}/>}<div className="ss-card-actions">{actions}</div></header>
+    <header><span className="ss-card-icon"><Icon aria-hidden /></span><h2>{title}</h2>{truth && <Truth value={truth} capability={capabilityTruth}/>}<div className="ss-card-actions">{actions}</div></header>
     <div className="ss-card-body">{children}</div>
   </section>;
+}
+
+function OrthogonalConnectionState({ accountLabel, healthLabel, tone }: { accountLabel: string; healthLabel: string; tone: ConnectionStateTone }) {
+  return <dl className="ss-connection-state">
+    <div><dt>Account configuration</dt><dd>{accountLabel}</dd></div>
+    <div><dt>Operational health</dt><dd><Status tone={tone}>{healthLabel}</Status></dd></div>
+  </dl>;
 }
 
 function Field({ label, value }: { label: string; value?: string | null }) {
@@ -68,7 +72,7 @@ function ReadState({ loading, error, retry, children }: { loading: boolean; erro
 function useManagedIdentity() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
-  const [state, setState] = useState<{ tenantId: string | null; loading: boolean; error: string | null; value: ManagedIdentity | null }>({ tenantId: null, loading: true, error: null, value: null });
+  const [state, setState] = useState<{ tenantId: string | null; loading: boolean; error: string | null; value: ManagedIdentityRecord | null }>({ tenantId: null, loading: true, error: null, value: null });
   const load = useCallback(async () => {
     const token = gate.current.begin();
     setState({ tenantId: null, loading: true, error: null, value: null });
@@ -139,18 +143,25 @@ function ConnectionsView() {
   const identity = useManagedIdentity();
   const [view, setView] = useState<"connected" | "health" | "available">("connected");
   const identityStatus = identity.value?.default_email_status ?? null;
-  const sendReady = identityStatus === "verified" || identityStatus === "outbound_ready";
+  const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
+  const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
+  const sendReady = identityPresentation.accountState === "active";
   return <>
     <div className="ss-segment" role="tablist" aria-label="Connection organization">{(["connected","health","available"] as const).map(key=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{key[0].toUpperCase()+key.slice(1)}</button>)}</div>
     {view === "connected" && <div className="ss-grid">
-      <Card title="PAIGE-managed sending identity" icon={Mail} truth="LIVE" actions={<Status tone={sendReady ? "ok" : identity.error ? "bad" : "warn"}>{sendReady ? "Outbound ready" : identity.error ? "Read failed" : identity.loading ? "Resolving" : "Activation pending"}</Status>}>
-        <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Status" value={identityStatus}/></div> : <p>No managed sending identity was returned for this account.</p>}</ReadState>
+      <Card title="PAIGE-managed sending identity" icon={Mail} truth={identityPresentation.capability} capabilityTruth actions={<Status tone={identityPresentation.tone}>{identityPresentation.accountLabel}</Status>}>
+        <OrthogonalConnectionState {...identityPresentation}/>
+        <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Persisted status" value={identityStatus}/></div> : <p>No managed sending identity is configured for this account.</p>}</ReadState>
         <p className="ss-note">This is a managed outbound identity. It is not called a mailbox because inbound mailbox behavior is not proven.</p>
       </Card>
-      <Card title="Custom sending domains" icon={Globe2} truth="PARTIAL">
+      <Card title="Custom sending domains" icon={Globe2} truth={domainPresentation.capability} capabilityTruth actions={<Status tone={domainPresentation.tone}>{domainPresentation.accountLabel}</Status>}>
+        <OrthogonalConnectionState {...domainPresentation}/>
         <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.domains.length ? <div className="ss-list">{comms.domains.map(domain=><div key={domain.id}><span><strong>{domain.domain}</strong><small>{domain.fromEmailLocal}@{domain.domain}</small></span><Status tone={domain.status === "verified" ? "ok" : "warn"}>{domain.status}</Status></div>)}</div> : <div className="ss-empty"><WifiOff/>No custom sending domain is reported.</div>}</ReadState>
       </Card>
-      <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE"><p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p></Card>
+      <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
+        <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
+        <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>
+      </Card>
     </div>}
     {view === "health" && <div className="ss-grid">
       <Card title="Provider readiness" icon={Webhook} truth="PARTIAL"><div className="ss-readiness">{[
