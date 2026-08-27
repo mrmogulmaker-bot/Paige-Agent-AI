@@ -201,7 +201,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
 
   it("verified Solo counts + first-is-default per the live-screen audit", () => {
     const count = (slug: string) => branchBySlug("solo", slug)?.subtabs?.length ?? 0;
-    expect(count("command-center")).toBe(4);
+    expect(count("command-center")).toBe(3);
     expect(count("paige")).toBe(4);
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(6);
@@ -211,9 +211,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("marketplace")).toBe(4);
     expect(count("settings")).toBe(7);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(47);
+    expect(total).toBe(46);
     // first sub-tab is the screen's default (bare branch renders it).
-    expect(defaultSubtabSlug("solo", "command-center")).toBe("overview");
+    expect(defaultSubtabSlug("solo", "command-center")).toBe("systems-check");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
     expect(defaultSubtabSlug("solo", "settings")).toBe("setup");
     expect(defaultSubtabSlug("solo", "trust-compass")).toBeNull();
@@ -225,6 +225,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       expect(subtabByKey("solo", branch, key)?.slug, `solo/${branch} key ${key}`).toBe(slug);
     };
     roundTrip("command-center", "systems-check", "sys");
+    expect(subtabBySlug("solo", "command-center", "overview")?.key).toBe("sys");
     roundTrip("paige", "knowledge", "knowledge");
     roundTrip("paige", "helpers", "helpers");
     roundTrip("paige", "capabilities", "capabilities");
@@ -375,6 +376,10 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     ).exec(src);
     if (!hook) throw new Error(`no useSubtabRoute("solo","${branchSlug}") in ${file}`);
     const after = src.slice(hook.index);
+    if (branchSlug === "command-center") {
+      const tabs = /const\s+TABS\s*=\s*\[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
+      return [...tabs.matchAll(/\[\s*["']([A-Za-z0-9_-]+)["']/g)].map((match) => match[1]);
+    }
     if (branchSlug === "paige") {
       const tabs = /const\s+TABS[\s\S]*?=\s*\[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
       return [...tabs.matchAll(/\{\s*id:\s*["']([A-Za-z0-9_-]+)["']/g)].map((match) => match[1]);
