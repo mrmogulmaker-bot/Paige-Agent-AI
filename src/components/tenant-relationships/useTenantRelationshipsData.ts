@@ -119,7 +119,7 @@ export function useTenantRelationshipsData({
         .order("created_at", { ascending: false })
         .limit(250);
       if (error) throw error;
-      return ((data ?? []) as ClientRow[]).map(mapClient);
+      return ((data ?? []) as unknown as ClientRow[]).map(mapClient);
     },
   });
 
@@ -157,3 +157,4 @@ export function useTenantRelationshipsData({
     retryPortal: portal.refetch,
   };
 }
+
