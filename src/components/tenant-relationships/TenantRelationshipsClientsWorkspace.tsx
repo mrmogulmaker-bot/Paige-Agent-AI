@@ -1,11 +1,19 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import {
+  ArrowLeft,
   ArrowRight,
+  Building2,
   CalendarDays,
+  FileText,
+  Mail,
+  MapPin,
   MessageSquare,
+  Phone,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
+  Tag,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -62,8 +70,8 @@ function BoundedState({
   );
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "No recorded touch";
+function formatDate(value: string | null, fallback = "Not recorded") {
+  if (!value) return fallback;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Recorded" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
 }
@@ -83,10 +91,41 @@ export function TenantRelationshipsClientsWorkspace({
   const activeTab = tabs.some(({ id }) => id === routeTab) ? routeTab as WorkspaceTab : null;
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
-  const data = useTenantRelationshipsData({ activeTenantId, variant });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previousTenantId = useRef(activeTenantId);
+  const accountIsChanging = previousTenantId.current !== activeTenantId;
+  const deepLinkedContactId = routeTier === "solo" && !accountIsChanging ? searchParams.get("person") : null;
+  const data = useTenantRelationshipsData({
+    activeTenantId,
+    variant,
+    soloPeople: routeTier === "solo" && variant === "clients",
+    deepLinkedContactId,
+  });
   const calendarReturnAddress = location.pathname;
 
-  useEffect(() => setSelectedContactId(null), [activeTenantId]);
+  useEffect(() => {
+    if (previousTenantId.current === activeTenantId) return;
+    previousTenantId.current = activeTenantId;
+    setSelectedContactId(null);
+    if (!searchParams.has("person")) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("person");
+    setSearchParams(next, { replace: true });
+  }, [activeTenantId, searchParams, setSearchParams]);
+
+  const selectSoloContact = (id: string) => {
+    setSelectedContactId(id);
+    const next = new URLSearchParams(searchParams);
+    next.set("person", id);
+    setSearchParams(next, { replace: true });
+  };
+
+  const clearSoloContact = () => {
+    setSelectedContactId(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("person");
+    setSearchParams(next, { replace: true });
+  };
 
   const onTabKeyDown = (index: number, event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -116,6 +155,8 @@ export function TenantRelationshipsClientsWorkspace({
     ? { label: "Segments · UNAVAILABLE", tone: "unavailable" as const }
     : activeTab === "people" && variant === "relationships"
       ? { label: "People · UNAVAILABLE", tone: "unavailable" as const }
+      : activeTab === "people" && routeTier === "solo"
+        ? { label: "People · LIVE", tone: "live" as const }
       : { label: `${tabs.find(({ id }) => id === activeTab)?.label ?? workspaceName} · PARTIAL`, tone: "partial" as const };
 
   return (
@@ -162,7 +203,18 @@ export function TenantRelationshipsClientsWorkspace({
       >
         {activeTab === null && <BoundedState eyebrow="View · UNAVAILABLE" title="This view is not available in the active account context" detail="The address is preserved, but no different account capability is substituted in its place." kind="unavailable" />}
         {activeTab === "people" && (
-          <PeopleView key={activeTenantId} variant={variant} data={data} openPaige={openPaige} selectedContactId={selectedContactId} onSelectContact={setSelectedContactId} />
+          routeTier === "solo" && variant === "clients"
+            ? <SoloPeopleView
+                key={activeTenantId}
+                activeTenantId={activeTenantId}
+                data={data}
+                openPaige={openPaige}
+                selectedContactId={selectedContactId}
+                deepLinkedContactId={deepLinkedContactId}
+                onSelectContact={selectSoloContact}
+                onClearContact={clearSoloContact}
+              />
+            : <PeopleView key={activeTenantId} variant={variant} data={data} openPaige={openPaige} selectedContactId={selectedContactId} onSelectContact={setSelectedContactId} />
         )}
         {activeTab === "conversations" && (
           <ConversationsView variant={variant} data={data} openPaige={openPaige} activeTenantId={activeTenantId} />
@@ -217,6 +269,269 @@ function PeopleView({ variant, data, openPaige, selectedContactId, onSelectConta
         {selected?.company && <span>{selected.company}</span>}
         <button type="button" onClick={openPaige}>Ask PAIGE about this view</button>
       </aside>
+      </div>
+    </div>
+  );
+}
+
+function SoloPeopleView({
+  activeTenantId,
+  data,
+  openPaige,
+  selectedContactId,
+  deepLinkedContactId,
+  onSelectContact,
+  onClearContact,
+}: {
+  activeTenantId: string;
+  data: ReturnType<typeof useTenantRelationshipsData>;
+  openPaige: () => void;
+  selectedContactId: string | null;
+  deepLinkedContactId: string | null;
+  onSelectContact: (id: string) => void;
+  onClearContact: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const lastSelectedId = useRef<string | null>(null);
+  const restoreFocusId = useRef<string | null>(null);
+  const dismissedDeepLinkId = useRef<string | null>(null);
+  const focusedSelectedId = useRef<string | null>(null);
+  const backRef = useRef<HTMLButtonElement | null>(null);
+  const deepLinked = deepLinkedContactId
+    ? data.people.find(({ id }) => id === deepLinkedContactId) ?? data.deepLinkedPerson ?? null
+    : null;
+  const deepLinkDismissed = Boolean(deepLinkedContactId && dismissedDeepLinkId.current === deepLinkedContactId);
+  const selected = deepLinkedContactId
+    ? (deepLinkDismissed ? null : deepLinked)
+    : data.people.find(({ id }) => id === selectedContactId) ?? null;
+  const query = search.trim().toLowerCase();
+  const people = useMemo(() => {
+    if (!query) return data.people;
+    return data.people.filter((person) => [person.name, person.company, person.email, person.phone, person.relationship, person.owner, person.source, ...person.tags]
+      .some((value) => value?.toLowerCase().includes(query)));
+  }, [data.people, query]);
+
+  useEffect(() => {
+    if (!deepLinkedContactId) dismissedDeepLinkId.current = null;
+  }, [deepLinkedContactId]);
+
+  useEffect(() => {
+    if (deepLinkDismissed || !deepLinked || selectedContactId === deepLinked.id) return;
+    onSelectContact(deepLinked.id);
+  }, [deepLinkDismissed, deepLinked, onSelectContact, selectedContactId]);
+
+  useEffect(() => {
+    const selectedId = selected?.id ?? null;
+    if (selectedId && focusedSelectedId.current !== selectedId) backRef.current?.focus();
+    focusedSelectedId.current = selectedId;
+  }, [selected?.id]);
+
+  useEffect(() => {
+    if (selected || !restoreFocusId.current) return;
+    const id = restoreFocusId.current;
+    restoreFocusId.current = null;
+    queueMicrotask(() => (rowRefs.current.get(id) ?? searchRef.current)?.focus());
+  }, [selected]);
+
+  const selectPerson = (id: string) => {
+    dismissedDeepLinkId.current = null;
+    lastSelectedId.current = id;
+    onSelectContact(id);
+  };
+
+  const returnToList = () => {
+    dismissedDeepLinkId.current = deepLinkedContactId;
+    restoreFocusId.current = lastSelectedId.current ?? selected?.id ?? null;
+    onClearContact();
+  };
+
+  if (!data.peopleAvailable) return <BoundedState eyebrow="People · UNAVAILABLE" title="People are not connected" detail="A server-authorized People contract is required before records can appear." kind="unavailable" />;
+  if (data.peopleLoading) return <BoundedState eyebrow="People · LIVE" title="Loading the authorized book" detail="The previous account and selected record are cleared while this account resolves." kind="loading" />;
+  if (data.peopleError) return <BoundedState eyebrow="People · UNAVAILABLE" title="We couldn't load People" detail="No count, record, or relationship state is inferred from a failed read." kind="error" onRetry={() => void data.retryPeople()} />;
+  if (!data.people.length) return <BoundedState eyebrow="People · LIVE" title="No people here yet" detail="The active account returned no records. Create remains in its existing legacy owner and no sample clients replace this result." kind="empty" />;
+
+  const staleDeepLink = Boolean(deepLinkedContactId && !selected && !data.deepLinkLoading);
+
+  return (
+    <section
+      className="trc-solo-people"
+      data-solo-client-record
+      data-record-selected={selected ? "true" : "false"}
+      data-active-tenant={activeTenantId}
+      aria-label="People client relationship workspace"
+    >
+      <header className="trc-people-toolbar">
+        <div>
+          <span>Client record</span>
+          <strong>People</strong>
+          <small>Search and selection · LIVE</small>
+        </div>
+        <label>
+          <span className="sr-only">Search people</span>
+          <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, company, email, phone, tag…" />
+        </label>
+        {search && <button type="button" onClick={() => setSearch("")}>Clear search</button>}
+      </header>
+
+      {staleDeepLink && (
+        <div className="trc-record-notice" role="status">
+          <div><strong>Client record unavailable</strong><span>This record is missing, unavailable to this account, or could not be resolved.</span></div>
+          <button type="button" onClick={onClearContact}>Return to the People list</button>
+        </div>
+      )}
+
+      <div className="trc-client-workspace">
+        <section className="trc-client-list" aria-labelledby="trc-client-list-title">
+          <header>
+            <div><h2 id="trc-client-list-title">Loaded clients</h2><span>{people.length} of {data.people.length}</span></div>
+            <p aria-live="polite">{query ? `${people.length} search result${people.length === 1 ? "" : "s"}` : `${people.length} loaded authorized record${people.length === 1 ? "" : "s"}`}</p>
+          </header>
+          {people.length ? (
+            <div className="trc-client-rows" role="list">
+              {people.map((person) => (
+                <div key={person.id} role="listitem">
+                  <button
+                    ref={(node) => {
+                      if (node) rowRefs.current.set(person.id, node);
+                      else rowRefs.current.delete(person.id);
+                    }}
+                    type="button"
+                    className="trc-person-select"
+                    data-selected={selected?.id === person.id ? "true" : "false"}
+                    aria-current={selected?.id === person.id ? "true" : undefined}
+                    aria-label={`Open record for ${person.name}`}
+                    onClick={() => selectPerson(person.id)}
+                  >
+                    <span className="trc-client-avatar" aria-hidden>{person.recordType === "business" ? <Building2 /> : <UserRound />}</span>
+                    <span><strong>{person.name}</strong><small>{person.company || person.email || (person.recordType === "business" ? "Business client" : "Person client")}</small></span>
+                    <span><small>{person.relationship}</small><small>{person.owner} · {formatDate(person.lastTouch, "No recorded touch")}</small></span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="trc-search-empty" role="status">
+              <strong>No matching people</strong>
+              <span>The loaded list is unchanged. Clear search to see every loaded record.</span>
+              <button type="button" onClick={() => setSearch("")}>Clear search</button>
+            </div>
+          )}
+        </section>
+
+        <section className="trc-client-record" aria-labelledby="trc-record-title">
+          {selected ? (
+            <ClientRecord
+              person={selected}
+              backRef={backRef}
+              onBack={returnToList}
+              openPaige={openPaige}
+            />
+          ) : (
+            <div className="trc-record-empty">
+              <UserRound aria-hidden />
+              <span>Client record</span>
+              <h2 id="trc-record-title">Choose a client</h2>
+              <p>Select an authorized Person or Business record while keeping the People list in place.</p>
+              <div><ProofPill tone="live">Read and selection · LIVE</ProofPill><ProofPill>Record depth · PARTIAL</ProofPill></div>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ClientRecord({
+  person,
+  backRef,
+  onBack,
+  openPaige,
+}: {
+  person: ReturnType<typeof useTenantRelationshipsData>["people"][number];
+  backRef: React.RefObject<HTMLButtonElement>;
+  onBack: () => void;
+  openPaige: () => void;
+}) {
+  const isBusiness = person.recordType === "business";
+  return (
+    <div className="trc-record-scroll">
+      <header className="trc-record-header">
+        <button ref={backRef} type="button" className="trc-record-back" aria-label="Back to People list" onClick={onBack}><ArrowLeft aria-hidden /> Back to People</button>
+        <div className="trc-record-identity">
+          <span className="trc-record-avatar" aria-hidden>{isBusiness ? <Building2 /> : <UserRound />}</span>
+          <div>
+            <span>{isBusiness ? "Business profile" : "Person profile"} · PARTIAL · derived</span>
+            <h2 id="trc-record-title">{person.name}</h2>
+            <p>{[person.title, !isBusiness ? person.company : null].filter(Boolean).join(" · ") || person.relationship}</p>
+          </div>
+          <ProofPill tone="live">Authorized read · LIVE</ProofPill>
+        </div>
+        <div className="trc-record-actions">
+          <button type="button" onClick={openPaige}><Sparkles aria-hidden /> Open PAIGE workspace</button>
+          <span>Selected-client enrichment · UNAVAILABLE</span>
+        </div>
+      </header>
+
+      <div className="trc-record-body">
+        <section className="trc-record-section">
+          <header><div><span>Overview</span><h3>Relationship overview</h3></div><ProofPill>Standard fields · PARTIAL</ProofPill></header>
+          <dl className="trc-facts">
+            <div><dt>Relationship</dt><dd>{person.relationship}</dd></div>
+            <div><dt>Owner</dt><dd>{person.owner}</dd></div>
+            <div><dt>Status</dt><dd>{person.status}</dd></div>
+            <div><dt>Source</dt><dd>{person.source || "Not recorded"}</dd></div>
+            <div><dt>Last touch</dt><dd>{formatDate(person.lastTouch, "No recorded touch")}</dd></div>
+            <div><dt>Updated</dt><dd>{formatDate(person.updatedAt)}</dd></div>
+          </dl>
+          {person.tags.length > 0 && <div className="trc-tags" aria-label="Client tags"><Tag aria-hidden />{person.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
+        </section>
+
+        <section className="trc-record-section">
+          <header><div><span>Identity</span><h3>{isBusiness ? "Organization details" : "Contact details"}</h3></div><ProofPill>Read-only · PARTIAL</ProofPill></header>
+          <div className="trc-contact-lines">
+            <div><Mail aria-hidden /><span><small>Email</small>{person.email || "Not recorded"}</span></div>
+            <div><Phone aria-hidden /><span><small>Phone</small>{person.phone || "Not recorded"}</span></div>
+            <div><MapPin aria-hidden /><span><small>Location</small>{person.location || "Not recorded"}</span></div>
+            <div><Building2 aria-hidden /><span><small>{isBusiness ? "Website" : "Company"}</small>{(isBusiness ? person.website : person.company) || "Not recorded"}</span></div>
+          </div>
+          {isBusiness && <div className="trc-inline-state"><strong>Related people · PARTIAL</strong><span>A relationship seam exists, but this workspace does not infer or join records.</span></div>}
+        </section>
+
+        {!isBusiness && (
+          <section className="trc-record-section">
+            <header><div><span>Customer experience</span><h3>Relationship intelligence</h3></div><ProofPill tone="unavailable">Governed details · UNAVAILABLE</ProofPill></header>
+            <div className="trc-governed-grid">
+              <article><strong>Birthday reminders</strong><span>Month/day or full-date collection needs a purpose, source, timezone, consent, reminder choice, and deletion contract.</span></article>
+              <article><strong>Family context</strong><span>Optional, minimized context needs purpose labeling, access controls, correction, and removal.</span></article>
+              <article><strong>Preferences and interests</strong><span>Useful service context needs provenance, visibility, retention, and analytics boundaries.</span></article>
+              <article><strong>Relationship notes</strong><span>Notes must stay purposeful, bounded by visibility, and excluded from indiscriminate analytics.</span></article>
+            </div>
+          </section>
+        )}
+
+        <section className="trc-record-section">
+          <header><div><span>Owned capabilities</span><h3>Relationship connections</h3></div><ProofPill>Canonical handoffs</ProofPill></header>
+          <div className="trc-capability-list">
+            <article><div><strong>Conversations · PARTIAL</strong><span>The canonical Conversations owner remains the only inbox. Selected-client context handoff is not yet proven.</span></div></article>
+            <article><div><strong>Campaigns owns pipeline · PARTIAL</strong><span>No stage, campaign membership, product association, or assignment is inferred here.</span></div></article>
+            <article><div><strong>Portal access · PARTIAL</strong><span>Configuration and invitations remain in existing Portal owners; this record does not prove their role gates.</span></div></article>
+            <article><div><strong>Client files · PARTIAL</strong><span>The existing client-files seam remains separate from the business Vault; upload is not exposed here.</span></div></article>
+          </div>
+        </section>
+
+        <section className="trc-record-section">
+          <header><div><span>Governance</span><h3>Data boundaries</h3></div><ProofPill tone="unavailable">Contract incomplete</ProofPill></header>
+          <div className="trc-governance-list">
+            <div><strong>Tenant custom fields · PARTIAL</strong><span>Definitions and values exist, but purpose, applicability, role visibility, PAIGE use, analytics use, and retention controls are incomplete.</span></div>
+            <div><strong>Unified activity · UNAVAILABLE</strong><span>Conversations, Calendar, tasks, campaigns, Portal activity, and notes are not joined into a factual timeline.</span></div>
+            <div><strong>Export, correction, deletion, retention, and history · UNAVAILABLE</strong><span>No governed client-record lifecycle contract is proven on this surface.</span></div>
+            <div><strong>PAIGE enrichment · UNAVAILABLE</strong><span>No automatic write occurs. Source review, confidence, purpose, visibility, retention, and separate Ask First decisions require an authorized contract.</span></div>
+          </div>
+        </section>
+
+        <footer className="trc-record-footer"><FileText aria-hidden /><span>Created {formatDate(person.createdAt)} · Contact preference {person.doNotContact ? "do-not-contact flag recorded" : "no do-not-contact flag recorded"} · Shared PAIGE context {person.sharedContextConsent ? "consent flag recorded" : "no consent flag recorded"}</span></footer>
       </div>
     </div>
   );
