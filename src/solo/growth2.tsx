@@ -213,6 +213,6 @@ const tabs=[['ov','Overview',()=><Ic.bolt size={14}/>],['brand','Brand Kit',()=>
 return <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:0,minWidth:0,alignItems:'stretch'}}>
 <SubTabs tabs={tabs} cur={tab} set={setTab} right={<><button className="btn btn-s"><Ic.clock size={13}/>Last 7 days</button>
 <button className="btn btn-s btn-p" onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button></>}/>
-<Wrap><PageHead eyebrow="Growth & acquisition" title={(tabs.find(t=>t[0]===tab)||[])[1]}
+<Wrap><PageHead eyebrow="Campaigns" title={(tabs.find(t=>t[0]===tab)||[])[1]}
 sub="Live campaigns, pages, funnels, forms, and the builders you already pay for — every one reporting into pipeline and Paige's workflows."/>
 <Campaigns tab={tab}/></Wrap></div>};

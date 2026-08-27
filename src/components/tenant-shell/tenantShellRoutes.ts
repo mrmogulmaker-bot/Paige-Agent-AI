@@ -1,5 +1,7 @@
 import {
   BarChart3,
+  Megaphone,
+  Store,
   Settings,
   Sparkles,
   Users,
@@ -7,7 +9,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-type TenantDestination = "command" | "clients" | "studio" | "insights" | "settings";
+type TenantDestination =
+  | "command"
+  | "clients"
+  | "campaigns"
+  | "marketplace"
+  | "analytics"
+  | "studio"
+  | "insights"
+  | "settings";
 type TenantBranch = TenantDestination | "calendar";
 
 export interface TenantShellDestination {
@@ -39,6 +49,9 @@ const TENANT_BRANCHES: Record<TenantBranch, { slug: string; aliases: string[] }>
   command: { slug: "command-center", aliases: ["paige", "trust-compass", "automations"] },
   clients: { slug: "clients", aliases: ["client-support", "billing"] },
   calendar: { slug: "calendar", aliases: [] },
+  campaigns: { slug: "growth", aliases: [] },
+  marketplace: { slug: "marketplace", aliases: [] },
+  analytics: { slug: "analytics", aliases: [] },
   studio: { slug: "growth", aliases: [] },
   insights: { slug: "analytics", aliases: [] },
   settings: { slug: "setup", aliases: ["marketplace", "business-vault", "integrations", "team"] },
@@ -131,6 +144,28 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   },
 ];
 
+/** Solo's approved durable work homes. Existing route owners remain unchanged. */
+const SOLO_SHELL_DESTINATIONS: TenantShellDestination[] = [
+  { id: "command", label: "Command Center", href: "/admin", icon: Sparkles, aliases: ["/admin/playbook"] },
+  {
+    id: "clients",
+    label: "Clients",
+    href: "/admin/clients-hub",
+    icon: Users,
+    aliases: ["/admin/contacts", "/admin/clients", "/admin/leads", "/admin/pipeline"],
+  },
+  { id: "campaigns", label: "Campaigns", href: "/admin/growth", icon: Megaphone, aliases: [] },
+  { id: "marketplace", label: "Marketplace", href: "/admin/marketplace", icon: Store, aliases: [] },
+  { id: "analytics", label: "Analytics", href: "/admin/analytics", icon: BarChart3, aliases: [] },
+  {
+    id: "settings",
+    label: "Settings",
+    href: "/admin/setup",
+    icon: Settings,
+    aliases: ["/admin/settings", "/admin/team", "/admin/integrations"],
+  },
+];
+
 /**
  * Resolve only the address prefix owned by the current tenant route. Identity
  * and authorization remain server-derived in the route owner; this helper
@@ -156,7 +191,7 @@ export function tenantCalendarHrefForPath(pathname: string): string {
   return root ? `${root}/${TENANT_BRANCHES.calendar.slug}` : "/admin/calendar";
 }
 
-/** Keep the five visible shell homes inside the route tree that owns the active account. */
+/** Keep visible shell homes inside the route tree that owns the active account. */
 export function tenantShellDestinationsForPath(
   pathname: string,
   accountType?: string | null,
@@ -165,7 +200,10 @@ export function tenantShellDestinationsForPath(
   const relationshipLabel = ["agency", "enterprise"].includes(accountType?.trim().toLowerCase() ?? "")
     ? "Relationships"
     : "Clients";
-  const destinations = TENANT_SHELL_DESTINATIONS.map((destination) =>
+  const isAuthenticatedSolo = root?.startsWith("/solo/")
+    && accountType?.trim().toLowerCase() === "standalone";
+  const registry = isAuthenticatedSolo ? SOLO_SHELL_DESTINATIONS : TENANT_SHELL_DESTINATIONS;
+  const destinations = registry.map((destination) =>
     destination.id === "clients" ? { ...destination, label: relationshipLabel } : destination,
   );
   if (!root) return destinations;
