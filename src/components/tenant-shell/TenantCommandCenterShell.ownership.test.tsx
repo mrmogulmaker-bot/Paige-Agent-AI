@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -12,7 +12,14 @@ vi.mock("@/components/admin/AdminBridgeBell", () => ({ AdminBridgeBell: () => nu
 vi.mock("@/components/admin/voice/DialPadTrigger", () => ({ DialPadTrigger: () => null }));
 vi.mock("@/components/ui/paige", () => ({
   AgentPresenceProvider: ({ children }: { children: React.ReactNode }) => children,
-  useAgentPresence: () => ({ railExpanded: false, expandRail: vi.fn(), collapseRail: vi.fn() }),
+  useAgentPresence: () => {
+    const [railExpanded, setRailExpanded] = useState(false);
+    return {
+      railExpanded,
+      expandRail: () => setRailExpanded(true),
+      collapseRail: () => setRailExpanded(false),
+    };
+  },
 }));
 vi.mock("@/hooks/usePendingApprovals", () => ({ usePendingApprovals: () => ({ items: [] }) }));
 vi.mock("@/hooks/useTenantContext", () => ({
@@ -42,6 +49,36 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const RouteProbe = () => {
   const location = useLocation();
   return <output data-route-probe>{location.pathname}</output>;
+};
+
+const settlePaigeFocus = async () => {
+  await new Promise<void>((resolveFrame) => window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => resolveFrame());
+  }));
+};
+
+const PaigeWorkspaceFixture = () => {
+  const surfaces = ["Chat", "Knowledge", "Helpers", "Capabilities"];
+  const [activeSurface, setActiveSurface] = useState(surfaces[0]);
+  return (
+    <div>
+      <div role="tablist" aria-label="PAIGE workspace views">
+        {surfaces.map((surface) => (
+          <button
+            key={surface}
+            type="button"
+            role="tab"
+            aria-selected={activeSurface === surface}
+            onClick={() => setActiveSurface(surface)}
+          >
+            {surface}
+          </button>
+        ))}
+      </div>
+      <p data-paige-active-surface>{activeSurface}</p>
+      <input aria-label="Persistent PAIGE draft" defaultValue="Draft survives folding" />
+    </div>
+  );
 };
 
 describe("tenant shell owns one PAIGE surface", () => {
@@ -204,6 +241,87 @@ describe("tenant shell owns one PAIGE surface", () => {
 });
 
 describe("tenant PAIGE command field", () => {
+  it("lets the native hidden state win over the authored PAIGE layout", () => {
+    const css = source("src/components/tenant-shell/tenant-command-center-shell.css");
+    expect(css).toMatch(/\.tcs-paige\[hidden\]\s*\{[^}]*display:\s*none;/);
+  });
+
+  it("keeps the mounted Chat and management workspace non-present while folded and restores its launcher", async () => {
+    const styles = document.createElement("style");
+    styles.textContent = source("src/components/tenant-shell/tenant-command-center-shell.css");
+    document.head.appendChild(styles);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/command-center"]}>
+          <TenantCommandCenterShell
+            accountName="Solo account"
+            accountType="standalone"
+            userRole="admin"
+            onSignOut={vi.fn()}
+            soloPaigeWorkspace={<PaigeWorkspaceFixture />}
+          >
+            <p>Main CRM remains usable</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      );
+    });
+
+    const workspace = host.querySelector<HTMLElement>("#tenant-paige-workspace");
+    const command = host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]");
+    const draft = host.querySelector<HTMLInputElement>('[aria-label="Persistent PAIGE draft"]');
+    expect(workspace?.hidden).toBe(true);
+    expect(workspace && getComputedStyle(workspace).display).toBe("none");
+    expect(command?.getAttribute("aria-expanded")).toBe("false");
+
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click());
+    expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(workspace?.hidden).toBe(false);
+    expect(workspace && getComputedStyle(workspace).display).toBe("flex");
+    expect(host.querySelector("[data-tenant-paige-command]")?.getAttribute("aria-expanded")).toBe("true");
+
+    for (const [index, activeSurface] of ["Chat", "Knowledge", "Helpers", "Capabilities"].entries()) {
+      const surface = Array.from(workspace?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+        .find((button) => button.textContent === activeSurface);
+      await act(async () => surface?.click());
+      surface?.focus();
+      expect(document.activeElement).toBe(surface);
+      expect(surface?.getAttribute("aria-selected")).toBe("true");
+      expect(workspace?.querySelector("[data-paige-active-surface]")?.textContent).toBe(activeSurface);
+
+      await act(async () => {
+        if (index % 2 === 0) {
+          workspace?.querySelector<HTMLButtonElement>('[aria-label="Fold PAIGE conversation"]')?.click();
+        } else {
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        }
+        await settlePaigeFocus();
+      });
+
+      expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+      expect(workspace?.hidden).toBe(true);
+      expect(workspace && getComputedStyle(workspace).display).toBe("none");
+      expect(workspace?.contains(document.activeElement)).toBe(false);
+      expect(document.activeElement).toBe(host.querySelector("[data-tenant-paige-command]"));
+      expect(host.querySelector("[data-tenant-paige-command]")?.getAttribute("aria-expanded")).toBe("false");
+      expect(draft?.value).toBe("Draft survives folding");
+
+      await act(async () => host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click());
+      expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+      expect(host.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
+      expect(draft?.value).toBe("Draft survives folding");
+      expect(workspace?.querySelector("[data-paige-active-surface]")?.textContent).toBe(activeSurface);
+      expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+    }
+
+    await act(async () => root.unmount());
+    host.remove();
+    styles.remove();
+  });
+
   it("moves the one Solo workspace into a pop-out host instead of loading a second app", () => {
     const shell = source("src/components/tenant-shell/TenantCommandCenterShell.tsx");
     expect(shell).toContain('import { createPortal } from "react-dom"');
@@ -216,6 +334,9 @@ describe("tenant PAIGE command field", () => {
   });
 
   it("keeps the identical mounted Solo workspace connected through pop-out and redock", async () => {
+    const styles = document.createElement("style");
+    styles.textContent = source("src/components/tenant-shell/tenant-command-center-shell.css");
+    document.head.appendChild(styles);
     const popupDocument = document.implementation.createHTMLDocument("PAIGE popup");
     let beforeUnload: EventListener | null = null;
     const popupRecord = {
@@ -243,9 +364,15 @@ describe("tenant PAIGE command field", () => {
       );
       await Promise.resolve();
     });
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click();
+      await Promise.resolve();
+    });
     const workspace = host.querySelector("#tenant-paige-workspace");
     const draft = host.querySelector<HTMLInputElement>('[aria-label="Persistent PAIGE draft"]');
     expect(workspace).not.toBeNull();
+    expect((workspace as HTMLElement | null)?.hidden).toBe(false);
     expect(draft?.value).toBe("Draft survives");
 
     await act(async () => {
@@ -255,6 +382,7 @@ describe("tenant PAIGE command field", () => {
     expect(host.querySelector("#tenant-paige-workspace")).toBeNull();
     expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
     expect(popupDocument.body.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
+    expect(popupDocument.body.querySelector('[aria-label="Fold PAIGE conversation"]')).toBeNull();
     expect(host.textContent).toContain("Main CRM remains usable");
 
     await act(async () => {
@@ -274,8 +402,19 @@ describe("tenant PAIGE command field", () => {
     expect(host.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
     expect(draft?.value).toBe("Draft survives");
 
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="Fold PAIGE conversation"]')?.click();
+      await settlePaigeFocus();
+    });
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+    expect((workspace as HTMLElement | null)?.hidden).toBe(true);
+    expect(workspace && getComputedStyle(workspace).display).toBe("none");
+    expect(document.activeElement).toBe(host.querySelector("[data-tenant-paige-command]"));
+    expect(popupRecord.closed).toBe(true);
+
     await act(async () => root.unmount());
     host.remove();
+    styles.remove();
     open.mockRestore();
   });
 
