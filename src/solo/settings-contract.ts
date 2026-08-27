@@ -22,7 +22,7 @@ const PENDING_IDENTITY_STATUSES = new Set(["pending", "provisioning", "activatio
 const DEGRADED_IDENTITY_STATUSES = new Set(["failed", "error", "degraded", "revoked"]);
 
 function statusLabel(status: string) {
-  return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 /** Keeps platform capability maturity orthogonal to this account's persisted configuration and health. */
