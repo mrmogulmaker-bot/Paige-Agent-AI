@@ -64,4 +64,10 @@ describe("Solo Campaigns approved contract", () => {
     expect(css).toContain("forced-colors");
     expect(css).toContain("overflow-x: clip");
   });
+
+  it("keeps Campaigns navigation and heading bands on the shared theme canvas", () => {
+    expect(css).toMatch(/\.solo-campaigns\{[^}]*background:var\(--pg-canvas\)/);
+    expect(css).toMatch(/\.campaigns-nav\{[^}]*background:var\(--pg-canvas\)/);
+    expect(css).toMatch(/\.campaigns-scroll>\.pg-hd\{[^}]*background:transparent/);
+  });
 });
