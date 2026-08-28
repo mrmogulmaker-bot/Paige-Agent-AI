@@ -116,11 +116,10 @@ export interface TierTree {
 export const SOLO_BRANCHES: Branch[] = [
   {
     slug: "command-center", key: "home", label: "Command Center", group: "main",
-    // `home`'s label is "Command Center" (== branch); slug'd "overview" to avoid
-    // /command-center/command-center. Source: src/solo/CommandCenter.tsx.
+    // Systems Check is the canonical Solo landing surface. The former overview
+    // address remains a compatibility alias of the same owner.
     subtabs: [
-      { slug: "overview", key: "home", label: "Command Center", hidden: true },
-      { slug: "systems-check", key: "sys", label: "Systems Check" },
+      { slug: "systems-check", aliases: ["overview"], key: "sys", label: "Systems Check" },
       { slug: "directory", key: "dir", label: "Directory" },
       { slug: "history", key: "hist", label: "History" },
     ],

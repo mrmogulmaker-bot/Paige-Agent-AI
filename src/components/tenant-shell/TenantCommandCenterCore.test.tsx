@@ -110,11 +110,11 @@ describe("tenant Command Center core workspace", () => {
     const solo = source("src/solo/CommandCenter.tsx");
 
     expect(agency).toContain("<AgencyCommandCenterCore");
-    expect(solo).toContain("<SoloCommandCenterCore");
+    expect(solo).toContain("<SoloSystemsCheckWorkspace");
     expect(agency).not.toContain('["team", "Team Pulse"');
     expect(agency).not.toContain('["pipe", "Prospect Pipeline"');
     expect(agency).toMatch(/<SystemsCheckTile scope="tenant"\s*\/>/);
-    expect(solo).toMatch(/<SystemsCheckTile scope="tenant"\s*\/>/);
+    expect(solo).not.toContain("SystemsCheckTile");
   });
 
   it("propagates one authenticated account context from each route owner into the shared core", () => {
@@ -126,7 +126,7 @@ describe("tenant Command Center core workspace", () => {
     expect(soloOwner).toContain("resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id})");
     expect(soloOwner).toContain("<CommandHub accountContext={accountContext}");
     expect(soloOwner).toContain("accountName={accountContext.accountName}");
-    expect(soloAdapter).toContain("<SoloCommandCenterCore accountContext={accountContext}");
+    expect(soloAdapter).toContain("<SoloSystemsCheckWorkspace accountContext={accountContext} openPaige={openPaige}");
     expect(soloOwner).not.toContain("Your business");
 
     expect(agencyOwner).toContain("const accountContext = resolveTenantAccountContext(");

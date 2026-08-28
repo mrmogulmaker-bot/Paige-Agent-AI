@@ -140,11 +140,19 @@ export function buildDeptStatus(
 
 const EMPTY: PaigeDeptStatus = { loading: true, configured: false, departments: [] };
 
-export function usePaigeDeptStatus(): PaigeDeptStatus {
-  const [state, setState] = useState<PaigeDeptStatus>(EMPTY);
+export function usePaigeDeptStatus(accountEpoch?: string | null): PaigeDeptStatus {
+  const [snapshot, setSnapshot] = useState<{ epoch: string | null | undefined; value: PaigeDeptStatus }>({
+    epoch: accountEpoch,
+    value: EMPTY,
+  });
 
   useEffect(() => {
     let active = true;
+    setSnapshot({ epoch: accountEpoch, value: EMPTY });
+
+    // A caller that opts into the epoch contract may deliberately pass null while
+    // the server-resolved account is unavailable. Clear immediately and do not read.
+    if (accountEpoch === null) return () => { active = false; };
 
     // One snapshot read. Called on mount, every poll tick, and on window focus. It
     // does NOT flip `loading` back to true on a refresh — only the initial EMPTY state
@@ -176,10 +184,13 @@ export function usePaigeDeptStatus(): PaigeDeptStatus {
       // §13 — no departments seed (or read error) → not configured, EmptyState.
       const configured = !deptRes.error && depts.length > 0;
 
-      setState({
-        loading: false,
-        configured,
-        departments: configured ? buildDeptStatus(depts, actions) : [],
+      setSnapshot({
+        epoch: accountEpoch,
+        value: {
+          loading: false,
+          configured,
+          departments: configured ? buildDeptStatus(depts, actions) : [],
+        },
       });
     };
 
@@ -200,7 +211,10 @@ export function usePaigeDeptStatus(): PaigeDeptStatus {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [accountEpoch]);
 
-  return state;
+  // The passive effect above starts the next epoch's read. This render-time guard is
+  // what prevents React from exposing the previous epoch for even one commit before
+  // that effect runs.
+  return snapshot.epoch === accountEpoch ? snapshot.value : EMPTY;
 }
