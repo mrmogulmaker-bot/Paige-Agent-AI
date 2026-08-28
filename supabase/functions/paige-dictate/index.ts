@@ -47,6 +47,189 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
+const healthHeaders = {
+  ...corsHeaders,
+  "Content-Type": "application/json",
+  "Cache-Control": "no-store",
+};
+
+function healthJson(body: Record<string, unknown>, status = 200, forbiddenValue = ""): Response {
+  const serialized = JSON.stringify(body);
+  if (forbiddenValue && serialized.includes(forbiddenValue)) {
+    console.error("[paige-dictate] provider health response blocked by secret-redaction guard");
+    return new Response(JSON.stringify({ ok: false, error: "diagnostic_redaction_failure" }), {
+      status: 500,
+      headers: healthHeaders,
+    });
+  }
+  return new Response(serialized, { status, headers: healthHeaders });
+}
+
+function sanitizeProviderIdentifier(value: unknown, forbiddenValue = "", maxLength = 128): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= maxLength && /^[A-Za-z0-9._:-]+$/.test(normalized) &&
+      (!forbiddenValue || !normalized.includes(forbiddenValue))
+    ? normalized
+    : null;
+}
+
+function providerRequestId(response: Response, forbiddenValue: string): string | null {
+  return sanitizeProviderIdentifier(response.headers.get("dg-request-id") ??
+    response.headers.get("x-request-id") ??
+    response.headers.get("request-id"), forbiddenValue);
+}
+
+/** Allowlist only non-secret credential metadata. Never relay a provider response wholesale. */
+function sanitizeDeepgramCredentialMetadata(value: unknown, forbiddenValue: string): {
+  projectId: string | null;
+  scopes: string[];
+} {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const projectId = sanitizeProviderIdentifier(record.project_id ?? record.project_uuid, forbiddenValue);
+  const scopes = Array.isArray(record.scopes)
+    ? record.scopes.flatMap((scope) => {
+      const sanitized = sanitizeProviderIdentifier(scope, forbiddenValue);
+      return sanitized ? [sanitized] : [];
+    }).slice(0, 64)
+    : [];
+  return { projectId, scopes };
+}
+
+async function providerHealth(): Promise<Response> {
+  const deepgramApiKey = Deno.env.get("DEEPGRAM_API_KEY") ?? "";
+  if (!deepgramApiKey) {
+    console.warn("[paige-dictate] provider health: credential not configured");
+    return healthJson({
+      ok: false,
+      credentialStatus: "not_configured",
+      project: null,
+      scopes: [],
+      providerRequestId: null,
+      billingReadiness: "unverified",
+    }, 503);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const credentialResponse = await fetch("https://api.deepgram.com/v1/auth/token", {
+      method: "GET",
+      headers: { Authorization: `Token ${deepgramApiKey}` },
+      signal: controller.signal,
+    });
+    const requestId = providerRequestId(credentialResponse, deepgramApiKey);
+    if (!credentialResponse.ok) {
+      const credentialStatus = credentialResponse.status === 401
+        ? "invalid"
+        : credentialResponse.status === 403
+        ? "denied"
+        : "provider_error";
+      console.warn("[paige-dictate] provider health failed", {
+        status: credentialResponse.status,
+        credentialStatus,
+        providerRequestId: requestId,
+      });
+      return healthJson({
+        ok: false,
+        credentialStatus,
+        providerStatus: credentialResponse.status,
+        project: null,
+        scopes: [],
+        providerRequestId: requestId,
+        billingReadiness: "unverified",
+      }, credentialStatus === "invalid" ? 503 : 502, deepgramApiKey);
+    }
+
+    let credentialPayload: unknown = null;
+    try {
+      credentialPayload = await credentialResponse.json();
+    } catch {
+      console.warn("[paige-dictate] provider health returned non-JSON metadata", {
+        providerRequestId: requestId,
+      });
+    }
+    const credential = sanitizeDeepgramCredentialMetadata(credentialPayload, deepgramApiKey);
+
+    let billingReadiness: "ready" | "depleted" | "unverified" = "unverified";
+    let billingRequestId: string | null = null;
+    if (credential.projectId) {
+      try {
+        const balancesResponse = await fetch(
+          `https://api.deepgram.com/v1/projects/${encodeURIComponent(credential.projectId)}/balances`,
+          {
+            method: "GET",
+            headers: { Authorization: `Token ${deepgramApiKey}` },
+            signal: controller.signal,
+          },
+        );
+        billingRequestId = providerRequestId(balancesResponse, deepgramApiKey);
+        if (balancesResponse.ok) {
+          let balancesPayload: unknown = null;
+          try {
+            balancesPayload = await balancesResponse.json();
+          } catch { /* readiness remains unverified */ }
+          const balances = balancesPayload && typeof balancesPayload === "object" &&
+              Array.isArray((balancesPayload as Record<string, unknown>).balances)
+            ? (balancesPayload as { balances: unknown[] }).balances
+            : [];
+          const amounts = balances.flatMap((balance) => {
+            if (!balance || typeof balance !== "object") return [];
+            const amount = (balance as Record<string, unknown>).amount;
+            return typeof amount === "number" && Number.isFinite(amount) ? [amount] : [];
+          });
+          if (amounts.length > 0) {
+            billingReadiness = amounts.some((amount) => amount > 0) ? "ready" : "depleted";
+          }
+        }
+      } catch (error) {
+        const timedOut = error instanceof DOMException && error.name === "AbortError";
+        console.warn("[paige-dictate] provider billing readiness unavailable", { timedOut });
+      }
+    }
+
+    const operationalReadiness = billingReadiness === "depleted"
+      ? "blocked"
+      : billingReadiness === "ready"
+      ? "ready"
+      : "unverified";
+    const overallOk = operationalReadiness !== "blocked";
+    const log = overallOk ? console.log : console.warn;
+    log(`[paige-dictate] provider health ${overallOk ? "ok" : "blocked"}`, {
+      credentialStatus: "valid",
+      projectResolved: credential.projectId !== null,
+      scopeCount: credential.scopes.length,
+      providerRequestId: requestId,
+      billingReadiness,
+      billingRequestId,
+    });
+    return healthJson({
+      ok: overallOk,
+      credentialStatus: "valid",
+      project: credential.projectId ? { id: credential.projectId } : null,
+      scopes: credential.scopes,
+      providerRequestId: requestId,
+      billingReadiness,
+      operationalReadiness,
+      billingRequestId,
+    }, overallOk ? 200 : 503, deepgramApiKey);
+  } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === "AbortError";
+    console.warn("[paige-dictate] provider health transport failure", { timedOut });
+    return healthJson({
+      ok: false,
+      credentialStatus: "unverified",
+      project: null,
+      scopes: [],
+      providerRequestId: null,
+      billingReadiness: "unverified",
+      error: timedOut ? "provider_timeout" : "provider_unreachable",
+    }, 502, deepgramApiKey);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /** Clamp a client-declared sample rate to a Deepgram-sane window; default 16 kHz (linear16 dictation). */
 function clampSampleRate(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -57,19 +240,24 @@ function clampSampleRate(v: unknown): number {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const url = new URL(req.url);
+  const mode = url.searchParams.get("mode");
   const upgrade = (req.headers.get("upgrade") ?? "").toLowerCase();
-  if (upgrade !== "websocket") {
+  if (mode !== "provider-health" && upgrade !== "websocket") {
     // This endpoint only speaks the dictation WebSocket protocol.
     return new Response("expected_websocket", { status: 426, headers: corsHeaders });
+  }
+  if (mode === "provider-health" && req.method !== "GET") {
+    return healthJson({ error: "method_not_allowed" }, 405);
   }
 
   // ── §9 AUTH GATE (pre-upgrade) — verify the JWT, derive the tenant server-side ──
   // A browser WS can't set headers, so the short-lived access token rides ?token= (same posture the
   // deleted paige-voice-chat used). We STILL verify it here; the tenant is NEVER taken from the client.
-  const url = new URL(req.url);
   const token = url.searchParams.get("token") ?? "";
   const headerAuth = req.headers.get("authorization"); // present if a server-to-server caller sets it
-  const authValue = token ? `Bearer ${token}` : headerAuth;
+  // provider-health requires Authorization header; never put an operator JWT in a query string/log.
+  const authValue = mode === "provider-health" ? headerAuth : (token ? `Bearer ${token}` : headerAuth);
   if (!authValue) {
     console.error("[paige-dictate] REJECT: no access token (query ?token= or Authorization)");
     return new Response("unauthenticated", { status: 401, headers: corsHeaders });
@@ -84,6 +272,18 @@ Deno.serve(async (req) => {
   if (authErr || !user) {
     console.error("[paige-dictate] REJECT: invalid token", { reason: authErr?.message });
     return new Response("unauthorized", { status: 401, headers: corsHeaders });
+  }
+
+  if (mode === "provider-health") {
+    const { data: isOperator, error: operatorError } = await authed.rpc("is_platform_operator");
+    if (operatorError || isOperator !== true) {
+      console.warn("[paige-dictate] provider health rejected: operator required", {
+        userId: user.id,
+        operatorCheckFailed: !!operatorError,
+      });
+      return healthJson({ error: "operator_required" }, 403);
+    }
+    return providerHealth();
   }
 
   // §9 — tenant derived FROM the verified session, never the client. Best-effort: an authenticated user
