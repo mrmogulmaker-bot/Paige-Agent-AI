@@ -3,7 +3,7 @@ import { PaigeReasoningStrip, StepTimeline, upsertStep, type PaigeStep } from "@
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Clock, Paperclip, X } from "lucide-react";
+import { Send, Loader2, Clock, Paperclip, X, ArrowDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { parsePaigeChatError } from "@/lib/paigeChatError";
@@ -259,6 +259,10 @@ const PaigeAIChatInner = ({
     .map((s) => ({ id: s.id, label: s.label }));
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const atLatestRef = useRef(true);
+  const hasNewerContentRef = useRef(false);
+  const [isAtLatest, setIsAtLatest] = useState(true);
+  const [latestAnnouncement, setLatestAnnouncement] = useState("");
   const { toast } = useToast();
 
   // Document attachment (#480) — PDF/image/DOCX. Shared hook (§18 one home): docx
@@ -330,6 +334,41 @@ const PaigeAIChatInner = ({
     setHistoryTransitioning(false);
   }, [soloTenantSafety]);
 
+  const resetTranscriptFollow = useCallback(() => {
+    atLatestRef.current = true;
+    hasNewerContentRef.current = false;
+    setIsAtLatest(true);
+    setLatestAnnouncement("");
+  }, []);
+
+  const syncTranscriptPosition = useCallback((element: HTMLDivElement) => {
+    const atLatest = element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
+    atLatestRef.current = atLatest;
+    setIsAtLatest(atLatest);
+    if (atLatest) {
+      hasNewerContentRef.current = false;
+      setLatestAnnouncement("");
+    }
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const reduceMotion = typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
+    if (typeof element.scrollTo === "function") {
+      element.scrollTo({ top: element.scrollHeight, behavior });
+    } else {
+      element.scrollTop = element.scrollHeight;
+    }
+    atLatestRef.current = true;
+    hasNewerContentRef.current = false;
+    setIsAtLatest(true);
+    setLatestAnnouncement("Latest PAIGE message reached.");
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
   // Account changes are a hard frontend isolation boundary. Invalidate first, then
   // clear every account-derived or account-authored state before the new query can
   // hydrate. The key on SoloPaigeWorkspace also remounts this tree synchronously;
@@ -356,7 +395,8 @@ const PaigeAIChatInner = ({
     setHistoryHydrated(false);
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
-  }, [activeTenantId, openingGreeting, setActiveThreadId, setAttachedDoc, soloTenantSafety]);
+    resetTranscriptFollow();
+  }, [activeTenantId, openingGreeting, resetTranscriptFollow, setActiveThreadId, setAttachedDoc, soloTenantSafety]);
 
   useEffect(() => {
     if (!soloTenantSafety) return;
@@ -365,10 +405,28 @@ const PaigeAIChatInner = ({
   }, [soloTenantSafety]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const element = scrollRef.current;
+    if (!element) return;
+    if (atLatestRef.current) {
+      element.scrollTop = element.scrollHeight;
+      return;
+    }
+    if (!hasNewerContentRef.current) {
+      hasNewerContentRef.current = true;
+      setLatestAnnouncement("Newer PAIGE content is available.");
     }
   }, [messages]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (atLatestRef.current) element.scrollTop = element.scrollHeight;
+      else syncTranscriptPosition(element);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [syncTranscriptPosition]);
 
   // Mirror the live step trace up so a parent surface (the Live desk) can render it.
   useEffect(() => { onTrace?.(steps, isLoading); }, [steps, isLoading, onTrace]);
@@ -430,6 +488,7 @@ const PaigeAIChatInner = ({
       ? requestFenceRef.current.begin(activeTenantId)
       : null;
     if (soloTenantSafety) {
+      resetTranscriptFollow();
       setHistoryTransitioning(true);
       setCancelled(false);
       setActiveThreadId(id);
@@ -464,6 +523,7 @@ const PaigeAIChatInner = ({
       requestFenceRef.current.invalidate();
     }
     hydratedFromRef.current = null;
+    resetTranscriptFollow();
     setActiveThreadId(null);
     setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
     setSteps([]);
@@ -509,11 +569,12 @@ const PaigeAIChatInner = ({
     } else {
       // Parent cleared the selection (New chat in the other door) — reset to a fresh one.
       hydratedFromRef.current = null;
+      resetTranscriptFollow();
       setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
       setSteps([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cancelSoloRequest, controlledThreadId, enableHistory, isLoading, isThreadControlled, soloTenantSafety]);
+  }, [cancelSoloRequest, controlledThreadId, enableHistory, isLoading, isThreadControlled, resetTranscriptFollow, soloTenantSafety]);
 
   // One turn runner, reused by send + regenerate. `base` ends at the user turn to
   // answer; `rollback` is the list restored if the turn fails; `userText` seeds the
@@ -1045,14 +1106,17 @@ const PaigeAIChatInner = ({
           )}
           {typeof conversationHeader === "function" ? conversationHeader(railApi) : conversationHeader}
           {focusBanner}
-          <div
-            ref={scrollRef}
-            data-paige-transcript-scroll={soloTenantSafety ? "true" : undefined}
-            className={cn(
-              "flex-1 min-h-0 overflow-y-auto",
-              cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
-            )}
-          >
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div
+              id={soloTenantSafety ? "solo-paige-transcript" : undefined}
+              ref={scrollRef}
+              data-paige-transcript-scroll={soloTenantSafety ? "true" : undefined}
+              onScroll={soloTenantSafety ? (event) => syncTranscriptPosition(event.currentTarget) : undefined}
+              className={cn(
+                "flex-1 min-h-0 overflow-y-auto",
+                cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
+              )}
+            >
             {messages.map((message, index) => (
               <div
                 key={message.id}
@@ -1210,6 +1274,29 @@ const PaigeAIChatInner = ({
                   if (retry) void streamTurn(retry.base, retry.rollback, retry.userText, retry.doc);
                 }}>Retry</Button>
               </div>
+            )}
+            </div>
+            {soloTenantSafety && !isAtLatest && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Jump to latest message"
+                aria-controls="solo-paige-transcript"
+                title={hasNewerContentRef.current ? "Newer PAIGE content is available" : "Jump to latest message"}
+                onClick={jumpToLatest}
+                className="absolute bottom-3 right-3 z-10 h-11 w-11 rounded-full border-border-strong bg-card shadow-lg transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transform-none motion-reduce:transition-none"
+              >
+                <ArrowDown className="h-4 w-4" aria-hidden />
+                {hasNewerContentRef.current && (
+                  <span aria-hidden className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
+                )}
+              </Button>
+            )}
+            {soloTenantSafety && (
+              <span role="status" aria-live="polite" className="sr-only">
+                {latestAnnouncement}
+              </span>
             )}
           </div>
 

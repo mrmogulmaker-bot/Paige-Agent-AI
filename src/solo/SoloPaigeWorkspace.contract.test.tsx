@@ -427,6 +427,116 @@ describe("Solo PAIGE workspace contract", () => {
     sharedHost.remove();
   });
 
+  it("lets a Solo reader jump the existing transcript scroll owner to the latest message", async () => {
+    chatHarness.tenantId = "account-a";
+    chatHarness.loadTurns.mockResolvedValue([]);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const transcript = host.querySelector<HTMLDivElement>('[data-paige-transcript-scroll="true"]')!;
+    Object.defineProperties(transcript, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 1_200 },
+    });
+    transcript.scrollTop = 240;
+    await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
+
+    const jump = host.querySelector<HTMLButtonElement>('button[aria-label="Jump to latest message"]')!;
+    expect(jump).toBeTruthy();
+    expect(jump.getAttribute("aria-controls")).toBe("solo-paige-transcript");
+
+    const scrollTo = vi.fn(({ top }: ScrollToOptions) => { transcript.scrollTop = Number(top); });
+    Object.defineProperty(transcript, "scrollTo", { configurable: true, value: scrollTo });
+    await act(async () => {
+      jump.click();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1_200, behavior: "smooth" });
+    expect(document.activeElement).toBe(host.querySelector('textarea[placeholder="Talk while she works…"]'));
+    expect(host.querySelector('button[aria-label="Jump to latest message"]')).toBeNull();
+
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: true })),
+    });
+    transcript.scrollTop = 120;
+    await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
+    scrollTo.mockClear();
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Jump to latest message"]')?.click());
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1_200, behavior: "auto" });
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("does not steal an older reading position when new streaming content arrives", async () => {
+    chatHarness.tenantId = "account-a";
+    chatHarness.loadTurns.mockResolvedValue([]);
+    chatHarness.ensureThread.mockResolvedValue("thread-new");
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({ start: (controller) => { streamController = controller; } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(stream, { status: 200 })));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const transcript = host.querySelector<HTMLDivElement>('[data-paige-transcript-scroll="true"]')!;
+    Object.defineProperties(transcript, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 1_200 },
+    });
+    transcript.scrollTop = 180;
+    await act(async () => transcript.dispatchEvent(new Event("scroll", { bubbles: true })));
+    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder="Talk while she works…"]')!;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      valueSetter.call(composer, "Local streaming test");
+      composer.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(transcript.scrollTop).toBe(180);
+
+    const encoder = new TextEncoder();
+    await act(async () => {
+      streamController.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"New streamed content"}}]}\n'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(transcript.scrollTop).toBe(180);
+    const jump = host.querySelector<HTMLButtonElement>('button[aria-label="Jump to latest message"]')!;
+    expect(jump).toBeTruthy();
+    expect(jump.title).toBe("Newer PAIGE content is available");
+    expect(host.textContent).toContain("Newer PAIGE content is available.");
+
+    await act(async () => {
+      streamController.enqueue(encoder.encode("data: [DONE]\n"));
+      streamController.close();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
   it("rejects a late dictation result after the authenticated account epoch changes", async () => {
     chatHarness.tenantId = "account-a";
     chatHarness.loadTurns.mockResolvedValue([]);
@@ -439,6 +549,14 @@ describe("Solo PAIGE workspace contract", () => {
       await Promise.resolve();
     });
     const accountACallback = chatHarness.dictationOnText!;
+    const accountATranscript = host.querySelector<HTMLDivElement>('[data-paige-transcript-scroll="true"]')!;
+    Object.defineProperties(accountATranscript, {
+      clientHeight: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 1_200 },
+    });
+    accountATranscript.scrollTop = 120;
+    await act(async () => accountATranscript.dispatchEvent(new Event("scroll", { bubbles: true })));
+    expect(host.querySelector('button[aria-label="Jump to latest message"]')).toBeTruthy();
     chatHarness.tenantId = "account-b";
     await act(async () => {
       root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
@@ -449,6 +567,7 @@ describe("Solo PAIGE workspace contract", () => {
     const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder="Talk while she works…"]')!;
     expect(composer.value).toBe("");
     expect(host.textContent).not.toContain("stale account A speech");
+    expect(host.querySelector('button[aria-label="Jump to latest message"]')).toBeNull();
     await act(async () => root.unmount());
     host.remove();
   });
