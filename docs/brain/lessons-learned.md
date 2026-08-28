@@ -552,6 +552,19 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
 
 ---
 
+## A subtab canvas is not a second page shell (2026-08-28)
+
+**Symptom.** A feature-rich subtab design accumulated a route title, status copy, and banner-like
+chrome beneath an already complete Clients shell. The extra context looked helpful in isolation but
+made the real constrained workspace feel crowded and disconnected from its sibling tabs.
+
+**Rule.** Establish the exact visual ownership rectangle before composing a subtab. For Solo Clients,
+the shell owns account context and `People · Conversations · Calendar · Portal`; Conversations owns
+only the bounded canvas below it. Keep relationship and provider truth inside the operating workspace,
+not in another hero. Protect the boundary with rendered checks and explicit forbidden-copy regressions.
+
+---
+
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
 commit as the fix — a lesson only helps if the next session can find it.*
 
