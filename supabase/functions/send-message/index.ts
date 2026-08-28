@@ -64,6 +64,41 @@ interface SendBody {
   scheduled_for?: string;
 }
 
+const MAX_COMMS_ATTACHMENTS = 10;
+const MAX_COMMS_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function normalizeRecipient(channel: SendBody["channel"], value: string | null | undefined): string {
+  if (!value) return "";
+  if (channel === "email") return value.trim().toLowerCase();
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10 ? `1${digits}` : digits;
+}
+
+function attachmentValidationError(
+  attachments: SendBody["attachments"],
+  tenantId: string | null,
+): string | null {
+  if (!attachments) return null;
+  if (!tenantId) return "attachment_tenant_unresolved";
+  if (!Array.isArray(attachments) || attachments.length > MAX_COMMS_ATTACHMENTS) return "invalid_attachments";
+  const prefix = `${tenantId}/`;
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== "object") return "invalid_attachment";
+    if (typeof attachment.url !== "string" || !attachment.url.startsWith(prefix) ||
+        attachment.url.length <= prefix.length || attachment.url.includes("..") ||
+        attachment.url.includes("\\") || /^https?:\/\//i.test(attachment.url)) {
+      return "attachment_not_tenant_owned";
+    }
+    if (attachment.name !== undefined && (typeof attachment.name !== "string" || attachment.name.length > 255)) return "invalid_attachment_name";
+    if (attachment.mime !== undefined && (typeof attachment.mime !== "string" || attachment.mime.length > 255)) return "invalid_attachment_mime";
+    if (attachment.size !== undefined &&
+        (!Number.isFinite(attachment.size) || attachment.size < 0 || attachment.size > MAX_COMMS_ATTACHMENT_BYTES)) {
+      return "invalid_attachment_size";
+    }
+  }
+  return null;
+}
+
 // -----------------------------------------------------------------------------
 // §32 — register the EMAIL outbound adapter (Resend) into the shared registry, then
 // send THROUGH it. C-2..C-5 register sms/whatsapp/etc. against the same contract.
@@ -441,7 +476,8 @@ Deno.serve(async (req) => {
   // the channel_connectors row (from_address/from_name/reply_to) is the fallback;
   // the platform default sender is the last resort. This never forks §38.
   let tenantId: string | null = null;
-  let draftRow: { status?: string | null; connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null } | null = null;
+  let draftRow: { status?: string | null; connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null; meta?: Record<string, unknown> | null } | null = null;
+  let contactRow: { tenant_id?: string | null; email?: string | null; phone?: string | null } | null = null;
   let connectorRow:
     | {
         tenant_id?: string | null; from_address?: string | null; from_name?: string | null;
@@ -455,26 +491,109 @@ Deno.serve(async (req) => {
   let replyTo: string | null = null;
 
   if (body.message_id) {
-    const { data } = await admin
+    const { data, error: messageError } = await admin
       .from("messages")
-      .select("tenant_id, status, connector_id, contact_id, thread_key, channel_type")
+      .select("tenant_id, status, connector_id, contact_id, thread_key, channel_type, meta")
       .eq("id", body.message_id)
       .maybeSingle();
-    if (data) {
-      draftRow = data;
-      tenantId = data.tenant_id ?? null;
+    if (messageError) {
+      return new Response(JSON.stringify({ error: "message_lookup_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!data) {
+      return new Response(JSON.stringify({ error: "message_not_found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (isInternal && data.status !== "queued") {
+      return new Response(JSON.stringify({ error: "scheduled_message_not_releasable" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    draftRow = data;
+    tenantId = data.tenant_id ?? null;
+  }
+  const terminalizeScheduledRelease = async (failure: string): Promise<Response> => {
+    if (!isInternal || !body.message_id || !tenantId || draftRow?.status !== "queued") {
+      return new Response(JSON.stringify({ error: failure }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: terminalized, error: terminalError } = await admin.from("messages")
+      .update({ status: "failed", scheduled_for: null, error: failure })
+      .eq("id", body.message_id)
+      .eq("tenant_id", tenantId)
+      .eq("status", "queued")
+      .select("id")
+      .maybeSingle();
+    if (terminalError) {
+      return new Response(JSON.stringify({ error: "scheduled_release_terminalization_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      error: terminalized?.id ? failure : "scheduled_message_not_releasable",
+      status: "failed",
+      outcome: "failed",
+      reason: "The scheduled message needs review before it can be sent.",
+    }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  };
+  if (draftRow?.contact_id && body.contact_id && body.contact_id !== draftRow.contact_id) {
+    return new Response(JSON.stringify({ error: "contact_override_forbidden" }), {
+      status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (draftRow?.thread_key && body.thread_key && body.thread_key !== draftRow.thread_key) {
+    return new Response(JSON.stringify({ error: "thread_override_forbidden" }), {
+      status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const effectiveContactId = draftRow?.contact_id ?? body.contact_id ?? null;
+  const effectiveConnectorId = body.connector_id ?? draftRow?.connector_id ?? null;
+  const scheduledBinding = draftRow?.meta?.scheduled_binding as Record<string, unknown> | undefined;
+  if (isInternal && draftRow?.status === "queued") {
+    if (!scheduledBinding || (typeof scheduledBinding.contact_id !== "string" && typeof scheduledBinding.connector_id !== "string")) {
+      return await terminalizeScheduledRelease("scheduled_binding_unavailable");
+    }
+    if (typeof scheduledBinding?.contact_id === "string" && !effectiveContactId) {
+      return await terminalizeScheduledRelease("scheduled_contact_unavailable");
+    }
+    if (typeof scheduledBinding?.contact_id === "string" && effectiveContactId !== scheduledBinding.contact_id) {
+      return await terminalizeScheduledRelease("scheduled_contact_changed");
+    }
+    if (typeof scheduledBinding?.connector_id === "string" && !effectiveConnectorId) {
+      return await terminalizeScheduledRelease("scheduled_connector_unavailable");
+    }
+    if (typeof scheduledBinding?.connector_id === "string" && effectiveConnectorId !== scheduledBinding.connector_id) {
+      return await terminalizeScheduledRelease("scheduled_connector_changed");
     }
   }
-  const effectiveContactId = body.contact_id ?? draftRow?.contact_id ?? null;
-  const effectiveConnectorId = body.connector_id ?? draftRow?.connector_id ?? null;
 
-  if (!tenantId && effectiveContactId) {
-    const { data: contactRow } = await admin
+  if (effectiveContactId) {
+    const { data, error: contactError } = await admin
       .from("clients")
-      .select("tenant_id")
+      .select("tenant_id, email, phone")
       .eq("id", effectiveContactId)
       .maybeSingle();
-    tenantId = contactRow?.tenant_id ?? null;
+    if (contactError) {
+      return new Response(JSON.stringify({ error: "contact_lookup_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    contactRow = data ?? null;
+    if (!contactRow) {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_contact_unavailable");
+      return new Response(JSON.stringify({ error: "contact_not_found" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (tenantId && contactRow.tenant_id !== tenantId) {
+      return new Response(JSON.stringify({ error: "forbidden_cross_tenant_contact" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    tenantId = contactRow.tenant_id ?? null;
   }
   // §49 one-thread-per-contact: when both the contact and tenant are known, the canonical key is
   // per-CONTACT so every channel's messages coalesce into ONE thread. The `${channel}:${to}` /
@@ -484,7 +603,7 @@ Deno.serve(async (req) => {
   // line below that block if it is ever reordered.
   const perContactKey = effectiveContactId && tenantId ? `contact:${tenantId}:${effectiveContactId}` : null;
   if (effectiveConnectorId) {
-    const { data } = await admin
+    const { data, error: connectorError } = await admin
       .from("channel_connectors")
       // #141b: widened to carry provider + credentials_vault_ref + external_account_id so the
       // email path can route a Gmail connector through the Gmail seam (else Resend).
@@ -493,18 +612,26 @@ Deno.serve(async (req) => {
       .select("tenant_id, from_address, from_name, reply_to, channel_type, status, active, provider, credentials_vault_ref, external_account_id, config")
       .eq("id", effectiveConnectorId)
       .maybeSingle();
+    if (connectorError) {
+      return new Response(JSON.stringify({ error: "connector_lookup_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     connectorRow = data ?? null;
     if (!connectorRow) {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_connector_unavailable");
       return new Response(JSON.stringify({ error: "connector_not_found" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (connectorRow.active !== true || connectorRow.status !== "active") {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_connector_unavailable");
       return new Response(JSON.stringify({ error: "connector_not_active" }), {
         status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (connectorRow.channel_type !== body.channel) {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_connector_changed");
       return new Response(JSON.stringify({ error: "connector_channel_mismatch" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -559,6 +686,27 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (effectiveContactId) {
+    const canonicalRecipient = body.channel === "email" ? contactRow?.email : contactRow?.phone;
+    if (!canonicalRecipient || normalizeRecipient(body.channel, canonicalRecipient) !== normalizeRecipient(body.channel, body.to)) {
+      if (isInternal && body.message_id && tenantId) {
+        // A scheduled row keeps the exact recipient approved when it was queued. If the
+        // canonical People address changes before release, never retarget silently and never
+        // leave the row queued for endless retries: surface one terminal failure for review.
+        return await terminalizeScheduledRelease("recipient_contact_mismatch");
+      }
+      return new Response(JSON.stringify({ error: "recipient_contact_mismatch" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+  const attachmentError = attachmentValidationError(body.attachments, tenantId);
+  if (attachmentError) {
+    return new Response(JSON.stringify({ error: attachmentError }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   // ── §5 double-submit guard ───────────────────────────────────────────────────
   // Approving an already sent/queued draft (second tab, stale realtime, network retry)
   // must NOT re-fire the provider — each provider send mints a fresh provider_message_id
@@ -566,9 +714,19 @@ Deno.serve(async (req) => {
   // C-1.5: a `queued` row is only a double-submit for a NON-internal re-approve; the internal
   // drainer (isInternal) is RELEASING that queued row and must proceed to the pipeline+send.
   // A genuinely `sent` row always dedupes (no double-delivery), internal or not.
+  if (body.message_id && body.scheduled_for && !isInternal && draftRow?.status !== "draft") {
+    return new Response(JSON.stringify({
+      error: "scheduled_message_not_replaceable",
+      status: "failed",
+      outcome: "failed",
+      reason: "The canceled draft changed before it could be queued. Review it and send again.",
+      message_id: null,
+      scheduled_for: null,
+    }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
   if (body.message_id && draftRow &&
       (draftRow.status === "sent" ||
-       (draftRow.status === "queued" && !isInternal))) {
+       (draftRow.status === "queued" && !isInternal && !body.scheduled_for))) {
     return new Response(
       JSON.stringify({ status: "sent", message_id: body.message_id, deduped: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -590,16 +748,56 @@ Deno.serve(async (req) => {
       const whenMs = Date.parse(body.scheduled_for);
       if (Number.isFinite(whenMs) && whenMs > Date.now()) {
         const schedIso = new Date(whenMs).toISOString();
-        const schedMeta = { source: "send-message", pre_send: { step: "scheduled", outcome: "queued_scheduled" } };
+        const schedMeta = {
+          source: "send-message",
+          pre_send: { step: "scheduled", outcome: "queued_scheduled" },
+          scheduled_binding: { contact_id: effectiveContactId, connector_id: effectiveConnectorId },
+        };
         let schedRowId: string | null = null;
         try {
           if (body.message_id) {
-            const { data: patched } = await admin.from("messages").update({
-              status: "queued", scheduled_for: schedIso, meta: schedMeta, error: null,
-            }).eq("id", body.message_id).select("id").maybeSingle();
-            schedRowId = patched?.id ?? body.message_id;
+            // An Undo converts the queued row back to a draft. Requeueing that draft must
+            // atomically replace the complete delivery payload; changing only its timer would
+            // let the drainer release the canceled, pre-edit content. The guarded transition
+            // also makes concurrent/stale requeues lose instead of acknowledging a false queue.
+            const { data: patched, error: patchError } = await admin.from("messages").update({
+              thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
+              contact_id: effectiveContactId,
+              connector_id: effectiveConnectorId,
+              channel_type: body.channel,
+              direction: "outbound",
+              status: "queued",
+              scheduled_for: schedIso,
+              recipients: [{ address: body.to }],
+              subject: body.subject ?? null,
+              body_html: body.channel === "email" ? body.body : null,
+              body_text: body.channel === "email" ? null : body.body,
+              attachments: body.attachments ?? [],
+              provider_message_id: null,
+              sent_at: null,
+              meta: schedMeta,
+              error: null,
+            })
+              .eq("id", body.message_id)
+              .eq("tenant_id", tenantId)
+              .eq("status", "draft")
+              .is("scheduled_for", null)
+              .select("id")
+              .maybeSingle();
+            if (patchError) throw patchError;
+            if (!patched?.id) {
+              return new Response(JSON.stringify({
+                error: "scheduled_message_not_replaceable",
+                status: "failed",
+                outcome: "failed",
+                reason: "The canceled draft changed before it could be queued. Review it and send again.",
+                message_id: null,
+                scheduled_for: null,
+              }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            schedRowId = patched.id;
           } else if (effectiveContactId || effectiveConnectorId) {
-            const { data: inserted } = await admin.from("messages").insert({
+            const { data: inserted, error: insertError } = await admin.from("messages").insert({
               thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
               contact_id: effectiveContactId, connector_id: effectiveConnectorId,
               channel_type: body.channel, direction: "outbound",
@@ -610,10 +808,29 @@ Deno.serve(async (req) => {
               attachments: body.attachments ?? [],
               meta: schedMeta,
             }).select("id").maybeSingle();
+            if (insertError) throw insertError;
             schedRowId = inserted?.id ?? null;
           }
         } catch (e) {
-          console.warn("[send-message] scheduled row write skipped:", (e as Error)?.message);
+          console.warn("[send-message] scheduled row write failed:", (e as Error)?.message);
+          return new Response(JSON.stringify({
+            error: "scheduled_message_write_failed",
+            status: "failed",
+            outcome: "failed",
+            reason: "The message could not be queued. Review it and try again.",
+            message_id: null,
+            scheduled_for: null,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (!schedRowId) {
+          return new Response(JSON.stringify({
+            error: "scheduled_message_not_persisted",
+            status: "failed",
+            outcome: "failed",
+            reason: "The message could not be queued. Review it and try again.",
+            message_id: null,
+            scheduled_for: null,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         return new Response(JSON.stringify({
           audit_id: null, vendor_message_id: null,
@@ -663,6 +880,7 @@ Deno.serve(async (req) => {
       const preSendMeta = {
         source: "send-message",
         pre_send: { step: preSend.outcome, reason: preSend.reason },
+        scheduled_binding: scheduledBinding ?? { contact_id: effectiveContactId, connector_id: effectiveConnectorId },
       };
 
       // Terminal messages row. tenant_id is derived by set_message_tenant() from
@@ -672,13 +890,15 @@ Deno.serve(async (req) => {
       let preMessageRowId: string | null = null;
       try {
         if (body.message_id) {
-          const { data: patched } = await admin.from("messages").update({
+          const { data: patched, error: patchError } = await admin.from("messages").update({
             status: terminalStatus, scheduled_for: preSend.queueUntil,
             meta: preSendMeta, error: null,
           }).eq("id", body.message_id).select("id").maybeSingle();
-          preMessageRowId = patched?.id ?? body.message_id;
+          if (patchError) throw patchError;
+          if (!patched?.id) throw new Error("pre_send_message_not_persisted");
+          preMessageRowId = patched.id;
         } else if (effectiveContactId || effectiveConnectorId) {
-          const { data: inserted } = await admin.from("messages").insert({
+          const { data: inserted, error: insertError } = await admin.from("messages").insert({
             thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
             contact_id: effectiveContactId, connector_id: effectiveConnectorId,
             channel_type: body.channel, direction: "outbound",
@@ -688,10 +908,20 @@ Deno.serve(async (req) => {
             body_text: body.channel === "email" ? null : body.body,
             meta: preSendMeta,
           }).select("id").maybeSingle();
+          if (insertError) throw insertError;
+          if (!inserted?.id) throw new Error("pre_send_message_not_persisted");
           preMessageRowId = inserted?.id ?? null;
         }
       } catch (e) {
-        console.warn("[send-message] pre-send terminal row write skipped:", (e as Error)?.message);
+        console.warn("[send-message] pre-send terminal row write failed:", (e as Error)?.message);
+        return new Response(JSON.stringify({
+          error: "pre_send_state_write_failed",
+          status: "failed",
+          outcome: "failed",
+          reason: "The message state could not be saved. Review it and try again.",
+          message_id: null,
+          scheduled_for: null,
+        }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       // Legacy audit: a non-send is 'failed' in paige_messages_audit's enum (predates the
@@ -747,8 +977,9 @@ Deno.serve(async (req) => {
       }
       senderName = senderName || config?.default_from_name || "Paige Agent";
       // Last-resort fallback on the verified shared sending subdomain.
-      senderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
-      fromAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
+      const resolvedSenderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
+      senderEmail = resolvedSenderEmail;
+      fromAddress = senderName ? `${senderName} <${resolvedSenderEmail}>` : resolvedSenderEmail;
 
       // §32 — build the NormalizedMessage and send THROUGH the registry adapter.
       const adapter = getOutboundAdapter("email");
@@ -760,7 +991,7 @@ Deno.serve(async (req) => {
         status: "queued",
         contact_id: effectiveContactId,
         connector_id: effectiveConnectorId,
-        sender: { address: senderEmail, display_name: senderName ?? undefined },
+        sender: { address: resolvedSenderEmail, display_name: senderName ?? undefined },
         recipients: [{ address: body.to }],
         subject: body.subject ?? null,
         body_html: body.body,
@@ -801,7 +1032,7 @@ Deno.serve(async (req) => {
       }
 
       const ctx: OutboundSendContext = {
-        from: { address: senderEmail, display_name: senderName ?? undefined },
+        from: { address: resolvedSenderEmail, display_name: senderName ?? undefined },
         to: body.to,
         replyTo,
         providerApiKey: resendKey,
