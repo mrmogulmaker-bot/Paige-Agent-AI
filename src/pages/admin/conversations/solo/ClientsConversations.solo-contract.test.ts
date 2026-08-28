@@ -52,7 +52,12 @@ describe("Solo Conversations page wiring", () => {
   it("confines the visual redesign to the tab-bounded Solo descendant", () => {
     expect(css).toContain(".trc-workspace:has(.solo-conversations-workspace) > .trc-heading");
     expect(css).toContain(".trc-conversations:has(.solo-conversations-workspace) > header");
-    expect(css).toContain('grid-template-columns: minmax(190px, 0.7fr) minmax(300px, 1.3fr) var(--solo-context-width)');
+    expect(css).toContain('grid-template-columns: minmax(190px, 1fr) minmax(320px, 1.8fr) minmax(190px, 1fr)');
+    expect(css).toContain('grid-template-columns: minmax(156px, 1fr) minmax(250px, 1.7fr) minmax(156px, 1fr)');
+    expect(css).toContain('grid-template-columns: minmax(128px, 1fr) minmax(224px, 1.55fr) minmax(128px, 1fr)');
+    expect(css).not.toContain('--solo-context-width: 230px');
+    expect(css).not.toContain('--solo-context-width: 200px');
+    expect(css).not.toContain('--solo-context-width: 176px');
     expect(css).toContain(".solo-conversations-queue { margin-right: 8px; }");
     expect(workspace).not.toMatch(/Sheet|Dialog|onClose|Close client/i);
     expect(workspace).toContain('data-pane="client-context"');

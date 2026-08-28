@@ -43,14 +43,13 @@
 }
 
 .solo-conversations-workspace {
-  --solo-context-width: 230px;
   --solo-operating-bg: hsl(var(--muted) / .22);
   --solo-client-bg: hsl(var(--muted) / .2);
   --solo-positive-wash: hsl(var(--success) / .1);
   --solo-paige-wash: hsl(var(--primary) / .09);
   --solo-warning-wash: hsl(var(--warning) / .1);
   display: grid;
-  grid-template-columns: minmax(190px, 0.7fr) minmax(300px, 1.3fr) var(--solo-context-width);
+  grid-template-columns: minmax(190px, 1fr) minmax(320px, 1.8fr) minmax(190px, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -79,6 +78,7 @@
 
 .solo-conversations-workspace[data-context-collapsed="true"] {
   --solo-context-width: 48px;
+  grid-template-columns: minmax(190px, .75fr) minmax(320px, 1.25fr) var(--solo-context-width);
 }
 
 .solo-conversations-pane {
@@ -368,16 +368,16 @@
 /* At constrained shell widths the context stays visible as a narrower sibling. It never
    becomes a Sheet, drawer, overlay, empty rail, or document-level overflow. */
 .solo-conversations-workspace[data-form-fit="narrow"] {
-  --solo-context-width: 200px;
-  grid-template-columns: minmax(156px, .6fr) minmax(250px, 1.4fr) var(--solo-context-width);
+  grid-template-columns: minmax(156px, 1fr) minmax(250px, 1.7fr) minmax(156px, 1fr);
 }
 .solo-conversations-workspace[data-form-fit="tight"] {
-  --solo-context-width: 176px;
-  grid-template-columns: minmax(128px, .55fr) minmax(224px, 1.45fr) var(--solo-context-width);
+  grid-template-columns: minmax(128px, 1fr) minmax(224px, 1.55fr) minmax(128px, 1fr);
 }
-.solo-conversations-workspace[data-form-fit="narrow"][data-context-collapsed="true"],
+.solo-conversations-workspace[data-form-fit="narrow"][data-context-collapsed="true"] {
+  grid-template-columns: minmax(156px, .7fr) minmax(250px, 1.3fr) var(--solo-context-width);
+}
 .solo-conversations-workspace[data-form-fit="tight"][data-context-collapsed="true"] {
-  --solo-context-width: 48px;
+  grid-template-columns: minmax(128px, .65fr) minmax(224px, 1.35fr) var(--solo-context-width);
 }
 .solo-conversations-workspace[data-form-fit="tight"] .solo-conversations-queue { margin-right: 6px; }
 .solo-conversations-workspace[data-form-fit="tight"] .solo-handling-mode span { display: none; }
