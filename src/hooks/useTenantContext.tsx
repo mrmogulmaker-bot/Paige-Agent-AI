@@ -56,7 +56,6 @@ function readHandledSignIn(uid: string): { ok: boolean; value: string | null } {
     return { ok: false, value: null };
   }
 }
-
 function burnHandledSignIn(uid: string, value: string): void {
   try {
     localStorage.setItem(FRESH_SIGNIN_KEY + uid, value);
@@ -119,6 +118,11 @@ interface TenantContextState {
   loading: boolean;
   /** True only while the authenticated subject's account identity is unresolved. */
   accountContextLoading: boolean;
+  /**
+   * Explicit pre-shell identity verdict. `ready` means the server-backed account
+   * reads completed; route owners must still require the tenant shape they need.
+   */
+  accountContextStatus: "resolving" | "signed_out" | "error" | "ready";
   isPlatformOwner: boolean;
   /** Owner OR scoped Platform Admin — sees the God console instead of the agency CRM. */
   isPlatformStaff: boolean;
@@ -152,6 +156,7 @@ const TenantContext = createContext<TenantContextState | null>(null);
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [accountContextLoading, setAccountContextLoading] = useState(true);
+  const [accountContextStatus, setAccountContextStatus] = useState<TenantContextState["accountContextStatus"]>("resolving");
   const [isPlatformOwner, setIsPlatformOwner] = useState(false);
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
@@ -187,7 +192,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const loadId = ++nextLoadIdRef.current;
     let loadSubjectEpoch = subjectEpochRef.current;
     let acceptedThisLoad = false;
-    if (!background) setLoading(true);
+    if (!background) {
+      setLoading(true);
+      if (!hasAcceptedContextRef.current) {
+        setAccountContextLoading(true);
+        setAccountContextStatus("resolving");
+      }
+    }
     try {
       // getSession() reads the session Supabase restores from localStorage. On a
       // COLD hard-load / deep-link this can already be present when getUser() (a
@@ -212,6 +223,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         setIsPlatformStaff(false);
         setLoading(true);
         setAccountContextLoading(true);
+        setAccountContextStatus("resolving");
       } else {
         loadSubjectEpoch = subjectEpochRef.current;
       }
@@ -227,6 +239,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         setActiveTenantId(null);
         setIsPlatformOwner(false);
         setIsPlatformStaff(false);
+        setAccountContextStatus("signed_out");
         return;
       }
 
@@ -250,14 +263,21 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         supabase.from("tenant_revenue_classification" as any).select("tenant_id, revenue_class"),
       ]);
 
-      // On a BACKGROUND revalidation, never degrade a good state on a transient
-      // failure — bail and keep the last successfully-resolved context; the next auth
-      // event (or a user action) retries. The initial load still commits what resolves
-      // (empty on error is the honest first-paint, corrected by the next event).
+      // Never degrade a previously accepted account on a transient revalidation
+      // failure. With no accepted account, however, a failed required read is an
+      // explicit error verdict — it can never be treated as an empty, valid identity.
       // NOTE: classRes is intentionally NOT in this guard — the classification is an
       // enhancement; its absence (pre-migration / non-staff) must never block the shell.
       const requiredReadFailed = Boolean(owner.error || staff.error || profileRes.error || tenantsRes.error);
-      if (requiredReadFailed && (background || hasAcceptedContextRef.current)) return;
+      if (requiredReadFailed) {
+        if (hasAcceptedContextRef.current) return;
+        if (loadSubjectEpoch !== subjectEpochRef.current || loadId < acceptedLoadIdRef.current) return;
+        acceptedLoadIdRef.current = loadId;
+        acceptedThisLoad = true;
+        activeUidRef.current = uid;
+        setAccountContextStatus("error");
+        return;
+      }
 
       // A later-started successful read is authoritative. This is intentionally a
       // last-SUCCESSFUL-read guard, not a last-started-read guard: a transiently
@@ -266,7 +286,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       acceptedLoadIdRef.current = loadId;
       acceptedThisLoad = true;
       activeUidRef.current = uid;
-      hasAcceptedContextRef.current = true;
       const stillAuthoritative = () =>
         loadSubjectEpoch === subjectEpochRef.current && loadId === acceptedLoadIdRef.current;
 
@@ -336,6 +355,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
               // Couldn't resolve home — leave scope on the committed base and do
               // NOT burn, so the next auth event retries (fold-fix #1: never lose
               // the reset by burning the marker before it actually completes).
+              hasAcceptedContextRef.current = false;
+              setAccountContextStatus("error");
               return;
             }
             home = primary.data?.[0]?.tenant_id ?? null;
@@ -354,6 +375,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
               // Guard (fold-fix #2): the DB write FAILED — do NOT flip the client
               // to home (that would split client=home / DB=child scope) and do
               // NOT burn; retry on the next auth event with DB and client aligned.
+              hasAcceptedContextRef.current = false;
+              setAccountContextStatus("error");
               return;
             }
             if (!stillAuthoritative()) return;
@@ -364,6 +387,18 @@ export function TenantProvider({ children }: { children: ReactNode }) {
             burnHandledSignIn(uid, lastSignInAt);
           }
         }
+      }
+      hasAcceptedContextRef.current = true;
+      setAccountContextStatus("ready");
+    } catch {
+      // A thrown transport/client failure is not a denial and not an empty account.
+      // Preserve a previously accepted subject; otherwise publish an explicit error
+      // verdict so route owners fail closed with a retry surface.
+      const sameSubject = loadSubjectEpoch === subjectEpochRef.current;
+      if (!hasAcceptedContextRef.current && sameSubject && loadId >= acceptedLoadIdRef.current) {
+        acceptedLoadIdRef.current = loadId;
+        acceptedThisLoad = true;
+        setAccountContextStatus("error");
       }
     } finally {
       // A successful background hydration can be the first authoritative tenant
@@ -477,6 +512,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const value: TenantContextState = {
     loading,
     accountContextLoading,
+    accountContextStatus,
     isPlatformOwner,
     isPlatformStaff,
     tenants,
