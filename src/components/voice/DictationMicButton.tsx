@@ -9,7 +9,7 @@
  * §11: the mic is NEUTRAL/indigo — a mic is not an "act", so gold stays on Send.
  * Motion-safe (every pulse guards `motion-reduce`), token-only, jargon-free.
  */
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -49,10 +49,25 @@ export function DictationMicButton({
   scopeEpoch = null,
   className,
 }: DictationMicButtonProps) {
-  const dictation = useDictation({ onText, onError, scopeEpoch });
+  const [resultVisible, setResultVisible] = useState(false);
+  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleText = (segment: string) => {
+    onText(segment);
+    setResultVisible(true);
+    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+    resultTimerRef.current = setTimeout(() => {
+      resultTimerRef.current = null;
+      setResultVisible(false);
+    }, 2_000);
+  };
+  const dictation = useDictation({ onText: handleText, onError, scopeEpoch });
   const { status, failure, supported, start, stop } = dictation;
   const statusId = useId();
   const holdingRef = useRef(false);
+
+  useEffect(() => () => {
+    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (status === "idle" || status === "error") {
@@ -69,6 +84,9 @@ export function DictationMicButton({
 
   const beginHold = () => {
     if (disabled || !supported || holdingRef.current || (status !== "idle" && status !== "error")) return;
+    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+    resultTimerRef.current = null;
+    setResultVisible(false);
     holdingRef.current = true;
     void start();
   };
@@ -85,7 +103,7 @@ export function DictationMicButton({
   const isCapturing = status === "requesting" || status === "listening";
   const failed = status === "error";
 
-  const state = unsupported ? "unsupported" : failure ?? status;
+  const state = unsupported ? "unsupported" : failure ?? (status === "idle" && resultVisible ? "success" : status);
   const stateLabel = unsupported
     ? "Mic unsupported"
     : failure === "permission-denied"
@@ -100,7 +118,10 @@ export function DictationMicButton({
               ? "Listening"
               : status === "transcribing"
                 ? "Transcribing"
-                : "Hold to talk";
+                : resultVisible
+                  ? "Added to draft"
+                  : "";
+  const statusVisible = showStatus && (unsupported || failed || status !== "idle" || resultVisible);
 
   const title = unsupported
     ? "Voice typing isn't supported in this browser"
@@ -138,7 +159,7 @@ export function DictationMicButton({
       disabled={isDisabled}
       aria-disabled={activationUnavailable}
       aria-label={accessibleLabel}
-      aria-describedby={showStatus ? statusId : undefined}
+      aria-describedby={statusVisible ? statusId : undefined}
       aria-pressed={isCapturing}
       title={title}
       className={cn(
@@ -178,17 +199,19 @@ export function DictationMicButton({
   return (
     <span className="inline-flex min-w-0 flex-none items-center gap-1.5" data-dictation-state={state}>
       {button}
-      <span
-        id={statusId}
-        role={failed || unsupported ? "alert" : "status"}
-        aria-live={failed || unsupported ? "assertive" : "polite"}
-        className={cn(
-          "max-w-24 truncate text-[10px] font-medium leading-tight",
-          failed || unsupported ? "text-destructive" : "text-muted-foreground",
-        )}
-      >
-        {stateLabel}
-      </span>
+      {statusVisible && (
+        <span
+          id={statusId}
+          role={failed || unsupported ? "alert" : "status"}
+          aria-live={failed || unsupported ? "assertive" : "polite"}
+          className={cn(
+            "max-w-24 truncate text-[10px] font-medium leading-tight",
+            failed || unsupported ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {stateLabel}
+        </span>
+      )}
     </span>
   );
 }
