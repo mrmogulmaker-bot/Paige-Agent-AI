@@ -138,16 +138,32 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(1, rect.width || 760);
     const height = Math.max(1, rect.height || 440);
+    const styles = getComputedStyle(canvas);
+    const categoryColors = Object.fromEntries(CATEGORIES.map((item) => [
+      item.key,
+      styles.getPropertyValue(`--mind-${item.key}`).trim() || item.color,
+    ])) as Record<Category, string>;
+    const categoryColor = (category: Category) => categoryColors[category] || "#655A96";
+    const numericStyle = (name: string, fallback: number) => {
+      const parsed = Number.parseFloat(styles.getPropertyValue(name));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const textureAlpha = numericStyle("--mind-texture-alpha", .25);
+    const nodeAlpha = numericStyle("--mind-node-alpha", .58);
+    const nodeRingAlpha = numericStyle("--mind-node-ring-alpha", .42);
+    const edgeColor = styles.getPropertyValue("--mind-edge").trim() || "rgba(169,158,204,.28)";
+    const labelColor = styles.getPropertyValue("--mind-label").trim() || "#F6F2EA";
+    const labelSurface = styles.getPropertyValue("--mind-label-surface").trim() || "rgba(16,14,20,.84)";
     if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
       canvas.width = width * ratio; canvas.height = height * ratio;
     }
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
-    const cx = width / 2; const cy = height * 0.51; const scale = Math.min(width, height) * 0.39 * rotation.zoom;
+    const cx = width / 2; const cy = height * 0.51; const scale = Math.min(width, height) * 0.52 * rotation.zoom;
     const cosY = Math.cos(rotation.y); const sinY = Math.sin(rotation.y);
     const cosX = Math.cos(rotation.x); const sinX = Math.sin(rotation.x);
     const textureCount = records.length <= 5 ? 90 : records.length <= 30 ? 240 : 480;
-    context.globalAlpha = .18;
+    context.globalAlpha = textureAlpha;
     for (let i = 0; i < textureCount; i += 1) {
       const angle = i * 2.399963 + rotation.y;
       const y = 1 - (i / Math.max(1, textureCount - 1)) * 2;
@@ -156,7 +172,7 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
       const y1 = y * Math.cos(rotation.x) - z3 * Math.sin(rotation.x);
       const z2 = y * Math.sin(rotation.x) + z3 * Math.cos(rotation.x);
       const depth = 1.8 / (2.45 - z2); const cat = CATEGORIES[i % CATEGORIES.length];
-      context.fillStyle = cat.color; context.beginPath(); context.arc(cx + x3 * scale * depth, cy + y1 * scale * depth, .65 + depth * .55, 0, Math.PI * 2); context.fill();
+      context.fillStyle = categoryColor(cat.key); context.beginPath(); context.arc(cx + x3 * scale * depth, cy + y1 * scale * depth, .95 + depth * .72, 0, Math.PI * 2); context.fill();
     }
     const projected = visible.map((record, index) => {
       const p = pointFor(record, index);
@@ -166,7 +182,7 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
       return { record, x: cx + x1 * scale * depth, y: cy + y1 * scale * depth, z: z2, depth };
     }).sort((a, b) => a.z - b.z);
     projectedRef.current = projected;
-    context.strokeStyle = "rgba(143,132,181,.16)"; context.lineWidth = 0.7;
+    context.strokeStyle = edgeColor; context.lineWidth = 0.9;
     for (let i = 1; i < projected.length; i += 1) {
       const a = projected[i - 1]; const b = projected[i];
       if (a.record.category !== b.record.category) continue;
@@ -175,13 +191,25 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     for (const item of projected) {
       const active = pulse?.category === item.record.category;
       const eased = pulse?.reduced ? .7 : 1 - Math.pow(1 - motionPhase, 3);
-      const radius = (selected?.id === item.record.id ? 6 : 2.4) * item.depth + (active ? 2 + Math.sin(eased * Math.PI) * 4 : 0);
-      context.globalAlpha = 0.42 + item.depth * 0.5;
-      context.fillStyle = item.record.color; context.beginPath(); context.arc(item.x, item.y, radius, 0, Math.PI * 2); context.fill();
+      const radius = (selected?.id === item.record.id ? 6.5 : 3.2) * item.depth + (active ? 2 + Math.sin(eased * Math.PI) * 4 : 0);
+      const color = categoryColor(item.record.category);
+      context.globalAlpha = Math.min(1, nodeAlpha + item.depth * .36);
+      context.fillStyle = color; context.beginPath(); context.arc(item.x, item.y, radius, 0, Math.PI * 2); context.fill();
       if (active || selected?.id === item.record.id) {
-        context.globalAlpha = 0.35; context.strokeStyle = item.record.color; context.lineWidth = 2;
+        context.globalAlpha = nodeRingAlpha; context.strokeStyle = color; context.lineWidth = 2;
         context.beginPath(); context.arc(item.x, item.y, radius + 6, 0, Math.PI * 2); context.stroke();
       }
+    }
+    const labelCount = width < 520 ? 1 : 3;
+    context.font = "650 10px ui-sans-serif, system-ui, sans-serif";
+    context.textBaseline = "middle";
+    for (const item of projected.slice(-labelCount)) {
+      const label = item.record.title.length > 34 ? `${item.record.title.slice(0, 32)}…` : item.record.title;
+      const textWidth = context.measureText(label).width;
+      const left = Math.min(width - textWidth - 18, Math.max(8, item.x + 9));
+      const top = Math.min(height - 24, Math.max(8, item.y - 10));
+      context.globalAlpha = .92; context.fillStyle = labelSurface; context.fillRect(left, top, textWidth + 12, 20);
+      context.globalAlpha = 1; context.fillStyle = labelColor; context.fillText(label, left + 6, top + 10);
     }
     context.globalAlpha = 1;
   }, [motionPhase, pulse, records.length, rotation, selected?.id, visible]);
@@ -190,6 +218,14 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     draw();
     if (typeof ResizeObserver === "undefined" || !canvasRef.current) return;
     const observer = new ResizeObserver(draw); observer.observe(canvasRef.current); return () => observer.disconnect();
+  }, [draw]);
+
+  useEffect(() => {
+    const themeRoot = canvasRef.current?.closest("[data-pg]");
+    if (!themeRoot || typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(draw);
+    observer.observe(themeRoot, { attributes: true, attributeFilter: ["data-pg"] });
+    return () => observer.disconnect();
   }, [draw]);
 
   useEffect(() => {
@@ -272,10 +308,10 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
                 </div>
                 <div className="mind-categories" role="group" aria-label="Filter Mind records by category">
                   <button type="button" aria-pressed={category === "all"} onClick={() => selectCategory("all")}><span>All records</span><small>{records.length} GROUNDED</small></button>
-                  {CATEGORIES.map((item) => { const count = records.filter((record) => record.category === item.key).length; return <button key={item.key} type="button" aria-pressed={category === item.key} onClick={() => selectCategory(item.key)} style={{ "--mind-category": item.color } as React.CSSProperties}><span>{item.label}</span><small>{count ? `${count} · ${item.truth}` : item.truth}</small></button>; })}
+                  {CATEGORIES.map((item) => { const count = records.filter((record) => record.category === item.key).length; return <button key={item.key} type="button" aria-pressed={category === item.key} onClick={() => selectCategory(item.key)} style={{ "--mind-category": `var(--mind-${item.key})` } as React.CSSProperties}><span>{item.label}</span><small>{count ? `${count} · ${item.truth}` : item.truth}</small></button>; })}
                 </div>
                 <div className="mind-records" role="group" aria-label="Grounded Mind records">
-                  {visible.map((record) => <button key={record.id} type="button" data-mind-record onClick={(event) => chooseRecord(record, event.currentTarget)}><i style={{ background: record.color }} /><span><strong>{record.title}</strong><small>{record.owner} · {record.when}</small></span><b>{record.truth}</b></button>)}
+                  {visible.map((record) => <button key={record.id} type="button" data-mind-record onClick={(event) => chooseRecord(record, event.currentTarget)}><i style={{ background: `var(--mind-${record.category})` }} /><span><strong>{record.title}</strong><small>{record.owner} · {record.when}</small></span><b>{record.truth}</b></button>)}
                   {!visible.length && <p>No grounded records are available in this category.</p>}
                 </div>
               </section>

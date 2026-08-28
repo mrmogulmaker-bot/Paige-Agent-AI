@@ -4,11 +4,22 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Settings } from "lucide-react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantCommandCenterShell, TenantPaigeCommandField } from "./TenantCommandCenterShell";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 
-vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
+const themeMock = vi.hoisted(() => ({
+  resolvedTheme: "light" as "light" | "dark",
+  setTheme: vi.fn(),
+}));
+
+vi.mock("next-themes", () => ({ useTheme: () => themeMock }));
+
+afterEach(() => {
+  themeMock.resolvedTheme = "light";
+  themeMock.setTheme.mockReset();
+  window.localStorage.removeItem("paige.tenantShell.navExpanded");
+});
 vi.mock("@/components/admin/AdminBridgeBell", () => ({ AdminBridgeBell: () => null }));
 vi.mock("@/components/admin/voice/DialPadTrigger", () => ({ DialPadTrigger: () => null }));
 vi.mock("@/components/ui/paige", () => ({
@@ -119,6 +130,43 @@ const PaigeWorkspaceFixture = () => {
 };
 
 describe("tenant shell owns one PAIGE surface", () => {
+  it.each([
+    ["light", "Obsidian", "dark"],
+    ["dark", "Mineral", "light"],
+  ] as const)("offers the approved opposite theme name from %s", (currentTheme, offeredTheme, nextTheme) => {
+    themeMock.resolvedTheme = currentTheme;
+    themeMock.setTheme.mockClear();
+    window.localStorage.setItem("paige.tenantShell.navExpanded", "false");
+    const host = document.createElement("div");
+    const root = createRoot(host);
+
+    try {
+      act(() => root.render(
+        <MemoryRouter>
+          <TenantCommandCenterShell
+            accountName="Solo account"
+            accountType="standalone"
+            userRole="admin"
+            onSignOut={vi.fn()}
+          >
+            <p>Solo workspace</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      ));
+
+      const themeSwitch = host.querySelector<HTMLButtonElement>(`[aria-label="Use ${offeredTheme} theme"]`);
+      expect(themeSwitch).not.toBeNull();
+      expect(themeSwitch?.textContent).toBe(offeredTheme);
+      expect(themeSwitch?.title).toBe(`${offeredTheme} theme`);
+
+      act(() => themeSwitch?.click());
+      expect(themeMock.setTheme).toHaveBeenCalledOnce();
+      expect(themeMock.setTheme).toHaveBeenCalledWith(nextTheme);
+    } finally {
+      act(() => root.unmount());
+    }
+  });
+
   it.each([
     ["agency", "src/agency/AgencyApp.tsx"],
     ["solo", "src/solo/SoloApp.tsx"],

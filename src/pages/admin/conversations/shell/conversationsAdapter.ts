@@ -200,9 +200,13 @@ export interface ConversationsComposerModel {
   // core (passthrough → MessageComposer)
   value: string;
   onChange: (v: string) => void;
-  onSend: () => void;
+  onSend: () => void | Promise<void>;
   sending: boolean;
   disabled?: boolean;
+  /** Disable only send while the reply remains editable (validation, DND, association, permission). */
+  sendDisabled?: boolean;
+  /** Solo reply opt-in: plain Enter sends; Shift+Enter inserts a newline. */
+  sendOnEnter?: boolean;
   placeholder?: string;
   note?: ReactNode;
   sendLabel?: string;
