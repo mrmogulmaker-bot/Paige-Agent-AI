@@ -75,6 +75,32 @@ describe("Solo Conversations workspace", () => {
     expect(renderBar(true)).not.toContain("PAIGE drafting needs a ready email identity and recipient");
   });
 
+  it("shows one active-channel disclosure instead of permanently wrapping every channel across the thread", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <SoloConversationOperatingBar
+          mode="human"
+          onModeChange={() => undefined}
+          channels={[
+            { id: "email", label: "Email", availability: "PARTIAL", providerConnection: "Connected", providerSource: "Google", identity: "paige@example.test", sendPermission: "Ask First", inbound: "Not reported", webhookHealth: "Not reported", operationalHealth: "Partial", setupOwner: "Settings → Connections" },
+            { id: "sms", label: "SMS", availability: "PARTIAL", providerConnection: "Connected", providerSource: "Twilio", identity: "+12025550142", a2p: "Not reported", sendPermission: "Ask First", inbound: "Not reported", webhookHealth: "Not reported", operationalHealth: "Partial", setupOwner: "Settings → Connections" },
+          ]}
+          activeChannel="email"
+          canDraftWithPaige
+          connectionsHref="/connections"
+          selectedClientName="Antonio Cook"
+          selectedThreadLabel="Email · givalli44@icloud.com"
+          onOpenPaige={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+    expect(html).toContain('class="solo-channel-menu"');
+    expect(html).toContain("Current channel");
+    expect(html).toContain("All channels");
+    expect(html.match(/solo-channel-menu-option/g)).toHaveLength(2);
+    expect(html).not.toContain("solo-channel-strip");
+  });
+
   it("opens the primary PAIGE workspace while labeling unproven client and agent continuity honestly", () => {
     const openPaige = vi.fn();
     const host = document.createElement("div");
@@ -172,5 +198,46 @@ describe("Solo Conversations workspace", () => {
     expect(collapse?.getAttribute("aria-expanded")).toBe("false");
     act(() => root.unmount());
     host.remove();
+  });
+
+  it("keeps the selected-client context expanded when the workspace becomes tight", async () => {
+    const OriginalResizeObserver = globalThis.ResizeObserver;
+    class TightResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([{ contentRect: { width: 580 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal("ResizeObserver", TightResizeObserver);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(
+      <SoloConversationsWorkspace
+        threadList={<div>Queue</div>}
+        activeThread={<div>Thread</div>}
+        clientContext={<div>Antonio Cook profile</div>}
+        hasSelection
+        showFirstRun={false}
+        firstRun={null}
+      />,
+    ));
+    const workspace = host.querySelector("[data-solo-conversations-workspace]");
+    const collapse = host.querySelector<HTMLButtonElement>(".solo-context-collapse");
+    expect(workspace?.getAttribute("data-form-fit")).toBe("tight");
+    expect(workspace?.getAttribute("data-context-collapsed")).toBe("false");
+    expect(collapse?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector(".solo-context-content")?.textContent).toContain("Antonio Cook profile");
+    await act(async () => collapse?.click());
+    expect(workspace?.getAttribute("data-context-collapsed")).toBe("true");
+    expect(collapse?.getAttribute("aria-label")).toBe("Expand client context");
+    await act(async () => collapse?.click());
+    expect(workspace?.getAttribute("data-context-collapsed")).toBe("false");
+    expect(collapse?.getAttribute("aria-label")).toBe("Collapse client context");
+    act(() => root.unmount());
+    host.remove();
+    vi.stubGlobal("ResizeObserver", OriginalResizeObserver);
   });
 });

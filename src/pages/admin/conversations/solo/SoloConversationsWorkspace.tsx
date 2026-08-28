@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowRight, Bot, ChevronLeft, ChevronRight, CircleUserRound, ExternalLink,
+  ArrowRight, Bot, ChevronDown, ChevronLeft, ChevronRight, CircleUserRound, ExternalLink,
   Hand, Mail, MessageSquareText, Phone, ShieldCheck, Sparkles, Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,8 +43,7 @@ export function SoloConversationsWorkspace({
     return () => observer.disconnect();
   }, []);
 
-  const constrained = formFit !== "full";
-  const effectiveCollapsed = contextCollapsed || constrained;
+  const effectiveCollapsed = contextCollapsed;
 
   return (
     <div
@@ -70,10 +69,8 @@ export function SoloConversationsWorkspace({
           type="button"
           className="solo-context-collapse"
           aria-expanded={!effectiveCollapsed}
-          aria-disabled={constrained}
-          aria-label={constrained ? "Client context collapsed to fit the available workspace" : effectiveCollapsed ? "Expand client context" : "Collapse client context"}
+          aria-label={effectiveCollapsed ? "Expand client context" : "Collapse client context"}
           onClick={() => {
-            if (constrained) return;
             setContextCollapsed((value) => !value);
             requestAnimationFrame(() => collapseRef.current?.focus());
           }}
@@ -110,29 +107,112 @@ export function SoloConversationOperatingBar({
   selectedClientName, selectedThreadLabel, onOpenPaige,
 }: SoloConversationOperatingBarProps) {
   const humanModeRef = useRef<HTMLButtonElement>(null);
+  const activeChannelTruth = channels.find((channel) => channel.id === activeChannel) ?? channels[0];
+  const showChannelSetup = !!activeChannelTruth
+    && activeChannelTruth.availability !== "LIVE"
+    && activeChannelTruth.setupOwner !== "Not available";
   const handBack = () => {
     onModeChange("human");
     requestAnimationFrame(() => humanModeRef.current?.focus());
   };
   return (
     <div className="solo-conversation-operating-bar">
-      <div className="solo-handling-modes" role="group" aria-label="Conversation handling">
-        {MODE_OPTIONS.map(({ id, label, status, icon: Icon }) => (
-          <button
-            ref={id === "human" ? humanModeRef : undefined}
-            key={id}
-            type="button"
-            aria-pressed={mode === id}
-            disabled={id === "draft" && !canDraftWithPaige}
-            title={id === "draft" && !canDraftWithPaige ? "PAIGE drafting needs a ready email identity and recipient" : undefined}
-            onClick={() => onModeChange(id)}
-            className={cn("solo-handling-mode", mode === id && "is-active")}
+      <div className="solo-operating-toolbar">
+        <div className="solo-handling-modes" role="group" aria-label="Conversation handling">
+          {MODE_OPTIONS.map(({ id, label, status, icon: Icon }) => (
+            <button
+              ref={id === "human" ? humanModeRef : undefined}
+              key={id}
+              type="button"
+              aria-pressed={mode === id}
+              disabled={id === "draft" && !canDraftWithPaige}
+              title={id === "draft" && !canDraftWithPaige ? "PAIGE drafting needs a ready email identity and recipient" : undefined}
+              onClick={() => onModeChange(id)}
+              data-mode={id}
+              className={cn("solo-handling-mode", mode === id && "is-active")}
+            >
+              <Icon aria-hidden />
+              <span>{label}</span>
+              <small>{status}</small>
+            </button>
+          ))}
+        </div>
+        <div className="solo-operating-actions">
+          <details
+            className="solo-paige-coordination"
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || !event.currentTarget.open) return;
+              event.preventDefault();
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector<HTMLElement>("summary")?.focus();
+            }}
           >
-            <Icon aria-hidden />
-            <span>{label}</span>
-            <small>{status}</small>
-          </button>
-        ))}
+            <summary aria-label="Primary PAIGE coordination status: live">
+              <Sparkles aria-hidden />
+              <span>Primary PAIGE</span>
+              <small>LIVE</small>
+            </summary>
+            <div className="solo-paige-coordination-truth">
+              <header>
+                <strong>PAIGE coordination</strong>
+                <span>{selectedClientName} · {selectedThreadLabel}</span>
+              </header>
+              <dl>
+                <div><dt>Account context</dt><dd>LIVE</dd></div>
+                <div><dt>Client and thread handoff</dt><dd>PROPOSED</dd></div>
+                <div><dt>Specialist delegation</dt><dd>PROPOSED</dd></div>
+                <div><dt>Durable outcomes</dt><dd>PROPOSED</dd></div>
+              </dl>
+              <p>Internal PAIGE work remains separate from client messages. Nothing here sends externally.</p>
+              <Button type="button" size="sm" variant="outline" data-open-primary-paige onClick={onOpenPaige}>
+                Open primary PAIGE
+              </Button>
+            </div>
+          </details>
+          {activeChannelTruth ? (
+            <details
+              className="solo-channel-menu"
+              onKeyDown={(event) => {
+                if (event.key !== "Escape" || !event.currentTarget.open) return;
+                event.preventDefault();
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector<HTMLElement>("summary")?.focus();
+              }}
+            >
+              <summary aria-label={`Current channel: ${activeChannelTruth.label}, ${activeChannelTruth.availability}`}>
+                {activeChannelTruth.id === "email" ? <Mail aria-hidden /> : activeChannelTruth.id === "voice" ? <Phone aria-hidden /> : <MessageSquareText aria-hidden />}
+                <span>{activeChannelTruth.label}</span>
+                <small>{activeChannelTruth.availability}</small>
+                <ChevronDown aria-hidden />
+              </summary>
+              <div className="solo-channel-menu-popover">
+                <header>
+                  <strong>All channels</strong>
+                  <span>Readiness and sending identity</span>
+                </header>
+                <div className="solo-channel-menu-list">
+                  {channels.map((channel) => (
+                    <section key={channel.id} className={cn("solo-channel-menu-option", channel.id === activeChannel && "is-current")}>
+                      <header><strong>{channel.label}</strong><small>{channel.availability}</small></header>
+                      <dl>
+                        <div><dt>Provider connection</dt><dd>{channel.providerConnection}</dd></div>
+                        <div><dt>Provider / source</dt><dd>{channel.providerSource}</dd></div>
+                        <div><dt>Identity / number</dt><dd>{channel.identity}</dd></div>
+                        {channel.a2p && <div><dt>A2P readiness</dt><dd>{channel.a2p}</dd></div>}
+                        <div><dt>Send permission</dt><dd>{channel.sendPermission}</dd></div>
+                        <div><dt>Inbound capability</dt><dd>{channel.inbound}</dd></div>
+                        <div><dt>Webhook health</dt><dd>{channel.webhookHealth}</dd></div>
+                        <div><dt>Operational health</dt><dd>{channel.operationalHealth}</dd></div>
+                        <div><dt>Setup owner</dt><dd>{channel.setupOwner}</dd></div>
+                      </dl>
+                    </section>
+                  ))}
+                </div>
+                {showChannelSetup ? <Link className="solo-channel-setup" to={connectionsHref}>Channel setup <ExternalLink aria-hidden /></Link> : null}
+              </div>
+            </details>
+          ) : null}
+        </div>
       </div>
       <div className="solo-handling-authority">
         <div className="solo-handling-authority-copy" role="status">
@@ -144,69 +224,6 @@ export function SoloConversationOperatingBar({
             <Button variant="ghost" size="sm" onClick={handBack}>Hand back</Button>
           )}
         </div>
-        <details
-          className="solo-paige-coordination"
-          onKeyDown={(event) => {
-            if (event.key !== "Escape" || !event.currentTarget.open) return;
-            event.preventDefault();
-            event.currentTarget.open = false;
-            event.currentTarget.querySelector<HTMLElement>("summary")?.focus();
-          }}
-        >
-          <summary aria-label="Primary PAIGE coordination status: live">
-            <Sparkles aria-hidden />
-            <span>Primary PAIGE</span>
-            <small>LIVE</small>
-          </summary>
-          <div className="solo-paige-coordination-truth">
-            <header>
-              <strong>PAIGE coordination</strong>
-              <span>{selectedClientName} · {selectedThreadLabel}</span>
-            </header>
-            <dl>
-              <div><dt>Account context</dt><dd>LIVE</dd></div>
-              <div><dt>Client and thread handoff</dt><dd>PROPOSED</dd></div>
-              <div><dt>Specialist delegation</dt><dd>PROPOSED</dd></div>
-              <div><dt>Durable outcomes</dt><dd>PROPOSED</dd></div>
-            </dl>
-            <p>Internal PAIGE work remains separate from client messages. Nothing here sends externally.</p>
-            <Button type="button" size="sm" variant="outline" data-open-primary-paige onClick={onOpenPaige}>
-              Open primary PAIGE
-            </Button>
-          </div>
-        </details>
-      </div>
-      <div className="solo-channel-strip" aria-label="Communication choices">
-        {channels.map((channel) => (
-          <details
-            key={channel.id}
-            className={cn("solo-channel-chip", channel.id === activeChannel && "is-current")}
-            onKeyDown={(event) => {
-              if (event.key !== "Escape" || !event.currentTarget.open) return;
-              event.preventDefault();
-              event.currentTarget.open = false;
-              event.currentTarget.querySelector<HTMLElement>("summary")?.focus();
-            }}
-          >
-            <summary aria-label={`${channel.label}, ${channel.availability}`}>
-              {channel.id === "email" ? <Mail aria-hidden /> : channel.id === "voice" ? <Phone aria-hidden /> : <MessageSquareText aria-hidden />}
-              <span>{channel.label}</span>
-              <small>{channel.availability}</small>
-            </summary>
-            <dl className="solo-channel-truth">
-              <div><dt>Provider connection</dt><dd>{channel.providerConnection}</dd></div>
-              <div><dt>Provider / source</dt><dd>{channel.providerSource}</dd></div>
-              <div><dt>Identity / number</dt><dd>{channel.identity}</dd></div>
-              {channel.a2p && <div><dt>A2P readiness</dt><dd>{channel.a2p}</dd></div>}
-              <div><dt>Send permission</dt><dd>{channel.sendPermission}</dd></div>
-              <div><dt>Inbound capability</dt><dd>{channel.inbound}</dd></div>
-              <div><dt>Webhook health</dt><dd>{channel.webhookHealth}</dd></div>
-              <div><dt>Operational health</dt><dd>{channel.operationalHealth}</dd></div>
-              <div><dt>Setup owner</dt><dd>{channel.setupOwner}</dd></div>
-            </dl>
-          </details>
-        ))}
-        <Link className="solo-channel-setup" to={connectionsHref}>Channel setup <ExternalLink aria-hidden /></Link>
       </div>
     </div>
   );

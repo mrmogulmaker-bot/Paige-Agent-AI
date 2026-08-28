@@ -45,6 +45,19 @@ describe("Solo Conversations page wiring", () => {
     expect(page).not.toMatch(/Your client book|Client conversations/);
   });
 
+  it("keeps an expanded selected-client profile visible instead of giving the collapse control the pane height", () => {
+    expect(css).toContain(".solo-conversations-queue > *,\n.solo-conversations-thread > *");
+    expect(css).not.toContain(".solo-conversations-pane > *");
+    expect(css).not.toMatch(/data-form-fit="(?:narrow|tight)"[^}]*solo-context-content[^}]*visibility:\s*hidden/s);
+  });
+
+  it("keeps conversation controls compact and moves secondary channel truth into one disclosure", () => {
+    expect(workspace).toContain('className="solo-operating-toolbar"');
+    expect(workspace).toContain('className="solo-channel-menu"');
+    expect(workspace).not.toContain('className="solo-channel-strip"');
+    expect(css).not.toContain(".solo-channel-strip { flex-wrap: wrap");
+  });
+
   it("keeps provider readiness visible and Escape-restorable", () => {
     expect(workspace).toContain("Provider / source");
     expect(workspace).toContain("A2P readiness");
