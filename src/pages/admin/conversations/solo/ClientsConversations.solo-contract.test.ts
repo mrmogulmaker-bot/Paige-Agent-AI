@@ -49,6 +49,23 @@ describe("Solo Conversations page wiring", () => {
     expect(composerAtom).toContain("sending || disabled || sendDisabled");
   });
 
+  it("keeps the composer height fixed and embeds Send without consuming a separate column", () => {
+    expect(page).not.toContain("focus:min-h");
+    expect(page).toContain('textareaClassName: "h-24 min-h-24 max-h-24"');
+    expect(composerAtom).toContain('data-composer-writing-surface="true"');
+    expect(composerAtom).toContain('"relative"');
+    expect(composerAtom).toContain('"h-24 min-h-24 max-h-24 resize-none overflow-y-auto pb-12 pr-44"');
+    expect(composerAtom).toContain('data-composer-header="true"');
+    expect(composerAtom).toContain('"mb-2 max-h-36 overflow-y-auto overscroll-contain pr-1"');
+    expect(composerAtom).toContain('className="absolute bottom-2 right-5 h-10 shrink-0"');
+    expect(composerAtom).not.toContain('className="flex items-end gap-2"');
+    expect(page).toContain('if (attachments.length > 10)');
+    expect(page).toContain('|| attachments.length > 10');
+    expect(page).toContain('if (attachments.length + Array.from(files).length > 10)');
+    expect(page).toContain('onAttachFiles: uploadComposerFiles');
+    expect(page).toContain('onDropFiles: uploadComposerFiles');
+  });
+
   it("confines the visual redesign to the tab-bounded Solo descendant", () => {
     expect(css).toContain(".trc-workspace:has(.solo-conversations-workspace) > .trc-heading");
     expect(css).toContain(".trc-conversations:has(.solo-conversations-workspace) > header");
@@ -99,3 +116,4 @@ describe("Solo Conversations page wiring", () => {
     expect(workspace).toContain("Nothing here sends externally.");
   });
 });
+

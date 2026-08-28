@@ -1091,6 +1091,7 @@ export default function ClientsConversations() {
     if (!selected.toAddress) { toast.error("No client address on this thread to send to."); return; }
     if (!body.trim()) { toast.error("Write a reply first."); return; }
     if (composeChannel === "email" && !subject.trim()) { toast.error("Add a subject for the email."); return; }
+    if (attachments.length > 10) { toast.error("Remove attachments until 10 or fewer remain."); return; }
     // R-HIGH3: truthful pre-send guard — never enqueue for a contact who opted out of this channel.
     const blocked = suppressions.find((s) => s.channel === composeChannel);
     if (blocked) { toast.error(`This contact opted out of ${CHANNEL_LABEL[composeChannel]} — Paige won't send.`); return; }
@@ -1312,6 +1313,14 @@ export default function ClientsConversations() {
   // only the transient popover state. Templates stay EMAIL-only (empty list on SMS) to preserve
   // the shipped gating without widening the static capability flag (§37). Dictation feeds THROUGH
   // handleBodyChange (via bodyRef, no stale closure) so #trigger snippet expansion still runs.
+  const uploadComposerFiles = (files: FileList | File[]) => {
+    if (attachments.length + Array.from(files).length > 10) {
+      toast.error("Attach no more than 10 files to one message.");
+      return;
+    }
+    void uploadFiles(files);
+  };
+
   const composerModel: ConversationsComposerModel | null = selected ? {
     capabilities: { ...capabilities, canSchedule: capabilities.canSchedule && !(isSolo && handlingMode === "governed") },
     value: body,
@@ -1326,6 +1335,7 @@ export default function ClientsConversations() {
       || !selected.toAddress
       || !body.trim()
       || (composeChannel === "email" && !subject.trim())
+      || attachments.length > 10
       || suppressions.some((suppression) => suppression.channel === composeChannel)
     ),
     sendOnEnter: isSolo,
@@ -1333,7 +1343,7 @@ export default function ClientsConversations() {
     rows: 2,
     sendLabel: scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send",
     note: selected.toAddress ? `To ${selected.toAddress}` : "No address on this thread",
-    textareaClassName: "min-h-[4.5rem] focus:min-h-[6rem]",
+    textareaClassName: "h-24 min-h-24 max-h-24",
     identities: composerConnectors.map((c) => ({
       id: c.id,
       label: c.display_name?.trim() || CHANNEL_LABEL[c.channel_type],
@@ -1351,7 +1361,7 @@ export default function ClientsConversations() {
     onSubjectChange: setSubject,
     attachments,
     uploading,
-    onAttachFiles: (files) => void uploadFiles(files),
+    onAttachFiles: uploadComposerFiles,
     onRemoveAttachment: (a) => void removeAttachment(a),
     showDraftWithPaige: composeChannel === "email",
     onDraftWithPaige: ({ guide, tone }) => void draftWithPaige({ guide, tone }),
@@ -1375,7 +1385,7 @@ export default function ClientsConversations() {
     editingDraft: !!editingDraftId,
     onCancelEdit: resetComposer,
     dragOver,
-    onDropFiles: (f) => void uploadFiles(f),
+    onDropFiles: uploadComposerFiles,
     onDragOverZone: () => setDragOver(true),
     onDragLeaveZone: () => setDragOver(false),
   } : null;
@@ -1722,3 +1732,4 @@ export default function ClientsConversations() {
     </PageShell>
   );
 }
+

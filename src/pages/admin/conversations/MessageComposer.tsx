@@ -75,14 +75,21 @@ export function MessageComposer({
 
   return (
     <div className="border-t border-border p-3">
-      {header && <div className="mb-2">{header}</div>}
-      <div className="flex items-end gap-2">
+      {header && (
+        <div
+          className="mb-2 max-h-36 overflow-y-auto overscroll-contain pr-1"
+          data-composer-header="true"
+        >
+          {header}
+        </div>
+      )}
+      <div className="relative" data-composer-writing-surface="true">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
-          className={cn("min-h-[2.75rem] resize-none", textareaClassName)}
+          className={cn("h-24 min-h-24 max-h-24 resize-none overflow-y-auto pb-12 pr-44", textareaClassName)}
           disabled={disabled}
           onDrop={onDrop}
           onDragOver={onDragOver}
@@ -103,7 +110,7 @@ export function MessageComposer({
           variant="gold"
           onClick={submit}
           disabled={sending || disabled || sendDisabled}
-          className="h-11 shrink-0"
+          className="absolute bottom-2 right-5 h-10 shrink-0"
         >
           {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
           {sendLabel}
@@ -114,3 +121,4 @@ export function MessageComposer({
     </div>
   );
 }
+
