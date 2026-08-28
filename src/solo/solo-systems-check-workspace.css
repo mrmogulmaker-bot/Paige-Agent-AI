@@ -17,5 +17,7 @@
 @container solo-systems-check (max-width:1080px){.sc-layout{grid-template-columns:minmax(0,1fr) 250px}.sc-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container solo-systems-check (max-width:780px){.sc-scroll-owner{padding:12px}.sc-heading{align-items:stretch;flex-direction:column}.sc-heading-actions{justify-content:flex-start}.sc-status{grid-template-columns:auto minmax(0,1fr)}.sc-status .sc-freshness,.sc-status .sc-button{grid-column:2}.sc-layout{grid-template-columns:1fr}.sc-side-stack{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-side-panel:last-child{grid-column:1/-1}}
 @container solo-systems-check (max-width:560px){.sc-side-stack,.sc-metrics{grid-template-columns:1fr}.sc-metric{min-height:62px}.sc-finding-state{font-size:0}.sc-icon-button span{display:none}.sc-proposal-actions{align-items:stretch;flex-direction:column-reverse}.sc-proposal-actions .sc-button{width:100%}}
+@media(min-width:761px) and (max-width:1080px){[data-tenant-shell][data-paige="open"] #tenant-shell-main .sc-workspace{width:calc(100% - min(410px,calc(100vw - var(--tcs-rail))))}}
 @media(prefers-reduced-motion:reduce){.sc-read-activity span,.sc-activity{animation:none}.sc-read-activity span{display:none}.sc-drawer{animation:none}.sc-finding:hover{transform:none}}
 @media(forced-colors:active){.sc-proof,.sc-status,.sc-map-panel,.sc-side-panel,.sc-finding,.sc-button,.sc-icon-button{forced-color-adjust:auto}.sc-finding-mark,.sc-department i{outline:1px solid CanvasText}.sc-filters button[aria-pressed="true"]{outline:2px solid Highlight}}
+
