@@ -114,7 +114,10 @@ describe("Solo dictation control", () => {
     expect(host.textContent).toContain("Transcribing");
 
     await act(async () => sockets[0].closed(true));
-    expect(host.textContent).toContain("Hold to talk");
+    expect(host.textContent).not.toContain("Hold to talk");
+    expect(host.textContent).toContain("Added to draft");
+    expect(button.getAttribute("aria-label")).toBe("Hold to dictate");
+    expect(button.getAttribute("title")).toContain("Hold to dictate");
   });
 
   it("stops a quick pointer or keyboard release before permission work resolves", async () => {
@@ -127,7 +130,7 @@ describe("Solo dictation control", () => {
       await Promise.resolve();
     });
     expect(sockets).toHaveLength(0);
-    expect(host.textContent).toContain("Hold to talk");
+    expect(host.textContent).not.toContain("Hold to talk");
 
     await act(async () => {
       button.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
@@ -160,7 +163,7 @@ describe("Solo dictation control", () => {
     await act(async () => { resolveStart(); await Promise.resolve(); });
     expect(voiceHarness.recorderStops).toBe(1);
     expect(sockets).toHaveLength(0);
-    expect(host.textContent).toContain("Hold to talk");
+    expect(host.textContent).not.toContain("Hold to talk");
   });
 
   it("cleans a pending recorder and opens no socket after an account epoch change", async () => {

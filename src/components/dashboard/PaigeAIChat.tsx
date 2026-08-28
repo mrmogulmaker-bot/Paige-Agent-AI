@@ -878,6 +878,8 @@ const PaigeAIChatInner = ({
       placeholder={
         cd
           ? "Ask about the platform — the fleet, the rails, the machine"
+          : soloTenantSafety
+            ? "Talk while she works…"
           : `Message ${persona.name || "Paige"} — type / for commands`
       }
       className={cn(
@@ -885,7 +887,9 @@ const PaigeAIChatInner = ({
         cd
           // Inside CD's frame the input carries no border of its own.
           ? "min-h-[2.25rem] min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-          : "min-h-[2.5rem] flex-1",
+          : soloTenantSafety
+            ? "min-h-[3.25rem] w-full border-0 bg-transparent px-0 py-0 text-[13px] leading-[1.55] shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            : "min-h-[2.5rem] flex-1",
       )}
       disabled={composerBlocked}
     />
@@ -1305,8 +1309,11 @@ const PaigeAIChatInner = ({
                 cd
                   // CD's framed well: input on top, the tool row beneath it.
                   ? "overflow-visible rounded-xl border border-border bg-card focus-within:border-border-strong"
+                  : soloTenantSafety
+                    ? "overflow-visible rounded-2xl border border-border bg-card shadow-sm transition-colors focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 motion-reduce:transition-none"
                   : "flex items-end gap-2",
               )}
+              data-solo-composer={soloTenantSafety ? "true" : undefined}
             >
               <SlashCommandMenu
                 open={slashOpen}
@@ -1368,6 +1375,37 @@ const PaigeAIChatInner = ({
                         <span aria-hidden className="text-[10px] leading-none">↑</span>
                       )}
                       {soloTenantSafety && isLoading ? "Cancel" : "Send"}
+                    </Button>
+                  </div>
+                </>
+              ) : soloTenantSafety ? (
+                <>
+                  <div data-solo-composer-input className="min-w-0 px-3.5 pb-1 pt-3">
+                    {composerTextarea}
+                  </div>
+                  <div
+                    data-solo-composer-guidance
+                    title="Guidance only — available actions depend on connected capabilities."
+                    className="truncate px-3.5 pb-2 text-[10px] leading-4 text-muted-foreground"
+                  >
+                    @ hand it to someone · / call a skill · # remember
+                  </div>
+                  <div
+                    data-solo-composer-actions
+                    className="flex min-w-0 items-center gap-1.5 border-t border-border/70 px-2.5 py-2"
+                  >
+                    {micButton}
+                    {attachButton}
+                    {clearComposerButton}
+                    <Button
+                      onClick={() => (isLoading ? cancelSoloRequest() : handleSend())}
+                      disabled={!isLoading && (composerBlocked || (!input.trim() && !attachedDoc))}
+                      variant="gold"
+                      size="icon"
+                      aria-label={isLoading ? "Cancel PAIGE response" : "Send message"}
+                      className="ml-auto flex-none"
+                    >
+                      {isLoading ? <span aria-hidden>■</span> : <Send className="h-4 w-4" aria-hidden />}
                     </Button>
                   </div>
                 </>
