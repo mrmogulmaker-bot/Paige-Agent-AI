@@ -74,6 +74,8 @@ export interface TenantCommandCenterShellProps {
   paigeFull?: boolean;
   paigeFullHref?: string;
   paigeReturnHref?: string;
+  /** Solo-only, server-resolved Command Center container. Other tiers keep their current brand block. */
+  brandHomeHref?: string;
 }
 
 export function TenantPaigeCommandField({
@@ -119,6 +121,7 @@ export function TenantCommandCenterShell({
   paigeFull = false,
   paigeFullHref,
   paigeReturnHref,
+  brandHomeHref,
 }: TenantCommandCenterShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -418,12 +421,29 @@ export function TenantCommandCenterShell({
       <a className="tcs-skip" href="#tenant-shell-main">Skip to content</a>
 
       <nav className="tcs-nav" aria-label="Tenant workspace">
-        <div className="tcs-brand">
-          <CommandMark state="dormant" size={24} />
-          <div className="tcs-brand-copy">
-            <strong>PAIGE</strong>
-            <span>Business operating system</span>
-          </div>
+        <div className={brandHomeHref ? "tcs-brand tcs-brand--solo" : "tcs-brand"}>
+          {brandHomeHref ? (
+            <Link
+              className="tcs-brand-home"
+              to={brandHomeHref}
+              aria-label="PAIGE Solo home"
+              title={!navExpanded ? "PAIGE Solo home" : undefined}
+            >
+              <CommandMark state="dormant" size={26} className="tcs-brand-mark" />
+              <span className="tcs-brand-copy">
+                <strong>PAIGE</strong>
+                <span>Solo</span>
+              </span>
+            </Link>
+          ) : (
+            <>
+              <CommandMark state="dormant" size={24} />
+              <div className="tcs-brand-copy">
+                <strong>PAIGE</strong>
+                <span>Business operating system</span>
+              </div>
+            </>
+          )}
           <button
             type="button"
             className="tcs-icon-button tcs-nav-fold"

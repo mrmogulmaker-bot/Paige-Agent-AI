@@ -22,7 +22,7 @@ vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/components/voice/DictationMicButton", () => ({
   DictationMicButton: ({ onText }: { onText: (segment: string) => void }) => {
     chatHarness.dictationOnText = onText;
-    return <button type="button" onClick={() => onText("microphone words")}>Mock hold to dictate</button>;
+    return <button type="button" aria-label="Hold to dictate" onClick={() => onText("microphone words")}>Mock hold to dictate</button>;
   },
 }));
 vi.mock("@/hooks/useChatDocumentUpload", () => ({
@@ -352,7 +352,7 @@ describe("Solo PAIGE workspace contract", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder*="Message"]')!;
+    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder="Talk while she works…"]')!;
     const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
     await act(async () => {
       valueSetter.call(composer, "Existing unsent text");
@@ -378,6 +378,55 @@ describe("Solo PAIGE workspace contract", () => {
     host.remove();
   });
 
+  it("gives Solo an open three-level composer without changing the shared default", async () => {
+    chatHarness.tenantId = "account-a";
+    chatHarness.loadTurns.mockResolvedValue([]);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const composer = host.querySelector<HTMLElement>('[data-solo-composer="true"]')!;
+    const inputArea = composer.querySelector<HTMLElement>("[data-solo-composer-input]")!;
+    const guidance = composer.querySelector<HTMLElement>("[data-solo-composer-guidance]")!;
+    const actions = composer.querySelector<HTMLElement>("[data-solo-composer-actions]")!;
+    const textarea = inputArea.querySelector<HTMLTextAreaElement>("textarea")!;
+
+    expect(textarea.placeholder).toBe("Talk while she works…");
+    expect(guidance.textContent).toBe("@ hand it to someone · / call a skill · # remember");
+    expect(guidance.title).toBe("Guidance only — available actions depend on connected capabilities.");
+    expect(guidance.querySelector("button, a")).toBeNull();
+    expect(composer.children[0]).toBe(inputArea);
+    expect(composer.children[1]).toBe(guidance);
+    expect(composer.children[2]).toBe(actions);
+    expect(actions.contains(textarea)).toBe(false);
+    const mic = actions.querySelector<HTMLButtonElement>('[aria-label="Hold to dictate"]')!;
+    const attach = actions.querySelector<HTMLButtonElement>('[aria-label="Attach a document"]')!;
+    const send = actions.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!;
+    const actionButtons = Array.from(actions.querySelectorAll("button"));
+    expect(actionButtons.indexOf(mic)).toBeLessThan(actionButtons.indexOf(attach));
+    expect(actionButtons.at(-1)).toBe(send);
+
+    await act(async () => root.unmount());
+    host.remove();
+
+    const sharedHost = document.createElement("div");
+    document.body.appendChild(sharedHost);
+    const sharedRoot = createRoot(sharedHost);
+    await act(async () => {
+      sharedRoot.render(<PaigeAIChat hideHeader fill />);
+      await Promise.resolve();
+    });
+    expect(sharedHost.querySelector('[data-solo-composer="true"]')).toBeNull();
+    expect(sharedHost.querySelector<HTMLTextAreaElement>("textarea")?.placeholder).toBe("Message PAIGE — type / for commands");
+    await act(async () => sharedRoot.unmount());
+    sharedHost.remove();
+  });
+
   it("rejects a late dictation result after the authenticated account epoch changes", async () => {
     chatHarness.tenantId = "account-a";
     chatHarness.loadTurns.mockResolvedValue([]);
@@ -397,7 +446,7 @@ describe("Solo PAIGE workspace contract", () => {
       await Promise.resolve();
     });
     await act(async () => accountACallback("stale account A speech"));
-    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder*="Message"]')!;
+    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder="Talk while she works…"]')!;
     expect(composer.value).toBe("");
     expect(host.textContent).not.toContain("stale account A speech");
     await act(async () => root.unmount());

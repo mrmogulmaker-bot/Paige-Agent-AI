@@ -108,6 +108,114 @@ describe("tenant shell owns one PAIGE surface", () => {
     expect(source("src/solo/agent.tsx")).toContain("export const PaigePanel=");
   });
 
+  it("owns one accessible Solo brand-home link at the server-resolved Command Center container", async () => {
+    const { default: SoloApp } = await import("@/solo/SoloApp");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/marketplace"]}>
+          <Routes>
+            <Route path="/solo/:account/*" element={<><SoloApp /><RouteProbe /></>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+    });
+
+    const brandHome = host.querySelector<HTMLAnchorElement>('[aria-label="PAIGE Solo home"]');
+    expect(brandHome).not.toBeNull();
+    expect(brandHome?.getAttribute("href")).toBe("/solo/42/command-center");
+    expect(brandHome?.textContent).toContain("PAIGE");
+    expect(brandHome?.textContent).toContain("Solo");
+    expect(brandHome?.textContent).not.toContain("Business operating system");
+    expect(brandHome?.textContent).not.toContain("Platform Operator");
+    expect(host.querySelectorAll('[aria-label="PAIGE Solo home"]')).toHaveLength(1);
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+
+    await act(async () => brandHome?.click());
+    expect(host.querySelector("[data-route-probe]")?.textContent).toBe("/solo/42/command-center");
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("derives Solo brand home from activeTenant and leaves every non-Solo shell unchanged", () => {
+    const solo = source("src/solo/SoloApp.tsx");
+    const shell = source("src/components/tenant-shell/TenantCommandCenterShell.tsx");
+    const css = source("src/components/tenant-shell/tenant-command-center-shell.css");
+
+    expect(solo).toContain("brandHomeHref");
+    expect(solo).toMatch(/brandHomeHref=\{activeTenant\?\.account_number[^}]*branchPath\('solo',String\(activeTenant\.account_number\),'command-center'\)/);
+    expect(shell).toContain('aria-label="PAIGE Solo home"');
+    expect(shell).toContain("brandHomeHref ?");
+    expect(css).toContain(".tcs-brand-home");
+    expect(css).toContain("background: var(--pg-artifact)");
+  });
+
+  it("preserves the non-Solo shell brand treatment when no Solo home is supplied", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <TenantCommandCenterShell
+            accountName="Shared agency account"
+            accountType="agency"
+            userRole="admin"
+            onSignOut={vi.fn()}
+          >
+            <p>Agency workspace</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      );
+    });
+
+    expect(host.querySelector('[aria-label="PAIGE Solo home"]')).toBeNull();
+    expect(host.textContent).toContain("Business operating system");
+    expect(host.textContent).not.toContain("Platform Operator");
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("leaves immersive Vibe Studio and restores the main Solo home through the brand control", async () => {
+    const { default: SoloApp } = await import("@/solo/SoloApp");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/growth"]}>
+          <Routes>
+            <Route path="/solo/:account/*" element={<><SoloApp /><RouteProbe /></>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+
+    const launcher = Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "Vibe Studio");
+    await act(async () => launcher?.click());
+    expect(host.textContent).toContain("Back to Campaigns");
+
+    const brandHome = host.querySelector<HTMLAnchorElement>('[aria-label="PAIGE Solo home"]');
+    await act(async () => brandHome?.click());
+
+    expect(host.textContent).not.toContain("Back to Campaigns");
+    expect(host.querySelector("[data-route-probe]")?.textContent).toBe("/solo/42/command-center");
+    expect(host.querySelectorAll('[aria-label="PAIGE Solo home"]')).toHaveLength(1);
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
   it("preserves operator ownership and Studio's immersive bypass", () => {
     const admin = source("src/components/admin/AdminLayout.tsx");
     expect(admin).toContain("if (!godMode)");
