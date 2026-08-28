@@ -99,6 +99,11 @@ function button(name: string) {
 describe("Solo Mind workspace", () => {
   it("renders only grounded records with explicit truth boundaries", () => {
     render();
+    const headings = host.querySelectorAll("h1");
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.id).toBe("mind-title");
+    expect(headings[0]?.textContent).toBe("Mind");
+    expect(host.querySelector(".mind-workspace")?.getAttribute("aria-labelledby")).toBe("mind-title");
     expect(host.textContent).toContain("First Sterling Capital");
     expect(host.textContent).toContain("Reseller agreement");
     expect(host.textContent).toContain("Domain health");
@@ -220,6 +225,20 @@ describe("Solo Mind workspace", () => {
   it("contains responsive, reduced-motion, forced-colors and shell safe-area contracts", () => {
     const css = readFileSync(resolve(process.cwd(), "src/solo/solo-mind-workspace.css"), "utf8");
     const source = readFileSync(resolve(process.cwd(), "src/solo/SoloMindWorkspace.tsx"), "utf8");
+    expect(source.match(/<h1\b/g)).toHaveLength(1);
+    expect(source).toContain('<section className="mind-workspace" aria-labelledby="mind-title">');
+    expect(source).toContain('<h1 id="mind-title">Mind</h1>');
+    expect(source).toContain('className="mind-eyebrow"');
+    expect(source).toContain("Your durable business records, decisions, knowledge, and source provenance");
+    expect(css).toContain(".mind-heading h1{font-size:clamp(18px,1.35vw,22px)");
+    expect(css).toContain(".mind-heading p{margin:0;max-width:720px;color:var(--pg-muted);font-size:10px;line-height:1.35}");
+    expect(css).toContain(".mind-eyebrow{color:var(--mind-knowledge)!important;font-size:8px!important");
+    expect(css).toContain(".mind-heading h1{font-size:20px}");
+    expect(css).toContain("height:calc(100% - 100px)");
+    expect(css).toContain("height:calc(100% - 150px)");
+    expect(css).toContain("height:calc(100% - 128px)");
+    expect(css).not.toContain("font-size:clamp(26px,2.4vw,35px)");
+    expect(css).not.toContain(".mind-heading h1{font-size:28px}");
     expect(css).toContain("container:solo-mind / inline-size");
     expect(css).toContain("@container solo-mind (max-width:780px)");
     expect(css).toContain('@media(min-width:761px) and (max-width:1080px)');
