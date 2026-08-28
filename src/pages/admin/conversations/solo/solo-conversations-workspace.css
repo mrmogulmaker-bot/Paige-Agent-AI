@@ -44,6 +44,11 @@
 
 .solo-conversations-workspace {
   --solo-context-width: 230px;
+  --solo-operating-bg: hsl(var(--muted) / .22);
+  --solo-client-bg: hsl(var(--muted) / .2);
+  --solo-positive-wash: hsl(var(--success) / .1);
+  --solo-paige-wash: hsl(var(--primary) / .09);
+  --solo-warning-wash: hsl(var(--warning) / .1);
   display: grid;
   grid-template-columns: minmax(190px, 0.7fr) minmax(300px, 1.3fr) var(--solo-context-width);
   width: 100%;
@@ -52,6 +57,22 @@
   min-height: 0;
   gap: 0;
   overflow: hidden;
+}
+
+[data-pg="light"] .solo-conversations-workspace {
+  --solo-operating-bg: linear-gradient(100deg, rgba(111, 86, 54, .09), rgba(101, 90, 150, .07));
+  --solo-client-bg: linear-gradient(135deg, rgba(201, 169, 106, .16), rgba(63, 122, 95, .07));
+  --solo-positive-wash: rgba(50, 116, 88, .11);
+  --solo-paige-wash: rgba(101, 90, 150, .11);
+  --solo-warning-wash: rgba(152, 99, 34, .11);
+}
+
+[data-pg="dark"] .solo-conversations-workspace {
+  --solo-operating-bg: linear-gradient(100deg, rgba(199, 169, 120, .09), rgba(155, 141, 224, .11));
+  --solo-client-bg: linear-gradient(135deg, rgba(199, 169, 120, .14), rgba(143, 209, 174, .07));
+  --solo-positive-wash: rgba(143, 209, 174, .13);
+  --solo-paige-wash: rgba(155, 141, 224, .14);
+  --solo-warning-wash: rgba(237, 193, 127, .13);
 }
 
 .solo-conversations-queue { margin-right: 8px; }
@@ -66,7 +87,8 @@
   overflow: hidden;
 }
 
-.solo-conversations-pane > * {
+.solo-conversations-queue > *,
+.solo-conversations-thread > * {
   height: 100%;
   min-height: 0;
 }
@@ -102,7 +124,7 @@
 .solo-context-collapse:focus-visible,
 .solo-conversation-operating-bar button:focus-visible,
 .solo-paige-coordination summary:focus-visible,
-.solo-channel-chip summary:focus-visible,
+.solo-channel-menu summary:focus-visible,
 .solo-channel-setup:focus-visible,
 .solo-client-context-pane a:focus-visible {
   outline: 2px solid var(--pg-gold-core, hsl(var(--ring)));
@@ -136,25 +158,29 @@
   position: relative;
   z-index: 3;
   display: grid;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 6px 8px;
   border-bottom: 1px solid hsl(var(--border) / .7);
-  background: hsl(var(--muted) / .22);
+  background: var(--solo-operating-bg);
 }
 
-.solo-handling-modes,
-.solo-channel-strip {
+.solo-operating-toolbar,
+.solo-operating-actions,
+.solo-handling-modes {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 5px;
+}
+.solo-operating-toolbar { justify-content: space-between; }
+.solo-operating-actions { flex: none; }
+.solo-handling-modes {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.solo-channel-strip { flex-wrap: wrap; overflow: visible; }
 
 .solo-handling-mode,
-.solo-channel-chip,
+.solo-channel-menu > summary,
 .solo-channel-setup {
   display: inline-flex;
   min-height: 28px;
@@ -170,53 +196,61 @@
   text-decoration: none;
 }
 
-.solo-channel-chip { position: relative; padding: 0; }
-.solo-channel-chip summary {
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  cursor: pointer;
-  list-style: none;
-}
-.solo-channel-chip summary::-webkit-details-marker { display: none; }
-.solo-channel-chip[open] { z-index: 4; }
-.solo-channel-truth {
+.solo-channel-menu { position: relative; flex: none; }
+.solo-channel-menu > summary { cursor: pointer; list-style: none; }
+.solo-channel-menu > summary::-webkit-details-marker { display: none; }
+.solo-channel-menu > summary svg:last-child { width: 10px; }
+.solo-channel-menu[open] { z-index: 6; }
+.solo-channel-menu-popover {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
-  width: 230px;
-  margin: 0;
-  padding: 8px;
+  right: 0;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(520px, 68vh);
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid hsl(var(--border));
-  border-radius: 9px;
+  border-radius: 10px;
   color: hsl(var(--foreground));
   background: hsl(var(--popover));
   box-shadow: var(--shadow-elevated);
 }
-.solo-channel-chip:nth-of-type(n+6) .solo-channel-truth { right: 0; left: auto; }
-.solo-channel-truth div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 9px; }
-.solo-channel-truth dt { color: hsl(var(--muted-foreground)); }
-.solo-channel-truth dd { margin: 0; text-align: right; }
+.solo-channel-menu-popover > header { display: grid; gap: 2px; margin-bottom: 8px; }
+.solo-channel-menu-popover > header strong { font-size: 11px; }
+.solo-channel-menu-popover > header span { color: hsl(var(--muted-foreground)); font-size: 9px; }
+.solo-channel-menu-list { display: grid; gap: 6px; }
+.solo-channel-menu-option { padding: 8px; border: 1px solid hsl(var(--border) / .7); border-radius: 8px; background: hsl(var(--background)); }
+.solo-channel-menu-option.is-current { border-color: hsl(var(--info) / .55); box-shadow: inset 3px 0 0 hsl(var(--info) / .65); }
+.solo-channel-menu-option > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.solo-channel-menu-option > header strong { font-size: 10px; }
+.solo-channel-menu-option > header small { font: 600 8px/1 var(--pg-font-data, inherit); letter-spacing: .06em; }
+.solo-channel-menu-option dl { margin: 5px 0 0; }
+.solo-channel-menu-option dl div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-top: 1px solid hsl(var(--border) / .45); font-size: 9px; }
+.solo-channel-menu-option dt { color: hsl(var(--muted-foreground)); }
+.solo-channel-menu-option dd { margin: 0; text-align: right; }
+.solo-channel-menu-popover > .solo-channel-setup { margin-top: 8px; }
 
 .solo-handling-mode { cursor: pointer; }
 .solo-handling-mode:disabled { cursor: not-allowed; opacity: .48; }
 .solo-handling-mode svg,
-.solo-channel-chip svg,
+.solo-channel-menu svg,
 .solo-channel-setup svg { width: 12px; height: 12px; }
 .solo-handling-mode small,
-.solo-channel-chip small { font: 600 8px/1 var(--pg-font-data, inherit); letter-spacing: .06em; }
+.solo-channel-menu > summary small { font: 600 8px/1 var(--pg-font-data, inherit); letter-spacing: .06em; }
 .solo-handling-mode.is-active {
   border-color: hsl(var(--primary) / .55);
   color: hsl(var(--foreground));
-  background: hsl(var(--primary) / .09);
+  background: var(--solo-paige-wash);
 }
-.solo-channel-chip.is-current { border-color: hsl(var(--info) / .55); color: hsl(var(--foreground)); }
+.solo-handling-mode[data-mode="human"].is-active { border-color: var(--pg-positive, hsl(var(--success))); background: var(--solo-positive-wash); }
+.solo-handling-mode[data-mode="draft"].is-active { border-color: var(--pg-violet, hsl(var(--primary))); }
+.solo-handling-mode[data-mode="governed"].is-active { border-color: var(--pg-warning, hsl(var(--warning))); background: var(--solo-warning-wash); }
+.solo-channel-menu > summary { border-color: hsl(var(--info) / .55); color: hsl(var(--foreground)); }
 
 .solo-handling-authority {
   display: flex;
-  min-height: 26px;
+  min-height: 20px;
   align-items: center;
   gap: 6px;
   color: hsl(var(--muted-foreground));
@@ -237,7 +271,7 @@
   border: 1px solid hsl(var(--border));
   border-radius: 999px;
   color: hsl(var(--foreground));
-  background: hsl(var(--card));
+  background: var(--solo-paige-wash);
   cursor: pointer;
   list-style: none;
 }
@@ -274,6 +308,7 @@
   align-items: center;
   padding: 12px;
   border-bottom: 1px solid var(--pg-line, hsl(var(--border)));
+  background: var(--solo-client-bg);
 }
 .solo-context-avatar {
   display: grid;
@@ -330,24 +365,23 @@
 .solo-context-empty strong { color: hsl(var(--foreground)); font-size: 12px; }
 .solo-context-empty span { max-width: 180px; font-size: 10px; line-height: 1.45; }
 
-/* At the actual 1366 expanded-nav + docked-PAIGE center (about 686px), context remains mounted
-   as a 48px sibling. It never becomes a Sheet, drawer, overlay, or document-level overflow. */
-.solo-conversations-workspace[data-form-fit="narrow"],
-.solo-conversations-workspace[data-form-fit="tight"] {
-  --solo-context-width: 48px;
-  grid-template-columns: minmax(176px, .65fr) minmax(275px, 1.35fr) var(--solo-context-width);
+/* At constrained shell widths the context stays visible as a narrower sibling. It never
+   becomes a Sheet, drawer, overlay, empty rail, or document-level overflow. */
+.solo-conversations-workspace[data-form-fit="narrow"] {
+  --solo-context-width: 200px;
+  grid-template-columns: minmax(156px, .6fr) minmax(250px, 1.4fr) var(--solo-context-width);
 }
-.solo-conversations-workspace[data-form-fit="narrow"] .solo-context-content,
-.solo-conversations-workspace[data-form-fit="tight"] .solo-context-content { visibility: hidden; overflow: hidden; }
-.solo-conversations-workspace[data-form-fit="narrow"] .solo-context-collapse,
-.solo-conversations-workspace[data-form-fit="tight"] .solo-context-collapse { height: 100%; flex-direction: column; border-bottom: 0; }
-.solo-conversations-workspace[data-form-fit="narrow"] .solo-context-collapse span,
-.solo-conversations-workspace[data-form-fit="tight"] .solo-context-collapse span { writing-mode: vertical-rl; }
-.solo-conversations-workspace[data-form-fit="narrow"] .solo-channel-chip span,
-.solo-conversations-workspace[data-form-fit="tight"] .solo-channel-chip span { display: none; }
-.solo-conversations-workspace[data-form-fit="tight"] { grid-template-columns: minmax(152px, .58fr) minmax(248px, 1.42fr) 48px; }
+.solo-conversations-workspace[data-form-fit="tight"] {
+  --solo-context-width: 176px;
+  grid-template-columns: minmax(128px, .55fr) minmax(224px, 1.45fr) var(--solo-context-width);
+}
+.solo-conversations-workspace[data-form-fit="narrow"][data-context-collapsed="true"],
+.solo-conversations-workspace[data-form-fit="tight"][data-context-collapsed="true"] {
+  --solo-context-width: 48px;
+}
 .solo-conversations-workspace[data-form-fit="tight"] .solo-conversations-queue { margin-right: 6px; }
 .solo-conversations-workspace[data-form-fit="tight"] .solo-handling-mode span { display: none; }
+.solo-conversations-workspace[data-form-fit="tight"] .solo-paige-coordination summary span { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .solo-conversations-workspace *, .solo-conversations-workspace *::before, .solo-conversations-workspace *::after {
@@ -360,6 +394,6 @@
 
 @media (forced-colors: active) {
   .solo-handling-mode.is-active,
-  .solo-channel-chip.is-current,
+  .solo-channel-menu > summary,
   .solo-context-avatar { border: 2px solid Highlight; }
 }

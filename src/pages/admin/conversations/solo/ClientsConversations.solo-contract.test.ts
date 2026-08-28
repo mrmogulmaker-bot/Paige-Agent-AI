@@ -6,6 +6,7 @@ const page = readFileSync(resolve("src/pages/admin/ClientsConversations.tsx"), "
 const workspace = readFileSync(resolve("src/pages/admin/conversations/solo/SoloConversationsWorkspace.tsx"), "utf8");
 const css = readFileSync(resolve("src/pages/admin/conversations/solo/solo-conversations-workspace.css"), "utf8");
 const composer = readFileSync(resolve("src/pages/admin/conversations/shell/ConversationsRichComposer.tsx"), "utf8");
+const composerAtom = readFileSync(resolve("src/pages/admin/conversations/MessageComposer.tsx"), "utf8");
 
 describe("Solo Conversations page wiring", () => {
   it("clears account-owned state and rejects late account work", () => {
@@ -35,6 +36,19 @@ describe("Solo Conversations page wiring", () => {
     expect(composer).toContain('placeholder="Insert template…"');
   });
 
+  it("opts Solo into Enter-to-send while keeping validation, IME, and duplicate-submit guards", () => {
+    expect(page).toContain("onSend: send");
+    expect(page).toContain("sendOnEnter: isSolo");
+    expect(page).toContain("sendDisabled: isSolo");
+    expect(page).toContain("!selected.contactId");
+    expect(page).toContain("suppressions.some((suppression) => suppression.channel === composeChannel)");
+    expect(page).toContain("sendInFlightRef.current = epoch");
+    expect(composerAtom).toContain("!e.nativeEvent.isComposing");
+    expect(composerAtom).toContain("sendOnEnter && plainEnter");
+    expect(composerAtom).toContain("submitLockRef.current");
+    expect(composerAtom).toContain("sending || disabled || sendDisabled");
+  });
+
   it("confines the visual redesign to the tab-bounded Solo descendant", () => {
     expect(css).toContain(".trc-workspace:has(.solo-conversations-workspace) > .trc-heading");
     expect(css).toContain(".trc-conversations:has(.solo-conversations-workspace) > header");
@@ -43,6 +57,19 @@ describe("Solo Conversations page wiring", () => {
     expect(workspace).not.toMatch(/Sheet|Dialog|onClose|Close client/i);
     expect(workspace).toContain('data-pane="client-context"');
     expect(page).not.toMatch(/Your client book|Client conversations/);
+  });
+
+  it("keeps an expanded selected-client profile visible instead of giving the collapse control the pane height", () => {
+    expect(css).toContain(".solo-conversations-queue > *,\n.solo-conversations-thread > *");
+    expect(css).not.toContain(".solo-conversations-pane > *");
+    expect(css).not.toMatch(/data-form-fit="(?:narrow|tight)"[^}]*solo-context-content[^}]*visibility:\s*hidden/s);
+  });
+
+  it("keeps conversation controls compact and moves secondary channel truth into one disclosure", () => {
+    expect(workspace).toContain('className="solo-operating-toolbar"');
+    expect(workspace).toContain('className="solo-channel-menu"');
+    expect(workspace).not.toContain('className="solo-channel-strip"');
+    expect(css).not.toContain(".solo-channel-strip { flex-wrap: wrap");
   });
 
   it("keeps provider readiness visible and Escape-restorable", () => {

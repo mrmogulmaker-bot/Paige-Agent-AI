@@ -4,7 +4,8 @@
 // system (§6) and gold is spent in exactly one place across both surfaces.
 //
 // It owns only the composer CHROME — the value is controlled by the parent (each container
-// keeps its own draft state + send handler via its data-source adapter). ⌘/Ctrl+↵ sends.
+// keeps its own draft state + send handler via its data-source adapter). ⌘/Ctrl+↵ remains the
+// shared default; a scope may explicitly opt into plain Enter while Shift+Enter keeps a newline.
 //
 // The tenant inbox wraps a dense affordance cluster around this same textarea + Send: a
 // sending-identity Select, a subject input, attachment chips (ABOVE the textarea), and an
@@ -16,7 +17,7 @@
 // §11: gold ONLY on the Send act (the one earned gold moment); token-only; motion-safe
 // (the spinner respects the OS via the Loader2 animate-spin, which CSS-freezes under
 // prefers-reduced-motion at the framework level).
-import type { ClipboardEvent, DragEvent, ReactNode } from "react";
+import { useRef, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,9 +26,13 @@ import { cn } from "@/lib/utils";
 export interface MessageComposerProps {
   value: string;
   onChange: (value: string) => void;
-  onSend: () => void;
+  onSend: () => void | Promise<void>;
   sending?: boolean;
   disabled?: boolean;
+  /** Disable only the send act while leaving the textarea editable for correction. */
+  sendDisabled?: boolean;
+  /** Opt-in reply behavior: plain Enter sends; Shift+Enter remains a newline. */
+  sendOnEnter?: boolean;
   placeholder?: string;
   /** Compliance/help note under the composer (e.g. the A2P "Reply STOP" line). */
   note?: ReactNode;
@@ -50,9 +55,24 @@ export interface MessageComposerProps {
 
 export function MessageComposer({
   value, onChange, onSend, sending = false, disabled = false,
+  sendDisabled = false, sendOnEnter = false,
   placeholder = "Write a message…", note, sendLabel = "Send", rows = 2,
   header, toolbar, onDrop, onDragOver, onDragLeave, onPaste, textareaClassName,
 }: MessageComposerProps) {
+  const submitLockRef = useRef(false);
+  const submit = () => {
+    if (sending || disabled || sendDisabled || submitLockRef.current) return;
+    submitLockRef.current = true;
+    try {
+      const result = onSend();
+      const release = () => { submitLockRef.current = false; };
+      void Promise.resolve(result).then(release, release);
+    } catch (error) {
+      submitLockRef.current = false;
+      throw error;
+    }
+  };
+
   return (
     <div className="border-t border-border p-3">
       {header && <div className="mb-2">{header}</div>}
@@ -68,18 +88,21 @@ export function MessageComposer({
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onPaste={onPaste}
+          aria-keyshortcuts={sendOnEnter ? "Enter" : "Control+Enter Meta+Enter"}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            const plainEnter = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
+            const establishedShortcut = !e.shiftKey && (e.metaKey || e.ctrlKey);
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && ((sendOnEnter && plainEnter) || establishedShortcut)) {
               e.preventDefault();
-              if (!sending && !disabled) onSend();
+              submit();
             }
           }}
         />
         {/* Send is the ONE earned gold act on this surface (§11). */}
         <Button
           variant="gold"
-          onClick={onSend}
-          disabled={sending || disabled}
+          onClick={submit}
+          disabled={sending || disabled || sendDisabled}
           className="h-11 shrink-0"
         >
           {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}

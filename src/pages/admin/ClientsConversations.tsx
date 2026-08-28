@@ -74,6 +74,7 @@ import {
   conversationNeedsAttention,
   createAccountEpochGuard,
   getSoloChannelTruth,
+  type AccountEpochToken,
 } from "./conversations/solo/soloConversationModel";
 
 // ── Connector (channel_connectors row — kept local, not in shared) ─────────────────
@@ -324,6 +325,9 @@ export default function ClientsConversations() {
   const bodyRef = useRef("");
   useEffect(() => { bodyRef.current = body; }, [body]);
   const [sending, setSending] = useState(false);
+  // Synchronous, epoch-scoped lock: repeated keyboard/click submits cannot enqueue the same
+  // reply before React paints `sending`, and an old account's completion cannot unlock a new one.
+  const sendInFlightRef = useRef<AccountEpochToken | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -374,7 +378,7 @@ export default function ClientsConversations() {
     setScheduledFor(null); resetAttachments(); setSnippets([]); setSignatures([]); setTemplates([]);
     setAppendSignature(true); setDragOver(false); setUndo(null);
     setHandlingMode("human"); setUserId(null); setDrafting(false); setDraftReadingDoc(false);
-    setDraftFlags([]); setSending(false); setApprovingId(null); setEditingDraftId(null); suppReqRef.current += 1;
+    setDraftFlags([]); setSending(false); sendInFlightRef.current = null; setApprovingId(null); setEditingDraftId(null); suppReqRef.current += 1;
   }, [activeTenantId, resetAttachments]);
 
   // ── Deep-link: read ?filter=<view> once; unknown slug → keep default (never blank). ─
@@ -1082,6 +1086,7 @@ export default function ClientsConversations() {
   const send = async () => {
     if (!selected) return;
     if (isSolo && !canSendInSolo(handlingMode, composeChannel)) { toast.error("This handling mode or channel cannot send. Hand back to Human reply and use a ready email or SMS identity."); return; }
+    if (isSolo && !selected.contactId) { toast.error("Associate this participant with a client before sending."); return; }
     if (!composeChannel) { toast.error("Connect a channel first — Paige needs a way to send."); return; }
     if (!selected.toAddress) { toast.error("No client address on this thread to send to."); return; }
     if (!body.trim()) { toast.error("Write a reply first."); return; }
@@ -1090,8 +1095,11 @@ export default function ClientsConversations() {
     const blocked = suppressions.find((s) => s.channel === composeChannel);
     if (blocked) { toast.error(`This contact opted out of ${CHANNEL_LABEL[composeChannel]} — Paige won't send.`); return; }
 
-    setSending(true);
+    const activeSend = sendInFlightRef.current;
+    if (activeSend && accountEpochRef.current.accept(activeSend)) return;
     const epoch = accountEpochRef.current.capture();
+    sendInFlightRef.current = epoch;
+    setSending(true);
     try {
       // Default path = undo-send: queue 30s out so the toast's Undo can cancel before delivery.
       const iso = scheduledFor ?? new Date(Date.now() + UNDO_WINDOW_MS).toISOString();
@@ -1133,6 +1141,9 @@ export default function ClientsConversations() {
       if (!accountEpochRef.current.accept(epoch)) return;
       toast.error(e instanceof Error ? e.message : "Couldn't send.");
     } finally {
+      if (sendInFlightRef.current?.account === epoch.account && sendInFlightRef.current?.epoch === epoch.epoch) {
+        sendInFlightRef.current = null;
+      }
       if (accountEpochRef.current.accept(epoch)) setSending(false);
     }
   };
@@ -1305,9 +1316,19 @@ export default function ClientsConversations() {
     capabilities: { ...capabilities, canSchedule: capabilities.canSchedule && !(isSolo && handlingMode === "governed") },
     value: body,
     onChange: handleBodyChange,
-    onSend: () => void send(),
+    onSend: send,
     sending,
     disabled: drafting || uploading || (isSolo && handlingMode === "governed"),
+    sendDisabled: isSolo && (
+      !canSendInSolo(handlingMode, composeChannel)
+      || !composeChannel
+      || !selected.contactId
+      || !selected.toAddress
+      || !body.trim()
+      || (composeChannel === "email" && !subject.trim())
+      || suppressions.some((suppression) => suppression.channel === composeChannel)
+    ),
+    sendOnEnter: isSolo,
     placeholder: `Reply to ${selected.name}…  (drop a file to attach)`,
     rows: 2,
     sendLabel: scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send",

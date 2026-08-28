@@ -35,7 +35,7 @@ import type { ConversationsComposerModel, DraftTone } from "./conversationsAdapt
 export function ConversationsRichComposer(model: ConversationsComposerModel) {
   const {
     capabilities: caps,
-    value, onChange, onSend, sending, disabled, placeholder, note, sendLabel, rows, textareaClassName,
+    value, onChange, onSend, sending, disabled, sendDisabled, sendOnEnter, placeholder, note, sendLabel, rows, textareaClassName,
     identities, identityId, onIdentityChange, showIdentity = true,
     showSubject = false, subject = "", onSubjectChange,
     attachments = [], uploading = false, onAttachFiles, onRemoveAttachment,
@@ -365,6 +365,8 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
       onSend={onSend}
       sending={sending}
       disabled={disabled}
+      sendDisabled={sendDisabled}
+      sendOnEnter={sendOnEnter}
       placeholder={placeholder}
       note={note}
       sendLabel={sendLabel}
