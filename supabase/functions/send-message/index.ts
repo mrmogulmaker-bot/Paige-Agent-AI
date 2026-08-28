@@ -977,8 +977,9 @@ Deno.serve(async (req) => {
       }
       senderName = senderName || config?.default_from_name || "Paige Agent";
       // Last-resort fallback on the verified shared sending subdomain.
-      senderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
-      fromAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
+      const resolvedSenderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
+      senderEmail = resolvedSenderEmail;
+      fromAddress = senderName ? `${senderName} <${resolvedSenderEmail}>` : resolvedSenderEmail;
 
       // §32 — build the NormalizedMessage and send THROUGH the registry adapter.
       const adapter = getOutboundAdapter("email");
@@ -990,7 +991,7 @@ Deno.serve(async (req) => {
         status: "queued",
         contact_id: effectiveContactId,
         connector_id: effectiveConnectorId,
-        sender: { address: senderEmail, display_name: senderName ?? undefined },
+        sender: { address: resolvedSenderEmail, display_name: senderName ?? undefined },
         recipients: [{ address: body.to }],
         subject: body.subject ?? null,
         body_html: body.body,
@@ -1031,7 +1032,7 @@ Deno.serve(async (req) => {
       }
 
       const ctx: OutboundSendContext = {
-        from: { address: senderEmail, display_name: senderName ?? undefined },
+        from: { address: resolvedSenderEmail, display_name: senderName ?? undefined },
         to: body.to,
         replyTo,
         providerApiKey: resendKey,
