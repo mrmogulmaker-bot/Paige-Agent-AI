@@ -9,6 +9,13 @@
 
 ## §56 PRE-BUILD GATE — check this matrix FIRST, before the first line of code
 
+**Solo Conversations placement (owner-approved 2026-08-28).** This presentation is for the Solo
+Clients workspace only. It does not change the tier feature map, Sub-account/Agency/Enterprise/God
+surfaces, provider authority, or server access. The visible canvas begins below the shared Clients
+subtabs; Conversations consumes People-owned relationship identity and Settings-owned readiness but
+does not duplicate either editor. Every unsupported channel remains visibly PARTIAL, UNAVAILABLE, or
+PROPOSED rather than being promoted from connector presence.
+
 **Owner-ruled 2026-08-10 (CLAUDE.md §56).** This matrix is not only a *post-build* §51
 verification reference — it is the **pre-build** design gate. Before building or placing ANY
 feature/tile/route/RPC/edge fn/migration/surface/copy, answer, out loud, TWO questions against
