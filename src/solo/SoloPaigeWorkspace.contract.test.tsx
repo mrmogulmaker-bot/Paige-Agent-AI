@@ -15,7 +15,7 @@ const chatHarness = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: null }) }));
-vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => ({ activeTenantId: chatHarness.tenantId }) }));
+vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => ({ activeTenantId: chatHarness.tenantId, activeTenant: chatHarness.tenantId ? { account_number: "42" } : null }) }));
 vi.mock("@/hooks/useScopedUserId", () => ({ useScopedUserId: () => "owner-1" }));
 vi.mock("@/lib/playbook", () => ({ usePlaybook: () => ({ persona: { name: "PAIGE" } }) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -153,13 +153,31 @@ describe("Solo PAIGE workspace contract", () => {
     expect(workspace).not.toContain("useSoloSubagents");
   });
 
-  it("treats Mind as unavailable and keeps authority local to the action", () => {
+  it("links to the canonical governed Mind while keeping authority local to the action", () => {
     const workspace = source("src/solo/SoloPaigeWorkspace.tsx");
-    expect(workspace).toContain("Mind is proposed");
-    expect(workspace).toContain("not available yet");
-    expect(workspace).not.toContain("/command-center/mind");
+    expect(workspace).toContain("Mind is available");
+    expect(workspace).toContain("/command-center/mind");
+    expect(workspace).toContain("does not invent relationships or unavailable history");
     expect(source("src/components/tenant-shell/TenantCommandCenterShell.tsx")).toContain("Ask first");
     expect(workspace).not.toMatch(/conversationHeader=\{[^\n]*Ask first/);
+  });
+
+  it("opens Mind from the existing PAIGE knowledge surface only after account resolution", async () => {
+    chatHarness.tenantId = "account-a";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/solo/42/paige/knowledge"]}>
+        <Routes><Route path="/solo/:account/*" element={<><SoloPaigeWorkspace full /><RouteProbe /></>} /></Routes>
+      </MemoryRouter>,
+    ));
+    const open = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.textContent?.includes("Open in Mind"))!;
+    expect(open.disabled).toBe(false);
+    await act(async () => open.click());
+    expect(host.querySelector("[data-route]")?.textContent).toBe("/solo/42/command-center/mind");
+    await act(async () => root.unmount());
+    host.remove();
   });
 
   it("keeps the shared async safety additive and Solo-only", () => {
@@ -577,3 +595,4 @@ describe("Solo PAIGE workspace contract", () => {
     expect(workspace).toContain("51D7A6F680DB83AEF6BFE1147E9FC1651E39206EFAED17963F2FC16EC294F117");
   });
 });
+

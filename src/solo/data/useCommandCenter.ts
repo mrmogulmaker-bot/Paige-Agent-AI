@@ -97,9 +97,9 @@ function firstToken(name: string): string {
 
 export function useCommandCenter(): CommandCenterData {
   const { activeTenant, activeTenantId } = useTenantContext();
-  const { items, loading: approvalsLoading, refresh: refreshApprovals } =
+  const { items, loading: approvalsLoading, error: approvalsError, refresh: refreshApprovals } =
     usePendingApprovals({ scope: "all" });
-  const { metrics: m, attention, loading: dashLoading, isError, refetch } =
+  const { metrics: m, attention, loading: dashLoading, isError: dashboardError, refetch } =
     usePracticeDashboard(30, activeTenantId);
   const { departments, loading: departmentsLoading, configured: departmentsConfigured } =
     usePaigeDeptStatus(activeTenantId);
@@ -179,6 +179,7 @@ export function useCommandCenter(): CommandCenterData {
     (at.onboarding_in_progress ?? 0);
 
   const loading = approvalsLoading || dashLoading || departmentsLoading;
+  const isError = dashboardError || !!approvalsError;
   const empty =
     !loading &&
     (m?.active_clients ?? 0) === 0 &&
@@ -262,3 +263,4 @@ export function useCommandCenter(): CommandCenterData {
     refresh,
   };
 }
+

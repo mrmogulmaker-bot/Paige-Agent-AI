@@ -285,3 +285,20 @@ the derived `funding_enabled` signal + marketplace-install checks.)*
 
 *Regenerate the verified rows when surface area changes; any PR that adds a route/surface/edge-fn family or
 an integration entry point updates this file in the same commit (§BRAIN.3). Verified 2026-08-09 @ `c40f76d3`.*
+
+## Solo Command Center governed-record surface
+
+- `src/solo/CommandCenter.tsx` owns the Solo-only visible secondary order **Systems Check · Mind**.
+  Systems Check is canonical/default; `directory` and `history` are compatibility aliases that are
+  replaced with `/solo/{account}/command-center/mind`. Do not copy this Solo ruling into Agency,
+  Sub-account, Enterprise, or operator registries.
+- `src/solo/SoloMindWorkspace.tsx` + `solo-mind-workspace.css` own Mind's read-only, interactive 3D
+  record topology and contextual inspector. They compose existing sources only: `useSoloKnowledge`,
+  `useSystemsCheck("tenant")`, and current read-only decision references from `useCommandCenter`.
+  They do not own actions, chat, historical inference, relationships, or helper provenance.
+- `src/solo/SoloPaigeWorkspace.tsx` links to canonical Mind but remains the single PAIGE Chat/Knowledge
+  owner. Mind may open that workspace only through the existing shell callback, with no context attach,
+  prefill, send, preparation, or work-start claim.
+- Identity rule: mount Mind only after server-resolved `activeTenantId`, key the child by that epoch,
+  and never use the URL account number as read authority.
+

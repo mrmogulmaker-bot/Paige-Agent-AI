@@ -1331,3 +1331,25 @@ The tenant prototype now implements Signal Field, Living Lineage, Creation Chamb
 ### Calendar, Conversations, and spatial workspace pass — 2026-08-22
 
 The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.
+
+### Solo Command Center Mind — owner-approved build in draft review (2026-08-28)
+
+- **Status: DRAFT PR ONLY; not shipped, merged, or deployed.** Owner-approved prototype:
+  `paige-command-center-mind-flow-prototype.html`, SHA-256
+  `2CE38FC21DD1C6B6DD0C5816A63E2FA09F80245F09BB73F809DA52089F69`, 57,193 bytes.
+- Solo Command Center's proposed customer-facing information architecture is exactly
+  **Systems Check · Mind**. Systems Check remains first/default. Retired Solo Directory and History
+  addresses resolve to canonical Mind; Agency, Sub-account, Enterprise, and operator owners remain
+  unchanged.
+- Mind is a read-only governed record index over existing tenant-scoped owners: indexed knowledge is
+  LIVE; current pending decision references are LIVE SOURCE but non-actionable here; the latest Systems Check snapshot
+  is PARTIAL history. Full historical series, resolved-decision history, helper provenance, and inferred
+  semantic/causal relationships remain UNAVAILABLE.
+- The interactive 3D topology is a PROPOSED presentation, not a new data owner. It is still by default.
+  Direct mouse/keyboard manipulation is not business activity; finite motion may occur only after a
+  genuinely newly observed grounded record. One existing PAIGE workspace remains the only workspace,
+  and opening it does not attach, prefill, send, prepare, or start work.
+- Tenant identity remains server-resolved. The Mind data child does not mount while `activeTenantId` is
+  unresolved and remounts by tenant epoch so prior-account state and late responses cannot paint the
+  next account.
+

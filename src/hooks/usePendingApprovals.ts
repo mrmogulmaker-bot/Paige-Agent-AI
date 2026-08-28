@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useId } from "react";
+import { useEffect, useState, useCallback, useId, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 
@@ -41,6 +41,9 @@ export type PendingApproval = ApprovalQueueRow & {
 export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?: string }) {
   const [items, setItems] = useState<ApprovalQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [acceptedTenantId, setAcceptedTenantId] = useState<string | null | undefined>(undefined);
+  const requestEpoch = useRef(0);
   // §9 defense-in-depth: scope every read to the tenant the operator is CURRENTLY
   // viewing. The base-table RLS (RESTRICTIVE tenant_isolation) + the queue view's
   // security_invoker are the authoritative gate; this explicit filter is belt-and-
@@ -62,6 +65,9 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
   const instanceId = useId();
 
   const refresh = useCallback(async () => {
+    const epoch = ++requestEpoch.current;
+    setLoading(true);
+    setError(null);
     let q = supabase
       .from("paige_approval_queue_v")
       .select("*")
@@ -78,12 +84,25 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
       if (user) q = q.eq("assigned_to_user_id", user.id);
     }
 
-    const { data } = await q;
+    const { data, error: readError } = await q;
+    if (epoch !== requestEpoch.current) return;
+    if (readError) {
+      setItems([]);
+      setError(readError.message);
+      setAcceptedTenantId(activeTenantId);
+      setLoading(false);
+      return;
+    }
     setItems((data as ApprovalQueueRow[] | null) ?? []);
+    setAcceptedTenantId(activeTenantId);
     setLoading(false);
   }, [opts?.scope, opts?.contactId, activeTenantId]);
 
   useEffect(() => {
+    requestEpoch.current += 1;
+    setItems([]);
+    setError(null);
+    setLoading(true);
     refresh();
     const channel = supabase
       .channel(`paige_approvals_${opts?.scope ?? "all"}_${opts?.contactId ?? "any"}_${activeTenantId ?? "god"}_${instanceId}`)
@@ -93,8 +112,15 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
         () => { refresh(); },
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { requestEpoch.current += 1; supabase.removeChannel(channel); };
   }, [refresh, opts?.scope, opts?.contactId, activeTenantId, instanceId]);
 
-  return { items, loading, refresh };
+  const scopeMatches = acceptedTenantId === activeTenantId;
+  return {
+    items: scopeMatches ? items : [],
+    loading: scopeMatches ? loading : true,
+    error: scopeMatches ? error : null,
+    refresh,
+  };
 }
+
