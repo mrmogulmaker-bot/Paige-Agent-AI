@@ -206,12 +206,12 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(6);
     expect(count("calendar")).toBe(6);
-    expect(count("growth")).toBe(7);
+    expect(count("growth")).toBe(6);
     expect(count("analytics")).toBe(6);
     expect(count("marketplace")).toBe(4);
     expect(count("settings")).toBe(7);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(45);
+    expect(total).toBe(44);
     // first sub-tab is the screen's default (bare branch renders it).
     expect(defaultSubtabSlug("solo", "command-center")).toBe("systems-check");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
@@ -237,6 +237,23 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(subtabBySlug("solo", "calendar", "booking-links")?.key).toBe("booking");
     expect(subtabByKey("solo", "calendar", "booking")?.slug).toBe("booking-pages");
     roundTrip("growth", "overview", "ov");
+    roundTrip("growth", "catalog", "catalog");
+    roundTrip("growth", "sales", "sales");
+    roundTrip("growth", "pipeline", "pipeline");
+    roundTrip("growth", "social", "social");
+    roundTrip("growth", "performance", "performance");
+    expect(branchBySlug("solo", "growth")?.subtabs?.map(({ slug, label }) => [slug, label])).toEqual([
+      ["overview", "Overview"],
+      ["catalog", "Catalog"],
+      ["sales", "Sales"],
+      ["pipeline", "Pipeline"],
+      ["social", "Social"],
+      ["performance", "Performance"],
+    ]);
+    expect(subtabBySlug("solo", "growth", "active")?.key).toBe("ov");
+    for (const legacy of ["brand-kit", "pages", "funnels", "forms", "builders"]) {
+      expect(subtabBySlug("solo", "growth", legacy)?.key, legacy).toBe("catalog");
+    }
     roundTrip("analytics", "market-watch", "mkt");
     roundTrip("settings", "connections", "connections");
     roundTrip("settings", "security-data", "security-data");
@@ -297,7 +314,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       ["calendar", "requests", "agenda", "agenda"],
       ["calendar", "settings", "connections", "connections"],
       ["growth", "overview", "ov", "overview"],
-      ["growth", "brand-kit", "brand", "brand"], // same on both — asserted below as equal
+      ["growth", "brand-kit", "catalog", "brand"],
       ["analytics", "retention", "ret", "retain"],
       ["analytics", "decisions", "dec", "decide"],
       ["analytics", "market-watch", "mkt", "market"],
@@ -310,9 +327,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
         expect(subtabBySlug("solo", branch, slug)?.key).not.toBe(agencyKey);
       }
     }
-    // Solo `growth/brand-kit` legitimately shares the agency key — locked so a future
-    // "consistency" sweep can't cite it as precedent for aligning the others.
-    expect(subtabBySlug("solo", "growth", "brand-kit")?.key).toBe("brand");
+    // Solo retired this creative tab into a Catalog compatibility landing while
+    // Agency keeps its separate existing screen key.
+    expect(subtabBySlug("solo", "growth", "brand-kit")?.key).toBe("catalog");
     expect(subtabBySlug("agency", "growth", "brand-kit")?.key).toBe("brand");
   });
 });
