@@ -132,22 +132,27 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(isLegacyRelationshipOwner("solo", "people")).toBe(false);
   });
 
-  it("renders real supplied People data with accessible routed tabs and no fixture claims", () => {
+  it("starts Solo People at the compact Clients tabs and CRM toolbar without a redundant route banner", () => {
     const html = render();
-    expect(html).toContain("Your client book");
+    expect(html).not.toContain("Your client book");
+    expect(html).not.toContain('class="trc-heading"');
+    expect(html).toContain('class="trc-tabs trc-tabs--people"');
+    expect(html).toContain("<h1>People</h1>");
+    expect(html.match(/<h1>/g)).toHaveLength(1);
     expect(html).toContain("Supplied Person");
     expect(html).toContain('role="tablist"');
     expect(html).toContain('role="tabpanel"');
     expect(html.match(/aria-controls="trc-panel"/g)).toHaveLength(4);
     expect(html.match(/id="trc-panel"/g)).toHaveLength(1);
-    expect(html).toContain("People · LIVE");
+    expect(html).toContain("Tenant read · LIVE");
+    expect(html).not.toContain('<header class="trc-people-toolbar"><div><span>Client record</span>');
     expect(html).toContain("Assigned owner");
     expect(html).not.toMatch(/Alex Rivera|Morgan Shaw|Taylor Chen|Sarah&#x27;s Coaching Practice/);
   });
 
   it("replaces the shallow Solo inspector with the approved client-record workspace and honest truth states", () => {
     const html = render("/solo/42/clients/people?person=p-1");
-    expect(html).toContain("Client record");
+    expect(html).toContain("1 client · Tenant read · LIVE");
     expect(html).toContain("Person profile");
     expect(html).toContain("Relationship overview");
     expect(html).toContain("Contact details");
@@ -156,7 +161,6 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).toContain("Portal access");
     expect(html).toContain("Client files");
     expect(html).toContain("PAIGE enrichment");
-    expect(html).toContain("Search and selection · LIVE");
     expect(html).toContain("Governed details · UNAVAILABLE");
     expect(html).toContain("Birthday reminders");
     expect(html).toContain("Tenant custom fields");
@@ -190,6 +194,9 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).not.toContain("data-solo-client-record");
     expect(html).toContain("trc-table-card");
     expect(html).toContain("Ask PAIGE about this view");
+    expect(html).toContain("Your client book");
+    expect(html).toContain('class="trc-heading"');
+    expect(html).not.toContain("trc-tabs--people");
     expect(useTenantRelationshipsData).toHaveBeenLastCalledWith(expect.objectContaining({ soloPeople: false }));
   });
 
@@ -410,7 +417,8 @@ describe("tenant Relationships / Clients workspace", () => {
     useSubtabRoute.mockReturnValue(["people", vi.fn()]);
     expect(render("/agency/1/sub/2/clients/people", "agency")).not.toMatch(/trc-(workspace|panel)--people/);
     expect(css).toMatch(/\.trc-workspace--people\s*\{[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*overflow:\s*hidden/);
-    expect(css).toMatch(/\.trc-panel--people\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/);
+    expect(css).toMatch(/\.trc-tabs--people\s*\{[^}]*height:\s*44px[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.trc-panel--people\s*\{[^}]*min-height:\s*0[^}]*padding:\s*12px 18px 16px[^}]*overflow:\s*hidden/);
     expect(css).toContain("container-name: solo-people-workspace");
     expect(css).toMatch(/@container solo-people-workspace \(max-width: 920px\)/);
     expect(css).toMatch(/trc-client-workspace[^{]*\{[^}]*grid-row:\s*3/);
