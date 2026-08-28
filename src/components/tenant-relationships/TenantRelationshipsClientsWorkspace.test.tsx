@@ -344,6 +344,69 @@ describe("tenant Relationships / Clients workspace", () => {
     }
   });
 
+  it("settles the People layout after the shell transition when observer APIs are unavailable", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const originalMutationObserver = globalThis.MutationObserver;
+    const originalInnerWidth = window.innerWidth;
+    let centerWidth = 1000;
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect() {
+      if (this.matches("[data-solo-client-record]")) {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          right: centerWidth,
+          bottom: 600,
+          left: 0,
+          width: centerWidth,
+          height: 600,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+    globalThis.ResizeObserver = undefined as unknown as typeof ResizeObserver;
+    globalThis.MutationObserver = undefined as unknown as typeof MutationObserver;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1366 });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(
+        <div data-tenant-shell data-nav="expanded" data-paige="open">
+          <MemoryRouter initialEntries={["/solo/42/clients/people?person=p-1"]}>
+            <TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()} />
+          </MemoryRouter>
+        </div>,
+      ));
+      const workspace = host.querySelector<HTMLElement>("[data-solo-client-record]");
+      const list = host.querySelector<HTMLElement>(".trc-client-list");
+      expect(workspace?.dataset.recordLayout).toBe("docked");
+
+      centerWidth = 650;
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 300)));
+      expect(workspace?.dataset.recordLayout).toBe("overlay");
+      expect(list?.inert).toBe(true);
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+      rectSpy.mockRestore();
+      globalThis.ResizeObserver = originalResizeObserver;
+      globalThis.MutationObserver = originalMutationObserver;
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+    }
+  });
+
   it("makes only the covered narrow list inert and restores the exact originating row", async () => {
     const originalResizeObserver = globalThis.ResizeObserver;
     const originalInnerWidth = window.innerWidth;
@@ -387,10 +450,13 @@ describe("tenant Relationships / Clients workspace", () => {
       expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
 
       rows[1]?.focus();
-      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 800 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 700 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
       expect(workspace?.dataset.recordLayout).toBe("overlay");
       expect(list?.inert).toBe(true);
       expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>(".trc-record-back"));
+      await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 762 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+      expect(workspace?.dataset.recordLayout).toBe("docked");
+      expect(list?.inert).toBe(false);
       await act(async () => resizeCallback?.([{ target: workspace!, contentRect: { width: 1000 } as DOMRectReadOnly } as unknown as ResizeObserverEntry], {} as ResizeObserver));
       expect(workspace?.dataset.recordLayout).toBe("docked");
       expect(list?.inert).toBe(false);

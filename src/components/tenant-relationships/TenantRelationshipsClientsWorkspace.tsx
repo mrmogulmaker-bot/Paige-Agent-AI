@@ -320,9 +320,13 @@ function SoloPeopleView({
   useEffect(() => {
     const workspace = workspaceRef.current;
     if (!workspace) return;
-    const updateLayout = (width: number) => setRecordLayout(window.innerWidth < 1190 || width < 920 ? "overlay" : "docked");
+    const updateLayout = (width: number) => setRecordLayout(window.innerWidth < 1190 || width < 720 ? "overlay" : "docked");
     const measure = () => updateLayout(workspace.getBoundingClientRect().width || workspace.clientWidth);
     measure();
+    // The shell animates its grid tracks after this view mounts. Keep one
+    // bounded post-transition measurement so form-fit remains correct in
+    // browsers or controllers that do not expose observer APIs.
+    const settleTimer = window.setTimeout(measure, 260);
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(([entry]) => updateLayout(entry?.contentRect.width ?? workspace.clientWidth));
@@ -341,6 +345,7 @@ function SoloPeopleView({
       observer?.disconnect();
       shellObserver?.disconnect();
       shell?.removeEventListener("transitionend", handleShellTransition);
+      window.clearTimeout(settleTimer);
       window.removeEventListener("resize", measure);
     };
   }, []);
