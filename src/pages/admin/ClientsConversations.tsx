@@ -10,7 +10,7 @@
 //
 // §11/§25 premium on @/components/ui/page + @/components/ui/select (NO native select);
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocation, useSearchParams, Link } from "react-router-dom";
 import {
@@ -254,12 +254,18 @@ function MessageBubble({
   );
 }
 
+function SoloConversationOperatingBarWithPaige(
+  props: Omit<ComponentProps<typeof SoloConversationOperatingBar>, "onOpenPaige">,
+) {
+  const { expandRail } = useAgentPresence();
+  return <SoloConversationOperatingBar {...props} onOpenPaige={expandRail} />;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════
 export default function ClientsConversations() {
   const reduce = useReducedMotion();
   const location = useLocation();
   const { activeTenantId } = useTenantContext();
-  const { expandRail } = useAgentPresence();
   const soloRoute = /^\/solo\/([^/]+)\/clients\/conversations(?:\/|$)/.exec(location.pathname);
   const isSolo = !!soloRoute;
   const soloAccountAddress = soloRoute?.[1] ?? "";
@@ -1539,7 +1545,7 @@ export default function ClientsConversations() {
           </div>
 
           {isSolo && (
-            <SoloConversationOperatingBar
+            <SoloConversationOperatingBarWithPaige
               mode={handlingMode}
               onModeChange={setHandlingMode}
               channels={soloChannelTruth}
@@ -1548,7 +1554,6 @@ export default function ClientsConversations() {
               connectionsHref={connectionsHref}
               selectedClientName={selected.name}
               selectedThreadLabel={`${CHANNEL_LABEL[selected.channel]} · ${selected.toAddress || "recipient not reported"}`}
-              onOpenPaige={expandRail}
             />
           )}
 

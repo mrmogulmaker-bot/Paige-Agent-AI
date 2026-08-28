@@ -153,7 +153,7 @@ export function SoloConversationOperatingBar({
             event.currentTarget.querySelector<HTMLElement>("summary")?.focus();
           }}
         >
-          <summary aria-label="Primary PAIGE coordination status">
+          <summary aria-label="Primary PAIGE coordination status: live">
             <Sparkles aria-hidden />
             <span>Primary PAIGE</span>
             <small>LIVE</small>
@@ -164,7 +164,7 @@ export function SoloConversationOperatingBar({
               <span>{selectedClientName} · {selectedThreadLabel}</span>
             </header>
             <dl>
-              <div><dt>Tenant context</dt><dd>LIVE</dd></div>
+              <div><dt>Account context</dt><dd>LIVE</dd></div>
               <div><dt>Client and thread handoff</dt><dd>PROPOSED</dd></div>
               <div><dt>Specialist delegation</dt><dd>PROPOSED</dd></div>
               <div><dt>Durable outcomes</dt><dd>PROPOSED</dd></div>

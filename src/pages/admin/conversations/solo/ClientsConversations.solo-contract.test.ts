@@ -59,7 +59,7 @@ describe("Solo Conversations page wiring", () => {
     expect(page).toContain("onOpenPaige={expandRail}");
     expect(page).toContain("selectedClientName={selected.name}");
     expect(page).toContain("selectedThreadLabel={`${CHANNEL_LABEL[selected.channel]}");
-    expect(workspace).toContain("Tenant context");
+    expect(workspace).toContain("Account context");
     expect(workspace).toContain("Client and thread handoff");
     expect(workspace).toContain("Specialist delegation");
     expect(workspace).toContain("Durable outcomes");

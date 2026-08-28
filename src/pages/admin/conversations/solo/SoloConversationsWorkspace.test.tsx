@@ -98,10 +98,11 @@ describe("Solo Conversations workspace", () => {
     ));
 
     expect(host.textContent).toContain("Primary PAIGE");
-    expect(host.textContent).toContain("Tenant context");
+    expect(host.textContent).toContain("Account context");
     expect(host.textContent).toContain("Client and thread handoff");
     expect(host.textContent).toContain("Specialist delegation");
     expect(host.textContent).toContain("Durable outcomes");
+    expect(host.querySelector("summary")?.getAttribute("aria-label")).toBe("Primary PAIGE coordination status: live");
     expect(host.querySelectorAll(".solo-paige-coordination-truth dd")[0]?.textContent).toBe("LIVE");
     expect(Array.from(host.querySelectorAll(".solo-paige-coordination-truth dd")).slice(1).every((node) => node.textContent === "PROPOSED")).toBe(true);
     expect(host.textContent).toContain("Antonio Cook");
