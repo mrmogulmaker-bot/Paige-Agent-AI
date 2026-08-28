@@ -277,6 +277,73 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(css).toMatch(/@container solo-people-workspace \(max-width: 920px\)/);
   });
 
+  it("re-measures the People center owner when PAIGE changes geometry without ResizeObserver", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const originalInnerWidth = window.innerWidth;
+    let centerWidth = 1000;
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function mockRect() {
+      if (this.matches("[data-solo-client-record]")) {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          right: centerWidth,
+          bottom: 600,
+          left: 0,
+          width: centerWidth,
+          height: 600,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+    globalThis.ResizeObserver = undefined as unknown as typeof ResizeObserver;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1366 });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(
+        <div data-tenant-shell data-nav="expanded" data-paige="closed">
+          <MemoryRouter initialEntries={["/solo/42/clients/people?person=p-1"]}>
+            <TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()} />
+          </MemoryRouter>
+        </div>,
+      ));
+      const shell = host.querySelector<HTMLElement>("[data-tenant-shell]");
+      const workspace = host.querySelector<HTMLElement>("[data-solo-client-record]");
+      const list = host.querySelector<HTMLElement>(".trc-client-list");
+      expect(workspace?.dataset.recordLayout).toBe("docked");
+      expect(list?.inert).toBe(false);
+
+      centerWidth = 650;
+      shell?.setAttribute("data-paige", "open");
+      await vi.waitFor(() => expect(workspace?.dataset.recordLayout).toBe("overlay"));
+      expect(list?.inert).toBe(true);
+
+      centerWidth = 1000;
+      shell?.setAttribute("data-paige", "closed");
+      await vi.waitFor(() => expect(workspace?.dataset.recordLayout).toBe("docked"));
+      expect(list?.inert).toBe(false);
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+      rectSpy.mockRestore();
+      globalThis.ResizeObserver = originalResizeObserver;
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+    }
+  });
+
   it("makes only the covered narrow list inert and restores the exact originating row", async () => {
     const originalResizeObserver = globalThis.ResizeObserver;
     const originalInnerWidth = window.innerWidth;

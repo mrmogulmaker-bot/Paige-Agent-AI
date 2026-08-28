@@ -326,10 +326,21 @@ function SoloPeopleView({
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(([entry]) => updateLayout(entry?.contentRect.width ?? workspace.clientWidth));
+    const shell = workspace.closest<HTMLElement>("[data-tenant-shell]");
+    const shellObserver = typeof MutationObserver === "undefined" || !shell
+      ? null
+      : new MutationObserver(measure);
+    const handleShellTransition = (event: TransitionEvent) => {
+      if (event.target === shell && event.propertyName === "grid-template-columns") measure();
+    };
     observer?.observe(workspace);
+    shellObserver?.observe(shell, { attributes: true, attributeFilter: ["data-nav", "data-paige"] });
+    shell?.addEventListener("transitionend", handleShellTransition);
     window.addEventListener("resize", measure);
     return () => {
       observer?.disconnect();
+      shellObserver?.disconnect();
+      shell?.removeEventListener("transitionend", handleShellTransition);
       window.removeEventListener("resize", measure);
     };
   }, []);
