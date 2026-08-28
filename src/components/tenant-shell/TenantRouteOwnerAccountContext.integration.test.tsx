@@ -253,7 +253,6 @@ const tenant = (input: Partial<TenantFixture> & Pick<TenantFixture, "id" | "name
   features: {},
   ...input,
 });
-
 const loadResult = (activeTenantId: string | null, tenants: TenantFixture[]): LoadResult => ({
   profile: { data: { active_tenant_id: activeTenantId, agency_login_default: null }, error: null },
   tenants: { data: tenants, error: null },
@@ -678,4 +677,3 @@ describe("tenant route owners preserve the newest authenticated account context"
     expect(container.textContent).not.toContain("Parked Child Workspace");
   });
 });
-

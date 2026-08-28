@@ -56,7 +56,6 @@ function readHandledSignIn(uid: string): { ok: boolean; value: string | null } {
     return { ok: false, value: null };
   }
 }
-
 function burnHandledSignIn(uid: string, value: string): void {
   try {
     localStorage.setItem(FRESH_SIGNIN_KEY + uid, value);
@@ -542,4 +541,3 @@ export function useTenantContext(): TenantContextState {
   }
   return ctx;
 }
-
