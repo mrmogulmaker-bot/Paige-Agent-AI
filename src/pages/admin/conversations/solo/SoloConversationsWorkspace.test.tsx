@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SoloClientContextPane, SoloConversationOperatingBar, SoloConversationsWorkspace } from "./SoloConversationsWorkspace";
 import { ThreadFilters } from "../ThreadFilters";
 
@@ -65,11 +65,60 @@ describe("Solo Conversations workspace", () => {
           activeChannel="email"
           canDraftWithPaige={canDraftWithPaige}
           connectionsHref="/connections"
+          selectedClientName="Avery Stone"
+          selectedThreadLabel="Email thread"
+          onOpenPaige={() => undefined}
         />
       </MemoryRouter>,
     );
     expect(renderBar(false)).toMatch(/disabled=""[^>]*title="PAIGE drafting needs a ready email identity and recipient"/);
     expect(renderBar(true)).not.toContain("PAIGE drafting needs a ready email identity and recipient");
+  });
+
+  it("opens the primary PAIGE workspace while labeling unproven client and agent continuity honestly", () => {
+    const openPaige = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    act(() => root.render(
+      <MemoryRouter>
+        <SoloConversationOperatingBar
+          mode="human"
+          onModeChange={() => undefined}
+          channels={[]}
+          activeChannel="email"
+          canDraftWithPaige
+          connectionsHref="/connections"
+          selectedClientName="Antonio Cook"
+          selectedThreadLabel="Email · givalli44@icloud.com"
+          onOpenPaige={openPaige}
+        />
+      </MemoryRouter>,
+    ));
+
+    expect(host.textContent).toContain("Primary PAIGE");
+    expect(host.textContent).toContain("Tenant context");
+    expect(host.textContent).toContain("Client and thread handoff");
+    expect(host.textContent).toContain("Specialist delegation");
+    expect(host.textContent).toContain("Durable outcomes");
+    expect(host.querySelectorAll(".solo-paige-coordination-truth dd")[0]?.textContent).toBe("LIVE");
+    expect(Array.from(host.querySelectorAll(".solo-paige-coordination-truth dd")).slice(1).every((node) => node.textContent === "PROPOSED")).toBe(true);
+    expect(host.textContent).toContain("Antonio Cook");
+    expect(host.textContent).toContain("Email · givalli44@icloud.com");
+
+    act(() => host.querySelector<HTMLButtonElement>("[data-open-primary-paige]")?.click());
+    expect(openPaige).toHaveBeenCalledTimes(1);
+
+    const coordination = host.querySelector<HTMLDetailsElement>(".solo-paige-coordination");
+    const summary = coordination?.querySelector<HTMLElement>("summary");
+    if (coordination) coordination.open = true;
+    act(() => coordination?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(coordination?.open).toBe(false);
+    expect(document.activeElement).toBe(summary);
+
+    act(() => root.unmount());
+    host.remove();
   });
 
   it("keeps relationship truth read-only and routes edits to canonical owners", () => {

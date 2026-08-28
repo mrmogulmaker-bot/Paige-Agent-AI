@@ -94,6 +94,9 @@ interface SoloConversationOperatingBarProps {
   activeChannel: string;
   canDraftWithPaige: boolean;
   connectionsHref: string;
+  selectedClientName: string;
+  selectedThreadLabel: string;
+  onOpenPaige: () => void;
 }
 
 const MODE_OPTIONS: Array<{ id: ConversationHandlingMode; label: string; status: string; icon: typeof Hand }> = [
@@ -104,6 +107,7 @@ const MODE_OPTIONS: Array<{ id: ConversationHandlingMode; label: string; status:
 
 export function SoloConversationOperatingBar({
   mode, onModeChange, channels, activeChannel, canDraftWithPaige, connectionsHref,
+  selectedClientName, selectedThreadLabel, onOpenPaige,
 }: SoloConversationOperatingBarProps) {
   const humanModeRef = useRef<HTMLButtonElement>(null);
   const handBack = () => {
@@ -130,14 +134,47 @@ export function SoloConversationOperatingBar({
           </button>
         ))}
       </div>
-      <div className="solo-handling-authority" role="status">
-        <ShieldCheck aria-hidden />
-        {mode === "human" && <span>You write and send every reply.</span>}
-        {mode === "draft" && <span>PAIGE can prepare an editable draft. You still send it.</span>}
-        {mode === "governed" && <span>Ask First · every send requires approval · hand back anytime. Sending is not active.</span>}
-        {mode !== "human" && (
-          <Button variant="ghost" size="sm" onClick={handBack}>Hand back</Button>
-        )}
+      <div className="solo-handling-authority">
+        <div className="solo-handling-authority-copy" role="status">
+          <ShieldCheck aria-hidden />
+          {mode === "human" && <span>You write and send every reply.</span>}
+          {mode === "draft" && <span>PAIGE can prepare an editable draft. You still send it.</span>}
+          {mode === "governed" && <span>Ask First · every send requires approval · hand back anytime. Sending is not active.</span>}
+          {mode !== "human" && (
+            <Button variant="ghost" size="sm" onClick={handBack}>Hand back</Button>
+          )}
+        </div>
+        <details
+          className="solo-paige-coordination"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !event.currentTarget.open) return;
+            event.preventDefault();
+            event.currentTarget.open = false;
+            event.currentTarget.querySelector<HTMLElement>("summary")?.focus();
+          }}
+        >
+          <summary aria-label="Primary PAIGE coordination status">
+            <Sparkles aria-hidden />
+            <span>Primary PAIGE</span>
+            <small>LIVE</small>
+          </summary>
+          <div className="solo-paige-coordination-truth">
+            <header>
+              <strong>PAIGE coordination</strong>
+              <span>{selectedClientName} · {selectedThreadLabel}</span>
+            </header>
+            <dl>
+              <div><dt>Tenant context</dt><dd>LIVE</dd></div>
+              <div><dt>Client and thread handoff</dt><dd>PROPOSED</dd></div>
+              <div><dt>Specialist delegation</dt><dd>PROPOSED</dd></div>
+              <div><dt>Durable outcomes</dt><dd>PROPOSED</dd></div>
+            </dl>
+            <p>Internal PAIGE work remains separate from client messages. Nothing here sends externally.</p>
+            <Button type="button" size="sm" variant="outline" data-open-primary-paige onClick={onOpenPaige}>
+              Open primary PAIGE
+            </Button>
+          </div>
+        </details>
       </div>
       <div className="solo-channel-strip" aria-label="Communication choices">
         {channels.map((channel) => (

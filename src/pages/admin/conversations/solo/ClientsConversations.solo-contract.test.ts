@@ -52,4 +52,18 @@ describe("Solo Conversations page wiring", () => {
     expect(workspace).toContain('event.key !== "Escape"');
     expect(workspace).toContain('querySelector<HTMLElement>("summary")?.focus()');
   });
+
+  it("opens the existing primary PAIGE workspace without fabricating client or specialist continuity", () => {
+    expect(page).toContain('import { useAgentPresence } from "@/components/ui/paige"');
+    expect(page).toContain("const { expandRail } = useAgentPresence()");
+    expect(page).toContain("onOpenPaige={expandRail}");
+    expect(page).toContain("selectedClientName={selected.name}");
+    expect(page).toContain("selectedThreadLabel={`${CHANNEL_LABEL[selected.channel]}");
+    expect(workspace).toContain("Tenant context");
+    expect(workspace).toContain("Client and thread handoff");
+    expect(workspace).toContain("Specialist delegation");
+    expect(workspace).toContain("Durable outcomes");
+    expect(workspace.match(/<dd>PROPOSED<\/dd>/g)).toHaveLength(3);
+    expect(workspace).toContain("Nothing here sends externally.");
+  });
 });

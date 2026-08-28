@@ -61,6 +61,7 @@ import type {
   ConversationsContactPanelModel, ShellThread, DraftTone,
 } from "./conversations/shell/conversationsAdapter";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useAgentPresence } from "@/components/ui/paige";
 import {
   SoloClientContextPane,
   SoloConversationOperatingBar,
@@ -258,6 +259,7 @@ export default function ClientsConversations() {
   const reduce = useReducedMotion();
   const location = useLocation();
   const { activeTenantId } = useTenantContext();
+  const { expandRail } = useAgentPresence();
   const soloRoute = /^\/solo\/([^/]+)\/clients\/conversations(?:\/|$)/.exec(location.pathname);
   const isSolo = !!soloRoute;
   const soloAccountAddress = soloRoute?.[1] ?? "";
@@ -1544,6 +1546,9 @@ export default function ClientsConversations() {
               activeChannel={composeChannel || selected.channel}
               canDraftWithPaige={composeChannel === "email" && !!selected.toAddress && sendableConnectors.some((connector) => connector.id === composeConnectorId && connector.channel_type === "email")}
               connectionsHref={connectionsHref}
+              selectedClientName={selected.name}
+              selectedThreadLabel={`${CHANNEL_LABEL[selected.channel]} · ${selected.toAddress || "recipient not reported"}`}
+              onOpenPaige={expandRail}
             />
           )}
 
