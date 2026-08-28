@@ -78,6 +78,40 @@ export interface TenantCommandCenterShellProps {
   brandHomeHref?: string;
 }
 
+const PAIGE_POPOUT_STYLES_TIMEOUT_MS = 2_000;
+
+const clonePopoutStylesWhenReady = (child: Window): Promise<boolean> => {
+  const readiness: Promise<boolean>[] = [];
+
+  document.head.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+    const clone = node.cloneNode(true) as HTMLElement;
+    if (node instanceof HTMLLinkElement) {
+      const source = new URL(node.href, document.baseURI);
+      if (source.origin === window.location.origin) {
+        readiness.push(new Promise<boolean>((resolve) => {
+          clone.addEventListener("load", () => resolve(true), { once: true });
+          clone.addEventListener("error", () => resolve(false), { once: true });
+        }));
+      }
+    }
+    child.document.head.appendChild(clone);
+  });
+
+  if (readiness.length === 0) return Promise.resolve(true);
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(ready);
+    };
+    const timeout = window.setTimeout(() => finish(false), PAIGE_POPOUT_STYLES_TIMEOUT_MS);
+    void Promise.all(readiness).then((results) => finish(results.every(Boolean)));
+  });
+};
+
 export function TenantPaigeCommandField({
   expanded,
   onOpen,
@@ -235,7 +269,7 @@ export function TenantCommandCenterShell({
     });
   }, [expandRail, paigePortalHost]);
 
-  const detachPaige = useCallback((launcher?: HTMLElement) => {
+  const detachPaige = useCallback(async (launcher?: HTMLElement) => {
     if (soloPaigeWorkspace) {
       let child: Window | null = null;
       try {
@@ -255,20 +289,31 @@ export function TenantCommandCenterShell({
         viewport.name = "viewport";
         viewport.content = "width=device-width,initial-scale=1";
         child.document.head.appendChild(viewport);
-        document.head.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
-          child?.document.head.appendChild(node.cloneNode(true));
-        });
         child.document.body.replaceChildren();
         child.document.body.style.margin = "0";
         child.document.body.style.height = "100vh";
         child.document.body.style.overflow = "hidden";
         child.addEventListener("beforeunload", () => restorePopoutToWorkspace(child), { once: true });
+        paigePopoutRef.current = child;
       } catch {
+        if (paigePopoutRef.current === child) paigePopoutRef.current = null;
         child.close();
         setAnnouncement("PAIGE could not use that window safely; close it and try again");
         return;
       }
-      paigePopoutRef.current = child;
+
+      setAnnouncement("PAIGE is preparing the separate window");
+      const stylesReady = await clonePopoutStylesWhenReady(child);
+      if (paigePopoutRef.current !== child || child.closed) return;
+      if (!stylesReady) {
+        paigePopoutRef.current = null;
+        child.close();
+        expandRail();
+        setAnnouncement("PAIGE stayed here because the separate window could not load its layout");
+        window.requestAnimationFrame(() => popoutReturnFocusRef.current?.focus({ preventScroll: true }));
+        return;
+      }
+
       setPaigePopout(child);
       collapseRail();
       setAnnouncement("PAIGE moved to a separate window; the main workspace remains available");
@@ -288,7 +333,7 @@ export function TenantCommandCenterShell({
     } else {
       setAnnouncement("Your browser blocked the PAIGE window; allow pop-ups and try again");
     }
-  }, [collapseRail, restorePopoutToWorkspace, soloPaigeWorkspace]);
+  }, [collapseRail, expandRail, restorePopoutToWorkspace, soloPaigeWorkspace]);
 
   const redockPaige = useCallback(() => {
     if (paigePopout && !paigePopout.closed) {

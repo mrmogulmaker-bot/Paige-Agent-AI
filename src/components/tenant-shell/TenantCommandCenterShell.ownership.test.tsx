@@ -441,6 +441,144 @@ describe("tenant PAIGE command field", () => {
     expect(shell).toMatch(/if \(soloPaigeWorkspace\)[\s\S]*return;[\s\S]*next\.searchParams\.set\("paigeSurface", "detached"\)/);
     expect(shell).toContain("if (detached && !soloPaigeWorkspace)");
     expect(shell.match(/content=\{soloPaigeWorkspace\}/g)).toHaveLength(1);
+    expect(shell).toContain('popup,width=520,height=820,resizable=yes');
+  });
+
+  it("keeps the mounted workspace in the shell until the pop-out application stylesheet is ready", async () => {
+    const applicationStyles = document.createElement("link");
+    applicationStyles.rel = "stylesheet";
+    applicationStyles.href = "/assets/solo-paige.css";
+    document.head.appendChild(applicationStyles);
+
+    const popupDocument = document.implementation.createHTMLDocument("PAIGE delayed stylesheet popup");
+    const popupRecord = {
+      document: popupDocument,
+      closed: false,
+      focus: vi.fn(),
+      addEventListener: vi.fn(),
+      close: vi.fn(() => { popupRecord.closed = true; }),
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(popupRecord as unknown as Window);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/command-center"]}>
+          <TenantCommandCenterShell accountName="Solo account" accountType="standalone" userRole="admin" onSignOut={vi.fn()} soloPaigeWorkspace={<PaigeWorkspaceFixture />}>
+            <p>Main CRM remains usable</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click();
+      await Promise.resolve();
+    });
+
+    const workspace = host.querySelector("#tenant-paige-workspace");
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="Open PAIGE in a new window"]')?.click();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBeNull();
+
+    await act(async () => {
+      popupDocument.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')?.dispatchEvent(new Event("load"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector("#tenant-paige-workspace")).toBeNull();
+    expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(popupDocument.body.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+    const popupHost = popupDocument.body.querySelector<HTMLElement>("[data-paige-popout]");
+    expect(popupDocument.body.style.height).toBe("100vh");
+    expect(popupDocument.body.style.overflow).toBe("hidden");
+    expect(popupHost?.style.height).toBe("100vh");
+    expect(popupHost?.style.minWidth).toBe("0px");
+    expect(popupHost?.style.overflow).toBe("hidden");
+
+    await act(async () => root.unmount());
+    host.remove();
+    applicationStyles.remove();
+    open.mockRestore();
+  });
+
+  it.each(["error", "timeout"] as const)("keeps the same interactive workspace in the shell when pop-out styles %s", async (failure) => {
+    if (failure === "timeout") vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const applicationStyles = document.createElement("link");
+    applicationStyles.rel = "stylesheet";
+    applicationStyles.href = `/assets/solo-paige-${failure}.css`;
+    document.head.appendChild(applicationStyles);
+
+    const popupDocument = document.implementation.createHTMLDocument(`PAIGE stylesheet ${failure} popup`);
+    const popupRecord = {
+      document: popupDocument,
+      closed: false,
+      focus: vi.fn(),
+      addEventListener: vi.fn(),
+      close: vi.fn(() => { popupRecord.closed = true; }),
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(popupRecord as unknown as Window);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/command-center"]}>
+          <TenantCommandCenterShell accountName="Solo account" accountType="standalone" userRole="admin" onSignOut={vi.fn()} soloPaigeWorkspace={<PaigeWorkspaceFixture />}>
+            <p>Main CRM remains usable</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click();
+      await Promise.resolve();
+    });
+
+    const workspace = host.querySelector("#tenant-paige-workspace");
+    const draft = host.querySelector<HTMLInputElement>('[aria-label="Persistent PAIGE draft"]');
+    const knowledge = Array.from(workspace?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
+      .find((button) => button.textContent === "Knowledge");
+    await act(async () => knowledge?.click());
+    const launcher = workspace?.querySelector<HTMLButtonElement>('[aria-label="Open PAIGE in a new window"]');
+
+    await act(async () => {
+      launcher?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+
+    await act(async () => {
+      if (failure === "error") {
+        popupDocument.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')?.dispatchEvent(new Event("error"));
+      } else {
+        await vi.advanceTimersByTimeAsync(2_000);
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    if (failure === "timeout") vi.useRealTimers();
+    await settlePaigeFocus();
+
+    expect(popupRecord.closed).toBe(true);
+    expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBeNull();
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+    expect(workspace?.querySelector("[data-paige-active-surface]")?.textContent).toBe("Knowledge");
+    expect(host.querySelector('[aria-label="Persistent PAIGE draft"]')).toBe(draft);
+    expect(draft?.value).toBe("Draft survives folding");
+    expect(document.activeElement).toBe(launcher);
+
+    await act(async () => root.unmount());
+    host.remove();
+    applicationStyles.remove();
+    open.mockRestore();
+    vi.useRealTimers();
   });
 
   it("keeps the identical mounted Solo workspace interactive after redock and a second pop-out native close", async () => {
