@@ -202,7 +202,7 @@ React.useLayoutEffect(()=>{
   if(!owner?.isConnected||target.closest('[data-tenant-shell]')!==owner||target.closest('[hidden],[aria-hidden="true"],[inert]'))return;
   target.focus({preventScroll:true});
 },[route,studio]);
-React.useEffect(()=>{if(route==='growth')return;studioFocusPending.current=false;studioReturnFocus.current=null;studioReturnOwner.current=null},[route]);
+React.useEffect(()=>{if(route==='growth')return;setStudio(false);studioFocusPending.current=false;studioReturnFocus.current=null;studioReturnOwner.current=null},[route]);
 const theme=resolvedTheme==='light'?'light':'dark';
 // Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
@@ -229,6 +229,7 @@ soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey} full={route==='pai
 paigeFull={route==='paige'}
 paigeFullHref={urlDriven?`${branchPath('solo',urlAccount,'paige')}/${paigeDockedTab}`:undefined}
 paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefined}
+brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
