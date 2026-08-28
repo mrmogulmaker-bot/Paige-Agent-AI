@@ -162,7 +162,7 @@ export function TenantRelationshipsClientsWorkspace({
 
   return (
     <section className={`trc-workspace${soloPeople ? " trc-workspace--people" : ""}${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
-      {!soloCalendar && (
+      {!soloCalendar && !soloPeople && (
         <header className="trc-heading">
           <div>
             <span>{workspaceName} · {activeTenant.name}</span>
@@ -175,7 +175,7 @@ export function TenantRelationshipsClientsWorkspace({
         </header>
       )}
 
-      <div className="trc-tabs" role="tablist" aria-label={`${workspaceName} views`}>
+      <div className={`trc-tabs${soloPeople ? " trc-tabs--people" : ""}`} role="tablist" aria-label={`${workspaceName} views`}>
         {tabs.map((tab, index) => (
           <button
             key={tab.id}
@@ -398,9 +398,8 @@ function SoloPeopleView({
     >
       <header className="trc-people-toolbar">
         <div>
-          <span>Client record</span>
           <strong>People</strong>
-          <small>Search and selection · LIVE</small>
+          <small>{data.people.length} {data.people.length === 1 ? "client" : "clients"} · Tenant read · LIVE</small>
         </div>
         <label>
           <span className="sr-only">Search people</span>
