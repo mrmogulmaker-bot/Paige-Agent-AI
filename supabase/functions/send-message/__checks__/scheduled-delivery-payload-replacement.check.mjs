@@ -194,4 +194,3 @@ assert.equal(attachmentsAreValid([{ url: "tenant-a/messages/huge.pdf", size: 10 
 assert.equal(attachmentsAreValid(Array.from({ length: 11 }, (_, i) => ({ url: `tenant-a/messages/${i}.pdf` })), "tenant-a"), false, "attachment count must be bounded");
 
 console.log(`scheduled-delivery payload replacement contract passed: ${fileURLToPath(new URL("../index.ts", import.meta.url))}`);
-

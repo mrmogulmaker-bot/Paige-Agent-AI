@@ -167,4 +167,3 @@ describe("MessageComposer keyboard sending", () => {
     expect(document.activeElement).toBe(textarea);
   });
 });
-

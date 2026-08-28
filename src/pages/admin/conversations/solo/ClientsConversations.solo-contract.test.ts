@@ -116,4 +116,3 @@ describe("Solo Conversations page wiring", () => {
     expect(workspace).toContain("Nothing here sends externally.");
   });
 });
-
