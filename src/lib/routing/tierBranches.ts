@@ -174,17 +174,18 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "growth", key: "growth", label: "Growth", group: "main",
-    // Source: src/solo/growth2.tsx. Vibe Studio is NOT a sub-tab — a full-screen overlay
-    // opened from the header; not deep-linkable here.
+    slug: "growth", key: "growth", label: "Campaigns", group: "main",
+    // Campaigns owns six customer-facing reporting views. Vibe Studio remains the
+    // sole creative owner and opens through its existing side action. Retired
+    // creative slugs resolve to a Campaigns-owned compatibility landing, never a
+    // fabricated Vibe library or asset route.
     subtabs: [
-      { slug: "overview", key: "ov", label: "Overview" },
-      { slug: "brand-kit", key: "brand", label: "Brand Kit" },
-      { slug: "social", key: "soc", label: "Social" },
-      { slug: "pages", key: "pg", label: "Pages" },
-      { slug: "funnels", key: "fn", label: "Funnels" },
-      { slug: "forms", key: "fm", label: "Forms" },
-      { slug: "builders", key: "ext", label: "Builders" },
+      { slug: "overview", aliases: ["active"], key: "ov", label: "Overview" },
+      { slug: "catalog", aliases: ["brand-kit", "pages", "funnels", "forms", "builders"], key: "catalog", label: "Catalog" },
+      { slug: "sales", key: "sales", label: "Sales" },
+      { slug: "pipeline", key: "pipeline", label: "Pipeline" },
+      { slug: "social", key: "social", label: "Social" },
+      { slug: "performance", key: "performance", label: "Performance" },
     ],
   },
   {
