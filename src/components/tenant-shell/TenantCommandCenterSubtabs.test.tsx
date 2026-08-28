@@ -23,6 +23,9 @@ vi.mock("@/hooks/useTenantContext", () => ({
 vi.mock("@/solo/SoloSystemsCheckWorkspace", () => ({
   SoloSystemsCheckWorkspace: () => <div>Canonical Solo Systems Check</div>,
 }));
+vi.mock("@/solo/SoloMindWorkspace", () => ({
+  SoloMindWorkspace: () => <div>Canonical Solo Mind</div>,
+}));
 
 import { CommandHub } from "@/solo/CommandCenter";
 
@@ -101,7 +104,7 @@ describe("tenant Command Center secondary tabs", () => {
     });
   });
 
-  it("keeps Fleet operator-only while every tenant registry exposes the ruled three-tab strip", () => {
+  it("keeps non-Solo owners unchanged while Solo exposes only Systems Check and Mind", () => {
     expect(OPERATOR_SLOTS.find((slot) => slot.id === "fleet")).toMatchObject({
       label: "Fleet",
       views: ["Systems check", "Directory", "History"],
@@ -120,15 +123,15 @@ describe("tenant Command Center secondary tabs", () => {
 
     const solo = branchBySlug("solo", "command-center");
     expect(solo?.subtabs?.map((tab) => tab.label)).toEqual([
-      "Systems Check", "Directory", "History",
+      "Systems Check", "Mind",
     ]);
     expect(solo?.subtabs?.[0]).toMatchObject({ slug: "systems-check", key: "sys" });
   });
 
   it.each([
-    ["src/solo/CommandCenter.tsx", ["Systems Check", "Directory", "History"]],
+    ["src/solo/CommandCenter.tsx", ["Systems Check", "Mind"]],
     ["src/agency/CommandCenter.tsx", ["Systems Check", "Directory", "History"]],
-  ])("renders only the three ruled secondary labels in %s", (path, labels) => {
+  ])("renders the ruled secondary labels in %s", (path, labels) => {
     const screen = source(path);
     for (const label of labels) expect(screen).toContain(`"${label}"`);
     expect(screen).not.toMatch(/\["(?:home|main)",\s*"Command Center"/);
@@ -177,6 +180,8 @@ describe("tenant Command Center secondary tabs", () => {
     expect(solo).not.toContain('tab === "home"');
     expect(solo).not.toContain("SystemsCheckTile");
     expect(solo).toContain("SoloSystemsCheckWorkspace");
+    expect(solo).toContain("SoloMindWorkspace");
+    expect(solo).not.toContain("TenantSystemsCheckSecondaryView");
     expect(solo).toContain('background: "var(--pg-spine)"');
     expect(solo).not.toContain("<SubTabs");
     expect(agency).toContain('isAgency ? "agency" : "sub_account"');
@@ -243,12 +248,47 @@ describe("tenant Command Center secondary tabs", () => {
   });
 
   it("keeps Solo and Enterprise route construction in their existing account trees", () => {
-    expect(subtabPath("solo", "7001001", "command-center", "directory")).toBe(
-      "/solo/7001001/command-center/directory",
+    expect(subtabPath("solo", "7001001", "command-center", "mind")).toBe(
+      "/solo/7001001/command-center/mind",
     );
     expect(subtabPath("enterprise", "6001001", "command-center", "history")).toBe(
       "/enterprise/6001001/command-center/history",
     );
+  });
+
+  it.each([
+    "/solo/7001001/command-center/directory",
+    "/solo/7001001/command-center/history",
+  ])("resolves the retired Solo compatibility entry %s to Mind without retaining a tab", (entry) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    act(() => root.render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route
+            path="/solo/:account/*"
+            element={<><CommandHub accountContext={null} openPaige={vi.fn()} /><LocationProbe /></>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    ));
+    expect(host.textContent).toContain("Canonical Solo Mind");
+    expect(host.textContent).not.toContain("Directory");
+    expect(host.textContent).not.toContain("History");
+    expect(host.textContent).toContain("Previous record address opened in Mind.");
+    expect(host.querySelector("[data-location]")?.textContent).toBe(
+      "/solo/7001001/command-center/mind",
+    );
+    act(() => root.unmount());
+  });
+
+  it("keeps the active Solo tab perceivable in forced colors and omits stale panel relationships", () => {
+    const solo = source("src/solo/CommandCenter.tsx");
+    const css = source("src/solo/solo-mind-workspace.css");
+    expect(solo).toContain('aria-current={active ? "page" : undefined}');
+    expect(solo).toContain('aria-controls={active ? `command-panel-${key}` : undefined}');
+    expect(css).toContain('[role="tab"][aria-selected="true"]');
+    expect(css).toContain("Highlight");
   });
 
   it.each([
@@ -279,3 +319,4 @@ function LocationProbe() {
   const location = useLocation();
   return <output data-location>{location.pathname}</output>;
 }
+

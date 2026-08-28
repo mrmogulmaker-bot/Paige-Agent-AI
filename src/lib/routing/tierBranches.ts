@@ -120,8 +120,7 @@ export const SOLO_BRANCHES: Branch[] = [
     // address remains a compatibility alias of the same owner.
     subtabs: [
       { slug: "systems-check", aliases: ["overview"], key: "sys", label: "Systems Check" },
-      { slug: "directory", key: "dir", label: "Directory" },
-      { slug: "history", key: "hist", label: "History" },
+      { slug: "mind", aliases: ["directory", "history"], key: "mind", label: "Mind" },
     ],
   },
   {
@@ -712,3 +711,4 @@ export function subtabPath(tier: RouteTierKey, account: string, branchSlug: stri
   if (tree.accountSegment === false) return `${tree.root}/${branchSlug}/${subSlug}`;
   return `${tree.root}/${account}/${branchSlug}/${subSlug}`;
 }
+

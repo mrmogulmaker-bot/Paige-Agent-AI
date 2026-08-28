@@ -22,11 +22,16 @@ const TruthPill = ({ tone = "neutral", children }: { tone?: "live" | "partial" |
   <span className={`spw-truth spw-truth-${tone}`}>{children}</span>
 );
 
-const MindUnavailable = () => (
-  <button type="button" className="spw-link-button" disabled title="Mind is proposed for Command Center and is not available yet">
-    <Brain aria-hidden size={14} /> Open in Mind
-  </button>
-);
+const MindLink = () => {
+  const navigate = useNavigate();
+  const { activeTenant } = useTenantContext();
+  const account = activeTenant?.account_number ?? null;
+  return (
+    <button type="button" className="spw-link-button" disabled={!account} title={account ? "Open the governed Mind record index" : "Mind opens after this account resolves"} onClick={() => account && navigate(`/solo/${account}/command-center/mind`)}>
+      <Brain aria-hidden size={14} /> Open in Mind
+    </button>
+  );
+};
 
 const PanelHeader = ({ eyebrow, title, description, state }: { eyebrow: string; title: string; description: string; state: ReactNode }) => (
   <header className="spw-view-head">
@@ -96,7 +101,7 @@ function KnowledgeView() {
                     <button type="button" onClick={() => setExpandedId(expanded ? null : doc.id)} aria-expanded={expanded}>
                       {expanded ? "Hide provenance" : "Review provenance"}
                     </button>
-                    <MindUnavailable />
+                    <MindLink />
                     <button type="button" disabled title="Disconnect requires a verified source lifecycle">Disconnect unavailable</button>
                   </footer>
                 </article>
@@ -104,10 +109,10 @@ function KnowledgeView() {
             })}
           </section>
           <aside className="spw-explainer">
-            <TruthPill tone="proposed">Mind is proposed</TruthPill>
+            <TruthPill tone="live">Mind is available</TruthPill>
             <h3>Knowledge is practical; Mind is relational</h3>
-            <p>Knowledge is where intentional business information is reviewed and used with PAIGE. Mind is the future Command Center owner for provenance, recall, decisions, approvals, and relationships over time.</p>
-            <MindUnavailable />
+            <p>Knowledge is where intentional business information is reviewed and used with PAIGE. Mind is the Command Center owner for governed provenance, recall, and decision references. It does not invent relationships or unavailable history.</p>
+            <MindLink />
             <hr />
             <TruthPill tone="partial">Recall remains contextual</TruthPill>
             <p>“PAIGE wants to remember…” proposals may appear in Chat only when the current contract supplies them. Durable review and forgetting are not activated here.</p>
@@ -134,7 +139,7 @@ function HelpersView() {
         </div>
         <div className="spw-card-grid">
           <article className="spw-layer-card"><TruthPill tone="unavailable">No active task</TruthPill><h3>Ephemeral helper</h3><p>Must show exact scope, responsible delegator, start, end condition, approval state, and revocation. Creation is not activated here.</p><button type="button" disabled>Revoke unavailable</button></article>
-          <article className="spw-layer-card"><TruthPill tone="proposed">Mind-owned roster</TruthPill><h3>Durable named leadership</h3><p>Named identities are not flattened into this task view. Chat introduces one only when PAIGE delegates, receives a result, requests approval, or explains responsibility.</p><MindUnavailable /></article>
+          <article className="spw-layer-card"><TruthPill tone="proposed">Mind-owned roster</TruthPill><h3>Durable named leadership</h3><p>Named identities are not flattened into this task view. Chat introduces one only when PAIGE delegates, receives a result, requests approval, or explains responsibility.</p><MindLink /></article>
           <article className="spw-layer-card"><TruthPill tone="partial">Visibility only</TruthPill><h3>Department specialist</h3><p>Existing records can indicate availability, but hierarchy, authority ceiling, task activity, and durable revocation remain unproven in this frontend.</p><button type="button" disabled>Delegation not activated</button></article>
         </div>
       </div>
@@ -327,3 +332,4 @@ export function SoloPaigeWorkspace({
     </div>
   );
 }
+
