@@ -398,7 +398,7 @@ function SoloPeopleView({
     >
       <header className="trc-people-toolbar">
         <div>
-          <strong>People</strong>
+          <h1>People</h1>
           <small>{data.people.length} {data.people.length === 1 ? "client" : "clients"} · Tenant read · LIVE</small>
         </div>
         <label>

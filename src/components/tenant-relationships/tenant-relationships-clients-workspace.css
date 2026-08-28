@@ -45,7 +45,7 @@
 .trc-people-toolbar { display: grid; grid-template-columns: auto minmax(220px, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 12px; }
 .trc-people-toolbar > div { display: grid; min-width: 170px; gap: 2px; }
 .trc-people-toolbar > div > span { color: var(--pg-gold-deep); font: 600 var(--pg-t-label) var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase; }
-.trc-people-toolbar > div > strong { font: 600 18px var(--pg-font-display); }
+.trc-people-toolbar > div > h1 { margin: 0; font: 600 18px var(--pg-font-display); }
 .trc-people-toolbar > div > small { color: var(--pg-positive); font: 600 var(--pg-t-label) var(--pg-font-data); letter-spacing: .04em; text-transform: uppercase; }
 .trc-people-toolbar label { min-width: 0; }
 .trc-people-toolbar input { width: 100%; min-height: 40px; padding: 0 13px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); color: var(--pg-ink); background: var(--pg-surface); }

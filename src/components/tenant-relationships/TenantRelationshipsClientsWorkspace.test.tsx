@@ -137,6 +137,8 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).not.toContain("Your client book");
     expect(html).not.toContain('class="trc-heading"');
     expect(html).toContain('class="trc-tabs trc-tabs--people"');
+    expect(html).toContain("<h1>People</h1>");
+    expect(html.match(/<h1>/g)).toHaveLength(1);
     expect(html).toContain("Supplied Person");
     expect(html).toContain('role="tablist"');
     expect(html).toContain('role="tabpanel"');
