@@ -202,9 +202,9 @@ describe("Solo Systems Check workspace", () => {
     const css = readFileSync(resolve(process.cwd(), "src/solo/solo-systems-check-workspace.css"), "utf8");
     expect(css).toContain("container:solo-systems-check / inline-size");
     expect(css).toContain("@container solo-systems-check (max-width:780px)");
-    expect(css).toContain("@media(min-width:761px) and (max-width:1080px)");
-    expect(css).toContain('[data-tenant-shell][data-paige="open"] #tenant-shell-main .sc-workspace');
-    expect(css).toContain("width:calc(100% - min(410px,calc(100vw - var(--tcs-rail))))");
+    expect(css).toContain('[data-tenant-shell][data-paige="open"] #tenant-shell-main .sc-workspace,[data-tenant-shell][data-paige="open"] #tenant-shell-main nav[aria-label="Command Center sections"]{width:calc(100% - min(410px,calc(100vw - var(--tcs-rail))))}');
+    expect(css).toContain('@media(min-width:761px) and (max-width:940px){[data-tenant-shell][data-nav="expanded"][data-paige="open"] #tenant-shell-main nav[aria-label="Command Center sections"]');
+    expect(css).toContain('nav[aria-label="Command Center sections"] button{gap:0!important;padding-inline:6px!important;font-size:0!important}');
     expect(css).not.toMatch(/--pg-(?:bg|card|shadow-sm|shadow-lg)\b/);
     expect(css).toContain("--sc-paige:var(--pg-violet)");
     expect(css).toContain("--sc-critical:var(--pg-negative)");
