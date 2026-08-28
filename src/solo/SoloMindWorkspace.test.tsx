@@ -219,10 +219,20 @@ describe("Solo Mind workspace", () => {
 
   it("contains responsive, reduced-motion, forced-colors and shell safe-area contracts", () => {
     const css = readFileSync(resolve(process.cwd(), "src/solo/solo-mind-workspace.css"), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "src/solo/SoloMindWorkspace.tsx"), "utf8");
     expect(css).toContain("container:solo-mind / inline-size");
     expect(css).toContain("@container solo-mind (max-width:780px)");
     expect(css).toContain('@media(min-width:761px) and (max-width:1080px)');
     expect(css).toContain('[data-tenant-shell][data-paige="open"] #tenant-shell-main .mind-workspace');
+    expect(css).toContain('[data-pg="light"] .mind-workspace');
+    expect(css).toContain("--mind-texture-alpha:.58");
+    expect(css).toContain("--mind-edge:rgba(54,47,67,.48)");
+    expect(css).toContain("grid-template-columns:repeat(6,minmax(0,1fr))");
+    expect(css).toContain("@container solo-mind (max-width:900px)");
+    expect(css).toContain("overflow-x:hidden");
+    expect(source).toContain("getComputedStyle(canvas)");
+    expect(source).toContain('getPropertyValue(`--mind-${item.key}`)');
+    expect(source).toContain("context.fillText(label");
     expect(css).toContain("@media(prefers-reduced-motion:reduce)");
     expect(css).toContain("@media(forced-colors:active)");
   });
