@@ -1,7 +1,8 @@
-import { Routes, Route } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import SoloApp from "@/solo/SoloApp";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { PageSkeleton } from "@/components/ui/page";
+import { EmptyState, PageSkeleton } from "@/components/ui/page";
+import { Button } from "@/components/ui/button";
 
 /**
  * SoloEntry — the `/solo/*` dispatcher (§65 R3d-i).
@@ -22,8 +23,34 @@ import { PageSkeleton } from "@/components/ui/page";
  * the caller's real tenant.
  */
 export default function SoloEntry() {
-  const { accountContextLoading } = useTenantContext();
-  if (accountContextLoading) return <PageSkeleton />;
+  const location = useLocation();
+  const { accountContextLoading, accountContextStatus, activeTenant, refresh } = useTenantContext();
+
+  if (accountContextLoading || accountContextStatus === "resolving") return <PageSkeleton />;
+
+  if (accountContextStatus === "signed_out") {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/auth?next=${next}`} replace />;
+  }
+
+  // The URL account is an address only. SoloApp and its shell must not mount until
+  // the shared provider holds a tenant returned by the authenticated server reads.
+  if (accountContextStatus === "error" || !activeTenant) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center p-6" role="alert">
+        <EmptyState
+          title="Couldn't verify your workspace"
+          description="PAIGE couldn't confirm the active account just now. Try again before opening this workspace."
+          action={
+            <Button variant="gold" onClick={() => void refresh()}>
+              Try again
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path=":account/*" element={<SoloApp />} />

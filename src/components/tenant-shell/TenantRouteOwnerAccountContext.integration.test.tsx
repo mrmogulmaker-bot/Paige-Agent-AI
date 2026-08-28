@@ -253,7 +253,6 @@ const tenant = (input: Partial<TenantFixture> & Pick<TenantFixture, "id" | "name
   features: {},
   ...input,
 });
-
 const loadResult = (activeTenantId: string | null, tenants: TenantFixture[]): LoadResult => ({
   profile: { data: { active_tenant_id: activeTenantId, agency_login_default: null }, error: null },
   tenants: { data: tenants, error: null },
@@ -339,6 +338,49 @@ afterEach(() => {
 });
 
 describe("tenant route owners preserve the newest authenticated account context", () => {
+  it("fails closed before mounting Solo when no authenticated subject is available", async () => {
+    harness.sessionUid = null;
+    mount("/solo/424242/command-center", <Route path="/solo/*" element={<SoloEntry />} />);
+    await settle();
+
+    expect(container.querySelector("[data-tenant-shell]")).toBeNull();
+    expect(container.querySelector("[data-current-path]")?.getAttribute("data-current-path")).toBe("/auth");
+  });
+
+  it("fails closed before mounting Solo when the server cannot resolve tenant identity", async () => {
+    const recovered = tenant({
+      id: "recovered-solo",
+      name: "Recovered Solo Workspace",
+      account_type: "standalone",
+      account_number: 424242,
+    });
+    mount("/solo/424242/command-center", <Route path="/solo/*" element={<SoloEntry />} />);
+    await settle();
+    await resolveLoad(0, {
+      owner: { data: false, error: null },
+      staff: { data: false, error: null },
+      profile: {
+        data: { active_tenant_id: null, agency_login_default: null },
+        error: new Error("profile unavailable"),
+      },
+      tenants: { data: [], error: new Error("tenant resolver unavailable") },
+    });
+
+    expect(container.querySelector("[data-tenant-shell]")).toBeNull();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Couldn't verify your workspace");
+
+    await act(async () => {
+      (container.querySelector("button") as HTMLButtonElement).click();
+      await Promise.resolve();
+    });
+    expect(harness.currentLoad).toBe(1);
+    expect(container.querySelector("[data-tenant-shell]")).toBeNull();
+
+    await resolveLoad(1, loadResult(recovered.id, [recovered]));
+    expect(accountName()).toBe("Recovered Solo Workspace");
+    expect(accountTier()).toBe("Solo");
+  });
+
   it.each([
     ["Solo", "/solo/424242/calendar/agenda", "solo", "agenda"],
     ["Agency Parent", "/agency/700001/calendar/tasks", "agency", "tasks"],
