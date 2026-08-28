@@ -264,8 +264,14 @@ export function TenantCommandCenterShell({
     setPaigePopout(null);
     expandRail();
     setAnnouncement("PAIGE returned from the separate window; your workspace is preserved");
+    let focusMoved = false;
+    const noteFocusMove = () => { focusMoved = true; };
+    document.addEventListener("focusin", noteFocusMove, { capture: true, once: true });
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => popoutReturnFocusRef.current?.focus({ preventScroll: true }));
+      window.requestAnimationFrame(() => {
+        document.removeEventListener("focusin", noteFocusMove, true);
+        if (!focusMoved) popoutReturnFocusRef.current?.focus({ preventScroll: true });
+      });
     });
   }, [expandRail, paigePortalHost]);
 
@@ -293,7 +299,9 @@ export function TenantCommandCenterShell({
         child.document.body.style.margin = "0";
         child.document.body.style.height = "100vh";
         child.document.body.style.overflow = "hidden";
-        child.addEventListener("beforeunload", () => restorePopoutToWorkspace(child), { once: true });
+        const restoreBeforePopupDiscard = () => restorePopoutToWorkspace(child);
+        child.addEventListener("beforeunload", restoreBeforePopupDiscard, { once: true });
+        child.addEventListener("pagehide", restoreBeforePopupDiscard, { once: true });
         paigePopoutRef.current = child;
       } catch {
         if (paigePopoutRef.current === child) paigePopoutRef.current = null;

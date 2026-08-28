@@ -6,6 +6,7 @@ import { Settings } from "lucide-react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TenantCommandCenterShell, TenantPaigeCommandField } from "./TenantCommandCenterShell";
+import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/components/admin/AdminBridgeBell", () => ({ AdminBridgeBell: () => null }));
@@ -24,9 +25,43 @@ vi.mock("@/components/ui/paige", () => ({
 vi.mock("@/hooks/usePendingApprovals", () => ({ usePendingApprovals: () => ({ items: [] }) }));
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({
+    activeTenantId: "tenant-42",
     activeTenant: { account_number: "42", name: "Supplied Solo account", account_type: "standalone", parent_tenant_id: null },
   }),
 }));
+vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: null }) }));
+vi.mock("@/hooks/useScopedUserId", () => ({ useScopedUserId: () => "owner-1" }));
+vi.mock("@/lib/playbook", () => ({ usePlaybook: () => ({ persona: { name: "PAIGE" } }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/components/voice/DictationMicButton", () => ({
+  DictationMicButton: () => <button type="button" aria-label="Hold to dictate">Mock dictate</button>,
+}));
+vi.mock("@/hooks/useChatDocumentUpload", () => ({
+  useChatDocumentUpload: () => {
+    const [attachedDoc, setAttachedDoc] = useState<{ name: string; kind: "pdf"; size: number } | null>({ name: "local-proof.pdf", kind: "pdf", size: 128 });
+    return {
+      attachedDoc,
+      isDragOver: false,
+      fileInputRef: { current: null },
+      acceptString: ".pdf",
+      handleFileSelect: vi.fn(),
+      handleDragOver: vi.fn(),
+      handleDragLeave: vi.fn(),
+      handleDrop: vi.fn(),
+      removeAttachment: () => setAttachedDoc(null),
+      openFilePicker: vi.fn(),
+      setAttachedDoc,
+    };
+  },
+}));
+vi.mock("@/hooks/usePaigeThreads", () => ({
+  usePaigeThreads: () => ({
+    threads: [], isLoading: false, isFetched: true,
+    loadTurns: vi.fn(async () => []), ensureThread: vi.fn(), onTurnPersisted: vi.fn(),
+    renameThread: vi.fn(), archiveThread: vi.fn(), deleteThread: vi.fn(),
+  }),
+}));
+vi.mock("@/components/dashboard/paige/ThreadRail", () => ({ ThreadRail: () => null }));
 vi.mock("@/lib/voice/VoiceDeviceProvider", () => ({ VoiceDeviceProvider: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("@/components/admin/voice/DialPadSurface", () => ({ DialPadSurface: () => null }));
 vi.mock("@/components/admin/voice/IncomingCallOverlay", () => ({ IncomingCallOverlay: () => null }));
@@ -705,6 +740,97 @@ describe("tenant PAIGE command field", () => {
     host.remove();
     styles.remove();
     open.mockRestore();
+  });
+
+  it("returns the real Solo composer before popup cleanup discards its document", async () => {
+    const styles = document.createElement("style");
+    styles.textContent = source("src/components/tenant-shell/tenant-command-center-shell.css");
+    document.head.appendChild(styles);
+    const popupDocument = document.implementation.createHTMLDocument("PAIGE cleanup popup");
+    let beforeUnload: EventListener | null = null;
+    let pageHide: EventListener | null = null;
+    let returnedBeforeDiscard = false;
+    const popupRecord = {
+      document: popupDocument,
+      closed: false,
+      focus: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: EventListener) => {
+        if (type === "beforeunload") beforeUnload = listener;
+        if (type === "pagehide") pageHide = listener;
+      }),
+      close: vi.fn(() => {
+        beforeUnload?.(new Event("beforeunload"));
+        popupRecord.closed = true;
+      }),
+      cleanup: () => {
+        pageHide?.(new Event("pagehide"));
+        returnedBeforeDiscard = document.body.querySelector("#tenant-paige-workspace") !== null;
+        popupDocument.body.replaceChildren();
+        popupRecord.closed = true;
+      },
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(popupRecord as unknown as Window);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/42/command-center"]}>
+          <TenantCommandCenterShell
+            accountName="Solo account"
+            accountType="standalone"
+            userRole="admin"
+            onSignOut={vi.fn()}
+            soloPaigeWorkspace={<PaigeAIChat hideHeader fill enableHistory soloTenantSafety />}
+          >
+            <p>Main CRM remains usable</p>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]")?.click());
+    const workspace = host.querySelector("#tenant-paige-workspace");
+    const composer = host.querySelector<HTMLTextAreaElement>('textarea[placeholder="Talk while she works…"]')!;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      valueSetter.call(composer, "Local recovery draft");
+      composer.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(host.textContent).toContain("local-proof.pdf");
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="Open PAIGE in a new window"]')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(popupDocument.body.querySelector("#tenant-paige-workspace")).toBe(workspace);
+
+    await act(async () => {
+      popupRecord.cleanup();
+      if (!returnedBeforeDiscard) beforeUnload?.(new Event("beforeunload"));
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#tenant-paige-workspace")).toBe(workspace);
+    expect(host.querySelectorAll("#tenant-paige-workspace")).toHaveLength(1);
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="Clear unsent message"]')?.click();
+      await settlePaigeFocus();
+    });
+    expect(composer.value).toBe("");
+    expect(host.textContent).not.toContain("local-proof.pdf");
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+    expect(document.activeElement).toBe(composer);
+
+    await act(async () => root.unmount());
+    host.remove();
+    styles.remove();
+    open.mockRestore();
+    expect(returnedBeforeDiscard).toBe(true);
   });
 
   it("opens the surviving workspace through one restrained command control", () => {
