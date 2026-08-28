@@ -101,6 +101,7 @@
 .solo-context-collapse svg { width: 14px; height: 14px; }
 .solo-context-collapse:focus-visible,
 .solo-conversation-operating-bar button:focus-visible,
+.solo-paige-coordination summary:focus-visible,
 .solo-channel-chip summary:focus-visible,
 .solo-channel-setup:focus-visible,
 .solo-client-context-pane a:focus-visible {
@@ -221,9 +222,49 @@
   color: hsl(var(--muted-foreground));
   font-size: 10px;
 }
-.solo-handling-authority > svg { width: 13px; height: 13px; color: hsl(var(--success)); }
-.solo-handling-authority > span { min-width: 0; flex: 1; }
+.solo-handling-authority-copy { display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; }
+.solo-handling-authority-copy > svg { width: 13px; height: 13px; flex: none; color: hsl(var(--success)); }
+.solo-handling-authority-copy > span { min-width: 0; flex: 1; }
 .solo-handling-authority button { height: 24px; font-size: 10px; }
+
+.solo-paige-coordination { position: relative; flex: none; }
+.solo-paige-coordination summary {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--card));
+  cursor: pointer;
+  list-style: none;
+}
+.solo-paige-coordination summary::-webkit-details-marker { display: none; }
+.solo-paige-coordination summary svg { width: 12px; height: 12px; color: var(--pg-gold-deep, hsl(var(--primary))); }
+.solo-paige-coordination summary small { color: hsl(var(--success)); font: 600 8px/1 var(--pg-font-data, inherit); letter-spacing: .06em; }
+.solo-paige-coordination[open] { z-index: 5; }
+.solo-paige-coordination-truth {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(270px, calc(100vw - 32px));
+  padding: 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--popover));
+  box-shadow: var(--shadow-elevated);
+}
+.solo-paige-coordination-truth header { display: grid; gap: 2px; margin-bottom: 7px; }
+.solo-paige-coordination-truth header strong { font-size: 11px; }
+.solo-paige-coordination-truth header span,
+.solo-paige-coordination-truth p { color: hsl(var(--muted-foreground)); font-size: 9px; line-height: 1.4; }
+.solo-paige-coordination-truth dl { margin: 0; }
+.solo-paige-coordination-truth dl div { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px solid hsl(var(--border) / .55); font-size: 9px; }
+.solo-paige-coordination-truth dd { margin: 0; font: 600 8px/1 var(--pg-font-data, inherit); letter-spacing: .05em; }
+.solo-paige-coordination-truth p { margin: 7px 0; }
 
 .solo-client-context-pane { min-width: 0; }
 .solo-client-context-identity {

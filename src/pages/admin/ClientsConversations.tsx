@@ -10,7 +10,7 @@
 //
 // §11/§25 premium on @/components/ui/page + @/components/ui/select (NO native select);
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocation, useSearchParams, Link } from "react-router-dom";
 import {
@@ -61,6 +61,7 @@ import type {
   ConversationsContactPanelModel, ShellThread, DraftTone,
 } from "./conversations/shell/conversationsAdapter";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useAgentPresence } from "@/components/ui/paige";
 import {
   SoloClientContextPane,
   SoloConversationOperatingBar,
@@ -251,6 +252,13 @@ function MessageBubble({
       }
     />
   );
+}
+
+function SoloConversationOperatingBarWithPaige(
+  props: Omit<ComponentProps<typeof SoloConversationOperatingBar>, "onOpenPaige">,
+) {
+  const { expandRail } = useAgentPresence();
+  return <SoloConversationOperatingBar {...props} onOpenPaige={expandRail} />;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════
@@ -1537,13 +1545,15 @@ export default function ClientsConversations() {
           </div>
 
           {isSolo && (
-            <SoloConversationOperatingBar
+            <SoloConversationOperatingBarWithPaige
               mode={handlingMode}
               onModeChange={setHandlingMode}
               channels={soloChannelTruth}
               activeChannel={composeChannel || selected.channel}
               canDraftWithPaige={composeChannel === "email" && !!selected.toAddress && sendableConnectors.some((connector) => connector.id === composeConnectorId && connector.channel_type === "email")}
               connectionsHref={connectionsHref}
+              selectedClientName={selected.name}
+              selectedThreadLabel={`${CHANNEL_LABEL[selected.channel]} · ${selected.toAddress || "recipient not reported"}`}
             />
           )}
 
