@@ -13,6 +13,17 @@ type MindRecord = {
 };
 type Pulse = { category: Category; truth: Truth; title: string; duration: number; elapsed: number; started: number; reduced: boolean };
 type ProjectedRecord = { record: MindRecord; x: number; y: number; z: number; depth: number };
+type PresentationFrame = { x: number; y: number; phase: number; last: number; resumeAt: number };
+
+function advancePresentationFrame(frame: PresentationFrame, now: number, active: boolean) {
+  const elapsed = Math.min(34, now - (frame.last || now));
+  frame.last = now;
+  if (!active) return false;
+  frame.phase += elapsed * 0.00018;
+  frame.y += elapsed * 0.000085;
+  frame.x = Math.sin(frame.phase) * 0.055;
+  return true;
+}
 
 const CATEGORIES: Array<{ key: Category; label: string; color: string; truth: Truth }> = [
   { key: "recall", label: "Recall", color: "#D4AD62", truth: "PARTIAL" },
@@ -69,12 +80,15 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
   const [pulse, setPulse] = useState<Pulse | null>(null);
   const [motionPhase, setMotionPhase] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [announcement, setAnnouncement] = useState("Mind is still.");
+  const [presentationOrbit, setPresentationOrbit] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  const [announcement, setAnnouncement] = useState("Mind presentation orbit is visual only. Tenant activity is unchanged.");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const launcherRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; rx: number; ry: number; moved: boolean } | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
   const projectedRef = useRef<ProjectedRecord[]>([]);
+  const presentationRef = useRef<PresentationFrame>({ x: 0, y: 0, phase: 0, last: 0, resumeAt: 0 });
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
 
@@ -92,6 +106,14 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
   const visible = useMemo(() => category === "all" ? records : records.filter((record) => record.category === category), [category, records]);
   const loading = knowledge.loading || systems.loading || command.loading;
   const partial = !!knowledge.error || systems.isError || command.isError;
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReducedMotion(!!query?.matches);
+    update();
+    query?.addEventListener?.("change", update);
+    return () => query?.removeEventListener?.("change", update);
+  }, []);
 
   useEffect(() => {
     const ids = new Set(records.map((record) => record.id));
@@ -160,17 +182,19 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
     const cx = width / 2; const cy = height * 0.51; const scale = Math.min(width, height) * 0.52 * rotation.zoom;
-    const cosY = Math.cos(rotation.y); const sinY = Math.sin(rotation.y);
-    const cosX = Math.cos(rotation.x); const sinX = Math.sin(rotation.x);
+    const viewX = rotation.x + presentationRef.current.x;
+    const viewY = rotation.y + presentationRef.current.y;
+    const cosY = Math.cos(viewY); const sinY = Math.sin(viewY);
+    const cosX = Math.cos(viewX); const sinX = Math.sin(viewX);
     const textureCount = records.length <= 5 ? 90 : records.length <= 30 ? 240 : 480;
     context.globalAlpha = textureAlpha;
     for (let i = 0; i < textureCount; i += 1) {
-      const angle = i * 2.399963 + rotation.y;
+      const angle = i * 2.399963 + viewY;
       const y = 1 - (i / Math.max(1, textureCount - 1)) * 2;
       const radius = Math.sqrt(Math.max(0, 1 - y * y));
       const x3 = Math.cos(angle) * radius; const z3 = Math.sin(angle) * radius;
-      const y1 = y * Math.cos(rotation.x) - z3 * Math.sin(rotation.x);
-      const z2 = y * Math.sin(rotation.x) + z3 * Math.cos(rotation.x);
+      const y1 = y * Math.cos(viewX) - z3 * Math.sin(viewX);
+      const z2 = y * Math.sin(viewX) + z3 * Math.cos(viewX);
       const depth = 1.8 / (2.45 - z2); const cat = CATEGORIES[i % CATEGORIES.length];
       context.fillStyle = categoryColor(cat.key); context.beginPath(); context.arc(cx + x3 * scale * depth, cy + y1 * scale * depth, .95 + depth * .72, 0, Math.PI * 2); context.fill();
     }
@@ -221,6 +245,22 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
   }, [draw]);
 
   useEffect(() => {
+    const presentation = presentationRef.current;
+    presentation.last = 0;
+    if (!presentationOrbit || prefersReducedMotion || pulse || selected) {
+      draw();
+      return;
+    }
+    let frame = 0;
+    const tick = (now: number) => {
+      if (advancePresentationFrame(presentation, now, !dragRef.current && now >= presentation.resumeAt)) draw();
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [draw, prefersReducedMotion, presentationOrbit, pulse, selected]);
+
+  useEffect(() => {
     const themeRoot = canvasRef.current?.closest("[data-pg]");
     if (!themeRoot || typeof MutationObserver === "undefined") return;
     const observer = new MutationObserver(draw);
@@ -266,9 +306,15 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
   };
   const selectFront = () => { const record = projectedRef.current.at(-1)?.record; if (record) chooseRecord(record, canvasRef.current); };
   const selectAt = (x: number, y: number) => { const nearest = projectedRef.current.reduce<{ item: ProjectedRecord | null; distance: number }>((best,item) => { const distance = Math.hypot(item.x-x,item.y-y); return distance < best.distance ? { item, distance } : best; }, { item:null,distance:18 }); if(nearest.item) chooseRecord(nearest.item.record,canvasRef.current); };
+  const interruptPresentation = () => {
+    presentationRef.current.resumeAt = performance.now() + 1400;
+    presentationRef.current.last = 0;
+  };
 
   const canvasKey = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
     const step = 0.12;
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "Enter"].includes(event.key)) return;
+    interruptPresentation();
     if (event.key === "ArrowLeft") setRotation((v) => ({ ...v, y: v.y - step }));
     else if (event.key === "ArrowRight") setRotation((v) => ({ ...v, y: v.y + step }));
     else if (event.key === "ArrowUp") setRotation((v) => ({ ...v, x: v.x - step }));
@@ -276,7 +322,6 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     else if (event.key === "+" || event.key === "=") setRotation((v) => ({ ...v, zoom: Math.min(1.55, v.zoom + .1) }));
     else if (event.key === "-") setRotation((v) => ({ ...v, zoom: Math.max(.7, v.zoom - .1) }));
     else if (event.key === "Enter") selectFront();
-    else return;
     event.preventDefault();
     if (event.key !== "Enter") setAnnouncement(`Topology view adjusted. Zoom ${Math.round(rotation.zoom * 100)} percent. Direct manipulation is not tenant activity.`);
   };
@@ -294,17 +339,19 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
             {partial && <div className="mind-source-warning" role="status"><strong>Mind has partial coverage</strong><span>No missing source is treated as empty. Retry refreshes read-only records.</span></div>}
             {!partial && records.length === 0 ? <div className="mind-state"><BrainCircuit aria-hidden="true" /><h2>Nothing durable is indexed here yet</h2><p>No sample records or invented relationships are substituted.</p><button type="button" className="mind-button" onClick={refresh}>Retry current sources</button></div> : (
               <section className="mind-panel" aria-labelledby="mind-brain-title">
-                <div className="mind-panel-head"><div><h2 id="mind-brain-title">PAIGE data brain</h2><p>Density grows with grounded records. The topology is still unless a real source change is observed.</p></div><span className="mind-truth mind-truth--proposed">INTERACTIVE 3D · PRESENTATION</span></div>
+                <div className="mind-panel-head"><div><h2 id="mind-brain-title">PAIGE data brain</h2><p>A slow presentation orbit shows 3D depth; activity particles remain source-gated.</p></div><span className="mind-truth mind-truth--proposed">INTERACTIVE 3D · PRESENTATION</span></div>
                 <div className="mind-stage">
-                  <canvas ref={canvasRef} className="mind-canvas" tabIndex={0} role="group" aria-roledescription="interactive 3D topology viewer" aria-label="Interactive three-dimensional Mind topology. Drag to rotate, use the mouse wheel to zoom, arrow keys to rotate, plus and minus to zoom, and Enter to inspect the front grounded record."
+                  <canvas ref={canvasRef} className="mind-canvas" tabIndex={0} role="group" aria-roledescription="interactive 3D topology viewer" aria-label="Interactive three-dimensional Mind topology. A slow presentation orbit shows depth but does not represent tenant activity. Drag to rotate, use the mouse wheel to zoom, arrow keys to rotate, plus and minus to zoom, and Enter to inspect the front grounded record."
                     onKeyDown={canvasKey}
-                    onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, rx: rotation.x, ry: rotation.y, moved:false }; event.currentTarget.setPointerCapture?.(event.pointerId); }}
+                    onPointerDown={(event) => { interruptPresentation(); dragRef.current = { x: event.clientX, y: event.clientY, rx: rotation.x, ry: rotation.y, moved:false }; event.currentTarget.setPointerCapture?.(event.pointerId); }}
                     onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; if(Math.hypot(event.clientX-drag.x,event.clientY-drag.y)>4)drag.moved=true; setRotation((v) => ({ ...v, x: drag.rx + (event.clientY - drag.y) * .008, y: drag.ry + (event.clientX - drag.x) * .008 })); }}
-                    onPointerUp={(event) => { const drag=dragRef.current; dragRef.current=null; if(drag&&!drag.moved){const rect=event.currentTarget.getBoundingClientRect();selectAt(event.clientX-rect.left,event.clientY-rect.top);} }}
-                    onWheel={(event) => { event.preventDefault(); setRotation((v) => ({ ...v, zoom: Math.max(.7, Math.min(1.55, v.zoom - event.deltaY * .001)) })); }} />
+                    onPointerUp={(event) => { const drag=dragRef.current; dragRef.current=null; interruptPresentation(); if(drag&&!drag.moved){const rect=event.currentTarget.getBoundingClientRect();selectAt(event.clientX-rect.left,event.clientY-rect.top);} }}
+                    onPointerCancel={() => { dragRef.current = null; interruptPresentation(); }}
+                    onLostPointerCapture={() => { if (dragRef.current) { dragRef.current = null; interruptPresentation(); } }}
+                    onWheel={(event) => { event.preventDefault(); interruptPresentation(); setRotation((v) => ({ ...v, zoom: Math.max(.7, Math.min(1.55, v.zoom - event.deltaY * .001)) })); }} />
                   <div className="mind-canvas-help" aria-hidden="true"><strong>VIRTUAL DATA BRAIN</strong><span><Rotate3D size={12} /> Drag · wheel · keyboard</span></div>
-                  <div className="mind-motion"><span className={`mind-truth ${pulse?.truth === "LIVE SOURCE" ? "mind-truth--live" : pulse ? "mind-truth--partial" : "mind-truth--proposed"}`}>{pulse ? `${paused ? "PAUSED" : pulse.truth} · ${pulse.category.toUpperCase()}` : "MOTION IDLE"}</span>{pulse && <button type="button" onClick={() => { if(paused){setPulse((value)=>value?{...value,started:performance.now()}:value);setPaused(false);}else{setPulse((value)=>value?{...value,elapsed:value.elapsed+(performance.now()-value.started)}:value);setPaused(true);} }}>{paused ? <Play size={13} /> : <Pause size={13} />}{paused ? "Resume" : "Pause"}</button>}</div>
-                  <p className="mind-stage-caption">Presentation density: {records.length <= 5 ? 90 : records.length <= 30 ? 240 : 480} non-record texture points. Selectable anchors and counts remain grounded. Direct manipulation is not tenant activity.</p>
+                  <div className="mind-motion"><span className={`mind-truth ${pulse?.truth === "LIVE SOURCE" ? "mind-truth--live" : pulse ? "mind-truth--partial" : "mind-truth--proposed"}`}>{pulse ? `${paused ? "PAUSED" : pulse.truth} · ${pulse.category.toUpperCase()}` : prefersReducedMotion ? "REDUCED MOTION · STATIC" : selected ? "FOCUS LOCK · STATIC" : presentationOrbit ? "PRESENTATION ORBIT · NOT ACTIVITY" : "PRESENTATION ORBIT PAUSED"}</span>{pulse ? <button type="button" onClick={() => { if(paused){setPulse((value)=>value?{...value,started:performance.now()}:value);setPaused(false);}else{setPulse((value)=>value?{...value,elapsed:value.elapsed+(performance.now()-value.started)}:value);setPaused(true);} }}>{paused ? <Play size={13} /> : <Pause size={13} />}{paused ? "Resume" : "Pause"}</button> : <button type="button" disabled={prefersReducedMotion || !!selected} onClick={() => { setPresentationOrbit((value) => !value); setAnnouncement(presentationOrbit ? "Presentation orbit paused. Tenant activity is unchanged." : "Presentation orbit resumed. It does not represent tenant activity."); }}>{presentationOrbit ? <Pause size={13} /> : <Play size={13} />}{prefersReducedMotion ? "Reduced motion · static" : selected ? "Orbit paused for focus" : presentationOrbit ? "Pause orbit" : "Resume orbit"}</button>}</div>
+                  <p className="mind-stage-caption">Presentation density: {records.length <= 5 ? 90 : records.length <= 30 ? 240 : 480} non-record texture points. The slow orbit shows form only; activity appears only for a grounded source change.</p>
                 </div>
                 <div className="mind-categories" role="group" aria-label="Filter Mind records by category">
                   <button type="button" aria-pressed={category === "all"} onClick={() => selectCategory("all")}><span>All records</span><small>{records.length} GROUNDED</small></button>

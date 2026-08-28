@@ -86,6 +86,8 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function render() {
@@ -115,14 +117,98 @@ describe("Solo Mind workspace", () => {
     expect(host.textContent).not.toContain("chain-of-thought");
   });
 
-  it("keeps the topology still and offers equivalent native record controls", () => {
+  it("renders a truthful presentation orbit with equivalent native record controls", () => {
     render();
     const canvas = host.querySelector("canvas");
     expect(canvas?.getAttribute("aria-roledescription")).toBe("interactive 3D topology viewer");
     expect(canvas?.getAttribute("tabindex")).toBe("0");
+    expect(canvas?.getAttribute("aria-label")).toContain("presentation orbit shows depth but does not represent tenant activity");
     expect(host.querySelectorAll("[data-mind-record]")).toHaveLength(4);
-    expect(host.textContent).toContain("still unless a real source change is observed");
+    expect(host.textContent).toContain("A slow presentation orbit shows 3D depth; activity particles remain source-gated");
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    expect(button("Pause orbit")).toBeTruthy();
     expect(host.textContent).not.toContain("Replay event");
+  });
+
+  it("pauses and resumes the presentation orbit without claiming tenant activity", () => {
+    render();
+    act(() => button("Pause orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
+    expect(button("Resume orbit")).toBeTruthy();
+    act(() => button("Resume orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+  });
+
+  it("locks the presentation orbit while record evidence has focus", () => {
+    render();
+    act(() => button("Reseller agreement")?.click());
+    expect(host.textContent).toContain("FOCUS LOCK · STATIC");
+    expect(button("Orbit paused for focus")?.disabled).toBe(true);
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Close Mind record details"]')?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+  });
+
+  it("keeps automatic rotation static when reduced motion is requested", () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    render();
+    expect(host.textContent).toContain("REDUCED MOTION · STATIC");
+    expect(button("Reduced motion · static")?.disabled).toBe(true);
+    expect(requestFrame).not.toHaveBeenCalled();
+    requestFrame.mockRestore();
+  });
+
+  it("preserves orbit pose through a long gesture and resumes after the post-gesture hold", () => {
+    const context = {
+      setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 24 })), globalAlpha: 1, fillStyle: "", strokeStyle: "",
+      lineWidth: 1, font: "", textBaseline: "middle",
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const addMotionListener = vi.fn();
+    const removeMotionListener = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: addMotionListener, removeEventListener: removeMotionListener })));
+
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const runFrame = (time: number) => {
+      const queued = frames.entries().next().value as [number, FrameRequestCallback] | undefined;
+      expect(queued).toBeTruthy();
+      frames.delete(queued![0]);
+      act(() => queued![1](time));
+    };
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+
+    render();
+    const canvas = host.querySelector("canvas")!;
+    runFrame(1000);
+    runFrame(1034);
+    const movingDraws = context.clearRect.mock.calls.length;
+
+    canvas.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 20, clientY: 20 }));
+    runFrame(5000);
+    expect(context.clearRect).toHaveBeenCalledTimes(movingDraws);
+
+    now = 5000;
+    canvas.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 9999, clientY: 9999 }));
+    runFrame(6399);
+    expect(context.clearRect).toHaveBeenCalledTimes(movingDraws);
+    runFrame(6400);
+    expect(context.clearRect.mock.calls.length).toBeGreaterThan(movingDraws);
+
+    act(() => root.unmount());
+    expect(cancelFrame).toHaveBeenCalled();
+    expect(removeMotionListener).toHaveBeenCalledWith("change", expect.any(Function));
+    expect(requestFrame).toHaveBeenCalled();
+    root = createRoot(host);
   });
 
   it("treats initial hydration as a baseline and animates only a later grounded addition", () => {
@@ -133,7 +219,7 @@ describe("Solo Mind workspace", () => {
     root = createRoot(host);
     harness.knowledge.mockReturnValue(knowledge);
     act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
-    expect(host.textContent).toContain("MOTION IDLE");
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
 
     const added = { ...knowledge, docs: [...knowledge.docs, { ...knowledge.docs[0], id: "doc-3", title: "New grounded note" }] };
     harness.knowledge.mockReturnValue(added);
@@ -205,7 +291,7 @@ describe("Solo Mind workspace", () => {
     act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
     expect(host.textContent).toContain("LIVE SOURCE · KNOWLEDGE");
     act(() => button("Skills")?.click());
-    expect(host.textContent).toContain("MOTION IDLE");
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
     expect(host.textContent).toContain("Source-change motion interrupted. Skills filter selected.");
   });
 
@@ -252,6 +338,9 @@ describe("Solo Mind workspace", () => {
     expect(source).toContain("getComputedStyle(canvas)");
     expect(source).toContain('getPropertyValue(`--mind-${item.key}`)');
     expect(source).toContain("context.fillText(label");
+    expect(source).toContain("!dragRef.current && now >= presentation.resumeAt");
+    expect(source).toContain("onPointerCancel");
+    expect(source).toContain("onLostPointerCapture");
     expect(css).toContain("@media(prefers-reduced-motion:reduce)");
     expect(css).toContain("@media(forced-colors:active)");
   });
