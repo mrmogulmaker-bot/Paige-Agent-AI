@@ -6,6 +6,7 @@ const page = readFileSync(resolve("src/pages/admin/ClientsConversations.tsx"), "
 const workspace = readFileSync(resolve("src/pages/admin/conversations/solo/SoloConversationsWorkspace.tsx"), "utf8");
 const css = readFileSync(resolve("src/pages/admin/conversations/solo/solo-conversations-workspace.css"), "utf8");
 const composer = readFileSync(resolve("src/pages/admin/conversations/shell/ConversationsRichComposer.tsx"), "utf8");
+const composerAtom = readFileSync(resolve("src/pages/admin/conversations/MessageComposer.tsx"), "utf8");
 
 describe("Solo Conversations page wiring", () => {
   it("clears account-owned state and rejects late account work", () => {
@@ -33,6 +34,19 @@ describe("Solo Conversations page wiring", () => {
     expect(composer).toContain("setInsertOpen(false)");
     expect(page).toContain("showCombinedInsert: isSolo");
     expect(composer).toContain('placeholder="Insert template…"');
+  });
+
+  it("opts Solo into Enter-to-send while keeping validation, IME, and duplicate-submit guards", () => {
+    expect(page).toContain("onSend: send");
+    expect(page).toContain("sendOnEnter: isSolo");
+    expect(page).toContain("sendDisabled: isSolo");
+    expect(page).toContain("!selected.contactId");
+    expect(page).toContain("suppressions.some((suppression) => suppression.channel === composeChannel)");
+    expect(page).toContain("sendInFlightRef.current = epoch");
+    expect(composerAtom).toContain("!e.nativeEvent.isComposing");
+    expect(composerAtom).toContain("sendOnEnter && plainEnter");
+    expect(composerAtom).toContain("submitLockRef.current");
+    expect(composerAtom).toContain("sending || disabled || sendDisabled");
   });
 
   it("confines the visual redesign to the tab-bounded Solo descendant", () => {
