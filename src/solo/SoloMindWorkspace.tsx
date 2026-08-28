@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, ChevronLeft, ExternalLink, Maximize2, Minimize2, Pause, Play, RefreshCw, Rotate3D, X } from "lucide-react";
 import { useSystemsCheck, type SystemsCheckFinding } from "@/hooks/useSystemsCheck";
 import { useCommandCenter } from "./data/useCommandCenter";
@@ -82,8 +82,10 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
   const [paused, setPaused] = useState(false);
   const [presentationOrbit, setPresentationOrbit] = useState(true);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  const [reducedMotionOrbitEnabled, setReducedMotionOrbitEnabled] = useState(false);
   const [announcement, setAnnouncement] = useState("Mind presentation orbit is visual only. Tenant activity is unchanged.");
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
   const launcherRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; rx: number; ry: number; moved: boolean } | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
@@ -109,7 +111,11 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
 
   useEffect(() => {
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    const update = () => setPrefersReducedMotion(!!query?.matches);
+    const update = () => {
+      const reduced = !!query?.matches;
+      setPrefersReducedMotion(reduced);
+      if (reduced) setReducedMotionOrbitEnabled(false);
+    };
     update();
     query?.addEventListener?.("change", update);
     return () => query?.removeEventListener?.("change", update);
@@ -237,17 +243,31 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     }
     context.globalAlpha = 1;
   }, [motionPhase, pulse, records.length, rotation, selected?.id, visible]);
+  const latestDrawRef = useRef(draw);
+  const ownCanvas = useCallback((element: HTMLCanvasElement | null) => {
+    canvasRef.current = element;
+    setCanvasElement(element);
+  }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    latestDrawRef.current = draw;
     draw();
-    if (typeof ResizeObserver === "undefined" || !canvasRef.current) return;
-    const observer = new ResizeObserver(draw); observer.observe(canvasRef.current); return () => observer.disconnect();
   }, [draw]);
+
+  useLayoutEffect(() => {
+    if (!canvasElement) return;
+    latestDrawRef.current();
+    const firstPaintFrame = requestAnimationFrame(() => latestDrawRef.current());
+    if (typeof ResizeObserver === "undefined") return () => cancelAnimationFrame(firstPaintFrame);
+    const observer = new ResizeObserver(() => latestDrawRef.current());
+    observer.observe(canvasElement);
+    return () => { cancelAnimationFrame(firstPaintFrame); observer.disconnect(); };
+  }, [canvasElement]);
 
   useEffect(() => {
     const presentation = presentationRef.current;
     presentation.last = 0;
-    if (!presentationOrbit || prefersReducedMotion || pulse || selected) {
+    if (!presentationOrbit || (prefersReducedMotion && !reducedMotionOrbitEnabled) || pulse || selected) {
       draw();
       return;
     }
@@ -258,7 +278,7 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [draw, prefersReducedMotion, presentationOrbit, pulse, selected]);
+  }, [draw, prefersReducedMotion, presentationOrbit, pulse, reducedMotionOrbitEnabled, selected]);
 
   useEffect(() => {
     const themeRoot = canvasRef.current?.closest("[data-pg]");
@@ -326,6 +346,48 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
     if (event.key !== "Enter") setAnnouncement(`Topology view adjusted. Zoom ${Math.round(rotation.zoom * 100)} percent. Direct manipulation is not tenant activity.`);
   };
 
+  const reducedMotionStatic = prefersReducedMotion && !reducedMotionOrbitEnabled;
+  const presentationStatus = selected
+    ? "FOCUS LOCK · STATIC"
+    : reducedMotionStatic
+      ? "REDUCED MOTION · STATIC"
+      : presentationOrbit
+        ? prefersReducedMotion
+          ? "PRESENTATION ORBIT · USER STARTED · NOT ACTIVITY"
+          : "PRESENTATION ORBIT · NOT ACTIVITY"
+        : "PRESENTATION ORBIT PAUSED";
+  const presentationButtonLabel = selected
+    ? "Orbit paused for focus"
+    : reducedMotionStatic
+      ? "Start orbit"
+      : presentationOrbit
+        ? "Pause orbit"
+        : "Resume orbit";
+  const canvasMotionDescription = pulse
+    ? paused
+      ? `Grounded source-change motion is paused for ${pulse.title}. The presentation orbit is suspended.`
+      : `Grounded source-change motion is active for ${pulse.title}. The presentation orbit is suspended.`
+    : selected
+    ? "The topology is static while record detail has focus."
+    : reducedMotionStatic
+      ? "The topology is visible and static for reduced motion. Choose Start orbit to play the presentation motion."
+      : presentationOrbit
+        ? prefersReducedMotion
+          ? "A user-started presentation orbit shows depth."
+          : "A slow presentation orbit shows depth."
+        : "The presentation orbit is paused.";
+  const canvasLabel = `Interactive three-dimensional Mind topology. ${canvasMotionDescription} Presentation motion does not represent tenant activity. Drag to rotate, use the mouse wheel to zoom, arrow keys to rotate, plus and minus to zoom, and Enter to inspect the front grounded record.`;
+  const togglePresentationOrbit = () => {
+    if (reducedMotionStatic) {
+      setReducedMotionOrbitEnabled(true);
+      setPresentationOrbit(true);
+      setAnnouncement("Presentation orbit started by request. It does not represent tenant activity.");
+      return;
+    }
+    setPresentationOrbit((value) => !value);
+    setAnnouncement(presentationOrbit ? "Presentation orbit paused. Tenant activity is unchanged." : "Presentation orbit resumed. It does not represent tenant activity.");
+  };
+
   return (
     <section className="mind-workspace" aria-labelledby="mind-title">
       <div className="mind-scroll-owner" {...(expanded ? { inert: "" } : {})} aria-hidden={expanded ? true : undefined}>
@@ -339,9 +401,9 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
             {partial && <div className="mind-source-warning" role="status"><strong>Mind has partial coverage</strong><span>No missing source is treated as empty. Retry refreshes read-only records.</span></div>}
             {!partial && records.length === 0 ? <div className="mind-state"><BrainCircuit aria-hidden="true" /><h2>Nothing durable is indexed here yet</h2><p>No sample records or invented relationships are substituted.</p><button type="button" className="mind-button" onClick={refresh}>Retry current sources</button></div> : (
               <section className="mind-panel" aria-labelledby="mind-brain-title">
-                <div className="mind-panel-head"><div><h2 id="mind-brain-title">PAIGE data brain</h2><p>A slow presentation orbit shows 3D depth; activity particles remain source-gated.</p></div><span className="mind-truth mind-truth--proposed">INTERACTIVE 3D · PRESENTATION</span></div>
+                <div className="mind-panel-head"><div><h2 id="mind-brain-title">PAIGE data brain</h2><p>An optional presentation orbit can show 3D depth; activity particles remain source-gated.</p></div><span className="mind-truth mind-truth--proposed">INTERACTIVE 3D · PRESENTATION</span></div>
                 <div className="mind-stage">
-                  <canvas ref={canvasRef} className="mind-canvas" tabIndex={0} role="group" aria-roledescription="interactive 3D topology viewer" aria-label="Interactive three-dimensional Mind topology. A slow presentation orbit shows depth but does not represent tenant activity. Drag to rotate, use the mouse wheel to zoom, arrow keys to rotate, plus and minus to zoom, and Enter to inspect the front grounded record."
+                  <canvas ref={ownCanvas} className="mind-canvas" tabIndex={0} role="group" aria-roledescription="interactive 3D topology viewer" aria-label={canvasLabel}
                     onKeyDown={canvasKey}
                     onPointerDown={(event) => { interruptPresentation(); dragRef.current = { x: event.clientX, y: event.clientY, rx: rotation.x, ry: rotation.y, moved:false }; event.currentTarget.setPointerCapture?.(event.pointerId); }}
                     onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; if(Math.hypot(event.clientX-drag.x,event.clientY-drag.y)>4)drag.moved=true; setRotation((v) => ({ ...v, x: drag.rx + (event.clientY - drag.y) * .008, y: drag.ry + (event.clientX - drag.x) * .008 })); }}
@@ -350,7 +412,7 @@ export function SoloMindWorkspace({ accountContext, openPaige }: Props) {
                     onLostPointerCapture={() => { if (dragRef.current) { dragRef.current = null; interruptPresentation(); } }}
                     onWheel={(event) => { event.preventDefault(); interruptPresentation(); setRotation((v) => ({ ...v, zoom: Math.max(.7, Math.min(1.55, v.zoom - event.deltaY * .001)) })); }} />
                   <div className="mind-canvas-help" aria-hidden="true"><strong>VIRTUAL DATA BRAIN</strong><span><Rotate3D size={12} /> Drag · wheel · keyboard</span></div>
-                  <div className="mind-motion"><span className={`mind-truth ${pulse?.truth === "LIVE SOURCE" ? "mind-truth--live" : pulse ? "mind-truth--partial" : "mind-truth--proposed"}`}>{pulse ? `${paused ? "PAUSED" : pulse.truth} · ${pulse.category.toUpperCase()}` : prefersReducedMotion ? "REDUCED MOTION · STATIC" : selected ? "FOCUS LOCK · STATIC" : presentationOrbit ? "PRESENTATION ORBIT · NOT ACTIVITY" : "PRESENTATION ORBIT PAUSED"}</span>{pulse ? <button type="button" onClick={() => { if(paused){setPulse((value)=>value?{...value,started:performance.now()}:value);setPaused(false);}else{setPulse((value)=>value?{...value,elapsed:value.elapsed+(performance.now()-value.started)}:value);setPaused(true);} }}>{paused ? <Play size={13} /> : <Pause size={13} />}{paused ? "Resume" : "Pause"}</button> : <button type="button" disabled={prefersReducedMotion || !!selected} onClick={() => { setPresentationOrbit((value) => !value); setAnnouncement(presentationOrbit ? "Presentation orbit paused. Tenant activity is unchanged." : "Presentation orbit resumed. It does not represent tenant activity."); }}>{presentationOrbit ? <Pause size={13} /> : <Play size={13} />}{prefersReducedMotion ? "Reduced motion · static" : selected ? "Orbit paused for focus" : presentationOrbit ? "Pause orbit" : "Resume orbit"}</button>}</div>
+                  <div className="mind-motion"><span className={`mind-truth ${pulse?.truth === "LIVE SOURCE" ? "mind-truth--live" : pulse ? "mind-truth--partial" : "mind-truth--proposed"}`}>{pulse ? `${paused ? "PAUSED" : pulse.truth} · ${pulse.category.toUpperCase()}` : presentationStatus}</span>{pulse ? <button type="button" onClick={() => { if(paused){setPulse((value)=>value?{...value,started:performance.now()}:value);setPaused(false);}else{setPulse((value)=>value?{...value,elapsed:value.elapsed+(performance.now()-value.started)}:value);setPaused(true);} }}>{paused ? <Play size={13} /> : <Pause size={13} />}{paused ? "Resume" : "Pause"}</button> : <button type="button" disabled={!!selected} onClick={togglePresentationOrbit}>{reducedMotionStatic || !presentationOrbit ? <Play size={13} /> : <Pause size={13} />}{presentationButtonLabel}</button>}</div>
                   <p className="mind-stage-caption">Presentation density: {records.length <= 5 ? 90 : records.length <= 30 ? 240 : 480} non-record texture points. The slow orbit shows form only; activity appears only for a grounded source change.</p>
                 </div>
                 <div className="mind-categories" role="group" aria-label="Filter Mind records by category">
