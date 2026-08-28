@@ -12,6 +12,7 @@ import {
   KeyRound,
   Mail,
   RefreshCw,
+  Search,
   ShieldCheck,
   Smartphone,
   TriangleAlert,
@@ -149,6 +150,7 @@ function ConnectionsView() {
   return <>
     <div className="ss-segment" role="tablist" aria-label="Connection organization">{(["connected","health","available"] as const).map(key=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{key[0].toUpperCase()+key.slice(1)}</button>)}</div>
     {view === "connected" && <div className="ss-grid">
+      <PhoneSetupPanel/>
       <Card title="PAIGE-managed sending identity" icon={Mail} truth={identityPresentation.capability} capabilityTruth actions={<Status tone={identityPresentation.tone}>{identityPresentation.accountLabel}</Status>}>
         <OrthogonalConnectionState {...identityPresentation}/>
         <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Persisted status" value={identityStatus}/></div> : <p>No managed sending identity is configured for this account.</p>}</ReadState>
@@ -173,6 +175,29 @@ function ConnectionsView() {
   </>;
 }
 
+function PhoneSetupPanel() {
+  const [searchAttempted, setSearchAttempted] = useState(false);
+  return <section className="ss-card ss-phone-setup" aria-labelledby="ss-phone-title">
+    <header>
+      <span className="ss-card-icon"><Search aria-hidden/></span>
+      <div className="ss-phone-heading">
+        <h2 id="ss-phone-title" className="ss-phone-title">Business phone</h2>
+        <p>Search available phone numbers</p>
+      </div>
+      <Truth value="PROPOSED"/>
+    </header>
+    <div className="ss-card-body">
+      <p className="ss-phone-contract">Choose a locality and the capabilities you need. Live availability, pricing, purchase, assignment, and messaging registration are not connected in this Settings contract.</p>
+      <form className="ss-phone-search" onSubmit={(event) => { event.preventDefault(); setSearchAttempted(true); }}>
+        <label><span>Area code or locality</span><input type="search" name="phone-locality" placeholder="Atlanta or 404" autoComplete="off"/></label>
+        <label><span>Required capabilities</span><select name="phone-capabilities" defaultValue="sms-voice"><option value="sms-voice">SMS + voice</option><option value="sms">SMS</option><option value="voice">Voice</option></select></label>
+        <button type="submit"><Search aria-hidden/>Search numbers</button>
+      </form>
+      {searchAttempted && <div className="ss-phone-unavailable" role="status"><TriangleAlert aria-hidden/><span><strong>Number search is not connected yet.</strong> No provider search ran, and no number, charge, or account data changed.</span></div>}
+    </div>
+  </section>;
+}
+
 function NotificationsView() { return <div className="ss-grid"><Card title="Customer notifications" icon={Bell} truth="PARTIAL"><p>Customer-facing preference seams exist in legacy surfaces, but a unified Solo Settings read and mutation contract is not proven. No fabricated toggles are enabled.</p></Card><Card title="Delivery failures" icon={TriangleAlert} truth="UNAVAILABLE"><p>Bounce, webhook, and provider-delivery alert preferences are unavailable until a supported runtime contract is owned here.</p></Card></div>; }
 
 function SecurityView() { return <div className="ss-grid"><Card title="Account security" icon={ShieldCheck} truth="PARTIAL"><p>Authentication and workspace access remain protected by existing account security controls.</p></Card><Card title="Privacy & data" icon={FileLock2} truth="PARTIAL"><p>Data controls must follow Trust Compass authority and proven retention/export contracts. Unsupported controls remain unavailable.</p></Card><Card title="Credential storage" icon={KeyRound} truth="UNAVAILABLE"><p>Vault is not a password manager. Raw passwords and secrets must not enter Vault records, PAIGE memory, or conversation content. Use proven OAuth/provider flows or an external password manager.</p></Card></div>; }
@@ -191,9 +216,15 @@ export function SoloSettings() {
   const params = useParams();
   const account = params.account ?? "";
   const entry = useMemo(() => resolveSoloSettingsEntry(location.search, account), [location.search, account]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const scrollOwner = rootRef.current?.closest<HTMLElement>("#tenant-shell-main");
+    scrollOwner?.classList.add("tcs-main--settings-scrollbar-hidden");
+    return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
+  }, []);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
-  return <div className="solo-settings">
+  return <div ref={rootRef} className="solo-settings">
     <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Provider, identity, and readiness truth in one owned home." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>
