@@ -544,11 +544,11 @@ export function TenantCommandCenterShell({
             type="button"
             className="tcs-nav-action"
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            aria-label={isDark ? "Use light theme" : "Use dark theme"}
-            title={!navExpanded ? (isDark ? "Light theme" : "Dark theme") : undefined}
+            aria-label={isDark ? "Use Mineral theme" : "Use Obsidian theme"}
+            title={!navExpanded ? (isDark ? "Mineral theme" : "Obsidian theme") : undefined}
           >
             {isDark ? <Sun aria-hidden /> : <Moon aria-hidden />}
-            <span>{isDark ? "Light theme" : "Dark theme"}</span>
+            <span>{isDark ? "Mineral" : "Obsidian"}</span>
           </button>
           <button
             type="button"
