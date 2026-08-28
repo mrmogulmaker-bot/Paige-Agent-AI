@@ -101,6 +101,29 @@ describe("Solo Conversations workspace", () => {
     expect(html).not.toContain("solo-channel-strip");
   });
 
+  it("fails an unrepresented active channel closed instead of substituting Portal", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <SoloConversationOperatingBar
+          mode="human"
+          onModeChange={() => undefined}
+          channels={[
+            { id: "portal", label: "Portal", availability: "PARTIAL", providerConnection: "Not a proven message transport", providerSource: "Portal access", identity: "Not applicable", sendPermission: "Not proven", inbound: "Not proven", webhookHealth: "Not applicable", operationalHealth: "Not reported", setupOwner: "Clients → Portal" },
+          ]}
+          activeChannel="whatsapp"
+          canDraftWithPaige={false}
+          connectionsHref="/connections"
+          selectedClientName="Antonio Cook"
+          selectedThreadLabel="WhatsApp thread"
+          onOpenPaige={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+    expect(html).toContain("Current channel: WhatsApp, UNAVAILABLE");
+    expect(html).toContain("Not represented in this workspace");
+    expect(html).not.toContain("Current channel: Portal");
+  });
+
   it("opens the primary PAIGE workspace while labeling unproven client and agent continuity honestly", () => {
     const openPaige = vi.fn();
     const host = document.createElement("div");

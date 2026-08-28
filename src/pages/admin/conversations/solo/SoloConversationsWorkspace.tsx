@@ -107,7 +107,26 @@ export function SoloConversationOperatingBar({
   selectedClientName, selectedThreadLabel, onOpenPaige,
 }: SoloConversationOperatingBarProps) {
   const humanModeRef = useRef<HTMLButtonElement>(null);
-  const activeChannelTruth = channels.find((channel) => channel.id === activeChannel) ?? channels[0];
+  const representedChannel = channels.find((channel) => channel.id === activeChannel);
+  const unmatchedChannelTruth: SoloChannelTruth = {
+    id: activeChannel || "unmatched",
+    label: activeChannel === "whatsapp"
+      ? "WhatsApp"
+      : activeChannel
+        ? activeChannel.replace(/(^|-)([a-z])/g, (_match, separator: string, letter: string) => `${separator ? " " : ""}${letter.toUpperCase()}`)
+        : "Unmatched channel",
+    availability: "UNAVAILABLE",
+    identity: "Not assigned",
+    providerConnection: "Not reported",
+    providerSource: "Not represented in this workspace",
+    sendPermission: "Unavailable",
+    inbound: "Not reported",
+    webhookHealth: "Not reported",
+    operationalHealth: "Unavailable",
+    setupOwner: "Not available",
+  };
+  const activeChannelTruth = representedChannel ?? unmatchedChannelTruth;
+  const channelMenuItems = representedChannel ? channels : [unmatchedChannelTruth, ...channels];
   const showChannelSetup = !!activeChannelTruth
     && activeChannelTruth.availability !== "LIVE"
     && activeChannelTruth.setupOwner !== "Not available";
@@ -191,7 +210,7 @@ export function SoloConversationOperatingBar({
                   <span>Readiness and sending identity</span>
                 </header>
                 <div className="solo-channel-menu-list">
-                  {channels.map((channel) => (
+                  {channelMenuItems.map((channel) => (
                     <section key={channel.id} className={cn("solo-channel-menu-option", channel.id === activeChannel && "is-current")}>
                       <header><strong>{channel.label}</strong><small>{channel.availability}</small></header>
                       <dl>
