@@ -630,6 +630,18 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Solo Clients → Conversations — implementation awaiting exact-head release verification (2026-08-28)
+
+The owner-approved Solo redesign is intentionally confined to the existing workspace directly below
+`People · Conversations · Calendar · Portal`. It adds no route-local Clients hero, title banner, or
+parallel inbox. The Conversations-owned implementation provides a unified queue/thread workspace,
+a permanently mounted sibling client-context pane, canonical People/Portal/Campaigns/Connections
+links, human/PAIGE-draft/governed handling truth, permission-bound composer tools, channel readiness,
+account-epoch clearing, pane-owned scrolling, and constrained-center form-fit. Provider connection
+does not prove identity, send permission, A2P, inbound, webhook, mailbox, or operational readiness.
+Video and Apple Messages for Business remain unavailable unless separately proven. Ordinary consumer
+iMessage is never claimed. No backend, provider, schema, auth, or business-data mutation is in scope.
+
 ### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
 
 **Owner:** *"Paige should be aware of her own design."* · *"I just want to make sure that we, as a
@@ -1015,6 +1027,13 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-08-28 — a Clients subtab must not grow a second Clients header.** Solo Conversations owns
+  only the canvas below the shared `People · Conversations · Calendar · Portal` strip. A route-local
+  “Your client book,” “Client conversations,” status banner, or decorative hero duplicates the shell,
+  consumes the form-fit budget, and violates the owner-approved hierarchy. Regression coverage now
+  forbids those labels in the Solo Conversations mount and scopes ancestor-chrome suppression to the
+  Conversations descendant only; People-owned wrapper files remain untouched.
 
 - **2026-08-18 — "latent structural weakness rather than a confirmed live leak" was too optimistic.**
   `docs/doctrine/role-taxonomy-and-matrix.md` §4 hedged that most reads also filter by tenant via RLS,

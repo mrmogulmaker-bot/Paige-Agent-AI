@@ -193,12 +193,12 @@ export const LABEL_COLORS: LabelColor[] = ["indigo", "sky", "violet", "slate"];
 //    views the Command-Center tiles deep-link into (?filter=drafts|awaiting-reply|
 //    waking-today|scheduled). A derived view rides on a base ThreadFilter server query
 //    and narrows client-side via a predicate. Unknown slug → keep the default. ────────
-export type InboxView = ThreadFilter | "unread" | "drafts" | "awaiting-reply" | "waking-today" | "scheduled";
+export type InboxView = ThreadFilter | "attention" | "unread" | "drafts" | "awaiting-reply" | "waking-today" | "scheduled";
 export const INBOX_VIEWS: InboxView[] = [
-  "active", "unread", "snoozed", "archived", "all", "drafts", "awaiting-reply", "waking-today", "scheduled",
+  "active", "attention", "unread", "snoozed", "archived", "all", "drafts", "awaiting-reply", "waking-today", "scheduled",
 ];
 export const FILTER_LABEL: Record<InboxView, string> = {
-  active: "Active", unread: "Unread", snoozed: "Snoozed", archived: "Archived", all: "All",
+  active: "Active", attention: "Needs attention", unread: "Unread", snoozed: "Snoozed", archived: "Archived", all: "All",
   drafts: "Drafts", "awaiting-reply": "Awaiting reply", "waking-today": "Waking today",
   scheduled: "Scheduled",
 };

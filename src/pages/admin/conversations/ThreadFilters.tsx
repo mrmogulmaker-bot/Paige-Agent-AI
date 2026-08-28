@@ -23,7 +23,7 @@ const MORE_VIEWS: InboxView[] = INBOX_VIEWS.filter((v) => !INLINE_VIEWS.includes
 // Command-Center tiles deep-link into — so URL state is visible, not just addressable.
 export function ThreadFilters({
   view, onView, activeUnread, foldedPending = 0,
-  catalog, labelFilter, onLabelFilter,
+  catalog, labelFilter, onLabelFilter, soloAttention = false,
 }: {
   view: InboxView;
   onView: (v: InboxView) => void;
@@ -35,20 +35,27 @@ export function ThreadFilters({
   catalog: Label[];
   labelFilter: string | null;
   onLabelFilter: (id: string | null) => void;
+  /** Solo-only approved primary view. Other tiers keep the prior filter vocabulary. */
+  soloAttention?: boolean;
 }) {
+  const inlineViews: InboxView[] = soloAttention ? ["active", "attention", "unread"] : INLINE_VIEWS;
+  const moreViews = INBOX_VIEWS.filter((item) => !inlineViews.includes(item) && (soloAttention || item !== "attention"));
   const hasLabels = catalog.length > 0;
-  const foldedActive = MORE_VIEWS.includes(view);
+  const foldedActive = moreViews.includes(view);
   return (
     <div className="space-y-1.5 border-b border-border/60 px-3 py-2">
       <Toolbar>
         <div className="flex flex-wrap items-center gap-1.5">
-          {INLINE_VIEWS.map((v) => (
+          {inlineViews.map((v) => (
             <FilterChip key={v} active={view === v} onClick={() => onView(v)}>
               {FILTER_LABEL[v]}
               {/* the count is unread threads — it belongs on ONE chip (Unread), not
                   echoed on Active where the same number reads as ambiguous. */}
               {v === "unread" && activeUnread > 0 && (
                 <span className="ml-1 tabular-nums text-[10px] opacity-80">{activeUnread}</span>
+              )}
+              {v === "attention" && foldedPending > 0 && (
+                <span className="ml-1 tabular-nums text-[10px] opacity-80">{foldedPending}</span>
               )}
             </FilterChip>
           ))}
@@ -65,7 +72,7 @@ export function ThreadFilters({
               </FilterChip>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              {MORE_VIEWS.map((v) => (
+              {moreViews.map((v) => (
                 <DropdownMenuItem
                   key={v}
                   onSelect={() => onView(v)}

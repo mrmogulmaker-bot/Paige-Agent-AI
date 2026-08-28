@@ -48,6 +48,7 @@ export function ThreadRow({
   thread, preview, channel, active, onClick,
   catalog, onSnooze, onArchive, onSetThreadLabels, onRenameCatalogLabel,
   density = "comfortable", selected = false, selectionActive = false, onToggleSelect, cursored = false,
+  needsAttention = false,
 }: {
   thread: DbThread;
   preview: MessageRow | null;
@@ -65,6 +66,7 @@ export function ThreadRow({
   selectionActive?: boolean;                             // any selection exists → keep checkboxes visible
   onToggleSelect?: (e: ReactMouseEvent) => void;         // undefined → no checkbox rendered
   cursored?: boolean;                                    // keyboard-nav highlight (distinct from `active` open state)
+  needsAttention?: boolean;                              // Solo queue's unified attention contract
 }) {
   const compact = density === "compact";
   const name =
@@ -114,6 +116,7 @@ export function ThreadRow({
         // Keyboard-cursor highlight — an inset indigo ring, orthogonal to the open (`active`) and
         // multi-select (`selected`) states so a navigating user always sees where the cursor is.
         cursored && "ring-1 ring-inset ring-[hsl(var(--ring))]",
+        needsAttention && !active && "border-[hsl(var(--warning)/0.6)] bg-[hsl(var(--warning)/0.07)]",
       )}
     >
       {/* Multi-select checkbox — the Checkbox is pointer-events-none so the wrapper owns the
@@ -146,6 +149,15 @@ export function ThreadRow({
             <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] px-1 text-[10px] font-semibold tabular-nums text-primary-foreground"
               title={`${thread.unread_count} unread`}>
               {thread.unread_count > 9 ? "9+" : thread.unread_count}
+            </span>
+          )}
+          {needsAttention && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--warning)/0.55)] bg-[hsl(var(--warning)/0.12)] px-1.5 py-0.5 text-[9px] font-semibold text-foreground"
+              title="Unread, draft ready, or overdue for a reply"
+            >
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[hsl(var(--warning))] motion-reduce:animate-none" aria-hidden />
+              Attention
             </span>
           )}
           {ts && (

@@ -1,0 +1,324 @@
+/* Solo Conversations owns the exact area below the shared Clients tabs. The :has selector is
+   deliberately scoped to this route-local descendant; People, Calendar, Portal, and every
+   non-Solo relationship workspace keep their existing wrapper contract byte-for-byte. */
+.trc-workspace:has(.solo-conversations-workspace) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.trc-workspace:has(.solo-conversations-workspace) > .trc-heading,
+.trc-conversations:has(.solo-conversations-workspace) > header {
+  display: none;
+}
+
+.trc-workspace:has(.solo-conversations-workspace) > .trc-tabs {
+  height: 44px;
+  min-height: 44px;
+  padding-inline: 18px;
+}
+
+.trc-workspace:has(.solo-conversations-workspace) > .trc-panel {
+  min-height: 0;
+  padding: 10px 12px 12px;
+  overflow: hidden;
+}
+
+.trc-conversations:has(.solo-conversations-workspace),
+.trc-conversations:has(.solo-conversations-workspace) > :last-child,
+.solo-conversations-page-shell {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.solo-conversations-page-shell {
+  gap: 0;
+}
+
+.solo-conversations-page-shell > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0;
+}
+
+.solo-conversations-workspace {
+  --solo-context-width: 230px;
+  display: grid;
+  grid-template-columns: minmax(190px, 0.7fr) minmax(300px, 1.3fr) var(--solo-context-width);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.solo-conversations-queue { margin-right: 8px; }
+
+.solo-conversations-workspace[data-context-collapsed="true"] {
+  --solo-context-width: 48px;
+}
+
+.solo-conversations-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.solo-conversations-pane > * {
+  height: 100%;
+  min-height: 0;
+}
+
+.solo-conversations-context {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pg-line, hsl(var(--border)));
+  border-radius: var(--pg-r-panel, 12px);
+  background: var(--pg-surface, hsl(var(--card)));
+  box-shadow: var(--pg-e1, var(--shadow-card));
+}
+
+.solo-context-collapse {
+  display: flex;
+  min-height: 36px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  border-bottom: 1px solid var(--pg-line, hsl(var(--border)));
+  color: var(--pg-muted, hsl(var(--muted-foreground)));
+  background: transparent;
+  font: 600 10px/1 var(--pg-font-data, inherit);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.solo-context-collapse svg { width: 14px; height: 14px; }
+.solo-context-collapse:focus-visible,
+.solo-conversation-operating-bar button:focus-visible,
+.solo-channel-chip summary:focus-visible,
+.solo-channel-setup:focus-visible,
+.solo-client-context-pane a:focus-visible {
+  outline: 2px solid var(--pg-gold-core, hsl(var(--ring)));
+  outline-offset: -2px;
+}
+
+.solo-context-content {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.solo-conversations-workspace[data-context-collapsed="true"] .solo-context-content {
+  visibility: hidden;
+  overflow: hidden;
+}
+
+.solo-conversations-workspace[data-context-collapsed="true"] .solo-context-collapse {
+  height: 100%;
+  flex-direction: column;
+  border-bottom: 0;
+}
+
+.solo-conversations-workspace[data-context-collapsed="true"] .solo-context-collapse span {
+  writing-mode: vertical-rl;
+}
+
+.solo-conversation-operating-bar {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid hsl(var(--border) / .7);
+  background: hsl(var(--muted) / .22);
+}
+
+.solo-handling-modes,
+.solo-channel-strip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.solo-channel-strip { flex-wrap: wrap; overflow: visible; }
+
+.solo-handling-mode,
+.solo-channel-chip,
+.solo-channel-setup {
+  display: inline-flex;
+  min-height: 28px;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--card));
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.solo-channel-chip { position: relative; padding: 0; }
+.solo-channel-chip summary {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.solo-channel-chip summary::-webkit-details-marker { display: none; }
+.solo-channel-chip[open] { z-index: 4; }
+.solo-channel-truth {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 230px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--popover));
+  box-shadow: var(--shadow-elevated);
+}
+.solo-channel-chip:nth-of-type(n+6) .solo-channel-truth { right: 0; left: auto; }
+.solo-channel-truth div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 9px; }
+.solo-channel-truth dt { color: hsl(var(--muted-foreground)); }
+.solo-channel-truth dd { margin: 0; text-align: right; }
+
+.solo-handling-mode { cursor: pointer; }
+.solo-handling-mode:disabled { cursor: not-allowed; opacity: .48; }
+.solo-handling-mode svg,
+.solo-channel-chip svg,
+.solo-channel-setup svg { width: 12px; height: 12px; }
+.solo-handling-mode small,
+.solo-channel-chip small { font: 600 8px/1 var(--pg-font-data, inherit); letter-spacing: .06em; }
+.solo-handling-mode.is-active {
+  border-color: hsl(var(--primary) / .55);
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / .09);
+}
+.solo-channel-chip.is-current { border-color: hsl(var(--info) / .55); color: hsl(var(--foreground)); }
+
+.solo-handling-authority {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
+.solo-handling-authority > svg { width: 13px; height: 13px; color: hsl(var(--success)); }
+.solo-handling-authority > span { min-width: 0; flex: 1; }
+.solo-handling-authority button { height: 24px; font-size: 10px; }
+
+.solo-client-context-pane { min-width: 0; }
+.solo-client-context-identity {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--pg-line, hsl(var(--border)));
+}
+.solo-context-avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 50%;
+  color: var(--pg-gold-deep, hsl(var(--primary)));
+  background: hsl(var(--background));
+  font: 600 11px var(--pg-font-data, inherit);
+}
+.solo-client-context-identity p,
+.solo-client-context-identity h2,
+.solo-client-context-identity span { margin: 0; }
+.solo-client-context-identity p { color: hsl(var(--muted-foreground)); font: 600 8px var(--pg-font-data, inherit); letter-spacing: .08em; text-transform: uppercase; }
+.solo-client-context-identity h2 { overflow: hidden; font-size: 15px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.solo-client-context-identity div > span { display: block; overflow: hidden; color: hsl(var(--muted-foreground)); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.solo-truth-pill { color: hsl(var(--success)); font: 600 8px var(--pg-font-data, inherit); letter-spacing: .06em; white-space: nowrap; }
+
+.solo-context-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid hsl(var(--border) / .65);
+}
+.solo-context-links a,
+.solo-context-owner-link { display: inline-flex; align-items: center; gap: 5px; color: hsl(var(--foreground)); font-size: 10px; font-weight: 600; text-decoration: none; }
+.solo-context-links a svg,
+.solo-context-owner-link svg { width: 12px; height: 12px; }
+.solo-context-links > span { color: hsl(var(--muted-foreground)); font-size: 9px; }
+
+.solo-context-section { margin: 8px; border: 1px solid hsl(var(--border) / .8); border-radius: 9px; overflow: hidden; background: hsl(var(--background)); }
+.solo-context-section > header { padding: 9px 10px 7px; border-bottom: 1px solid hsl(var(--border) / .65); }
+.solo-context-section > header span { color: var(--pg-gold-deep, hsl(var(--primary))); font: 600 8px var(--pg-font-data, inherit); letter-spacing: .08em; text-transform: uppercase; }
+.solo-context-section > header h3 { margin: 2px 0 0; font-size: 12px; }
+.solo-context-section-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.solo-context-fact { min-width: 0; padding: 8px 10px; border-right: 1px solid hsl(var(--border) / .55); border-bottom: 1px solid hsl(var(--border) / .55); }
+.solo-context-fact:nth-child(2n) { border-right: 0; }
+.solo-context-fact > span { display: block; color: hsl(var(--muted-foreground)); font: 600 8px var(--pg-font-data, inherit); letter-spacing: .07em; text-transform: uppercase; }
+.solo-context-fact > strong { display: block; margin-top: 3px; overflow-wrap: anywhere; font-size: 10px; font-weight: 500; }
+.solo-context-note { grid-column: 1 / -1; margin: 0; padding: 8px 10px; color: hsl(var(--muted-foreground)); font-size: 9px; line-height: 1.4; }
+.solo-context-tags { display: flex; grid-column: 1 / -1; flex-wrap: wrap; gap: 5px; padding: 8px 10px; }
+.solo-context-tags span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 999px; color: hsl(var(--muted-foreground)); background: hsl(var(--muted)); font-size: 9px; }
+.solo-context-tags svg { width: 10px; height: 10px; }
+.solo-context-owner-link { margin: 8px 10px; }
+.solo-context-activity { grid-column: 1 / -1; margin: 0; padding: 0; list-style: none; }
+.solo-context-activity li { display: flex; justify-content: space-between; gap: 6px; padding: 7px 10px; border-bottom: 1px solid hsl(var(--border) / .55); font-size: 9px; }
+.solo-context-activity time { color: hsl(var(--muted-foreground)); text-align: right; }
+.solo-context-empty { display: grid; min-height: 100%; place-content: center; justify-items: center; gap: 6px; padding: 16px; color: hsl(var(--muted-foreground)); text-align: center; }
+.solo-context-empty svg { width: 26px; height: 26px; }
+.solo-context-empty strong { color: hsl(var(--foreground)); font-size: 12px; }
+.solo-context-empty span { max-width: 180px; font-size: 10px; line-height: 1.45; }
+
+/* At the actual 1366 expanded-nav + docked-PAIGE center (about 686px), context remains mounted
+   as a 48px sibling. It never becomes a Sheet, drawer, overlay, or document-level overflow. */
+.solo-conversations-workspace[data-form-fit="narrow"],
+.solo-conversations-workspace[data-form-fit="tight"] {
+  --solo-context-width: 48px;
+  grid-template-columns: minmax(176px, .65fr) minmax(275px, 1.35fr) var(--solo-context-width);
+}
+.solo-conversations-workspace[data-form-fit="narrow"] .solo-context-content,
+.solo-conversations-workspace[data-form-fit="tight"] .solo-context-content { visibility: hidden; overflow: hidden; }
+.solo-conversations-workspace[data-form-fit="narrow"] .solo-context-collapse,
+.solo-conversations-workspace[data-form-fit="tight"] .solo-context-collapse { height: 100%; flex-direction: column; border-bottom: 0; }
+.solo-conversations-workspace[data-form-fit="narrow"] .solo-context-collapse span,
+.solo-conversations-workspace[data-form-fit="tight"] .solo-context-collapse span { writing-mode: vertical-rl; }
+.solo-conversations-workspace[data-form-fit="narrow"] .solo-channel-chip span,
+.solo-conversations-workspace[data-form-fit="tight"] .solo-channel-chip span { display: none; }
+.solo-conversations-workspace[data-form-fit="tight"] { grid-template-columns: minmax(152px, .58fr) minmax(248px, 1.42fr) 48px; }
+.solo-conversations-workspace[data-form-fit="tight"] .solo-conversations-queue { margin-right: 6px; }
+.solo-conversations-workspace[data-form-fit="tight"] .solo-handling-mode span { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .solo-conversations-workspace *, .solo-conversations-workspace *::before, .solo-conversations-workspace *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .solo-handling-mode.is-active,
+  .solo-channel-chip.is-current,
+  .solo-context-avatar { border: 2px solid Highlight; }
+}

@@ -240,6 +240,11 @@ export interface ConversationsComposerModel {
   // templates (gated by capabilities.hasTemplates)
   templates?: EmailTemplate[];
   onApplyTemplate?: (key: string) => void;
+  // discoverable saved snippets; insertion remains editable and never sends
+  snippets?: Array<{ id: string; trigger: string; name: string; body: string }>;
+  onApplySnippet?: (id: string) => void;
+  /** Solo opt-in; false preserves the established template Select for every other consumer. */
+  showCombinedInsert?: boolean;
 
   // signature (gated by capabilities.hasSignature && signatureAvailable)
   signatureAvailable?: boolean;
