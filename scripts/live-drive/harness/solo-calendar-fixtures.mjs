@@ -7,7 +7,8 @@
  *
  * These rows are SYNTHETIC (§63): no real account, contact, or tenant appears. They are shaped
  * to exercise the states the reviewer must actually see rather than a tidy happy path:
- *   - two calendars with DIFFERENT stored colours, plus one booking on no calendar at all
+ *   - two calendars with DIFFERENT stored colours, one with only an accent, and one booking on no
+ *     calendar at all — four tints that must all be distinct from each other
  *   - a genuine overlap on ONE host (a real conflict)
  *   - a same-time pair on DIFFERENT hosts (must NOT be flagged)
  *   - a back-to-back pair (must NOT be flagged)
@@ -21,7 +22,11 @@ const CAL_COACHING = "cal-coaching-0001";
 const CAL_INTRO = "cal-intro-0002";
 
 export const CALENDARS = [
-  { id: CAL_COACHING, title: "Coaching sessions", color: "#7A67E8", accent: null, type: "internal" },
+  // DELIBERATELY NOT #7A67E8. That is `DEFAULT_CALENDAR_COLOR`, the tint an unassigned booking
+  // falls back to — so while this calendar carried it, a bug that resolved a null calendar_id to
+  // the first calendar produced a pixel identical to the correct fallback, and the "proves the
+  // unassigned fallback is reached" claim below was unprovable.
+  { id: CAL_COACHING, title: "Coaching sessions", color: "#5B4BD6", accent: null, type: "internal" },
   { id: CAL_INTRO, title: "Intro calls", color: "#1FA98A", accent: null, type: "internal" },
   { id: "cal-review-0003", title: "Reviews", color: null, accent: "#D98A2B", type: "internal" },
 ];

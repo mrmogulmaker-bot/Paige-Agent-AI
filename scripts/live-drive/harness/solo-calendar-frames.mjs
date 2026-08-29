@@ -68,7 +68,14 @@ async function openPage(browser, { w, h, theme, reducedMotion }) {
   });
   const origin = new URL(BASE).origin;
 
-  // The wire, made deterministic. Everything else off-origin is aborted, so a stray call is loud.
+  // The wire, made deterministic.
+  //
+  // An ABORTED request is not a neutral no-op: the shell's own reads (the notifications bell, for
+  // one) fail, and a half-rendered shell is then photographed as though it were the surface. So
+  // any Supabase call this harness does not have a fixture for is answered with an empty result
+  // AND RECORDED, rather than aborted. Recording matters — an empty answer that nobody can see is
+  // how a missing fixture turns into "the feature has no data" in a reviewer's mind.
+  const unfixtured = [];
   await ctx.route("**://**", (route) => {
     const url = route.request().url();
     if (url.includes("/rest/v1/rpc/list_team_bookings")) return route.fulfill(json(BOOKINGS));
@@ -76,6 +83,7 @@ async function openPage(browser, { w, h, theme, reducedMotion }) {
     if (url.includes("/rest/v1/rpc/create_internal_booking")) return route.fulfill(json(null));
     if (url.includes("/rest/v1/calendars")) return route.fulfill(json(CALENDARS));
     if (url.includes("/auth/v1/user")) return route.fulfill(json(USER));
+    if (url.includes("harness.invalid")) { unfixtured.push(new URL(url).pathname); return route.fulfill(json([])); }
     if (url.startsWith(origin) || url.startsWith("file://")) return route.continue();
     if (FONT_HOSTS.some((host) => url.includes(host))) return route.continue();
     return route.abort();
@@ -83,15 +91,30 @@ async function openPage(browser, { w, h, theme, reducedMotion }) {
 
   const page = await ctx.newPage();
   await page.addInitScript(clockScript(FIXED_NOW));
+  // `pageerror` alone is blind to how this harness actually fails. A 404 on the entry module, an
+  // aborted fetch, and a React error-boundary catch all surface as CONSOLE errors and never reach
+  // window.onerror — so a run could report `errors: []` over a blank page.
   const errors = [];
-  page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
+  page.on("pageerror", (e) => errors.push("pageerror: " + String(e).slice(0, 180)));
+  page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text().slice(0, 180)); });
+  page.on("requestfailed", (r) => errors.push("requestfailed: " + r.url().slice(0, 120) + " " + (r.failure()?.errorText || "")));
   await page.goto(`${BASE}/solo-calendar.html?theme=${theme}`, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(700);
-  return { ctx, page, errors };
+  return { ctx, page, errors, unfixtured };
 }
 
-/** Every invariant the form-fit standard requires, measured rather than asserted from source. */
+/**
+ * Every invariant the form-fit standard requires, measured rather than asserted from source.
+ *
+ * DO NOT MEASURE `documentElement` FOR HORIZONTAL OVERFLOW. `src/index.css:737` sets
+ * `body { overflow-x: hidden }`, which clamps `documentElement.scrollWidth` to its client width —
+ * so a documentElement-based check reports 0 for a surface that genuinely overflows and is being
+ * silently clipped. That assertion cannot fail, and it was the headline claim of this harness
+ * until an adversarial read caught it. Body scroll width still grows, and per-container overflow
+ * is the only way to find the element actually doing it, so both are measured and both are
+ * asserted.
+ */
 async function measure(page) {
   return page.evaluate(() => {
     const de = document.documentElement;
@@ -103,20 +126,47 @@ async function measure(page) {
       cls: (typeof el.className === "string" ? el.className : "").split(/\s+/).filter(Boolean).slice(0, 3).join("."),
       range: el.scrollHeight - el.clientHeight,
     }));
+    // Any element that clips or scrolls horizontally AND has content wider than its box —
+    // i.e. content the reader cannot get to. Two things are NOT that, and are excluded because
+    // flagging them buries the real finding under noise:
+    //   - `text-overflow: ellipsis`, which is truncation the design chose and SIGNALS with an
+    //     ellipsis (the full value is reachable elsewhere, e.g. the detail drawer);
+    //   - visually-hidden live regions (the 1x1px `clip` pattern), whose box is not a layout.
+    const hOverflow = [...document.querySelectorAll("*")].filter((el) => {
+      const cs = getComputedStyle(el);
+      if (!/(auto|scroll|hidden)/.test(cs.overflowX)) return false;
+      if (cs.textOverflow === "ellipsis") return false;
+      if (el.clientWidth <= 1 || el.clientHeight <= 1) return false;
+      return el.scrollWidth - el.clientWidth > 1;
+    }).map((el) => ({
+      cls: (typeof el.className === "string" ? el.className : "").split(/\s+/).filter(Boolean).slice(0, 3).join(".") || el.tagName.toLowerCase(),
+      by: el.scrollWidth - el.clientWidth,
+    }));
     const pg = document.querySelector("[data-pg]");
     const events = [...document.querySelectorAll(".sc-ev")];
-    const tints = [...new Set(events.map((el) => getComputedStyle(el).backgroundColor)
-      .concat(events.map((el) => el.style.getPropertyValue("--sc-ev-color"))))].filter(Boolean);
+    const tints = [...new Set(events.map((el) => el.style.getPropertyValue("--sc-ev-color").trim()))].filter(Boolean).sort();
+    // Which faces ACTUALLY painted. `document.fonts.check()` is NOT usable here: it returns true
+    // for a family that does not exist at all, so it reported "faces ok" on every frame including
+    // ones rendered entirely in fallback. Ask the font set what loaded, and ask the element what
+    // it is actually painted in.
+    const loadedFaces = [...new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family))].sort();
+    const paintedOn = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el).fontFamily.split(",")[0].replace(/["']/g, "").trim() : null;
+    };
     return {
       docOverflowX: de.scrollWidth - de.clientWidth,
       docOverflowY: de.scrollHeight - de.clientHeight,
       bodyOverflowX: document.body.scrollWidth - document.body.clientWidth,
+      hOverflow,
       h1: document.querySelectorAll("h1").length,
       pgAttr: pg ? pg.getAttribute("data-pg") : null,
       pgBg: pg ? getComputedStyle(pg).backgroundColor : null,
       scrollers,
       eventCount: events.length,
-      distinctTints: tints.length,
+      tints,
+      loadedFaces,
+      paintedRange: paintedOn(".sc-range"),
       mountWidth: (() => { const m = document.querySelector(".trc-canonical-mount--direct");
         return m ? Math.round(m.getBoundingClientRect().width) : null; })(),
       paigeVisible: (() => { const p = document.getElementById("tenant-paige-workspace");
@@ -126,23 +176,31 @@ async function measure(page) {
       rangeLabel: (document.querySelector(".sc-range") || {}).textContent || null,
       conflictFlags: document.querySelectorAll(".sc-ev--conflict").length,
       offEvents: document.querySelectorAll(".sc-ev--off").length,
+      errorState: /couldn.{0,3}t load this range/i.test(document.body.innerText),
       bodyText: document.body.innerText.slice(0, 400),
     };
   });
 }
 
-/** Can the calendar's own controls be reached at this width — rail visible, or drawer offered? */
+/**
+ * Can the calendar's own controls be REACHED at this width?
+ *
+ * Counts controls, not boxes. `.sc-rail` keeps a non-zero offsetWidth even when its body is
+ * hidden, so a 204px empty column would otherwise pass as "rail visible".
+ */
 async function controlsReachable(page) {
   return page.evaluate(() => {
     const rail = document.querySelector(".sc-rail");
-    const railVisible = !!rail && rail.offsetWidth > 0 && rail.offsetHeight > 0;
+    const railChecks = rail ? rail.querySelectorAll(".sc-check").length : 0;
+    const railVisible = !!rail && rail.offsetWidth > 0 && railChecks > 0;
     const optionBtn = [...document.querySelectorAll("button")]
       .find((b) => /view options/i.test(b.textContent || ""));
+    const viewOptionsOffered = !!optionBtn && optionBtn.offsetWidth > 0;
     return {
-      railVisible,
+      railVisible, railChecks,
       railWidth: rail ? rail.offsetWidth : 0,
-      viewOptionsOffered: !!optionBtn && optionBtn.offsetWidth > 0,
-      ok: railVisible || (!!optionBtn && optionBtn.offsetWidth > 0),
+      viewOptionsOffered,
+      ok: railVisible || viewOptionsOffered,
     };
   });
 }
@@ -174,33 +232,42 @@ async function label(page, text) {
   }
 }
 
+/** Opens PAIGE and lets a failure THROW. A swallowed click produced 8 frames labelled
+ *  "paige open" that were byte-identical to the folded ones. */
 async function openPaige(page) {
   const btn = page.locator("[data-tenant-paige-command]").first();
-  if (await btn.count()) { await btn.click({ timeout: 4000 }).catch(() => {}); await page.waitForTimeout(700); }
+  if (!(await btn.count())) throw new Error("PAIGE command field not found — cannot capture the open state");
+  await btn.click({ timeout: 5000 });
+  await page.waitForTimeout(800);
 }
 
 const results = [];
 const browser = await chromium.launch(chromePath() ? { executablePath: chromePath() } : {});
 fs.mkdirSync(ART, { recursive: true });
 
+const EXPECT = { events: 10, conflicts: 2, off: 2, range: /^Aug 23 – 29, 2026$/, tints: 4 };
+
 for (const vp of VIEWPORTS) {
   for (const theme of ["dark", "light"]) {
     for (const paige of [false, true]) {
       const name = `${vp.w}x${vp.h}-${theme}-paige-${paige ? "open" : "folded"}`;
-      const { ctx, page, errors } = await openPage(browser, { ...vp, theme });
+      const { ctx, page, errors, unfixtured } = await openPage(browser, { ...vp, theme });
       if (paige) await openPaige(page);
       const m = await measure(page);
       const controls = await controlsReachable(page);
-      const faces = await page.evaluate((wanted) => Object.fromEntries(
-        wanted.map(([f]) => [f, document.fonts.check(`14px "${f}"`)])), FACES);
-      const missing = Object.entries(faces).filter(([, v]) => !v).map(([f]) => f);
-      await label(page, `harness render · not live   solo/clients/calendar   ${theme === "dark" ? "obsidian" : "mineral"}   ` +
-        `${vp.w}x${vp.h}   paige ${paige ? "open" : "folded"}   ` +
-        `overflowX ${m.docOverflowX}   controls ${controls.ok ? "reachable" : "UNREACHABLE"}   ` +
-        (missing.length ? `FACE MISSING: ${missing.join(",")}` : "faces ok"));
+
+      // The label reports MEASURED state, never requested state. A theme that failed to resolve
+      // would otherwise be captured under the name of the theme that was asked for.
+      const facesOk = m.loadedFaces.includes("Schibsted Grotesk");
+      await label(page, `harness render · not live   solo/clients/calendar   ` +
+        `${m.pgAttr === "dark" ? "obsidian" : "mineral"} (measured)   ${vp.w}x${vp.h}   ` +
+        `paige ${m.paigeVisible ? m.paigeWidth + "px" : "closed"}   ` +
+        `body overflow-x ${m.bodyOverflowX}   ` +
+        `${m.eventCount} events / ${m.conflictFlags} conflicts   ` +
+        `${facesOk ? "faces loaded" : "⚠ FACES NOT LOADED — fallback type"}`);
       const file = path.join(ART, `${name}.png`);
       await page.screenshot({ path: file });
-      results.push({ name, file, viewport: vp, theme, paige, measure: m, controls, faces, errors });
+      results.push({ name, file, viewport: vp, theme, paige, measure: m, controls, facesOk, errors, unfixtured: [...new Set(unfixtured)] });
       await ctx.close();
     }
   }
@@ -209,19 +276,52 @@ await browser.close();
 
 let failures = 0;
 for (const r of results) {
-  const bad = [];
-  if (r.measure.docOverflowX > 0) bad.push(`documentX +${r.measure.docOverflowX}`);
-  if (r.measure.h1 > 0) bad.push(`${r.measure.h1} h1`);
+  const m = r.measure, bad = [];
+  // Horizontal overflow, measured where it can actually be non-zero.
+  if (m.bodyOverflowX > 0) bad.push(`body overflow-x +${m.bodyOverflowX}`);
+  if (m.hOverflow.length) bad.push(`clipped: ${m.hOverflow.map((h) => h.cls + " +" + h.by).join(", ")}`);
+  // The surface actually RENDERED. Without these, an error state or an empty [] passes every frame.
+  if (m.errorState) bad.push("error state rendered");
+  if (m.eventCount !== EXPECT.events) bad.push(`${m.eventCount} events, expected ${EXPECT.events}`);
+  if (m.conflictFlags !== EXPECT.conflicts) bad.push(`${m.conflictFlags} conflicts, expected ${EXPECT.conflicts}`);
+  if (m.offEvents !== EXPECT.off) bad.push(`${m.offEvents} released, expected ${EXPECT.off}`);
+  if (!EXPECT.range.test((m.rangeLabel || "").trim())) bad.push(`range "${(m.rangeLabel || "").trim()}"`);
+  // The theme that rendered is the theme that was asked for.
+  if (m.pgAttr !== r.theme) bad.push(`pg=${m.pgAttr}, requested ${r.theme}`);
+  // The PAIGE state the frame is named after.
+  if (m.paigeVisible !== r.paige) bad.push(`paige ${m.paigeVisible ? "open" : "closed"}, requested ${r.paige ? "open" : "closed"}`);
+  if (m.h1 > 0) bad.push(`${m.h1} h1`);
   if (!r.controls.ok) bad.push("controls unreachable");
-  if (r.errors.length) bad.push(`page errors: ${r.errors[0]}`);
+  if (!r.facesOk) bad.push("intended faces not loaded — type in these frames is fallback");
+  if (r.errors.length) bad.push(`errors: ${r.errors[0]}`);
   if (bad.length) failures++;
   console.log(`${bad.length ? "FAIL" : "PASS"}  ${r.name}`);
-  console.log(`      overflowX ${r.measure.docOverflowX}  overflowY ${r.measure.docOverflowY}  h1 ${r.measure.h1}` +
-    `  events ${r.measure.eventCount}  tints ${r.measure.distinctTints}  conflicts ${r.measure.conflictFlags}` +
-    `  off ${r.measure.offEvents}  pg=${r.measure.pgAttr}  mount ${r.measure.mountWidth}px` +
-    `  paige ${r.measure.paigeVisible ? r.measure.paigeWidth + "px" : "closed"}  range="${(r.measure.rangeLabel||'').trim()}"`);
-  console.log(`      rail ${r.controls.railWidth}px  viewOptions ${r.controls.viewOptionsOffered}  scrollers ${JSON.stringify(r.measure.scrollers.slice(0, 3))}`);
+  console.log(`      bodyX ${m.bodyOverflowX}  docX ${m.docOverflowX} (clamped by body overflow-x:hidden — not evidence)` +
+    `  h1 ${m.h1}  events ${m.eventCount}  conflicts ${m.conflictFlags}  off ${m.offEvents}`);
+  console.log(`      pg=${m.pgAttr} ${m.pgBg}  mount ${m.mountWidth}px  paige ${m.paigeVisible ? m.paigeWidth + "px" : "closed"}` +
+    `  rail ${r.controls.railWidth}px/${r.controls.railChecks} checks  viewOptions ${r.controls.viewOptionsOffered}`);
+  if (r.unfixtured.length) console.log(`      note: answered empty (no fixture): ${r.unfixtured.join(", ")}`);
+  console.log(`      tints ${JSON.stringify(m.tints)}  faces ${JSON.stringify(m.loadedFaces)}  range="${(m.rangeLabel||"").trim()}"  painted=${m.paintedRange}`);
   if (bad.length) console.log(`      >>> ${bad.join(" | ")}`);
 }
-fs.writeFileSync(path.join(ART, "report.json"), JSON.stringify(results, null, 2));
-console.log(`\n${results.length} frames, ${failures} failing -> ${ART}`);
+
+// Cross-frame assertions. Individually every frame can pass while the SET proves nothing:
+// if the container query never fires, the rail is visible at all four widths and "controls
+// reachable" is true everywhere without the narrow case ever being exercised.
+const railHidden = results.filter((r) => !r.controls.railVisible && r.controls.viewOptionsOffered);
+const railShown = results.filter((r) => r.controls.railVisible);
+const suite = [];
+if (!railHidden.length) suite.push("the container breakpoint NEVER fired — no frame hid the rail, so the narrow fallback is unexercised");
+if (!railShown.length) suite.push("no frame showed the rail");
+if (results.some((r) => r.measure.mountWidth == null)) suite.push("the .trc-canonical-mount--direct wrapper is missing — container queries are dead");
+for (const vp of VIEWPORTS) {
+  const d = results.find((r) => r.viewport.w === vp.w && r.theme === "dark" && !r.paige);
+  const l = results.find((r) => r.viewport.w === vp.w && r.theme === "light" && !r.paige);
+  if (d && l && d.measure.pgBg === l.measure.pgBg) suite.push(`${vp.w}px: Obsidian and Mineral resolved to the SAME ground ${d.measure.pgBg}`);
+}
+for (const s2 of suite) console.log(`FAIL  suite: ${s2}`);
+failures += suite.length;
+
+fs.writeFileSync(path.join(ART, "report.json"), JSON.stringify({ results, suite }, null, 2));
+console.log(`\n${results.length} frames, ${failures} failing (incl. ${suite.length} suite-level)`);
+if (failures) process.exitCode = 1;
