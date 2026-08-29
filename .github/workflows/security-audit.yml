@@ -26,10 +26,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Generate npm lockfile for audit
-        # --package-lock-only: don't touch node_modules
-        # --ignore-scripts: no lifecycle scripts, defense-in-depth
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      # The lockfile-generation step that used to sit here is gone. It ran
+      # `npm install --package-lock-only`, which RE-RESOLVED every dependency from the registry —
+      # so the audit graded a freshly-resolved tree rather than the one we actually ship, and a
+      # newly-published upstream version could change the verdict with no commit. package-lock.json
+      # is now committed, and `npm audit` reads it directly with no node_modules required.
 
       - name: Run npm audit (production deps only, high+)
         # Dev-only vulns (vitest/vite/eslint toolchain) don't reach the

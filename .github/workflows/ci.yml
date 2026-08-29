@@ -39,10 +39,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          # No `cache: npm` and `npm install` (not `npm ci`): the repo's canonical lockfile is
-          # bun.lockb (see security-audit.yml), and there is no committed package-lock.json — which
-          # both the npm cache key and `npm ci` require. This mirrors security-audit.yml's install.
-          # A bun-based CI for prod-build fidelity is a tracked Lane F follow-up.
+          # `cache: npm` keys on the committed package-lock.json. Both this and `npm ci` below were
+          # previously impossible because no package-lock.json was committed; it now is.
+          # NOTE: bun.lockb remains the lockfile PRODUCTION installs from (vercel.json pins
+          # `installCommand: bun install`), so this npm lane governs CI only. Converging the two
+          # lockfiles, or moving CI to bun for prod-build fidelity, is a tracked follow-up.
+          cache: npm
 
       - name: Install
         # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: CI never launches a browser (the live-drive helper +
@@ -52,7 +54,11 @@ jobs:
         # running live-drive. (scoped to CI, not global — see scripts/live-drive/README.md.)
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: npm install --no-audit --no-fund
+        # `npm ci`, not `npm install`: it installs the exact tree the committed lockfile records and
+        # FAILS if package.json and the lockfile disagree, instead of silently re-resolving. That
+        # re-resolution is what let an upstream unpublish (@splinetool/animation-core) break every
+        # branch's install at once — CI could not have been pinned to a known-good tree.
+        run: npm ci --no-audit --no-fund
 
       # --- Changed-file gates (PR only — a push to main has no PR base). Cheap checks first. -----
       # Compute the MERGE-BASE once and diff against it, not the raw base-branch tip. base.sha is
