@@ -59,7 +59,26 @@ function connectorEvidence(connectors: SoloConnectorEvidence[], channel: Channel
   return connectors.find((item) => item.channel_type === channel && item.active && item.status === "active");
 }
 
-export function getSoloChannelTruth(connectors: SoloConnectorEvidence[], connectorReadReported = true): SoloChannelTruth[] {
+/**
+ * The SMS half of the channel disclosure, from the ONE canonical resolver.
+ *
+ * Only the fields the resolver actually proves. Absent readiness leaves every
+ * field exactly as it was — connector presence is still never upgraded into
+ * A2P, webhook or operational proof, which is the contract
+ * `soloConversationModel.test.ts` locks.
+ */
+export interface SoloCommsReadinessEvidence {
+  can_send_sms: boolean;
+  a2p: "approved" | "submitted" | "prepared" | "absent";
+  number_e164: string | null;
+  delivery: { state: "no_activity" | "delivering" | "mixed" | "failing"; last_inbound_at: string | null };
+}
+
+export function getSoloChannelTruth(
+  connectors: SoloConnectorEvidence[],
+  connectorReadReported = true,
+  readiness?: SoloCommsReadinessEvidence | null,
+): SoloChannelTruth[] {
   const truth = (
     id: string,
     label: string,
@@ -94,7 +113,33 @@ export function getSoloChannelTruth(connectors: SoloConnectorEvidence[], connect
       setupOwner: "Clients → Portal",
     },
     truth("email", "Email", "email", "PARTIAL"),
-    { ...truth("sms", "SMS", "sms", "PARTIAL"), a2p: "Not reported" },
+    {
+      ...truth("sms", "SMS", "sms", "PARTIAL"),
+      // Readiness fills ONLY what it proves. Without it every field stays
+      // "Not reported" — the disclosure never infers permission from a connector.
+      ...(readiness
+        ? {
+            identity: readiness.number_e164 ?? "Not assigned",
+            sendPermission: readiness.can_send_sms
+              ? "Permitted to send"
+              : "Not permitted — setup incomplete",
+            a2p:
+              readiness.a2p === "approved" ? "Approved"
+              : readiness.a2p === "submitted" ? "Filed with carriers"
+              : readiness.a2p === "prepared" ? "Prepared, not submitted"
+              : "Not registered",
+            inbound: readiness.delivery.last_inbound_at ? "Replies received" : "No replies received",
+            operationalHealth:
+              readiness.delivery.state === "delivering" ? "Delivering"
+              : readiness.delivery.state === "no_activity" ? "Nothing sent yet"
+              : readiness.delivery.state === "mixed" ? "Some messages did not arrive"
+              : "Messages are not arriving",
+            // Deliberately still NOT reported: nothing in this repository records
+            // webhook registration health, so claiming it would be a fabrication.
+            webhookHealth: "Not reported",
+          }
+        : { a2p: "Not reported" }),
+    },
     truth("voice", "Phone / outbound voice", "voice", "PARTIAL"),
     {
       ...truth("video", "Video calling", undefined, "UNAVAILABLE"),

@@ -35,7 +35,8 @@
     "pack:keys": "node scripts/pack/key-xref.mjs",
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
-    "lint:operator-reach": "node scripts/ci/operator-reachability.mjs"
+    "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
+    "smoke:comms-webhook-auth": "node --experimental-strip-types scripts/comms-webhook-auth-smoke.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

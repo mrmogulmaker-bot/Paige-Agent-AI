@@ -57,6 +57,7 @@
 // operator_messages — never crossing (no guessing scope). It also persists recording_url / transcript
 // when Twilio provides them (null otherwise — never fabricated, §13; recording is not enabled on the
 // <Dial> yet, so today they are null — the read is defensive so enabling it later needs no code change).
+import { authenticateTwilioWebhook, type WebhookAuthOutcome } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCallStatus, callMatchSids, parseCallDuration, nonEmptyOrNull } from "./call-status.ts";
 
@@ -102,28 +103,27 @@ function shouldApply(current: string, mapped: string): boolean {
   return true;
 }
 
-async function verifyTwilio(req: Request, rawBody: string): Promise<boolean> {
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!token) {
-    console.warn("[twilio-status-callback] TWILIO_AUTH_TOKEN not set — accepting unsigned");
-    return true;
+/**
+ * FAIL CLOSED — same repair as handle-inbound-sms. With no auth token set, the
+ * previous version accepted any unsigned POST, so a forged MessageSid could
+ * mark another tenant's message delivered, or write attacker-supplied text into
+ * `messages.error`, which the inbox renders.
+ *
+ * A delivery receipt carries no `To` we can key a tenant off, so the stamped
+ * per-number secret in the URL is the proof here.
+ */
+async function verifyTwilio(req: Request, rawBody: string, admin: Admin): Promise<WebhookAuthOutcome> {
+  const offered = new URL(req.url).searchParams.get("t");
+  let expectedSecret: string | null = null;
+  if (offered) {
+    const { data } = await admin
+      .from("tenant_twilio_subaccounts")
+      .select("inbound_webhook_secret")
+      .eq("inbound_webhook_secret", offered)
+      .maybeSingle();
+    expectedSecret = data?.inbound_webhook_secret ?? null;
   }
-  const sig = req.headers.get("x-twilio-signature");
-  if (!sig) return false;
-  const url = req.url;
-  const params = new URLSearchParams(rawBody);
-  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const concatenated = url + sorted.map(([k, v]) => k + v).join("");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(token),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  );
-  const buf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(concatenated));
-  const computed = btoa(String.fromCharCode(...new Uint8Array(buf)));
-  return computed === sig;
+  return await authenticateTwilioWebhook(req, rawBody, { expectedSecret });
 }
 
 /** The REAL call facts a completion callback carries — resolved once, applied to whichever store owns the row. */
@@ -276,8 +276,12 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method_not_allowed", { status: 405 });
 
   const rawBody = await req.text();
-  const verified = await verifyTwilio(req, rawBody);
-  if (!verified) return new Response("invalid_signature", { status: 401 });
+  const authAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const auth = await verifyTwilio(req, rawBody, authAdmin);
+  if (!auth.ok) {
+    console.error(`[twilio-status-callback] REFUSED unauthenticated callback: ${auth.reason}`);
+    return new Response("unauthenticated", { status: 401 });
+  }
 
   const params = new URLSearchParams(rawBody);
 

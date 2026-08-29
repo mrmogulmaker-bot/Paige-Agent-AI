@@ -139,6 +139,130 @@ const PROVIDERS = [
   ["Direct APIs", "Permission-specific", "PARTIAL"], ["Make.com", "No connector seam", "UNAVAILABLE"],
 ] as const;
 
+
+/**
+ * Communications readiness, from the ONE canonical resolver.
+ *
+ * Every value here comes from `tenant_comms_readiness()`, the same predicate
+ * `send-message` enforces — so Settings, Conversations and PAIGE cannot drift
+ * into three different answers about whether this account can text. It returns
+ * only tenant-safe fields: no credential identifier, no provider SID, no
+ * webhook detail, no internal diagnostic.
+ */
+export interface CommsReadiness {
+  can_send_sms: boolean;
+  blocked_reason: string | null;
+  subaccount: "connected" | "inactive" | "absent";
+  number: "assigned" | "absent";
+  number_e164: string | null;
+  business: { has_name: boolean; has_website: boolean; has_phone: boolean };
+  a2p: "approved" | "submitted" | "prepared" | "absent";
+  consent: { granted_count: number; suppressed_count: number; state: "ready" | "none_recorded" };
+  delivery: {
+    state: "no_activity" | "delivering" | "mixed" | "failing";
+    sent_30d: number; delivered_30d: number; failed_30d: number;
+    last_inbound_at: string | null;
+  };
+}
+
+function useCommsReadiness() {
+  const { activeTenantId } = useTenantContext();
+  const gate = useRef(createSettingsRequestGate());
+  const [state, setState] = useState<{ loading: boolean; error: string | null; value: CommsReadiness | null }>(
+    { loading: true, error: null, value: null });
+  const load = useCallback(async () => {
+    const token = gate.current.begin();
+    // Clear first: a previous account's readiness must never linger while a new
+    // one resolves (§9 — no substitution across an account switch).
+    setState({ loading: true, error: null, value: null });
+    if (!activeTenantId) { setState({ loading: false, error: null, value: null }); return; }
+    // RPC is deployed but not yet present in generated database types.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("tenant_comms_readiness");
+    if (!gate.current.isCurrent(token)) return;
+    setState({ loading: false, error: error?.message ?? null, value: error ? null : (data as CommsReadiness ?? null) });
+  }, [activeTenantId]);
+  useEffect(() => { void load(); }, [load]);
+  return { ...state, retry: load };
+}
+
+/**
+ * What the tenant is told, per blocking reason.
+ *
+ * TENANT-SAFE BY CONSTRUCTION. These strings never mention credentials, vault
+ * references, webhook names, handler names, table names, or who owns a repair.
+ * A tenant learns what is not ready and the one next thing they can do.
+ */
+export const READINESS_COPY: Record<string, { headline: string; next: string }> = {
+  messaging_account_missing:  { headline: "Texting is not ready yet", next: "Your practice needs its own messaging account before a number or business texting can be arranged." },
+  messaging_account_inactive: { headline: "Texting is not ready yet", next: "Your messaging account is not active. We are looking into it — nothing you need to do right now." },
+  no_sms_number:              { headline: "Texting is not ready yet", next: "You do not have a phone number yet. One has to be assigned before you can text." },
+  registration_absent:        { headline: "Texting is not ready yet", next: "Carriers require your business to be registered before any text can send. PAIGE can prepare that registration from your business details." },
+  registration_not_approved:  { headline: "Texting is not ready yet", next: "Your registration is prepared but has not been filed with carriers. Texting stays off until it is approved." },
+  no_consent_recorded:        { headline: "Texting is not ready yet", next: "Nobody has agreed to be texted yet. Collect consent through your intake forms first, or every message will be held." },
+};
+
+const STEP_TRUTH = (ok: boolean, partial = false): SettingsTruth =>
+  ok ? "LIVE" : partial ? "PARTIAL" : "UNAVAILABLE";
+
+function ReadinessLadder({ r }: { r: CommsReadiness }) {
+  const biz = r.business;
+  const bizAll = biz.has_name && biz.has_website && biz.has_phone;
+  const bizSome = biz.has_name || biz.has_website || biz.has_phone;
+  const steps: Array<{ n: string; s: string; truth: SettingsTruth; tone: "ok" | "warn" | "bad" | "neutral"; state: string; detail: string }> = [
+    { n: "Messaging account", s: "Your practice's own account for texting",
+      truth: STEP_TRUTH(r.subaccount === "connected"), tone: r.subaccount === "connected" ? "ok" : "bad",
+      state: r.subaccount === "connected" ? "Connected" : r.subaccount === "inactive" ? "Not active" : "Not connected",
+      detail: r.subaccount === "connected" ? "Ready." : "Nothing else can be arranged until this is in place." },
+    { n: "Business details", s: "Legal name, website and business phone",
+      truth: STEP_TRUTH(bizAll, bizSome), tone: bizAll ? "ok" : bizSome ? "warn" : "bad",
+      state: bizAll ? "Complete" : bizSome ? "Partly filled in" : "Not provided",
+      detail: bizAll ? "Everything carriers ask for is on file."
+        : [!biz.has_name && "business name", !biz.has_website && "website", !biz.has_phone && "business phone"]
+            .filter(Boolean).join(", ") + " still missing." },
+    { n: "Phone number", s: "The number your texts send from",
+      truth: STEP_TRUTH(r.number === "assigned"), tone: r.number === "assigned" ? "ok" : "bad",
+      state: r.number === "assigned" ? "Assigned" : "None assigned",
+      detail: r.number === "assigned" ? `${r.number_e164 ?? "On file"} — its record lists SMS capability.` : "No number on this practice." },
+    { n: "Business texting", s: "Carrier approval before any text can send",
+      truth: r.a2p === "approved" ? "LIVE" : r.a2p === "absent" ? "UNAVAILABLE" : "PARTIAL",
+      tone: r.a2p === "approved" ? "ok" : r.a2p === "absent" ? "bad" : "warn",
+      state: r.a2p === "approved" ? "Approved" : r.a2p === "submitted" ? "Filed with carriers"
+        : r.a2p === "prepared" ? "Prepared, not submitted" : "Not registered",
+      detail: r.a2p === "approved" ? "Your practice is approved to text."
+        : r.a2p === "prepared" ? "Saved on your practice. Nothing has been filed with any carrier yet."
+        : r.a2p === "submitted" ? "Filed. Carriers have not returned a decision."
+        : "Texting stays blocked until a registration is approved." },
+    { n: "Consent and opt-outs", s: "Who agreed to hear from you, and who said stop",
+      truth: r.consent.state === "ready" ? "LIVE" : "PARTIAL",
+      tone: r.consent.state === "ready" ? "ok" : "warn",
+      state: r.consent.state === "ready" ? `${r.consent.granted_count} agreed to texts` : "Nothing recorded",
+      detail: r.consent.suppressed_count > 0
+        ? `${r.consent.suppressed_count} ${r.consent.suppressed_count === 1 ? "person has" : "people have"} asked you to stop. PAIGE will not text them.`
+        : r.consent.state === "ready" ? "Consent is on file." : "No consent or opt-out has been recorded yet." },
+    { n: "Sending identity", s: "What Conversations sends from",
+      truth: STEP_TRUTH(r.can_send_sms), tone: r.can_send_sms ? "ok" : "warn",
+      state: r.can_send_sms ? "Ready" : "Not ready for texting",
+      detail: r.can_send_sms ? "Texts send from your own number." : "No permitted texting sender yet." },
+    { n: "Delivery and replies", s: "Whether texts arrive and replies come back",
+      truth: r.delivery.state === "no_activity" ? "UNAVAILABLE" : r.delivery.state === "delivering" ? "LIVE" : "PARTIAL",
+      tone: r.delivery.state === "delivering" ? "ok" : r.delivery.state === "no_activity" ? "neutral" : "warn",
+      state: r.delivery.state === "no_activity" ? "Nothing sent yet"
+        : r.delivery.state === "delivering" ? `${r.delivery.delivered_30d} of ${r.delivery.sent_30d} delivered`
+        : `${r.delivery.failed_30d} of ${r.delivery.sent_30d} did not arrive`,
+      detail: r.delivery.state === "no_activity"
+        ? "Nothing has been sent in the last 30 days, so there is nothing to report."
+        : r.delivery.last_inbound_at ? "Replies are reaching your inbox." : "No replies received in the last 30 days." },
+  ];
+  return <div className="ss-ladder">{steps.map((st, i) => (
+    <div className="ss-step" data-tone={st.tone} key={st.n}>
+      <span className="ss-step-idx">{i + 1}</span>
+      <div className="ss-step-name"><strong>{st.n}</strong><span>{st.s}</span></div>
+      <div className="ss-step-state"><em>{st.state}</em>{st.detail}</div>
+      <Truth value={st.truth}/>
+    </div>))}</div>;
+}
+
 function ConnectionsView() {
   const comms = useSoloComms();
   const identity = useManagedIdentity();
@@ -146,7 +270,7 @@ function ConnectionsView() {
   const identityStatus = identity.value?.default_email_status ?? null;
   const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
-  const sendReady = identityPresentation.accountState === "active";
+  const readiness = useCommsReadiness();
   return <>
     <div className="ss-segment" role="tablist" aria-label="Connection organization">{(["connected","health","available"] as const).map(key=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{key[0].toUpperCase()+key.slice(1)}</button>)}</div>
     {view === "connected" && <div className="ss-grid">
@@ -166,9 +290,24 @@ function ConnectionsView() {
       </Card>
     </div>}
     {view === "health" && <div className="ss-grid">
-      <Card title="Provider readiness" icon={Webhook} truth="PARTIAL"><div className="ss-readiness">{[
-        ["Provider connected","Not reported"], ["Identity / number assigned", identity.value?.default_email_sender ? "Email identity assigned" : "Not reported"], ["SMS ready","Not reported"], ["Voice ready","Not reported"], ["A2P approved","Not reported"], ["Send permitted",sendReady ? "Email outbound ready" : "Not proven"], ["Webhook health","Not reported"],
-      ].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div></Card>
+      <Card title="Business texting readiness" icon={Webhook}
+        truth={readiness.value ? (readiness.value.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
+        actions={readiness.value && !readiness.value.can_send_sms
+          ? <Status tone="warn">Texting is not ready yet</Status>
+          : readiness.value ? <Status tone="ok">Ready to text</Status> : undefined}>
+        <ReadState loading={readiness.loading} error={readiness.error} retry={readiness.retry}>
+          {readiness.value ? <>
+            {!readiness.value.can_send_sms && readiness.value.blocked_reason && (
+              <div className="ss-next">
+                <strong>{(READINESS_COPY[readiness.value.blocked_reason] ?? { headline: "Texting is not ready yet" }).headline}</strong>
+                <p>{(READINESS_COPY[readiness.value.blocked_reason] ?? { next: "Some setup is still outstanding." }).next}</p>
+              </div>
+            )}
+            <ReadinessLadder r={readiness.value}/>
+            <p className="ss-note">Each step reports what its own record says. A step that cannot be checked says so rather than assuming it passed.</p>
+          </> : <p>Texting is not ready yet. We could not read this account&rsquo;s setup, so nothing is being claimed about it.</p>}
+        </ReadState>
+      </Card>
       <Card title="Failure states" icon={TriangleAlert} truth="PARTIAL"><div className="ss-state-list"><Status tone="warn">DNS pending</Status><Status tone="bad">DNS failure</Status><Status tone="bad">Token expired / revoked</Status><Status tone="bad">Webhook failure</Status><Status tone="warn">A2P pending</Status><Status tone="bad">A2P rejected</Status><Status tone="ok">A2P approved</Status><Status>Disconnected</Status></div><p className="ss-note">These are supported display states, not claims about this account.</p></Card>
     </div>}
     {view === "available" && <div className="ss-provider-grid">{PROVIDERS.map(([name,kind,truth])=><article key={name}><Smartphone/><div><strong>{name}</strong><span>{kind}</span></div><Truth value={truth}/></article>)}</div>}
