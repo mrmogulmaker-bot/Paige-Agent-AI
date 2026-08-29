@@ -377,9 +377,13 @@
 
 .sc-check-row { display: flex; align-items: stretch; gap: 2px; }
 .sc-check-row .sc-check { flex: 1; min-width: 0; }
-.sc-cog { flex: none; opacity: 0; }
-.sc-check-row:hover .sc-cog, .sc-cog:focus-visible { opacity: 1; }
-@media (hover: none) { .sc-cog { opacity: 1; } }
+/* Persistently visible, not hover-revealed. Since the rail carries no standing link
+   out of the surface, this cog is the ONLY route to a calendar's own configuration —
+   and a control a pointer user only discovers by grazing the row is reachable but not
+   discoverable (§36). Its visual treatment is Claude Design's call; that it can be
+   found at all is a behavioural requirement. */
+.sc-cog { flex: none; opacity: .55; }
+.sc-check-row:hover .sc-cog, .sc-cog:hover, .sc-cog:focus-visible { opacity: 1; }
 
 .sc-off-tag {
   margin-left: auto; padding: 0 4px; border-radius: var(--pg-r-chip);
@@ -418,6 +422,11 @@
   color: var(--pg-ink); font-size: var(--pg-t-body);
 }
 .sc-hours-day { width: 34px; flex: none; color: var(--pg-muted); font-weight: 600; }
+/* The reminder list reuses the hours ROW, but its lead column holds a phrase
+   ("2 hours before"), not a three-letter day name — so it sizes to its content and
+   never wraps inside a 34px column. */
+.sc-hours--wide .sc-hours-lead { flex: none; min-width: 108px; color: var(--pg-muted); font-weight: 600; }
+.sc-hours--wide li { align-items: baseline; }
 
 .sc-drawer--wide { width: min(640px, 96vw); }
 

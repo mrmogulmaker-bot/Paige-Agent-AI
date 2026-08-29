@@ -42,12 +42,26 @@ vi.mock("./useSoloCalendar", async () => {
 
 const { SoloCalendarWorkspace } = await import("./SoloCalendarWorkspace");
 
+/** A calendar row with every stored column at its honest "not recorded" value, so a
+ *  test states ONLY the columns it is about. */
+function calendarMeta(over: Partial<SoloCalendarMeta> & { id: string; title: string }): SoloCalendarMeta {
+  return {
+    color: null, accent: null, type: null,
+    slug: null, enabled: null, duration_min: null, buffer_before_min: null,
+    buffer_after_min: null, min_notice_min: null, booking_horizon_days: null,
+    capacity: null, timezone: null, location_type: null, location_value: null,
+    notify_config: null, availability_json: null, date_overrides: null, intake_questions: null,
+    ...over,
+  };
+}
+
 function booking(over: Partial<SoloBooking> & { id: string; start_at: string; end_at: string }): SoloBooking {
   return {
     title: "Discovery call", status: "scheduled", source: "manual",
     guest_name: null, guest_email: null, guest_phone: null, calendar_id: null,
     location_type: null, location_value: null, notes: null,
     booking_kind: "appointment", capacity: null,
+    intake_answers: null, appointment_type: null,
     host_user_id: "host-a", host_full_name: null, timezone: null,
     ...over,
   };
@@ -138,21 +152,21 @@ describe("Solo Calendar — a truthful surface", () => {
 
 describe("Solo Calendar — colour coding from real calendar rows", () => {
   it("paints an event with its own calendar's stored colour", () => {
-    state.calendars = [{ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" }];
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" })];
     state.bookings = [booking({ id: "b1", calendar_id: "cal-1", start_at: todayAt(10), end_at: todayAt(11) })];
     mount();
     expect(chip(/Discovery call/)?.getAttribute("style")).toContain("#2E7D8F");
   });
 
   it("falls back to the accent when a calendar stores no colour", () => {
-    state.calendars = [{ id: "cal-1", title: "Consults", color: null, accent: "#8A5A9E", type: "meeting" }];
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: null, accent: "#8A5A9E", type: "meeting" })];
     state.bookings = [booking({ id: "b1", calendar_id: "cal-1", start_at: todayAt(10), end_at: todayAt(11) })];
     mount();
     expect(chip(/Discovery call/)?.getAttribute("style")).toContain("#8A5A9E");
   });
 
   it("lists the account's real calendars as toggles and hides their events when switched off", () => {
-    state.calendars = [{ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" }];
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" })];
     state.bookings = [booking({ id: "b1", calendar_id: "cal-1", start_at: todayAt(10), end_at: todayAt(11) })];
     mount();
     expect(chip(/Discovery call/)).toBeTruthy();
@@ -251,7 +265,7 @@ describe("Solo Calendar — no control is hidden at narrow widths", () => {
   // UNREACHABLE at 1024x768 and 900x1000. A responsive layout may move a control;
   // it may not delete it.
   it("offers a View options entry point that carries the rail's controls", () => {
-    state.calendars = [{ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" }];
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" })];
     mount();
     const opener = buttonByText(/View options/i);
     expect(opener).toBeTruthy();
@@ -267,7 +281,7 @@ describe("Solo Calendar — no control is hidden at narrow widths", () => {
   });
 
   it("keeps the calendar toggle functional from inside that drawer", () => {
-    state.calendars = [{ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" }];
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting" })];
     state.bookings = [booking({ id: "b1", calendar_id: "cal-1", start_at: todayAt(10), end_at: todayAt(11) })];
     mount();
     click(buttonByText(/View options/i));
@@ -295,10 +309,10 @@ describe("Solo Calendar — no control is hidden at narrow widths", () => {
 // standing link that quietly implies Connections owns scheduling.
 describe("Solo Calendar — calendar settings stay Calendar-owned", () => {
   const withNotify = (notify_config: unknown) => {
-    state.calendars = [{
+    state.calendars = [calendarMeta({
       id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting",
       notify_config,
-    }];
+    })];
   };
   const openConfig = () => {
     const cog = [...container.querySelectorAll<HTMLButtonElement>("button")]

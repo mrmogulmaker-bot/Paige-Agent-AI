@@ -88,18 +88,23 @@ export interface SoloCalendarMeta {
   timezone: string | null;
   location_type: string | null;
   location_value: string | null;
-  notify_config: CalendarNotifyConfig | null;
-  availability_json: DayWindow[] | null;
-  date_overrides: DateOverride[] | null;
-  intake_questions: { id: string; label: string }[] | null;
+  /** The four jsonb columns arrive as arbitrary JSON, and are typed as such. The
+   *  database guarantees they PARSE, never that they hold the shape this surface
+   *  expects — a hand-edited or half-migrated row can hold anything. So every read
+   *  goes through a parser below (`parseNotifyConfig` · `parseWindows` ·
+   *  `parseOverrides` · `parseIntakeQuestions`) which returns the honest shape or
+   *  nothing. Declaring them pre-parsed would be a lie the compiler then enforces,
+   *  and the first malformed row would throw inside a render. */
+  notify_config: unknown;
+  availability_json: unknown;
+  date_overrides: unknown;
+  intake_questions: unknown;
 }
 
 /** The exact column list read from `calendars`. Kept as one constant so the select
  *  and the type cannot drift apart. */
 export const CALENDAR_COLUMNS =
-  "id, title, color, accent, type, slug, enabled, duration_min, buffer_before_min, " +
-  "buffer_after_min, min_notice_min, booking_horizon_days, capacity, timezone, " +
-  "location_type, location_value, notify_config, availability_json, date_overrides, intake_questions";
+  "id, title, color, accent, type, slug, enabled, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, timezone, location_type, location_value, notify_config, availability_json, date_overrides, intake_questions" as const;
 
 export const UNASSIGNED_CALENDAR = "__unassigned__";
 /** The one fallback tint, used only when a calendar stores no colour of its own. */
@@ -213,6 +218,18 @@ export function parseWindows(raw: unknown): DayWindow[] | null {
   // A present-but-unusable value is not the same as an absent one, but neither is
   // it hours we can draw; both report as "nothing stored we can render".
   return out.length ? out : null;
+}
+
+/** Reads `calendars.intake_questions` — the labelled questions a booking's
+ *  `intake_answers` keys refer to. Rows without a usable id/label are dropped
+ *  rather than rendered as a blank question. */
+export function parseIntakeQuestions(raw: unknown): { id: string; label: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((q) => {
+    if (!q || typeof q !== "object") return [];
+    const { id, label } = q as Record<string, unknown>;
+    return typeof id === "string" && typeof label === "string" ? [{ id, label }] : [];
+  });
 }
 
 /** Reads `calendars.notify_config`. Returns null when the row stores nothing usable

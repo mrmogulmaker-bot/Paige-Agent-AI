@@ -7,6 +7,7 @@ function booking(over: Partial<SoloBooking> & { id: string; start_at: string; en
     guest_name: null, guest_email: null, guest_phone: null, calendar_id: null,
     location_type: null, location_value: null, notes: null,
     booking_kind: "appointment", capacity: null,
+    intake_answers: null, appointment_type: null,
     host_user_id: "host-a", host_full_name: null, timezone: null,
     ...over,
   };

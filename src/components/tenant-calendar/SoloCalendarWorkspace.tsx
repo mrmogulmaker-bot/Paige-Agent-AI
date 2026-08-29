@@ -5,7 +5,8 @@ import {
 } from "lucide-react";
 import {
   DEFAULT_CALENDAR_COLOR, UNASSIGNED_CALENDAR, addDays, availabilityFor, hourOf,
-  parseNotifyConfig, rangeFor, rangeLabel, startOfDay, startOfWeek, useSoloCalendar, wantsSms,
+  parseIntakeQuestions, parseNotifyConfig, parseOverrides, parseWindows,
+  rangeFor, rangeLabel, startOfDay, startOfWeek, useSoloCalendar, wantsSms,
   type CalendarReminder, type SoloBooking, type SoloCalendarMeta, type ViewMode,
 } from "./useSoloCalendar";
 import "./solo-calendar.css";
@@ -250,7 +251,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   const intakePairs = useMemo(() => {
     const answers = detail?.intake_answers;
     if (!answers || typeof answers !== "object") return [];
-    const questions = detailCalendar?.intake_questions ?? [];
+    const questions = parseIntakeQuestions(detailCalendar?.intake_questions);
     return Object.entries(answers).flatMap(([key, value]) => {
       if (value == null || value === "") return [];
       const text = Array.isArray(value) ? value.join(", ") : String(value);
@@ -563,7 +564,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
             <dt>Capacity</dt><dd>{configFor.capacity != null ? configFor.capacity : "Not recorded"}</dd>
             <dt>Time zone</dt><dd>{configFor.timezone || "Not recorded"}</dd>
             <dt>Where</dt><dd>{configFor.location_value || configFor.location_type || "Not recorded"}</dd>
-            <dt>Intake questions</dt><dd>{configFor.intake_questions?.length ?? 0}</dd>
+            <dt>Intake questions</dt><dd>{parseIntakeQuestions(configFor.intake_questions).length}</dd>
             <dt>Public link</dt>
             <dd>{configFor.slug ? `/book/${configFor.slug}` : "No slug recorded"}</dd>
           </dl>
@@ -571,7 +572,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
           <section className="sc-sub">
             <h3>Stored hours</h3>
             {(() => {
-              const w = configFor.availability_json;
+              const w = parseWindows(configFor.availability_json);
               if (!w?.length) {
                 return (
                   <p className="sc-note">
@@ -592,11 +593,14 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
                 </ul>
               );
             })()}
-            {!!configFor.date_overrides?.length && (
-              <p className="sc-note">
-                {configFor.date_overrides.length} stored date {configFor.date_overrides.length === 1 ? "override" : "overrides"}.
-              </p>
-            )}
+            {(() => {
+              const overrides = parseOverrides(configFor.date_overrides);
+              return overrides.length === 0 ? null : (
+                <p className="sc-note">
+                  {overrides.length} stored date {overrides.length === 1 ? "override" : "overrides"}.
+                </p>
+              );
+            })()}
           </section>
 
           {/* Appointment communication. Calendar decides WHAT should be sent and WHEN
@@ -626,10 +630,10 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
                   {notify.reminders.length === 0 ? (
                     <p className="sc-note">No reminders are stored on this calendar.</p>
                   ) : (
-                    <ul className="sc-hours">
+                    <ul className="sc-hours sc-hours--wide">
                       {notify.reminders.map((r, i) => (
                         <li key={`${r.channel}-${r.offset_min}-${r.to}-${i}`}>
-                          <span className="sc-hours-day">{offsetLabel(r.offset_min)}</span>
+                          <span className="sc-hours-lead">{offsetLabel(r.offset_min)}</span>
                           <span>{CHANNEL_LABEL[r.channel]} · {RECIPIENT_LABEL[r.to]}</span>
                         </li>
                       ))}
