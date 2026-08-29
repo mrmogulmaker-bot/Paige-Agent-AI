@@ -276,7 +276,11 @@
 .sc-ev:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
 .sc-ev-time { flex: none; color: var(--pg-muted); font-family: var(--pg-font-data); font-size: 10px; }
 .sc-ev-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sc-ev--off { opacity: .55; text-decoration: line-through; }
+/* .8, not .55. Measured with axe: at .55 the chip title resolved to 4.02:1 in Obsidian
+   and 2.72:1 in Mineral, both under the 4.5:1 AA floor — a cancelled appointment is
+   still information the tenant has to be able to read. The line-through, not the
+   dimming, is what carries the state, so this keeps the reading and clears the floor. */
+.sc-ev--off { opacity: .8; text-decoration: line-through; }
 .sc-ev--conflict { border-color: var(--pg-negative); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pg-negative) 30%, transparent); }
 .sc-ev-flag { flex: none; color: var(--pg-negative); }
 .sc-ev-flag svg { width: 11px; height: 11px; display: block; }
@@ -301,7 +305,12 @@
   width: min(456px, 96vw);
   flex-direction: column;
   border-left: 1px solid var(--pg-line);
-  background: var(--pg-artifact);
+  /* --pg-surface, NOT --pg-artifact. `artifact` is the paper an artifact is rendered
+     on and is light in BOTH themes (#e9e4da dark / #fffdf8 light); this is chrome, and
+     it writes --pg-ink on itself. In Obsidian that painted near-white text on cream at
+     about 1.05:1 — the whole drawer was unreadable. The drawer's own footer already
+     used --pg-surface, so it was internally inconsistent too. */
+  background: var(--pg-surface);
   box-shadow: var(--pg-e4);
   animation: sc-slide 200ms cubic-bezier(.22, 1, .36, 1);
 }
@@ -434,12 +443,20 @@
   .sc-dayrow, .sc-cog { transition: none; }
 }
 
-/* Inline remediation link inside a note. Underlined so it is unmistakably a link
-   at note weight, and it inherits the note's colour rather than competing with the
-   act colour — this is a path to fix a channel, not a primary action. */
-.sc-inline-link {
+/* Inline remediation link inside a note. Underlined so it is unmistakably a link at
+   note weight, and it inherits the note's colour rather than competing with the act
+   colour — this is a path to fix a channel, not a primary action.
+
+   The selector carries `[data-pg] a` deliberately. The platform sets
+   `[data-pg] a { color: var(--pg-gold-core); text-decoration: none; }` (index.css),
+   specificity (0,1,1) — a bare `.sc-inline-link` at (0,1,0) lost to it, so this link
+   rendered GOLD with NO underline. Measured with axe: 2.8:1 against the surrounding
+   note text in Obsidian and 1.19:1 in Mineral, under the 3:1 floor, with no other
+   distinguishing style — a WCAG 1.4.1 failure, and gold spent on something that is
+   not the act (§11). (0,1,2) wins without reaching for !important. */
+[data-pg] a.sc-inline-link {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.sc-inline-link:hover { text-decoration-thickness: 2px; }
+[data-pg] a.sc-inline-link:hover { text-decoration-thickness: 2px; }
