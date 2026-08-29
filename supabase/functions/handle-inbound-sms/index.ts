@@ -342,20 +342,38 @@ Deno.serve(async (req) => {
     return twiml("You're unsubscribed and won't get more messages from us. Reply START to opt back in.");
   }
 
-  // Look up contact by phone (conversation/rail path — unchanged behavior).
+  // Look up the contact — SCOPED TO THE TENANT THAT OWNS THE RECEIVING NUMBER.
+  //
+  // Both lookups were previously unscoped, so a text arriving at tenant A's
+  // number from a phone that also exists as a contact in tenant B was filed into
+  // TENANT B's conversation and broadcast into tenant B's rail. The suppression
+  // path above was scoped correctly; this one was missed, and the file header
+  // claimed the fix covered both.
+  //
+  // When the receiving number belongs to no tenant we attribute NO contact
+  // rather than guessing from the sender's number alone — an unattributed row is
+  // honest, a misattributed one is a cross-tenant leak.
   let contactId: string | null = null;
-  const { data: prefs } = await admin
-    .from("communication_preferences")
-    .select("user_id")
-    .eq("sms_phone_number", fromPhone)
-    .maybeSingle();
-  if (prefs?.user_id) {
-    const { data: c } = await admin.from("clients").select("id").eq("linked_user_id", prefs.user_id).maybeSingle();
-    contactId = c?.id ?? null;
-  }
-  if (!contactId) {
-    const { data: c } = await admin.from("clients").select("id").eq("phone", fromPhone).maybeSingle();
-    contactId = c?.id ?? null;
+  if (receivingTenantId) {
+    const { data: prefs } = await admin
+      .from("communication_preferences")
+      .select("user_id")
+      .eq("sms_phone_number", fromPhone)
+      .maybeSingle();
+    if (prefs?.user_id) {
+      const { data: c } = await admin.from("clients").select("id")
+        .eq("linked_user_id", prefs.user_id)
+        .eq("tenant_id", receivingTenantId)
+        .maybeSingle();
+      contactId = c?.id ?? null;
+    }
+    if (!contactId) {
+      const { data: c } = await admin.from("clients").select("id")
+        .eq("phone", fromPhone)
+        .eq("tenant_id", receivingTenantId)
+        .maybeSingle();
+      contactId = c?.id ?? null;
+    }
   }
 
   const { data: convo, error: insertErr } = await admin

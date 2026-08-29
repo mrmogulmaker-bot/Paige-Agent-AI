@@ -109,21 +109,34 @@ function shouldApply(current: string, mapped: string): boolean {
  * mark another tenant's message delivered, or write attacker-supplied text into
  * `messages.error`, which the inbox renders.
  *
- * A delivery receipt carries no `To` we can key a tenant off, so the stamped
- * per-number secret in the URL is the proof here.
+ * A delivery receipt carries no `To`, so the stamped per-number secret is the
+ * proof. It resolves WHICH TENANT that secret belongs to, and the caller binds
+ * the update to that tenant. Looking the row up BY the offered secret and then
+ * comparing it to itself would only prove the secret is a real one belonging to
+ * SOMEBODY — it would let any tenant's secret authenticate a callback about
+ * another tenant's message.
  */
-async function verifyTwilio(req: Request, rawBody: string, admin: Admin): Promise<WebhookAuthOutcome> {
+async function verifyTwilio(
+  req: Request,
+  rawBody: string,
+  admin: Admin,
+): Promise<{ auth: WebhookAuthOutcome; tenantId: string | null }> {
   const offered = new URL(req.url).searchParams.get("t");
+  let tenantId: string | null = null;
   let expectedSecret: string | null = null;
   if (offered) {
     const { data } = await admin
       .from("tenant_twilio_subaccounts")
-      .select("inbound_webhook_secret")
+      .select("tenant_id, inbound_webhook_secret")
       .eq("inbound_webhook_secret", offered)
       .maybeSingle();
-    expectedSecret = data?.inbound_webhook_secret ?? null;
+    if (data?.tenant_id) {
+      tenantId = data.tenant_id as string;
+      expectedSecret = data.inbound_webhook_secret as string;
+    }
   }
-  return await authenticateTwilioWebhook(req, rawBody, { expectedSecret });
+  const auth = await authenticateTwilioWebhook(req, rawBody, { expectedSecret });
+  return { auth, tenantId };
 }
 
 /** The REAL call facts a completion callback carries — resolved once, applied to whichever store owns the row. */
@@ -277,7 +290,7 @@ Deno.serve(async (req) => {
 
   const rawBody = await req.text();
   const authAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const auth = await verifyTwilio(req, rawBody, authAdmin);
+  const { auth, tenantId: authedTenantId } = await verifyTwilio(req, rawBody, authAdmin);
   if (!auth.ok) {
     console.error(`[twilio-status-callback] REFUSED unauthenticated callback: ${auth.reason}`);
     return new Response("unauthenticated", { status: 401 });
@@ -319,11 +332,16 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey);
 
   // Look up the row this DLR belongs to (globally-unique provider_message_id).
-  const { data: row, error: lookupErr } = await admin
+  // Scoped to the tenant whose stamped secret authenticated this callback, so a
+  // tenant's own secret cannot advance another tenant's message. A
+  // signature-authenticated callback carries no tenant and keeps global scope,
+  // because a valid Twilio signature is itself account-bound proof.
+  let lookup = admin
     .from("messages")
-    .select("id, status, meta, error")
-    .eq("provider_message_id", messageSid)
-    .maybeSingle();
+    .select("id, status, meta, error, tenant_id")
+    .eq("provider_message_id", messageSid);
+  if (authedTenantId) lookup = lookup.eq("tenant_id", authedTenantId);
+  const { data: row, error: lookupErr } = await lookup.maybeSingle();
 
   if (lookupErr) {
     // A DB error is ours, not Twilio's — log it, but still 200 so Twilio does not
