@@ -3,10 +3,13 @@ name: Security Audit
 # Fails the build on any new high/critical severity vulnerability in
 # production dependencies. Kept strict on purpose — see security-memory.
 #
-# NOTE: this project's canonical lockfile is `bun.lockb`, which `npm audit`
-# cannot read. We synthesize a temporary `package-lock.json` from
-# `package.json` (respecting `overrides`) purely for auditing. The generated
-# lockfile is never committed.
+# NOTE: `package-lock.json` is COMMITTED, and `npm audit` reads it directly (no
+# node_modules needed). This audits the tree the npm/CI lane actually installs,
+# rather than one re-resolved from the registry at audit time.
+#
+# Caveat worth knowing: `bun.lockb` is what PRODUCTION installs from
+# (vercel.json pins `installCommand: bun install`) and `npm audit` cannot read
+# it, so the two lockfiles can drift. Converging them is a tracked follow-up.
 
 on:
   pull_request:
