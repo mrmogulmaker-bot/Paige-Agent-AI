@@ -287,18 +287,77 @@ describe("Solo Calendar — no control is hidden at narrow widths", () => {
   });
 });
 
-describe("Solo Calendar — settings group", () => {
-  it("defers connection state to Settings rather than inferring it", () => {
+// Calendar settings — availability, booking rules, event types, colours, reminders —
+// are Calendar-owned and live on the calendar itself. Connections owns whether an
+// SMS-capable channel is connected and permitted. The two interweave at exactly one
+// point: a Calendar-configured SMS reminder needs a channel Calendar does not own.
+// These tests pin that seam in BOTH directions, because the failure mode is a
+// standing link that quietly implies Connections owns scheduling.
+describe("Solo Calendar — calendar settings stay Calendar-owned", () => {
+  const withNotify = (notify_config: unknown) => {
+    state.calendars = [{
+      id: "cal-1", title: "Consults", color: "#2E7D8F", accent: null, type: "meeting",
+      notify_config,
+    }];
+  };
+  const openConfig = () => {
+    const cog = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((b) => /How Consults is configured/i.test(b.getAttribute("aria-label") ?? ""));
+    click(cog ?? null);
+  };
+
+  it("keeps no standing link out of the surface in the settings group", () => {
     mount();
     click(buttonByText(/^Settings$/));
-    expect(text()).toMatch(/Provider status is not inferred here/i);
+    // A general signpost would read as though calendar configuration lived elsewhere.
+    expect(container.querySelector('a[href="/solo/1/integrations"]')).toBeNull();
+    expect(text()).toMatch(/Open a calendar's cog above/i);
+  });
+
+  it("reads confirmations and reminders off the calendar row", () => {
+    withNotify({
+      confirm_guest: true,
+      confirm_host: false,
+      reminders: [{ channel: "email", offset_min: 1440, to: "guest" }],
+    });
+    mount();
+    openConfig();
+    expect(text()).toMatch(/Confirmations and reminders/i);
+    expect(text()).toMatch(/1 day before/i);
+    expect(text()).toMatch(/Email · to the guest/i);
+  });
+
+  it("says a calendar stores no notification settings rather than showing the column default", () => {
+    withNotify(null);
+    mount();
+    openConfig();
+    expect(text()).toMatch(/stores no notification settings/i);
     expect(text()).toContain("UNAVAILABLE");
   });
 
-  it("points the connections link at the one integrations home", () => {
+  it("offers no Connections path when the stored reminders are email-only", () => {
+    withNotify({ confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 60, to: "guest" }] });
     mount();
-    click(buttonByText(/^Settings$/));
+    openConfig();
+    expect(container.querySelector('a[href="/solo/1/integrations"]')).toBeNull();
+  });
+
+  it("offers the Connections remediation only when this calendar's own reminders ask for SMS", () => {
+    withNotify({ confirm_guest: true, confirm_host: true, reminders: [{ channel: "sms", offset_min: 120, to: "guest" }] });
+    mount();
+    openConfig();
     const link = container.querySelector<HTMLAnchorElement>('a[href="/solo/1/integrations"]');
-    expect(link?.textContent).toMatch(/Connections in Settings/i);
+    expect(link?.textContent).toMatch(/Settings → Connections/);
+    // It is a remediation for a channel, and says so — it never claims to know that
+    // SMS is unavailable, because this surface does not read sending capability.
+    expect(text()).toMatch(/SMS sending capability is not read here/i);
+  });
+
+  it("treats a 'both' reminder as asking for SMS too", () => {
+    withNotify({ confirm_guest: true, confirm_host: true, reminders: [{ channel: "both", offset_min: 30, to: "both" }] });
+    mount();
+    openConfig();
+    expect(container.querySelector('a[href="/solo/1/integrations"]')).toBeTruthy();
+    expect(text()).toMatch(/Email and SMS · to guest and host/i);
   });
 });

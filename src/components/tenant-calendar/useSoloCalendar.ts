@@ -35,6 +35,35 @@ export interface SoloBooking {
   host_user_id: string | null;
   host_full_name: string | null;
   timezone: string | null;
+  /** Both are returned by `list_team_bookings` and were previously discarded.
+   *  `intake_answers` is keyed by question id; the labels live on the calendar. */
+  intake_answers: Record<string, unknown> | null;
+  appointment_type: { name?: string; duration_min?: number } | null;
+}
+
+/** One stored working window. `day` is 0=Sun..6=Sat, times are "HH:MM" local to
+ *  the calendar's own timezone. Shape mirrors what `public-booking` parses. */
+export interface DayWindow { day: number; start: string; end: string }
+
+/** A stored exception for one date: either the whole day off, or replacement windows. */
+export interface DateOverride { date: string; blocked: boolean; windows: { start: string; end: string }[] }
+
+/** A single reminder row out of `calendars.notify_config.reminders`. The channel
+ *  vocabulary is the sender's own (`process-booking-notifications`): "email",
+ *  "sms", or "both"; recipient is "guest" (the column default), "host" or "both". */
+export interface CalendarReminder {
+  channel: "email" | "sms" | "both";
+  offset_min: number;
+  to: "guest" | "host" | "both";
+}
+/** `calendars.notify_config` — Calendar-owned appointment communication: WHETHER a
+ *  confirmation goes out and WHEN a reminder fires. It does NOT record whether an
+ *  SMS-capable channel is connected or permitted; that lives with the tenant's
+ *  phone identity, is not read here, and must never be inferred from this row. */
+export interface CalendarNotifyConfig {
+  confirm_guest: boolean;
+  confirm_host: boolean;
+  reminders: CalendarReminder[];
 }
 
 export interface SoloCalendarMeta {
@@ -43,7 +72,34 @@ export interface SoloCalendarMeta {
   color: string | null;
   accent: string | null;
   type: string | null;
+  /** Real configuration, read straight off the `calendars` row. Every one of these
+   *  is a stored column — none is defaulted here, because a default rendered as
+   *  stored data is a fabrication (§13). `availability_json` in particular is NULL
+   *  on every auto-provisioned calendar, and the Mon–Fri 9–5 fallback that the
+   *  public booking engine applies lives in that edge function, NOT in the row. */
+  slug: string | null;
+  enabled: boolean | null;
+  duration_min: number | null;
+  buffer_before_min: number | null;
+  buffer_after_min: number | null;
+  min_notice_min: number | null;
+  booking_horizon_days: number | null;
+  capacity: number | null;
+  timezone: string | null;
+  location_type: string | null;
+  location_value: string | null;
+  notify_config: CalendarNotifyConfig | null;
+  availability_json: DayWindow[] | null;
+  date_overrides: DateOverride[] | null;
+  intake_questions: { id: string; label: string }[] | null;
 }
+
+/** The exact column list read from `calendars`. Kept as one constant so the select
+ *  and the type cannot drift apart. */
+export const CALENDAR_COLUMNS =
+  "id, title, color, accent, type, slug, enabled, duration_min, buffer_before_min, " +
+  "buffer_after_min, min_notice_min, booking_horizon_days, capacity, timezone, " +
+  "location_type, location_value, notify_config, availability_json, date_overrides, intake_questions";
 
 export const UNASSIGNED_CALENDAR = "__unassigned__";
 /** The one fallback tint, used only when a calendar stores no colour of its own. */
@@ -129,6 +185,122 @@ export function findConflicts(bookings: SoloBooking[]): Set<string> {
   return conflicted;
 }
 
+/* ------------------------------------------------------------ availability --- */
+
+const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * Parse stored working windows, or return null when the calendar stores none.
+ *
+ * NULL IS LOAD-BEARING AND MUST SURVIVE. Every auto-provisioned calendar has
+ * `availability_json = NULL`, and the Mon–Fri 09:00–17:00 that public booking
+ * applies lives in THAT EDGE FUNCTION, not in the row. Substituting it here would
+ * paint stored hours a tenant never set — a fabrication in exactly the shape §13
+ * forbids. An unconfigured calendar therefore reads as unconfigured.
+ */
+export function parseWindows(raw: unknown): DayWindow[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: DayWindow[] = [];
+  for (const w of raw) {
+    if (!w || typeof w !== "object") continue;
+    const { day, start, end } = w as Record<string, unknown>;
+    if (typeof day !== "number" || day < 0 || day > 6) continue;
+    if (typeof start !== "string" || !TIME.test(start)) continue;
+    if (typeof end !== "string" || !TIME.test(end)) continue;
+    if (end <= start) continue;
+    out.push({ day, start, end });
+  }
+  // A present-but-unusable value is not the same as an absent one, but neither is
+  // it hours we can draw; both report as "nothing stored we can render".
+  return out.length ? out : null;
+}
+
+/** Reads `calendars.notify_config`. Returns null when the row stores nothing usable
+ *  so the surface can say so, rather than rendering the column DEFAULT as if the
+ *  owner had chosen it (§13). Unknown channels/recipients fall back to the sender's
+ *  own coercion ("email" / "guest") so what is shown matches what would actually go. */
+export function parseNotifyConfig(raw: unknown): CalendarNotifyConfig | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const reminders: CalendarReminder[] = Array.isArray(o.reminders)
+    ? o.reminders.flatMap((r) => {
+        if (!r || typeof r !== "object") return [];
+        const { channel, offset_min, to } = r as Record<string, unknown>;
+        if (typeof offset_min !== "number" || !Number.isFinite(offset_min)) return [];
+        const ch = channel === "sms" || channel === "both" ? channel : "email";
+        const rcpt = to === "host" || to === "both" ? to : "guest";
+        return [{ channel: ch as CalendarReminder["channel"], offset_min, to: rcpt as CalendarReminder["to"] }];
+      })
+    : [];
+  if (typeof o.confirm_guest !== "boolean" && typeof o.confirm_host !== "boolean" && reminders.length === 0) {
+    return null;
+  }
+  return { confirm_guest: o.confirm_guest === true, confirm_host: o.confirm_host === true, reminders };
+}
+
+/** True when this calendar's own reminder config asks for SMS. This is the ONLY
+ *  condition under which the surface offers the Connections remediation path —
+ *  Calendar decides that an SMS reminder should happen; whether an SMS channel is
+ *  connected and permitted is decided elsewhere and is not read here. */
+export function wantsSms(cfg: CalendarNotifyConfig | null): boolean {
+  return !!cfg?.reminders.some((r) => r.channel === "sms" || r.channel === "both");
+}
+
+export function parseOverrides(raw: unknown): DateOverride[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DateOverride[] = [];
+  for (const o of raw) {
+    if (!o || typeof o !== "object") continue;
+    const { date, blocked, windows } = o as Record<string, unknown>;
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const w = Array.isArray(windows)
+      ? windows.flatMap((x) => {
+          const s = (x as Record<string, unknown>)?.start;
+          const e = (x as Record<string, unknown>)?.end;
+          return typeof s === "string" && typeof e === "string" && TIME.test(s) && TIME.test(e) && e > s
+            ? [{ start: s, end: e }]
+            : [];
+        })
+      : [];
+    out.push({ date, blocked: blocked === true, windows: w });
+  }
+  return out;
+}
+
+function isoDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export interface DayAvailability {
+  /** false when the calendar stores no usable hours — render as unconfigured, never as 9–5. */
+  configured: boolean;
+  /** true when a stored date override marks the whole day off. */
+  blocked: boolean;
+  windows: { start: string; end: string }[];
+}
+
+/**
+ * The stored hours for one calendar on one date: a date override wins over the
+ * weekly pattern, exactly as the booking engine resolves it.
+ */
+export function availabilityFor(cal: SoloCalendarMeta, day: Date): DayAvailability {
+  const windows = parseWindows(cal.availability_json);
+  const override = parseOverrides(cal.date_overrides).find((o) => o.date === isoDate(day));
+  if (override) {
+    if (override.blocked) return { configured: true, blocked: true, windows: [] };
+    if (override.windows.length) return { configured: true, blocked: false, windows: override.windows };
+  }
+  if (!windows) return { configured: false, blocked: false, windows: [] };
+  const forDay = windows.filter((w) => w.day === day.getDay()).map(({ start, end }) => ({ start, end }));
+  return { configured: true, blocked: false, windows: forDay };
+}
+
+/** "09:00" -> 9.5 for 09:30. Used to place shading on the hour grid. */
+export function hourOf(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h + m / 60;
+}
+
 export type LoadPhase = "loading" | "ready" | "error";
 
 export interface UseSoloCalendarResult {
@@ -182,7 +354,7 @@ export function useSoloCalendar(
     void (async () => {
       const { data, error: err } = await supabase
         .from("calendars")
-        .select("id, title, color, accent, type")
+        .select(CALENDAR_COLUMNS)
         .eq("tenant_id", activeTenantId);
       if (cancelled || seq !== calendarSeq.current) return;
       if (err) { setCalendarsError(err.message); return; }

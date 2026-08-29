@@ -355,3 +355,82 @@
   .sc-bar { gap: 7px; padding: 9px 11px; }
   .sc-cell { min-height: 74px; }
 }
+
+/* --- availability, day list and per-calendar configuration ---------------- */
+
+/* Stored open hours. Drawn ONLY where a calendar actually stores windows; an
+   unconfigured calendar leaves the grid in its resting state rather than being
+   painted with hours the tenant never set. */
+.sc-hour-cell--open { background: color-mix(in srgb, var(--pg-positive) 7%, transparent); }
+.sc-hour-cell--closed {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--pg-line) 40%, transparent) 0 3px,
+    transparent 3px 7px
+  );
+}
+.sc-dow-off {
+  margin-left: 5px; padding: 0 4px; border-radius: var(--pg-r-chip);
+  background: color-mix(in srgb, var(--pg-warning) 18%, transparent);
+  color: var(--pg-warning); font-size: 9px; letter-spacing: .04em; text-transform: uppercase;
+}
+
+.sc-check-row { display: flex; align-items: stretch; gap: 2px; }
+.sc-check-row .sc-check { flex: 1; min-width: 0; }
+.sc-cog { flex: none; opacity: 0; }
+.sc-check-row:hover .sc-cog, .sc-cog:focus-visible { opacity: 1; }
+@media (hover: none) { .sc-cog { opacity: 1; } }
+
+.sc-off-tag {
+  margin-left: auto; padding: 0 4px; border-radius: var(--pg-r-chip);
+  border: 1px solid var(--pg-line); color: var(--pg-faint);
+  font-size: 9px; letter-spacing: .04em; text-transform: uppercase;
+}
+
+.sc-swatch--inline {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+  margin-right: 6px; vertical-align: -1px; border: 0;
+}
+
+.sc-daylist { display: grid; gap: 3px; }
+.sc-dayrow {
+  display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0;
+  padding: 7px 9px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  background: var(--pg-surface); color: var(--pg-ink); text-align: left;
+  font: 500 var(--pg-t-body) var(--pg-font-ui);
+  transition: background 130ms ease, border-color 130ms ease;
+}
+.sc-dayrow:hover { background: var(--pg-raised); border-color: var(--pg-line); }
+.sc-dayrow:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
+.sc-dayrow-time { margin-left: auto; flex: none; color: var(--pg-muted); font-size: var(--pg-t-label); }
+
+.sc-sub { margin-top: 14px; }
+.sc-sub h3 {
+  margin-bottom: 6px; color: var(--pg-muted);
+  font: 600 var(--pg-t-label) var(--pg-font-ui);
+  letter-spacing: .09em; text-transform: uppercase;
+}
+
+.sc-hours { display: grid; gap: 3px; }
+.sc-hours li {
+  display: flex; gap: 10px; padding: 5px 9px;
+  border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  color: var(--pg-ink); font-size: var(--pg-t-body);
+}
+.sc-hours-day { width: 34px; flex: none; color: var(--pg-muted); font-weight: 600; }
+
+.sc-drawer--wide { width: min(640px, 96vw); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-dayrow, .sc-cog { transition: none; }
+}
+
+/* Inline remediation link inside a note. Underlined so it is unmistakably a link
+   at note weight, and it inherits the note's colour rather than competing with the
+   act colour — this is a path to fix a channel, not a primary action. */
+.sc-inline-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sc-inline-link:hover { text-decoration-thickness: 2px; }

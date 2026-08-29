@@ -4,9 +4,9 @@ import {
   TriangleAlert, X,
 } from "lucide-react";
 import {
-  DEFAULT_CALENDAR_COLOR, UNASSIGNED_CALENDAR, addDays, rangeFor, rangeLabel,
-  startOfDay, startOfWeek, useSoloCalendar,
-  type SoloBooking, type ViewMode,
+  DEFAULT_CALENDAR_COLOR, UNASSIGNED_CALENDAR, addDays, availabilityFor, hourOf,
+  parseNotifyConfig, rangeFor, rangeLabel, startOfDay, startOfWeek, useSoloCalendar, wantsSms,
+  type CalendarReminder, type SoloBooking, type SoloCalendarMeta, type ViewMode,
 } from "./useSoloCalendar";
 import "./solo-calendar.css";
 
@@ -27,6 +27,23 @@ import "./solo-calendar.css";
 const HOUR_START = 7;
 const HOUR_END = 21;
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Labels for the stored reminder vocabulary. The values are the sender's own
+ *  ("email" | "sms" | "both"; "guest" | "host" | "both"), so what reads here is
+ *  what would actually go out — not a friendlier restatement of something else. */
+const CHANNEL_LABEL: Record<CalendarReminder["channel"], string> = {
+  email: "Email", sms: "SMS", both: "Email and SMS",
+};
+const RECIPIENT_LABEL: Record<CalendarReminder["to"], string> = {
+  guest: "to the guest", host: "to the host", both: "to guest and host",
+};
+/** A stored offset is minutes BEFORE the appointment. Rendered in the largest whole
+ *  unit that divides it exactly, so a stored 1440 reads as the day it means. */
+function offsetLabel(min: number): string {
+  if (min % 1440 === 0) { const d = min / 1440; return `${d} day${d === 1 ? "" : "s"} before`; }
+  if (min % 60 === 0) { const h = min / 60; return `${h} hour${h === 1 ? "" : "s"} before`; }
+  return `${min} minute${min === 1 ? "" : "s"} before`;
+}
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -77,15 +94,23 @@ interface DrawerProps {
   onClose: () => void;
   children: React.ReactNode;
   foot?: React.ReactNode;
+  /** The retired design's second width, for editors that need the room. */
+  wide?: boolean;
 }
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 /**
- * Slide-out drawer with Escape-to-close and focus restoration.
+ * Slide-out drawer with Escape-to-close, focus restoration and a focus TRAP.
  *
- * The element that opened the drawer is captured on mount and refocused on
- * unmount, so keyboard users land back where they were instead of at the top of
- * the document.
+ * The retired design's SlideOut had Escape and a backdrop but no trap, no focus
+ * restore and no dialog semantics — tab order leaked straight through to the page
+ * behind it. Declaring `aria-modal` without confining focus would be a promise the
+ * markup does not keep, so the trap is part of the port rather than a nicety.
+ *
+ * The element that opened the drawer is captured on mount and refocused on unmount,
+ * so keyboard users land back where they were, not at the top of the document.
  */
-function Drawer({ title, sub, onClose, children, foot }: DrawerProps) {
+function Drawer({ title, sub, onClose, children, foot, wide }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const headingId = useId();
@@ -93,7 +118,21 @@ function Drawer({ title, sub, onClose, children, foot }: DrawerProps) {
   useEffect(() => {
     restoreRef.current = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (!items.length) { e.preventDefault(); panel.focus(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      // Wrap at both ends, and pull focus back in if it has escaped the panel.
+      if (e.shiftKey && (active === first || active === panel)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+      else if (!panel.contains(active)) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
@@ -106,7 +145,7 @@ function Drawer({ title, sub, onClose, children, foot }: DrawerProps) {
     <>
       <div className="sc-scrim" onClick={onClose} aria-hidden="true" />
       <aside
-        className="sc-drawer"
+        className={`sc-drawer${wide ? " sc-drawer--wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
@@ -144,6 +183,8 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   const [creating, setCreating] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [dayFocus, setDayFocus] = useState<{ day: Date; list: SoloBooking[] } | null>(null);
+  const [configFor, setConfigFor] = useState<SoloCalendarMeta | null>(null);
 
   const cal = useSoloCalendar(activeTenantId, view, cursor);
   const { bookings, calendars, conflicts, phase, error, colorForBooking } = cal;
@@ -176,6 +217,47 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
     [visible, conflicts],
   );
 
+  /**
+   * Stored open hours for a day, merged across the calendars currently shown.
+   *
+   * Merged rather than per-calendar because the grid has one column per day: an
+   * hour counts as open when ANY visible calendar stores hours covering it. A day
+   * reads "configured" only if at least one visible calendar actually stores
+   * windows — otherwise the grid stays unshaded rather than implying hours.
+   */
+  const hoursForDay = useCallback((day: Date) => {
+    const shown = calendars.filter((c) => !hidden.has(c.id));
+    const resolved = shown.map((c) => availabilityFor(c, day));
+    const configured = resolved.filter((r) => r.configured);
+    if (!configured.length) return { configured: false, blocked: false, windows: [] };
+    // A day is "off" only when every configured calendar marks it off.
+    const blocked = configured.every((r) => r.blocked);
+    return { configured: true, blocked, windows: configured.flatMap((r) => r.windows) };
+  }, [calendars, hidden]);
+
+  /** The calendar the open booking belongs to, for its stored colour and title. */
+  const detailCalendar = useMemo(
+    () => (detail ? calendars.find((c) => c.id === detail.calendar_id) ?? null : null),
+    [detail, calendars],
+  );
+
+  /**
+   * Intake answers joined to their question labels. Both halves are real: the
+   * answers come back on the booking, the labels off the calendar's stored
+   * `intake_questions`. An answer whose question no longer exists keeps its raw
+   * key as the label rather than vanishing.
+   */
+  const intakePairs = useMemo(() => {
+    const answers = detail?.intake_answers;
+    if (!answers || typeof answers !== "object") return [];
+    const questions = detailCalendar?.intake_questions ?? [];
+    return Object.entries(answers).flatMap(([key, value]) => {
+      if (value == null || value === "") return [];
+      const text = Array.isArray(value) ? value.join(", ") : String(value);
+      return [{ key, label: questions.find((q) => q.id === key)?.label ?? key, value: text }];
+    });
+  }, [detail, detailCalendar]);
+
   const runStatus = async (id: string, status: string) => {
     const res = await cal.setStatus(id, status);
     if (!res.ok) { setActionMsg(res.message ?? "That change was refused."); return; }
@@ -199,20 +281,30 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
                 const on = !hidden.has(c.id);
                 const swatch = c.color || c.accent || DEFAULT_CALENDAR_COLOR;
                 return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="sc-check"
-                    aria-pressed={on}
-                    onClick={() => toggleCalendar(c.id)}
-                  >
-                    <span
-                      className={`sc-swatch${on ? "" : " sc-swatch--off"}`}
-                      style={on ? { background: swatch } : undefined}
-                      aria-hidden="true"
-                    />
-                    <span className="sc-label">{c.title}</span>
-                  </button>
+                  <div className="sc-check-row" key={c.id}>
+                    <button
+                      type="button"
+                      className="sc-check"
+                      aria-pressed={on}
+                      onClick={() => toggleCalendar(c.id)}
+                    >
+                      <span
+                        className={`sc-swatch${on ? "" : " sc-swatch--off"}`}
+                        style={on ? { background: swatch } : undefined}
+                        aria-hidden="true"
+                      />
+                      <span className="sc-label">{c.title}</span>
+                      {c.enabled === false && <span className="sc-off-tag">off</span>}
+                    </button>
+                    <button
+                      type="button"
+                      className="sc-btn sc-btn--icon sc-cog"
+                      onClick={() => setConfigFor(c)}
+                      aria-label={`How ${c.title} is configured`}
+                    >
+                      <Settings2 aria-hidden="true" />
+                    </button>
+                  </div>
                 );
               })}
               <button
@@ -245,14 +337,14 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
               </p>
             </RailGroup>
 
+            {/* Calendar settings live on the calendar — each calendar's own drawer,
+                opened from the cog beside it. No general link out of this surface:
+                availability, booking rules, event types and colours are Calendar's,
+                and a standing signpost elsewhere would imply otherwise. */}
             <RailGroup title="Settings" defaultOpen={false}>
-              <a className="sc-check" href={connectionsHref}>
-                <Settings2 className="sc-swatch" style={{ border: 0 }} aria-hidden="true" />
-                <span className="sc-label">Connections in Settings</span>
-              </a>
               <p className="sc-note">
-                <TruthTag state="UNAVAILABLE" /> Provider status is not inferred here. Calendar
-                connections stay in one integrations home.
+                <Settings2 className="sc-swatch" style={{ border: 0 }} aria-hidden="true" />
+                Open a calendar's cog above for its hours, booking rules and reminders.
               </p>
               {openPaige && (
                 <button type="button" className="sc-check" onClick={openPaige}>
@@ -321,6 +413,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
             <MonthView
               cursor={cursor} bookings={visible} today={today} conflicts={conflicts}
               colorFor={(b) => colorForBooking(b, colorBy)} onOpen={setDetail}
+              onOpenDay={(d, list) => setDayFocus({ day: d, list })}
             />
           ) : view === "agenda" ? (
             <AgendaView
@@ -331,6 +424,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
             <WeekView
               cursor={cursor} bookings={visible} today={today} conflicts={conflicts}
               colorFor={(b) => colorForBooking(b, colorBy)} onOpen={setDetail}
+              hours={hoursForDay}
             />
           )}
         </div>
@@ -343,8 +437,15 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
           onClose={() => { setDetail(null); setActionMsg(null); }}
           foot={
             <>
+              {/* The five values `admin_set_booking_status` actually accepts. 'blocked'
+                  is offered only from the create drawer, where it is what blocking time
+                  means; offering it here would let a real appointment be silently
+                  reclassified as a hold. */}
               <button type="button" className="sc-btn" onClick={() => void runStatus(detail.id, "scheduled")} disabled={detail.status === "scheduled"}>
                 Mark scheduled
+              </button>
+              <button type="button" className="sc-btn" onClick={() => void runStatus(detail.id, "done")} disabled={detail.status === "done"}>
+                Mark done
               </button>
               <button type="button" className="sc-btn" onClick={() => void runStatus(detail.id, "no_show")} disabled={detail.status === "no_show"}>
                 No-show
@@ -364,15 +465,196 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
           )}
           <dl className="sc-kv">
             <dt>Status</dt><dd>{detail.status}</dd>
+            <dt>Calendar</dt>
+            <dd>
+              {detailCalendar
+                ? (
+                  <>
+                    <span className="sc-swatch sc-swatch--inline" style={{ background: detailCalendar.color || detailCalendar.accent || DEFAULT_CALENDAR_COLOR }} aria-hidden="true" />
+                    {detailCalendar.title}
+                  </>
+                )
+                : "Unassigned"}
+            </dd>
+            {detail.appointment_type?.name && (<><dt>Type</dt><dd>{detail.appointment_type.name}</dd></>)}
             <dt>Host</dt><dd>{detail.host_full_name || "Not recorded"}</dd>
             <dt>Guest</dt><dd>{detail.guest_name || "Not recorded"}</dd>
             <dt>Email</dt><dd>{detail.guest_email || "Not recorded"}</dd>
             <dt>Phone</dt><dd>{detail.guest_phone || "Not recorded"}</dd>
             <dt>Where</dt><dd>{detail.location_value || detail.location_type || "Not recorded"}</dd>
+            {detail.booking_kind !== "single" && (<><dt>Kind</dt><dd>{detail.booking_kind}</dd></>)}
+            {detail.capacity != null && (<><dt>Capacity</dt><dd>{detail.capacity}</dd></>)}
             <dt>Source</dt><dd>{detail.source}</dd>
             <dt>Time zone</dt><dd>{detail.timezone || "Not recorded"}</dd>
             {detail.notes && (<><dt>Notes</dt><dd>{detail.notes}</dd></>)}
           </dl>
+
+          {/* Intake answers are returned by `list_team_bookings`; the question LABELS
+              live on the calendar row, so the two are joined here. An answer whose
+              question has since been deleted still shows, under its raw key, rather
+              than being dropped — losing a client's answer would be the worse lie. */}
+          {intakePairs.length > 0 && (
+            <section className="sc-sub">
+              <h3>What they answered</h3>
+              <dl className="sc-kv">
+                {intakePairs.map(({ key, label, value }) => (
+                  <div key={key} style={{ display: "contents" }}>
+                    <dt>{label}</dt><dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
+
+          <p className="sc-note">
+            <TruthTag state="UNAVAILABLE" /> A meeting join link is not part of what the
+            booking service returns to this surface, so none is shown rather than guessed.
+          </p>
+        </Drawer>
+      )}
+
+      {/* The retired design's day drawer: the day's own list, handing off to the
+          event drawer by REPLACING itself rather than stacking two dialogs. */}
+      {dayFocus && (
+        <Drawer
+          title={dayFocus.day.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          sub={`${dayFocus.list.length} ${dayFocus.list.length === 1 ? "appointment" : "appointments"}`}
+          onClose={() => setDayFocus(null)}
+        >
+          <div className="sc-daylist">
+            {dayFocus.list.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className={`sc-dayrow${isOff(b) ? " sc-ev--off" : ""}`}
+                onClick={() => { setDayFocus(null); setDetail(b); }}
+              >
+                <span className="sc-swatch sc-swatch--inline" style={{ background: colorForBooking(b, colorBy) }} aria-hidden="true" />
+                <span className="sc-label">{b.title}</span>
+                <span className="sc-dayrow-time">{timeLabel(b.start_at)}</span>
+              </button>
+            ))}
+          </div>
+        </Drawer>
+      )}
+
+      {/* Per-calendar configuration, read from the calendar row. Calendar settings —
+          which calendars, availability, booking rules, event types, colours,
+          reminders and conflict handling — are CALENDAR-owned and belong here.
+          Every value is a stored column; nothing is defaulted for display, because a
+          column default rendered as a choice is a fabrication (§13). Editing still
+          lives in the one scheduling manager (§18), so this reports rather than
+          growing a second editor. */}
+      {configFor && (
+        <Drawer
+          title={configFor.title}
+          sub="How this calendar is configured"
+          onClose={() => setConfigFor(null)}
+          wide
+        >
+          <dl className="sc-kv">
+            <dt>Accepting bookings</dt><dd>{configFor.enabled === null ? "Not recorded" : configFor.enabled ? "Yes" : "No"}</dd>
+            <dt>Type</dt><dd>{configFor.type || "Not recorded"}</dd>
+            <dt>Appointment length</dt><dd>{configFor.duration_min != null ? `${configFor.duration_min} minutes` : "Not recorded"}</dd>
+            <dt>Buffer before</dt><dd>{configFor.buffer_before_min != null ? `${configFor.buffer_before_min} minutes` : "Not recorded"}</dd>
+            <dt>Buffer after</dt><dd>{configFor.buffer_after_min != null ? `${configFor.buffer_after_min} minutes` : "Not recorded"}</dd>
+            <dt>Minimum notice</dt><dd>{configFor.min_notice_min != null ? `${configFor.min_notice_min} minutes` : "Not recorded"}</dd>
+            <dt>Books out to</dt><dd>{configFor.booking_horizon_days != null ? `${configFor.booking_horizon_days} days` : "Not recorded"}</dd>
+            <dt>Capacity</dt><dd>{configFor.capacity != null ? configFor.capacity : "Not recorded"}</dd>
+            <dt>Time zone</dt><dd>{configFor.timezone || "Not recorded"}</dd>
+            <dt>Where</dt><dd>{configFor.location_value || configFor.location_type || "Not recorded"}</dd>
+            <dt>Intake questions</dt><dd>{configFor.intake_questions?.length ?? 0}</dd>
+            <dt>Public link</dt>
+            <dd>{configFor.slug ? `/book/${configFor.slug}` : "No slug recorded"}</dd>
+          </dl>
+
+          <section className="sc-sub">
+            <h3>Stored hours</h3>
+            {(() => {
+              const w = configFor.availability_json;
+              if (!w?.length) {
+                return (
+                  <p className="sc-note">
+                    <TruthTag state="UNAVAILABLE" /> This calendar stores no working hours.
+                    The public booking page applies its own fallback when none are set, so no
+                    hours are drawn here rather than showing hours this account never chose.
+                  </p>
+                );
+              }
+              return (
+                <ul className="sc-hours">
+                  {[...w].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start)).map((x, i) => (
+                    <li key={`${x.day}-${x.start}-${i}`}>
+                      <span className="sc-hours-day">{DOW[x.day]}</span>
+                      <span>{x.start} – {x.end}</span>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
+            {!!configFor.date_overrides?.length && (
+              <p className="sc-note">
+                {configFor.date_overrides.length} stored date {configFor.date_overrides.length === 1 ? "override" : "overrides"}.
+              </p>
+            )}
+          </section>
+
+          {/* Appointment communication. Calendar decides WHAT should be sent and WHEN
+              — that is this block, read from `calendars.notify_config`. Whether an
+              SMS-capable number is connected and permitted is decided elsewhere and
+              is NOT read here: inferring it from this row would be shadow status. */}
+          <section className="sc-sub">
+            <h3>Confirmations and reminders</h3>
+            {(() => {
+              const notify = parseNotifyConfig(configFor.notify_config);
+              if (!notify) {
+                return (
+                  <p className="sc-note">
+                    <TruthTag state="UNAVAILABLE" /> This calendar stores no notification
+                    settings. What the booking engine sends when none are stored is decided
+                    there, so nothing is drawn here rather than showing sends this account
+                    never chose.
+                  </p>
+                );
+              }
+              return (
+                <>
+                  <dl className="sc-kv">
+                    <dt>Confirm the guest</dt><dd>{notify.confirm_guest ? "Yes" : "No"}</dd>
+                    <dt>Confirm the host</dt><dd>{notify.confirm_host ? "Yes" : "No"}</dd>
+                  </dl>
+                  {notify.reminders.length === 0 ? (
+                    <p className="sc-note">No reminders are stored on this calendar.</p>
+                  ) : (
+                    <ul className="sc-hours">
+                      {notify.reminders.map((r, i) => (
+                        <li key={`${r.channel}-${r.offset_min}-${r.to}-${i}`}>
+                          <span className="sc-hours-day">{offsetLabel(r.offset_min)}</span>
+                          <span>{CHANNEL_LABEL[r.channel]} · {RECIPIENT_LABEL[r.to]}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {/* Narrow, earned remediation: shown ONLY when this calendar's own
+                      reminders ask for SMS. It is a path to fix a channel, never a
+                      suggestion that scheduling, availability or booking rules live
+                      there. Whether SMS is actually permitted is not asserted, because
+                      this surface does not read it. */}
+                  {wantsSms(notify) && (
+                    <p className="sc-note">
+                      <TruthTag state="UNAVAILABLE" /> SMS sending capability is not read
+                      here. If these SMS reminders are not going out, connect a business
+                      phone in{" "}
+                      <a className="sc-inline-link" href={connectionsHref}>
+                        Settings → Connections
+                      </a>
+                      .
+                    </p>
+                  )}
+                </>
+              );
+            })()}
+          </section>
         </Drawer>
       )}
 
@@ -425,35 +707,50 @@ function EventChip({ b, conflict, color, onOpen, showTime = true }: {
   );
 }
 
-function WeekView({ cursor, bookings, today, conflicts, colorFor, onOpen }: ViewProps & { today: Date }) {
+function WeekView({ cursor, bookings, today, conflicts, colorFor, onOpen, hours: openHours }: ViewProps & {
+  today: Date;
+  /** Per-day stored working windows, already resolved from the real calendars. */
+  hours: (day: Date) => { configured: boolean; blocked: boolean; windows: { start: string; end: string }[] };
+}) {
   const start = startOfWeek(cursor);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+  const hourList = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
   const cols = `56px repeat(7, minmax(0, 1fr))`;
+
+  /** Stored open hours for the whole week, computed once per render. */
+  const dayHours = days.map((d) => openHours(d));
 
   return (
     <>
       <div className="sc-dow" style={{ gridTemplateColumns: cols }}>
         <div aria-hidden="true" />
-        {days.map((d) => (
+        {days.map((d, i) => (
           <div key={d.toISOString()} className={sameDay(d, today) ? "sc-dow-today" : undefined}>
             {DOW[d.getDay()]}
             <span className="sc-dow-num">{d.getDate()}</span>
+            {dayHours[i].blocked && <span className="sc-dow-off" title="Marked off in this calendar's date overrides">off</span>}
           </div>
         ))}
       </div>
       <div className="sc-grid-scroll">
         <div className="sc-week" style={{ gridTemplateColumns: cols }}>
-          {hours.map((h) => (
+          {hourList.map((h) => (
             <div key={h} style={{ display: "contents" }}>
               <div className="sc-hour-label">{hourLabel(h)}</div>
-              {days.map((d) => {
+              {days.map((d, i) => {
                 const slot = bookings.filter((b) => {
                   const s = new Date(b.start_at);
                   return sameDay(s, d) && s.getHours() === h;
                 });
+                const av = dayHours[i];
+                // Shading is drawn ONLY from stored windows. A calendar with no hours
+                // set is left unshaded rather than painted 9–5, because that default
+                // lives in the public booking function, not in the tenant's data.
+                const open = av.configured && !av.blocked &&
+                  av.windows.some((w) => hourOf(w.start) < h + 1 && hourOf(w.end) > h);
+                const cls = !av.configured ? "" : open ? " sc-hour-cell--open" : " sc-hour-cell--closed";
                 return (
-                  <div className="sc-hour-cell" key={`${d.toISOString()}-${h}`}>
+                  <div className={`sc-hour-cell${cls}`} key={`${d.toISOString()}-${h}`}>
                     {slot.map((b) => (
                       <EventChip key={b.id} b={b} conflict={conflicts.has(b.id)} color={colorFor(b)} onOpen={onOpen} showTime={false} />
                     ))}
@@ -468,7 +765,10 @@ function WeekView({ cursor, bookings, today, conflicts, colorFor, onOpen }: View
   );
 }
 
-function MonthView({ cursor, bookings, today, conflicts, colorFor, onOpen }: ViewProps & { today: Date }) {
+function MonthView({ cursor, bookings, today, conflicts, colorFor, onOpen, onOpenDay }: ViewProps & {
+  today: Date;
+  onOpenDay: (day: Date, list: SoloBooking[]) => void;
+}) {
   const [from] = rangeFor("month", cursor);
   const cells = Array.from({ length: 42 }, (_, i) => addDays(from, i));
   const month = cursor.getMonth();
@@ -495,7 +795,9 @@ function MonthView({ cursor, bookings, today, conflicts, colorFor, onOpen }: Vie
                   <EventChip key={b.id} b={b} conflict={conflicts.has(b.id)} color={colorFor(b)} onOpen={onOpen} />
                 ))}
                 {list.length > shown.length && (
-                  <button type="button" className="sc-more" onClick={() => onOpen(list[shown.length])}>
+                  // Opens the DAY, not the fourth booking. Pointing "+2 more" at one
+                  // arbitrary event looks like a list and behaves like a shortcut.
+                  <button type="button" className="sc-more" onClick={() => onOpenDay(d, list)}>
                     +{list.length - shown.length} more
                   </button>
                 )}
