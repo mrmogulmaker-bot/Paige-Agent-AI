@@ -201,6 +201,19 @@ vi.mock("@/agency/team", () => ({ default: () => null }));
 vi.mock("@/agency/vault", () => ({ default: () => null }));
 vi.mock("@/agency/setup", () => ({ default: () => null }));
 vi.mock("@/agency/integrations", () => ({ default: () => null }));
+vi.mock("@/components/tenant-calendar/SoloCalendarWorkspace", () => ({
+  SoloCalendarWorkspace: ({ activeTenantId, connectionsHref }: {
+    activeTenantId: string;
+    connectionsHref: string;
+  }) => (
+    <output
+      data-canonical-calendar
+      data-solo-native="true"
+      data-calendar-tenant={activeTenantId}
+      data-calendar-connections={connectionsHref}
+    />
+  ),
+}));
 vi.mock("@/pages/admin/CalendarAdmin", () => ({
   default: ({ activeTenantId, activeTab, connectionsHref }: {
     activeTenantId: string;
@@ -382,7 +395,6 @@ describe("tenant route owners preserve the newest authenticated account context"
   });
 
   it.each([
-    ["Solo", "/solo/424242/calendar/agenda", "solo", "agenda"],
     ["Agency Parent", "/agency/700001/calendar/tasks", "agency", "tasks"],
     ["direct Sub-account", "/business/700002/calendar/availability", "sub_account", "availability"],
     ["Enterprise compatibility", "/agency/600001/calendar/booking-pages", "enterprise", "booking"],
@@ -405,6 +417,23 @@ describe("tenant route owners preserve the newest authenticated account context"
     const calendar = container.querySelector("[data-canonical-calendar]");
     expect(calendar?.getAttribute("data-calendar-tenant")).toBe(routeTenant.id);
     expect(calendar?.getAttribute("data-calendar-tab")).toBe(tab);
+    expect(container.querySelectorAll("[data-canonical-calendar]")).toHaveLength(1);
+  });
+
+  it("mounts the Solo-native Calendar through the real Solo route owner", async () => {
+    const routeTenant = tenant({
+      id: "calendar-solo",
+      name: "solo Calendar Account",
+      account_type: "solo",
+      account_number: 424242,
+    });
+    mount("/solo/424242/calendar/agenda", <Route path="/solo/*" element={<SoloEntry />} />);
+    await startOverlappingLoads();
+    await resolveLoad(1, loadResult(routeTenant.id, [routeTenant]));
+
+    const calendar = container.querySelector("[data-canonical-calendar]");
+    expect(calendar?.getAttribute("data-calendar-tenant")).toBe(routeTenant.id);
+    expect(calendar?.getAttribute("data-solo-native")).toBe("true");
     expect(container.querySelectorAll("[data-canonical-calendar]")).toHaveLength(1);
   });
 

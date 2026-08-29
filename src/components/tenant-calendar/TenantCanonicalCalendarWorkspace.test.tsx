@@ -48,6 +48,27 @@ vi.mock("@/pages/admin/CalendarAdmin", () => ({
   },
 }));
 
+// Solo no longer mounts CalendarAdmin. It mounts the Solo-native surface, which
+// carries NO tab strip of its own — that was the point of the change: the Clients
+// strip already names the view, so a second one nested inside it is the defect.
+vi.mock("./SoloCalendarWorkspace", () => ({
+  SoloCalendarWorkspace: function SoloCalendarMock({ activeTenantId, connectionsHref, openPaige }: {
+    activeTenantId: string;
+    connectionsHref: string;
+    openPaige?: () => void;
+  }) {
+    React.useEffect(() => {
+      harness.mounts.push(activeTenantId);
+      return () => { harness.unmounts.push(activeTenantId); };
+    }, [activeTenantId]);
+    return (
+      <section data-solo-calendar-mock data-tenant={activeTenantId} data-connections={connectionsHref}>
+        {openPaige && <button type="button" data-ask-paige onClick={openPaige}>Ask PAIGE</button>}
+      </section>
+    );
+  },
+}));
+
 import { TenantCanonicalCalendarWorkspace } from "./TenantCanonicalCalendarWorkspace";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -101,7 +122,6 @@ describe("TenantCanonicalCalendarWorkspace", () => {
   });
 
   it.each([
-    ["Solo", "/solo/101/calendar/agenda", "solo", "tenant-solo", "/solo/101/integrations"],
     ["Agency Parent", "/agency/202/calendar/tasks", "agency", "tenant-agency", "/agency/202/integrations"],
     ["acting Sub-account", "/agency/202/sub/303/calendar/availability", "agency", "tenant-child", "/agency/202/sub/303/integrations"],
     ["direct Sub-account", "/business/303/calendar/connections", "agency", "tenant-direct", "/business/303/integrations"],
@@ -114,6 +134,17 @@ describe("TenantCanonicalCalendarWorkspace", () => {
     expect(calendar?.getAttribute("data-tenant")).toBe(tenantId);
     expect(calendar?.getAttribute("data-connections")).toBe(connectionsHref);
     expect(calendar?.getAttribute("data-tab")).toBe(path.split("/").at(-1)?.replace("booking-pages", "booking"));
+  });
+
+  it("preserves the Solo account tree on the Solo-native owner", () => {
+    harness.tenantId = "tenant-solo";
+    mount("/solo/101/calendar/agenda", "solo");
+
+    const calendar = container.querySelector("[data-solo-calendar-mock]");
+    expect(calendar?.getAttribute("data-tenant")).toBe("tenant-solo");
+    expect(calendar?.getAttribute("data-connections")).toBe("/solo/101/integrations");
+    // Solo carries no nested tab strip — asserting its ABSENCE is the contract.
+    expect(container.querySelector("[data-calendar-admin]")).toBeNull();
   });
 
   it("navigates tabs within the exact acting-child tree", () => {
@@ -138,7 +169,7 @@ describe("TenantCanonicalCalendarWorkspace", () => {
     });
 
     expect(openPaige).toHaveBeenCalledTimes(1);
-    expect(container.querySelectorAll("[data-calendar-admin]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-solo-calendar-mock]")).toHaveLength(1);
   });
 
   it("routes Solo compatibility addresses into the Clients-owned Calendar and resolves Settings", () => {
@@ -147,9 +178,11 @@ describe("TenantCanonicalCalendarWorkspace", () => {
     expect(container.querySelector("[data-path]")?.getAttribute("data-path")).toBe(
       "/solo/101/clients/calendar?calendarView=settings",
     );
-    const calendar = container.querySelector("[data-calendar-admin]");
-    expect(calendar?.getAttribute("data-tab")).toBe("settings");
-    expect(calendar?.getAttribute("data-solo-settings")).toBe("true");
+    // The legacy address still redirects into the Clients-owned Calendar — that
+    // route logic is untouched. What it renders there is now the Solo-native owner,
+    // which has no separate Settings TAB: settings are a rail group inside it.
+    expect(container.querySelector("[data-solo-calendar-mock]")).not.toBeNull();
+    expect(container.querySelector("[data-calendar-admin]")).toBeNull();
   });
 
   it("remounts the canonical owner when authenticated tenant scope changes", () => {
@@ -167,6 +200,6 @@ describe("TenantCanonicalCalendarWorkspace", () => {
 
     expect(harness.unmounts).toContain("tenant-a");
     expect(harness.mounts).toContain("tenant-b");
-    expect(container.querySelector("[data-calendar-admin]")?.getAttribute("data-tenant")).toBe("tenant-b");
+    expect(container.querySelector("[data-solo-calendar-mock]")?.getAttribute("data-tenant")).toBe("tenant-b");
   });
 });
