@@ -103,8 +103,6 @@ export type DayWindow = { day: number; start: string; end: string };
 
 export interface CalendarRow {
   id: string;
-  /** Revision stamp. Read only so the editor can tell a saved row from its predecessor. */
-  updated_at?: string | null;
   tenant_id: string | null;
   slug: string;
   type: string;
@@ -147,11 +145,7 @@ export interface CalendarGroup {
 /* -------------------------------------------------------------- constants */
 
 export const SELECT_COLS =
-  // `updated_at` is not rendered anywhere — it is the REVISION the editor keys
-  // its re-hydration on. Without it a saved row is indistinguishable from the
-  // one it replaced, the hydration effect no-ops, and values the patch dropped
-  // or normalised stay on screen after the surface has said the save worked.
-  "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy, updated_at";
+  "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
 
 export const ASSIGNMENT_MODES: { value: AssignmentStrategy["mode"]; label: string; desc: string }[] = [
   { value: "balanced", label: "Balanced", desc: "Spread evenly — the next booking goes to the free host with the fewest upcoming." },

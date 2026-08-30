@@ -420,19 +420,30 @@ export function CalendarsView() {
     [conn.calendars, selectedId],
   );
 
-  // Hydrate the editable draft whenever the selected row changes identity or is
-  // replaced by a save. Keyed on id + updated_at so a save lands, but typing
-  // never gets clobbered by an unrelated re-render.
+  /**
+   * Hydrate the editable draft when the SELECTION changes — and only then, so
+   * typing is never clobbered by an unrelated re-render.
+   *
+   * A save re-hydrates by saying so, not by being detected. The previous
+   * attempt keyed this on `updated_at`, which reads like a revision and is not
+   * one: `calendars.updated_at` carries an insert-time `DEFAULT now()`, has no
+   * update trigger, and the save does not set it — so the stamp never moved,
+   * the effect no-opped, and values the patch normalised or dropped stayed on
+   * screen after a successful save. A column that looks like a revision is
+   * worse than none, because it makes the bug look fixed.
+   */
+  const hydrate = useCallback((row: CalendarRow) => {
+    hydratedFrom.current = row.id;
+    setDraft(draftFromRow(row));
+    setAvail(jsonToAvail(row.availability_json));
+    setSlugInput(row.slug);
+  }, []);
   const hydratedFrom = useRef<string>("");
   useEffect(() => {
     if (!selected) { hydratedFrom.current = ""; setDraft(null); return; }
-    const stamp = `${selected.id}:${(selected as CalendarRow & { updated_at?: string }).updated_at ?? ""}`;
-    if (hydratedFrom.current === stamp) return;
-    hydratedFrom.current = stamp;
-    setDraft(draftFromRow(selected));
-    setAvail(jsonToAvail(selected.availability_json));
-    setSlugInput(selected.slug);
-  }, [selected]);
+    if (hydratedFrom.current === selected.id) return;
+    hydrate(selected);
+  }, [selected, hydrate]);
 
   const patch = useMemo(() => (draft ? buildCalendarPatch(draft, avail) : null), [draft, avail]);
   const savedPatch = useMemo(
@@ -467,7 +478,13 @@ export function CalendarsView() {
     const body = desired && desired !== selected.slug ? { ...patch, slug: desired } : patch;
     const result = await conn.saveCalendar(selected.id, body as Record<string, unknown>);
     setSaving(false);
-    setNotice(result.ok ? { tone: "info", text: "Saved. The public page now uses these settings." } : { tone: "bad", text: result.message });
+    if (!result.ok) { setNotice({ tone: "bad", text: result.message }); return; }
+    // From the row that was actually stored, not the draft that was sent. The
+    // patch clamps and drops — an unnamed question, an unusable date override —
+    // and leaving those on screen would have the surface disagreeing with the
+    // database about what exists, moments after saying the save worked.
+    hydrate(result.row);
+    setNotice({ tone: "info", text: "Saved. The public page now uses these settings." });
   }, [selected, patch, slugInput, conn]);
 
   const jumpTo = useCallback((key: AreaKey) => {
@@ -500,6 +517,16 @@ export function CalendarsView() {
     // absent from its list and select an id belonging to the old one. Fixing
     // the hook was not enough; every writer of account-scoped state needs the
     // same question asked, against an identity that is actually current.
+    // Checked BEFORE anything is created: the new calendar becomes the selection,
+    // and the hydration effect would replace the current draft with it. Guarding
+    // the preset cards left this second route to the same silent loss.
+    if (dirtyRef.current) {
+      setNotice({
+        tone: "warn",
+        text: "Save or discard your changes before creating another preset — they would be lost otherwise.",
+      });
+      return false;
+    }
     const startedUnder = liveIdentity.current;
     const r = await conn.createCalendar(title);
     const now = liveIdentity.current;

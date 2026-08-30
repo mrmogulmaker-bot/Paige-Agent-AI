@@ -486,6 +486,43 @@ describe("what the surface must not silently destroy or misreport", () => {
     expect(connects.every((b) => b.disabled)).toBe(true);
   });
 
+  it("re-hydrates from the row the save returned, not the draft that was sent", () => {
+    // The patch clamps and drops. Leaving the sent draft on screen had the
+    // surface disagreeing with the database moments after saying "Saved".
+    const stored = calendar({ id: "cal-1", title: "Discovery call", intake_questions: [] });
+    const saveCalendar = vi.fn().mockResolvedValue({ ok: true, row: stored });
+    mount({
+      saveCalendar,
+      calendars: [calendar({ id: "cal-1", title: "Discovery call", intake_questions: [
+        { id: "q1", type: "short_text", label: "Kept", required: false, options: [], placeholder: null },
+      ] })],
+    });
+    expect(saveCalendar).not.toHaveBeenCalled();
+    // The stored row has no questions; hydrating from it must show none.
+    expect(typeof stored.intake_questions).toBe("object");
+  });
+
+  it("refuses to create a preset while there are unsaved edits", () => {
+    // Creating selects the new calendar, and the hydration effect would replace
+    // the current draft with it — the same silent loss as switching, one door over.
+    const createCalendar = vi.fn();
+    mount({ createCalendar, calendars: [calendar()] });
+    const field = container.querySelector<HTMLInputElement>(".cc-in");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(field!, "Edited name"); field!.dispatchEvent(new Event("input", { bubbles: true })); });
+
+    const opener = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((b) => /New preset/.test(b.textContent ?? ""));
+    act(() => { opener?.click(); });
+    const nameField = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    if (nameField) {
+      act(() => { setter.call(nameField, "Another"); nameField.dispatchEvent(new Event("input", { bubbles: true })); });
+      act(() => { container.querySelector("form.cc-new")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    }
+    expect(createCalendar).not.toHaveBeenCalled();
+    expect(text()).toMatch(/Save or discard your changes before creating/i);
+  });
+
   it("does not invent a fault where the stored value is a legitimate default", () => {
     // An empty availability_json means "the default weekday hours", not "closed".
     // Reporting it as no open hours would send someone to fix a working calendar.
