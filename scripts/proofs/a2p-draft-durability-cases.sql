@@ -406,17 +406,20 @@ BEGIN
                      coalesce(v_use,'(none)'), E'\n');
   IF v_use IS DISTINCT FROM 'clear coverage' THEN fails := fails + 1; END IF;
 
-  -- ...and the same rule reaches the two older optional fields, so a person does not have
-  -- to learn which ones can be deleted and which silently cannot.
+  -- ...and optin_flow — genuinely optional — clears too, while campaign_description does
+  -- NOT. That asymmetry is deliberate and it is the seam's rule, not an oversight:
+  -- comms-a2p-submit refuses an empty description outright (MISSING_DESCRIPTION) and the
+  -- UI blocks it, so a database that accepted the clear would disagree with every path
+  -- that can reach it. Required fields preserve; optional fields clear.
   PERFORM set_config('role','authenticated',true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
   PERFORM public.tenant_a2p_registration_save_draft('clear coverage', '', SAMPLES, '', NULL);
   RESET role;
   SELECT coalesce(campaign_description,'(null)')||'/'||coalesce(optin_flow,'(null)')
     INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
-  out := out||format('      ...and desc + optin_flow clear too ........ %s   want (null)/(null)%s',
+  out := out||format('      ...optin_flow clears, desc preserved ...... %s   want Third pass./(null)%s',
                      coalesce(v_use,'(none)'), E'\n');
-  IF v_use IS DISTINCT FROM '(null)/(null)' THEN fails := fails + 1; END IF;
+  IF v_use IS DISTINCT FROM 'Third pass./(null)' THEN fails := fails + 1; END IF;
 
   -- 17 ── the sample cap is the one 20261004010000 shipped. An earlier revision of the
   --       corrective migration silently tightened it 1024 -> 320 under a header claiming
@@ -429,6 +432,97 @@ BEGIN
   SELECT length(sample_messages->>0) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
   out := out||format('  17. a 900-char sample is not truncated ....... %s   want 900%s', n, E'\n');
   IF n <> 900 THEN fails := fails + 1; END IF;
+
+  -- 18 ── SUBMISSION STATE IS SERVER-OWNED (owner-approved policy repair).
+  --        The RLS update/insert policies are row-scoped with NO column restriction, so a
+  --        tenant admin could reach PostgREST directly and set submitted_at + a brand SID,
+  --        making the surface render "Submitted for review" for something never sent. No
+  --        governed carrier-submission path exists yet, so every direct caller fails closed.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET submitted_at = now(), brand_sid = 'BN-FORGED', status = 'submitted'
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('  18. tenant admin forges submitted state ...... refused=%s hint=%s   want t / SUBMISSION_STATE_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'SUBMISSION_STATE_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...and the row is untouched, not merely the statement refused.
+  SELECT coalesce(submitted_at::text,'(null)')||'/'||coalesce(brand_sid,'(null)')||'/'||status
+    INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and the row is unchanged ............... %s   want (null)/(null)/pending%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM '(null)/(null)/pending' THEN fails := fails + 1; END IF;
+
+  -- ...and a row cannot be BORN submitted either. The insert policy has the same shape.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uC,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    INSERT INTO public.tenant_a2p_registrations (tenant_id, use_case, submitted_at, brand_sid)
+    VALUES (tC, 'forged at birth', now(), 'BN-FORGED-INSERT');
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...and cannot be BORN submitted ........... refused=%s hint=%s   want t / SUBMISSION_STATE_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'SUBMISSION_STATE_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...while ORDINARY DRAFT EDITING through the same direct path still works. A guard that
+  -- also froze the draft copy would have broken the flow it is protecting.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET use_case = 'edited directly', campaign_description = 'still editable'
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN allowed := false; END;
+  RESET role;
+  SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...draft fields still editable ............ %s / %s   want t / edited directly%s',
+                     allowed, coalesce(v_use,'(none)'), E'\n');
+  IF NOT allowed OR v_use IS DISTINCT FROM 'edited directly' THEN fails := fails + 1; END IF;
+
+  -- ...and the GOVERNED seam still moves the row, so the guard did not freeze the product.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft('post guard','Saved through the seam.', SAMPLES, NULL, NULL);
+  RESET role;
+  SELECT use_case||'/'||status INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...governed seam still writes ............. %s   want post guard/pending%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'post guard/pending' THEN fails := fails + 1; END IF;
+
+  -- ...and the canonical resolver STILL reports prepared, never submitted.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  v_a2p := (public.tenant_comms_readiness() ->> 'a2p');
+  RESET role;
+  out := out||format('      ...and readiness still says ............... %s   want prepared%s',
+                     coalesce(v_a2p,'(none)'), E'\n');
+  IF v_a2p IS DISTINCT FROM 'prepared' THEN fails := fails + 1; END IF;
+
+  -- ...and ANON still cannot touch the table at all (the guard is not the only wall).
+  PERFORM set_config('role','anon',true); PERFORM set_config('request.jwt.claims','',true);
+  allowed := false;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations SET use_case = 'anon' WHERE tenant_id = tD;
+    allowed := (SELECT count(*) FROM public.tenant_a2p_registrations WHERE use_case = 'anon') > 0;
+  EXCEPTION WHEN OTHERS THEN allowed := false; END;
+  RESET role;
+  out := out||format('      ...anonymous still denied ................. %s   want f%s', allowed, E'\n');
+  IF allowed THEN fails := fails + 1; END IF;
 
   IF fails = 0 THEN RAISE EXCEPTION 'A2P DRAFT PROOF: ALL ASSERTIONS PASSED (rolled back)%', out;
   ELSE RAISE EXCEPTION 'A2P DRAFT PROOF: % ASSERTION(S) FAILED%', fails, out; END IF;

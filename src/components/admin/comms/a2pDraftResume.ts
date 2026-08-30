@@ -2,7 +2,7 @@
 //
 // One predicate, two callers. The banner ("you can keep editing it") and the editor
 // itself must agree, and both must agree with the server — an independent review found
-// them checking 3 and 5 of the server's NINE conditions respectively, so all three could
+// them checking five of the server's EIGHT conditions, and disagreeing with it, so all three could
 // disagree the moment anything wrote a provider SID or advanced a per-leg status.
 //
 // This mirrors public.a2p_registration_is_immutable exactly. Where they drift, the server
@@ -13,7 +13,7 @@ import type { A2PRegistration, EditDraft } from "./A2PTab";
 let sampleSeq = 0;
 const newSampleId = (): string => `resumed-sample-${(sampleSeq += 1)}`;
 
-/** The server's nine conditions, in the server's order. */
+/** The server's eight conditions, in the server's order. */
 export function hasLeftPreparation(reg: A2PRegistration): boolean {
   // `?? null` on every nullable: a column the caller did not select reads as `undefined`,
   // and a bare `!== null` treats that as evidence the registration has advanced — which
@@ -27,8 +27,11 @@ export function hasLeftPreparation(reg: A2PRegistration): boolean {
     set(reg.brand_sid) ||
     set(reg.campaign_sid) ||
     set(reg.messaging_service_sid) ||
-    (reg.brand_status ?? "pending") !== "pending" ||
-    (reg.campaign_status ?? "pending") !== "pending"
+    // `is distinct from 'pending'` in SQL: a NULL status IS distinct, so it counts as
+    // advanced. Defaulting a missing value to "pending" would fail to the UNSAFE side —
+    // offering an editor over a row the server would refuse to write.
+    (reg.brand_status ?? null) !== "pending" ||
+    (reg.campaign_status ?? null) !== "pending"
   );
 }
 

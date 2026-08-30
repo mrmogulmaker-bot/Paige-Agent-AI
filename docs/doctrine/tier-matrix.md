@@ -878,6 +878,13 @@ return visit — #665 persisted four fields and could not reopen any of them, so
 promised an edit it could not deliver. Tier rows below are unchanged: this changes what the
 surface can do for the tiers that already had it, not which tiers see it.
 
+**Submission-owned state is now enforced by the database, not just by code paths (PR #672).**
+Eight columns — `submitted_at`, `approved_at`, `status`, `brand_status`, `campaign_status`,
+`brand_sid`, `campaign_sid`, `messaging_service_sid` — refuse a write from any direct caller
+at every tier, including a platform operator using PostgREST. Only server-side authority may
+move them. This does not change which tiers see the surface; it removes a tenant admin's
+ability to make an unsent registration render as filed.
+
 **Submission is `—` for every tier, and that is the shipped state, not an omission.** There is no
 carrier integration: `comms-a2p-submit` persists the reviewed copy and returns an explicit
 *prepared, not submitted* refusal. `submitted_at` is never set by any shipped path. A row therefore

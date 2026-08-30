@@ -1044,6 +1044,19 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+- **2026-08-30 — the honesty of a compliance surface rested on nobody exercising a policy
+  (PR #672, owner-approved).** `tenant_a2p_registrations`' RLS UPDATE and INSERT policies are
+  row-scoped with **no column restriction**, so a tenant admin could set `submitted_at` and a
+  brand SID straight through PostgREST and make the surface render *"Submitted for review —
+  you'll be notified the moment it's approved"* for a registration nothing was ever sent for.
+  An earlier commit of mine called `submitted_at` "the discriminator only a real submission
+  path may set"; that was true of every shipped code path and **not enforced by the database**.
+  `20261004030000` closes it: a SECURITY INVOKER trigger fails closed for every direct caller
+  on the eight submission-owned columns, INSERT as well as UPDATE. **The general lesson: "no
+  shipped path does this" is a statement about today's code, not a property of the system —
+  if a claim about what cannot happen is load-bearing for honesty, enforce it where the data
+  lives.**
+
 - **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
   banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for
   review — you'll be notified the moment it's approved."** That was survivable only while nothing

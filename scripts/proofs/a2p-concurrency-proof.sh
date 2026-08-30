@@ -108,6 +108,77 @@ psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN'
              delete from public.tenants where id='$TEN';
              delete from auth.users where id='$USR';\"" >/dev/null 2>&1
 
+# =============================================================================
+# D3 — THE FIRST SAVE, RACED.
+#
+# 20261004020000 moved the absent/cleared/replaced merge into procedural code
+# reading v_existing, and claimed it ran "against the row we are holding a lock
+# on". True once a row exists. FALSE on the very first save: SELECT ... FOR UPDATE
+# on ZERO rows takes no lock, so two concurrent first saves both resolve "absent"
+# against an empty v_existing, and the loser's ON CONFLICT DO UPDATE writes its
+# NULLs over the winner's committed values — reporting {"ok": true}.
+#
+# 20261004030000 takes a transaction-scoped advisory lock keyed on the tenant,
+# which exists whether or not the row does. This proves it: T2 mentions none of
+# the optional fields, so with the lock it must WAIT, see T1's committed row, and
+# preserve. Without it, T1's compliance copy is silently destroyed.
+# =============================================================================
+TEN2="ff000000-0000-4000-8000-0000000000f1"
+USR2="ff000000-0000-4000-8000-0000000000f2"
+
+psql_as -v ON_ERROR_STOP=1 -c "\"
+  insert into auth.users (id, aud, role, email)
+    values ('$USR2','authenticated','authenticated','a2p-race@t') on conflict do nothing;
+  insert into public.tenants (id, slug, name, account_number_prefix, account_number)
+    values ('$TEN2','a2p-race','A2P Race','A2R','910098') on conflict do nothing;
+  insert into public.tenant_members (tenant_id,user_id,status,role)
+    values ('$TEN2','$USR2','active','owner') on conflict do nothing;
+  insert into public.user_roles (user_id,role) values ('$USR2','admin') on conflict do nothing;
+  insert into public.tenant_legal_profile (tenant_id, legal_business_name)
+    values ('$TEN2','Race Fixture LLC') on conflict do nothing;
+  delete from public.tenant_a2p_registrations where tenant_id = '$TEN2';
+\"" >/dev/null 2>&1 || { echo "!! race fixture failed"; exit 1; }
+
+# T1: the FIRST save, carrying every optional field, holding its transaction open.
+su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c \"
+  begin;
+  select set_config('role','authenticated',true);
+  select set_config('request.jwt.claims', json_build_object('sub','$USR2','role','authenticated')::text, true);
+  select public.tenant_a2p_registration_save_draft('race one','First writer.','[\\\"a\\\",\\\"b\\\"]'::jsonb,
+           'FLOW ONE', null, 'OPTIN ONE', 'STOP ONE', 'HELP ONE');
+  select pg_sleep($HOLD_SECONDS);
+  commit;
+\"" >/dev/null 2>&1 &
+T1_PID=$!
+
+sleep 1
+
+# T2: a concurrent first save that mentions NO optional field. Absent must PRESERVE.
+su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c \"
+  select set_config('role','authenticated',true);
+  select set_config('request.jwt.claims', json_build_object('sub','$USR2','role','authenticated')::text, true);
+  select public.tenant_a2p_registration_save_draft('race two','Second writer.','[\\\"c\\\",\\\"d\\\"]'::jsonb,
+           null, null, null, null, null);
+\"" >/dev/null 2>&1
+wait "$T1_PID" 2>/dev/null
+
+race=$(psql_as -c "\"select coalesce(optin_flow,'(null)')||'/'||coalesce(optin_message,'(null)')||'/'||
+                          coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)')
+                     from public.tenant_a2p_registrations where tenant_id='$TEN2'\"" 2>/dev/null | tr -d ' ')
+
+echo
+echo "  D3 FIRST-SAVE RACE (two real sessions, no pre-existing row)"
+echo "    T1's optional copy survived T2 ..... $race   want FLOWONE/OPTINONE/STOPONE/HELPONE"
+
+psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2';
+             delete from public.tenant_legal_profile where tenant_id='$TEN2';
+             delete from public.user_roles where user_id='$USR2';
+             delete from public.tenant_members where tenant_id='$TEN2';
+             delete from public.tenants where id='$TEN2';
+             delete from auth.users where id='$USR2';\"" >/dev/null 2>&1
+
 [ "$blocked" = t ] && [ "$refused" = t ] && [ "$final" = "approved/APPROVEDCOPY/BN-CONC-LIVE" ] || {
   echo "  !! D2 CONCURRENCY PROOF FAILED"; exit 1; }
-echo "  D2 concurrency proof PASSED"
+[ "$race" = "FLOWONE/OPTINONE/STOPONE/HELPONE" ] || {
+  echo "  !! D3 FIRST-SAVE RACE FAILED — a concurrent first save destroyed reviewed copy"; exit 1; }
+echo "  D2 + D3 concurrency proofs PASSED"

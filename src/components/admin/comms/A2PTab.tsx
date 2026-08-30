@@ -150,7 +150,7 @@ function isSubmittedToCarrier(reg: A2PRegistration): boolean {
 /** Prepared and sitting here: a row exists, but nothing has been filed anywhere. */
 function isPreparedOnly(reg: A2PRegistration): boolean {
   // The SAME predicate the editor uses, so the banner can never promise an edit the
-  // editor will not offer — and neither can drift from the server's nine conditions.
+  // editor will not offer — and neither can drift from the server's eight conditions.
   return !hasLeftPreparation(reg);
 }
 
@@ -226,16 +226,35 @@ export function A2PTab() {
 
   const loadReg = useCallback(async () => {
     setRegLoading(true);
-    // tenant_a2p_registrations isn't in the generated types; RLS scopes the read to the
-    // caller's own tenant (§9), so no tenant filter is needed here. .limit(1) guards the one
-    // case where RLS returns >1 row — a platform owner, whose select policy spans all tenants —
-    // so maybeSingle() degrades to the first row instead of erroring into a false "Not registered".
+    // BOTH reads below are scoped to the caller's own tenant EXPLICITLY. RLS alone is not
+    // enough: its SELECT predicate admits every tenant a platform owner can see and every
+    // tenant a multi-tenant member belongs to, and neither read carries an ORDER BY — so
+    // `.limit(1)` returns whichever row the planner happens to produce.
+    //
+    // That was a knowingly-accepted display quirk until this surface started REHYDRATING.
+    // Now the row becomes an editable, savable draft and the legal name is posted to a
+    // carrier registration whose tenant is derived server-side — so an arbitrary row means
+    // another business's reviewed copy in this editor, and a filing under another
+    // business's legal identity. Same shape as the #588 nondeterministic-resolver defect,
+    // in a compliance field. The repo's own precedent is
+    // src/solo/data/useCalendarConnections.ts: resolve the tenant, then filter on it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
+    const untyped = supabase as any;
+    const { data: resolvedTenant } = await untyped.rpc("current_user_tenant_id");
+    const tenantId = typeof resolvedTenant === "string" ? resolvedTenant : null;
+    if (!tenantId) {
+      // No resolvable tenant is not "no registration" — say nothing rather than render a
+      // confident negative about an account we could not identify.
+      setReg(null);
+      setRegLoading(false);
+      return;
+    }
+    const { data } = await untyped
       .from("tenant_a2p_registrations")
       .select(
         "brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at",
       )
+      .eq("tenant_id", tenantId)
       .limit(1)
       .maybeSingle();
     const row = (data as A2PRegistration) ?? null;
@@ -245,13 +264,17 @@ export function A2PTab() {
     // with every reviewed field populated and the save disabled — so the only live control
     // was another paid generation that overwrites the row. Reopening the copy is not
     // resuming the flow unless the owner can act on it.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: lp } = await (supabase as any)
+    const { data: lp } = await untyped
       .from("tenant_legal_profile")
       .select("legal_business_name")
+      .eq("tenant_id", tenantId)
       .limit(1)
       .maybeSingle();
     const storedLegal = (lp as { legal_business_name?: string } | null)?.legal_business_name;
+    // `prev || stored`, deliberately, and NOT `prev ?? stored`: the field initialises to ""
+    // and `??` would therefore never fill it. The cost is that it also refills a field the
+    // owner has deliberately emptied — acceptable here because the save refuses without it
+    // anyway, so an empty legal name is never a state worth preserving.
     if (storedLegal) setLegalName((prev) => prev || storedLegal);
     // Re-open the saved copy. `prev ?? ...` so a draft the owner is CURRENTLY editing
     // is never replaced by the stored one — a reload behind an in-progress edit would

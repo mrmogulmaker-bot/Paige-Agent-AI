@@ -45,26 +45,29 @@ const selectState = vi.hoisted(() => ({
   row: null as unknown,
   legal: { legal_business_name: "Proof Fixture LLC" } as unknown,
   invoked: [] as { fn: string; body: Record<string, unknown> }[],
+  filters: [] as { table: string; col: string; val: unknown }[],
 }));
 
-// Keyed by TABLE. A single shared mock fed the registration row to the legal-profile
-// read as well, which would have made the legal-name assertion pass for the wrong reason.
+// Keyed by TABLE, and it RECORDS the tenant filter each read applied. A single shared mock
+// fed the registration row to the legal-profile read as well, which would have made the
+// legal-name assertion pass for the wrong reason.
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: (table: string) => ({
-      select: () => ({
-        limit: () => ({
-          maybeSingle: async () => ({
-            data: table === "tenant_legal_profile" ? selectState.legal : selectState.row,
-            error: null,
-          }),
-        }),
-        maybeSingle: async () => ({
-          data: table === "tenant_legal_profile" ? selectState.legal : selectState.row,
-          error: null,
-        }),
-      }),
-    }),
+    rpc: vi.fn(async (fn: string) =>
+      fn === "current_user_tenant_id" ? { data: "tenant-A", error: null } : { data: null, error: null }),
+    from: (table: string) => {
+      const row = () => (table === "tenant_legal_profile" ? selectState.legal : selectState.row);
+      const result = async () => ({ data: row(), error: null });
+      const build = () => ({
+        eq: (col: string, val: unknown) => {
+          selectState.filters.push({ table, col, val });
+          return build();
+        },
+        limit: () => build(),
+        maybeSingle: result,
+      });
+      return { select: () => build() };
+    },
     functions: {
       invoke: vi.fn(async (fn: string, opts: { body: Record<string, unknown> }) => {
         selectState.invoked.push({ fn, body: opts?.body ?? {} });
@@ -91,6 +94,7 @@ describe("A2P — coming back to a prepared registration", () => {
     selectState.row = PREPARED_ROW;
     selectState.legal = { legal_business_name: "Proof Fixture LLC" };
     selectState.invoked = [];
+    selectState.filters = [];
   });
 
   it("re-opens the saved copy for editing instead of stranding it", async () => {
@@ -112,6 +116,27 @@ describe("A2P — coming back to a prepared registration", () => {
     expect(joined).toContain("You are subscribed to appointment reminders.");
     expect(joined).toContain("You are unsubscribed and will get no further texts.");
     expect(joined).toContain("Reply with your question or call the number on your invoice.");
+    await cleanup();
+  });
+
+  it("reads only THIS tenant's registration and legal profile", async () => {
+    // Both reads were `.limit(1).maybeSingle()` with no tenant predicate. RLS on
+    // tenant_legal_profile admits any tenant the caller is a member of, and admits ALL of
+    // them for a platform owner — with no ORDER BY, so the row is whichever the planner
+    // returns. On main that was a display leak the code comment knowingly accepted.
+    //
+    // Rehydration changes what that row IS: it is now loaded into an editable, savable
+    // form, and the legal name is posted to a carrier registration whose tenant is derived
+    // server-side. So the leak became a cross-tenant copy transfer and a filing under
+    // another company's legal identity. Latent only because tenant_legal_profile is empty
+    // today; it arms the moment any tenant fills it in.
+    const { cleanup } = await mountTab();
+    for (const table of ["tenant_a2p_registrations", "tenant_legal_profile"]) {
+      const scoped = selectState.filters.find(
+        (f) => f.table === table && f.col === "tenant_id" && f.val === "tenant-A",
+      );
+      expect(scoped, `${table} must be read scoped to the caller's own tenant`).toBeTruthy();
+    }
     await cleanup();
   });
 

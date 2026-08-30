@@ -152,15 +152,17 @@ Deno.serve(async (req: Request) => {
     const useCase = str(body?.use_case).trim().slice(0, 160);
     const campaignDescription = str(body?.campaign_description).trim().slice(0, 2000);
     // undefined => not mentioned (preserve). "" => cleared. Same rule as the replies.
-    const optinFlow = body?.optin_flow === undefined
+    const optinFlow = body?.optin_flow === undefined || body?.optin_flow === null
       ? undefined
       : str(body?.optin_flow).trim().slice(0, 2000);
     // Accepted as their own fields rather than folded into optin_flow. A2PTab used
     // to concatenate them behind labels because there was nowhere else to put them;
     // that kept the text but destroyed its structure, so nothing could read it back.
-    // undefined => the caller did not mention it (preserve). "" => the caller cleared it.
+    // Three states, matching the RPC exactly: undefined OR null => not mentioned (preserve);
+    // "" => cleared; text => replace. Mapping JSON null to "" would have made a caller that
+    // serialises empty optionals as null silently DELETE carrier copy it meant to leave alone.
     const reply = (v: unknown): string | undefined =>
-      v === undefined ? undefined : str(v).trim().slice(0, 320);
+      v === undefined || v === null ? undefined : str(v).trim().slice(0, 320);
     const optinMessage = reply(body?.optin_message);
     const optoutMessage = reply(body?.optout_message);
     const helpMessage = reply(body?.help_message);

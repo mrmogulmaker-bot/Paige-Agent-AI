@@ -67,6 +67,16 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   pills key on it rather than on "a row exists with no SID" — that older test matched exactly what a
   durable draft save writes, and would have rendered "Submitted for review" over a registration
   nobody had filed.
+- **AND IT IS NOW ENFORCED WHERE THE DATA LIVES (`20261004030000`, PR #672, owner-approved).**
+  "No shipped path sets it" was a statement about today's code, not a property of the system:
+  the RLS UPDATE **and INSERT** policies are row-scoped with no column restriction, so a tenant
+  admin could set `submitted_at` and a brand SID straight through PostgREST. A SECURITY INVOKER
+  `BEFORE INSERT OR UPDATE` trigger now fails closed for every direct caller on the eight
+  submission-owned columns — `submitted_at`, `approved_at`, `status`, `brand_status`,
+  `campaign_status`, `brand_sid`, `campaign_sid`, `messaging_service_sid`. Only server-side
+  authority (a DEFINER seam running as the table owner, or `service_role`) may move them; draft
+  copy stays freely editable. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
+  `current_user` as its own owner and would allow everything, which the proof caught.
 
 ### Numbers — search and purchase work, and are unreachable from Solo
 - `tenant_phone_numbers` (`20260726210000:73-101`, extended `20260727140000`) — status, source,
