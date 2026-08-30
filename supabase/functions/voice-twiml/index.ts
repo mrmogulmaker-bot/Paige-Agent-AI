@@ -74,13 +74,17 @@ async function buildCoPilotStreamXml(
   tenantId: string,
   callSid: string,
   counterpartyPhone: string,
-  precomputedContactId: string | null | undefined = undefined,
+  precomputedContactId: string | null | undefined,
   /**
-   * Did we VERIFY a signature on the request asking for this fork? REQUIRED, and checked
-   * FIRST — see below. Deliberately not defaulted: a call site that forgets it fails to
-   * compile rather than silently minting an unauthenticated token.
+   * Did we VERIFY a signature on the request asking for this fork? Checked FIRST — see
+   * below. REQUIRED, with no default, so a call site that forgets it fails to COMPILE.
+   * An earlier revision wrote that sentence and then defaulted it to `false` on the very
+   * next line, which made it optional: a forgetful caller would have compiled cleanly,
+   * silently lost the co-pilot, and logged "unsigned request" on a request that WAS
+   * signed. Fail-closed is the right runtime posture and is not a substitute for the
+   * compiler catching it.
    */
-  requestAuthenticated: boolean = false,
+  requestAuthenticated: boolean,
 ): Promise<string> {
   // §9 — THE SAME GATE AS THE statusCallback SECRET, FOR THE SAME REASON.
   // The minted token travels in the SAME response body, from the SAME `verify_jwt = false`
@@ -97,10 +101,22 @@ async function buildCoPilotStreamXml(
   // lines down to here. Stated plainly so the next reader sees the rule rather than the
   // instance: on this endpoint, nothing secret or capability-bearing leaves in a response to
   // a request we did not authenticate.
+  //
+  // §58 — WHAT THIS GATE COSTS, NAMED RATHER THAN LEFT TO BE FOUND. The co-pilot fork is a
+  // PREVIOUSLY-SHIPPED capability (#140 B1), and everything built on it downstream in
+  // paige-stt (#140 B3 — live transcription, commitment capture, at-risk signal, the
+  // auto-drafted follow-up) depends on this token existing. `signatureVerified` is
+  // GLOBALLY FALSE in the documented production credential model, so on that posture this
+  // gate makes the co-pilot — and all of B3 with it — unreachable on every call, not merely
+  // on some. That is a real capability regression and it needs owner sign-off, not a
+  // footnote. It is NOT a reason to weaken the gate: minting the token to an unauthenticated
+  // caller hands them tenant-scoped access to paige-stt, which is strictly worse than the
+  // feature being off. It lifts with per-subaccount signature validation, same as the
+  // statusCallback loss above.
   if (!requestAuthenticated) {
     if (Deno.env.get("VOICE_STT_STREAM_URL")) {
       console.warn(
-        "[voice-twiml] unsigned request — NOT minting a co-pilot stream token (it would grant tenant-scoped access to paige-stt). Co-pilot is unavailable until voice webhooks can be authenticated.",
+        "[voice-twiml] unsigned request — NOT minting a co-pilot stream token (it would grant tenant-scoped access to paige-stt). The co-pilot and every downstream live-call signal are unavailable on this call until per-subaccount signature validation lands.",
       );
     }
     return "";
@@ -604,12 +620,25 @@ Deno.serve(async (req) => {
   // It is specifically NOT "set the master TWILIO_AUTH_TOKEN": tenant numbers live on
   // SUBACCOUNTS, which Twilio signs with the SUBACCOUNT's token, and the check above has no
   // shared-secret fallback and a hard 403 — so setting the master token would reject every
-  // legitimate tenant voice webhook and no tenant call would bridge at all. The sibling
-  // module states the same trap for the SMS webhooks
-  // (`_shared/twilio-webhook-auth.ts` — "merely SETTING TWILIO_AUTH_TOKEN turns every
-  // legitimate, correctly-stamped tenant callback into a 401"). An earlier revision of this
-  // comment named the master token as a remedy; that was wrong and operationally dangerous,
-  // and is corrected here rather than left to be discovered by someone acting on it.
+  // legitimate tenant voice webhook and no tenant call would bridge at all.
+  //
+  // The SMS siblings do not have this problem, and the difference is the point:
+  // `_shared/twilio-webhook-auth.ts` deliberately does NOT return on a failed signature when
+  // a stamped secret is also offered, precisely so that setting the master token cannot turn
+  // every correctly-stamped tenant callback into a 401. It avoids the trap by falling through
+  // to the shared secret. This function has no such fallback, so for it the trap is real.
+  // (An earlier revision of this comment cited that module as issuing the warning, which
+  // misread a hypothetical it guards against as a standing caution. The conclusion was right;
+  // the attribution was not.)
+  //
+  // FORWARD NOTE for whoever implements per-subaccount validation: "the outbound tenant is
+  // non-forgeable" holds only if the validator BINDS the signing subaccount to the tenant
+  // claimed in `From`. Without that binding, a request signed with tenant A's subaccount token
+  // carrying `From=client:<tenantB>.<user>` would verify, and the outbound branch would then
+  // stamp tenant B's secret. That belongs in the follow-up's acceptance criteria.
+  //
+  // An earlier revision of this comment named the master token as a remedy; that was wrong
+  // and operationally dangerous, and is corrected here rather than left to be acted on.
   if (statusCallbackBase && !signatureVerified) {
     console.warn(
       "[voice-twiml] unsigned request — emitting NO statusCallback (a stamped URL would disclose the tenant's webhook secret to an unauthenticated caller). Voice row will not receive a terminal status until per-subaccount signature validation lands.",
