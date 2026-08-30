@@ -30,6 +30,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
 import { SELECT_COLS, type CalendarRow } from "@/lib/calendar/config";
+import { rememberOAuthReturn } from "./oauthReturn";
 
 /**
  * `tenant_phone_numbers`, `tenant_a2p_registrations` and the two tenant helper
@@ -75,6 +76,13 @@ export interface SendReadiness {
   sms: Capability;
   /** What is missing, in the tenant's language. Empty when nothing is. */
   missing: string[];
+  /**
+   * The same reasons, tagged with the channel each one actually blocks. A
+   * calendar that only sends email must not be told about a missing text
+   * registration — that is how a correct configuration gets "fixed" into a
+   * broken one.
+   */
+  missingByChannel: { channel: "email" | "sms"; label: string }[];
   /** True when at least one of the four reads failed, so the answer is partial. */
   partial: boolean;
   /**
@@ -84,7 +92,7 @@ export interface SendReadiness {
   outOfScope: boolean;
 }
 
-const READINESS_UNKNOWN: SendReadiness = { email: "unknown", sms: "unknown", missing: [], partial: true, outOfScope: false };
+const READINESS_UNKNOWN: SendReadiness = { email: "unknown", sms: "unknown", missing: [], missingByChannel: [], partial: true, outOfScope: false };
 
 /* ----------------------------------------------------------------- hosts */
 
@@ -108,6 +116,12 @@ export interface CalendarConnectionsState {
   providersError: string | null;
   calendars: CalendarRow[];
   hosts: Record<string, CalendarHost[]>;
+  /**
+   * Set when the `calendar_hosts` read itself FAILED. A failed read is not an
+   * empty roster: reporting "this calendar has no host" off a transient error
+   * would tell someone their booking page is dead when it is running fine.
+   */
+  hostsError: string | null;
   readiness: SendReadiness;
   /** False when this account may read the configuration but not change it. */
   canWrite: boolean;
@@ -128,6 +142,7 @@ export function useCalendarConnections() {
     providersError: null,
     calendars: [],
     hosts: {},
+    hostsError: null,
     readiness: READINESS_UNKNOWN,
     canWrite: false,
   });
@@ -162,6 +177,7 @@ export function useCalendarConnections() {
         providersError: providerRead.error?.message ?? null,
         calendars: [],
         hosts: {},
+        hostsError: null,
         readiness: READINESS_UNKNOWN,
         canWrite: false,
       });
@@ -205,6 +221,9 @@ export function useCalendarConnections() {
         error: calendarRead.error?.message ?? "Calendar configuration could not load",
         providers: (providerRead.data as ProviderState | null) ?? EMPTY_PROVIDERS,
         providersError: providerRead.error?.message ?? null,
+        // The host read never ran on this pass; a value left over from the last
+        // one would be a claim about a load that did not happen.
+        hostsError: null,
       }));
       return;
     }
@@ -214,12 +233,14 @@ export function useCalendarConnections() {
     // Hosts, for the calendars we can actually see. One read, then grouped —
     // a per-calendar query would be N round trips for a list this small.
     const hosts: Record<string, CalendarHost[]> = {};
+    let hostsError: string | null = null;
     if (calendars.length) {
-      const { data: hostRows } = await supabase
+      const { data: hostRows, error: hostErr } = await supabase
         .from("calendar_hosts")
         .select("calendar_id, user_id, priority, availability_json, timezone")
         .in("calendar_id", calendars.map((c) => c.id));
       if (!gate.current.isCurrent(token)) return;
+      hostsError = hostErr?.message ?? null;
       type HostRow = {
         calendar_id: string; user_id: string; priority: number | null;
         availability_json: unknown; timezone: string | null;
@@ -267,15 +288,18 @@ export function useCalendarConnections() {
       else if (phoneOk === false && a2pOk === false) smsOk = "no";
       else smsOk = "unknown";
 
-      const missing: string[] = [];
-      if (identityOk === "no") missing.push("no sending email address");
-      if (phoneOk === false && a2pOk === false) missing.push("no phone number or texting registration");
-      if (!brandRead.error && !businessPhone) missing.push("no business phone on the profile");
+      const missingByChannel: { channel: "email" | "sms"; label: string }[] = [];
+      if (identityOk === "no") missingByChannel.push({ channel: "email", label: "no sending email address" });
+      if (phoneOk === false && a2pOk === false) missingByChannel.push({ channel: "sms", label: "no phone number or texting registration" });
+      // The business phone is what a text is sent FROM, so its absence blocks
+      // SMS and nothing else.
+      if (!brandRead.error && !businessPhone) missingByChannel.push({ channel: "sms", label: "no business phone on the profile" });
 
       readiness = {
         email: identityOk,
         sms: smsOk,
-        missing,
+        missing: missingByChannel.map((m) => m.label),
+        missingByChannel,
         partial: Boolean(identityRead.error || phoneRead.error || a2pRead.error || brandRead.error),
         outOfScope: false,
       };
@@ -289,6 +313,7 @@ export function useCalendarConnections() {
       providersError: providerRead.error?.message ?? null,
       calendars,
       hosts,
+      hostsError,
       readiness,
       canWrite: !adminRead.error && adminRead.data === true,
     });
@@ -340,8 +365,12 @@ export function useCalendarConnections() {
    * authorization URL and the browser leaves — nothing is connected here, and
    * nothing is claimed until the callback writes the row and this hook re-reads.
    */
-  const connect = useCallback(async (provider: "google" | "zoom") => {
+  const connect = useCallback(async (provider: "google" | "zoom", returnTo?: string) => {
     setBusy(provider);
+    // Remembered BEFORE the browser leaves, so the callback can put the person
+    // back on the surface they started from instead of the role-default landing
+    // the callback has always used. Same-origin paths only (see oauthReturn).
+    if (returnTo) rememberOAuthReturn(returnTo);
     const fn = provider === "google" ? "google-calendar-oauth-start" : "zoom-oauth-start";
     const { data, error } = await supabase.functions.invoke(fn, { body: { origin: window.location.origin } });
     setBusy(null);

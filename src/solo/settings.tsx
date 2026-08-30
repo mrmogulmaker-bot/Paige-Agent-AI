@@ -506,19 +506,20 @@ const PROVIDERS = [
  * made number search read as the whole feature and pushed messaging
  * registration, sending identity and delivery below the fold.
  */
-function ConnectionsView() {
+type ConnectionsSegment = "communications" | "calendars" | "health" | "available";
+
+function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
   const comms = useSoloComms();
   const identity = useManagedIdentity();
   // The owner-locked Connections shape, from #660: Communications owns whether a
   // message can send, Calendars owns scheduling configuration, Health reports
   // readiness, and Available stays the provider catalogue.
   //
-  // This branch had independently narrowed the segment to Communications+Health
-  // and deleted the provider catalogue. #660 shipped first and annotates this
-  // shape as owner-locked, so its structure stands: deleting a surface another
-  // lane shipped is not this PR's call (§58). What this branch changes is what
-  // Communications and Health CONTAIN, not which areas exist.
-  const [view, setView] = useState<"communications" | "calendars" | "health" | "available">("communications");
+  // The initial segment comes from the VALIDATED entry state, so the Calendar's
+  // "Manage calendar settings" exit opens calendar settings. Arriving on
+  // Communications after following a link that says Calendars is the kind of miss
+  // that makes someone believe the setting is not there.
+  const [view, setView] = useState<ConnectionsSegment>(initialSegment ?? "communications");
   const identityStatus = identity.value?.default_email_status ?? null;
   const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
@@ -578,10 +579,17 @@ function ConnectionsView() {
     : null;
 
   return <>
-    <div className="ss-segment" role="tablist" aria-label="Connections areas">
-      {TABS.map(([key, label]) => (
-        <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}>{label}</button>
-      ))}
+    {/* Pinned so the context never leaves on a surface that is deliberately long:
+        scroll into the Calendars builder and you can still see where you are and
+        step back out. The bar spans the content column and paints an opaque
+        ground, so nothing scrolls visibly beneath it. */}
+    <div className="ss-subnav">
+      <span className="ss-subnav-here">Connections</span>
+      <div className="ss-segment" role="tablist" aria-label="Connections areas">
+        {TABS.map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}>{label}</button>
+        ))}
+      </div>
     </div>
 
     {view === "calendars" && <CalendarsView/>}
@@ -797,7 +805,7 @@ export function SoloSettings() {
     return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
   }, []);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
+  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={entry?.origin === "calendar" ? "calendars" : undefined}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
   return <div ref={rootRef} className="solo-settings">
     <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}

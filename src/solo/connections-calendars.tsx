@@ -14,22 +14,40 @@
  *   rules, Service menu, Team, How to meet, Booking page, Intake questions,
  *   Notifications. Nothing was invented for this port and nothing was dropped.
  *
+ * THE SHAPE, and why it is one long page rather than a fitted panel. Calendar
+ * configuration is one of the few settings experiences where a deliberate
+ * vertical scroll is the correct answer: there are connected accounts, several
+ * presets, ten configuration areas and dozens of rules inside them. Forcing that
+ * into a fixed-height pane produces nested scrollers, and a nested scroller is
+ * where a control goes to hide. So the page reads top to bottom in the order a
+ * person actually needs it — accounts, then presets, then the selected preset's
+ * status and its link, then the builder — the sub-navigation stays pinned so the
+ * context never leaves, and NOTHING on this surface owns its own scrollbar.
+ *
+ * WHAT A CLOSED AREA STILL TELLS YOU. Progressive disclosure only works if a
+ * closed fold-out is still an answer, so every one carries the value that
+ * matters for it — duration, timezone, host model, reminder state — and turns
+ * that line into a warning when the configuration is actually broken. Scanning
+ * the page tells you how the calendar is set up, and where it is wrong, without
+ * opening anything.
+ *
  * What is NOT here, deliberately: whether a reminder can actually send. That
  * belongs to Communications, is read from the four seams the `comms_configured`
- * check uses, and is only ever *reported* here. A calendar may not claim a
- * capability it does not own (§13).
+ * check uses, and is only ever *reported* here — and only for the channels this
+ * calendar's own rules actually use. A calendar may not claim a capability it
+ * does not own, and must not warn about one it never asked for (§13).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
-  AlarmClock, CalendarCheck, CalendarDays, CalendarX2, ChevronRight, Copy, ExternalLink,
-  Info, Link2, Loader2, MessageSquare, Palette, Plus, RefreshCw, Trash2, TriangleAlert,
-  Users, Video, Clock, ListChecks, MapPin, Undo2,
+  CalendarCheck, CalendarDays, CalendarX2, ChevronRight, Copy, ExternalLink,
+  Info, Link2, Loader2, Plus, RefreshCw, Trash2, TriangleAlert,
+  Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown,
 } from "lucide-react";
 import {
-  type AvailState, type CalendarDraft, type CalendarRow,
+  type AvailState, type CalendarDraft, type CalendarRow, type NotifyConfig,
   ASSIGNMENT_MODES, BOOKING_HORIZON_PRESETS, COMMON_TZ, DAY_NAMES, DURATION_PRESETS,
-  INTAKE_TYPES, LIFECYCLE_EVENTS, MEETING_METHODS, NOTIFY_TARGETS, REMINDER_CHANNELS,
+  INTAKE_TYPES, LIFECYCLE_EVENTS, MEETING_METHODS, MERGE_FIELDS, NOTIFY_TARGETS, REMINDER_CHANNELS,
   REMINDER_OFFSETS, FOLLOWUP_OFFSETS, SWATCHES, TYPES, TYPE_LABEL,
   availToJson, bookingUrl, buildCalendarPatch, draftFromRow, jsonToAvail, newId, newQuestionId,
   slugify,
@@ -39,7 +57,9 @@ import "./connections-calendars.css";
 
 /* ------------------------------------------------------------- primitives */
 
-function Pill({ tone, children }: { tone?: "live" | "warn" | "bad" | "info"; children: ReactNode }) {
+type Tone = "live" | "warn" | "bad" | "info";
+
+function Pill({ tone, children }: { tone?: Tone; children: ReactNode }) {
   return <span className="cc-pill" data-tone={tone}>{tone && <i />}{children}</span>;
 }
 
@@ -84,6 +104,11 @@ function Notice({ tone, icon, children }: { tone?: "warn" | "bad" | "info"; icon
   return <div className="cc-notice" data-tone={tone} role={tone === "bad" ? "alert" : undefined}>{icon}<div>{children}</div></div>;
 }
 
+/** A short muted paragraph used where an area is empty. */
+function Hint({ children }: { children: ReactNode }) {
+  return <p className="cc-hint">{children}</p>;
+}
+
 /* ------------------------------------------------------------ small utils */
 
 function minutesLabel(m: number | null | undefined): string {
@@ -114,13 +139,41 @@ function syncAge(iso: string | null): string | null {
 }
 
 /** A reminder channel can only be promised when Communications proves it. */
-function channelCapability(channel: string, readiness: SendReadiness): { cap: Capability; label: string; tone?: "live" | "warn" | "bad" } {
+function channelCapability(channel: string, readiness: SendReadiness): { cap: Capability; label: string; tone?: Tone } {
   const parts: Capability[] = [];
   if (channel === "email" || channel === "both") parts.push(readiness.email);
   if (channel === "sms" || channel === "both") parts.push(readiness.sms);
   if (parts.includes("no")) return { cap: "no", label: "Will not send", tone: "bad" };
   if (parts.includes("unknown")) return { cap: "unknown", label: "Not checked", tone: "warn" };
   return { cap: "yes", label: "Will send", tone: "live" };
+}
+
+/**
+ * Which channels this calendar's own rules actually reach for. Confirmations and
+ * the follow-up are email; reminders and lifecycle messages carry their own
+ * channel. Anything outside this set is somebody else's problem, and warning
+ * about it here would be a claim about a rule that does not exist.
+ */
+function channelsInUse(n: NotifyConfig): Set<"email" | "sms"> {
+  const used = new Set<"email" | "sms">();
+  if (n.confirm_guest || n.confirm_host || n.followup_guest) used.add("email");
+  const add = (channel: string) => {
+    if (channel === "email" || channel === "both") used.add("email");
+    if (channel === "sms" || channel === "both") used.add("sms");
+  };
+  for (const r of n.reminders) add(r.channel);
+  for (const l of n.lifecycle) add(l.channel);
+  return used;
+}
+
+/** The send verdict for THIS calendar: only the channels above are consulted. */
+function sendVerdict(n: NotifyConfig, readiness: SendReadiness) {
+  const used = channelsInUse(n);
+  const caps = Array.from(used).map((c) => readiness[c]);
+  const held = caps.includes("no");
+  const unchecked = !held && caps.includes("unknown");
+  const reasons = readiness.missingByChannel.filter((m) => used.has(m.channel)).map((m) => m.label);
+  return { used, held, unchecked, reasons, silent: used.size === 0 };
 }
 
 /* ------------------------------------------------------------------ areas */
@@ -142,11 +195,91 @@ const AREA_META: { key: AreaKey; n: string; title: string; desc: string }[] = [
   { key: "notify", n: "10", title: "Notifications", desc: "Confirmations and reminders sent around each booking." },
 ];
 
+const ALL_OPEN: Record<AreaKey, boolean> = Object.fromEntries(
+  AREA_META.map((a) => [a.key, true]),
+) as Record<AreaKey, boolean>;
+
+/* ---------------------------------------------------- the collapsed answer */
+
+/**
+ * What a closed fold-out says. `tone` is what turns a summary into a status: a
+ * calendar with no open day, no host, or an unsendable rule is broken, and the
+ * person must be able to see that without opening ten panels.
+ */
+interface AreaState { value: string; tone?: Tone }
+
+interface SummaryInput {
+  d: CalendarDraft;
+  avail: AvailState;
+  hosts: CalendarHost[];
+  hostsError: string | null;
+  readiness: SendReadiness;
+}
+
+function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: SummaryInput): AreaState {
+  switch (key) {
+    case "details":
+      if (!d.title.trim()) return { value: "unnamed", tone: "warn" };
+      return { value: TYPE_LABEL[d.type] ?? d.type };
+    case "schedule": {
+      const days = availToJson(avail).length;
+      const inverted = Object.values(avail).some((v) => v.enabled && v.start >= v.end);
+      if (days === 0) return { value: "no open hours", tone: "bad" };
+      if (inverted) return { value: "hours end before they start", tone: "bad" };
+      return { value: `${days} ${days === 1 ? "day" : "days"} · ${minutesLabel(d.min_notice_min)} notice` };
+    }
+    case "dates":
+      return { value: d.date_overrides.length ? `${d.date_overrides.length} ${d.date_overrides.length === 1 ? "date" : "dates"} set` : "none" };
+    case "rules":
+      return { value: `${d.duration_min} min · ${d.buffer_before_min}/${d.buffer_after_min} buffer` };
+    case "menu": {
+      const unnamed = d.appointment_types.filter((t) => !t.name.trim()).length;
+      if (unnamed) return { value: `${unnamed} unnamed — dropped on save`, tone: "warn" };
+      return { value: d.appointment_types.length === 1 ? "1 service" : d.appointment_types.length ? `${d.appointment_types.length} services` : "single meeting" };
+    }
+    case "team": {
+      // A failed read is not an empty roster (§13).
+      if (hostsError) return { value: "hosts could not be read", tone: "warn" };
+      if (hosts.length === 0) return { value: "no host — cannot be booked", tone: "bad" };
+      const strategy = d.type === "round_robin" ? ` · ${d.assignment_strategy.mode}` : "";
+      return { value: `${hosts.length} ${hosts.length === 1 ? "host" : "hosts"}${strategy}` };
+    }
+    case "how": {
+      const n = d.location_options.length;
+      if (n === 1) {
+        return { value: MEETING_METHODS.find((m) => m.type === d.location_options[0].type)?.label ?? d.location_options[0].type };
+      }
+      return { value: `${n} methods` };
+    }
+    case "page":
+      return { value: d.theme === "dark" ? "dark theme" : "light theme" };
+    case "intake": {
+      const broken = d.intake_questions.filter(
+        (q) => INTAKE_TYPES.find((t) => t.type === q.type)?.hasOptions && q.options.filter((o) => o.trim()).length === 0,
+      ).length;
+      if (broken) return { value: `${broken} unanswerable — dropped on save`, tone: "warn" };
+      return { value: d.intake_questions.length ? `${d.intake_questions.length} ${d.intake_questions.length === 1 ? "question" : "questions"}` : "none" };
+    }
+    case "notify": {
+      const verdict = sendVerdict(d.notify_config, readiness);
+      const r = d.notify_config.reminders.length;
+      const base = `${r} ${r === 1 ? "reminder" : "reminders"}${d.notify_config.followup_guest ? " · follow-up" : ""}`;
+      if (verdict.silent) return { value: "nothing is sent" };
+      if (verdict.held) return { value: `${base} · held`, tone: "bad" };
+      if (verdict.unchecked) return { value: `${base} · not checked`, tone: "warn" };
+      return { value: base };
+    }
+    default:
+      return { value: "" };
+  }
+}
+
 /* ------------------------------------------------------------ the surface */
 
 export function CalendarsView() {
   const conn = useCalendarConnections();
   const params = useParams();
+  const location = useLocation();
   const account = params.account ?? "";
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -211,7 +344,12 @@ export function CalendarsView() {
 
   const jumpTo = useCallback((key: AreaKey) => {
     setOpen((o) => ({ ...o, [key]: true }));
-    requestAnimationFrame(() => areaRefs.current[key]?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    // Two frames: one for the open state to commit, one for layout to settle, so
+    // the scroll lands on the expanded plate rather than its collapsed height.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      areaRefs.current[key]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      areaRefs.current[key]?.querySelector<HTMLButtonElement>(".cc-area-t")?.focus({ preventScroll: true });
+    }));
   }, []);
 
   const copyLink = useCallback(async (slug: string) => {
@@ -224,12 +362,27 @@ export function CalendarsView() {
   }, []);
 
   const ro = !conn.canWrite || saving;
+  const hosts = selected ? conn.hosts[selected.id] ?? [] : [];
+  const summaryInput: SummaryInput | null = draft
+    ? { d: draft, avail, hosts, hostsError: conn.hostsError, readiness: conn.readiness }
+    : null;
+  const states = useMemo(
+    () => (summaryInput ? AREA_META.map((a) => [a.key, areaState(a.key, summaryInput)] as const) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft, avail, hosts, conn.hostsError, conn.readiness],
+  );
+  const stateOf = useCallback(
+    (key: AreaKey): AreaState => states.find(([k]) => k === key)?.[1] ?? { value: "" },
+    [states],
+  );
+  const issues = states.filter(([, s]) => s.tone === "bad" || s.tone === "warn");
+  const allOpen = AREA_META.every((a) => open[a.key]);
 
   return (
     <div className="cc">
-      <ConnectedAccounts conn={conn} />
+      <ConnectedAccounts conn={conn} returnTo={`${location.pathname}${location.search}`} />
 
-      <section className="cc" style={{ gap: 12 }}>
+      <section className="cc-sec">
         <div className="cc-head">
           <div className="cc-head-t">
             <span className="cc-eyebrow">Booking presets</span>
@@ -249,92 +402,114 @@ export function CalendarsView() {
         ) : conn.empty ? (
           <EmptyBody />
         ) : (
-          <div className="cc-work">
-            <nav className="cc-list" aria-label="Booking presets">
-              <div className="cc-list-head">
-                <span>{conn.calendars.length} {conn.calendars.length === 1 ? "preset" : "presets"}</span>
-                <Pill>{conn.calendars.filter((c) => c.enabled).length} live</Pill>
-              </div>
-              {conn.calendars.map((c) => (
-                <button key={c.id} type="button" className="cc-item"
-                  aria-current={selected?.id === c.id}
-                  onClick={() => { setSelectedId(c.id); setNotice(null); }}>
-                  <span className="cc-item-t">
-                    <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
-                    <span className="cc-item-n">{c.title || "Untitled calendar"}</span>
-                    {!c.enabled && <Pill>Draft</Pill>}
+          <div className="cc-presets" role="tablist" aria-label="Booking presets">
+            {conn.calendars.map((c) => (
+              <button key={c.id} type="button" role="tab" className="cc-preset-card"
+                aria-selected={selected?.id === c.id}
+                onClick={() => { setSelectedId(c.id); setNotice(null); }}>
+                {/* The NAME gets the whole first line. Sharing it with the state
+                    pill truncated real titles to "Harness discov…" at four cards
+                    across, which is the one thing on the card you pick by. */}
+                <span className="cc-preset-t">
+                  <span className="cc-swatch" style={{ background: c.color ?? "var(--pg-violet)" }} />
+                  <span className="cc-preset-n">{c.title || "Untitled calendar"}</span>
+                </span>
+                <span className="cc-preset-m">
+                  <span>{TYPE_LABEL[c.type] ?? c.type}</span>
+                  <em>{c.duration_min} min</em>
+                  <span className="cc-preset-state">
+                    {c.enabled ? <Pill tone="live">Live</Pill> : <Pill>Draft</Pill>}
                   </span>
-                  <span className="cc-item-m">
-                    <span>{TYPE_LABEL[c.type] ?? c.type}</span>
-                    <em>{c.duration_min} min</em>
-                  </span>
-                </button>
-              ))}
-            </nav>
-
-            {draft && selected && (
-              <div className="cc-detail">
-                <Identity
-                  row={selected} draft={draft} readiness={conn.readiness}
-                  busy={conn.busy === selected.id} disabled={ro}
-                  onCopy={() => copyLink(selected.slug)}
-                  onToggleLive={async (v) => {
-                    const r = await conn.setEnabled(selected.id, v);
-                    if (!r.ok) setNotice({ tone: "bad", text: r.message });
-                  }}
-                />
-
-                <div className="cc-ribbon" role="list" aria-label="Configuration areas">
-                  {AREA_META.map((a) => (
-                    <button key={a.key} type="button" role="listitem" className="cc-rib"
-                      data-open={Boolean(open[a.key])} onClick={() => jumpTo(a.key)}>
-                      <b>{a.title}</b>
-                      <span>{summaryFor(a.key, draft, avail, conn.hosts[selected.id] ?? [])}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {notice && (
-                  <Notice tone={notice.tone} icon={notice.tone === "bad" ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
-                    {notice.text}
-                  </Notice>
-                )}
-
-                {!conn.canWrite && (
-                  <Notice tone="info" icon={<Info aria-hidden />}>
-                    You can read this configuration but not change it. Every control below is disabled
-                    rather than hidden, so you can still see exactly how the calendar is set up.
-                  </Notice>
-                )}
-
-                {AREA_META.map((a) => (
-                  <Area key={a.key} meta={a} open={Boolean(open[a.key])}
-                    value={summaryFor(a.key, draft, avail, conn.hosts[selected.id] ?? [])}
-                    onToggle={() => setOpen((o) => ({ ...o, [a.key]: !o[a.key] }))}
-                    innerRef={(el) => { areaRefs.current[a.key] = el; }}>
-                    <AreaBody
-                      area={a.key} draft={draft} set={set} avail={avail} setAvail={setAvail}
-                      slugInput={slugInput} setSlugInput={setSlugInput}
-                      hosts={conn.hosts[selected.id] ?? []} readiness={conn.readiness}
-                      disabled={ro} account={account}
-                    />
-                  </Area>
-                ))}
-
-                {dirty && (
-                  <div className="cc-bar" role="status">
-                    <span>Unsaved changes on <b>{draft.title || "this calendar"}</b>.</span>
-                    <Btn kind="ghost" size="s" onClick={revert} disabled={saving}><Undo2 aria-hidden /> Discard</Btn>
-                    <Btn kind="act" onClick={save} disabled={saving || !conn.canWrite}>
-                      {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarCheck aria-hidden />} Save changes
-                    </Btn>
-                  </div>
-                )}
-              </div>
-            )}
+                </span>
+              </button>
+            ))}
           </div>
         )}
       </section>
+
+      {draft && selected && summaryInput && (
+        <>
+          <SelectedPreset
+            row={selected} draft={draft} hosts={hosts} hostsError={conn.hostsError}
+            readiness={conn.readiness} busy={conn.busy === selected.id} disabled={ro}
+            issues={issues.map(([key, s]) => ({ key, title: AREA_META.find((a) => a.key === key)!.title, ...s }))}
+            onJump={jumpTo}
+            onCopy={() => copyLink(selected.slug)}
+            onToggleLive={async (v) => {
+              const r = await conn.setEnabled(selected.id, v);
+              if (!r.ok) setNotice({ tone: "bad", text: r.message });
+            }}
+          />
+
+          {notice && (
+            <Notice tone={notice.tone} icon={notice.tone === "bad" ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
+              {notice.text}
+            </Notice>
+          )}
+
+          {!conn.canWrite && (
+            <Notice tone="info" icon={<Info aria-hidden />}>
+              You can read this configuration but not change it. Every control below is disabled
+              rather than hidden, so you can still see exactly how the calendar is set up.
+            </Notice>
+          )}
+
+          <section className="cc-sec">
+            <div className="cc-builder-head">
+              <div className="cc-head-t">
+                <span className="cc-eyebrow">Configuration</span>
+                <h2>How this calendar behaves</h2>
+              </div>
+              <Btn size="s" kind="ghost"
+                onClick={() => setOpen(allOpen ? {} : { ...ALL_OPEN })}>
+                {allOpen ? <><ChevronsDownUp aria-hidden /> Collapse all</> : <><ChevronsUpDown aria-hidden /> Expand all</>}
+              </Btn>
+            </div>
+
+            {/* An index, not a scroller: it wraps rather than taking a scrollbar of
+                its own, because a strip you have to drag sideways is where a
+                configuration area goes to hide. */}
+            <nav className="cc-index" aria-label="Jump to a configuration area">
+              {AREA_META.map((a) => {
+                const s = stateOf(a.key);
+                return (
+                  <button key={a.key} type="button" className="cc-index-i"
+                    data-open={Boolean(open[a.key])} data-tone={s.tone}
+                    onClick={() => jumpTo(a.key)}>
+                    <b>{a.title}</b>
+                    <span>{s.value}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="cc-areas">
+              {AREA_META.map((a) => (
+                <Area key={a.key} meta={a} open={Boolean(open[a.key])} state={stateOf(a.key)}
+                  onToggle={() => setOpen((o) => ({ ...o, [a.key]: !o[a.key] }))}
+                  innerRef={(el) => { areaRefs.current[a.key] = el; }}>
+                  <AreaBody
+                    area={a.key} draft={draft} set={set} avail={avail} setAvail={setAvail}
+                    slugInput={slugInput} setSlugInput={setSlugInput}
+                    hosts={hosts} hostsError={conn.hostsError} onRetryHosts={conn.refresh}
+                    readiness={conn.readiness} disabled={ro} account={account}
+                  />
+                </Area>
+              ))}
+            </div>
+          </section>
+
+          {dirty && (
+            <div className="cc-bar" role="status">
+              <span>Unsaved changes on <b>{draft.title || "this calendar"}</b>.</span>
+              <Btn kind="ghost" size="s" onClick={revert} disabled={saving}><Undo2 aria-hidden /> Discard</Btn>
+              <Btn kind="act" onClick={save} disabled={saving || !conn.canWrite}>
+                {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarCheck aria-hidden />} Save changes
+              </Btn>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -343,13 +518,8 @@ export function CalendarsView() {
 
 function LoadingBody() {
   return (
-    <div className="cc-work" aria-busy="true">
-      <div className="cc-list">{[0, 1, 2].map((i) => <div key={i} className="cc-skel" style={{ height: 52 }} />)}</div>
-      <div className="cc-detail">
-        <div className="cc-skel" style={{ height: 108 }} />
-        <div className="cc-skel" style={{ height: 44 }} />
-        {[0, 1, 2, 3].map((i) => <div key={i} className="cc-skel" style={{ height: 58 }} />)}
-      </div>
+    <div className="cc-presets" aria-busy="true">
+      {[0, 1, 2].map((i) => <div key={i} className="cc-skel" style={{ height: 62 }} />)}
     </div>
   );
 }
@@ -368,14 +538,16 @@ function EmptyBody() {
   );
 }
 
-function ConnectedAccounts({ conn }: { conn: ReturnType<typeof useCalendarConnections> }) {
+function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCalendarConnections>; returnTo: string }) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const p = conn.providers;
 
   const start = async (provider: "google" | "zoom") => {
     setPending(provider); setError(null);
-    const r = await conn.connect(provider);
+    // The return address is handed over BEFORE the browser leaves, so the
+    // callback lands back here instead of on the role-default page.
+    const r = await conn.connect(provider, returnTo);
     setPending(null);
     if (!r.ok) { setError(r.message); return; }
     window.location.href = r.url;
@@ -390,7 +562,7 @@ function ConnectedAccounts({ conn }: { conn: ReturnType<typeof useCalendarConnec
   const googleAge = syncAge(p.google_last_sync_at);
 
   return (
-    <section className="cc" style={{ gap: 12 }}>
+    <section className="cc-sec">
       <div className="cc-head">
         <div className="cc-head-t">
           <span className="cc-eyebrow">Connections · Calendars</span>
@@ -487,27 +659,40 @@ function ConnectedAccounts({ conn }: { conn: ReturnType<typeof useCalendarConnec
   );
 }
 
-function Identity({
-  row, draft, readiness, busy, disabled, onCopy, onToggleLive,
+/**
+ * The one place that answers "is this calendar working, and where do I send
+ * people?" without opening anything: state, link, the four facts that matter,
+ * and every configuration problem as a control that jumps straight to it.
+ */
+function SelectedPreset({
+  row, draft, hosts, hostsError, readiness, busy, disabled, issues, onJump, onCopy, onToggleLive,
 }: {
-  row: CalendarRow; draft: CalendarDraft; readiness: SendReadiness; busy: boolean; disabled: boolean;
-  onCopy: () => void; onToggleLive: (v: boolean) => void;
+  row: CalendarRow; draft: CalendarDraft; hosts: CalendarHost[]; hostsError: string | null;
+  readiness: SendReadiness; busy: boolean; disabled: boolean;
+  issues: { key: AreaKey; title: string; value: string; tone?: Tone }[];
+  onJump: (key: AreaKey) => void; onCopy: () => void; onToggleLive: (v: boolean) => void;
 }) {
-  const sendBlocked = readiness.email === "no" || readiness.sms === "no";
+  const verdict = sendVerdict(draft.notify_config, readiness);
+  const reminderLabel = verdict.silent
+    ? "Nothing sent"
+    : verdict.held ? "Held" : verdict.unchecked ? "Not checked" : "Sending";
+  const reminderTone: Tone | undefined = verdict.silent
+    ? undefined : verdict.held ? "bad" : verdict.unchecked ? "warn" : "live";
+
   return (
-    <div className="cc-identity">
-      <div className="cc-identity-top">
-        <div style={{ minWidth: 0 }}>
+    <section className="cc-selected">
+      <div className="cc-selected-top">
+        <div className="cc-selected-id">
           <h3>{draft.title || "Untitled calendar"}</h3>
-          <p className="cc-identity-sub">{TYPE_LABEL[draft.type] ?? draft.type} · {draft.duration_min} minutes · {draft.timezone}</p>
+          <p>{TYPE_LABEL[draft.type] ?? draft.type} · {draft.duration_min} minutes · {draft.timezone}</p>
         </div>
-        <div className="cc-identity-pills">
-          {sendBlocked && <Pill tone="warn">Reminders held</Pill>}
+        <div className="cc-selected-live">
           {row.enabled ? <Pill tone="live">Live</Pill> : <Pill>Draft</Pill>}
           <Toggle on={row.enabled} onChange={onToggleLive} disabled={disabled || busy}
             label={row.enabled ? "Take this calendar off the air" : "Put this calendar live"} />
         </div>
       </div>
+
       <div className="cc-link">
         <code>{bookingUrl(row.slug)}</code>
         <Btn size="s" onClick={onCopy}><Copy aria-hidden /> Copy</Btn>
@@ -515,66 +700,58 @@ function Identity({
           <ExternalLink aria-hidden /> Open
         </a>
       </div>
+
+      <dl className="cc-glance">
+        <div><dt>Length</dt><dd>{draft.duration_min} min</dd></div>
+        <div><dt>Timezone</dt><dd>{draft.timezone}</dd></div>
+        <div>
+          <dt>Hosts</dt>
+          <dd>{hostsError ? "Could not read" : hosts.length === 0 ? "None" : `${hosts.length}${draft.type === "round_robin" ? ` · ${draft.assignment_strategy.mode}` : ""}`}</dd>
+        </div>
+        <div><dt>Reminders</dt><dd><Pill tone={reminderTone}>{reminderLabel}</Pill></dd></div>
+      </dl>
+
       {!row.enabled && (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
           This calendar is a <strong>Draft</strong>, so the link above will not accept bookings. Put it
           live with the switch when you are ready.
         </Notice>
       )}
-    </div>
+
+      {issues.length > 0 && (
+        <div className="cc-issues">
+          <span className="cc-issues-h">
+            {issues.length} {issues.length === 1 ? "thing needs" : "things need"} attention
+          </span>
+          {issues.map((i) => (
+            <button key={i.key} type="button" className="cc-issue" data-tone={i.tone} onClick={() => onJump(i.key)}>
+              <b>{i.title}</b><span>{i.value}</span><ChevronRight aria-hidden />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
 function Area({
-  meta, open, value, onToggle, children, innerRef,
+  meta, open, state, onToggle, children, innerRef,
 }: {
   meta: { key: AreaKey; n: string; title: string; desc: string };
-  open: boolean; value: string; onToggle: () => void; children: ReactNode;
+  open: boolean; state: AreaState; onToggle: () => void; children: ReactNode;
   innerRef: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div className="cc-area" data-open={open} ref={innerRef}>
+    <div className="cc-area" data-open={open} data-tone={state.tone} ref={innerRef}>
       <button type="button" className="cc-area-t" aria-expanded={open} onClick={onToggle}>
         <span className="cc-area-n">{meta.n}</span>
         <span className="cc-area-h"><strong>{meta.title}</strong><span>{meta.desc}</span></span>
-        {!open && <span className="cc-area-v">{value}</span>}
+        {!open && <span className="cc-area-v" data-tone={state.tone}>{state.value}</span>}
         <span className="cc-area-c"><ChevronRight aria-hidden /></span>
       </button>
       {open && <div className="cc-area-b">{children}</div>}
     </div>
   );
-}
-
-/* ---------------------------------------------------- the collapsed answer */
-
-function summaryFor(key: AreaKey, d: CalendarDraft, avail: AvailState, hosts: CalendarHost[]): string {
-  switch (key) {
-    case "details": return `${TYPE_LABEL[d.type] ?? d.type}`;
-    case "schedule": {
-      const days = availToJson(avail).length;
-      return `${days} ${days === 1 ? "day" : "days"} · ${minutesLabel(d.min_notice_min)} notice`;
-    }
-    case "dates": return d.date_overrides.length ? `${d.date_overrides.length} set` : "none";
-    case "rules": return `${d.duration_min} min · ${d.buffer_before_min}/${d.buffer_after_min} buffer`;
-    case "menu": return d.appointment_types.length ? `${d.appointment_types.length} services` : "single meeting";
-    case "team": {
-      const n = hosts.length;
-      const strategy = d.type === "round_robin" ? ` · ${d.assignment_strategy.mode}` : "";
-      return `${n || "no"} ${n === 1 ? "host" : "hosts"}${strategy}`;
-    }
-    case "how": {
-      const n = d.location_options.length;
-      if (n === 1) return MEETING_METHODS.find((m) => m.type === d.location_options[0].type)?.label ?? d.location_options[0].type;
-      return `${n} methods`;
-    }
-    case "page": return d.theme === "dark" ? "dark theme" : "light theme";
-    case "intake": return d.intake_questions.length ? `${d.intake_questions.length} questions` : "none";
-    case "notify": {
-      const r = d.notify_config.reminders.length;
-      return `${r} ${r === 1 ? "reminder" : "reminders"}${d.notify_config.followup_guest ? " · follow-up" : ""}`;
-    }
-    default: return "";
-  }
 }
 
 /* ------------------------------------------------------------- area bodies */
@@ -588,6 +765,8 @@ interface BodyProps {
   slugInput: string;
   setSlugInput: (v: string) => void;
   hosts: CalendarHost[];
+  hostsError: string | null;
+  onRetryHosts: () => void;
   readiness: SendReadiness;
   disabled: boolean;
   account: string;
@@ -666,9 +845,9 @@ function ScheduleBody({ draft: d, set, avail, setAvail, disabled }: BodyProps) {
               onChange={(e) => set("min_notice_min", Math.max(0, Number(e.target.value) || 0))} />
             <i>minutes</i>
           </div>
-          <div className="cc-presets" style={{ marginTop: 6 }}>
+          <div className="cc-presets-row">
             {[0, 60, 240, 1440, 2880].map((m) => (
-              <button key={m} type="button" className="cc-preset" disabled={disabled}
+              <button key={m} type="button" className="cc-chip" disabled={disabled}
                 aria-pressed={d.min_notice_min === m} onClick={() => set("min_notice_min", m)}>
                 {m === 0 ? "none" : minutesLabel(m)}
               </button>
@@ -702,18 +881,36 @@ function ScheduleBody({ draft: d, set, avail, setAvail, disabled }: BodyProps) {
   );
 }
 
+/**
+ * Every window on a date override is editable, and each one can be removed.
+ *
+ * The first port of this area rendered `windows[0]` alone and wrote back a
+ * single-element array, so a date with a morning and an afternoon block lost its
+ * afternoon the moment anyone nudged the morning — a silent narrowing of when
+ * customers could book, saved without a word. Overrides carry a LIST because the
+ * builder has always supported one, and this edits the list.
+ */
 function DatesBody({ draft: d, set, disabled }: BodyProps) {
   const add = () => set("date_overrides", [...d.date_overrides, { date: "", blocked: true, windows: [] }]);
   const update = (i: number, next: Partial<typeof d.date_overrides[number]>) =>
     set("date_overrides", d.date_overrides.map((o, x) => (x === i ? { ...o, ...next } : o)));
   const remove = (i: number) => set("date_overrides", d.date_overrides.filter((_, x) => x !== i));
+  const setWindow = (i: number, w: number, next: Partial<{ start: string; end: string }>) =>
+    update(i, { windows: d.date_overrides[i].windows.map((win, x) => (x === w ? { ...win, ...next } : win)) });
+  const addWindow = (i: number) => {
+    const last = d.date_overrides[i].windows.at(-1);
+    update(i, { windows: [...d.date_overrides[i].windows, { start: last?.end ?? "09:00", end: "17:00" }] });
+  };
+  const removeWindow = (i: number, w: number) =>
+    update(i, { windows: d.date_overrides[i].windows.filter((_, x) => x !== w) });
+
   return (
     <>
       {d.date_overrides.length === 0 && (
-        <p style={{ marginTop: 13, color: "var(--pg-muted)", fontSize: 12, lineHeight: 1.6 }}>
+        <Hint>
           Nothing set. A holiday, a day off, or a one-off late start goes here rather than in the
           weekly pattern — it overrides that day only.
-        </p>
+        </Hint>
       )}
       <div className="cc-rows">
         {d.date_overrides.map((o, i) => (
@@ -728,20 +925,33 @@ function DatesBody({ draft: d, set, disabled }: BodyProps) {
               </Btn>
             </div>
             {!o.blocked && (
-              <div className="cc-day-times">
-                <input className="cc-in" type="time" aria-label="Opens" disabled={disabled}
-                  value={o.windows[0]?.start ?? "09:00"}
-                  onChange={(e) => update(i, { windows: [{ start: e.target.value, end: o.windows[0]?.end ?? "17:00" }] })} />
-                <em>to</em>
-                <input className="cc-in" type="time" aria-label="Closes" disabled={disabled}
-                  value={o.windows[0]?.end ?? "17:00"}
-                  onChange={(e) => update(i, { windows: [{ start: o.windows[0]?.start ?? "09:00", end: e.target.value }] })} />
+              <div className="cc-windows">
+                {o.windows.map((w, x) => (
+                  <div key={x} className="cc-day-times">
+                    <input className="cc-in" type="time" aria-label={`Window ${x + 1} opens`} disabled={disabled}
+                      value={w.start} onChange={(e) => setWindow(i, x, { start: e.target.value })} />
+                    <em>to</em>
+                    <input className="cc-in" type="time" aria-label={`Window ${x + 1} closes`} disabled={disabled}
+                      value={w.end} onChange={(e) => setWindow(i, x, { end: e.target.value })} />
+                    {w.start >= w.end && <Pill tone="bad">End must be after start</Pill>}
+                    <Btn size="s" kind="ghost" disabled={disabled} title={`Remove window ${x + 1}`}
+                      onClick={() => removeWindow(i, x)}>
+                      <Trash2 aria-hidden />
+                    </Btn>
+                  </div>
+                ))}
+                {o.windows.length === 0 && (
+                  <Hint>Open, but with no hours set — add at least one window or block the day.</Hint>
+                )}
+                <Btn size="s" kind="ghost" onClick={() => addWindow(i)} disabled={disabled}>
+                  <Plus aria-hidden /> Add another window
+                </Btn>
               </div>
             )}
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 10 }}>
+      <div className="cc-row-add">
         <Btn size="s" onClick={add} disabled={disabled}><Plus aria-hidden /> Add a date</Btn>
       </div>
     </>
@@ -758,9 +968,9 @@ function RulesBody({ draft: d, set, disabled }: BodyProps) {
               onChange={(e) => set("duration_min", Math.max(5, Number(e.target.value) || 5))} />
             <i>minutes</i>
           </div>
-          <div className="cc-presets" style={{ marginTop: 6 }}>
+          <div className="cc-presets-row">
             {DURATION_PRESETS.map((m) => (
-              <button key={m} type="button" className="cc-preset" disabled={disabled}
+              <button key={m} type="button" className="cc-chip" disabled={disabled}
                 aria-pressed={d.duration_min === m} onClick={() => set("duration_min", m)}>{m}m</button>
             ))}
           </div>
@@ -775,9 +985,9 @@ function RulesBody({ draft: d, set, disabled }: BodyProps) {
       </div>
       <div className="cc-fields" data-cols="2">
         <Field label="Buffer before" hint="Quiet time held before each booking.">
-          <div className="cc-presets">
+          <div className="cc-presets-row">
             {[0, 5, 10, 15, 30].map((m) => (
-              <button key={m} type="button" className="cc-preset" disabled={disabled}
+              <button key={m} type="button" className="cc-chip" disabled={disabled}
                 aria-pressed={d.buffer_before_min === m} onClick={() => set("buffer_before_min", m)}>
                 {m === 0 ? "none" : `${m}m`}
               </button>
@@ -785,9 +995,9 @@ function RulesBody({ draft: d, set, disabled }: BodyProps) {
           </div>
         </Field>
         <Field label="Buffer after" hint="Quiet time held after each booking.">
-          <div className="cc-presets">
+          <div className="cc-presets-row">
             {[0, 5, 10, 15, 30].map((m) => (
-              <button key={m} type="button" className="cc-preset" disabled={disabled}
+              <button key={m} type="button" className="cc-chip" disabled={disabled}
                 aria-pressed={d.buffer_after_min === m} onClick={() => set("buffer_after_min", m)}>
                 {m === 0 ? "none" : `${m}m`}
               </button>
@@ -815,10 +1025,10 @@ function MenuBody({ draft: d, set, disabled }: BodyProps) {
   return (
     <>
       {d.appointment_types.length === 0 && (
-        <p style={{ marginTop: 13, color: "var(--pg-muted)", fontSize: 12, lineHeight: 1.6 }}>
+        <Hint>
           Empty — guests book a single meeting at the duration above. Add two or more and they pick a
           service first, each with its own length.
-        </p>
+        </Hint>
       )}
       <div className="cc-rows">
         {d.appointment_types.map((t, i) => (
@@ -842,10 +1052,10 @@ function MenuBody({ draft: d, set, disabled }: BodyProps) {
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 10 }}>
+      <div className="cc-row-add">
         <Btn size="s" onClick={add} disabled={disabled}><Plus aria-hidden /> Add a service</Btn>
       </div>
-      <p style={{ marginTop: 10, color: "var(--pg-faint)", fontSize: 11, lineHeight: 1.55 }}>
+      <p className="cc-fine">
         A service with no name is dropped on save — an unnamed one cannot be picked, which would make
         the page unbookable.
       </p>
@@ -853,17 +1063,25 @@ function MenuBody({ draft: d, set, disabled }: BodyProps) {
   );
 }
 
-function TeamBody({ draft: d, set, hosts, disabled, account }: BodyProps) {
+function TeamBody({ draft: d, set, hosts, hostsError, onRetryHosts, disabled, account }: BodyProps) {
   const roundRobin = d.type === "round_robin";
   return (
     <>
-      {hosts.length === 0 ? (
+      {hostsError ? (
+        // A failed read is reported as a failed read. Rendering "no host" here
+        // would tell someone their booking page is dead when it is running fine.
+        <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
+          <strong>The host list could not be read.</strong> {hostsError} This is not a claim that the
+          calendar has no host — the read did not answer, so nothing below is known either way.{" "}
+          <Btn kind="ghost" size="s" onClick={onRetryHosts}><RefreshCw aria-hidden /> Try again</Btn>
+        </Notice>
+      ) : hosts.length === 0 ? (
         <Notice tone="warn" icon={<TriangleAlert aria-hidden />}>
           <strong>No host is registered on this calendar.</strong> A calendar with no host has no
           availability to offer, so its page cannot be booked.
         </Notice>
       ) : (
-        <div style={{ marginTop: 6 }}>
+        <div className="cc-hosts">
           {hosts.map((h) => (
             <div key={h.user_id} className="cc-host">
               <span className="cc-host-av">{initialsOf(h.full_name)}</span>
@@ -880,7 +1098,7 @@ function TeamBody({ draft: d, set, hosts, disabled, account }: BodyProps) {
       )}
 
       {roundRobin ? (
-        <div className="cc-fields" style={{ marginTop: 14 }}>
+        <div className="cc-fields">
           <Field label="Assignment" hint={ASSIGNMENT_MODES.find((m) => m.value === d.assignment_strategy.mode)?.desc}>
             <select className="cc-sel" value={d.assignment_strategy.mode} disabled={disabled}
               onChange={(e) => set("assignment_strategy", { mode: e.target.value as typeof d.assignment_strategy.mode })}>
@@ -889,7 +1107,7 @@ function TeamBody({ draft: d, set, hosts, disabled, account }: BodyProps) {
           </Field>
         </div>
       ) : (
-        <p style={{ marginTop: 12, color: "var(--pg-faint)", fontSize: 11.5, lineHeight: 1.55 }}>
+        <p className="cc-fine">
           {d.type === "event"
             ? "One host meets the whole group, so there is no assignment order to set."
             : d.type === "collective"
@@ -898,7 +1116,7 @@ function TeamBody({ draft: d, set, hosts, disabled, account }: BodyProps) {
         </p>
       )}
 
-      <p className="cc-scope" style={{ marginTop: 12 }}>
+      <p className="cc-scope">
         <Users aria-hidden />
         <span>
           Adding, removing and reordering hosts is done from the calendar itself, where the whole
@@ -922,7 +1140,7 @@ function HowBody({ draft: d, set, disabled }: BodyProps) {
   const setValue = (type: string, value: string) =>
     set("location_options", d.location_options.map((o) => (o.type === type ? { ...o, value: value || null } : o)));
   return (
-    <div style={{ marginTop: 6 }}>
+    <div className="cc-stack">
       {MEETING_METHODS.map((m) => {
         const on = has(m.type);
         return (
@@ -930,7 +1148,7 @@ function HowBody({ draft: d, set, disabled }: BodyProps) {
             <SwitchRow title={m.label} on={on} disabled={disabled} onChange={(v) => toggle(m.type, v)}
               hint={m.type === "zoom" ? "Needs Zoom connected above to add a link automatically." : undefined} />
             {on && m.needsValue && (
-              <div style={{ padding: "0 0 10px 0" }}>
+              <div className="cc-sub-field">
                 <input className="cc-in" placeholder={m.placeholder} disabled={disabled}
                   aria-label={`${m.label} details`}
                   value={d.location_options.find((o) => o.type === m.type)?.value ?? ""}
@@ -941,9 +1159,7 @@ function HowBody({ draft: d, set, disabled }: BodyProps) {
         );
       })}
       {d.location_options.length > 1 && (
-        <p style={{ marginTop: 10, color: "var(--pg-faint)", fontSize: 11.5 }}>
-          More than one is on, so the invitee chooses when they book.
-        </p>
+        <p className="cc-fine">More than one is on, so the invitee chooses when they book.</p>
       )}
     </div>
   );
@@ -974,7 +1190,7 @@ function PageBody({ draft: d, set, disabled }: BodyProps) {
             onChange={(e) => set("redirect_url", e.target.value)} placeholder="https://…/thanks" />
         </Field>
       </div>
-      <div style={{ marginTop: 4 }}>
+      <div className="cc-stack">
         <SwitchRow title="Show company name" on={d.show_company_name} disabled={disabled}
           onChange={(v) => set("show_company_name", v)} />
       </div>
@@ -990,10 +1206,10 @@ function IntakeBody({ draft: d, set, disabled }: BodyProps) {
   return (
     <>
       {d.intake_questions.length === 0 && (
-        <p style={{ marginTop: 13, color: "var(--pg-muted)", fontSize: 12, lineHeight: 1.6 }}>
+        <Hint>
           Nothing asked yet. Answers arrive attached to each booking, so anything you ask here is one
           fewer email before the meeting.
-        </p>
+        </Hint>
       )}
       <div className="cc-rows">
         {d.intake_questions.map((q, i) => {
@@ -1025,10 +1241,53 @@ function IntakeBody({ draft: d, set, disabled }: BodyProps) {
           );
         })}
       </div>
-      <div style={{ marginTop: 10 }}>
+      <div className="cc-row-add">
         <Btn size="s" onClick={add} disabled={disabled}><Plus aria-hidden /> Add a question</Btn>
       </div>
     </>
+  );
+}
+
+/**
+ * Optional owner-authored copy for one message. Empty fields persist as
+ * `undefined`, which is what tells the engine to use its built-in default — so
+ * leaving these blank never changes an existing configuration.
+ *
+ * These fields exist in `notify_config` and always have; the first port of this
+ * area rendered only the on/off switch, which left anyone who had written their
+ * own SMS or host copy unable to read it, let alone change it. The switch is not
+ * the setting.
+ */
+function CopyFields({
+  subject, body, onSubject, onBody, subjectPlaceholder, bodyPlaceholder, showSubject, disabled,
+}: {
+  subject?: string; body?: string;
+  onSubject?: (v: string | undefined) => void; onBody: (v: string | undefined) => void;
+  subjectPlaceholder?: string; bodyPlaceholder: string; showSubject: boolean; disabled: boolean;
+}) {
+  return (
+    <div className="cc-copy">
+      {showSubject && onSubject && (
+        <Field label="Subject">
+          <input className="cc-in" value={subject ?? ""} disabled={disabled}
+            placeholder={subjectPlaceholder || "Leave blank for the default"}
+            onChange={(e) => onSubject(e.target.value || undefined)} />
+        </Field>
+      )}
+      <Field label="Message">
+        <textarea className="cc-in" value={body ?? ""} disabled={disabled} placeholder={bodyPlaceholder}
+          onChange={(e) => onBody(e.target.value || undefined)} />
+      </Field>
+      <div className="cc-merge">
+        <span>Insert</span>
+        {MERGE_FIELDS.map((f) => (
+          <button key={f.token} type="button" className="cc-chip" disabled={disabled}
+            title={f.label} onClick={() => onBody(`${body ?? ""}${f.token}`)}>
+            {f.token}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1037,25 +1296,30 @@ function NotifyBody({ draft: d, set, readiness, disabled, account }: BodyProps) 
   const patch = (next: Partial<typeof n>) => set("notify_config", { ...n, ...next });
   const setReminder = (i: number, next: Partial<typeof n.reminders[number]>) =>
     patch({ reminders: n.reminders.map((r, x) => (x === i ? { ...r, ...next } : r)) });
-  const held = readiness.email === "no" || readiness.sms === "no";
-  const unchecked = readiness.partial;
+  // Scoped to the channels this calendar's own rules use: an email-only calendar
+  // is not "held" because the workspace cannot text, and saying so contradicted
+  // the per-reminder label sitting right beside it.
+  const verdict = sendVerdict(n, readiness);
 
   return (
     <>
-      <div style={{ marginTop: 6 }}>
+      <div className="cc-stack">
         <SwitchRow title="Email the guest a confirmation" on={n.confirm_guest} disabled={disabled}
           onChange={(v) => patch({ confirm_guest: v })} />
         <SwitchRow title="Notify the host of new bookings" on={n.confirm_host} disabled={disabled}
           onChange={(v) => patch({ confirm_host: v })} />
       </div>
 
-      {(held || unchecked) && (
-        <div style={{ marginTop: 12 }}>
-          <Notice tone={held ? "warn" : "info"} icon={held ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
-            {held ? (
+      {(verdict.held || verdict.unchecked) && (
+        <div className="cc-notice-wrap">
+          <Notice tone={verdict.held ? "warn" : "info"} icon={verdict.held ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
+            {verdict.held ? (
               <>
-                <strong>These rules are saved, but they will not send.</strong>{" "}
-                {readiness.missing.length ? `This workspace has ${readiness.missing.join(", ")}.` : null}{" "}
+                <strong>
+                  These rules are saved, but the {verdict.used.size === 1 ? Array.from(verdict.used)[0] : "channels"} they
+                  use cannot send yet.
+                </strong>{" "}
+                {verdict.reasons.length ? `This workspace has ${verdict.reasons.join(", ")}.` : null}{" "}
                 Timing and wording are kept exactly as you set them — they simply stay quiet until
                 Communications is finished.{" "}
                 {account && <Link to={`/solo/${account}/settings/connections`}>Open Communications</Link>}
@@ -1111,50 +1375,100 @@ function NotifyBody({ draft: d, set, readiness, disabled, account }: BodyProps) 
                     {NOTIFY_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </Field>
-                <span style={{ marginLeft: "auto" }}><Pill tone={cap.tone}>{cap.label}</Pill></span>
+                <span className="cc-row-cap"><Pill tone={cap.tone}>{cap.label}</Pill></span>
               </div>
+              <CopyFields
+                showSubject={r.channel !== "sms"} disabled={disabled}
+                subject={r.subject} body={r.body}
+                onSubject={(v) => setReminder(i, { subject: v })}
+                onBody={(v) => setReminder(i, { body: v })}
+                subjectPlaceholder="Reminder: {{title}} · {{when}}"
+                bodyPlaceholder="Write the reminder, or leave blank to use the built-in copy."
+              />
             </div>
           );
         })}
       </div>
-      <div style={{ marginTop: 10 }}>
+      <div className="cc-row-add">
         <Btn size="s" disabled={disabled}
           onClick={() => patch({ reminders: [...n.reminders, { channel: "email", offset_min: 1440, to: "guest" }] })}>
           <Plus aria-hidden /> Add a reminder
         </Btn>
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div className="cc-group">
         <SwitchRow title="Follow up after the meeting" on={n.followup_guest} disabled={disabled}
           onChange={(v) => patch({ followup_guest: v })}
           hint={n.followup_guest ? undefined : "Off — nothing is sent once the meeting ends."} />
         {n.followup_guest && (
-          <div className="cc-fields" data-cols="2">
-            <Field label="When">
-              <select className="cc-sel" value={n.followup_offset_min} disabled={disabled}
-                onChange={(e) => patch({ followup_offset_min: Number(e.target.value) })}>
-                {FOLLOWUP_OFFSETS.map((o) => <option key={o.min} value={o.min}>{o.label}</option>)}
-              </select>
-            </Field>
-          </div>
+          <>
+            <div className="cc-fields" data-cols="2">
+              <Field label="When">
+                <select className="cc-sel" value={n.followup_offset_min} disabled={disabled}
+                  onChange={(e) => patch({ followup_offset_min: Number(e.target.value) })}>
+                  {FOLLOWUP_OFFSETS.map((o) => <option key={o.min} value={o.min}>{o.label}</option>)}
+                </select>
+              </Field>
+            </div>
+            <CopyFields
+              showSubject disabled={disabled}
+              subject={n.followup_subject} body={n.followup_body}
+              onSubject={(v) => patch({ followup_subject: v })}
+              onBody={(v) => patch({ followup_body: v })}
+              subjectPlaceholder="Following up on {{title}}"
+              bodyPlaceholder="Write the follow-up, or leave blank to use the built-in copy."
+            />
+          </>
         )}
       </div>
 
-      <div style={{ marginTop: 16 }}>
-        <span className="cc-eyebrow" style={{ color: "var(--pg-faint)" }}>On booking changes</span>
-        <div style={{ marginTop: 6 }}>
-          {LIFECYCLE_EVENTS.map((ev) => {
-            const on = n.lifecycle.some((l) => l.event === ev.value);
-            return (
-              <SwitchRow key={ev.value} title={ev.label} hint={ev.hint} on={on} disabled={disabled}
-                onChange={(v) => patch({
-                  lifecycle: v
-                    ? [...n.lifecycle, { event: ev.value, channel: "email", to: "guest" }]
-                    : n.lifecycle.filter((l) => l.event !== ev.value),
-                })} />
-            );
-          })}
-        </div>
+      <div className="cc-group">
+        <span className="cc-group-h">On booking changes</span>
+        <p className="cc-fine">
+          Optional extra messages when a booking is made, moved, or cancelled — on top of the
+          built-in emails.
+        </p>
+        {LIFECYCLE_EVENTS.map((ev) => {
+          const step = n.lifecycle.find((l) => l.event === ev.value);
+          const setStep = (next: typeof step | null) => {
+            const others = n.lifecycle.filter((l) => l.event !== ev.value);
+            patch({ lifecycle: next ? [...others, next] : others });
+          };
+          const cap = step ? channelCapability(step.channel, readiness) : null;
+          return (
+            <div key={ev.value} className="cc-row">
+              <SwitchRow title={ev.label} hint={ev.hint} on={Boolean(step)} disabled={disabled}
+                onChange={(v) => setStep(v ? { event: ev.value, channel: "email", to: "guest" } : null)} />
+              {step && (
+                <>
+                  <div className="cc-row-top">
+                    <Field label="How">
+                      <select className="cc-sel" value={step.channel} disabled={disabled}
+                        onChange={(e) => setStep({ ...step, channel: e.target.value })}>
+                        {REMINDER_CHANNELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="To">
+                      <select className="cc-sel" value={step.to} disabled={disabled}
+                        onChange={(e) => setStep({ ...step, to: e.target.value })}>
+                        {NOTIFY_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </Field>
+                    {cap && <span className="cc-row-cap"><Pill tone={cap.tone}>{cap.label}</Pill></span>}
+                  </div>
+                  <CopyFields
+                    showSubject={step.channel !== "sms"} disabled={disabled}
+                    subject={step.subject} body={step.body}
+                    onSubject={(v) => setStep({ ...step, subject: v })}
+                    onBody={(v) => setStep({ ...step, body: v })}
+                    subjectPlaceholder="Leave blank for a sensible default"
+                    bodyPlaceholder="Write the message, or leave blank to use the built-in copy."
+                  />
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </>
   );

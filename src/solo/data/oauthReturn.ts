@@ -1,0 +1,66 @@
+/**
+ * Where a provider OAuth round-trip should put the browser back.
+ *
+ * The connect handshake leaves the app entirely — the browser goes to Google,
+ * comes back to `/auth/google-calendar/callback`, and that page then decides
+ * where to land. It has always decided from ROLE alone (`/admin/calendar` for
+ * staff, `/app/settings?tab=accounts` otherwise), which is correct for the
+ * surfaces that existed when it was written and wrong for anyone who started the
+ * handshake somewhere else: they connect successfully and are then dropped on a
+ * different page than the one they were configuring.
+ *
+ * So the surface that STARTS the handshake records where it wants to be returned
+ * to, and the callback honours it. Two rules keep that from becoming an open
+ * redirect:
+ *
+ *   1. Only a same-origin ABSOLUTE PATH is ever stored or returned. A value with
+ *      a scheme, a protocol-relative `//host` prefix, or a backslash is refused
+ *      at BOTH ends — writing it and reading it — so a poisoned entry written by
+ *      some other code path still cannot navigate anyone off-origin.
+ *   2. It lives in `sessionStorage` and expires. It is scoped to the one tab that
+ *      began the handshake, and a stale entry from an abandoned attempt is
+ *      ignored rather than replayed onto an unrelated later visit.
+ *
+ * `take` is deliberately a read-and-clear: a return address is used once.
+ */
+const KEY = "paige.oauth.return";
+const MAX_AGE_MS = 15 * 60_000;
+
+/** A same-origin absolute path, and nothing else. */
+export function isSafeReturnPath(value: unknown): value is string {
+  if (typeof value !== "string" || value.length < 2 || value.length > 512) return false;
+  if (!value.startsWith("/")) return false;
+  // `//host` is protocol-relative and leaves the origin; a backslash is treated
+  // as a separator by some parsers, so `/\evil.com` would too.
+  if (value.startsWith("//") || value.includes("\\")) return false;
+  return !value.includes("://");
+}
+
+export function rememberOAuthReturn(path: string): void {
+  if (!isSafeReturnPath(path)) return;
+  try {
+    window.sessionStorage.setItem(KEY, JSON.stringify({ path, at: Date.now() }));
+  } catch {
+    // Private mode, or storage disabled. The callback then falls back to the
+    // destination it has always used — a worse landing, never a broken connect.
+  }
+}
+
+/** Read the stored return path once, clearing it whether or not it was usable. */
+export function takeOAuthReturn(): string | null {
+  let raw: string | null = null;
+  try {
+    raw = window.sessionStorage.getItem(KEY);
+    window.sessionStorage.removeItem(KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { path?: unknown; at?: unknown };
+    if (typeof parsed.at !== "number" || Date.now() - parsed.at > MAX_AGE_MS) return null;
+    return isSafeReturnPath(parsed.path) ? parsed.path : null;
+  } catch {
+    return null;
+  }
+}
