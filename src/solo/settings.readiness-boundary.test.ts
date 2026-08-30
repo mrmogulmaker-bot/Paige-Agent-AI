@@ -139,3 +139,50 @@ describe("tenant-facing billing copy", () => {
     expect(many.detail).toContain("2 usage events ");
   });
 });
+
+/**
+ * The class of bug this catches, found in this surface's own shipped copy:
+ *
+ *   "PAIGE can prepare that registration from your business details."
+ *      -> Paige had no A2P tool registered, and the only caller of
+ *         comms-a2p-draft / comms-a2p-submit was the legacy admin tab a Solo
+ *         tenant is redirected away from. Nobody could act on it.
+ *   "Collect consent through your intake forms first"
+ *      -> the only writer of paige_consent_events is the inbound-SMS handler.
+ *         No intake form records SMS consent, so this stored nothing.
+ *
+ * Both read as helpful next steps and both described capabilities that did not
+ * exist. A promise the product cannot keep is the same §13 failure as a
+ * fabricated status — it is just harder to notice, because it sounds like help.
+ *
+ * So: tenant-facing next-steps may state FACTS about this account and may
+ * describe what the tenant can do. They may not promise that Paige, or the
+ * product, will do something — because a promise here is unverifiable from the
+ * copy alone, and the two above survived review precisely because nobody traced
+ * them to a mechanism.
+ */
+const UNBACKED_PROMISE_PATTERNS: Array<{ re: RegExp; why: string }> = [
+  { re: /\bpaige (can|will|would|is able to)\b/i, why: "promises a Paige capability the copy cannot prove exists" },
+  { re: /\bwe('| wi)ll\b/i,                       why: "promises a product action" },
+  { re: /\bautomatically\b/i,                     why: "claims automation the copy cannot prove exists" },
+  { re: /\bintake form/i,                          why: "no intake form records SMS consent" },
+];
+
+describe("tenant-facing next steps promise only what exists", () => {
+  it("never promises an automated action the copy cannot prove is wired", () => {
+    for (const [reason, copy] of Object.entries(READINESS_COPY)) {
+      for (const { re, why } of UNBACKED_PROMISE_PATTERNS) {
+        expect(re.test(copy.next), `"${reason}" ${why}: ${copy.next}`).toBe(false);
+      }
+    }
+  });
+
+  it("applies the same rule to the billing row", () => {
+    for (const { name, billing } of BILLING_CASES) {
+      const row = billingStep(billing);
+      for (const { re, why } of UNBACKED_PROMISE_PATTERNS) {
+        expect(re.test(`${row.state} ${row.detail}`), `${name} ${why}`).toBe(false);
+      }
+    }
+  });
+});

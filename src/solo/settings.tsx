@@ -225,9 +225,20 @@ export const READINESS_COPY: Record<string, { headline: string; next: string }> 
   messaging_account_missing:  { headline: "Texting is not ready yet", next: "Your business needs its own messaging account before a number or business texting can be arranged." },
   messaging_account_inactive: { headline: "Texting is not ready yet", next: "Your messaging account is not active, so nothing can send from it yet." },
   no_sms_number:              { headline: "Texting is not ready yet", next: "You do not have a phone number yet. One has to be assigned before you can text." },
-  registration_absent:        { headline: "Texting is not ready yet", next: "Carriers require your business to be registered before any text can send. PAIGE can prepare that registration from your business details." },
+  // Was: "PAIGE can prepare that registration from your business details."
+  // That was an unbacked claim. Paige has no A2P tool registered, and the only
+  // caller of comms-a2p-draft / comms-a2p-submit anywhere is the legacy admin tab
+  // a flag-enabled Solo tenant is redirected away from — so neither Paige nor the
+  // tenant could act on it. Copy now states the fact and promises nothing that
+  // cannot happen (§13).
+  registration_absent:        { headline: "Texting is not ready yet", next: "Carriers require your business to be registered before any text can send, and nothing has been registered for your business yet." },
   registration_not_approved:  { headline: "Texting is not ready yet", next: "Your registration is prepared but has not been filed with carriers. Texting stays off until it is approved." },
-  no_consent_recorded:        { headline: "Texting is not ready yet", next: "Nobody has agreed to be texted yet. Collect consent through your intake forms first, or every message will be held." },
+  // Was: "Collect consent through your intake forms first…" — also unbacked. The
+  // ONLY writer of paige_consent_events is the inbound-SMS handler, which records
+  // a grant when a person replies with a START-class keyword. No intake form
+  // records SMS consent, so that sentence sent tenants to do something that
+  // stores nothing (§13).
+  no_consent_recorded:        { headline: "Texting is not ready yet", next: "Nobody has agreed to be texted yet. Consent is recorded when a person replies to confirm, and until then every message is held." },
 };
 
 const STEP_TRUTH = (ok: boolean, partial = false): SettingsTruth =>
