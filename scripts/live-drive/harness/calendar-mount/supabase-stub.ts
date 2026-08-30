@@ -107,6 +107,11 @@ const ok = (data: unknown) => Promise.resolve({ data, error: null });
 const fail = (message: string) => Promise.resolve({ data: null, error: { message } });
 
 /** Mirrors only the surface `useSoloCalendar` actually touches. */
+/** Flipped by the drive to exercise a failed live refresh; "ok" by default so
+ *  every existing frame measures exactly what it measured before. */
+let bookingReadMode: "ok" | "fail" = "ok";
+const listeners = new Set<() => void>();
+
 export const supabase = {
   from(table: string) {
     const result =
@@ -125,6 +130,10 @@ export const supabase = {
   rpc(name: string) {
     if (name === "list_team_bookings") {
       if (state() === "error") return fail("Harness: booking range read refused");
+      // Driveable refresh failure: the drive flips this AFTER the first read has
+      // landed, so the surface has real rows on screen when the refresh fails —
+      // which is the only state the freshness warning is about.
+      if (bookingReadMode === "fail") return fail("Harness: refresh refused");
       return ok(state() === "empty" ? [] : bookings());
     }
     // Writes are not exercised by a geometry render; they resolve without effect.
@@ -133,16 +142,34 @@ export const supabase = {
   auth: {
     getUser: () => Promise.resolve({ data: { user: { id: "harness-user" } }, error: null }),
   },
-  /** Realtime needs a live socket a geometry harness does not have. This quiet
-   *  channel is what an idle subscription renders as — no events, no refetch —
-   *  so the measured layout is the same one a real page shows between changes.
-   *  It exists because `useRealtimeTable` would otherwise throw on `.channel`,
-   *  and a thrown hook renders nothing at all to measure. */
+  /** Realtime needs a live socket a geometry harness does not have. This channel
+   *  is quiet by default — no events, no refetch — so the measured layout is the
+   *  one a real page shows between changes. It exists because `useRealtimeTable`
+   *  would otherwise throw on `.channel`, and a thrown hook renders nothing at all
+   *  to measure. It also KEEPS the handler, so a drive can fire a change the way
+   *  Postgres would and exercise the live-refresh path for real. */
   channel: () => {
-    const ch = { on: () => ch, subscribe: () => ch, unsubscribe: () => ch };
+    const own = new Set<() => void>();
+    const ch = {
+      on: (_event: string, _filter: unknown, cb: () => void) => { own.add(cb); listeners.add(cb); return ch; },
+      subscribe: () => ch,
+      unsubscribe: () => { own.forEach((c) => listeners.delete(c)); return ch; },
+      __own: own,
+    };
     return ch;
   },
-  removeChannel: () => {},
+  removeChannel: (ch: { __own?: Set<() => void> }) => {
+    ch?.__own?.forEach((c) => listeners.delete(c));
+  },
+};
+
+/** Drive hooks. Harness-only: this module is aliased in ONLY by the harness Vite
+ *  config and is never part of the app build. */
+(globalThis as unknown as Record<string, unknown>).__calHarness = {
+  /** Deliver a booking change the way a Postgres event would. */
+  fireBookingChange: () => { listeners.forEach((cb) => cb()); },
+  /** Make the next booking reads succeed or fail. */
+  setBookingReads: (mode: "ok" | "fail") => { bookingReadMode = mode; },
 };
 
 export default { supabase };

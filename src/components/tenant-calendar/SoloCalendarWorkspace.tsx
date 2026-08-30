@@ -205,9 +205,11 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [dayFocus, setDayFocus] = useState<{ day: Date; list: SoloBooking[] } | null>(null);
   const [configFor, setConfigFor] = useState<SoloCalendarMeta | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   const cal = useSoloCalendar(activeTenantId, view, cursor);
-  const { bookings, calendars, seatsBySession, conflicts, phase, error, colorForBooking } = cal;
+  const { bookings, calendars, seatsBySession, conflicts, phase, error, stale, lastSyncedAt, colorForBooking } = cal;
+  const { retry: retryRead } = cal;
 
   const visible = useMemo(
     () => bookings.filter((b) => !hidden.has(b.calendar_id ?? UNASSIGNED_CALENDAR)),
@@ -229,6 +231,13 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
       return addDays(c, dir * 7);
     });
   }, [view]);
+
+  /** Drives the hook's own re-read. `retrying` is local because it describes this
+   *  button, not the data: the rows never leave the screen while it runs. */
+  const runRetry = useCallback(async () => {
+    setRetrying(true);
+    try { await retryRead(); } finally { setRetrying(false); }
+  }, [retryRead]);
 
   const label = rangeLabel(view, cursor);
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -414,14 +423,49 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
         </button>
       </div>
 
-      <div className="sc-truth">
-        <TruthTag state="LIVE" />
-        <span>
-          Appointments come from this account&rsquo;s booking service.
-          {conflictCount > 0
-            ? ` ${conflictCount} ${conflictCount === 1 ? "appointment overlaps" : "appointments overlap"} another on the same host.`
-            : " No overlapping appointments in this range."}
-        </span>
+      {/* Both strips share ONE grid row. `.sc-root` declares exactly three rows
+          (toolbar · truth · board, the last taking minmax(0,1fr)), so adding a
+          fourth child would hand the flexible row to this strip and push the board
+          into an implicit auto row — where it overflows and covers the controls
+          above it. Measured: that is exactly what happened, and Retry became
+          unclickable while still rendering as visible. Wrapping keeps the root's
+          child count fixed whether or not the warning is showing. */}
+      <div className="sc-truths">
+        <div className="sc-truth">
+          <TruthTag state="LIVE" />
+          <span>
+            Appointments come from this account&rsquo;s booking service.
+            {conflictCount > 0
+              ? ` ${conflictCount} ${conflictCount === 1 ? "appointment overlaps" : "appointments overlap"} another on the same host.`
+              : " No overlapping appointments in this range."}
+          </span>
+        </div>
+
+        {/* A live refresh failed, so the appointments below are of unknown freshness.
+            They STAY — losing a schedule someone is reading is the worse failure —
+            but they must not read as current, so this says so on the surface with a
+            way back. `role="status"` + polite announces it without seizing focus or
+            interrupting; nothing renders at all while refreshes are succeeding, so a
+            quiet success stays quiet. The time is shown only when a read has really
+            succeeded; there is no invented "just now". */}
+        {stale && (
+          <div className="sc-truth sc-truth--stale" role="status" aria-live="polite">
+            <TruthTag state="PARTIAL" />
+            <span>
+              Calendar may be out of date. We could not refresh the latest booking
+              changes.
+              {lastSyncedAt && ` Last updated ${timeLabel(lastSyncedAt.toISOString())}.`}
+            </span>
+            <button
+              type="button"
+              className="sc-btn sc-stale-retry"
+              onClick={() => void runRetry()}
+              disabled={retrying}
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="sc-board">

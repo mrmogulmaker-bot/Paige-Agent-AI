@@ -7,13 +7,16 @@ import { findConflicts } from "./useSoloCalendar";
 const setStatus = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
 const createBooking = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
 const refresh = vi.fn();
+const retry = vi.fn(async () => {});
 
 const state: {
   bookings: SoloBooking[];
   calendars: SoloCalendarMeta[];
   phase: "loading" | "ready" | "error";
   error: string | null;
-} = { bookings: [], calendars: [], phase: "ready", error: null };
+  stale: boolean;
+  lastSyncedAt: Date | null;
+} = { bookings: [], calendars: [], phase: "ready", error: null, stale: false, lastSyncedAt: null };
 
 // Only the DATA BOUNDARY is faked. The component's rendering, drawer, keyboard
 // handling and focus restoration are the real shipped code; the hook's own
@@ -35,6 +38,9 @@ vi.mock("./useSoloCalendar", async () => {
       phase: state.phase,
       error: state.error,
       calendarsError: null,
+      stale: state.stale,
+      lastSyncedAt: state.lastSyncedAt,
+      retry,
       refresh,
       setStatus,
       createBooking,
@@ -114,6 +120,9 @@ beforeEach(() => {
   state.calendars = [];
   state.phase = "ready";
   state.error = null;
+  state.stale = false;
+  state.lastSyncedAt = null;
+  retry.mockClear();
   setStatus.mockClear();
   setStatus.mockResolvedValue({ ok: true });
   createBooking.mockClear();
@@ -545,5 +554,85 @@ describe("Solo Calendar — a class is one appointment, not one per attendee", (
     ];
     mount();
     expect(container.querySelectorAll(".sc-ev--conflict")).toHaveLength(2);
+  });
+});
+
+describe("Solo Calendar — an honest freshness state when a refresh fails", () => {
+  /**
+   * Console-only was the defect: the rows stayed on screen and nothing told the
+   * owner they might no longer be true. Keeping the rows is right; letting them
+   * read as current is not.
+   */
+  const staleRow = () => booking({ id: "b1", start_at: todayAt(10), end_at: todayAt(11) });
+
+  it("says nothing at all while refreshes are succeeding", () => {
+    state.bookings = [staleRow()];
+    state.lastSyncedAt = new Date();
+    mount();
+    expect(text()).not.toMatch(/may be out of date/i);
+    expect(buttonByText(/^Retry$/)).toBeNull();
+  });
+
+  it("says the calendar may be out of date, and keeps the appointments on screen", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    expect(text()).toMatch(/Calendar may be out of date/i);
+    expect(text()).toMatch(/could not refresh the latest booking changes/i);
+    // The rows are still there — the notice replaces nothing.
+    expect(chip(/Discovery call/)).toBeTruthy();
+  });
+
+  it("announces the state politely rather than trapping or interrupting", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    const live = container.querySelector('[role="status"]');
+    expect(live, "the freshness state must be announced to assistive tech").toBeTruthy();
+    expect(live?.getAttribute("aria-live")).toBe("polite");
+    expect(live?.textContent).toMatch(/Calendar may be out of date/i);
+  });
+
+  it("offers a real Retry that drives the real refresh", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    const btn = buttonByText(/^Retry$/);
+    expect(btn, "a stale calendar must offer a way back").toBeTruthy();
+    click(btn);
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("names a last-updated time only when a real one exists", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    state.lastSyncedAt = null;
+    mount();
+    // No successful refresh has ever landed — inventing "just now" would be the lie.
+    expect(text()).toMatch(/Calendar may be out of date/i);
+    expect(text()).not.toMatch(/Last updated/i);
+
+    act(() => root.unmount());
+    container.remove();
+
+    state.lastSyncedAt = new Date();
+    mount();
+    expect(text()).toMatch(/Last updated/i);
+  });
+
+  it("drops the notice once the calendar is fresh again", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    expect(text()).toMatch(/Calendar may be out of date/i);
+
+    act(() => root.unmount());
+    container.remove();
+
+    state.stale = false;
+    state.lastSyncedAt = new Date();
+    mount();
+    expect(text()).not.toMatch(/may be out of date/i);
+    expect(buttonByText(/^Retry$/)).toBeNull();
   });
 });

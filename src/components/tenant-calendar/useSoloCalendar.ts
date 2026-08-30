@@ -382,6 +382,18 @@ export interface UseSoloCalendarResult {
   phase: LoadPhase;
   error: string | null;
   calendarsError: string | null;
+  /** True when the most recent LIVE refresh failed and the rows on screen may no
+   *  longer be true. The rows are deliberately kept — losing a schedule someone is
+   *  reading is worse than showing it with an honest warning — so the surface owes
+   *  the person a visible freshness state, not a console line. */
+  stale: boolean;
+  /** When the rows on screen were last actually confirmed against the database.
+   *  Null until a read has genuinely succeeded, and NEVER advanced by a failed
+   *  one: it names the last time the schedule was true, not the last attempt. */
+  lastSyncedAt: Date | null;
+  /** Re-read now, keeping the rows on screen while it runs. Resolves when the
+   *  attempt has settled so a caller can show its own progress honestly. */
+  retry: () => Promise<void>;
   refresh: () => void;
   setStatus: (id: string, status: string) => Promise<{ ok: boolean; message?: string }>;
   createBooking: (input: CreateBookingInput) => Promise<{ ok: boolean; message?: string }>;
@@ -414,6 +426,8 @@ export function useSoloCalendar(
   const [error, setError] = useState<string | null>(null);
   const [calendarsError, setCalendarsError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [lastSyncedMs, setLastSyncedMs] = useState<number | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const bookingSeq = useRef(0);
   const calendarSeq = useRef(0);
 
@@ -456,7 +470,12 @@ export function useSoloCalendar(
   const fetchBookings = useCallback(async (mode: "load" | "refresh") => {
     if (!activeTenantId) return;
     const seq = ++bookingSeq.current;
-    if (mode === "load") { setPhase("loading"); setBookings([]); setError(null); }
+    if (mode === "load") {
+      setPhase("loading"); setBookings([]); setError(null);
+      // A fresh load supersedes any earlier refresh failure: whatever it returns
+      // is the new truth, and the old warning must not outlive it.
+      setRefreshFailed(false);
+    }
     const { data, error: err } = await supabase.rpc("list_team_bookings" as never, {
       _from: fromIso,
       _to: toIso,
@@ -467,13 +486,20 @@ export function useSoloCalendar(
     if (err) {
       if (mode === "load") { setError(err.message); setPhase("error"); return; }
       // A background refresh that fails must not tear down a schedule the person
-      // is reading. It is reported loudly rather than swallowed (§32) and the
-      // last known-true rows stay on screen until the next event or navigation.
+      // is reading, so the rows stay. But they are now of unknown freshness, and
+      // the person reading them has to be told: `stale` drives a visible state on
+      // the surface with a way to try again. The console line is kept as well
+      // (§32 — never swallow), but it is no longer the only report.
       console.error("[solo-calendar] live booking refresh failed", err);
+      setRefreshFailed(true);
       return;
     }
     setBookings((data as SoloBooking[] | null) ?? []);
     setPhase("ready");
+    // Only a read that actually returned rows moves this. A failed attempt must
+    // never advance it, or the surface would claim a freshness it does not have.
+    setLastSyncedMs(Date.now());
+    setRefreshFailed(false);
   }, [activeTenantId, fromIso, toIso]);
 
   useEffect(() => {
@@ -484,6 +510,8 @@ export function useSoloCalendar(
       setPhase("loading");
       setBookings([]);
       setError(null);
+      setRefreshFailed(false);
+      setLastSyncedMs(null);
       return;
     }
     void fetchBookings("load");
@@ -516,6 +544,15 @@ export function useSoloCalendar(
   useEffect(() => () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
   }, []);
+
+  /** The person's own "try again" on a stale calendar. Same quiet read the change
+   *  subscription drives — the rows stay put while it runs — but immediate, and it
+   *  cancels any debounce already queued so one press is one read. */
+  const retry = useCallback(async () => {
+    if (refreshTimer.current) { clearTimeout(refreshTimer.current); refreshTimer.current = null; }
+    await fetchRef.current("refresh");
+  }, []);
+
   useRealtimeTable("internal_bookings", onBookingChange, {
     filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
     enabled: Boolean(activeTenantId),
@@ -530,6 +567,11 @@ export function useSoloCalendar(
   );
 
   const conflicts = useMemo(() => findConflicts(bookings), [bookings]);
+
+  const lastSyncedAt = useMemo(
+    () => (lastSyncedMs == null ? null : new Date(lastSyncedMs)),
+    [lastSyncedMs],
+  );
 
   const colorForBooking = useCallback((b: SoloBooking, colorBy: "calendar" | "host") => {
     if (colorBy === "host") return hostColor(b.host_user_id);
@@ -592,6 +634,7 @@ export function useSoloCalendar(
 
   return {
     bookings, calendars, seatsBySession, conflicts, phase, error, calendarsError,
+    stale: refreshFailed, lastSyncedAt, retry,
     refresh, setStatus, createBooking, colorForBooking,
   };
 }
