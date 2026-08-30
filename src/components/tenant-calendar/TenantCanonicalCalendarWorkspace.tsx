@@ -75,11 +75,18 @@ export function TenantCanonicalCalendarWorkspace({ tier, openPaige, owner = "dir
   // server-resolved tenant — this replaces the presentation, not the data.
   // Agency/Enterprise keep CalendarAdmin unchanged.
   if (tier === "solo") {
+    // Calendar configuration is owned by Settings › Connections › Calendars, so
+    // Solo points at that address directly rather than the legacy /integrations
+    // redirect, and carries the return contract Settings already understands
+    // (`origin` + an allowlisted `returnTo`) so the trip back is one click.
+    const soloConnections = routeRoot
+      ? `${routeRoot}/settings/connections${clientsCalendarRoot ? `?origin=calendar&returnTo=${encodeURIComponent(clientsCalendarRoot)}` : ""}`
+      : "/admin/setup/integrations";
     return (
       <SoloCalendarWorkspace
         key={activeTenantId}
         activeTenantId={activeTenantId}
-        connectionsHref={routeRoot ? `${routeRoot}/integrations` : "/admin/setup/integrations"}
+        connectionsHref={soloConnections}
         openPaige={openPaige}
       />
     );

@@ -413,12 +413,19 @@ describe("Solo Calendar — calendar settings stay Calendar-owned", () => {
     click(cog ?? null);
   };
 
-  it("keeps no standing link out of the surface in the settings group", () => {
+  // CHANGED, owner-ruled 2026-08-30. This test previously asserted the OPPOSITE —
+  // that the settings group carried no link out — because calendar configuration
+  // was Calendar-owned and a signpost would have implied otherwise. Configuration
+  // now lives in Settings › Connections › Calendars, so the absence of an exit is
+  // the defect and the exit is the requirement. The cog drawers are unchanged and
+  // still read a calendar's setup in place.
+  it("carries a standing exit to the settings home, and still points at the cog for a quick read", () => {
     mount();
     click(buttonByText(/^Settings$/));
-    // A general signpost would read as though calendar configuration lived elsewhere.
-    expect(container.querySelector('a[href="/solo/1/integrations"]')).toBeNull();
+    const exit = container.querySelector<HTMLAnchorElement>('a[href="/solo/1/integrations"]');
+    expect(exit?.textContent).toMatch(/Manage calendar settings/i);
     expect(text()).toMatch(/Open a calendar's cog above/i);
+    expect(text()).toMatch(/Settings → Connections → Calendars/);
   });
 
   it("reads confirmations and reminders off the calendar row", () => {

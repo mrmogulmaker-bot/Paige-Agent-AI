@@ -36,6 +36,7 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
+import { CalendarsView } from "./connections-calendars";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -142,14 +143,19 @@ const PROVIDERS = [
 function ConnectionsView() {
   const comms = useSoloComms();
   const identity = useManagedIdentity();
-  const [view, setView] = useState<"connected" | "health" | "available">("connected");
+  // The owner-locked Connections shape: Communications owns whether a message can
+  // send, Calendars owns scheduling configuration, Health reports readiness, and
+  // Available stays the provider catalogue. "Connected" was this surface's older
+  // name for Communications — same content, named for what it actually holds.
+  const [view, setView] = useState<"communications" | "calendars" | "health" | "available">("communications");
   const identityStatus = identity.value?.default_email_status ?? null;
   const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
   const sendReady = identityPresentation.accountState === "active";
   return <>
-    <div className="ss-segment" role="tablist" aria-label="Connection organization">{(["connected","health","available"] as const).map(key=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{key[0].toUpperCase()+key.slice(1)}</button>)}</div>
-    {view === "connected" && <div className="ss-grid">
+    <div className="ss-segment" role="tablist" aria-label="Connection organization">{(["communications","calendars","health","available"] as const).map(key=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{key[0].toUpperCase()+key.slice(1)}</button>)}</div>
+    {view === "calendars" && <CalendarsView/>}
+    {view === "communications" && <div className="ss-grid">
       <PhoneSetupPanel/>
       <Card title="PAIGE-managed sending identity" icon={Mail} truth={identityPresentation.capability} capabilityTruth actions={<Status tone={identityPresentation.tone}>{identityPresentation.accountLabel}</Status>}>
         <OrthogonalConnectionState {...identityPresentation}/>
@@ -225,7 +231,7 @@ export function SoloSettings() {
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
   return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Provider, identity, and readiness truth in one owned home." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
+    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>
   </div>;
