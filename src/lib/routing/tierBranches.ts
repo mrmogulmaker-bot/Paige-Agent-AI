@@ -193,11 +193,11 @@ export const SOLO_BRANCHES: Branch[] = [
     // Source: src/solo/analytics2.tsx.
     subtabs: [
       { slug: "brief", key: "brief", label: "Brief" },
-      { slug: "money", key: "money", label: "The money" },
-      { slug: "profitability", key: "profit", label: "Profitability" },
+      { slug: "money", key: "money", label: "Sales funnel" },
+      { slug: "profitability", key: "profit", label: "Revenue & profit" },
       { slug: "retention", key: "ret", label: "Retention" },
+      { slug: "market-watch", key: "mkt", label: "Acquisition" },
       { slug: "decisions", key: "dec", label: "Decisions" },
-      { slug: "market-watch", key: "mkt", label: "Market watch" },
     ],
   },
   {

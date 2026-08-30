@@ -208,7 +208,7 @@ const theme=resolvedTheme==='light'?'light':'dark';
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
 // and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>expandRail();
-const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home'||route==='market';
+const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home'||route==='analytics'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
 const accountEpochKey=activeTenantId??'resolving';
 const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings/>};
