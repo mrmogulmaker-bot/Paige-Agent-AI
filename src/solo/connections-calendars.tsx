@@ -50,7 +50,7 @@ import {
   INTAKE_TYPES, LIFECYCLE_EVENTS, MEETING_METHODS, MERGE_FIELDS, NOTIFY_TARGETS, REMINDER_CHANNELS,
   REMINDER_OFFSETS, FOLLOWUP_OFFSETS, SWATCHES, TYPES, TYPE_LABEL,
   availToJson, bookingUrl, buildCalendarPatch, draftFromRow, jsonToAvail, newId, newQuestionId,
-  slugify,
+  slugify, willSaveAppointmentType, willSaveDateOverride, willSaveQuestion,
 } from "@/lib/calendar/config";
 import { useCalendarConnections, type CalendarHost, type Capability, type SendReadiness } from "./data/useCalendarConnections";
 import "./connections-calendars.css";
@@ -236,9 +236,7 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
       // hours for that date — the same quiet loss of availability this surface
       // was repaired to stop. So the closed plate reports what will actually be
       // kept, and warns while the difference is still fixable.
-      const kept = d.date_overrides.filter(
-        (o) => o.blocked || o.windows.some((w) => w.start && w.end && w.end > w.start),
-      ).length;
+      const kept = d.date_overrides.filter(willSaveDateOverride).length;
       const dropped = d.date_overrides.length - kept;
       const label = (n: number) => `${n} ${n === 1 ? "date" : "dates"}`;
       if (dropped > 0) {
@@ -254,8 +252,9 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
     case "rules":
       return { value: `${d.duration_min} min · ${d.buffer_before_min}/${d.buffer_after_min} buffer` };
     case "menu": {
-      const unnamed = d.appointment_types.filter((t) => !t.name.trim()).length;
-      if (unnamed) return { value: `${unnamed} unnamed — dropped on save`, tone: "warn" };
+      // Same source of truth as the other two, so this one cannot drift either.
+      const unnamed = d.appointment_types.filter((t) => !willSaveAppointmentType(t)).length;
+      if (unnamed) return { value: `${unnamed} unnamed · will not save`, tone: "warn" };
       return { value: d.appointment_types.length === 1 ? "1 service" : d.appointment_types.length ? `${d.appointment_types.length} services` : "single meeting" };
     }
     case "team": {
@@ -275,11 +274,20 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
     case "page":
       return { value: d.theme === "dark" ? "dark theme" : "light theme" };
     case "intake": {
-      const broken = d.intake_questions.filter(
-        (q) => INTAKE_TYPES.find((t) => t.type === q.type)?.hasOptions && q.options.filter((o) => o.trim()).length === 0,
-      ).length;
-      if (broken) return { value: `${broken} unanswerable — dropped on save`, tone: "warn" };
-      return { value: d.intake_questions.length ? `${d.intake_questions.length} ${d.intake_questions.length === 1 ? "question" : "questions"}` : "none" };
+      if (!d.intake_questions.length) return { value: "none" };
+      // The save keeps a question only if it has a label, and — for a choice —
+      // at least one option. Counting them all reported an unnamed question as
+      // configured moments before it was discarded.
+      const kept = d.intake_questions.filter(willSaveQuestion).length;
+      const dropped = d.intake_questions.length - kept;
+      const label = (n: number) => `${n} ${n === 1 ? "question" : "questions"}`;
+      if (dropped) {
+        return {
+          value: kept ? `${label(kept)} · ${label(dropped)} will not save` : `${label(dropped)} will not save`,
+          tone: "warn",
+        };
+      }
+      return { value: label(kept) };
     }
     case "notify": {
       const verdict = sendVerdict(d.notify_config, readiness);

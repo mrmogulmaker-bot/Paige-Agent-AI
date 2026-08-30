@@ -381,7 +381,7 @@ describe("what the surface must not silently destroy or misreport", () => {
     expect(text()).toMatch(/2 things need attention/i);
     const issues = [...container.querySelectorAll<HTMLButtonElement>(".cc-issue")];
     expect(issues.map((i) => i.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining("no host"), expect.stringContaining("unanswerable")]),
+      expect.arrayContaining([expect.stringContaining("no host"), expect.stringContaining("will not save")]),
     );
     // The control opens the area it names rather than only describing it.
     act(() => { issues.find((i) => /Team/.test(i.textContent ?? ""))?.click(); });
@@ -401,6 +401,34 @@ describe("what the surface must not silently destroy or misreport", () => {
     expect(text()).toMatch(/1 date set · 1 date will not save/i);
     const plate = [...container.querySelectorAll(".cc-area-v")].find((v) => /will not save/i.test(v.textContent ?? ""));
     expect(plate?.getAttribute("data-tone")).toBe("warn");
+  });
+
+  it("warns about an unnamed question, which the save discards", () => {
+    mount({ calendars: [calendar({
+      intake_questions: [
+        { id: "q1", type: "short_text", label: "Your goal", required: false, options: [], placeholder: null },
+        { id: "q2", type: "short_text", label: "  ", required: false, options: [], placeholder: null },
+      ],
+    })] });
+    expect(text()).toMatch(/1 question · 1 question will not save/i);
+  });
+
+  it("warns about a date override that has no date yet", () => {
+    // This state cannot be seeded: `normalizeDateOverrides` drops an undated
+    // override on READ, so it exists only after clicking "Add a date" in the
+    // session. That is the path the summary got wrong — every blocked override
+    // counted as kept, so collapsing the area reported "1 date set" over one the
+    // save rejects outright.
+    mount({ calendars: [calendar()] });
+    const open = () => [...container.querySelectorAll<HTMLButtonElement>(".cc-area-t")]
+      .find((b) => /Date-specific hours/.test(b.textContent ?? ""));
+    act(() => { open()?.click(); });
+    act(() => {
+      [...container.querySelectorAll<HTMLButtonElement>("button")]
+        .find((b) => /Add a date/.test(b.textContent ?? ""))?.click();
+    });
+    act(() => { open()?.click(); });  // collapse: the summary is what is on trial
+    expect(text()).toMatch(/1 date will not save/i);
   });
 
   it("does not warn when every date override will survive the save", () => {

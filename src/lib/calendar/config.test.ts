@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AVAIL, availToJson, blankDraft, buildCalendarPatch, draftFromRow, jsonToAvail,
+  willSaveDateOverride, willSaveQuestion, willSaveAppointmentType,
   normalizeLocationOptions, normalizeNotify, slugify, type CalendarDraft, type CalendarRow,
 } from "./config";
 
@@ -212,5 +213,40 @@ describe("blankDraft — the defaults a brand-new preset ships with", () => {
     // every day closed would be a live link that never offers a slot.
     const open = Object.values(jsonToAvail(availToJson(DEFAULT_AVAIL))).filter((day) => day.enabled);
     expect(open.length).toBe(5);
+  });
+});
+
+describe("the drop predicates agree with what the save actually keeps", () => {
+  // These exist so a surface can warn BEFORE the save discards something. That
+  // only works while the two say the same thing, so this pins the equivalence
+  // rather than trusting that two hand-written rules stay in step.
+  const cases = [
+    { label: "a real date with a usable window", o: { date: "2026-09-01", blocked: false, windows: [{ start: "09:00", end: "12:00" }] } },
+    { label: "a real date whose window is inverted", o: { date: "2026-09-01", blocked: false, windows: [{ start: "14:00", end: "10:00" }] } },
+    { label: "a real date with no windows at all", o: { date: "2026-09-01", blocked: false, windows: [] } },
+    { label: "a blocked real date", o: { date: "2026-09-01", blocked: true, windows: [] } },
+    // "Add a date" creates exactly this, and it used to be counted as kept.
+    { label: "a blocked override with no date yet", o: { date: "", blocked: true, windows: [] } },
+    { label: "a malformed date", o: { date: "1/9/26", blocked: true, windows: [] } },
+  ];
+  for (const { label, o } of cases) {
+    it(`agrees on ${label}`, () => {
+      const patch = buildCalendarPatch(draft({ date_overrides: [o] }), DEFAULT_AVAIL);
+      expect(patch.date_overrides.length > 0).toBe(willSaveDateOverride(o));
+    });
+  }
+
+  it("agrees on an unnamed question, which the save discards", () => {
+    const q = { id: "q1", type: "short_text" as const, label: "  ", required: false, options: [], placeholder: null };
+    const patch = buildCalendarPatch(draft({ intake_questions: [q] }), DEFAULT_AVAIL);
+    expect(patch.intake_questions.length > 0).toBe(willSaveQuestion(q));
+    expect(willSaveQuestion(q)).toBe(false);
+  });
+
+  it("agrees on an unnamed service, which the save discards", () => {
+    const t = { id: "t1", name: "", description: "", duration_min: 30, price_cents: null };
+    const patch = buildCalendarPatch(draft({ appointment_types: [t] }), DEFAULT_AVAIL);
+    expect(patch.appointment_types.length > 0).toBe(willSaveAppointmentType(t));
+    expect(willSaveAppointmentType(t)).toBe(false);
   });
 });
