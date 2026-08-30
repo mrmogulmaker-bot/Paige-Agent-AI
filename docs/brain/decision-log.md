@@ -8,6 +8,20 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 
 ## Recent PRs (#375 → #543)
 
+- **Calendar PR #642 MERGED, DEPLOYED and VERIFIED LIVE (2026-08-30).** Squash-merged at the
+  authorized head `fca04110` onto `83739ea1`; merge commit **`8ceda26e`**, source branch retained.
+  Production deployed (entry `index-Ui1VrVgZ` → `index-BEVu8cX1`, vendors unchanged) and integrity
+  PROVEN rather than assumed: the deployed lazy chunk `useSoloOwner-BEGRua1Y.js` keeps
+  `sc-board`/`sc-truth` and gained all three #642 markers **0 → 1** ("Calendar may be out of date",
+  "We could not refresh the latest booking changes", "Who is booked") plus `class_session_id` and
+  `class_seat` **0 → 1**; the Calendar CSS chunk is **byte-identical** to the merged build
+  (sha256 `831d2075…`) so the grid-row fix that made Retry clickable shipped too. Method notes worth
+  keeping: production IS reachable headless (an earlier assumption said otherwise), and the Calendar
+  code is in a LAZY chunk — grepping the entry `index-*.js` proves nothing, reading 0 before and
+  after. **OPEN:** a Codex review on `fca0411` was still running when the merge closed the PR;
+  outcome UNKNOWN, being collected — findings become a NEW follow-up PR, never a reopen.
+  **OWED:** the authenticated First Sterling Capital · Solo Calendar drive (credentials unset,
+  surface auth-gated). Deployment integrity is proven; the authenticated render is not.
 - **Calendar PR #642 — DRAFT/OPEN/UNMERGED/UNDEPLOYED, BLOCKED on a GitHub GraphQL rate limit
   (2026-08-30).** Exact head `fca04110`, tree `c90e0d11`, base `83739ea1`. Exactly **nine**
   Calendar-owned files. Verify PASS · Security Audit PASS · Vercel Preview READY · Supabase Preview
