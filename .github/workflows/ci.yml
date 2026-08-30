@@ -216,8 +216,14 @@ jobs:
           python3 .github/scripts/edge-affected.py < changed_fns.txt | tee affected_fns.txt
           echo "count=$(grep -c . affected_fns.txt || true)" >> "$GITHUB_OUTPUT"
 
+      # UNCONDITIONAL. The ratchet's own contract tests drive a REAL `deno check` against a
+      # disposable candidate, and they run in the whole-repo gate block below whether or not this
+      # PR touched an edge function. A comparator-only suite proved insufficient once already:
+      # the shipped runner classified an unexplained nonzero exit as clean while every synthetic
+      # comparator test passed. So deno is always present, and RATCHET_REQUIRE_DENO makes its
+      # absence a hard failure rather than a quietly skipped case.
       - name: Setup Deno
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        if: ${{ !cancelled() }}
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -242,12 +248,17 @@ jobs:
         env:
           BASE: ${{ steps.mergebase.outputs.mb }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          # The set CI resolved and the set the ratchet grades must be identical. Without this,
+          # an empty or truncated affected_fns.txt makes the ratchet report "nothing to compare"
+          # and exit 0 while functions were in fact affected.
+          EXPECT: ${{ steps.affected_fns.outputs.count }}
         run: |
           set -uo pipefail
           node scripts/ci/deno-edge-ratchet.mjs \
             --base "$BASE" \
             --head "$HEAD" \
             --functions "$(tr '\n' ' ' < affected_fns.txt)" \
+            --expect "$EXPECT" \
             --out deno-ratchet-evidence
 
       - name: Upload Deno ratchet evidence (base and head legs)
@@ -256,11 +267,20 @@ jobs:
         with:
           name: deno-ratchet-evidence
           path: deno-ratchet-evidence/
-          if-no-files-found: warn
+          # ERROR, not warn. The whole point of the two legs is that a reviewer can read what each
+          # actually produced; evidence that silently failed to appear leaves a green gate backed
+          # by nothing. The runner also re-reads every artifact from disk before it reports a
+          # verdict, so this is the second of two independent checks on the same property.
+          if-no-files-found: error
 
       # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----
-      - name: Deno ratchet contract tests
+      # A comparator that decides a gate is itself a gate. RATCHET_REQUIRE_DENO=1 turns the
+      # real-deno leg from an "unverified here" note into a hard failure, so CI can never report
+      # this suite green on the synthetic legs alone.
+      - name: Deno ratchet contract tests (comparator + real runner + real deno)
         if: ${{ !cancelled() }}
+        env:
+          RATCHET_REQUIRE_DENO: '1'
         run: npm run test:deno-ratchet
 
       - name: Typecheck (ratchet — fails on NEW type errors only)

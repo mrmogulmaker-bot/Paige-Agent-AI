@@ -2,34 +2,64 @@
 /**
  * Deno edge-function diagnostic ratchet.
  *
- * The plain `deno check` gate is all-or-nothing: the first PR to touch a function
- * carrying inherited debt goes red for errors it did not write, and the pressure is then
- * to weaken the gate. This compares the SAME pinned check on the PR base against the PR
- * head and fails only on new or increased diagnostics — without ever skipping, disabling,
- * or advisory-greening a check.
+ * The plain `deno check` gate is all-or-nothing: the first PR to touch a function carrying
+ * inherited debt goes red for errors it did not write, and the pressure is then to weaken the
+ * gate. This compares the SAME pinned check on the PR base against the PR head and fails only
+ * on new or increased diagnostics — without ever skipping, disabling, or advisory-greening a
+ * check.
  *
- * Two rules keep it from becoming a rubber stamp:
+ * Three rules keep it from becoming a rubber stamp.
  *
- *   - A module-resolution failure is NEVER ratchetable. It is not a type-check result; it
- *     means the file was not checked at all, so it could hide anything added to that file
- *     later. On the HEAD that is fatal. On the BASE it means the baseline is unknowable,
- *     so the base is credited with NOTHING and the head must be clean - stricter than
- *     ratcheting, and it does not punish the PR that repairs the import.
- *   - An inherited diagnostic is only inherited while the file it originates in is
- *     unchanged. A CHANGED shared dependency is changed code: its diagnostics are the
- *     candidate's to answer for, not baseline to be waved through.
+ *   1. EVERY LEG STATES ITS OUTCOME, AND AN UNSTATED OUTCOME IS NEVER CLEAN. A check run is
+ *      classified into exactly one of `clean`, `diagnostics`, `resolution-failure`, `absent`,
+ *      `abandoned`, or `unclassified`, and the comparator refuses to grade a leg that carries
+ *      anything else. The first version of this gate derived "clean" from the ABSENCE of
+ *      parsed diagnostics, so a nonzero exit the parser did not recognise — a compiler panic,
+ *      an OOM kill, a changed output format, a config error — produced an empty diagnostic
+ *      list and sailed through as a pass. That is the fail-open this file exists to close:
+ *      an unexplained nonzero exit means nothing was verified, and nothing verified fails.
+ *   2. AN UNKNOWABLE BASE EARNS NO CREDIT. A module-resolution failure is not a type-check
+ *      result; it means the file was not checked at all. On the HEAD that is fatal. On the
+ *      BASE it means the baseline is unknowable, so the base is credited with NOTHING and the
+ *      head must be clean on its own merits — stricter than ratcheting, and it does not punish
+ *      the PR that repairs the import. An UNCLASSIFIED base is treated identically: an
+ *      uninterpretable baseline is not a baseline.
+ *   3. AN INHERITED DIAGNOSTIC IS ONLY INHERITED WHILE ITS ORIGIN FILE IS UNCHANGED. A CHANGED
+ *      shared dependency is changed code: its diagnostics are the candidate's to answer for,
+ *      not baseline to be waved through.
  *
- * The comparator below is pure and separately tested; the runner half executes the two
- * legs and writes both as inspectable evidence.
+ * Both legs run in DETACHED WORKTREES at the exact resolved SHAs. On `pull_request`,
+ * `actions/checkout` materialises the MERGE COMMIT, not the PR head — so a head leg run in the
+ * runner's working directory judges a tree that is not the SHA the verdict is reported against.
+ * Binding each leg to its own worktree removes that gap by construction, and the resolved SHAs
+ * are recorded in the evidence so a reviewer can confirm what was actually checked.
+ *
+ * The comparator below is pure and separately tested; the runner half executes the two legs and
+ * writes both as inspectable evidence, which is then re-read from disk before any verdict is
+ * reported. Missing evidence is a failure, never a warning.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 // -- pure comparator ---------------------------------------------------------
 
 const ANSI = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g");
+
+/** Cap on stored transcript per leg, so evidence stays readable and uploadable. */
+const RAW_LIMIT = 200_000;
+
+/** The outcomes a leg may report. Anything else is refused rather than assumed benign. */
+export const LEG_OUTCOMES = Object.freeze([
+  "clean",              // the check ran and found nothing
+  "diagnostics",        // the check ran and reported type errors we parsed and agree on
+  "resolution-failure", // the module graph could not be built; nothing was type-checked
+  "absent",             // the entry file does not exist at this revision
+  "abandoned",          // the check never completed (spawn failure, signal, killed)
+  "unclassified",       // it exited in a way this gate cannot interpret — never a pass
+]);
+const KNOWN_OUTCOMES = new Set(LEG_OUTCOMES);
 
 /** Substrings meaning "the module graph could not be built", i.e. nothing was checked. */
 const RESOLUTION_MARKERS = [
@@ -83,12 +113,76 @@ export function normalizeDiagnostics(raw) {
   return out;
 }
 
+/**
+ * Deno's own tally line ("Found 3 errors."). It is the compiler's count, independent of our
+ * parser — so a disagreement between the two means our parse is incomplete and the leg cannot
+ * be graded on it. Returns null when deno printed no tally.
+ */
+export function parseReportedErrorCount(raw) {
+  const m = /^Found (\d+) errors?\./m.exec(String(raw ?? "").replace(ANSI, ""));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Turn one raw check invocation into a leg record with an EXPLICIT outcome.
+ *
+ * This is where the fail-open was. Every path that does not positively establish "the check
+ * ran to completion and we understand its result" lands on `unclassified` or `abandoned`,
+ * both of which the comparator fails closed on.
+ */
+export function classifyLeg({ present, exit, raw, signal = null, spawnFailed = false, attempts = 1 }) {
+  if (present === false) {
+    return { ran: true, present: false, outcome: "absent", exit: null, diagnostics: [], reportedCount: null, attempts, raw: "" };
+  }
+  const text = String(raw ?? "");
+  const trimmedRaw = text.slice(0, RAW_LIMIT);
+
+  // The tool never completed. There is no result to interpret, so there is no evidence.
+  if (spawnFailed || signal) {
+    return {
+      ran: false, present: true, outcome: "abandoned", exit: exit ?? null, signal,
+      diagnostics: [], reportedCount: null, attempts, raw: trimmedRaw,
+      unclassifiedReason: signal ? `the check was killed by ${signal}` : "the check process could not be started",
+    };
+  }
+
+  const diagnostics = normalizeDiagnostics(text);
+  const reportedCount = parseReportedErrorCount(text);
+  const leg = { ran: true, present: true, exit, diagnostics, reportedCount, attempts, raw: trimmedRaw };
+  const unclassified = (reason) => ({ ...leg, outcome: "unclassified", unclassifiedReason: reason });
+
+  if (exit === 0) {
+    // A zero exit that nonetheless carries errors is a contradiction, not a pass.
+    if (diagnostics.length > 0) return unclassified(`exit 0 but ${diagnostics.length} diagnostic(s) were emitted`);
+    if (reportedCount !== null && reportedCount > 0) return unclassified(`exit 0 but deno reported ${reportedCount} error(s)`);
+    return { ...leg, outcome: "clean" };
+  }
+
+  if (diagnostics.length > 0) {
+    // Our parse must agree with deno's own count, or we are grading a partial reading.
+    if (reportedCount !== null && reportedCount !== diagnostics.length) {
+      return unclassified(`deno reported ${reportedCount} error(s) but this gate parsed ${diagnostics.length}`);
+    }
+    return { ...leg, outcome: "diagnostics" };
+  }
+
+  if (looksLikeResolutionFailure(text)) return { ...leg, outcome: "resolution-failure" };
+
+  // THE CLOSED DOOR: a nonzero exit with nothing this gate can read. Nothing was verified.
+  return unclassified(`exit ${exit} produced no diagnostic this gate could parse and no module-resolution marker`);
+}
+
 const keyOf = (d) => JSON.stringify([d.file, d.code, d.message]);
 
 function tally(list) {
   const m = new Map();
   for (const d of list) m.set(keyOf(d), (m.get(keyOf(d)) ?? 0) + 1);
   return m;
+}
+
+/** A short, quoted tail of a transcript, so a failure message is actionable on its own. */
+function excerpt(raw, lines = 6) {
+  return String(raw ?? "").split("\n").map((l) => l.trim()).filter(Boolean).slice(-lines).join(" | ").slice(0, 400);
 }
 
 /**
@@ -100,29 +194,64 @@ export function compareFunction({ fn, base, head, changedFiles = [] }) {
   const entry = `supabase/functions/${fn}/index.ts`;
   const changed = new Set(changedFiles);
 
-  // Either leg must have actually executed. No evidence is never a pass.
-  if (!base || base.ran !== true) fail.push(`${fn}: BASE evidence missing - the base leg did not execute`);
-  if (!head || head.ran !== true) fail.push(`${fn}: HEAD evidence missing - the head leg did not execute`);
-  if (fail.length) return fail;
+  // Every leg must have executed AND must say what happened. A leg that cannot state its own
+  // outcome is never read as clean — that inference is precisely the fail-open being closed.
+  for (const [label, leg] of [["BASE", base], ["HEAD", head]]) {
+    const lower = label.toLowerCase();
+    if (!leg || typeof leg !== "object") {
+      fail.push(`${fn}: ${label} evidence missing - the ${lower} leg did not execute`);
+      continue;
+    }
+    if (leg.ran !== true) {
+      const why = leg.unclassifiedReason ?? leg.outcome ?? "no outcome recorded";
+      fail.push(`${fn}: ${label} evidence missing - the ${lower} leg did not execute (${why})`);
+      continue;
+    }
+    if (!KNOWN_OUTCOMES.has(leg.outcome)) {
+      fail.push(`${fn}: ${label} leg recorded no recognised outcome (${JSON.stringify(leg.outcome ?? null)}) - a leg that cannot state what happened is never credited as clean`);
+    }
+  }
+  if (fail.length) return [...new Set(fail)];
 
-  // A HEAD resolution failure is fatal: the candidate was not checked at all, so it could
-  // be hiding anything. This is never ratcheted and never excused.
-  if (head.resolutionFailure) {
-    fail.push(`${fn}: HEAD could not resolve its module graph - not ratchetable, nothing was checked`);
-    return fail;
+  // --- head-side fatals: nothing was verified, so nothing is ratcheted ---------------------
+
+  if (head.outcome === "unclassified") {
+    return [`${fn}: HEAD check outcome is UNCLASSIFIED (exit ${head.exit ?? "?"}) - ${head.unclassifiedReason ?? "the gate could not interpret the result"}. Nothing was verified, so this fails closed. Transcript tail: ${excerpt(head.raw)}`];
+  }
+  if (head.outcome === "resolution-failure") {
+    return [`${fn}: HEAD could not resolve its module graph - not ratchetable, nothing was checked`];
+  }
+  // The function is gone at head. There is no candidate left to judge.
+  if (head.outcome === "absent") return [];
+
+  // --- base-side credit -------------------------------------------------------------------
+
+  // An unknowable base means the baseline cannot be established, NOT that the candidate is
+  // guilty. Failing outright would punish the PR that repairs the import and would deadlock,
+  // since the repair can only ever land on a base that still carries the break. So the base is
+  // credited with NOTHING and the head must be clean on its own merits. Strictly stricter than
+  // ratcheting, never weaker. An UNCLASSIFIED base is the same situation with a different
+  // cause, and gets the same treatment rather than being mistaken for a clean baseline.
+  if (base.outcome === "resolution-failure" || base.outcome === "unclassified") {
+    const why = base.outcome === "unclassified"
+      ? `BASE check outcome is UNCLASSIFIED (exit ${base.exit ?? "?"}) - ${base.unclassifiedReason ?? "the gate could not interpret the result"}`
+      : "BASE could not resolve its module graph";
+    if (head.outcome === "clean") {
+      console.log(`    note: ${fn} - ${why}; NO baseline credited, head is clean on its own merits`);
+      return [];
+    }
+    return [`${fn}: ${why} - NO baseline credited, so the head must be clean on its own merits; it reported ${head.diagnostics?.length ?? 0} diagnostic(s): ${excerpt(head.raw)}`];
   }
 
-  // A BASE resolution failure means the baseline is UNKNOWABLE, not that the candidate is
-  // guilty. Failing outright would punish the PR that repairs the import - and would
-  // deadlock, since the repair can only ever land on a base that still carries the break.
-  // So the base is credited with NOTHING: no inherited diagnostics, head must be clean.
-  // Strictly stricter than ratcheting, never weaker.
-  const baseUnknowable = base.resolutionFailure === true;
-  if (baseUnknowable) {
-    console.log(`    note: ${fn} base could not resolve - no baseline credited, head must be clean`);
+  // A function that did not exist on the base has no baseline to inherit. It must arrive clean.
+  if (base.outcome === "absent") {
+    if (head.outcome === "clean") return [];
+    return [`${fn}: this function did not exist on the base (new function), so there is no baseline to inherit - it must arrive clean; head reported ${head.diagnostics?.length ?? 0} diagnostic(s)`];
   }
 
-  const baseDiags = baseUnknowable ? [] : (base.diagnostics ?? []);
+  // A base that did not complete is caught above by the `ran !== true` guard; anything reaching
+  // here is `clean` or `diagnostics` on both legs.
+  const baseDiags = base.diagnostics ?? [];
   const headDiags = head.diagnostics ?? [];
   const b = tally(baseDiags);
   const h = tally(headDiags);
@@ -154,38 +283,75 @@ export function compareFunction({ fn, base, head, changedFiles = [] }) {
 
 export function compareAll(evidence) {
   const failures = [];
-  for (const rec of evidence.functions ?? []) failures.push(...compareFunction(rec));
+  for (const rec of evidence?.functions ?? []) failures.push(...compareFunction(rec));
   return { ok: failures.length === 0, failures };
 }
 
+/**
+ * Evidence a reviewer cannot read is not evidence. Both legs of every function must exist on
+ * disk and `evidence.json` must parse; anything missing is a FAILURE, never a warning.
+ */
+export function verifyEvidenceArtifacts(outDir, evidence) {
+  const problems = [];
+  const jsonPath = path.join(outDir, "evidence.json");
+  if (!existsSync(jsonPath)) {
+    problems.push(`evidence artifact missing: ${jsonPath}`);
+  } else {
+    try { JSON.parse(readFileSync(jsonPath, "utf8")); }
+    catch (e) { problems.push(`evidence artifact unreadable: could not parse ${jsonPath} (${e.message})`); }
+  }
+  for (const rec of evidence?.functions ?? []) {
+    for (const leg of ["base", "head"]) {
+      const p = path.join(outDir, `${rec.fn}.${leg}.txt`);
+      if (!existsSync(p)) problems.push(`evidence artifact missing: ${rec.fn} ${leg} transcript (${p})`);
+    }
+  }
+  return problems;
+}
+
 // -- runner ------------------------------------------------------------------
+
+/** Abandonment is infrastructure noise and may be retried. A diagnostic never is. */
+const MAX_ATTEMPTS = 2;
 
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-function runCheck(cwd, entry) {
-  if (!existsSync(path.join(cwd, entry))) {
-    return { ran: true, present: false, resolutionFailure: false, diagnostics: [], raw: "" };
-  }
-  let raw = "";
-  let exit = 0;
+/** One raw invocation. Distinguishes "exited with a status" from "never completed". */
+function invokeCheck(cwd, entry) {
   try {
-    raw = execFileSync("deno", ["check", "--no-lock", entry], {
+    const raw = execFileSync("deno", ["check", "--no-lock", entry], {
       cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024,
     });
+    return { exit: 0, raw };
   } catch (e) {
-    exit = e.status ?? 1;
-    raw = `${e.stdout ?? ""}\n${e.stderr ?? ""}`;
-    if (e.status === undefined && !e.stdout && !e.stderr) {
-      // deno itself never ran (missing binary, killed process). Not a diagnostic - no evidence.
-      return { ran: false, present: true, resolutionFailure: false, diagnostics: [], raw: String(e.message ?? e) };
+    const out = `${e.stdout ?? ""}\n${e.stderr ?? ""}`;
+    if (e.signal) return { signal: e.signal, raw: out };
+    if (e.status === null || e.status === undefined) {
+      return { spawnFailed: true, raw: `${out}\n${e.code ?? ""} ${e.message ?? e}`.trim() };
+    }
+    return { exit: e.status, raw: out };
+  }
+}
+
+function runCheck(cwd, entry) {
+  if (!existsSync(path.join(cwd, entry))) return classifyLeg({ present: false });
+  let leg;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    leg = classifyLeg({ present: true, ...invokeCheck(cwd, entry), attempts: attempt });
+    if (leg.outcome !== "abandoned") return leg;
+    if (attempt < MAX_ATTEMPTS) {
+      console.log(`    retry: ${entry} leg abandoned (${leg.signal ?? "spawn failure"}) - attempt ${attempt + 1}/${MAX_ATTEMPTS}`);
     }
   }
-  const diagnostics = normalizeDiagnostics(raw);
-  const resolutionFailure = exit !== 0 && diagnostics.length === 0 && looksLikeResolutionFailure(raw);
-  return { ran: true, present: true, exit, resolutionFailure, diagnostics, raw: raw.slice(0, 200_000) };
+  // Every attempt was abandoned. It stays abandoned, and the comparator fails it closed.
+  return leg;
+}
+
+function git(repo, ...args) {
+  return execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 function main() {
@@ -193,41 +359,86 @@ function main() {
   const headRef = arg("head", "HEAD");
   const fnsArg = arg("functions", "");
   const outDir = arg("out", "deno-ratchet-evidence");
-  const fns = fnsArg.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+  const expectRaw = arg("expect", process.env.RATCHET_EXPECT ?? null);
+  const fns = [...new Set(fnsArg.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean))];
 
-  if (!baseRef) { console.error("deno-edge-ratchet: --base <ref> is required"); process.exit(2); }
-  if (fns.length === 0) { console.log("deno-edge-ratchet: no affected functions - nothing to compare."); return; }
+  if (!baseRef) { console.error("::error::deno-edge-ratchet: --base <ref> is required"); process.exit(2); }
 
-  const repo = process.cwd();
-  const changedFiles = execFileSync("git", ["diff", "--name-only", `${baseRef}...${headRef}`], { encoding: "utf8" })
-    .split("\n").map((s) => s.trim()).filter(Boolean);
-
-  // The base leg runs in a detached worktree of the base ref with the SAME node_modules the
-  // head leg uses; otherwise the two legs are not comparable.
-  const tmp = mkdtempSync(path.join(tmpdir(), "deno-ratchet-base-"));
-  const baseTree = path.join(tmp, "base");
-  execFileSync("git", ["worktree", "add", "--detach", baseTree, baseRef], { cwd: repo, stdio: "inherit" });
-  const nm = path.join(repo, "node_modules");
-  if (existsSync(nm)) {
-    try { symlinkSync(nm, path.join(baseTree, "node_modules"), "dir"); } catch { /* already present */ }
+  // The set CI resolved and the set the ratchet graded must be the same set. Silently grading
+  // fewer functions than were affected is a pass nobody asked for.
+  const expect = expectRaw === null || expectRaw === "" ? null : Number(expectRaw);
+  if (expect !== null && Number.isFinite(expect) && fns.length !== expect) {
+    console.error(`::error::deno-edge-ratchet: CI resolved ${expect} affected function(s) but ${fns.length} reached the ratchet - refusing to report a verdict on a set that does not match.`);
+    process.exit(1);
   }
 
-  const evidence = { baseRef, headRef, changedFiles, functions: [] };
+  const repo = process.cwd();
+
+  // Bind each leg to an exact commit. On `pull_request`, the runner's working tree is the MERGE
+  // COMMIT, not the PR head, so "check what is checked out" grades a tree the verdict does not
+  // name. Resolving both refs up front also turns a bad ref into a loud failure, not a silent one.
+  let baseSha, headSha;
+  try { baseSha = git(repo, "rev-parse", "--verify", `${baseRef}^{commit}`); }
+  catch { console.error(`::error::deno-edge-ratchet: base ref '${baseRef}' does not resolve to a commit`); process.exit(2); }
+  try { headSha = git(repo, "rev-parse", "--verify", `${headRef}^{commit}`); }
+  catch { console.error(`::error::deno-edge-ratchet: head ref '${headRef}' does not resolve to a commit`); process.exit(2); }
+
+  let runnerCheckout = null;
+  try { runnerCheckout = git(repo, "rev-parse", "HEAD"); } catch { /* not fatal; recorded as null */ }
+  if (runnerCheckout && runnerCheckout !== headSha) {
+    console.log(`note: the runner's working tree is ${runnerCheckout}, not the PR head ${headSha}.`);
+    console.log("      both legs are checked in detached worktrees at their exact SHAs, so the verdict is bound to the head named above.");
+  }
+
+  const evidence = {
+    baseRef, headRef, baseSha, headSha, runnerCheckout,
+    changedFiles: [], functions: [],
+  };
+
+  if (fns.length === 0) {
+    console.log("deno-edge-ratchet: no affected functions - nothing to compare.");
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(path.join(outDir, "evidence.json"), JSON.stringify(evidence, null, 2));
+    return;
+  }
+
+  evidence.changedFiles = git(repo, "diff", "--name-only", `${baseSha}...${headSha}`)
+    .split("\n").map((s) => s.trim()).filter(Boolean);
+  const changedFiles = evidence.changedFiles;
+
+  // Both legs run in detached worktrees at their exact SHAs, sharing the head's node_modules so
+  // the two runs are otherwise identical.
+  const tmp = mkdtempSync(path.join(tmpdir(), "deno-ratchet-"));
+  const trees = {};
+  const nm = path.join(repo, "node_modules");
   try {
+    for (const [label, sha] of [["base", baseSha], ["head", headSha]]) {
+      const dir = path.join(tmp, label);
+      execFileSync("git", ["worktree", "add", "--detach", dir, sha], { cwd: repo, stdio: "inherit" });
+      const got = git(dir, "rev-parse", "HEAD");
+      if (got !== sha) {
+        throw new Error(`${label} worktree resolved to ${got} but ${sha} was requested - refusing to grade an unbound tree`);
+      }
+      if (existsSync(nm)) {
+        try { symlinkSync(nm, path.join(dir, "node_modules"), "dir"); } catch { /* already present */ }
+      }
+      trees[label] = dir;
+    }
+
     for (const fn of fns) {
       const entry = `supabase/functions/${fn}/index.ts`;
       console.log(`--- ratchet ${fn}`);
-      const base = runCheck(baseTree, entry);
-      const head = runCheck(repo, entry);
-      const say = (leg) => leg.present
-        ? `${leg.diagnostics.length} diagnostic(s)${leg.resolutionFailure ? " + RESOLUTION FAILURE" : ""}`
-        : "absent";
-      console.log(`    base: ${say(base)}`);
-      console.log(`    head: ${say(head)}`);
+      const base = runCheck(trees.base, entry);
+      const head = runCheck(trees.head, entry);
+      const say = (leg) => `${leg.outcome}${leg.diagnostics?.length ? ` (${leg.diagnostics.length} diagnostic(s))` : ""}${leg.unclassifiedReason ? ` - ${leg.unclassifiedReason}` : ""}`;
+      console.log(`    base @ ${baseSha.slice(0, 8)}: ${say(base)}`);
+      console.log(`    head @ ${headSha.slice(0, 8)}: ${say(head)}`);
       evidence.functions.push({ fn, base, head, changedFiles });
     }
   } finally {
-    try { execFileSync("git", ["worktree", "remove", "--force", baseTree], { cwd: repo, stdio: "ignore" }); } catch { /* best effort */ }
+    for (const dir of Object.values(trees)) {
+      try { execFileSync("git", ["worktree", "remove", "--force", dir], { cwd: repo, stdio: "ignore" }); } catch { /* best effort */ }
+    }
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
 
@@ -236,6 +447,14 @@ function main() {
   for (const rec of evidence.functions) {
     writeFileSync(path.join(outDir, `${rec.fn}.base.txt`), rec.base.raw ?? "");
     writeFileSync(path.join(outDir, `${rec.fn}.head.txt`), rec.head.raw ?? "");
+  }
+
+  // Re-read from disk: a verdict backed by evidence nobody can open is not a verdict.
+  const missing = verifyEvidenceArtifacts(outDir, evidence);
+  if (missing.length) {
+    for (const m of missing) console.log(`::error::${m}`);
+    console.log(`\ndeno edge ratchet: evidence is incomplete, so no verdict is reported. ${missing.length} artifact problem(s).`);
+    process.exit(1);
   }
 
   const { ok, failures } = compareAll(evidence);
@@ -247,4 +466,12 @@ function main() {
   console.log(`\ndeno edge ratchet: no new or increased diagnostics across ${fns.length} function(s). Evidence in ${outDir}/.`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  try { main(); }
+  catch (e) {
+    // An unexpected throw is not a pass. Say what happened and fail closed.
+    console.log(`::error::deno-edge-ratchet aborted: ${e?.message ?? e}`);
+    if (e?.stack) console.log(e.stack);
+    process.exit(1);
+  }
+}
