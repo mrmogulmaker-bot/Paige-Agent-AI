@@ -12,6 +12,7 @@
 // existing draft row when an approved draft (message_id) is being sent. Idempotent on
 // provider_message_id. The legacy paige_messages_audit write + paige_conversations
 // mirror + JWT gate + SMS path are all preserved unchanged (§37 additive-only).
+import { stampedWebhookUrls } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getOutboundAdapter,
@@ -1070,10 +1071,26 @@ Deno.serve(async (req) => {
       const adapter = getOutboundAdapter("sms");
       if (!adapter) throw new Error("no_sms_adapter_registered");
 
-      // Per-message DLR StatusCallback endpoint (honest-null if unset → number-level cb).
-      const statusCallbackUrl =
-        Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
-        (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : null);
+      // Per-message DLR StatusCallback endpoint.
+      //
+      // MUST carry the tenant's stamped secret. `twilio-status-callback` now fails
+      // CLOSED, and this per-message URL OVERRIDES the number-level one stamped at
+      // purchase — so an unstamped URL here means every delivery receipt for every
+      // tenant is refused with 401 and the row never leaves 'sent'.
+      const stampSecret = tenantId
+        ? ((await admin.from("tenant_twilio_subaccounts")
+              .select("inbound_webhook_secret").eq("tenant_id", tenantId).maybeSingle())
+            .data?.inbound_webhook_secret ?? null)
+        : null;
+      const statusCallbackUrl = stampSecret
+        ? (Deno.env.get("TWILIO_STATUS_CALLBACK_URL")
+            ? `${Deno.env.get("TWILIO_STATUS_CALLBACK_URL")}?t=${encodeURIComponent(stampSecret)}`
+            : supabaseUrl
+              ? stampedWebhookUrls(supabaseUrl, stampSecret).statusCallback
+              : null)
+        // No secret ⇒ emit NO callback rather than one that will be refused. The row
+        // stays at its send-time status, which is honest, instead of accruing 401s.
+        : null;
 
       const outMsg: NormalizedMessage = {
         thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `sms:${body.to}`,
@@ -1216,6 +1233,10 @@ Deno.serve(async (req) => {
   if (status === "sent" && body.conversation_id) {
     await admin.from("paige_conversations").insert({
       channel: body.channel,
+      // The outbound mirror carried no tenant either (C-7). `tenantId` here is the
+      // server-derived one this send was already authorised against — never a
+      // value from the request body.
+      tenant_id: tenantId,
       contact_id: body.contact_id ?? null,
       direction: "outbound",
       subject: body.subject,
@@ -1224,13 +1245,48 @@ Deno.serve(async (req) => {
       status: "replied",
       metadata: { audit_id: auditRow?.id, in_reply_to: body.conversation_id },
     });
-    await admin.from("paige_conversations")
-      .update({ status: "replied" })
-      .eq("id", body.conversation_id);
+    // §9 — scope the update to the send's OWN tenant.
+    //
+    // `admin` is service-role, so RLS does not apply here, and
+    // `body.conversation_id` arrives from the request and is validated nowhere.
+    // The caller gate above requires only a GLOBAL `admin`/`coach` app_role, and
+    // `user_roles` has no tenant column (§59) — so without this predicate a
+    // tenant-A coach who performs any successful send could pass tenant B's
+    // conversation id and flip that row. An unguessable UUID is not access
+    // control.
+    //
+    // Left unscoped when `tenantId` is null: that is the platform-owner path,
+    // which legitimately reaches across tenants. Adding `.eq("tenant_id", null)`
+    // there would match nothing and silently break the operator instead.
+    //
+    // OBSERVABLE, because a scoped update can now match ZERO rows where it used to
+    // match one — and a silent no-op is a regression that looks like success. The
+    // `.select("id")` makes the match count readable and a 0-row result is logged
+    // loudly rather than swallowed. It is NOT treated as a send failure: the
+    // message really did go out, and failing here would be a worse lie.
+    {
+      const convoUpdate = admin.from("paige_conversations")
+        .update({ status: "replied" })
+        .eq("id", body.conversation_id);
+      const { data: convoRows, error: convoErr } = await (
+        tenantId ? convoUpdate.eq("tenant_id", tenantId) : convoUpdate
+      ).select("id");
+      if (convoErr) {
+        console.error("[send-message] conversation status update failed:", convoErr.code, convoErr.message);
+      } else if (!convoRows?.length) {
+        console.error(
+          `[send-message] conversation ${body.conversation_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — status NOT advanced. The message was sent.`,
+        );
+      }
+    }
   }
 
   if (body.approval_id) {
-    await admin.from("paige_pending_approvals")
+    // Same §9 reasoning as the conversation update above, and a larger blast
+    // radius: this marks an approval APPROVED and stamps who reviewed it. An
+    // unvalidated id here let one tenant's caller approve another tenant's
+    // pending action.
+    const approvalUpdate = admin.from("paige_pending_approvals")
       .update({
         status: status === "sent" ? "approved" : "pending",
         reviewed_by_user_id: user?.id ?? null,
@@ -1239,6 +1295,30 @@ Deno.serve(async (req) => {
         sent_message_audit_id: auditRow?.id ?? null,
       })
       .eq("id", body.approval_id);
+    const { data: apprRows, error: apprErr } = await (
+      tenantId ? approvalUpdate.eq("tenant_id", tenantId) : approvalUpdate
+    ).select("id");
+    if (apprErr) {
+      console.error("[send-message] approval update failed:", apprErr.code, apprErr.message);
+    } else if (!apprRows?.length) {
+      // A 0-row match leaves the approval `pending` with `claimed_at` set, so every
+      // retry reports already-in-progress. Recoverable only if someone can see it —
+      // hence error level.
+      //
+      // The consequence DEPENDS ON WHETHER THE SEND HAPPENED, and this block is not
+      // gated on that: unlike the conversation update above, it runs for a failed
+      // send too (`status` initialises to "failed", and the update itself writes
+      // "pending" for exactly that case). An earlier version of this line asserted
+      // "the message was sent" unconditionally — stating as fact, in the one record
+      // a human would read while diagnosing, something that may not have happened.
+      // That is the same class of defect as a fabricated delivery status, and it
+      // was introduced by the very commit that added this logging.
+      console.error(
+        status === "sent"
+          ? `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — it stays pending though the message WAS sent. If this fires, the approval row's tenant does not match the send's.`
+          : `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — the send did not succeed (status ${status}) and the approval could not be reset to pending. If this fires, the approval row's tenant does not match the send's.`,
+      );
+    }
   }
 
   // ── Paige Context Rail — COMMS emitter: file 'comms.outbound' after a message

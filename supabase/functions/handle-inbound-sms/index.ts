@@ -15,6 +15,7 @@
 //     (the To/receiving number), NOT from an unscoped clients.phone lookup — a shared or
 //     reused number must never resolve a contact belonging to another tenant. The contact
 //     lookup is then SCOPED to that resolved tenant.
+import { authenticateTwilioWebhook, inboundSecretForNumber, type WebhookAuthOutcome } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fireAndForgetBridge } from "../_shared/mmaOsBridge.ts";
 // Reuse the ONE canonical phone normalizer (§18) — the same helper the pre-send READER
@@ -80,24 +81,25 @@ function twiml(message?: string): Response {
   return new Response(xml, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/xml" } });
 }
 
-async function verifyTwilio(req: Request, rawBody: string): Promise<boolean> {
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!token) {
-    console.warn("[handle-inbound-sms] TWILIO_AUTH_TOKEN not set — accepting unsigned");
-    return true;
-  }
-  const sig = req.headers.get("x-twilio-signature");
-  if (!sig) return false;
-  const url = req.url;
-  const params = new URLSearchParams(rawBody);
-  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const concatenated = url + sorted.map(([k, v]) => k + v).join("");
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(token), { name: "HMAC", hash: "SHA-1" }, false, ["sign"],
-  );
-  const buf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(concatenated));
-  const computed = btoa(String.fromCharCode(...new Uint8Array(buf)));
-  return computed === sig;
+/**
+ * FAIL CLOSED. The previous implementation returned `true` when
+ * TWILIO_AUTH_TOKEN was unset — and this deployment deliberately does not set
+ * one (`_shared/twilio.ts:222-234`), so every unsigned POST was accepted and
+ * could write to any tenant's suppression and consent ledger by naming that
+ * tenant's number in `To`. Authentication now delegates to the one shared home,
+ * which accepts a valid signature or the per-tenant stamped secret and refuses
+ * anything else.
+ */
+async function verifyTwilio(
+  req: Request,
+  rawBody: string,
+  admin: Admin,
+  toPhone: string,
+): Promise<WebhookAuthOutcome> {
+  const expectedSecret = toPhone
+    ? await inboundSecretForNumber(admin, normalizePhone(toPhone))
+    : null;
+  return await authenticateTwilioWebhook(req, rawBody, { expectedSecret });
 }
 
 // deno-lint-ignore no-explicit-any
@@ -294,12 +296,18 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey);
 
   const rawBody = await req.text();
-  const verified = await verifyTwilio(req, rawBody);
-  if (!verified) return new Response("invalid_signature", { status: 401 });
-
   const params = new URLSearchParams(rawBody);
   const fromPhone = params.get("From") ?? "";
   const toPhone = params.get("To") ?? "";
+
+  // Authenticate BEFORE any read or write. A refusal is logged loudly with its
+  // reason — a silently-dropped callback is indistinguishable from one that
+  // never arrived, which is how the fail-open branch stayed invisible.
+  const auth = await verifyTwilio(req, rawBody, admin, toPhone);
+  if (!auth.ok) {
+    console.error(`[handle-inbound-sms] REFUSED unauthenticated callback: ${auth.reason}`);
+    return new Response("unauthenticated", { status: 401 });
+  }
   const messageSid = params.get("MessageSid") ?? crypto.randomUUID();
   const bodyRaw = (params.get("Body") ?? "").trim();
   const bodyUpper = bodyRaw.toUpperCase();
@@ -334,26 +342,51 @@ Deno.serve(async (req) => {
     return twiml("You're unsubscribed and won't get more messages from us. Reply START to opt back in.");
   }
 
-  // Look up contact by phone (conversation/rail path — unchanged behavior).
+  // Look up the contact — SCOPED TO THE TENANT THAT OWNS THE RECEIVING NUMBER.
+  //
+  // Both lookups were previously unscoped, so a text arriving at tenant A's
+  // number from a phone that also exists as a contact in tenant B was filed into
+  // TENANT B's conversation and broadcast into tenant B's rail. The suppression
+  // path above was scoped correctly; this one was missed, and the file header
+  // claimed the fix covered both.
+  //
+  // When the receiving number belongs to no tenant we attribute NO contact
+  // rather than guessing from the sender's number alone — an unattributed row is
+  // honest, a misattributed one is a cross-tenant leak.
   let contactId: string | null = null;
-  const { data: prefs } = await admin
-    .from("communication_preferences")
-    .select("user_id")
-    .eq("sms_phone_number", fromPhone)
-    .maybeSingle();
-  if (prefs?.user_id) {
-    const { data: c } = await admin.from("clients").select("id").eq("linked_user_id", prefs.user_id).maybeSingle();
-    contactId = c?.id ?? null;
-  }
-  if (!contactId) {
-    const { data: c } = await admin.from("clients").select("id").eq("phone", fromPhone).maybeSingle();
-    contactId = c?.id ?? null;
+  if (receivingTenantId) {
+    const { data: prefs } = await admin
+      .from("communication_preferences")
+      .select("user_id")
+      .eq("sms_phone_number", fromPhone)
+      .maybeSingle();
+    if (prefs?.user_id) {
+      const { data: c } = await admin.from("clients").select("id")
+        .eq("linked_user_id", prefs.user_id)
+        .eq("tenant_id", receivingTenantId)
+        .maybeSingle();
+      contactId = c?.id ?? null;
+    }
+    if (!contactId) {
+      const { data: c } = await admin.from("clients").select("id")
+        .eq("phone", fromPhone)
+        .eq("tenant_id", receivingTenantId)
+        .maybeSingle();
+      contactId = c?.id ?? null;
+    }
   }
 
   const { data: convo, error: insertErr } = await admin
     .from("paige_conversations")
     .insert({
       channel: "sms",
+      // The tenant that owns the receiving number, resolved above and used for
+      // every compliance write — and then, until now, omitted here. A NULL tenant
+      // on this table is not merely unscoped: the restrictive RLS policy admitted
+      // `tenant_id IS NULL`, so an untenanted row was readable AND writable by the
+      // admin of every other tenant (C-7). Service-role bypasses RLS, so no policy
+      // can put this right after the fact — it has to be correct at the write.
+      tenant_id: receivingTenantId,
       contact_id: contactId,
       direction: "inbound",
       body: bodyRaw,

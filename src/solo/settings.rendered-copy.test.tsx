@@ -108,17 +108,59 @@ describe("Solo Settings rendered customer copy", () => {
     expect(text).not.toContain("A2P");
   });
 
-  it("places the compact Business phone search first in Connections", () => {
+  /**
+   * Replaces "places the compact Business phone search first in Connections".
+   *
+   * That test encoded the IA this redesign removes: number search rendered as a
+   * full-width accented panel at the top of Connections, so it read as the whole
+   * feature and pushed registration, sending identity and delivery below the
+   * fold. Business phone is now ONE of four named Communications subsections,
+   * and search is a peer card inside it.
+   */
+  it("presents Communications as four named subsections, not a phone search", () => {
     const html = renderDestination("connections");
     const text = renderedText(html);
 
-    expect(text).toContain("Business phone");
-    expect(text).toContain("Search available phone numbers");
+    for (const heading of ["Business phone", "Messaging registration", "Sending identity", "Delivery health"]) {
+      expect(text, `missing subsection: ${heading}`).toContain(heading);
+    }
+    // The search affordance survives, with its ceiling intact.
     expect(text).toContain("Area code or locality");
-    expect(text).toContain("Required capabilities");
     expect(text).toContain("Search numbers");
     expect(text).toContain("PROPOSED");
-    expect(html.indexOf("ss-phone-setup")).toBeLessThan(html.indexOf("PAIGE-managed sending identity"));
+  });
+
+  it("does not let number search lead or dominate the surface", () => {
+    const html = renderDestination("connections");
+    // The number RECORD comes before the search form: what this business has is
+    // stated before what it could look for.
+    expect(html.indexOf("Number on this business")).toBeLessThan(html.indexOf("Find a number"));
+    // And the search panel no longer carries the full-width accent treatment.
+    expect(html).not.toContain("ss-phone-setup");
+  });
+
+  /**
+   * NARROWED, and the narrowing is the honest part.
+   *
+   * This asserted that Connections contained no connector names at all. That
+   * passed — but only because #660's `Available` catalogue sits behind its own
+   * tab and the default view is Communications. A test that green-lights on
+   * which tab happens to be selected is not evidence about the seam; it is
+   * evidence about a default.
+   *
+   * What this PR was actually told to do is narrower: do not BUILD Integrations
+   * as a tab inside Connections. That is what is asserted now. #660's Available
+   * catalogue predates the split, is annotated there as owner-locked, and is
+   * deliberately left alone — whether it still earns a place in Connections now
+   * that #657 ships a real Integrations destination is the owner's call and
+   * that lane's, not this PR's.
+   */
+  it("does not build an Integrations tab inside Connections", () => {
+    const text = renderedText(renderDestination("connections"));
+    // No Integrations destination of Connections' own — the §18 duplication.
+    expect(text).not.toContain("Integrations");
+    // And Connections opens on Communications, not on a connector catalogue.
+    expect(text).toContain("Business phone");
   });
 
   it("keeps number search non-mutating and explains the unavailable execution contract", async () => {

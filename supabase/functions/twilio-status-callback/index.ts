@@ -57,6 +57,7 @@
 // operator_messages — never crossing (no guessing scope). It also persists recording_url / transcript
 // when Twilio provides them (null otherwise — never fabricated, §13; recording is not enabled on the
 // <Dial> yet, so today they are null — the read is defensive so enabling it later needs no code change).
+import { authenticateTwilioWebhook, type WebhookAuthOutcome } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCallStatus, callMatchSids, parseCallDuration, nonEmptyOrNull } from "./call-status.ts";
 
@@ -102,28 +103,52 @@ function shouldApply(current: string, mapped: string): boolean {
   return true;
 }
 
-async function verifyTwilio(req: Request, rawBody: string): Promise<boolean> {
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
-  if (!token) {
-    console.warn("[twilio-status-callback] TWILIO_AUTH_TOKEN not set — accepting unsigned");
-    return true;
+/**
+ * FAIL CLOSED — same repair as handle-inbound-sms. With no auth token set, the
+ * previous version accepted any unsigned POST, so a forged MessageSid could
+ * mark another tenant's message delivered, or write attacker-supplied text into
+ * `messages.error`, which the inbox renders.
+ *
+ * A delivery receipt carries no `To`, so the stamped per-number secret is the
+ * proof. It resolves WHICH TENANT that secret belongs to, and the caller binds
+ * the update to that tenant. Looking the row up BY the offered secret and then
+ * comparing it to itself would only prove the secret is a real one belonging to
+ * SOMEBODY — it would let any tenant's secret authenticate a callback about
+ * another tenant's message.
+ */
+/**
+ * The service-role client for the auth lookup.
+ *
+ * Not `ReturnType<typeof createClient>`: `inbound_webhook_secret` is new in this
+ * change and is not yet in the generated database types, so the strongly-typed
+ * client narrows the row to `never` and the column read fails to compile. Same
+ * reason the tenant-side comms surfaces use `(supabase as any)`.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WebhookAdmin = any;
+
+async function verifyTwilio(
+  req: Request,
+  rawBody: string,
+  admin: WebhookAdmin,
+): Promise<{ auth: WebhookAuthOutcome; tenantId: string | null }> {
+  const offered = new URL(req.url).searchParams.get("t");
+  let tenantId: string | null = null;
+  let expectedSecret: string | null = null;
+  if (offered) {
+    const { data } = await admin
+      .from("tenant_twilio_subaccounts")
+      .select("tenant_id, inbound_webhook_secret")
+      .eq("inbound_webhook_secret", offered)
+      .maybeSingle();
+    if (data?.tenant_id) {
+      tenantId = data.tenant_id as string;
+      expectedSecret = data.inbound_webhook_secret as string;
+    }
   }
-  const sig = req.headers.get("x-twilio-signature");
-  if (!sig) return false;
-  const url = req.url;
-  const params = new URLSearchParams(rawBody);
-  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const concatenated = url + sorted.map(([k, v]) => k + v).join("");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(token),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  );
-  const buf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(concatenated));
-  const computed = btoa(String.fromCharCode(...new Uint8Array(buf)));
-  return computed === sig;
+  const auth = await authenticateTwilioWebhook(req, rawBody, { expectedSecret });
+  return { auth, tenantId };
 }
 
 /** The REAL call facts a completion callback carries — resolved once, applied to whichever store owns the row. */
@@ -209,6 +234,17 @@ async function handleCallStatus(
   params: URLSearchParams,
   callSid: string,
   twilioStatus: string,
+  /**
+   * The tenant whose stamped secret authenticated this callback, or null when a
+   * Twilio signature did (which is account-bound proof in its own right).
+   *
+   * When set, the tenant `messages` lookup is scoped to it and the
+   * `operator_messages` fallthrough is SKIPPED ENTIRELY: `operator_messages` is
+   * a platform-tier store with no tenant_id, so letting a tenant-held secret
+   * reach it would be a tenant→platform crossing (§53), not merely a
+   * tenant→tenant one.
+   */
+  authedTenantId: string | null,
 ): Promise<Response> {
   const parentCallSid = params.get("ParentCallSid") ?? "";
   const mapped = mapCallStatus(twilioStatus);
@@ -235,12 +271,14 @@ async function handleCallStatus(
 
   // 1) TENANT store. channel_type='voice' is defensive scoping (provider_message_id is globally unique,
   //    so a message row could never collide, but this guarantees we never touch a non-voice row).
-  const { data: tRow, error: tErr } = await admin
+  const voiceBase = admin
     .from("messages")
     .select("id, status, meta")
     .in("provider_message_id", sids)
-    .eq("channel_type", "voice")
-    .maybeSingle();
+    .eq("channel_type", "voice");
+  const { data: tRow, error: tErr } = await (
+    authedTenantId ? voiceBase.eq("tenant_id", authedTenantId) : voiceBase
+  ).maybeSingle();
   if (tErr) {
     console.error("[twilio-status-callback] messages voice lookup_error", tErr, "sids=", sids.join("|"));
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -251,6 +289,12 @@ async function handleCallStatus(
 
   // 2) OPERATOR store (§9/§53). Reached ONLY when no tenant row matched — the SID lives in one store, so
   //    this is scope-resolution by the row, never a guess. Operator rows carry NO tenant_id.
+  // A tenant secret never reaches the platform-tier operator store.
+  if (authedTenantId) {
+    console.log(`[twilio-status-callback] no tenant messages row for call sids=${sids.join("|")} — not consulting the operator store for a tenant-authenticated callback`);
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+
   const { data: oRow, error: oErr } = await admin
     .from("operator_messages")
     .select("id, status, metadata")
@@ -276,8 +320,12 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method_not_allowed", { status: 405 });
 
   const rawBody = await req.text();
-  const verified = await verifyTwilio(req, rawBody);
-  if (!verified) return new Response("invalid_signature", { status: 401 });
+  const authAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { auth, tenantId: authedTenantId } = await verifyTwilio(req, rawBody, authAdmin);
+  if (!auth.ok) {
+    console.error(`[twilio-status-callback] REFUSED unauthenticated callback: ${auth.reason}`);
+    return new Response("unauthenticated", { status: 401 });
+  }
 
   const params = new URLSearchParams(rawBody);
 
@@ -286,7 +334,7 @@ Deno.serve(async (req) => {
   const callSid = params.get("CallSid") ?? "";
   const callStatusRaw = (params.get("CallStatus") ?? "").trim();
   if (callSid && callStatusRaw) {
-    return await handleCallStatus(params, callSid, callStatusRaw);
+    return await handleCallStatus(params, callSid, callStatusRaw, authedTenantId);
   }
 
   const messageSid = params.get("MessageSid") ?? params.get("SmsSid") ?? "";
@@ -315,11 +363,17 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey);
 
   // Look up the row this DLR belongs to (globally-unique provider_message_id).
-  const { data: row, error: lookupErr } = await admin
+  // Scoped to the tenant whose stamped secret authenticated this callback, so a
+  // tenant's own secret cannot advance another tenant's message. A
+  // signature-authenticated callback carries no tenant and keeps global scope,
+  // because a valid Twilio signature is itself account-bound proof.
+  const base = admin
     .from("messages")
-    .select("id, status, meta, error")
-    .eq("provider_message_id", messageSid)
-    .maybeSingle();
+    .select("id, status, meta, error, tenant_id")
+    .eq("provider_message_id", messageSid);
+  const { data: row, error: lookupErr } = await (
+    authedTenantId ? base.eq("tenant_id", authedTenantId) : base
+  ).maybeSingle();
 
   if (lookupErr) {
     // A DB error is ours, not Twilio's — log it, but still 200 so Twilio does not

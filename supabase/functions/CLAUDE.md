@@ -118,5 +118,12 @@ otherwise re-derive it.
   §9 operator-vs-tenant seam violation (wave-s3 fixed it). The tenant inbox
   (`/admin/clients-hub/conversations`, `ClientsConversations.tsx`, tables `messages`/`threads`)
   stays the ONE tenant comms home (§18). **Never** merge operator comms into `clients-hub`, and
-  never store operator SMS in `paige_conversations` (its `tenant_id IS NULL` RLS makes NULL-tenant
-  rows visible to EVERY tenant — an operator leak).
+  never store operator SMS in `paige_conversations` — that table is the TENANT comms store and an
+  operator row does not belong in a tenant's stream.
+  **Historical note, corrected 2026-08-30:** this rule used to justify itself with "its `tenant_id IS
+  NULL` RLS makes NULL-tenant rows visible to EVERY tenant." That was true, and it was the C-7 defect
+  — inbound rows were written untenanted and the restrictive policy admitted NULL, so any tenant's
+  admin could read and write them. Migration `20261003000000` closed it: writers stamp the tenant, a
+  contact-derived trigger backs them up, and the NULL escape is gone. The RULE still stands on the
+  §9 seam above; the leak it cited no longer exists, and leaving that sentence in place would have
+  had an auto-loading doctrine file asserting a fixed defect as current.

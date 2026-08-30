@@ -31,6 +31,7 @@
 //  §13 Reports the REAL Twilio PN SID from the purchase response only; on any failure it
 //      returns the real error, never a fabricated number/SID. needs_config when the
 //      tenant has no subaccount.
+import { stampedWebhookUrls } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { purchaseNumber, resolveTwilioCreds, type SupabaseAdminLike } from "../_shared/twilio.ts";
 
@@ -55,20 +56,17 @@ interface PurchaseBody {
 const E164 = /^\+[1-9][0-9]{7,14}$/;
 
 /**
- * The webhook URLs stamped on the purchased number. These point at the C-2 SMS handlers:
- *   • inbound (SmsUrl)        → twilio-sms-webhook        (inbound + STOP; C-2s-C)
- *   • status  (StatusCallback)→ twilio-sms-status-webhook (DLR delivery receipts; C-2s-C)
- * §13 HONEST: those two handler fns land in the C-2s-C compliance/DLR slice. Stamping the
- * URL at purchase time is forward-correct — Twilio simply holds the URL until the handler
- * is live; wiring it now avoids a later per-number reconfigure of every bought number.
+ * The stamped webhook URLs come from `_shared/twilio-webhook-auth.ts` (§18: one
+ * home). They previously named `twilio-sms-webhook` and
+ * `twilio-sms-status-webhook`, neither of which exists in this repository or is
+ * deployed — so every number bought through this path 404'd on inbound, meaning
+ * STOP was never recorded, and lost every delivery receipt. The live handlers
+ * are `handle-inbound-sms` and `twilio-status-callback`.
+ *
+ * §13 HONEST LIMIT: this corrects numbers purchased FROM NOW ON. Numbers already
+ * bought still carry the dead URLs, and re-stamping them is a provider write —
+ * an authorized production action, deliberately not performed here.
  */
-function webhookUrls(supabaseUrl: string): { smsUrl: string; statusCallback: string } {
-  const base = `${supabaseUrl.replace(/\/+$/, "")}/functions/v1`;
-  return {
-    smsUrl: `${base}/twilio-sms-webhook`,
-    statusCallback: `${base}/twilio-sms-status-webhook`,
-  };
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -149,15 +147,21 @@ Deno.serve(async (req) => {
 
   const { data: subRow, error: subErr } = await admin
     .from("tenant_twilio_subaccounts")
-    .select("id")
+    .select("id, inbound_webhook_secret")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (subErr || !subRow?.id) {
     return json({ needs_config: true, error: "twilio_subaccount_row_missing" });
   }
+  // Refuse rather than stamp an unauthenticatable URL: a number whose webhook
+  // carries no secret would land on a handler that now correctly rejects it,
+  // which reads as silent inbound loss.
+  if (!subRow.inbound_webhook_secret) {
+    return json({ needs_config: true, error: "inbound_webhook_secret_missing" });
+  }
 
   // ── Buy the number into the tenant's subaccount through the ONE seam (§18). ──
-  const { smsUrl, statusCallback } = webhookUrls(supabaseUrl);
+  const { smsUrl, statusCallback } = stampedWebhookUrls(supabaseUrl, subRow.inbound_webhook_secret);
   const bought = await purchaseNumber(creds.data.accountSid, creds.data.authToken, phoneNumber, {
     smsUrl,
     statusCallback,

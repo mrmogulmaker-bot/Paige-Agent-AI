@@ -61,6 +61,7 @@ import type {
   ConversationsContactPanelModel, ShellThread, DraftTone,
 } from "./conversations/shell/conversationsAdapter";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import type { SoloCommsReadinessEvidence } from "./conversations/solo/soloConversationModel";
 import { useAgentPresence } from "@/components/ui/paige";
 import {
   SoloClientContextPane,
@@ -660,7 +661,27 @@ export default function ClientsConversations() {
     [activeConnectors],
   );
   const composerConnectors = isSolo ? sendableConnectors : activeConnectors;
-  const soloChannelTruth = getSoloChannelTruth(connectors, connectorReadReported);
+
+  // The channel disclosure reads the SAME canonical record Settings -> Connections
+  // renders, so the two surfaces cannot report different answers about whether
+  // this account can text. Solo only: the disclosure itself is Solo-only.
+  const [commsReadiness, setCommsReadiness] = useState<SoloCommsReadinessEvidence | null>(null);
+  useEffect(() => {
+    if (!isSolo || !activeTenantId) { setCommsReadiness(null); return; }
+    let cancelled = false;
+    void (async () => {
+      // RPC is deployed but not yet present in generated database types.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("tenant_comms_readiness");
+      if (cancelled) return;
+      // On any failure the disclosure keeps saying "Not reported" rather than
+      // inferring readiness from connector presence.
+      setCommsReadiness(error ? null : ((data as SoloCommsReadinessEvidence | null) ?? null));
+    })();
+    return () => { cancelled = true; };
+  }, [isSolo, activeTenantId]);
+
+  const soloChannelTruth = getSoloChannelTruth(connectors, connectorReadReported, commsReadiness);
 
   // keep a valid selection as threads stream in
   useEffect(() => {

@@ -265,3 +265,23 @@ jobs:
       - name: Smoke — Fleet v3 Directory (lineage and retired-surface guard)
         if: ${{ !cancelled() }}
         run: npm run smoke:fleet-directory-v3
+
+      - name: Smoke — comms webhook authentication (fail-closed decisions)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-webhook-auth
+
+      - name: Smoke — comms tenant scope (§9/§53 webhook scoping)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-tenant-scope
+
+      - name: Lint — every paige_conversations insert stamps a tenant (C-7)
+        if: ${{ !cancelled() }}
+        run: npm run lint:conversation-tenant
+
+      - name: Smoke — voice-twiml statusCallback (no credential to an unsigned caller)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-twiml-callback
+
+      - name: Smoke — voice-twiml handler (nothing secret leaves on an unsigned request)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-twiml-handler
