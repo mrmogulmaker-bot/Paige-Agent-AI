@@ -355,6 +355,9 @@ describe("readiness steps are one shared source", () => {
     // warn-toned row reading "Not reported" over a detail describing what was
     // counted — three fields disagreeing about whether anything was reported.
     expect(unknown.tone).toBe("neutral");
+    // `truth` is asserted, but note it needs no special arm — an unknown state
+    // already falls through to PARTIAL. Asserting it is fine; adding code for it
+    // was not, and that code is gone.
     expect(unknown.truth).toBe("PARTIAL");
     expect(unknown.detail).not.toContain("Counted from delivery receipts");
 

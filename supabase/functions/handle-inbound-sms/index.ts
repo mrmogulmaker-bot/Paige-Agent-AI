@@ -380,6 +380,13 @@ Deno.serve(async (req) => {
     .from("paige_conversations")
     .insert({
       channel: "sms",
+      // The tenant that owns the receiving number, resolved above and used for
+      // every compliance write — and then, until now, omitted here. A NULL tenant
+      // on this table is not merely unscoped: the restrictive RLS policy admitted
+      // `tenant_id IS NULL`, so an untenanted row was readable AND writable by the
+      // admin of every other tenant (C-7). Service-role bypasses RLS, so no policy
+      // can put this right after the fact — it has to be correct at the write.
+      tenant_id: receivingTenantId,
       contact_id: contactId,
       direction: "inbound",
       body: bodyRaw,

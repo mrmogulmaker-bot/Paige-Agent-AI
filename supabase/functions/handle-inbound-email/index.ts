@@ -441,6 +441,10 @@ Deno.serve(async (req) => {
         .from("paige_conversations")
         .insert({
           channel: "email",
+          // Same defect as the SMS mirror (C-7): the tenant was written into
+          // `metadata` but not onto the column RLS scopes by, so the row was
+          // untenanted and reachable by the admin of every other tenant.
+          tenant_id: tenantId,
           contact_id: contactId,
           direction: "inbound",
           subject: msg.subject ?? "",

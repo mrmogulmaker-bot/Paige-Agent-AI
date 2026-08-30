@@ -225,6 +225,33 @@ console.log("comms tenant-scope smoke\n");
       a.scoped("messages", "tenant_id", TENANT_A));
   }
 
+  // ── The TENANT voice store. No fixture reached it before, so the branch that
+  //    dispatches `messages` was never executed: deleting the whole tenant voice
+  //    write, or re-pointing it at the platform-tier operator store — the exact
+  //    §53 crossing this suite exists to prevent — both left every assertion green.
+  {
+    setEnv();
+    globalThis.__ADMIN__ = makeAdmin((table, f) => {
+      if (table === "tenant_twilio_subaccounts") return subaccount(f);
+      if (table === "messages") return { id: "msg-voice-1", status: "queued", meta: {} };
+      if (table === "operator_messages") return { id: "op-1", status: "queued", metadata: {} };
+      return null;
+    });
+    const res = await handler(new Request(`https://ref.functions.supabase.co/fn?t=${SECRET_A}`, {
+      method: "POST",
+      body: form({ CallSid: "CA2", CallStatus: "completed", CallDuration: "17" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+    const a = globalThis.__ADMIN__;
+    const tUpdates = a.queries.filter((q) => q.table === "messages" && q.verb === "update");
+    check("a tenant voice callback with a matching row is accepted", res.status === 200);
+    check("...and the TENANT store is the one written (non-vacuity)", tUpdates.length > 0);
+    check("...keyed on the row the lookup returned, never an unfiltered UPDATE",
+      tUpdates.every((w) => w.filters.id === "msg-voice-1"));
+    check("...and the platform-tier operator store is NOT written (§53)",
+      !a.queries.some((q) => q.table === "operator_messages" && q.verb !== "select"));
+  }
+
   // ── NON-VACUITY. The operator store IS reachable — but only for a callback
   //    proven by the MASTER Twilio signature, which is account-bound and carries
   //    no tenant. Without this case the two assertions above could both pass
@@ -402,6 +429,12 @@ console.log("comms tenant-scope smoke\n");
     // regression that re-tags it as a read makes `wrote()` false and this fails.
     check("...and the conversation insert is recorded as a WRITE, not a read",
       a.wrote("paige_conversations"));
+    // C-7. This row used to be written with NO tenant, and the restrictive RLS
+    // policy admitted `tenant_id IS NULL` — so every inbound SMS was readable AND
+    // writable by the admin of every other tenant. Service-role bypasses RLS, so
+    // the column has to be right at the write; no policy can repair it after.
+    check("...and it carries the RECEIVING tenant on the row (\u00a79, C-7)",
+      a.writesCarry("paige_conversations", "tenant_id", TENANT_A));
     check("...carrying the receiving tenant explicitly (§9)",
       rail.every((r) => r.args?.p_tenant_id === TENANT_A));
   }

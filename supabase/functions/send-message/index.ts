@@ -1233,6 +1233,10 @@ Deno.serve(async (req) => {
   if (status === "sent" && body.conversation_id) {
     await admin.from("paige_conversations").insert({
       channel: body.channel,
+      // The outbound mirror carried no tenant either (C-7). `tenantId` here is the
+      // server-derived one this send was already authorised against — never a
+      // value from the request body.
+      tenant_id: tenantId,
       contact_id: body.contact_id ?? null,
       direction: "outbound",
       subject: body.subject,

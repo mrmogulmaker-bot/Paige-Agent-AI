@@ -384,12 +384,15 @@ const DELIVERY_STATES = new Set(["no_activity", "awaiting_receipts", "delivering
 export function deliveryStep(r: CommsReadiness): Step {
   const d = r.delivery;
   return { n: "Delivery", s: "Whether texts actually arrived",
-    // An unrecognised state must be unrecognised in EVERY field. Fixing only
-    // `state` produced a row reading "Not reported" in a WARN tone over a detail
-    // describing what was counted — three fields disagreeing about whether
-    // anything is known. `known` is the single decision they all read.
-    truth: !DELIVERY_STATES.has(d.state) ? "PARTIAL"
-      : d.state === "no_activity" ? "UNAVAILABLE" : d.state === "delivering" ? "LIVE" : "PARTIAL",
+    // An unrecognised state must be unrecognised in every field that can differ.
+    // Fixing only `state` produced a row reading "Not reported" in a WARN tone over
+    // a detail describing what was counted — fields disagreeing about whether
+    // anything is known. `tone`, `state` and `detail` each test DELIVERY_STATES.
+    // `truth` needs no unrecognised-state arm: an unknown state already falls to
+    // the final "PARTIAL", which is what such an arm would emit. One was added
+    // anyway and removed here — a guard that cannot change an output is a repair
+    // that never happened, which is the thing this file keeps being corrected for.
+    truth: d.state === "no_activity" ? "UNAVAILABLE" : d.state === "delivering" ? "LIVE" : "PARTIAL",
     tone: !DELIVERY_STATES.has(d.state) ? "neutral"
       : d.state === "delivering" ? "ok" : d.state === "no_activity" ? "neutral" : "warn",
     // Every state is NAMED. The final arm used to be a catch-all reading
@@ -632,8 +635,15 @@ function ConnectionsView() {
                 them: whether replies arrive (nothing writes an inbound SMS row),
                 webhook registration health, and any inference of deliverability
                 from a plan or a consent count. */}
-            <p className="ss-note">Replies and webhook health are <strong>not reported</strong> — nothing on this
-              account records them, so neither a positive nor a negative would be true.</p>
+            {/* Conditional for the same reason the step's detail is: making the
+                function honest and leaving this note absolute would have kept the
+                exact contradiction the change set out to remove — the card would
+                still say nothing records replies while Conversations reported
+                them. Webhook health has no record either way, so it stays. */}
+            <p className="ss-note">{r?.delivery.inbound_reporting === "available"
+              ? <>Webhook health is <strong>not reported</strong> — nothing on this account records it.</>
+              : <>Replies and webhook health are <strong>not reported</strong> — nothing on this
+                account records them, so neither a positive nor a negative would be true.</>}</p>
           </Card>
           <Card title="Billing for messaging" icon={Building2}
             truth={r ? billingStep(r.billing).truth : "PARTIAL"}

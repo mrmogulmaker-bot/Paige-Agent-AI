@@ -155,6 +155,28 @@ describe("Connections renders its real states", () => {
     await cleanup();
   });
 
+  it("stops the CARD claiming replies are unrecorded once the resolver reports them", async () => {
+    // The step's detail was made conditional and the note beside it was left
+    // absolute, so the card would have gone silent in one sentence and still
+    // asserted "nothing on this account records them" in the next — the same
+    // one-record-two-answers the conditional was added to remove.
+    rpcState.readiness = { data: { ...READY, delivery: { ...READY.delivery, inbound_reporting: "available" } }, error: null };
+    const { host, cleanup } = await mountConnections();
+    const text = host.textContent ?? "";
+    expect(text).not.toContain("Replies and webhook health are");
+    expect(text).not.toContain("Whether replies are arriving is not reported");
+    // Webhook health genuinely has no record either way, so it must still say so.
+    expect(text).toContain("Webhook health is");
+    await cleanup();
+  });
+
+  it("DOES say replies are unrecorded while the resolver says so (non-vacuity)", async () => {
+    rpcState.readiness = { data: READY, error: null };   // inbound_reporting absent = unavailable
+    const { host, cleanup } = await mountConnections();
+    expect(host.textContent ?? "").toContain("Replies and webhook health are");
+    await cleanup();
+  });
+
   it("does not claim texting is not ready when the read itself failed", async () => {
     // The Health card headlined "Texting is not ready yet" over the failed-read
     // block — a definite claim about the account, one line above a sentence
