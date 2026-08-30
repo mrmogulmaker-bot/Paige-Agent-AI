@@ -460,9 +460,25 @@ export function CalendarsView() {
   const issues = states.filter(([, s]) => s.tone === "bad" || s.tone === "warn");
   const allOpen = AREA_META.every((a) => open[a.key]);
 
+  /**
+   * The address to come back to after an OAuth round trip.
+   *
+   * Which Connections segment you are looking at is local state, so it never
+   * reaches the URL — and the callback remounts Settings from the stored
+   * address alone. Returning `pathname + search` therefore landed people on
+   * Communications, having sent them away from Calendars: the wrong-surface
+   * miss the return path exists to prevent, reintroduced one step later. This
+   * component IS the Calendars segment, so it says so.
+   */
+  const returnHere = useMemo(() => {
+    const search = new URLSearchParams(location.search);
+    search.set("segment", "calendars");
+    return `${location.pathname}?${search.toString()}`;
+  }, [location.pathname, location.search]);
+
   return (
     <div className="cc">
-      <ConnectedAccounts conn={conn} returnTo={`${location.pathname}${location.search}`} />
+      <ConnectedAccounts conn={conn} returnTo={returnHere} />
 
       <section className="cc-sec">
         <div className="cc-head">

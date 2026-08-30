@@ -508,6 +508,20 @@ const PROVIDERS = [
  */
 type ConnectionsSegment = "communications" | "calendars" | "health" | "available";
 
+const CONNECTIONS_SEGMENTS: readonly ConnectionsSegment[] = ["communications", "calendars", "health", "available"];
+
+/**
+ * The segment named in the address, if it is one we actually have.
+ *
+ * Validated rather than cast: the value arrives from a URL, and an unknown
+ * string would select nothing and render an empty Connections surface. An
+ * unrecognised segment falls back to the default rather than to a blank page.
+ */
+function requestedSegment(search: string): ConnectionsSegment | undefined {
+  const raw = new URLSearchParams(search).get("segment");
+  return CONNECTIONS_SEGMENTS.find((s) => s === raw);
+}
+
 function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
   const comms = useSoloComms();
   const identity = useManagedIdentity();
@@ -798,6 +812,13 @@ export function SoloSettings() {
   const params = useParams();
   const account = params.account ?? "";
   const entry = useMemo(() => resolveSoloSettingsEntry(location.search, account), [location.search, account]);
+  // An explicit `segment` wins over the entry origin: it is set by a surface
+  // that knew exactly where it was (the OAuth return address), while the origin
+  // only says which feature sent you here.
+  const segment = useMemo(
+    () => requestedSegment(location.search) ?? (entry?.origin === "calendar" ? ("calendars" as const) : undefined),
+    [location.search, entry?.origin],
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scrollOwner = rootRef.current?.closest<HTMLElement>("#tenant-shell-main");
@@ -805,7 +826,7 @@ export function SoloSettings() {
     return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
   }, []);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={entry?.origin === "calendar" ? "calendars" : undefined}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
+  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
   return <div ref={rootRef} className="solo-settings">
     <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}

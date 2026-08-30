@@ -396,6 +396,20 @@ describe("what the surface must not silently destroy or misreport", () => {
   });
 });
 
+describe("the return address names the surface that sent you", () => {
+  it("carries the Calendars segment, because the segment is not otherwise in the URL", async () => {
+    const connect = vi.fn().mockResolvedValue({ ok: true });
+    mount({ connect });
+    const btn = [...container.querySelectorAll("button")].find((b) => /Connect/.test(b.textContent ?? ""));
+    await act(async () => { btn?.click(); });
+    const [, returnTo] = connect.mock.calls[0];
+    // Without this the callback remounts Settings from the address alone and
+    // lands on Communications — sending someone away from Calendars and
+    // bringing them back somewhere else.
+    expect(returnTo).toMatch(/[?&]segment=calendars\b/);
+  });
+});
+
 describe("the OAuth return address is only stored for the journey that reads it", () => {
   const clickConnect = (label: RegExp) => {
     const card = [...container.querySelectorAll(".cc-acct")].find((a) => label.test(a.textContent ?? ""));
