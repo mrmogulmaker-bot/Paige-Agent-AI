@@ -38,6 +38,7 @@
 // §2: A2P copy is coaching-generic (produced by comms-a2p-draft); this tab adds no
 // finance wording. §11: gold is spent ONLY on the one act button; rings stay indigo.
 import { Link } from "react-router-dom";
+import { draftFromRegistration } from "./a2pDraftResume";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Sparkles, MessageSquareText, Plus, Trash2, Building2 } from "lucide-react";
@@ -71,7 +72,7 @@ interface SampleRow {
   text: string;
 }
 /** The coach-editable draft held in component state — samples carry stable ids. */
-interface EditDraft {
+export interface EditDraft {
   use_case: string;
   campaign_description: string;
   samples: SampleRow[];
@@ -81,7 +82,7 @@ interface EditDraft {
   help_message: string;
 }
 /** The persisted registration row (tenant_a2p_registrations) — not in generated types. */
-interface A2PRegistration {
+export interface A2PRegistration {
   brand_status: string;
   campaign_status: string;
   status: string;
@@ -91,6 +92,9 @@ interface A2PRegistration {
   campaign_description: string | null;
   sample_messages: string[] | null;
   optin_flow: string | null;
+  optin_message: string | null;
+  optout_message: string | null;
+  help_message: string | null;
   submitted_at: string | null;
 }
 
@@ -224,11 +228,16 @@ export function A2PTab() {
     const { data } = await (supabase as any)
       .from("tenant_a2p_registrations")
       .select(
-        "brand_status, campaign_status, status, brand_sid, campaign_sid, use_case, campaign_description, sample_messages, optin_flow, submitted_at",
+        "brand_status, campaign_status, status, brand_sid, campaign_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at",
       )
       .limit(1)
       .maybeSingle();
-    setReg((data as A2PRegistration) ?? null);
+    const row = (data as A2PRegistration) ?? null;
+    setReg(row);
+    // Re-open the saved copy. `prev ?? ...` so a draft the owner is CURRENTLY editing
+    // is never replaced by the stored one — a reload behind an in-progress edit would
+    // otherwise silently discard their unsaved work.
+    setDraft((prev) => prev ?? draftFromRegistration(row));
     setRegLoading(false);
   }, []);
 
@@ -320,18 +329,10 @@ export function A2PTab() {
     if (!draft) return;
     setSubmitting(true);
     try {
-      // The backend persists use_case, campaign_description, sample_messages, optin_flow.
-      // The opt-in confirmation / STOP / HELP replies the coach reviewed are folded into
-      // optin_flow so NOTHING reviewed is silently dropped (§13) — they persist as labeled
-      // lines and travel with the registration once carrier submit is wired.
-      const optinCombined = [
-        draft.optin_flow.trim(),
-        draft.optin_message.trim() && `Opt-in confirmation reply: ${draft.optin_message.trim()}`,
-        draft.optout_message.trim() && `STOP reply: ${draft.optout_message.trim()}`,
-        draft.help_message.trim() && `HELP reply: ${draft.help_message.trim()}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      // Each reviewed field is sent as itself. This used to concatenate the three
+      // replies into optin_flow behind labels, because the table had no column for
+      // them — text preserved, structure destroyed, and nothing could read them back
+      // into the editor. 20261004020000 gave them a home, so the workaround is gone.
 
       const { data, error } = await supabase.functions.invoke("comms-a2p-submit", {
         body: {
@@ -341,7 +342,10 @@ export function A2PTab() {
           use_case: draft.use_case.trim(),
           campaign_description: draft.campaign_description.trim(),
           sample_messages: cleanSamples,
-          optin_flow: optinCombined || undefined,
+          optin_flow: draft.optin_flow.trim() || undefined,
+          optin_message: draft.optin_message.trim() || undefined,
+          optout_message: draft.optout_message.trim() || undefined,
+          help_message: draft.help_message.trim() || undefined,
         },
       });
       if (error) {
@@ -436,7 +440,12 @@ export function A2PTab() {
                       {sid ? (
                         <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{sid}</div>
                       ) : (
-                        <div className="mt-0.5 text-xs text-muted-foreground">Being set up</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {/* "Being set up" implied someone was working it. For a prepared
+                              row nobody is, and the banner directly above says nothing has
+                              been sent — the two cannot both be true (§13). */}
+                          {reg.submitted_at ? "Being set up" : "Not filed yet"}
+                        </div>
                       )}
                     </div>
                     <StatePill state={pill.state}>{pill.label}</StatePill>

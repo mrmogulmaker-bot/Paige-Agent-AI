@@ -53,9 +53,13 @@ BEGIN
   INSERT INTO public.tenant_legal_profile (tenant_id, legal_business_name)
   VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC'),(tD,'Headless Fixture LLC');   -- tC deliberately has NONE
 
-  -- 1 ── the seam exists
-  allowed := to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)') IS NOT NULL;
-  out := out||format('  1. save-draft seam exists ...................... %s   want t%s', allowed, E'\n');
+  -- 1 ── the seam exists, at the SEVEN-FIELD signature, and ONLY that one.
+  --      The 5-arg version is dropped rather than left beside the new one: two
+  --      overloads make PostgREST's rpc() call ambiguous and let a caller silently
+  --      reach the version that drops the three reply fields — the defect being fixed.
+  allowed := to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid,text,text,text)') IS NOT NULL
+         AND to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)') IS NULL;
+  out := out||format('  1. save-draft seam exists (7-field, no overload) %s   want t%s', allowed, E'\n');
   IF NOT allowed THEN
     RAISE EXCEPTION 'A2P DRAFT PROOF: 1 ASSERTION(S) FAILED — no durable save seam; cases 2-9 unreachable.%', out;
   END IF;
@@ -331,6 +335,53 @@ BEGIN
    WHERE tenant_id <> tD AND use_case IN ('headless','headless care');
   out := out||format('      ...and no other tenant touched ............ %s   want 0%s', n, E'\n');
   IF n <> 0 THEN fails := fails + 1; END IF;
+
+  -- 15 ── THE THREE CARRIER-FACING REPLIES SURVIVE THE CALL.
+  --        comms-a2p-draft generates seven reviewed fields; only four had a column,
+  --        so the durable save silently dropped the opt-in confirmation, the STOP
+  --        reply and the HELP reply. A2PTab worked around it by folding them into
+  --        optin_flow behind labels, which kept the text and destroyed the structure,
+  --        so nothing could read them back. Found by independent review of the
+  --        already-deployed head.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'reply coverage', 'Every reviewed field.', SAMPLES, 'website form', NULL,
+            'OPTIN REPLY', 'STOP REPLY', 'HELP REPLY');
+  RESET role;
+  SELECT optin_message||'/'||optout_message||'/'||help_message INTO v_use
+    FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('  15. three replies persisted ................... %s   want OPTIN REPLY/STOP REPLY/HELP REPLY%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'OPTIN REPLY/STOP REPLY/HELP REPLY' THEN fails := fails + 1; END IF;
+
+  -- ...and an absent reply PRESERVES the stored one, exactly as optin_flow does.
+  -- Blanking reviewed compliance copy while reporting success is the same defect
+  -- in a narrower place.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'reply coverage', 'Second pass.', SAMPLES, NULL, NULL, NULL, NULL, NULL);
+  RESET role;
+  SELECT optin_message||'/'||optout_message||'/'||help_message INTO v_use
+    FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and absent replies preserved ........... %s   want OPTIN REPLY/STOP REPLY/HELP REPLY%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'OPTIN REPLY/STOP REPLY/HELP REPLY' THEN fails := fails + 1; END IF;
+
+  -- ...and the audit row still records only SHAPE. Three more fields is three more
+  -- chances to leak reviewed copy into a log that was never meant to hold it.
+  -- EVERY audit row for this tenant, not just the newest. The second save passes
+  -- NULL replies, so a payload that leaks the TEXT leaks it on the FIRST row — and
+  -- an assertion that reads only the latest row cannot see it. Verified by mutation.
+  SELECT jsonb_agg(payload) INTO v_pay FROM public.paige_audit_log
+   WHERE tenant_id = tD AND action = 'a2p.draft.saved';
+  out := out||format('      ...audit leaks reply text ................. %s   want f%s',
+                     (v_pay::text ILIKE '%%OPTIN REPLY%%'
+                      OR v_pay::text ILIKE '%%STOP REPLY%%'
+                      OR v_pay::text ILIKE '%%HELP REPLY%%'), E'\n');
+  IF v_pay::text ILIKE '%%OPTIN REPLY%%' OR v_pay::text ILIKE '%%STOP REPLY%%'
+     OR v_pay::text ILIKE '%%HELP REPLY%%' THEN fails := fails + 1; END IF;
 
   IF fails = 0 THEN RAISE EXCEPTION 'A2P DRAFT PROOF: ALL ASSERTIONS PASSED (rolled back)%', out;
   ELSE RAISE EXCEPTION 'A2P DRAFT PROOF: % ASSERTION(S) FAILED%', fails, out; END IF;
