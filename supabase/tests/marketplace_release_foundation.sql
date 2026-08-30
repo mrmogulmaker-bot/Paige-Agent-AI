@@ -4,7 +4,7 @@
 
 BEGIN;
 
-SELECT plan(40);
+SELECT plan(61);
 
 SELECT ok(
   has_function_privilege('authenticated', 'public.marketplace_release_catalog()', 'EXECUTE'),
@@ -30,13 +30,15 @@ SELECT ok(
 );
 SELECT ok(
   NOT has_table_privilege('authenticated', 'public.marketplace_release_lifecycle_events', 'SELECT,INSERT,UPDATE,DELETE')
-  AND NOT has_table_privilege('authenticated', 'public.marketplace_release_read_references', 'SELECT,INSERT,UPDATE,DELETE'),
-  'authenticated callers have no raw lifecycle or reference-table access'
+  AND NOT has_table_privilege('authenticated', 'public.marketplace_release_read_references', 'SELECT,INSERT,UPDATE,DELETE')
+  AND NOT has_table_privilege('authenticated', 'public.marketplace_capability_scope_registry', 'SELECT,INSERT,UPDATE,DELETE'),
+  'authenticated callers have no raw lifecycle, reference, or capability-vocabulary table access'
 );
 SELECT ok(
   NOT has_table_privilege('service_role', 'public.marketplace_release_lifecycle_events', 'SELECT,INSERT,UPDATE,DELETE')
-  AND NOT has_table_privilege('service_role', 'public.marketplace_release_read_references', 'SELECT,INSERT,UPDATE,DELETE'),
-  'service role has no direct lifecycle or reference-table access'
+  AND NOT has_table_privilege('service_role', 'public.marketplace_release_read_references', 'SELECT,INSERT,UPDATE,DELETE')
+  AND NOT has_table_privilege('service_role', 'public.marketplace_capability_scope_registry', 'SELECT,INSERT,UPDATE,DELETE'),
+  'service role has no direct lifecycle, reference, or capability-vocabulary table access'
 );
 SELECT ok(
   (SELECT prosecdef FROM pg_proc WHERE oid = 'public.marketplace_release_catalog()'::regprocedure)
@@ -77,6 +79,13 @@ INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, j
 
 SELECT set_config('request.jwt.claims', '{"sub":"83000000-0000-0000-0000-000000000001","role":"service_role"}', true);
 
+INSERT INTO public.marketplace_capability_scope_registry
+  (scope_token, declaration_lane, active, created_by)
+VALUES
+  ('tenant.records.summary', 'reads', true, '83000000-0000-0000-0000-000000000001'),
+  ('snapshot.prepare', 'preparations', true, '83000000-0000-0000-0000-000000000001'),
+  ('workflow.prepare', 'preparations', true, '83000000-0000-0000-0000-000000000001');
+
 INSERT INTO public.marketplace_vendors
   (id, slug, display_name, origin, status, created_by)
 VALUES
@@ -116,13 +125,13 @@ VALUES
    '83000000-0000-0000-0000-00000000a001', repeat('a', 64),
    'read_only_data_snapshot', ARRAY['tenant.records.summary'], ARRAY['snapshot.prepare'],
    ARRAY[]::text[], ARRAY[]::text[], ARRAY['connection.required'],
-   ARRAY['credentials.read','provider_tokens.read','tenant.write'], true,
+   ARRAY['credentials.read','secrets.read','provider_tokens.read','broad_tenant_access','autonomous_write','tenant.write'], true,
    ARRAY['Solo'], ARRAY['tenant_admin'], 'public',
    '83000000-0000-0000-0000-000000000001', now(),
    '83000000-0000-0000-0000-000000000001'),
   ('83000000-0000-0000-0000-00000000c002', '83000000-0000-0000-0000-00000000b002',
-   '2.0.0', 'published', 'config_only', '{"unsafe":"SECRET_UNREVIEWED_MANIFEST"}'::jsonb,
-   NULL, 'SECRET_UNREVIEWED_CHANGELOG', NULL, NULL, now(), NULL, NULL, NULL, NULL,
+   '2.0.0', 'draft', 'config_only', '{"unsafe":"SECRET_UNREVIEWED_MANIFEST"}'::jsonb,
+   NULL, 'SECRET_UNREVIEWED_CHANGELOG', NULL, NULL, NULL, NULL, NULL, NULL, NULL,
    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
    '83000000-0000-0000-0000-000000000001');
 
@@ -176,6 +185,83 @@ EXCEPTION WHEN SQLSTATE '55000' THEN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION pg_temp.expect_provenance_immutable(p_release uuid, p_field text)
+RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN
+  CASE p_field
+    WHEN 'created_by' THEN
+      UPDATE public.marketplace_item_versions SET created_by = '81000000-0000-0000-0000-000000000001' WHERE id = p_release;
+    WHEN 'review_proposal_id' THEN
+      UPDATE public.marketplace_item_versions SET review_proposal_id = '83000000-0000-0000-0000-00000000d001' WHERE id = p_release;
+    WHEN 'published_at' THEN
+      UPDATE public.marketplace_item_versions SET published_at = published_at + interval '1 day' WHERE id = p_release;
+    WHEN 'release_id' THEN
+      UPDATE public.marketplace_item_versions SET id = '83000000-0000-0000-0000-00000000ffff' WHERE id = p_release;
+    ELSE
+      RAISE EXCEPTION 'unexpected test field';
+  END CASE;
+  RETURN false;
+EXCEPTION WHEN SQLSTATE '55000' THEN
+  RETURN SQLERRM = 'MARKETPLACE_RELEASE_IMMUTABLE';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.expect_unsafe_positive_scope(p_lane text, p_token text, p_patch integer)
+RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO public.marketplace_item_versions
+    (id, item_id, semver, status, payload_class, install_manifest, reviewed_by,
+     approved_at, publisher_vendor_id, artifact_digest_sha256, risk_class,
+     capability_reads, capability_preparations, capability_runtime_operations,
+     capability_external_calls, configuration_requirements, capability_prohibited,
+     capability_default_deny, supported_tiers, installable_roles, release_scope,
+     authorized_by, authorized_at, created_by)
+  VALUES
+    (gen_random_uuid(), '83000000-0000-0000-0000-00000000b002', '9.0.' || p_patch,
+     'approved', 'config_only', '{}'::jsonb,
+     '83000000-0000-0000-0000-000000000001', now(),
+     '83000000-0000-0000-0000-00000000a001', repeat('b',64), 'workflow',
+     CASE WHEN p_lane='reads' THEN ARRAY[p_token] ELSE ARRAY[]::text[] END,
+     CASE WHEN p_lane='preparations' THEN ARRAY[p_token] ELSE ARRAY[]::text[] END,
+     CASE WHEN p_lane='runtime' THEN ARRAY[p_token] ELSE ARRAY[]::text[] END,
+     CASE WHEN p_lane='external' THEN ARRAY[p_token] ELSE ARRAY[]::text[] END,
+     ARRAY[]::text[],
+     ARRAY['credentials.read','secrets.read','provider_tokens.read','broad_tenant_access','autonomous_write'],
+     true, ARRAY['Solo'], ARRAY['tenant_admin'], 'public',
+     '83000000-0000-0000-0000-000000000001', now(),
+     '83000000-0000-0000-0000-000000000001');
+  RETURN false;
+EXCEPTION WHEN SQLSTATE '23514' THEN
+  RETURN SQLERRM = 'MARKETPLACE_RELEASE_PROOF_INCOMPLETE';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.expect_invalid_proof_status()
+RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO public.marketplace_item_versions
+    (id, item_id, semver, status, payload_class, install_manifest, reviewed_by,
+     approved_at, publisher_vendor_id, artifact_digest_sha256, risk_class,
+     capability_reads, capability_preparations, capability_runtime_operations,
+     capability_external_calls, configuration_requirements, capability_prohibited,
+     capability_default_deny, supported_tiers, installable_roles, release_scope,
+     authorized_by, authorized_at, created_by)
+  VALUES
+    (gen_random_uuid(), '83000000-0000-0000-0000-00000000b002', '8.0.0',
+     'draft', 'config_only', '{}'::jsonb,
+     '83000000-0000-0000-0000-000000000001', now(),
+     '83000000-0000-0000-0000-00000000a001', repeat('c',64), 'workflow',
+     ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[],
+     ARRAY['credentials.read','secrets.read','provider_tokens.read','broad_tenant_access','autonomous_write'],
+     true, ARRAY['Solo'], ARRAY['tenant_admin'], 'public',
+     '83000000-0000-0000-0000-000000000001', now(),
+     '83000000-0000-0000-0000-000000000001');
+  RETURN false;
+EXCEPTION WHEN SQLSTATE '23514' THEN
+  RETURN SQLERRM = 'MARKETPLACE_RELEASE_PROOF_INCOMPLETE';
+END;
+$$;
+
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"81000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
@@ -210,6 +296,22 @@ SELECT is(
   'detail returns exactly the curated top-level allowlist'
 );
 
+CREATE TEMP TABLE marketplace_old_ref AS SELECT capability_ref FROM marketplace_contract_result;
+CREATE TEMP TABLE marketplace_replacement_ref AS
+SELECT capability_ref FROM public.marketplace_release_catalog();
+RESET ROLE;
+SELECT is(
+  (SELECT count(*)::integer FROM public.marketplace_release_read_references
+    WHERE actor_user_id='81000000-0000-0000-0000-000000000001'
+      AND tenant_id='81000000-0000-0000-0000-000000001111'),
+  1,
+  'catalogue refresh replaces prior actor-account references instead of growing without bound'
+);
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"81000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT ok(pg_temp.expect_marketplace_unavailable((SELECT capability_ref FROM marketplace_old_ref)), 'catalogue refresh invalidates the prior revision reference');
+UPDATE marketplace_contract_result SET capability_ref=(SELECT capability_ref FROM marketplace_replacement_ref);
+
 SELECT set_config('request.jwt.claims', '{"sub":"81000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 SELECT is((SELECT count(*)::integer FROM public.marketplace_release_catalog()), 0, 'wrong-role member sees no tenant-admin release');
 SELECT ok(pg_temp.expect_marketplace_unavailable((SELECT capability_ref FROM marketplace_contract_result)), 'reference is actor-bound and cannot be replayed by another tenant member');
@@ -231,6 +333,40 @@ SELECT set_config('search_path', '"$user", public, extensions', true);
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '{"sub":"83000000-0000-0000-0000-000000000001","role":"service_role"}', true);
 SELECT ok(pg_temp.expect_release_immutable('83000000-0000-0000-0000-00000000c001'), 'review-bound release proof and manifest are immutable');
+SELECT ok(pg_temp.expect_provenance_immutable('83000000-0000-0000-0000-00000000c001','created_by'), 'creator provenance is immutable after review');
+SELECT ok(pg_temp.expect_provenance_immutable('83000000-0000-0000-0000-00000000c001','review_proposal_id'), 'review proposal provenance is immutable after review');
+SELECT ok(pg_temp.expect_provenance_immutable('83000000-0000-0000-0000-00000000c001','published_at'), 'publication timestamp cannot be rewritten after publication');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('reads','credentials.read',1), 'credential access is rejected from positive read declarations');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('preparations','secrets.read',2), 'secret access is rejected from positive preparation declarations');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('runtime','provider_tokens.read',3), 'provider-token access is rejected from positive runtime declarations');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('external','tenant.write',4), 'broad tenant access is rejected from positive external-call declarations');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('runtime','autonomous_write',5), 'autonomous write authority is rejected from positive runtime declarations');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('reads','credential.read',6), 'credential aliases are rejected unless present in the platform vocabulary');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('preparations','secret.read',7), 'secret aliases are rejected unless present in the platform vocabulary');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('runtime','provider_token.read',8), 'provider-token aliases are rejected unless present in the platform vocabulary');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('reads','all_tenant_data.read',9), 'broad-tenant aliases are rejected unless present in the platform vocabulary');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('external','write.tenant',10), 'reversed broad-write aliases are rejected unless present in the platform vocabulary');
+SELECT ok(pg_temp.expect_unsafe_positive_scope('runtime','execute.autonomously',11), 'autonomy aliases are rejected unless present in the platform vocabulary');
+SELECT ok(pg_temp.expect_invalid_proof_status(), 'review proof cannot attach while a release is still draft');
+INSERT INTO public.marketplace_item_versions
+  (id, item_id, semver, status, payload_class, install_manifest, reviewed_by,
+   approved_at, publisher_vendor_id, artifact_digest_sha256, risk_class,
+   capability_reads, capability_preparations, capability_runtime_operations,
+   capability_external_calls, configuration_requirements, capability_prohibited,
+   capability_default_deny, supported_tiers, installable_roles, release_scope,
+   authorized_by, authorized_at, created_by)
+VALUES
+  ('83000000-0000-0000-0000-00000000c003', '83000000-0000-0000-0000-00000000b002',
+   '3.0.0', 'approved', 'config_only', '{}'::jsonb,
+   '83000000-0000-0000-0000-000000000001', now(),
+   '83000000-0000-0000-0000-00000000a001', repeat('e',64), 'workflow',
+   ARRAY['tenant.records.summary'], ARRAY['workflow.prepare'], ARRAY[]::text[], ARRAY[]::text[],
+   ARRAY[]::text[],
+   ARRAY['credentials.read','secrets.read','provider_tokens.read','broad_tenant_access','autonomous_write'],
+   true, ARRAY['Solo'], ARRAY['tenant_admin'], 'public',
+   '83000000-0000-0000-0000-000000000001', now(),
+   '83000000-0000-0000-0000-000000000001');
+SELECT ok(pg_temp.expect_provenance_immutable('83000000-0000-0000-0000-00000000c003','release_id'), 'approved non-current release identity is immutable');
 UPDATE public.marketplace_items SET name = 'SECRET_MUTABLE_IDENTITY_DRIFT' WHERE id = '83000000-0000-0000-0000-00000000b001';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"81000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
@@ -238,6 +374,17 @@ SELECT ok(pg_temp.expect_marketplace_unavailable((SELECT capability_ref FROM mar
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '{"sub":"83000000-0000-0000-0000-000000000001","role":"service_role"}', true);
 UPDATE public.marketplace_items SET name = 'Contract Safe Snapshot' WHERE id = '83000000-0000-0000-0000-00000000b001';
+UPDATE public.marketplace_items
+   SET name='Contract Safe Snapshot|operations', category='FileSearch', icon=NULL
+ WHERE id='83000000-0000-0000-0000-00000000b001';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"81000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT ok(pg_temp.expect_marketplace_unavailable((SELECT capability_ref FROM marketplace_contract_result)), 'typed identity digest rejects delimiter-boundary collisions');
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{"sub":"83000000-0000-0000-0000-000000000001","role":"service_role"}', true);
+UPDATE public.marketplace_items
+   SET name='Contract Safe Snapshot', category='operations', icon='FileSearch'
+ WHERE id='83000000-0000-0000-0000-00000000b001';
 UPDATE public.marketplace_item_versions SET status = 'suspended' WHERE id = '83000000-0000-0000-0000-00000000c001';
 
 SET LOCAL ROLE authenticated;
@@ -268,6 +415,32 @@ SELECT is(
   5,
   'published, suspended, republished, revoked, and retired states remain append-only history'
 );
+
+UPDATE public.marketplace_item_versions
+   SET status='approved',
+       reviewed_by='83000000-0000-0000-0000-000000000001', approved_at=now(),
+       publisher_vendor_id='83000000-0000-0000-0000-00000000a001',
+       artifact_digest_sha256=repeat('d',64), risk_class='workflow',
+       capability_reads=ARRAY['tenant.records.summary'],
+       capability_preparations=ARRAY['workflow.prepare'],
+       capability_runtime_operations=ARRAY[]::text[],
+       capability_external_calls=ARRAY[]::text[],
+       configuration_requirements=ARRAY[]::text[],
+       capability_prohibited=ARRAY['credentials.read','secrets.read','provider_tokens.read','broad_tenant_access','autonomous_write'],
+       capability_default_deny=true, supported_tiers=ARRAY['Solo'],
+       installable_roles=ARRAY['tenant_admin'], release_scope='public',
+       authorized_by='83000000-0000-0000-0000-000000000001', authorized_at=now()
+ WHERE id='83000000-0000-0000-0000-00000000c002';
+SELECT ok(
+  (SELECT status::text='approved' AND review_bundle_digest_sha256 IS NOT NULL
+     FROM public.marketplace_item_versions WHERE id='83000000-0000-0000-0000-00000000c002'),
+  'platform review binds proof to the exact previously unreviewed release'
+);
+UPDATE public.marketplace_item_versions SET status='published'
+ WHERE id='83000000-0000-0000-0000-00000000c002';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', '{"sub":"81000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT is((SELECT count(*)::integer FROM public.marketplace_release_catalog()), 1, 'only the explicitly reviewed and published later release becomes discoverable');
 
 SELECT * FROM finish();
 ROLLBACK;

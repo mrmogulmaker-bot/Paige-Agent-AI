@@ -115,12 +115,24 @@ CREATE TABLE IF NOT EXISTS public.marketplace_release_read_references (
 CREATE INDEX IF NOT EXISTS marketplace_release_read_refs_actor_idx
   ON public.marketplace_release_read_references (actor_user_id, tenant_id, expires_at);
 
+CREATE TABLE IF NOT EXISTS public.marketplace_capability_scope_registry (
+  scope_token text PRIMARY KEY CHECK (scope_token ~ '^[a-z][a-z0-9_.:-]{0,95}$'),
+  declaration_lane text NOT NULL CHECK (declaration_lane IN (
+    'reads', 'preparations', 'runtime_operations', 'external_calls'
+  )),
+  active boolean NOT NULL DEFAULT false,
+  created_by uuid REFERENCES auth.users(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 ALTER TABLE public.marketplace_release_lifecycle_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketplace_release_read_references ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.marketplace_capability_scope_registry ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.marketplace_item_versions FROM anon, authenticated;
 REVOKE ALL ON public.marketplace_release_lifecycle_events FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON public.marketplace_release_read_references FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.marketplace_capability_scope_registry FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public._marketplace_safe_scope_tokens(_tokens text[])
 RETURNS boolean
@@ -135,6 +147,29 @@ AS $$
      );
 $$;
 REVOKE ALL ON FUNCTION public._marketplace_safe_scope_tokens(text[]) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public._marketplace_safe_positive_scope_tokens(
+  _tokens text[],
+  _declaration_lane text
+)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $$
+  SELECT public._marketplace_safe_scope_tokens(_tokens)
+     AND _declaration_lane IN ('reads','preparations','runtime_operations','external_calls')
+     AND NOT EXISTS (
+       SELECT 1 FROM unnest(_tokens) token
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM public.marketplace_capability_scope_registry registry
+         WHERE registry.scope_token = token
+           AND registry.declaration_lane = _declaration_lane
+           AND registry.active = true
+       )
+     );
+$$;
+REVOKE ALL ON FUNCTION public._marketplace_safe_positive_scope_tokens(text[], text) FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public._marketplace_release_guard()
 RETURNS trigger
@@ -160,12 +195,14 @@ BEGIN
   END IF;
 
   IF TG_OP = 'UPDATE' AND OLD.review_bundle_digest_sha256 IS NOT NULL THEN
-    IF NEW.item_id IS DISTINCT FROM OLD.item_id
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.item_id IS DISTINCT FROM OLD.item_id
        OR NEW.semver IS DISTINCT FROM OLD.semver
        OR NEW.payload_class IS DISTINCT FROM OLD.payload_class
        OR NEW.install_manifest IS DISTINCT FROM OLD.install_manifest
        OR NEW.code_ref IS DISTINCT FROM OLD.code_ref
        OR NEW.changelog IS DISTINCT FROM OLD.changelog
+       OR NEW.review_proposal_id IS DISTINCT FROM OLD.review_proposal_id
        OR NEW.publisher_vendor_id IS DISTINCT FROM OLD.publisher_vendor_id
        OR NEW.identity_digest_sha256 IS DISTINCT FROM OLD.identity_digest_sha256
        OR NEW.artifact_digest_sha256 IS DISTINCT FROM OLD.artifact_digest_sha256
@@ -186,7 +223,15 @@ BEGIN
        OR NEW.release_visible_to_tenant_id IS DISTINCT FROM OLD.release_visible_to_tenant_id
        OR NEW.release_visible_to_agency_id IS DISTINCT FROM OLD.release_visible_to_agency_id
        OR NEW.reviewed_by IS DISTINCT FROM OLD.reviewed_by
+       OR NEW.reviewer_notes IS DISTINCT FROM OLD.reviewer_notes
+       OR NEW.submitted_at IS DISTINCT FROM OLD.submitted_at
        OR NEW.approved_at IS DISTINCT FROM OLD.approved_at
+       OR (NEW.published_at IS DISTINCT FROM OLD.published_at
+           AND NOT (OLD.status::text = 'approved' AND NEW.status::text = 'published'))
+       OR (NEW.deprecated_at IS DISTINCT FROM OLD.deprecated_at
+           AND NOT (NEW.status::text = 'retired' AND OLD.status::text IN ('published','suspended','revoked')))
+       OR NEW.created_by IS DISTINCT FROM OLD.created_by
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at
        OR NEW.authorized_by IS DISTINCT FROM OLD.authorized_by
        OR NEW.authorized_at IS DISTINCT FROM OLD.authorized_at THEN
       RAISE EXCEPTION 'MARKETPLACE_RELEASE_IMMUTABLE' USING ERRCODE = '55000';
@@ -203,6 +248,11 @@ BEGIN
         (OLD.status::text = 'revoked' AND NEW.status::text = 'retired')
       ) THEN
         RAISE EXCEPTION 'MARKETPLACE_RELEASE_INVALID_TRANSITION' USING ERRCODE = '22023';
+      END IF;
+      IF NEW.status::text = 'published' THEN
+        NEW.published_at := COALESCE(OLD.published_at, now());
+      ELSIF NEW.status::text = 'retired' THEN
+        NEW.deprecated_at := COALESCE(OLD.deprecated_at, now());
       END IF;
     END IF;
     RETURN NEW;
@@ -243,13 +293,16 @@ BEGIN
      OR NEW.risk_class IS NULL
      OR NEW.reviewed_by IS NULL OR NEW.approved_at IS NULL
      OR NEW.authorized_by IS NULL OR NEW.authorized_at IS NULL
+     OR NEW.status::text NOT IN ('approved','published')
      OR NEW.capability_default_deny IS DISTINCT FROM true
-     OR NOT public._marketplace_safe_scope_tokens(NEW.capability_reads)
-     OR NOT public._marketplace_safe_scope_tokens(NEW.capability_preparations)
-     OR NOT public._marketplace_safe_scope_tokens(NEW.capability_runtime_operations)
-     OR NOT public._marketplace_safe_scope_tokens(NEW.capability_external_calls)
+     OR NOT public._marketplace_safe_positive_scope_tokens(NEW.capability_reads, 'reads')
+     OR NOT public._marketplace_safe_positive_scope_tokens(NEW.capability_preparations, 'preparations')
+     OR NOT public._marketplace_safe_positive_scope_tokens(NEW.capability_runtime_operations, 'runtime_operations')
+     OR NOT public._marketplace_safe_positive_scope_tokens(NEW.capability_external_calls, 'external_calls')
      OR NOT public._marketplace_safe_scope_tokens(NEW.configuration_requirements)
      OR NOT public._marketplace_safe_scope_tokens(NEW.capability_prohibited)
+     OR NOT ARRAY['credentials.read','secrets.read','provider_tokens.read',
+                  'broad_tenant_access','autonomous_write'] <@ NEW.capability_prohibited
      OR NEW.supported_tiers IS NULL
      OR NEW.installable_roles IS NULL
      OR NEW.release_scope IS NULL THEN
@@ -273,19 +326,53 @@ BEGIN
     'prohibited', to_jsonb(NEW.capability_prohibited),
     'default_deny', true
   );
-  _computed_identity := encode(extensions.digest(convert_to(
-    concat_ws('|', _item.id::text, _item.slug, _item.item_type::text, _item.name,
-      _item.category, COALESCE(_item.icon, ''), _item.vendor_id::text,
-      _item.origin::text, _publisher.origin::text), 'UTF8'), 'sha256'), 'hex');
+  _computed_identity := encode(extensions.digest(convert_to(jsonb_build_object(
+    'schema', 'marketplace.release.identity.v1',
+    'item_id', _item.id,
+    'slug', _item.slug,
+    'item_type', _item.item_type,
+    'name', _item.name,
+    'category', _item.category,
+    'icon', _item.icon,
+    'vendor_id', _item.vendor_id,
+    'item_origin', _item.origin,
+    'publisher_origin', _publisher.origin
+  )::text, 'UTF8'), 'sha256'), 'hex');
   _computed_manifest := encode(extensions.digest(convert_to(NEW.install_manifest::text, 'UTF8'), 'sha256'), 'hex');
   _computed_declaration := encode(extensions.digest(convert_to(_declaration::text, 'UTF8'), 'sha256'), 'hex');
-  _computed_bundle := encode(extensions.digest(convert_to(
-    concat_ws('|', NEW.id::text, NEW.item_id::text, NEW.semver, NEW.publisher_vendor_id::text,
-      _computed_identity, NEW.artifact_digest_sha256, _computed_manifest, _computed_declaration, NEW.risk_class,
-      NEW.reviewed_by::text, NEW.approved_at::text, NEW.authorized_by::text, NEW.authorized_at::text,
-      NEW.release_scope::text, COALESCE(NEW.release_visible_to_tenant_id::text,''),
-      COALESCE(NEW.release_visible_to_agency_id::text,''), to_jsonb(NEW.supported_tiers)::text,
-      to_jsonb(NEW.installable_roles)::text), 'UTF8'), 'sha256'), 'hex');
+  _computed_bundle := encode(extensions.digest(convert_to(jsonb_build_object(
+    'schema', 'marketplace.release.review.v1',
+    'release_id', NEW.id,
+    'item_id', NEW.item_id,
+    'semver', NEW.semver,
+    'publisher_vendor_id', NEW.publisher_vendor_id,
+    'identity_digest_sha256', _computed_identity,
+    'artifact_digest_sha256', NEW.artifact_digest_sha256,
+    'manifest_digest_sha256', _computed_manifest,
+    'capability_declaration_digest_sha256', _computed_declaration,
+    'risk_class', NEW.risk_class,
+    'review_proposal_id', NEW.review_proposal_id,
+    'reviewed_by', NEW.reviewed_by,
+    'reviewer_notes', NEW.reviewer_notes,
+    'submitted_at', NEW.submitted_at,
+    'approved_at', NEW.approved_at,
+    'created_by', NEW.created_by,
+    'created_at', NEW.created_at,
+    'authorized_by', NEW.authorized_by,
+    'authorized_at', NEW.authorized_at,
+    'release_scope', NEW.release_scope,
+    'visible_to_tenant_id', NEW.release_visible_to_tenant_id,
+    'visible_to_agency_id', NEW.release_visible_to_agency_id,
+    'supported_tiers', to_jsonb(NEW.supported_tiers),
+    'installable_roles', to_jsonb(NEW.installable_roles)
+  )::text, 'UTF8'), 'sha256'), 'hex');
+
+  IF NEW.status::text = 'published' THEN
+    NEW.published_at := now();
+  ELSE
+    NEW.published_at := NULL;
+  END IF;
+  NEW.deprecated_at := NULL;
 
   NEW.identity_digest_sha256 := _computed_identity;
   NEW.manifest_digest_sha256 := _computed_manifest;
@@ -389,10 +476,18 @@ AS $function$
       AND i.publish_status = 'approved'
       AND v.status::text = 'published'
       AND v.review_bundle_digest_sha256 IS NOT NULL
-      AND v.identity_digest_sha256 = encode(extensions.digest(convert_to(
-        concat_ws('|', i.id::text, i.slug, i.item_type::text, i.name, i.category,
-          COALESCE(i.icon, ''), i.vendor_id::text, i.origin::text, publisher.origin::text),
-        'UTF8'), 'sha256'), 'hex')
+      AND v.identity_digest_sha256 = encode(extensions.digest(convert_to(jsonb_build_object(
+        'schema', 'marketplace.release.identity.v1',
+        'item_id', i.id,
+        'slug', i.slug,
+        'item_type', i.item_type,
+        'name', i.name,
+        'category', i.category,
+        'icon', i.icon,
+        'vendor_id', i.vendor_id,
+        'item_origin', i.origin,
+        'publisher_origin', publisher.origin
+      )::text, 'UTF8'), 'sha256'), 'hex')
       AND v.manifest_digest_sha256 IS NOT NULL
       AND v.capability_declaration_digest_sha256 IS NOT NULL
       AND v.capability_default_deny = true
@@ -444,6 +539,12 @@ BEGIN
   IF _tenant IS NULL OR public.current_user_tenant_id() IS DISTINCT FROM _tenant THEN
     RAISE EXCEPTION 'MARKETPLACE_CATALOGUE_UNAVAILABLE' USING ERRCODE = '42501';
   END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    'marketplace-release-catalog:' || _actor::text || ':' || _tenant::text, 0
+  ));
+  DELETE FROM public.marketplace_release_read_references r
+  WHERE r.actor_user_id = _actor AND r.tenant_id = _tenant;
 
   FOR _row IN
     SELECT v.id AS release_id, v.semver, v.risk_class, v.review_bundle_digest_sha256,
