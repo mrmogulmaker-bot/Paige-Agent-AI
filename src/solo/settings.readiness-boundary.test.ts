@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { billingStep, READINESS_COPY, type CommsReadiness } from "./settings";
+import {
+  billingStep, consentStep, deliveryStep, phoneStep, readinessSteps, registrationStep,
+  READINESS_COPY, type CommsReadiness,
+} from "./settings";
 
 /**
  * The tenant-facing boundary, locked.
@@ -184,5 +187,126 @@ describe("tenant-facing next steps promise only what exists", () => {
         expect(re.test(`${row.state} ${row.detail}`), `${name} ${why}`).toBe(false);
       }
     }
+  });
+});
+
+
+/**
+ * The extracted step functions.
+ *
+ * Communications subsections and the readiness ladder are two presentations of
+ * the SAME canonical record and now derive from these functions, so the
+ * tenant-facing boundary is enforceable in one place instead of being re-checked
+ * per surface. A subsection that disagreed with the ladder would be a second
+ * opinion about whether this account can text (§57).
+ */
+const BASE: CommsReadiness = {
+  tenant_id: "t", can_send_sms: false, blocked_reason: "no_sms_number",
+  subaccount: "connected", number: "absent", number_e164: null,
+  business: { has_name: true, has_website: false, has_phone: true },
+  a2p: "prepared",
+  consent: { granted_count: 0, suppressed_count: 0, state: "none_recorded" },
+  delivery: { state: "no_activity", sent_30d: 0, delivered_30d: 0, failed_30d: 0, last_inbound_at: null },
+  billing: { subscription: "absent", plan_name: null, period_end: null, cancel_at_period_end: false,
+    usage_metering: "not_recording", metered_events_30d: 0 },
+};
+
+/**
+ * Claims that DO promise a product action and are nonetheless permitted, each
+ * because a named server gate enforces it. Narrow and evidence-bearing on
+ * purpose: the promise patterns exist because two unbacked promises shipped, so
+ * an exemption has to cite the code that makes the promise true, not merely
+ * assert that it is.
+ */
+const BACKED_CLAIMS: Array<{ text: string; enforcedBy: string }> = [
+  {
+    text: "PAIGE will not text them",
+    // `_shared/pre-send-pipeline.ts` reads `paige_suppressions` before every
+    // send, and `send-message` carries a terminal `blocked_suppressed` outcome
+    // that fails CLOSED when that legal-gate read errors. The send genuinely
+    // refuses, so this is a fact about the system rather than a promise.
+    enforcedBy: "_shared/pre-send-pipeline.ts suppression gate + send-message blocked_suppressed",
+  },
+];
+
+describe("readiness steps are one shared source", () => {
+  it("every backed-claim exemption names the gate that enforces it", () => {
+    // The allowlist must not become a way to wave copy through: an entry with no
+    // named enforcement is indistinguishable from an unbacked promise.
+    for (const b of BACKED_CLAIMS) {
+      expect(b.enforcedBy.length, `"${b.text}" has no named enforcement`).toBeGreaterThan(20);
+    }
+  });
+
+  it("the ladder is built from the same functions the subsections call", () => {
+    const steps = readinessSteps(BASE);
+    const byName = (n: string) => steps.find((s) => s.n === n);
+    expect(byName("Phone number")).toEqual(phoneStep(BASE));
+    expect(byName("Business texting")).toEqual(registrationStep(BASE));
+    expect(byName("Consent and opt-outs")).toEqual(consentStep(BASE));
+    expect(byName("Delivery")).toEqual(deliveryStep(BASE));
+  });
+
+  it("names the email sending identity distinctly from the texting sender", () => {
+    // Two steps sharing the name "Sending identity" defeated the requirement that
+    // email identity read as clearly separate from phone/SMS.
+    const names = readinessSteps(BASE).map((s) => s.n);
+    expect(names).toContain("Texting sender");
+    expect(names).not.toContain("Sending identity");
+  });
+
+  it("leaks nothing tenant-facing from any step, in any state", () => {
+    const variants: CommsReadiness[] = [
+      BASE,
+      { ...BASE, a2p: "approved", number: "assigned", number_e164: "+15550001111", can_send_sms: true,
+        consent: { granted_count: 3, suppressed_count: 1, state: "ready" },
+        delivery: { state: "delivering", sent_30d: 9, delivered_30d: 8, failed_30d: 1, last_inbound_at: null } },
+      { ...BASE, a2p: "submitted", subaccount: "inactive",
+        delivery: { state: "failing", sent_30d: 4, delivered_30d: 0, failed_30d: 4, last_inbound_at: null } },
+      { ...BASE, a2p: "absent", subaccount: "absent" },
+    ];
+    for (const v of variants) {
+      for (const st of readinessSteps(v)) {
+        const text = `${st.n} ${st.s} ${st.state} ${st.detail}`.toLowerCase();
+        for (const term of FORBIDDEN) {
+          expect(text.includes(term), `step "${st.n}" leaks "${term}": ${text}`).toBe(false);
+        }
+        const claim = `${st.state} ${st.detail}`;
+        for (const { re, why } of UNBACKED_PROMISE_PATTERNS) {
+          if (BACKED_CLAIMS.some((b) => claim.includes(b.text))) continue;
+          expect(re.test(claim), `step "${st.n}" ${why}: ${claim}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("states the prepared-not-submitted ceiling rather than implying a filing", () => {
+    const prepared = registrationStep({ ...BASE, a2p: "prepared" });
+    expect(prepared.state).toBe("Prepared, not submitted");
+    expect(prepared.detail.toLowerCase()).toContain("nothing has been filed");
+    // Non-vacuity: a genuinely filed registration reads differently.
+    expect(registrationStep({ ...BASE, a2p: "submitted" }).state).toBe("Filed with carriers");
+    expect(registrationStep({ ...BASE, a2p: "approved" }).truth).toBe("LIVE");
+  });
+
+  it("never infers delivery, and never claims replies in either direction", () => {
+    for (const state of ["no_activity", "awaiting_receipts", "delivering", "mixed", "failing"] as const) {
+      const st = deliveryStep({ ...BASE, delivery: { ...BASE.delivery, state } });
+      const text = `${st.state} ${st.detail}`.toLowerCase();
+      // Replies are unreportable: nothing writes an inbound SMS row.
+      expect(text).not.toContain("repl");
+      expect(text).not.toContain("webhook");
+    }
+    // Non-vacuity: it does report what receipts actually counted.
+    const delivering = deliveryStep({ ...BASE,
+      delivery: { state: "delivering", sent_30d: 5, delivered_30d: 4, failed_30d: 1, last_inbound_at: null } });
+    expect(delivering.state).toBe("4 of 5 delivered");
+  });
+
+  it("does not let a plan imply that anything was billed or sent", () => {
+    const active = billingStep({ subscription: "active", plan_name: "Solo", period_end: null,
+      cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0 });
+    expect(active.truth).not.toBe("LIVE");
+    expect(active.detail.toLowerCase()).toContain("not being recorded");
   });
 });

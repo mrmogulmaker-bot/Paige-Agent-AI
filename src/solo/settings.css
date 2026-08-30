@@ -149,3 +149,26 @@
 }
 .ss-retry:hover { background: var(--pg-surface); }
 .ss-retry:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+
+/* --- Connections information architecture ----------------------------------
+   Communications is a set of NAMED subsections, each owning one part of getting
+   operational, so no single step (business phone in particular) can read as the
+   whole feature. Business phone provisioning is a peer card inside its
+   subsection rather than a full-width accented panel at the top of the surface. */
+.ss-sections { display: grid; gap: 22px; }
+.ss-subsection { display: grid; gap: 10px; min-width: 0; }
+.ss-subsection-head { display: grid; gap: 2px; }
+.ss-subsection-head h3 {
+  margin: 0; font: 620 13px/1.2 var(--pg-font-display); letter-spacing: -.01em; color: var(--pg-ink);
+}
+.ss-subsection-head h3::before {
+  content: ""; display: inline-block; width: 3px; height: 11px; margin-right: 8px;
+  border-radius: 999px; background: var(--pg-gold-core); vertical-align: -1px;
+}
+.ss-subsection-head p { margin: 0 0 0 11px; color: var(--pg-muted); font-size: 11px; max-width: 78ch; }
+.ss-provenance { color: var(--pg-muted); font-size: 11px; }
+
+@container (max-width: 560px) {
+  .ss-sections { gap: 18px; }
+  .ss-subsection-head p { margin-left: 0; }
+}

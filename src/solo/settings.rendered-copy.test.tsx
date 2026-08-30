@@ -98,17 +98,46 @@ describe("Solo Settings rendered customer copy", () => {
     for (const term of forbiddenTerms) expect(rendered).not.toContain(term);
   });
 
-  it("places the compact Business phone search first in Connections", () => {
+  /**
+   * Replaces "places the compact Business phone search first in Connections".
+   *
+   * That test encoded the IA this redesign removes: number search rendered as a
+   * full-width accented panel at the top of Connections, so it read as the whole
+   * feature and pushed registration, sending identity and delivery below the
+   * fold. Business phone is now ONE of four named Communications subsections,
+   * and search is a peer card inside it.
+   */
+  it("presents Communications as four named subsections, not a phone search", () => {
     const html = renderDestination("connections");
     const text = renderedText(html);
 
-    expect(text).toContain("Business phone");
-    expect(text).toContain("Search available phone numbers");
+    for (const heading of ["Business phone", "Messaging registration", "Sending identity", "Delivery health"]) {
+      expect(text, `missing subsection: ${heading}`).toContain(heading);
+    }
+    // The search affordance survives, with its ceiling intact.
     expect(text).toContain("Area code or locality");
-    expect(text).toContain("Required capabilities");
     expect(text).toContain("Search numbers");
     expect(text).toContain("PROPOSED");
-    expect(html.indexOf("ss-phone-setup")).toBeLessThan(html.indexOf("PAIGE-managed sending identity"));
+  });
+
+  it("does not let number search lead or dominate the surface", () => {
+    const html = renderDestination("connections");
+    // The number RECORD comes before the search form: what this business has is
+    // stated before what it could look for.
+    expect(html.indexOf("Number on this business")).toBeLessThan(html.indexOf("Find a number"));
+    // And the search panel no longer carries the full-width accent treatment.
+    expect(html).not.toContain("ss-phone-setup");
+  });
+
+  it("keeps Integrations out of Connections entirely", () => {
+    // Integrations is its own top-level Settings destination in a separate lane.
+    // Connections owning a second home for it is the §18 duplication the split
+    // exists to prevent.
+    const text = renderedText(renderDestination("connections"));
+    expect(text).not.toContain("Integrations");
+    for (const connector of ["Zapier", "Make.com", "n8n", "WhatsApp"]) {
+      expect(text, `connector catalogue leaked into Connections: ${connector}`).not.toContain(connector);
+    }
   });
 
   it("keeps number search non-mutating and explains the unavailable execution contract", async () => {

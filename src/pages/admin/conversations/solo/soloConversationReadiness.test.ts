@@ -45,9 +45,33 @@ describe("Conversations channel disclosure, fed by the canonical resolver", () =
     expect(sms(getSoloChannelTruth(activeSms, true, READY)).webhookHealth).toBe("Not reported");
   });
 
-  it("does not invent inbound activity when none was received", () => {
-    expect(sms(getSoloChannelTruth(activeSms, true, PREPARED)).inbound).toBe("No replies received");
-    expect(sms(getSoloChannelTruth(activeSms, true, READY)).inbound).toBe("Replies received");
+  /**
+   * This test previously asserted "No replies received" and, via a fabricated
+   * `last_inbound_at`, a "Replies received" branch production cannot reach — so
+   * a green suite locked a surface that lied to every tenant. Replies are not
+   * reportable: nothing writes an inbound SMS row to `public.messages`, which is
+   * the only thing `last_inbound_at` reads.
+   */
+  it("never claims replies either way while the resolver says they are unreportable", () => {
+    expect(sms(getSoloChannelTruth(activeSms, true, PREPARED)).inbound).toBe("Not reported");
+    expect(sms(getSoloChannelTruth(activeSms, true, READY)).inbound).toBe("Not reported");
+  });
+
+  it("does not claim replies even when a timestamp is present but reporting is unavailable", () => {
+    // The exact shape production returns for a tenant who IS receiving replies:
+    // a stamp could only appear by accident, and the guard still governs.
+    const withStamp = { ...READY, inbound_reporting: "unavailable" as const,
+      delivery: { ...READY.delivery, last_inbound_at: "2026-08-29T12:00:00Z" } };
+    expect(sms(getSoloChannelTruth(activeSms, true, withStamp)).inbound).toBe("Not reported");
+  });
+
+  it("reports replies ONLY when the resolver says inbound reporting is available", () => {
+    // Non-vacuity: the branch is reachable, so the assertions above are testing
+    // the guard rather than a code path that can never report anything.
+    const live = { ...READY, inbound_reporting: "available" as const };
+    expect(sms(getSoloChannelTruth(activeSms, true, live)).inbound).toBe("Replies received");
+    const quiet = { ...live, delivery: { ...live.delivery, last_inbound_at: null } };
+    expect(sms(getSoloChannelTruth(activeSms, true, quiet)).inbound).toBe("No replies received");
   });
 
   it("leaves every other channel untouched by SMS readiness", () => {

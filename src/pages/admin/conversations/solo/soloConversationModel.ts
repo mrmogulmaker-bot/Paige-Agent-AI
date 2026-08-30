@@ -72,6 +72,18 @@ export interface SoloCommsReadinessEvidence {
   a2p: "approved" | "submitted" | "prepared" | "absent";
   number_e164: string | null;
   delivery: { state: "no_activity" | "delivering" | "mixed" | "failing"; last_inbound_at: string | null };
+  /**
+   * The resolver's OWN guard on whether replies can be reported at all.
+   *
+   * `tenant_comms_readiness()` returns `inbound_reporting: 'unavailable'` because
+   * `last_inbound_at` reads `public.messages` filtered to inbound, and NOTHING
+   * writes an inbound SMS row there — `handle-inbound-sms` inserts into
+   * `paige_conversations`. The column is therefore structurally always null.
+   *
+   * Optional so a caller with an older record still behaves: absent is treated
+   * as unavailable, which is the safe direction.
+   */
+  inbound_reporting?: "available" | "unavailable";
 }
 
 export function getSoloChannelTruth(
@@ -128,7 +140,17 @@ export function getSoloChannelTruth(
               : readiness.a2p === "submitted" ? "Filed with carriers"
               : readiness.a2p === "prepared" ? "Prepared, not submitted"
               : "Not registered",
-            inbound: readiness.delivery.last_inbound_at ? "Replies received" : "No replies received",
+            // NOT "No replies received". That was a definite negative derived from a
+            // column nothing can write, so every tenant — including one actually
+            // receiving replies — was told the same false thing. It also
+            // contradicted the sibling Settings ladder reading the SAME canonical
+            // record (§57), which correctly says replies cannot be reported.
+            // Honour the resolver's published guard; a missing guard reads as
+            // unavailable (§13 — absence of proof is not proof of absence).
+            inbound:
+              readiness.inbound_reporting === "available"
+                ? (readiness.delivery.last_inbound_at ? "Replies received" : "No replies received")
+                : "Not reported",
             operationalHealth:
               readiness.delivery.state === "delivering" ? "Delivering"
               : readiness.delivery.state === "no_activity" ? "Nothing sent yet"

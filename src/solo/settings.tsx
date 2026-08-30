@@ -130,14 +130,6 @@ function TeamView() {
   </div>;
 }
 
-const PROVIDERS = [
-  ["Gmail", "OAuth mailbox", "PARTIAL"], ["Outlook", "OAuth mailbox", "UNAVAILABLE"],
-  ["SMTP / Resend", "Outbound sending", "PARTIAL"], ["Twilio", "SMS, MMS & voice", "PARTIAL"],
-  ["Vapi", "Voice", "UNAVAILABLE"], ["Meta IG / FB", "Business messaging", "PARTIAL"],
-  ["Apple Messages for Business", "Business messaging", "PROPOSED"], ["WhatsApp / RCS", "Vocabulary only", "PROPOSED"],
-  ["n8n", "Tenant automation seam", "PARTIAL"], ["Zapier / MCP", "Fragmented connection seams", "PARTIAL"],
-  ["Direct APIs", "Permission-specific", "PARTIAL"], ["Make.com", "No connector seam", "UNAVAILABLE"],
-] as const;
 
 
 /**
@@ -285,151 +277,343 @@ export function billingStep(b: CommsReadiness["billing"]): {
   };
 }
 
-function ReadinessLadder({ r }: { r: CommsReadiness }) {
+/**
+ * ONE source for every readiness step (§18).
+ *
+ * The Communications subsections and the readiness ladder are two presentations
+ * of the SAME canonical record, so they derive from these functions rather than
+ * each computing their own answer. A subsection that disagreed with the ladder
+ * would be a second opinion about whether this account can text, which is the
+ * exact drift `tenant_comms_readiness()` exists to prevent.
+ *
+ * Every function is pure and exported so the tenant-facing boundary stays
+ * enforceable in tests — the same reason `billingStep` is exported.
+ */
+export type Step = {
+  n: string; s: string; truth: SettingsTruth;
+  tone: "ok" | "warn" | "bad" | "neutral"; state: string; detail: string;
+};
+
+export function messagingAccountStep(r: CommsReadiness): Step {
+  return { n: "Messaging account", s: "Your business's own account for texting",
+    truth: STEP_TRUTH(r.subaccount === "connected"), tone: r.subaccount === "connected" ? "ok" : "bad",
+    state: r.subaccount === "connected" ? "Connected" : r.subaccount === "inactive" ? "Not active" : "Not connected",
+    detail: r.subaccount === "connected" ? "Ready." : "Nothing else can be arranged until this is in place." };
+}
+
+export function businessDetailsStep(r: CommsReadiness): Step {
   const biz = r.business;
-  const bizAll = biz.has_name && biz.has_website && biz.has_phone;
-  const bizSome = biz.has_name || biz.has_website || biz.has_phone;
-  const steps: Array<{ n: string; s: string; truth: SettingsTruth; tone: "ok" | "warn" | "bad" | "neutral"; state: string; detail: string }> = [
-    { n: "Messaging account", s: "Your business's own account for texting",
-      truth: STEP_TRUTH(r.subaccount === "connected"), tone: r.subaccount === "connected" ? "ok" : "bad",
-      state: r.subaccount === "connected" ? "Connected" : r.subaccount === "inactive" ? "Not active" : "Not connected",
-      detail: r.subaccount === "connected" ? "Ready." : "Nothing else can be arranged until this is in place." },
-    { n: "Business details", s: "Legal name, website and business phone",
-      truth: STEP_TRUTH(bizAll, bizSome), tone: bizAll ? "ok" : bizSome ? "warn" : "bad",
-      state: bizAll ? "Complete" : bizSome ? "Partly filled in" : "Not provided",
-      detail: bizAll ? "Everything carriers ask for is on file."
-        : [!biz.has_name && "business name", !biz.has_website && "website", !biz.has_phone && "business phone"]
-            .filter(Boolean).join(", ") + " still missing." },
-    { n: "Phone number", s: "The number your texts send from",
-      truth: STEP_TRUTH(r.number === "assigned"), tone: r.number === "assigned" ? "ok" : "bad",
-      state: r.number === "assigned" ? "Assigned" : "None assigned",
-      detail: r.number === "assigned" ? `${r.number_e164 ?? "On file"} — its record lists SMS capability.` : "No number on this business." },
-    { n: "Business texting", s: "Carrier approval before any text can send",
-      truth: r.a2p === "approved" ? "LIVE" : r.a2p === "absent" ? "UNAVAILABLE" : "PARTIAL",
-      tone: r.a2p === "approved" ? "ok" : r.a2p === "absent" ? "bad" : "warn",
-      state: r.a2p === "approved" ? "Approved" : r.a2p === "submitted" ? "Filed with carriers"
-        : r.a2p === "prepared" ? "Prepared, not submitted" : "Not registered",
-      detail: r.a2p === "approved" ? "Your business is approved to text."
-        : r.a2p === "prepared" ? "Saved on your business. Nothing has been filed with any carrier yet."
-        : r.a2p === "submitted" ? "Filed. Carriers have not returned a decision."
-        : "Texting stays blocked until a registration is approved." },
-    { n: "Consent and opt-outs", s: "Who agreed to hear from you, and who said stop",
-      truth: r.consent.state === "ready" ? "LIVE" : "PARTIAL",
-      tone: r.consent.state === "ready" ? "ok" : "warn",
-      state: r.consent.state === "ready" ? `${r.consent.granted_count} agreed to texts` : "Nothing recorded",
-      detail: r.consent.suppressed_count > 0
-        ? `${r.consent.suppressed_count} ${r.consent.suppressed_count === 1 ? "person has" : "people have"} asked you to stop. PAIGE will not text them.`
-        : r.consent.state === "ready" ? "Consent is on file." : "No consent or opt-out has been recorded yet." },
-    { n: "Billing for messaging", s: "The plan messaging costs are billed against", ...billingStep(r.billing) },
-    { n: "Sending identity", s: "What Conversations sends from",
-      truth: STEP_TRUTH(r.can_send_sms), tone: r.can_send_sms ? "ok" : "warn",
-      state: r.can_send_sms ? "Ready" : "Not ready for texting",
-      detail: r.can_send_sms ? "Texts send from your own number." : "No permitted texting sender yet." },
-    { n: "Delivery and replies", s: "Whether texts arrive and replies come back",
-      truth: r.delivery.state === "no_activity" ? "UNAVAILABLE"
-        : r.delivery.state === "delivering" ? "LIVE" : "PARTIAL",
-      tone: r.delivery.state === "delivering" ? "ok"
-        : r.delivery.state === "no_activity" ? "neutral" : "warn",
-      state: r.delivery.state === "no_activity" ? "Nothing sent yet"
-        : r.delivery.state === "awaiting_receipts" ? `${r.delivery.sent_30d} sent, none confirmed yet`
-        : r.delivery.state === "delivering" ? `${r.delivery.delivered_30d} of ${r.delivery.sent_30d} delivered`
-        : `${r.delivery.failed_30d} of ${r.delivery.sent_30d} did not arrive`,
-      // Replies are NOT reported either way: nothing records an inbound text
-      // against this account, so both "replies received" and "no replies
-      // received" would be claims the data cannot support.
-      detail: r.delivery.state === "no_activity"
-        ? "Nothing has been sent in the last 30 days, so there is nothing to report."
-        : r.delivery.state === "awaiting_receipts"
-        ? "Sent, but no delivery confirmations have come back yet."
-        : "Whether replies are arriving is not something we can report yet." },
+  const all = biz.has_name && biz.has_website && biz.has_phone;
+  const some = biz.has_name || biz.has_website || biz.has_phone;
+  return { n: "Business details", s: "Legal name, website and business phone",
+    truth: STEP_TRUTH(all, some), tone: all ? "ok" : some ? "warn" : "bad",
+    state: all ? "Complete" : some ? "Partly filled in" : "Not provided",
+    detail: all ? "Everything carriers ask for is on file."
+      : [!biz.has_name && "business name", !biz.has_website && "website", !biz.has_phone && "business phone"]
+          .filter(Boolean).join(", ") + " still missing." };
+}
+
+export function phoneStep(r: CommsReadiness): Step {
+  return { n: "Phone number", s: "The number your texts send from",
+    truth: STEP_TRUTH(r.number === "assigned"), tone: r.number === "assigned" ? "ok" : "bad",
+    state: r.number === "assigned" ? "Assigned" : "None assigned",
+    detail: r.number === "assigned" ? `${r.number_e164 ?? "On file"} — its record lists SMS capability.` : "No number on this business." };
+}
+
+/**
+ * The A2P registration step, including the ceiling this product actually has.
+ *
+ * "Prepared, not submitted" is not a euphemism: `comms-a2p-submit`'s createBrand
+ * and createCampaign are `needs_config` stubs, so nothing this surface can do
+ * reaches a carrier. The copy states that ceiling rather than implying a filing
+ * that cannot happen (§13).
+ */
+export function registrationStep(r: CommsReadiness): Step {
+  return { n: "Business texting", s: "Carrier approval before any text can send",
+    truth: r.a2p === "approved" ? "LIVE" : r.a2p === "absent" ? "UNAVAILABLE" : "PARTIAL",
+    tone: r.a2p === "approved" ? "ok" : r.a2p === "absent" ? "bad" : "warn",
+    state: r.a2p === "approved" ? "Approved" : r.a2p === "submitted" ? "Filed with carriers"
+      : r.a2p === "prepared" ? "Prepared, not submitted" : "Not registered",
+    detail: r.a2p === "approved" ? "Your business is approved to text."
+      : r.a2p === "prepared" ? "Saved on your business. Nothing has been filed with any carrier yet."
+      : r.a2p === "submitted" ? "Filed. Carriers have not returned a decision."
+      : "Texting stays blocked until a registration is approved." };
+}
+
+export function consentStep(r: CommsReadiness): Step {
+  return { n: "Consent and opt-outs", s: "Who agreed to hear from you, and who said stop",
+    truth: r.consent.state === "ready" ? "LIVE" : "PARTIAL",
+    tone: r.consent.state === "ready" ? "ok" : "warn",
+    state: r.consent.state === "ready" ? `${r.consent.granted_count} agreed to texts` : "Nothing recorded",
+    detail: r.consent.suppressed_count > 0
+      ? `${r.consent.suppressed_count} ${r.consent.suppressed_count === 1 ? "person has" : "people have"} asked you to stop. PAIGE will not text them.`
+      : r.consent.state === "ready" ? "Consent is on file." : "No consent or opt-out has been recorded yet." };
+}
+
+/**
+ * Renamed from "Sending identity" so it cannot be read as the EMAIL sending
+ * identity, which is a different record on a different subsection. The owner's
+ * IA requires the email identity to be clearly separate from phone/SMS, and two
+ * steps sharing one name defeats that.
+ */
+export function textingSenderStep(r: CommsReadiness): Step {
+  return { n: "Texting sender", s: "What Conversations sends texts from",
+    truth: STEP_TRUTH(r.can_send_sms), tone: r.can_send_sms ? "ok" : "warn",
+    state: r.can_send_sms ? "Ready" : "Not ready for texting",
+    detail: r.can_send_sms ? "Texts send from your own number." : "No permitted texting sender yet." };
+}
+
+/**
+ * Delivery health — PROVEN EVIDENCE ONLY.
+ *
+ * Reports what the delivery record counted and nothing else. It does not infer
+ * deliverability from a plan, consent from a number, or webhook health from a
+ * delivered receipt. Replies are deliberately not reported in either direction:
+ * nothing records an inbound text against this account, so "replies received"
+ * and "no replies received" would both be claims the data cannot support.
+ */
+export function deliveryStep(r: CommsReadiness): Step {
+  const d = r.delivery;
+  return { n: "Delivery", s: "Whether texts actually arrived",
+    truth: d.state === "no_activity" ? "UNAVAILABLE" : d.state === "delivering" ? "LIVE" : "PARTIAL",
+    tone: d.state === "delivering" ? "ok" : d.state === "no_activity" ? "neutral" : "warn",
+    state: d.state === "no_activity" ? "Nothing sent yet"
+      : d.state === "awaiting_receipts" ? `${d.sent_30d} sent, none confirmed yet`
+      : d.state === "delivering" ? `${d.delivered_30d} of ${d.sent_30d} delivered`
+      : `${d.failed_30d} of ${d.sent_30d} did not arrive`,
+    detail: d.state === "no_activity"
+      ? "Nothing has been sent in the last 30 days, so there is nothing to report."
+      : d.state === "awaiting_receipts"
+      ? "Sent, but no delivery confirmations have come back yet."
+      : "Counted from delivery receipts on what was sent in the last 30 days." };
+}
+
+export function billingRow(r: CommsReadiness): Step {
+  return { n: "Billing for messaging", s: "The plan messaging costs are billed against", ...billingStep(r.billing) };
+}
+
+/** The canonical ordered path to operational. Every row is one of the functions above. */
+export function readinessSteps(r: CommsReadiness): Step[] {
+  return [
+    messagingAccountStep(r), businessDetailsStep(r), phoneStep(r), registrationStep(r),
+    consentStep(r), billingRow(r), textingSenderStep(r), deliveryStep(r),
   ];
+}
+
+function StepRows({ steps, offset = 0 }: { steps: Step[]; offset?: number }) {
   return <div className="ss-ladder">{steps.map((st, i) => (
     <div className="ss-step" data-tone={st.tone} key={st.n}>
-      <span className="ss-step-idx">{i + 1}</span>
+      <span className="ss-step-idx">{i + 1 + offset}</span>
       <div className="ss-step-name"><strong>{st.n}</strong><span>{st.s}</span></div>
       <div className="ss-step-state"><em>{st.state}</em>{st.detail}</div>
       <Truth value={st.truth}/>
     </div>))}</div>;
 }
 
+function ReadinessLadder({ r }: { r: CommsReadiness }) {
+  return <StepRows steps={readinessSteps(r)}/>;
+}
+
+function Subsection({ id, title, blurb, children }: { id: string; title: string; blurb: string; children: ReactNode }) {
+  return <section className="ss-subsection" aria-labelledby={id}>
+    <div className="ss-subsection-head">
+      <h3 id={id}>{title}</h3>
+      <p>{blurb}</p>
+    </div>
+    {children}
+  </section>;
+}
+
+/**
+ * Settings → Connections.
+ *
+ * Communications owns provider setup and readiness; Integrations is its own
+ * top-level area rather than a shelf inside Communications; Health is a
+ * SECONDARY projection of the same canonical record, never a competing owner.
+ *
+ * Business phone is one step among four here. It previously rendered as a
+ * full-width accented panel with a search form at the top of the surface, which
+ * made number search read as the whole feature and pushed messaging
+ * registration, sending identity and delivery below the fold.
+ */
 function ConnectionsView() {
   const comms = useSoloComms();
   const identity = useManagedIdentity();
-  const [view, setView] = useState<"connected" | "health" | "available">("connected");
+  const [view, setView] = useState<"communications" | "health">("communications");
   const identityStatus = identity.value?.default_email_status ?? null;
   const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
   const readiness = useCommsReadiness();
+  const r = readiness.value;
+
+  // Integrations is deliberately NOT a tab here. It is its own Settings
+  // destination, so Connections does not become a second home for it (§18).
+  const TABS = [
+    ["communications", "Communications"],
+    ["health", "Health"],
+  ] as const;
+
+  /** The ruled fallback for EVERY not-ready path, including an RPC error. */
+  const notReady = (body: string) => <div className="ss-next">
+    <strong>Texting is not ready yet</strong><p>{body}</p>
+  </div>;
+
   return <>
-    <div className="ss-segment" role="tablist" aria-label="Connection organization">{(["connected","health","available"] as const).map(key=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{key[0].toUpperCase()+key.slice(1)}</button>)}</div>
-    {view === "connected" && <div className="ss-grid">
-      <PhoneSetupPanel/>
-      <Card title="PAIGE-managed sending identity" icon={Mail} truth={identityPresentation.capability} capabilityTruth actions={<Status tone={identityPresentation.tone}>{identityPresentation.accountLabel}</Status>}>
-        <OrthogonalConnectionState {...identityPresentation}/>
-        <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Persisted status" value={identityStatus}/></div> : <p>No managed sending identity is configured for this account.</p>}</ReadState>
-        <p className="ss-note">This is a managed outbound identity. It is not called a mailbox because inbound mailbox behavior is not proven.</p>
-      </Card>
-      <Card title="Custom sending domains" icon={Globe2} truth={domainPresentation.capability} capabilityTruth actions={<Status tone={domainPresentation.tone}>{domainPresentation.accountLabel}</Status>}>
-        <OrthogonalConnectionState {...domainPresentation}/>
-        <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.domains.length ? <div className="ss-list">{comms.domains.map(domain=><div key={domain.id}><span><strong>{domain.domain}</strong><small>{domain.fromEmailLocal}@{domain.domain}</small></span><Status tone={domain.status === "verified" ? "ok" : "warn"}>{domain.status}</Status></div>)}</div> : <div className="ss-empty"><WifiOff/>No custom sending domain is reported.</div>}</ReadState>
-      </Card>
-      <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
-        <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
-        <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>
-      </Card>
+    <div className="ss-segment" role="tablist" aria-label="Connections areas">
+      {TABS.map(([key, label]) => (
+        <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}>{label}</button>
+      ))}
+    </div>
+
+    {view === "communications" && <div className="ss-sections">
+      <Subsection id="ss-sub-phone" title="Business phone"
+        blurb="The number this business texts and calls from.">
+        <div className="ss-grid">
+          <Card title="Number on this business" icon={Smartphone}
+            truth={r ? phoneStep(r).truth : "PARTIAL"}
+            actions={r ? <Status tone={phoneStep(r).tone}>{phoneStep(r).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <><p>{phoneStep(r).detail}</p>
+                {r.number === "assigned" && <div className="ss-fields"><Field label="Number" value={r.number_e164}/></div>}
+              </> : <p>No number record has been read for this account yet.</p>}
+            </ReadState>
+          </Card>
+          <PhoneSetupPanel/>
+        </div>
+      </Subsection>
+
+      <Subsection id="ss-sub-registration" title="Messaging registration"
+        blurb="Carriers require a registered business, and a recorded agreement from each person, before any text can send.">
+        <div className="ss-grid">
+          <Card title="Carrier registration" icon={Webhook}
+            truth={r ? registrationStep(r).truth : "PARTIAL"}
+            actions={r ? <Status tone={registrationStep(r).tone}>{registrationStep(r).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <>
+                <p>{registrationStep(r).detail}</p>
+                <StepRows steps={[businessDetailsStep(r)]}/>
+                <p className="ss-note">Filing with a carrier is not something this surface can do. A registration can be
+                  prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
+              </> : <p>No registration record has been read for this account yet.</p>}
+            </ReadState>
+          </Card>
+          <Card title="Consent and opt-outs" icon={ShieldCheck}
+            truth={r ? consentStep(r).truth : "PARTIAL"}
+            actions={r ? <Status tone={consentStep(r).tone}>{consentStep(r).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <p>{consentStep(r).detail}</p>
+                 : <p>No consent record has been read for this account yet.</p>}
+            </ReadState>
+            <p className="ss-note">Consent is recorded when a person replies to confirm. Nothing else on this account writes it.</p>
+          </Card>
+        </div>
+      </Subsection>
+
+      <Subsection id="ss-sub-identity" title="Sending identity"
+        blurb="What email sends from. Separate from the phone number and from texting.">
+        <div className="ss-grid">
+          <Card title="PAIGE-managed sending identity" icon={Mail} truth={identityPresentation.capability} capabilityTruth actions={<Status tone={identityPresentation.tone}>{identityPresentation.accountLabel}</Status>}>
+            <OrthogonalConnectionState {...identityPresentation}/>
+            <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Persisted status" value={identityStatus}/></div> : <p>No managed sending identity is configured for this account.</p>}</ReadState>
+            <p className="ss-note">This is a managed outbound identity. It is not called a mailbox because inbound mailbox behavior is not proven.</p>
+          </Card>
+          <Card title="Custom sending domains" icon={Globe2} truth={domainPresentation.capability} capabilityTruth actions={<Status tone={domainPresentation.tone}>{domainPresentation.accountLabel}</Status>}>
+            <OrthogonalConnectionState {...domainPresentation}/>
+            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.domains.length ? <div className="ss-list">{comms.domains.map(domain=><div key={domain.id}><span><strong>{domain.domain}</strong><small>{domain.fromEmailLocal}@{domain.domain}</small></span><Status tone={domain.status === "verified" ? "ok" : "warn"}>{domain.status}</Status></div>)}</div> : <div className="ss-empty"><WifiOff/>No custom sending domain is reported.</div>}</ReadState>
+          </Card>
+          <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
+            <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
+            <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>
+          </Card>
+        </div>
+      </Subsection>
+
+      <Subsection id="ss-sub-delivery" title="Delivery health"
+        blurb="Counted from delivery receipts only. Nothing here is inferred.">
+        <div className="ss-grid">
+          <Card title="Delivery" icon={TriangleAlert}
+            truth={r ? deliveryStep(r).truth : "PARTIAL"}
+            actions={r ? <Status tone={deliveryStep(r).tone}>{deliveryStep(r).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <p>{deliveryStep(r).detail}</p> : <p>No delivery record has been read for this account yet.</p>}
+            </ReadState>
+            {/* Three things are deliberately absent, each because no record backs
+                them: whether replies arrive (nothing writes an inbound SMS row),
+                webhook registration health, and any inference of deliverability
+                from a plan or a consent count. */}
+            <p className="ss-note">Replies and webhook health are <strong>not reported</strong> — nothing on this
+              account records them, so neither a positive nor a negative would be true.</p>
+          </Card>
+          <Card title="Billing for messaging" icon={Building2}
+            truth={r ? billingStep(r.billing).truth : "PARTIAL"}
+            actions={r ? <Status tone={billingStep(r.billing).tone}>{billingStep(r.billing).state}</Status> : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {r ? <p>{billingStep(r.billing).detail}</p> : <p>No billing record has been read for this account yet.</p>}
+            </ReadState>
+            <p className="ss-note">Reported here because messaging costs bill against it. Plans and payment are owned by
+              Settings → Billing, not by Connections.</p>
+          </Card>
+        </div>
+      </Subsection>
     </div>}
-    {view === "health" && <div className="ss-grid">
-      <Card title="Business texting readiness" icon={Webhook}
-        truth={readiness.value ? (readiness.value.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
-        actions={readiness.value && !readiness.value.can_send_sms
-          ? <Status tone="warn">Texting is not ready yet</Status>
-          : readiness.value ? <Status tone="ok">Ready to text</Status> : undefined}>
-        {/* The ruled fallback, for EVERY not-ready path — including an RPC error.
-            ReadState would otherwise print error.message verbatim, which for this
-            resolver means a tenant reading "COMMS_READINESS_FORBIDDEN". */}
-        <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-          {readiness.error ? (
-            <div className="ss-next">
-              <strong>Texting is not ready yet</strong>
-              <p>We couldn&rsquo;t read this account&rsquo;s setup just now, so nothing below is being claimed about it. Try again in a moment.</p>
-              <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
-            </div>
-          ) : readiness.value ? <>
-            {!readiness.value.can_send_sms && readiness.value.blocked_reason && (
-              <div className="ss-next">
-                <strong>{(READINESS_COPY[readiness.value.blocked_reason] ?? { headline: "Texting is not ready yet" }).headline}</strong>
-                <p>{(READINESS_COPY[readiness.value.blocked_reason] ?? { next: "Some setup is still outstanding." }).next}</p>
-              </div>
-            )}
-            <ReadinessLadder r={readiness.value}/>
-            <p className="ss-note">Each step reports what its own record says. A step that cannot be checked says so rather than assuming it passed.</p>
-          </> : (
-            <div className="ss-next">
-              <strong>Texting is not ready yet</strong>
-              <p>We don&rsquo;t have a setup to read for this account yet.</p>
-            </div>
-          )}
-        </ReadState>
-      </Card>
-      <Card title="Failure states" icon={TriangleAlert} truth="PARTIAL"><div className="ss-state-list"><Status tone="warn">DNS pending</Status><Status tone="bad">DNS failure</Status><Status tone="bad">Token expired / revoked</Status><Status tone="bad">Webhook failure</Status><Status tone="warn">A2P pending</Status><Status tone="bad">A2P rejected</Status><Status tone="ok">A2P approved</Status><Status>Disconnected</Status></div><p className="ss-note">These are supported display states, not claims about this account.</p></Card>
+
+    {view === "health" && <div className="ss-sections">
+      <Subsection id="ss-sub-health" title="Readiness"
+        blurb="A secondary view of the same records shown above — the ordered path to being operational.">
+        <div className="ss-grid">
+          <Card title="Business texting readiness" icon={Webhook}
+            truth={r ? (r.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
+            actions={r ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
+            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+              {readiness.error ? <div className="ss-next">
+                  <strong>Texting is not ready yet</strong>
+                  <p>We couldn&rsquo;t read this account&rsquo;s setup just now, so nothing below is being claimed about it. Try again in a moment.</p>
+                  <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
+                </div>
+              : r ? <>
+                  {!r.can_send_sms && r.blocked_reason && (
+                    <div className="ss-next">
+                      <strong>{(READINESS_COPY[r.blocked_reason] ?? { headline: "Texting is not ready yet" }).headline}</strong>
+                      <p>{(READINESS_COPY[r.blocked_reason] ?? { next: "Some setup is still outstanding." }).next}</p>
+                    </div>
+                  )}
+                  <ReadinessLadder r={r}/>
+                  <p className="ss-note">Each step reports what its own record says. A step that cannot be checked says so
+                    rather than assuming it passed. Setup lives under Communications; this view only reflects it.</p>
+                </>
+              : notReady("We don\u2019t have a setup to read for this account yet.")}
+            </ReadState>
+          </Card>
+          <Card title="Supported failure states" icon={TriangleAlert} truth="PARTIAL">
+            <div className="ss-state-list"><Status tone="warn">DNS pending</Status><Status tone="bad">DNS failure</Status><Status tone="bad">Token expired / revoked</Status><Status tone="bad">Webhook failure</Status><Status tone="warn">A2P pending</Status><Status tone="bad">A2P rejected</Status><Status tone="ok">A2P approved</Status><Status>Disconnected</Status></div>
+            <p className="ss-note">These are display states this surface supports. They are <strong>not</strong> claims about this account.</p>
+          </Card>
+        </div>
+      </Subsection>
     </div>}
-    {view === "available" && <div className="ss-provider-grid">{PROVIDERS.map(([name,kind,truth])=><article key={name}><Smartphone/><div><strong>{name}</strong><span>{kind}</span></div><Truth value={truth}/></article>)}</div>}
   </>;
 }
 
+/**
+ * Business phone provisioning — a PEER of the number record, not the surface.
+ *
+ * Previously this rendered full-width with an accent rail at the top of
+ * Connections, so number search visually replaced the whole feature. It is now
+ * one card inside the Business phone subsection, and it still states its own
+ * ceiling: no provider search runs from here.
+ */
 function PhoneSetupPanel() {
   const [searchAttempted, setSearchAttempted] = useState(false);
-  return <section className="ss-card ss-phone-setup" aria-labelledby="ss-phone-title">
+  return <section className="ss-card" aria-labelledby="ss-phone-title">
     <header>
       <span className="ss-card-icon"><Search aria-hidden/></span>
       <div className="ss-phone-heading">
-        <h2 id="ss-phone-title" className="ss-phone-title">Business phone</h2>
-        <p>Search available phone numbers</p>
+        <h2 id="ss-phone-title" className="ss-phone-title">Find a number</h2>
       </div>
       <Truth value="PROPOSED"/>
     </header>
     <div className="ss-card-body">
-      <p className="ss-phone-contract">Choose a locality and the capabilities you need. Live availability, pricing, purchase, assignment, and messaging registration are not connected in this Settings contract.</p>
+      <p className="ss-phone-contract">Choose a locality and the capabilities you need. Live availability, pricing, purchase and assignment are not connected in this Settings contract.</p>
       <form className="ss-phone-search" onSubmit={(event) => { event.preventDefault(); setSearchAttempted(true); }}>
         <label><span>Area code or locality</span><input type="search" name="phone-locality" placeholder="Atlanta or 404" autoComplete="off"/></label>
         <label><span>Required capabilities</span><select name="phone-capabilities" defaultValue="sms-voice"><option value="sms-voice">SMS + voice</option><option value="sms">SMS</option><option value="voice">Voice</option></select></label>
