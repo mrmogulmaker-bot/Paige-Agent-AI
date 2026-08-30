@@ -8,6 +8,16 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 
 ## Recent PRs (#375 → #543)
 
+- **OWNER RULING — Solo Systems Check Operating Signal approved for draft implementation
+  (2026-08-29).** Systems Check is PAIGE's compact business-awareness layer, not an isolated BI
+  dashboard. The approved draft reads only persisted tenant-scoped evidence, presents truthful
+  confirmed/attention/unavailable coverage, uses interruptible read motion with reduced-motion
+  parity, opens the one existing PAIGE workspace for a fuller rundown without prefill or execution,
+  and keeps the final go-live gate separate. The grounding chain is signal → provenance → impact →
+  recommendation → owner decision → durable outcome. Market pulse, capacity/watchpoint expansion,
+  and A2P readiness remain unavailable unless canonical contracts later back them; no competing
+  phone readiness logic is authorized.
+
 - **OWNER DIRECTIVE — every capability wires back to BOTH brains (2026-08-19)** — verbatim: *"For each
   one of these functions, we always wire back to the second brain… We need to make sure that we always
   wire everything back to Paige Agent AI's primary brain. That way, she can always call on any one of
