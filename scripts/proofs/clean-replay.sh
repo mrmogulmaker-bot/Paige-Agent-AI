@@ -11,8 +11,26 @@
 #
 # WHAT IT PROVES: that the migration sequence applies from nothing, and that the
 # policies it ends with actually enforce the tenant boundary.
-# WHAT IT DOES NOT PROVE: anything about production. Persisted-apply is §32.a, and
-# comes from deploy-migrations.yml at merge.
+#
+# WHAT IT DOES NOT PROVE — read this before quoting the pass rate:
+#
+#   1. ANYTHING ABOUT PRODUCTION. Persisted-apply is §32.a and comes from
+#      deploy-migrations.yml at merge.
+#
+#   2. THE FRESH-REBUILD CASE IT MOST RESEMBLES. Everything here runs as the
+#      bootstrap SUPERUSER, who also owns every object the shim creates —
+#      including `realtime.messages`. On hosted, `db push` connects as a
+#      non-superuser that does NOT own that table, and 7 migrations do
+#      `CREATE POLICY ... ON realtime.messages`, which requires ownership. That is
+#      the repo's own tracked #275/#350 hazard, named in deploy-migrations.yml as a
+#      hard blocker for fresh rebuilds. This harness CANNOT reproduce it by
+#      construction, so "the sequence applies from nothing" is true for a superuser
+#      replay and is NOT a fresh-rebuild guarantee.
+#
+#   3. THAT THE CRON-TOUCHING MIGRATIONS DID ANYTHING. `cron.schedule` is stubbed;
+#      it returns an id and schedules nothing, so ~31 migrations apply without their
+#      effect being exercised. Disclosed here because "827 applied" would otherwise
+#      imply more than it means.
 #
 # Usage:  sudo ./scripts/proofs/clean-replay.sh
 set -uo pipefail
@@ -50,4 +68,29 @@ for f in $(ls "$BASE"/migrations/*.sql | sort); do
 done
 echo "MIGRATIONS APPLIED=$ok FAILED=$fail   (failures: $BASE/failures.txt)"
 echo
-su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -f $BASE/c7-cases.sql" 2>&1 | grep -vE "WARNING|CONTEXT|enqueue"
+
+# EXIT CODE. `psql -f` returns 0 even when the script RAISEs, and a `grep -v`
+# filter returns 0 because it prints lines — so an earlier version of this script
+# exited 0 whether the assertions passed or failed, making PASS and FAIL
+# indistinguishable to any caller. A one-line CI wiring of that would have been a
+# permanently-green gate on a file whose header calls itself a proof.
+cases_out=$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -f $BASE/c7-cases.sql" 2>&1)
+echo "$cases_out" | grep -vE "WARNING|CONTEXT|enqueue"
+
+if echo "$cases_out" | grep -q "ALL ASSERTIONS PASSED"; then
+  cases_rc=0
+elif echo "$cases_out" | grep -q "ASSERTION(S) FAILED"; then
+  cases_rc=1
+else
+  # Neither sentinel: the block did not reach its own RAISE, so it aborted early.
+  # That is a failure, not an unknown — refusing to guess is the point.
+  echo "!! c7-cases produced neither sentinel — treating as FAILURE" >&2
+  cases_rc=1
+fi
+
+# A migration failure outside the five known shim gaps is also a failure.
+if [ "$fail" -gt 5 ]; then
+  echo "!! $fail migration failures (expected at most the 5 known shim gaps)" >&2
+  cases_rc=1
+fi
+exit "$cases_rc"

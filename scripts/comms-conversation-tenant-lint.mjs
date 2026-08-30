@@ -72,35 +72,96 @@ function hasTopLevelTenantId(payload) {
   return false;
 }
 
+/**
+ * Resolve a `.from(X)` target to a table name where X is a literal, or a local
+ * const bound to a literal or to a template made only of literals.
+ *
+ * Why: an earlier version gated the whole file on `src.includes("paige_conversations")`,
+ * so a writer that built the name — `const T = \`paige_${"conversations"}\`` — never
+ * contained the literal and was skipped entirely. Returns null when it genuinely
+ * cannot tell, and the caller decides what to do with that.
+ */
+function resolveTarget(src, target) {
+  const lit = target.match(/^["'`]([^"'`${}]+)["'`]$/);
+  if (lit) return lit[1];
+  if (/^[A-Za-z_$][\w$]*$/.test(target)) {
+    const decl = new RegExp(`(?:const|let|var)\\s+${target}\\s*=\\s*([^;\\n]+)`).exec(src);
+    if (decl) {
+      const rhs = decl[1].trim();
+      const rl = rhs.match(/^["'`]([^"'`${}]+)["'`]$/);
+      if (rl) return rl[1];
+      // A template whose every interpolation is itself a string literal.
+      const tpl = rhs.match(/^`([^`]*)`$/);
+      if (tpl) {
+        const collapsed = tpl[1].replace(/\$\{\s*["'`]([^"'`]*)["'`]\s*\}/g, "$1");
+        if (!collapsed.includes("${")) return collapsed;
+      }
+    }
+  }
+  return null;
+}
+
 let checked = 0;
 const missing = [];
+const WRITE_VERBS = ["insert", "upsert"];
+
 for (const file of walk(ROOT)) {
   const src = fs.readFileSync(file, "utf8");
-  if (!src.includes(TABLE)) continue;
-  const re = new RegExp(`from\\(\\s*["'\`]${TABLE}["'\`]\\s*\\)`, "g");
-  let m;
-  while ((m = re.exec(src))) {
-    // Only INSERTs carry a payload; updates are keyed by filters and are out of scope here.
-    const after = src.slice(m.index, m.index + 400);
-    const ins = after.indexOf(".insert(");
-    if (ins === -1) continue;
-    checked++;
-    const payload = insertPayload(src, m.index + ins);
-    const line = src.slice(0, m.index).split("\n").length;
-    if (!payload || !hasTopLevelTenantId(payload)) {
-      missing.push(`${file}:${line} — insert into ${TABLE} with no tenant_id`);
+  // Not gated on the literal table name any more: a writer that builds the name
+  // from a constant or a template never contained it, and was skipped entirely.
+  for (const verb of WRITE_VERBS) {
+    const call = `.${verb}(`;
+    let at = -1;
+    while ((at = src.indexOf(call, at + 1)) !== -1) {
+      // Walk BACK from the write to its `.from(...)`, instead of forward from
+      // `.from` within a fixed 400-char window — a long comment or a chained
+      // builder pushed the write out of that window and it was never checked.
+      const head = src.slice(Math.max(0, at - 600), at);
+      const m = [...head.matchAll(/from\(\s*([^)]*?)\s*\)/g)].pop();
+      if (!m) continue;
+      const target = m[1];
+      const resolved = resolveTarget(src, target);
+      // A target this cannot resolve is only interesting if the file plausibly
+      // touches the table; otherwise every dynamic-table write in the tree is a
+      // hit. Stated as a limit rather than pretended away — see LIMITS below.
+      const isTable = resolved === TABLE || (resolved === null && src.includes(TABLE));
+      if (!isTable) continue;
+
+      checked++;
+      const line = src.slice(0, at).split("\n").length;
+      // The payload must be the literal passed to THIS call — `indexOf("{")` used
+      // to scan forward to the next brace anywhere in the file, so an unrelated
+      // object with a tenant_id satisfied the check for `.insert(variable)`.
+      const argStart = at + call.length;
+      const firstNonSpace = src.slice(argStart).match(/^\s*/)[0].length;
+      const ch = src[argStart + firstNonSpace];
+      if (ch !== "{") {
+        missing.push(`${file}:${line} — ${verb} into ${TABLE} with a non-literal payload; a tenant cannot be verified statically`);
+        continue;
+      }
+      const payload = insertPayload(src, argStart + firstNonSpace);
+      if (!payload || !hasTopLevelTenantId(payload)) {
+        missing.push(`${file}:${line} — ${verb} into ${TABLE} with no top-level tenant_id`);
+      }
     }
   }
 }
 
 if (checked === 0) {
-  console.error(`FAILED: found no ${TABLE} inserts at all — the matcher is broken, not the code.`);
+  console.error(`FAILED: found no ${TABLE} writes at all — the matcher is broken, not the code.`);
   process.exit(1);
 }
 if (missing.length) {
-  console.error(`\n${missing.length} untenanted insert(s) into ${TABLE}:\n`);
+  console.error(`\n${missing.length} untenanted write(s) into ${TABLE}:\n`);
   for (const m of missing) console.error("  " + m);
   console.error("\nAn untenanted row is one no RLS policy can scope (C-7). Stamp the tenant at the write.\n");
   process.exit(1);
 }
-console.log(`ok — all ${checked} ${TABLE} insert(s) stamp a tenant.`);
+console.log(`ok — all ${checked} ${TABLE} write(s) stamp a tenant.`);
+
+// LIMITS, stated rather than implied. This reads source; it cannot prove the
+// VALUE stamped is the right tenant (the tenant-scope smoke does that for the SMS
+// path), and a write whose table is resolved at runtime in a file that never
+// names the table is out of its reach. It catches the failure that actually
+// happened — a stamp deleted from a known writer — and a new writer arriving
+// unstamped, which is what nothing else covered.

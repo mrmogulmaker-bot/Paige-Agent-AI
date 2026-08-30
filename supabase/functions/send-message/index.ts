@@ -1258,11 +1258,26 @@ Deno.serve(async (req) => {
     // Left unscoped when `tenantId` is null: that is the platform-owner path,
     // which legitimately reaches across tenants. Adding `.eq("tenant_id", null)`
     // there would match nothing and silently break the operator instead.
+    //
+    // OBSERVABLE, because a scoped update can now match ZERO rows where it used to
+    // match one — and a silent no-op is a regression that looks like success. The
+    // `.select("id")` makes the match count readable and a 0-row result is logged
+    // loudly rather than swallowed. It is NOT treated as a send failure: the
+    // message really did go out, and failing here would be a worse lie.
     {
       const convoUpdate = admin.from("paige_conversations")
         .update({ status: "replied" })
         .eq("id", body.conversation_id);
-      await (tenantId ? convoUpdate.eq("tenant_id", tenantId) : convoUpdate);
+      const { data: convoRows, error: convoErr } = await (
+        tenantId ? convoUpdate.eq("tenant_id", tenantId) : convoUpdate
+      ).select("id");
+      if (convoErr) {
+        console.error("[send-message] conversation status update failed:", convoErr.code, convoErr.message);
+      } else if (!convoRows?.length) {
+        console.error(
+          `[send-message] conversation ${body.conversation_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — status NOT advanced. The message was sent.`,
+        );
+      }
     }
   }
 
@@ -1280,7 +1295,19 @@ Deno.serve(async (req) => {
         sent_message_audit_id: auditRow?.id ?? null,
       })
       .eq("id", body.approval_id);
-    await (tenantId ? approvalUpdate.eq("tenant_id", tenantId) : approvalUpdate);
+    const { data: apprRows, error: apprErr } = await (
+      tenantId ? approvalUpdate.eq("tenant_id", tenantId) : approvalUpdate
+    ).select("id");
+    if (apprErr) {
+      console.error("[send-message] approval update failed:", apprErr.code, apprErr.message);
+    } else if (!apprRows?.length) {
+      // A 0-row match here leaves the approval `pending` with `claimed_at` set, so
+      // every retry reports already-in-progress while the message HAS been sent.
+      // That state is recoverable only if someone can see it — hence error level.
+      console.error(
+        `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — it stays pending though the message was sent. If this fires, the approval row's tenant does not match the send's.`,
+      );
+    }
   }
 
   // ── Paige Context Rail — COMMS emitter: file 'comms.outbound' after a message

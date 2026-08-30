@@ -36,14 +36,14 @@ BEGIN
 
   PERFORM set_config('request.jwt.claims',json_build_object('sub',uB,'role','authenticated')::text,true);
   SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-PROOF';
-  out := out||format('  WRONG-TENANT admin READS tenant A''s message ...... %s   want 0%s',n,E'\n');
+  out := out||format('  WRONG-TENANT admin READS tenant A''s message ...... %s   want 0  (trigger, not policy)%s',n,E'\n');
   IF n<>0 THEN fails:=fails+1; END IF;
   UPDATE public.paige_conversations SET metadata=metadata||'{"x":1}'::jsonb WHERE source_message_id='C7-PROOF';
   GET DIAGNOSTICS n = ROW_COUNT;
   out := out||format('  WRONG-TENANT admin WRITES it (policy is FOR ALL) .. %s   want 0%s',n,E'\n');
   IF n<>0 THEN fails:=fails+1; END IF;
   SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-ORPHAN';
-  out := out||format('  WRONG-TENANT admin sees the contactless row ...... %s   want 0%s',n,E'\n');
+  out := out||format('  WRONG-TENANT admin sees the contactless row ...... %s   want 0  <- THE policy test%s',n,E'\n');
   IF n<>0 THEN fails:=fails+1; END IF;
 
   PERFORM set_config('request.jwt.claims',json_build_object('sub',uA,'role','authenticated')::text,true);
@@ -78,19 +78,66 @@ BEGIN
   out := out||format('  UNAUTHENTICATED sees ............................ %s   want 0  (%s)%s',n,procedure_note,E'\n');
   IF n<>0 THEN fails:=fails+1; END IF;
 
-  -- NON-VACUITY: put the NULL escape back and confirm the SAME fixture leaks.
+  -- ── FALSIFIABILITY, PER CHANGE. The block above is NOT sufficient on its own,
+  --    and saying why matters more than the green.
+  --
+  --    Once the trigger stamps tenant A onto C7-PROOF, the PRE-EXISTING restrictive
+  --    policy already refuses a tenant-B admin — `tA <> tB`, no NULL involved. So
+  --    the C7-PROOF read/write zeroes above are produced identically by the
+  --    UN-fixed policy set: they prove the trigger, not the policy change. The row
+  --    that actually exercises the policy change is C7-ORPHAN, which is contactless
+  --    and therefore still legitimately NULL after the fix.
+  RESET role;
+
+  -- (a) Revert ONLY the restrictive policy's NULL escape.
+  --
+  --     I expected this to leak and it does NOT — because the admin policy's new
+  --     tenant clause independently refuses a NULL row (`tenant_id = current_user_
+  --     tenant_id()` is false when tenant_id is NULL). So the two changes are not
+  --     "one load-bearing, one decorative": EITHER ALONE closes this leak for an
+  --     admin. Recording the corrected reading rather than the assumption I began
+  --     with, and asserting the behaviour that is actually true.
+  ALTER POLICY "tenant_isolation" ON public.paige_conversations
+    USING (public.is_platform_owner() OR tenant_id IS NULL OR tenant_id = public.current_user_tenant_id())
+    WITH CHECK (public.is_platform_owner() OR tenant_id IS NULL OR tenant_id = public.current_user_tenant_id());
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims',json_build_object('sub',uB,'role','authenticated')::text,true);
+  SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-ORPHAN';
+  out := out||format('%s  EITHER-ALONE — revert ONLY the NULL escape, still refused %s   want 0 (admin clause holds)%s',E'\n',n,E'\n');
+  IF n<>0 THEN fails:=fails+1; END IF;
+  RESET role;
+  ALTER POLICY "tenant_isolation" ON public.paige_conversations
+    USING (public.is_platform_owner() OR tenant_id = public.current_user_tenant_id())
+    WITH CHECK (public.is_platform_owner() OR tenant_id = public.current_user_tenant_id());
+
+  -- (b) Revert ONLY the admin policy's tenant clause. Also still refused — the
+  --     restrictive policy holds on its own. The mirror of (a).
+  ALTER POLICY "Admins manage all conversations" ON public.paige_conversations
+    USING (public.has_any_role(auth.uid(), ARRAY['admin','super_admin']))
+    WITH CHECK (public.has_any_role(auth.uid(), ARRAY['admin','super_admin']));
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims',json_build_object('sub',uB,'role','authenticated')::text,true);
+  SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-PROOF';
+  out := out||format('  DEPTH-ONLY — revert the admin clause, still refused ...... %s   want 0 (by tenant_isolation)%s',n,E'\n');
+  IF n<>0 THEN fails:=fails+1; END IF;
+
+  -- (c) BOTH reverted — the true pre-fix state, and the ONLY configuration in which
+  --     the leak returns. This is the block that makes the zeroes above meaningful:
+  --     it is the same fixture, the same orphan row, no data touched, and the only
+  --     difference is the shipped policy pair. THIS is the falsifiability proof;
+  --     (a) and (b) establish that each change independently suffices.
   RESET role;
   ALTER POLICY "tenant_isolation" ON public.paige_conversations
     USING (public.is_platform_owner() OR tenant_id IS NULL OR tenant_id = public.current_user_tenant_id())
     WITH CHECK (public.is_platform_owner() OR tenant_id IS NULL OR tenant_id = public.current_user_tenant_id());
-  ALTER POLICY "Admins manage all conversations" ON public.paige_conversations
-    USING (public.has_any_role(auth.uid(), ARRAY['admin','super_admin']))
-    WITH CHECK (public.has_any_role(auth.uid(), ARRAY['admin','super_admin']));
-  UPDATE public.paige_conversations SET tenant_id = NULL WHERE source_message_id='C7-PROOF';
   PERFORM set_config('role','authenticated',true);
   PERFORM set_config('request.jwt.claims',json_build_object('sub',uB,'role','authenticated')::text,true);
-  SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-PROOF';
-  out := out||format('%s  NON-VACUITY — with the OLD policies the leak returns %s   want 1%s',E'\n',n,E'\n');
+  SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-ORPHAN';
+  out := out||format('  PRE-FIX STATE — wrong-tenant admin reads the orphan ..... %s   want 1%s',n,E'\n');
+  IF n<>1 THEN fails:=fails+1; END IF;
+  UPDATE public.paige_conversations SET metadata=metadata||'{"x":1}'::jsonb WHERE source_message_id='C7-ORPHAN';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  out := out||format('  PRE-FIX STATE — ...and WRITES it (FOR ALL) .............. %s   want 1%s',n,E'\n');
   IF n<>1 THEN fails:=fails+1; END IF;
 
   RESET role;
