@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Bell,
   Building2,
@@ -819,6 +819,24 @@ export function SoloSettings() {
     () => requestedSegment(location.search) ?? (entry?.origin === "calendar" ? ("calendars" as const) : undefined),
     [location.search, entry?.origin],
   );
+  // CONSUMED, not kept. `segment` is a one-shot instruction from the OAuth
+  // callback — "put them back where they were" — and the segment buttons are
+  // local state that never writes to the address. Leaving it there made the URL
+  // outlast the intent: switch to Communications, refresh, and the stale
+  // parameter puts you back on Calendars, a place you had already left. Cleared
+  // after the first render, which is when the child has taken its initial value;
+  // `replace` so it does not become a history entry of its own.
+  //
+  // The fuller answer — the address always naming the segment, both directions —
+  // is the §65 route-taxonomy work, not a hotfix.
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!requestedSegment(location.search)) return;
+    const next = new URLSearchParams(location.search);
+    next.delete("segment");
+    const query = next.toString();
+    navigate(`${location.pathname}${query ? `?${query}` : ""}`, { replace: true });
+  }, [location.pathname, location.search, navigate]);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scrollOwner = rootRef.current?.closest<HTMLElement>("#tenant-shell-main");

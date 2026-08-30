@@ -223,6 +223,35 @@ describe("Solo Settings rendered customer copy", () => {
     expect(plain).toMatch(/aria-selected="true"[^>]*>Communications</);
   });
 
+  it("opens Calendars when the OAuth return names that segment", () => {
+    // Which segment you were on is local state and never reaches the URL, so
+    // the return address carries it explicitly — otherwise the callback rebuilds
+    // Settings from the path alone and lands on Communications.
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=calendars"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(html).toMatch(/aria-selected="true"[^>]*>Calendars</);
+  });
+
+  it("ignores a segment the surface does not have, rather than rendering nothing", () => {
+    // The value arrives from a URL. Casting it would select no segment at all
+    // and paint an empty Connections page.
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=nonsense"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(html).toMatch(/aria-selected="true"[^>]*>Communications</);
+  });
+
   it("pins the Connections sub-navigation so the context survives a long scroll", () => {
     const css = readFileSync(path.resolve(process.cwd(), "src/solo/settings.css"), "utf8");
     expect(css).toMatch(/\.ss-subnav\s*\{[^}]*position:\s*sticky/);
