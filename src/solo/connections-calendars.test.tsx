@@ -10,7 +10,7 @@
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CalendarsView } from "./connections-calendars";
 import { normalizeNotify, type CalendarRow } from "@/lib/calendar/config";
@@ -699,5 +699,104 @@ describe("a booking preset can actually be created", () => {
   it("does not offer creation to an account that cannot write", () => {
     mount({ canWrite: false });
     expect(byText(/New preset/)?.disabled).toBe(true);
+  });
+});
+
+/**
+ * The window between the route moving and the data following.
+ *
+ * The URL account changes the instant someone navigates; the loaded tenant only
+ * catches up once the tenant context resolves and the hook re-reads. In that gap
+ * every value on screen — the calendars, `canWrite`, the tenant the hook writes
+ * under — still describes the account being LEFT, and `loading` is false because
+ * the hook has not been told yet. Creation is a write, so it belongs behind the
+ * same gate the editor is behind: a preset made here lands in the account the
+ * person just navigated away from, on a screen that has already relabelled
+ * itself as the new one.
+ *
+ * These drive the real navigation rather than remounting, because a remount
+ * resets the very ref the gate is built on and would pass without a gate at all.
+ */
+describe("creation during the identity window", () => {
+  const HERE = "/solo/1971670/settings/connections";
+  const THERE = "/solo/2000000/settings/connections";
+
+  function mountRouted(over: Record<string, unknown> = {}) {
+    state.value = seam({ tenantId: "t1", ...over });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    function Surface() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <CalendarsView />
+          <button type="button" data-move onClick={() => navigate(THERE)}>move</button>
+        </>
+      );
+    }
+    act(() => {
+      createRoot(container).render(
+        <MemoryRouter initialEntries={[HERE]}>
+          <Routes>
+            <Route path="/solo/:account/settings/connections" element={<Surface />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+  }
+
+  // Same path pattern either side, so the surface stays mounted across the
+  // navigation exactly as it does in the app — which is the whole problem.
+  const move = () => act(() => {
+    container.querySelector<HTMLButtonElement>("button[data-move]")?.click();
+  });
+
+  const openCreate = () => act(() => {
+    [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""))?.click();
+  });
+
+  const typeName = (value: string) => {
+    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(field!, value); field!.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+
+  const submitCreate = () => act(() => {
+    container.querySelector("form.cc-new")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  it("stops offering creation once the route names an account the data has not caught up to", () => {
+    mountRouted();
+    const opener = () => [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""));
+    expect(opener()?.disabled).toBe(false);
+    move();
+    expect(opener()?.disabled).toBe(true);
+  });
+
+  it("refuses a form that was already open when the route moved", async () => {
+    // The finding this covers: the closed button being gated is not enough,
+    // because the form the person had already opened keeps its own state and
+    // would submit into the departing account. The post-write identity check
+    // cannot catch it — it compares the new route against the old tenant on
+    // BOTH readings, so it sees no change and waves the result through, by
+    // which point the row exists.
+    const createCalendar = vi.fn();
+    mountRouted({ createCalendar });
+    openCreate();
+    typeName("Discovery call");
+    move();
+    await submitCreate();
+    expect(createCalendar).not.toHaveBeenCalled();
+  });
+
+  it("gates the empty state's own creation control, not only the header's", () => {
+    // The empty body carries a second copy of the same form. Gating one and not
+    // the other leaves the identical write reachable by the identical click on
+    // the surface a freshly-provisioned account actually lands on.
+    mountRouted({ empty: true, calendars: [], hosts: {} });
+    const inEmpty = () => container.querySelector<HTMLButtonElement>(".cc-empty-act button");
+    expect(inEmpty()?.disabled).toBe(false);
+    move();
+    expect(inEmpty()?.disabled).toBe(true);
   });
 });

@@ -485,7 +485,7 @@ export function CalendarsView() {
     // database about what exists, moments after saying the save worked.
     hydrate(result.row);
     setNotice({ tone: "info", text: "Saved. The public page now uses these settings." });
-  }, [selected, patch, slugInput, conn]);
+  }, [selected, patch, slugInput, conn, hydrate]);
 
   const jumpTo = useCallback((key: AreaKey) => {
     setOpen((o) => ({ ...o, [key]: true }));
@@ -527,6 +527,15 @@ export function CalendarsView() {
       });
       return false;
     }
+    // Refused BEFORE anything is written, because the check after the await
+    // structurally cannot cover this. That one compares the identity either
+    // side of the call, and in the window where the route has moved to the new
+    // account but the tenant has not, BOTH readings are the same mismatched
+    // pair — new route, old tenant — so it waves the result through on a
+    // calendar `createCalendar` has already inserted into the account being
+    // left. A write that has happened cannot be guarded after the fact; the
+    // only working guard is the one that declines to make it.
+    if (settledUnder.current !== liveIdentity.current.account) return false;
     const startedUnder = liveIdentity.current;
     const r = await conn.createCalendar(title);
     const now = liveIdentity.current;
@@ -625,7 +634,14 @@ export function CalendarsView() {
               who hosts it, and what happens after. Changes here take effect on the live link.
             </p>
           </div>
-          {!conn.loading && !conn.error && <NewPreset onCreate={create} disabled={!conn.canWrite || conn.busy === "new"} />}
+          {/* `identityStale` is in the disabled set for the same reason the editor
+              below is hidden by it: this control WRITES, under a tenant that
+              still names the account being left. Disabled rather than unmounted
+              so an already-open form keeps the name someone typed — `submit`
+              consults this flag too, so the open form refuses as well. */}
+          {!conn.loading && !conn.error && (
+            <NewPreset onCreate={create} disabled={!conn.canWrite || identityStale || conn.busy === "new"} />
+          )}
         </div>
 
         {conn.loading ? <LoadingBody /> : conn.error ? (
@@ -634,7 +650,7 @@ export function CalendarsView() {
             <Btn kind="ghost" size="s" onClick={conn.refresh}><RefreshCw aria-hidden /> Retry</Btn>
           </Notice>
         ) : conn.empty ? (
-          <EmptyBody canWrite={conn.canWrite} onCreate={create} busy={conn.busy === "new"} />
+          <EmptyBody canWrite={conn.canWrite} onCreate={create} disabled={conn.busy === "new" || identityStale} />
         ) : (
           <div className="cc-presets" role="tablist" aria-label="Booking presets">
             {conn.calendars.map((c) => (
@@ -766,7 +782,9 @@ function LoadingBody() {
   );
 }
 
-function EmptyBody({ canWrite, onCreate, busy }: { canWrite: boolean; onCreate: (title: string) => Promise<boolean>; busy: boolean }) {
+// `disabled`, not `busy`: it carries the in-flight create AND the window where
+// the route has moved but the loaded tenant has not, which is not busyness.
+function EmptyBody({ canWrite, onCreate, disabled }: { canWrite: boolean; onCreate: (title: string) => Promise<boolean>; disabled: boolean }) {
   return (
     <div className="cc-empty">
       <CalendarDays aria-hidden />
@@ -778,7 +796,7 @@ function EmptyBody({ canWrite, onCreate, busy }: { canWrite: boolean; onCreate: 
       </p>
       {/* The copy above promises creation, so the control that does it belongs
           here rather than only in the header the reader has scrolled past. */}
-      {canWrite && <div className="cc-empty-act"><NewPreset onCreate={onCreate} disabled={busy} /></div>}
+      {canWrite && <div className="cc-empty-act"><NewPreset onCreate={onCreate} disabled={disabled} /></div>}
     </div>
   );
 }
