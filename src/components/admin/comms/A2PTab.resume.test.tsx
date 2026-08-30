@@ -46,6 +46,7 @@ const selectState = vi.hoisted(() => ({
   legal: { legal_business_name: "Proof Fixture LLC" } as unknown,
   invoked: [] as { fn: string; body: Record<string, unknown> }[],
   filters: [] as { table: string; col: string; val: unknown }[],
+  tenant: { data: "tenant-A" as string | null, error: null as { message: string } | null },
 }));
 
 // Keyed by TABLE, and it RECORDS the tenant filter each read applied. A single shared mock
@@ -54,7 +55,7 @@ const selectState = vi.hoisted(() => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) =>
-      fn === "current_user_tenant_id" ? { data: "tenant-A", error: null } : { data: null, error: null }),
+      fn === "current_user_tenant_id" ? selectState.tenant : { data: null, error: null }),
     from: (table: string) => {
       const row = () => (table === "tenant_legal_profile" ? selectState.legal : selectState.row);
       const result = async () => ({ data: row(), error: null });
@@ -95,6 +96,7 @@ describe("A2P — coming back to a prepared registration", () => {
     selectState.legal = { legal_business_name: "Proof Fixture LLC" };
     selectState.invoked = [];
     selectState.filters = [];
+    selectState.tenant = { data: "tenant-A", error: null };
   });
 
   it("re-opens the saved copy for editing instead of stranding it", async () => {
@@ -137,6 +139,27 @@ describe("A2P — coming back to a prepared registration", () => {
       );
       expect(scoped, `${table} must be read scoped to the caller's own tenant`).toBeTruthy();
     }
+    await cleanup();
+  });
+
+  it("does not report 'not registered' about an account it could not identify", async () => {
+    // The commit that added the tenant scoping also added a comment promising that an
+    // unresolvable tenant would "say nothing rather than render a confident negative".
+    // The code set reg=null and returned, and the render branches !reg into the
+    // "Not registered yet" empty state plus the whole onboarding form — the confident
+    // negative, verbatim. The RPC's error was destructured away with no log, which is the
+    // silent swallow §32 exists to forbid.
+    //
+    // The harm is concrete: a transient resolver failure tells a coach their registration
+    // does not exist and invites them into a re-draft, which is a PAID generation that
+    // overwrites reviewed compliance copy.
+    selectState.tenant = { data: null, error: { message: "resolver unavailable" } };
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+
+    expect(text).not.toContain("Not registered yet");
+    expect(text).not.toContain("Draft with Paige");
+    expect(text).toContain("identify your workspace");
     await cleanup();
   });
 

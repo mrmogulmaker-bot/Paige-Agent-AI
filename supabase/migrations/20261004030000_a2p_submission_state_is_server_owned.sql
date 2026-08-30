@@ -74,6 +74,11 @@ begin
   -- the EFFECTIVE role: 'authenticated'/'anon' for a direct client, the function owner
   -- inside a SECURITY DEFINER seam, 'service_role' for the service key. That is precisely
   -- the distinction this guard needs to make.
+  -- GROUNDED, and worth re-checking if Supabase ever changes its roles: on this project the
+  -- table is owned by `postgres`, the save seam is SECURITY DEFINER owned by `postgres`, and
+  -- deploy-migrations.yml connects as `postgres`. PostgREST arrives as `authenticated`/`anon`
+  -- via `authenticator`. If the deploy or owner role ever changes, this list must change with
+  -- it — the failure would be loud (every legitimate save 42501s), not silent.
   v_governed := current_user in ('postgres', 'supabase_admin', 'service_role');
   if v_governed then
     return new;
@@ -139,7 +144,14 @@ revoke all on function public.a2p_registration_guard_submission_state() from pub
 -- sessions by independent review.
 --
 -- A transaction-scoped advisory lock keyed on the tenant closes the gap: it exists
--- whether or not a row does, so the read below is authoritative in both cases.
+-- whether or not a row does, so the read below is authoritative in both cases. The key is
+-- prefix-namespaced ('a2p_registration:'), sharing the single-key advisory space with the
+-- other prefixed users in this schema; a same-tenant collision is impossible and a
+-- cross-namespace one would cost only serialisation, never correctness. No deadlock: the
+-- advisory lock is always taken BEFORE the row lock, and the only other row-lock takers
+-- (direct PostgREST writes) never request the advisory lock, so the wait graph is acyclic.
+-- It relies on READ COMMITTED giving the post-lock SELECT a fresh snapshot, which is what
+-- PostgREST uses; under REPEATABLE READ the snapshot would predate the winner's commit.
 -- Everything else in this function is carried over unchanged from 20261004020000,
 -- except campaign_description, which becomes preserve-only (see below).
 -- =============================================================================

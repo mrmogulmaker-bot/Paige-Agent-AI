@@ -216,6 +216,10 @@ export function A2PTab() {
   // A refusal the owner can ACT on is different from one they cannot. The draft
   // seam returns a stable code; LEGAL_PROFILE_REQUIRED names a missing business
   // record and has a real place to go and fix it.
+  // Three states, not two. "No registration" and "we could not identify this account"
+  // look identical to a reader and mean opposite things — one invites a re-draft, the
+  // other means we should not be saying anything about the account at all.
+  const [regUnidentified, setRegUnidentified] = useState(false);
   const [needsLegalProfile, setNeedsLegalProfile] = useState(false);
   // Who can actually FIX a missing legal business name. /admin/setup/legal is AdminOnly,
   // while the route that mounts this tab has no gate and comms-a2p-draft admits `coach` —
@@ -226,29 +230,53 @@ export function A2PTab() {
 
   const loadReg = useCallback(async () => {
     setRegLoading(true);
-    // BOTH reads below are scoped to the caller's own tenant EXPLICITLY. RLS alone is not
-    // enough: its SELECT predicate admits every tenant a platform owner can see and every
-    // tenant a multi-tenant member belongs to, and neither read carries an ORDER BY — so
-    // `.limit(1)` returns whichever row the planner happens to produce.
+    // BOTH reads below are scoped to the caller's own tenant EXPLICITLY, and the two tables
+    // over-admit for DIFFERENT reasons — an earlier version of this comment flattened them
+    // into one claim that was only true of the second:
+    //   · tenant_a2p_registrations  — `is_platform_owner() OR (tenant_id = current_user_tenant_id()
+    //     AND admin/coach)`. The tenant clause resolves to exactly one uuid, so the only
+    //     over-admitting branch is the platform owner.
+    //   · tenant_legal_profile      — `EXISTS (tenant_members WHERE user_id = auth.uid()) OR
+    //     is_platform_owner()`. That admits EVERY tenant the caller belongs to, so an
+    //     ordinary multi-tenant coach is exposed here too.
+    // Neither read carries an ORDER BY, so `.limit(1)` returns whichever row the planner
+    // happens to produce.
     //
     // That was a knowingly-accepted display quirk until this surface started REHYDRATING.
     // Now the row becomes an editable, savable draft and the legal name is posted to a
     // carrier registration whose tenant is derived server-side — so an arbitrary row means
     // another business's reviewed copy in this editor, and a filing under another
     // business's legal identity. Same shape as the #588 nondeterministic-resolver defect,
-    // in a compliance field. The repo's own precedent is
-    // src/solo/data/useCalendarConnections.ts: resolve the tenant, then filter on it.
+    // in a compliance field.
+    //
+    // The tenant comes from the `current_user_tenant_id` RPC rather than useTenantContext's
+    // `activeTenantId`, which is what useCalendarConnections.ts uses. That is deliberate,
+    // not an oversight: this surface WRITES through a seam that resolves the tenant with the
+    // same RPC server-side, so reading through anything else would let the row on screen and
+    // the row being written disagree. The cost is one round-trip per load and an error path
+    // that must be handled — see the unresolved branch below.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const untyped = supabase as any;
-    const { data: resolvedTenant } = await untyped.rpc("current_user_tenant_id");
+    const { data: resolvedTenant, error: tenantErr } = await untyped.rpc("current_user_tenant_id");
     const tenantId = typeof resolvedTenant === "string" ? resolvedTenant : null;
     if (!tenantId) {
-      // No resolvable tenant is not "no registration" — say nothing rather than render a
-      // confident negative about an account we could not identify.
+      // An earlier revision set reg=null here under a comment claiming it would "say nothing
+      // rather than render a confident negative". It rendered exactly that negative: !reg
+      // branches to "Not registered yet" plus the whole onboarding form. A transient
+      // resolver failure — an RPC error, a session-refresh race, an unset
+      // profiles.active_tenant_id — therefore told a coach their registration did not exist
+      // and invited them into a re-draft, which is a PAID generation that overwrites
+      // reviewed compliance copy.
+      //
+      // The error is LOGGED rather than destructured away (§32: a degrade that swallows its
+      // cause turns every failure into the same invisible symptom).
+      console.error("A2PTab: could not resolve the caller's tenant:", tenantErr?.message ?? "no tenant returned");
       setReg(null);
+      setRegUnidentified(true);
       setRegLoading(false);
       return;
     }
+    setRegUnidentified(false);
     const { data } = await untyped
       .from("tenant_a2p_registrations")
       .select(
@@ -450,6 +478,12 @@ export function A2PTab() {
             <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
             <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
           </div>
+        ) : regUnidentified ? (
+          <EmptyState
+            icon={ShieldCheck}
+            title="We couldn&rsquo;t identify your workspace"
+            description="Nothing is wrong with your registration — we just couldn't tell which account this is, so we're not going to guess. Reload the page, or switch back into the workspace you want, and this will fill in."
+          />
         ) : !reg ? (
           <EmptyState
             icon={ShieldCheck}
@@ -512,7 +546,12 @@ export function A2PTab() {
         )}
       </SectionCard>
 
-      {/* ── The registration flow — short form → Paige drafts → review → approve. ── */}
+      {/* ── The registration flow — short form → Paige drafts → review → approve. ──
+          Hidden entirely when the workspace could not be identified: "Draft with Paige" is a
+          PAID frontier generation that writes to whichever tenant the server resolves, so
+          offering it while we do not know which account this is would be inviting a spend
+          against an unknown target. ── */}
+      {!regUnidentified && (
       <SectionCard
         title={reg ? "Update your registration" : "Register with Paige"}
         description="Tell Paige your business name and what you text clients about. She writes the carrier copy; you approve it — no portals, no compliance forms."
@@ -726,6 +765,7 @@ export function A2PTab() {
           )}
         </div>
       </SectionCard>
+      )}
     </div>
   );
 }
