@@ -12,12 +12,32 @@
  * control that must fail.
  */
 import assert from "node:assert/strict";
-import {
-  authenticateTwilioWebhook,
-  stampedWebhookUrls,
-  inboundSecretForNumber,
-} from "../supabase/functions/_shared/twilio-webhook-auth.ts";
-import { computeTwilioSignature } from "../supabase/functions/_shared/twilio.ts";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
+
+// The module under test is Deno-flavoured TypeScript with `.ts` import
+// specifiers. It is BUNDLED here rather than run through
+// `--experimental-strip-types`, because that flag needs Node 22.6+ and CI runs
+// Node 20 — a mismatch that made this suite pass locally and fail the moment it
+// was wired into CI. Bundling exercises the REAL module on any supported Node.
+const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "comms-webhook-auth-"));
+const outFile = path.join(outDir, "mod.mjs");
+await build({
+  entryPoints: ["supabase/functions/_shared/twilio-webhook-auth.ts"],
+  outfile: outFile,
+  bundle: true,
+  format: "esm",
+  platform: "neutral",
+  target: "es2022",
+  // The shared twilio module is pulled in for `validateTwilioSignature`; its
+  // remote https imports are not needed by anything this suite touches.
+  external: ["https://*"],
+});
+const mod = await import(pathToFileURL(outFile).href);
+const { authenticateTwilioWebhook, stampedWebhookUrls, inboundSecretForNumber, computeTwilioSignature } = mod;
 
 const SECRET = "a".repeat(64);
 const req = (url, headers = {}) => new Request(url, { method: "POST", headers });

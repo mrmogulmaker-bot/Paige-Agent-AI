@@ -26,7 +26,11 @@
  * in `_shared/twilio.ts` is the one home, and both handlers now come here
  * instead of carrying their own copy.
  */
-import { validateTwilioSignature } from "./twilio.ts";
+import { computeTwilioSignature, validateTwilioSignature } from "./twilio.ts";
+
+/** Re-exported so the smoke test can build a REAL signature and prove the
+ *  signature path ACCEPTS one — a suite that only proves refusals proves half. */
+export { computeTwilioSignature };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const Deno: { env: { get(k: string): string | undefined } } | undefined;
