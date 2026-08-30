@@ -732,6 +732,7 @@ describe("creation during the identity window", () => {
         <>
           <CalendarsView />
           <button type="button" data-move onClick={() => navigate(THERE)}>move</button>
+          <button type="button" data-back onClick={() => navigate(HERE)}>back</button>
         </>
       );
     }
@@ -885,6 +886,7 @@ describe("identity safety — no callback may act or report for a departed accou
         <>
           <CalendarsView />
           <button type="button" data-move onClick={() => navigate(THERE)}>move</button>
+          <button type="button" data-back onClick={() => navigate(HERE)}>back</button>
         </>
       );
     }
@@ -904,6 +906,10 @@ describe("identity safety — no callback may act or report for a departed accou
     container.querySelector<HTMLButtonElement>("button[data-move]")?.click();
   });
 
+  const back = () => act(() => {
+    container.querySelector<HTMLButtonElement>("button[data-back]")?.click();
+  });
+
   /** The other account's data finally arrives. */
   const settleTenant = (over: Record<string, unknown>) => {
     state.value = seam({ tenantId: "t2", accountNumber: 2000000, ...over });
@@ -911,6 +917,53 @@ describe("identity safety — no callback may act or report for a departed accou
 
   const click = (re: RegExp) => act(() => {
     [...container.querySelectorAll("button")].find((b) => re.test(b.textContent ?? ""))?.click();
+  });
+
+  describe("a notice that ALREADY landed", () => {
+    /**
+     * The other half of the class, and the one the guards structurally cannot
+     * reach: they refuse to SET a notice after a move, but this component stays
+     * mounted across an account change, so a message that landed BEFORE the move
+     * is simply still on screen — reporting A's outcome under B's route.
+     */
+    async function copyUnderA() {
+      const write = deferred<void>();
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true, value: { writeText: vi.fn(() => write.promise) },
+      });
+      mountRouted();
+      click(/^\s*Copy\s*$/);
+      await act(async () => { write.settle(); });
+    }
+
+    it("is on screen for the account that produced it", async () => {
+      await copyUnderA();
+      expect(text()).toMatch(/Booking link copied/i);
+    });
+
+    it("is GONE the moment the route moves to another account", async () => {
+      await copyUnderA();
+      expect(text()).toMatch(/Booking link copied/i);
+      move();
+      expect(text()).not.toMatch(/Booking link copied/i);
+    });
+
+    it("stays gone once the other account's rows have settled", async () => {
+      await copyUnderA();
+      move();
+      settleTenant({});
+      expect(text()).not.toMatch(/Booking link copied/i);
+    });
+
+    it("comes BACK when you return to the account it was about", async () => {
+      // Not cleared on a timer — withheld while it is about somewhere else.
+      // Discarding it would lose a real outcome the person may not have read.
+      await copyUnderA();
+      move();
+      expect(text()).not.toMatch(/Booking link copied/i);
+      back();
+      expect(text()).toMatch(/Booking link copied/i);
+    });
   });
 
   describe("copy link", () => {

@@ -445,8 +445,32 @@ export function CalendarsView() {
   const [slugInput, setSlugInput] = useState("");
   const [open, setOpen] = useState<Partial<Record<AreaKey, boolean>>>({ details: true });
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "warn" | "bad" | "info"; text: string } | null>(null);
+  /**
+   * Feedback about a specific account, stamped with the account it is about.
+   *
+   * This component stays mounted across an account change — `SoloSettings` does
+   * not remount it and nothing here resets state on identity — so a "Saved."
+   * from A would otherwise still be on screen under B's route, reporting one
+   * account's outcome as another's. The guards on the callbacks stop a notice
+   * being SET after a move; they cannot retract one set before it.
+   *
+   * The stamp is the same `AccountToken` the callbacks capture, and it is read
+   * back through the same `stillCurrent` rule at render, so the answer is
+   * derived rather than cleared on a timer. That preserves a notice FOR the
+   * account that produced it — come back to A and A's message is still there —
+   * while B never sees it.
+   */
+  const [notice, setNotice] = useState<
+    { tone: "warn" | "bad" | "info"; text: string; at: AccountToken } | null
+  >(null);
   const areaRefs = useRef<Partial<Record<AreaKey, HTMLDivElement | null>>>({});
+
+  /** Raise a notice against the account that is current right now. */
+  const note = useCallback(
+    (tone: "warn" | "bad" | "info", text: string) =>
+      setNotice({ tone, text, at: identity.capture() }),
+    [identity],
+  );
 
   const selected = useMemo(
     () => conn.calendars.find((c) => c.id === selectedId) ?? conn.calendars[0] ?? null,
@@ -515,7 +539,7 @@ export function CalendarsView() {
   const save = useCallback(async () => {
     if (!selected || !patch) return;
     const title = String(patch.title ?? "").trim();
-    if (!title) { setNotice({ tone: "warn", text: "Give this calendar a name before saving." }); return; }
+    if (!title) { note("warn", "Give this calendar a name before saving."); return; }
     setSaving(true);
     const desired = slugify(slugInput);
     const body = desired && desired !== selected.slug ? { ...patch, slug: desired } : patch;
@@ -545,14 +569,14 @@ export function CalendarsView() {
      * about anything on their screen.
      */
     if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
-    if (!result.ok) { setNotice({ tone: "bad", text: result.message }); return; }
+    if (!result.ok) { note("bad", result.message); return; }
     // From the row that was actually stored, not the draft that was sent. The
     // patch clamps and drops — an unnamed question, an unusable date override —
     // and leaving those on screen would have the surface disagreeing with the
     // database about what exists, moments after saying the save worked.
     hydrate(result.row);
-    setNotice({ tone: "info", text: "Saved. The public page now uses these settings." });
-  }, [selected, patch, slugInput, conn, hydrate, identity]);
+    note("info", "Saved. The public page now uses these settings.");
+  }, [selected, patch, slugInput, conn, hydrate, identity, note]);
 
   const jumpTo = useCallback((key: AreaKey) => {
     setOpen((o) => ({ ...o, [key]: true }));
@@ -580,10 +604,7 @@ export function CalendarsView() {
     // and the hydration effect would replace the current draft with it. Guarding
     // the preset cards left this second route to the same silent loss.
     if (dirtyRef.current) {
-      setNotice({
-        tone: "warn",
-        text: "Save or discard your changes before creating another preset — they would be lost otherwise.",
-      });
+      note("warn", "Save or discard your changes before creating another preset — they would be lost otherwise.");
       return false;
     }
     // Refused BEFORE anything is written, because the check after the await
@@ -598,7 +619,7 @@ export function CalendarsView() {
     const token = identity.capture();
     const r = await conn.createCalendar(title);
     if (!identity.stillCurrent(token)) return false;
-    if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return false; }
+    if (!r.ok) { note("bad", r.message); return false; }
     // Select what was just made and open its Details, so naming it lands you
     // straight in the thing you now have to configure.
     setSelectedId(r.row.id);
@@ -607,11 +628,10 @@ export function CalendarsView() {
     // the calendar is created as a draft and flipped live once its host exists,
     // and if that flip did not take, calling it live here would be a fabricated
     // status on the one screen that is supposed to report the truth.
-    setNotice(r.row.enabled
-      ? { tone: "info", text: `“${r.row.title}” is live — its booking link is ready to share.` }
-      : { tone: "warn", text: `“${r.row.title}” was created as a draft. Switch it to Live when you are ready to take bookings.` });
+    if (r.row.enabled) note("info", `“${r.row.title}” is live — its booking link is ready to share.`);
+    else note("warn", `“${r.row.title}” was created as a draft. Switch it to Live when you are ready to take bookings.`);
     return true;
-  }, [conn, identity]);
+  }, [conn, identity, note]);
 
   /**
    * Switching presets is a navigation, and it used to be a silent delete.
@@ -626,15 +646,12 @@ export function CalendarsView() {
   const selectPreset = useCallback((id: string) => {
     if (id === selected?.id) return;
     if (dirtyRef.current) {
-      setNotice({
-        tone: "warn",
-        text: "Save or discard your changes before switching to another preset — they would be lost otherwise.",
-      });
+      note("warn", "Save or discard your changes before switching to another preset — they would be lost otherwise.");
       return;
     }
     setSelectedId(id);
     setNotice(null);
-  }, [selected?.id]);
+  }, [selected?.id, note]);
 
   const copyLink = useCallback(async (slug: string) => {
     // Refused before the write, not after it. The harm here is not a misplaced
@@ -647,13 +664,13 @@ export function CalendarsView() {
       await navigator.clipboard.writeText(bookingUrl(slug));
     } catch {
       if (identity.stillCurrent(token)) {
-        setNotice({ tone: "warn", text: "Your browser blocked the copy — select the link and copy it manually." });
+        note("warn", "Your browser blocked the copy — select the link and copy it manually.");
       }
       return;
     }
     if (!identity.stillCurrent(token)) return;
-    setNotice({ tone: "info", text: "Booking link copied." });
-  }, [identity]);
+    note("info", "Booking link copied.");
+  }, [identity, note]);
 
   /**
    * Flipping a preset between Live and Draft.
@@ -669,8 +686,8 @@ export function CalendarsView() {
     const token = identity.capture();
     const r = await conn.setEnabled(selected.id, v);
     if (!identity.stillCurrent(token)) return;
-    if (!r.ok) setNotice({ tone: "bad", text: r.message });
-  }, [selected, conn, identity]);
+    if (!r.ok) note("bad", r.message);
+  }, [selected, conn, identity, note]);
 
   const ro = !conn.canWrite || saving;
   const hosts = selected ? conn.hosts[selected.id] ?? [] : [];
@@ -766,7 +783,7 @@ export function CalendarsView() {
           fails to create there is no selection yet, so a notice rendered in
           there would be mounted nowhere — silently swallowing the error in the
           exact empty-state flow this control was added for. */}
-      {notice && (
+      {notice && identity.stillCurrent(notice.at) && (
         <Notice tone={notice.tone} icon={notice.tone === "bad" ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
           {notice.text}
         </Notice>
