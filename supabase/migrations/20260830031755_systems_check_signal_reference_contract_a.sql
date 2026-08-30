@@ -37,7 +37,6 @@ CREATE OR REPLACE FUNCTION public.resolve_systems_check_signal_reference(
 )
 RETURNS jsonb
 LANGUAGE plpgsql
-STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, extensions
 AS $$
