@@ -78,6 +78,48 @@ function button(name: string) {
 }
 
 describe("Solo Systems Check workspace", () => {
+  it("renders the approved compact, data-first Operating Signal from persisted findings", () => {
+    render();
+
+    const heading = host.querySelector("h1");
+    expect(heading?.textContent).toBe("Systems Check");
+    expect(host.querySelector('[data-operating-signal="true"]')).not.toBeNull();
+    expect(host.querySelector('svg[role="img"][aria-labelledby="operating-signal-title operating-signal-description"]')).not.toBeNull();
+    expect(host.textContent).toContain("Evidence moving through the business");
+    expect(host.textContent).toContain("1 confirmed");
+    expect(host.textContent).toContain("1 needs attention");
+    expect(host.textContent).toContain("0 unavailable");
+    expect(host.textContent).toContain("Emerging signals are unavailable from this persisted run");
+    expect(host.textContent).toContain("Open PAIGE for the fuller rundown");
+
+    const css = readFileSync(resolve(process.cwd(), "src/solo/solo-systems-check-workspace.css"), "utf8");
+    expect(css).toContain(".sc-heading h1{font:700 19px/1.2");
+    expect(css).toContain("@media(prefers-reduced-motion:reduce)");
+    expect(css).toContain(".sc-signal-stage[data-state=\"scanning\"]");
+  });
+
+  it("filters the evidence trail by truthful result state", () => {
+    render();
+
+    act(() => button("Needs attention")?.click());
+    expect(host.querySelector(".sc-findings")?.textContent).toContain("Payment connection needs attention");
+    expect(host.querySelector(".sc-findings")?.textContent).not.toContain("Client records are available");
+
+    act(() => button("Confirmed")?.click());
+    expect(host.querySelector(".sc-findings")?.textContent).toContain("Client records are available");
+    expect(host.querySelector(".sc-findings")?.textContent).not.toContain("Payment connection needs attention");
+  });
+
+  it("animates only the honest read state and does not manufacture category progress", () => {
+    harness.systems.mockReturnValue({ ...baseSystems, scanPending: true });
+    render();
+
+    expect(host.querySelector('.sc-signal-stage[data-state="scanning"]')).not.toBeNull();
+    expect(host.textContent).toContain("Reading available systems");
+    expect(host.textContent).toContain("no category progress is reported");
+    expect(host.textContent).not.toMatch(/\d+%/);
+  });
+
   it("combines only grounded operating signals and refreshes existing reads without claiming a rescan", () => {
     render();
     expect(host.textContent).toContain("Systems Check");
@@ -97,21 +139,23 @@ describe("Solo Systems Check workspace", () => {
     expect(refreshSystems).toHaveBeenCalledTimes(1);
   });
 
-  it("filters by grounded domains and contains finding detail in a restorable drawer/full-panel flow", () => {
+  it("contains finding detail in a restorable drawer/full-panel flow", () => {
     render();
     const trigger = button("Payment connection needs attention")!;
     act(() => trigger.focus());
     act(() => trigger.click());
     expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Finding details");
     expect(host.textContent).toContain("Stripe");
+    expect(host.textContent).toContain("Evidence and provenance");
+    expect(host.textContent).toContain("Persisted finding finding-1 from Systems Check run run-1");
+    expect(host.textContent).toContain("Recommended next step");
+    expect(host.textContent).toContain("No owner decision is recorded");
+    expect(host.textContent).toContain("No durable outcome is recorded on the tenant rail");
     act(() => button("Expand")?.click());
     expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Expanded finding details");
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
     expect(host.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
-
-    act(() => button("Payments")?.click());
-    expect(host.textContent).not.toContain("Client records are available");
   });
 
   it("keeps Ask First explicitly PARTIAL and only opens the existing PAIGE workspace", () => {
@@ -144,7 +188,7 @@ describe("Solo Systems Check workspace", () => {
       findings: [],
     });
     render();
-    expect(host.textContent).toContain("Coverage is incomplete");
+    expect(host.textContent).toContain("The picture is incomplete");
     expect(host.textContent).toContain("Overall health cannot be inferred");
     expect(host.textContent).not.toContain("All available checks are clear");
   });
