@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Blocks, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Blocks, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -177,6 +177,22 @@ export function SoloIntegrationsView() {
   const mcpProvider: ProviderIdentity = isZapierMcpHost(status.mcp?.server_url_host) ? "zapier" : "mcp";
   const automationsHref = useSoloDestination("automations");
   const marketplaceHref = useSoloDestination("marketplace");
+  const catalogueRef = useRef<HTMLDivElement>(null);
+  const [catalogueScrollable, setCatalogueScrollable] = useState(false);
+
+  useEffect(() => {
+    const catalogue = catalogueRef.current;
+    if (!catalogue) return;
+    const measure = () => setCatalogueScrollable(catalogue.scrollHeight > catalogue.clientHeight + 1);
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(catalogue);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [status.loading, status.error, status.n8n, status.mcp]);
 
   return <div className="ss-integrations">
     <section className="ss-integrations-intro" aria-labelledby="ss-integrations-title">
@@ -188,9 +204,12 @@ export function SoloIntegrationsView() {
     <section className="ss-catalogue" aria-labelledby="ss-catalogue-title">
       <div className="ss-catalogue-heading">
         <div><span>Browse by provider</span><h2 id="ss-catalogue-title">Integration catalogue</h2></div>
-        <p>Provider color identifies the tool—not readiness or permission.</p>
+        <div className="ss-catalogue-heading-meta">
+          <p>Provider color identifies the tool—not readiness or permission.</p>
+          <span className="ss-catalogue-scroll-hint" id="ss-catalogue-scroll-hint"><ChevronsDown aria-hidden />{catalogueScrollable ? "Scroll to browse" : "All integrations visible"}</span>
+        </div>
       </div>
-      <div className="ss-catalogue-scroll" role="region" aria-label="Integration catalogue" tabIndex={0}>
+      <div ref={catalogueRef} className="ss-catalogue-scroll" role="region" aria-label="Integration catalogue" aria-describedby="ss-catalogue-scroll-hint" data-scrollable={catalogueScrollable ? "true" : "false"} tabIndex={0}>
         {status.loading ? <div className="ss-state" role="status"><RefreshCw className="ss-spin" />Clearing and resolving this account…</div>
           : status.error ? <div className="ss-state" role="alert"><TriangleAlert /><span><strong>Couldn’t read integration status</strong>No connection state is being claimed for this account.</span><button type="button" onClick={status.retry}>Retry</button></div>
           : <div className="ss-integration-grid">

@@ -171,5 +171,24 @@ describe("Solo Settings Integrations truth boundary", () => {
     expect(catalogue?.textContent).toContain("Setup handoff unavailable");
     await act(async () => root.unmount());
   });
+
+  it("exposes a visible browsing cue only when the catalogue overflows", async () => {
+    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+
+    const catalogue = host.querySelector<HTMLElement>('[aria-label="Integration catalogue"]');
+    expect(catalogue?.getAttribute("aria-describedby")).toBe("ss-catalogue-scroll-hint");
+    expect(host.querySelector(".ss-catalogue-scroll-hint")?.textContent).toContain("All integrations visible");
+
+    Object.defineProperty(catalogue, "clientHeight", { configurable: true, value: 420 });
+    Object.defineProperty(catalogue, "scrollHeight", { configurable: true, value: 780 });
+    await act(async () => window.dispatchEvent(new Event("resize")));
+
+    expect(catalogue?.dataset.scrollable).toBe("true");
+    expect(host.querySelector(".ss-catalogue-scroll-hint")?.textContent).toContain("Scroll to browse");
+    await act(async () => root.unmount());
+  });
 });
 
