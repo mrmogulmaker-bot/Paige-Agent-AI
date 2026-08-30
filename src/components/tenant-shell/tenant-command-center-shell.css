@@ -20,6 +20,7 @@
 [data-tenant-shell][data-nav="compact"] { --tcs-rail: 72px; }
 [data-tenant-shell][data-paige="closed"] { --tcs-paige: 0px; }
 [data-tenant-shell][data-reduced-motion="true"] { transition: none; }
+[data-tenant-shell][data-reduced-motion="true"] .tcs-paige { animation: none; }
 [data-paige-popout] { display: block; background: var(--pg-spine); }
 
 [data-tenant-shell] *, [data-tenant-shell] *::before, [data-tenant-shell] *::after { box-sizing: border-box; }
@@ -263,6 +264,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tcs-paige { animation: none !important; }
   [data-tenant-shell], [data-tenant-shell] *, [data-tenant-shell] *::before, [data-tenant-shell] *::after {
     scroll-behavior: auto !important;
     animation-duration: .01ms !important;

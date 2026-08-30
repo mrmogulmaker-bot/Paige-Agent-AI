@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   TENANT_SHELL_DESTINATIONS,
@@ -8,6 +10,12 @@ import {
 } from "./tenantShellRoutes";
 
 describe("tenant Command Center shell routing", () => {
+  it("removes PAIGE materialization transforms when reduced motion is active", () => {
+    const css = readFileSync(resolve("src/components/tenant-shell/tenant-command-center-shell.css"), "utf8");
+
+    expect(css).toMatch(/\[data-tenant-shell\]\[data-reduced-motion="true"\] \.tcs-paige\s*\{[^}]*animation:\s*none/);
+  });
+
   it("exposes the ruled five tenant destinations and keeps Calendar under Clients or Relationships", () => {
     expect(TENANT_SHELL_DESTINATIONS.map(({ label }) => label)).toEqual([
       "Command Center",

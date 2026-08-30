@@ -1,5 +1,7 @@
 .trc-workspace { display: flex; width: 100%; min-width: 0; min-height: 100%; flex-direction: column; color: var(--pg-ink); background: var(--pg-workspace); }
 .trc-workspace--people { height: 100%; min-height: 0; overflow: hidden; }
+.trc-workspace--conversations { height: 100%; min-height: 0; overflow: hidden; }
+.trc-workspace--conversations .trc-conversations > header { display: none; }
 .trc-workspace--calendar { height: 100%; min-height: 0; overflow: hidden; }
 .trc-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 26px 30px 20px; border-bottom: 1px solid var(--pg-line-soft); }
 .trc-heading > div { min-width: 0; max-width: 760px; }
@@ -10,12 +12,14 @@
 .trc-proof[data-tone="live"] { color: var(--pg-positive); }.trc-proof[data-tone="unavailable"] { color: var(--pg-faint); }
 .trc-tabs { display: flex; min-height: 49px; gap: 26px; overflow-x: auto; padding: 0 30px; border-bottom: 1px solid var(--pg-line); background: var(--pg-spine); }
 .trc-tabs--people { height: 44px; min-height: 44px; padding-inline: 18px; }
+.trc-tabs--conversations { height: 44px; min-height: 44px; padding-inline: 18px; }
 .trc-tabs button { position: relative; min-width: max-content; border: 0; color: var(--pg-muted); background: transparent; cursor: pointer; }
 .trc-tabs button[aria-selected="true"] { color: var(--pg-ink); }
 .trc-tabs button[aria-selected="true"]::after { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; content: ""; background: var(--pg-gold-fill); }
 .trc-panel { min-width: 0; flex: 1; padding: 24px 30px 34px; outline: none; }
 .trc-panel:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: -2px; }
 .trc-panel--people { min-height: 0; padding: 12px 18px 16px; overflow: hidden; }
+.trc-panel--conversations { min-height: 0; padding: 10px 12px 12px; overflow: hidden; }
 .trc-panel--calendar { min-height: 0; padding: 0; overflow: hidden; }
 .trc-card, .trc-state, .trc-portal { border: 1px solid var(--pg-line); border-radius: var(--pg-r-panel); background: var(--pg-surface); box-shadow: var(--pg-e1); }
 .trc-state { display: grid; min-height: 260px; place-content: center; justify-items: center; padding: 36px; text-align: center; }
