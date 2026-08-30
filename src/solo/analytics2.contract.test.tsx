@@ -6,21 +6,46 @@ const analyticsSource = readFileSync(resolve(process.cwd(), "src/solo/analytics2
 const appSource = readFileSync(resolve(process.cwd(), "src/solo/SoloApp.tsx"), "utf8");
 const analyticsCss = readFileSync(resolve(process.cwd(), "src/solo/analytics2.css"), "utf8");
 
-describe("Solo Analytics evidence-first contract", () => {
-  it("retires fixture metrics, page-local PAIGE, benchmarks, and simulated actions", () => {
-    expect(analyticsSource).not.toContain("./analytics-data");
-    expect(analyticsSource).not.toContain("AskPop");
-    expect(analyticsSource).not.toContain("AN_ANS");
-    expect(analyticsSource).not.toContain("setTimeout");
-    expect(analyticsSource).not.toContain("Approve fix");
-    expect(analyticsSource).not.toContain("You against comparable businesses");
-    expect(analyticsSource).not.toContain("Run the dunning sequence");
+describe("Solo Analytics approved workspace contract", () => {
+  it("keeps the production truth-recovery prohibitions", () => {
+    for (const forbidden of [
+      "./analytics-data",
+      "AskPop",
+      "AN_ANS",
+      "Approve fix",
+      "You against comparable businesses",
+      "Run the dunning sequence",
+      "fixture records",
+      "sample metric",
+      "benchmark",
+      "window.open",
+    ]) expect(analyticsSource.toLowerCase()).not.toContain(forbidden.toLowerCase());
+
+    expect(analyticsSource).not.toMatch(/\$[\d,.]+/);
   });
 
-  it("renders the approved unavailable evidence fields without querying the rail", () => {
+  it("ports the six approved operating workspaces and structural absence visuals", () => {
     for (const label of [
-      "UNAVAILABLE",
-      "NOT CONNECTED",
+      "Brief",
+      "Sales funnel",
+      "Revenue & profit",
+      "Retention",
+      "Acquisition",
+      "Decisions",
+    ]) expect(analyticsSource).toContain(label);
+
+    for (const structuralClass of [
+      "anr-evidence-wheel",
+      "anr-cylinder-funnel",
+      "anr-radial-stack",
+      "anr-cohort-grid",
+      "anr-source-map",
+      "anr-decision-frame",
+    ]) expect(analyticsSource).toContain(structuralClass);
+  });
+
+  it("keeps evidence state, range, source, freshness, and caveats attached", () => {
+    for (const label of [
       "Metric identity",
       "Definition",
       "Formula / version",
@@ -31,9 +56,7 @@ describe("Solo Analytics evidence-first contract", () => {
       "Exclusions",
       "Freshness / queried at",
       "Truth state",
-    ]) {
-      expect(analyticsSource).toContain(label);
-    }
+    ]) expect(analyticsSource).toContain(label);
 
     for (const forbiddenRailField of [
       "get_client_rail",
@@ -42,28 +65,31 @@ describe("Solo Analytics evidence-first contract", () => {
       "rail.title",
       "rail.summary",
       "rail.payload",
-    ]) {
-      expect(analyticsSource).not.toContain(forbiddenRailField);
-    }
+    ]) expect(analyticsSource).not.toContain(forbiddenRailField);
   });
 
-  it("reuses the resolved tenant context and the one shell-owned PAIGE workspace", () => {
+  it("removes the redundant visible title while retaining a semantic heading", () => {
+    expect(analyticsSource).toContain('<h1 id="analytics-title" className="anr-sr-only">Analytics</h1>');
+    expect(analyticsSource).not.toContain("anr-title-group");
+  });
+
+  it("keeps one shell-owned PAIGE workspace and no local analysis authority", () => {
     expect(appSource).toContain("analytics:<Analytics2 accountContext={accountContext} openPaige={openPaige}/>");
-    expect(analyticsSource).toContain("accountContext");
     expect(analyticsSource).toContain("openPaige");
     expect(analyticsSource).toContain("Open PAIGE workspace");
     expect(analyticsSource).not.toContain("SoloPaigeWorkspace");
+    expect(analyticsSource).not.toContain("evidenceRef");
+    expect(analyticsSource).not.toContain("setTimeout");
   });
 
-  it("owns its internal scroll, both responsive layouts, focus treatment, and reduced motion", () => {
-    expect(analyticsCss).toContain("container:solo-analytics/inline-size");
-    expect(analyticsCss).toContain("height:100%;min-height:0;overflow:auto");
+  it("gives Analytics one fixed-height shell and intentional internal scroll owners", () => {
+    expect(appSource).toContain("route==='analytics'");
+    expect(appSource).toContain("route==='market'");
+    expect(analyticsCss).toContain("height:100%;min-height:0;overflow:hidden");
+    expect(analyticsCss).toContain(".anr-pane-scroll");
+    expect(analyticsCss).toContain("overflow:auto");
     expect(analyticsCss).toContain("@container solo-analytics (max-width:900px)");
-    expect(analyticsCss).toContain("@container solo-analytics (max-width:650px)");
     expect(analyticsCss).toContain("@media(prefers-reduced-motion:reduce)");
-    expect(analyticsCss).toContain("outline:2px solid var(--ring)");
-    expect(analyticsCss).toContain("box-shadow:var(--pg-lift-1)");
-    expect(analyticsCss).toContain("box-shadow:var(--pg-e4)");
-    expect(analyticsCss).not.toMatch(/--pg-(?:shadow-sm|shadow-lg|bg|card)\b/);
+    expect(analyticsCss).toContain("outline:2px solid var(--pg-gold-core)");
   });
 });
