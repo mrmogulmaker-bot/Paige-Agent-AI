@@ -2,7 +2,8 @@
 
 **Owner-issued 2026-08-30.** A standing platform contract for the Calendar capability.
 It is **not** permission to add Calendar actions, and it did not alter the scope of the
-hotfix in flight when it was issued (PR #654). Where it names enforcement or outcome
+hotfix in flight when it was issued (PR #654, since merged as `c29fbd21` and verified
+live). Where it names enforcement or outcome
 contracts that do not exist yet, those are recorded here as **separately scoped
 follow-ups** — never quietly folded into a hotfix.
 
@@ -70,7 +71,7 @@ Recorded honestly, as of 2026-08-30. This is a status note, not a plan.
 | Step | State |
 |---|---|
 | **Human** | Availability, booking rules and calendar configuration are tenant-authored today. Per-capability autonomy levels are **not** yet expressible — see FU-1. |
-| **Read** | **Satisfied**, and hardened by PR #654: channel health is tracked separately from read freshness, a dead subscription surfaces as PARTIAL, and a reconnect does not resolve to LIVE until the catch-up read actually lands. A failed or hung catch-up never reads LIVE. |
+| **Read** | **Satisfied**, and hardened by #654 (`c29fbd21`, live). Channel health is tracked separately from read freshness, and a dead subscription surfaces as PARTIAL. A reconnect does not resolve to LIVE on its own: an outage gap is closed only by a read that was ISSUED under a live subscription while that same subscription is still live. So a failed catch-up, a hung one, and a read taken from the wrong side of the outage all leave the surface honestly stale. Retry rebuilds a dead subscription rather than re-reading into a dead end. |
 | **Brain** | Calendar derives conflicts and freshness from proven records only. No Paige-side Calendar inference layer exists yet. |
 | **Trust Compass** | **GAP.** No per-capability Calendar clamp exists — see FU-1. |
 | **Write** | Calendar writes today are **human-initiated** through existing tenant-isolated RPCs. There is **no Paige-initiated Calendar write path**, so the server-authorization contract above is unexercised rather than satisfied — see FU-2. |
