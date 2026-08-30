@@ -12,15 +12,25 @@ interface Props { accountContext?: TenantAccountContext | null; openPaige?: () =
 const label = (value: string | null | undefined) =>
   (value || "Other").replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
-const isAttention = (finding: SystemsCheckFinding) => finding.status !== "pass";
 const isUnavailable = (finding: SystemsCheckFinding) => finding.status === "skip" || finding.status === "error";
-type EvidenceFilter = "all" | "attention" | "confirmed" | "unavailable";
+const isResolved = (finding: SystemsCheckFinding) => Boolean(finding.resolved_at);
+type EvidenceFilter = "all" | "attention" | "confirmed" | "unavailable" | "resolved";
+type EvidenceState = Exclude<EvidenceFilter, "all">;
 
-const evidenceFilter = (finding: SystemsCheckFinding): Exclude<EvidenceFilter, "all"> => {
+const evidenceFilter = (finding: SystemsCheckFinding): EvidenceState => {
+  if (isResolved(finding)) return "resolved";
   if (finding.status === "pass") return "confirmed";
   if (isUnavailable(finding)) return "unavailable";
   return "attention";
 };
+
+const evidenceStateLabel = (state: EvidenceState) => state === "confirmed"
+  ? "Confirmed"
+  : state === "attention"
+    ? "Needs attention"
+    : state === "unavailable"
+      ? "Unavailable"
+      : "Resolved";
 
 const draftedFixText = (fix: SystemsCheckFinding["paige_drafted_fix"]): string | null => {
   if (!fix) return null;
@@ -97,9 +107,10 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
   const visibleFindings = filter === "all"
     ? currentFindings
     : currentFindings.filter((finding) => evidenceFilter(finding) === filter);
-  const unavailableFindings = currentFindings.filter(isUnavailable);
-  const attentionFindings = currentFindings.filter((finding) => isAttention(finding) && !isUnavailable(finding));
-  const confirmedFindings = currentFindings.filter((finding) => finding.status === "pass");
+  const unavailableFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "unavailable");
+  const attentionFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "attention");
+  const confirmedFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "confirmed");
+  const resolvedFindings = currentFindings.filter((finding) => evidenceFilter(finding) === "resolved");
   const domainGroups = useMemo(() => {
     const groups = new Map<string, SystemsCheckFinding[]>();
     currentFindings.forEach((finding) => {
@@ -107,17 +118,18 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
       groups.set(domain, [...(groups.get(domain) ?? []), finding]);
     });
     return [...groups.entries()]
-      .map(([domain, findings]) => ({
-        domain,
-        findings,
-        state: findings.some((finding) => isAttention(finding) && !isUnavailable(finding))
+      .map(([domain, findings]) => {
+        const state: EvidenceState = findings.some((finding) => evidenceFilter(finding) === "attention")
           ? "attention"
-          : findings.some(isUnavailable)
+          : findings.some((finding) => evidenceFilter(finding) === "unavailable")
             ? "unavailable"
-            : "confirmed",
-      }))
+            : findings.some((finding) => evidenceFilter(finding) === "confirmed")
+              ? "confirmed"
+              : "resolved";
+        return { domain, findings, state };
+      })
       .sort((a, b) => {
-        const rank = { attention: 0, unavailable: 1, confirmed: 2 };
+        const rank = { attention: 0, unavailable: 1, confirmed: 2, resolved: 3 };
         return rank[a.state] - rank[b.state] || a.domain.localeCompare(b.domain);
       });
   }, [currentFindings]);
@@ -243,12 +255,19 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
       ? { title: "Reading operating signals…", detail: "PAIGE is refreshing the available sources. No category progress is being inferred.", tone: "scanning", pill: "Reading" }
       : !systems.run
         ? { title: "No persisted Systems Check yet", detail: "A current result is unavailable. Nothing is being reported as healthy without evidence.", tone: "empty", pill: "No findings" }
+        : resolvedFindings.length > 0 && attentionFindings.length === 0 && unavailableFindings.length === 0 && confirmedFindings.length === 0
+          ? { title: "No active findings need attention", detail: "Resolved findings remain in the evidence trail; no current checks are being inferred as clear.", tone: "resolved", pill: "Resolved history" }
         : !hasCompleteEvidence
           ? { title: "The picture is incomplete", detail: "Overall health cannot be inferred from the available findings.", tone: "partial", pill: "Partial coverage" }
           : attentionFindings.length === 0
           ? { title: "Available checks are clear", detail: `${currentFindings.length} persisted finding${currentFindings.length === 1 ? "" : "s"} verified.`, tone: "confirmed", pill: "Confirmed" }
           : { title: `${attentionFindings.length} finding${attentionFindings.length === 1 ? " needs" : "s need"} attention`, detail: "Review the evidence and choose the next safe action.", tone: "attention", pill: "Needs attention" };
   const nextFinding = attentionFindings[0] ?? unavailableFindings[0] ?? null;
+  const emergingSignalDetail = systems.run
+    ? "are unavailable from this persisted run."
+    : systems.isError
+      ? "are unavailable because the current evidence read failed."
+      : "are unavailable until a persisted Systems Check run exists.";
 
   return (
     <main className="sc-workspace" aria-label="Solo Systems Check">
@@ -286,7 +305,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
               <circle className="sc-orbit" cx="350" cy="190" r="116" />
               {domainGroups.slice(0, 4).map((group, index) => {
                 const position = signalPositions[index];
-                const stateLabel = group.state === "confirmed" ? "Confirmed" : group.state === "attention" ? "Needs attention" : "Unavailable";
+                const stateLabel = evidenceStateLabel(group.state);
                 const groupFinding = group.findings.find((finding) => evidenceFilter(finding) === group.state) ?? group.findings[0];
                 return (
                   <g
@@ -328,7 +347,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
               <div><strong>{attentionFindings.length}</strong>{" "}<span>needs attention</span></div>
               <div><strong>{unavailableFindings.length}</strong>{" "}<span>unavailable</span></div>
             </div>
-            <p className="sc-coverage-note"><strong>Emerging signals</strong> are unavailable from this persisted run.</p>
+            <p className="sc-coverage-note"><strong>Emerging signals</strong> {emergingSignalDetail}</p>
             {nextFinding && (
               <button type="button" className="sc-next-signal" onClick={(event) => openFinding(nextFinding, event.currentTarget)}>
                 <span>Next signal to inspect</span>
@@ -354,13 +373,14 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
               <button type="button" aria-pressed={filter === "attention"} onClick={() => setFilter("attention")}>Needs attention</button>
               <button type="button" aria-pressed={filter === "confirmed"} onClick={() => setFilter("confirmed")}>Confirmed</button>
               <button type="button" aria-pressed={filter === "unavailable"} onClick={() => setFilter("unavailable")}>Unavailable</button>
+              <button type="button" aria-pressed={filter === "resolved"} onClick={() => setFilter("resolved")}>Resolved</button>
             </div>
             <div className="sc-findings">
               {visibleFindings.map((finding) => (
                 <button key={finding.id} type="button" className={`sc-finding sc-finding--${evidenceFilter(finding)}`} onClick={(event) => openFinding(finding, event.currentTarget)}>
                   <span className="sc-finding-mark" aria-hidden="true" />
                   <span><small>{label(finding.domain)}</small><strong>{finding.check_name || label(finding.check_id)}</strong></span>
-                  <span className="sc-finding-state">{evidenceFilter(finding) === "confirmed" ? "Confirmed" : evidenceFilter(finding) === "attention" ? "Needs attention" : "Unavailable"}<ChevronRight size={15} /></span>
+                  <span className="sc-finding-state">{evidenceStateLabel(evidenceFilter(finding))}<ChevronRight size={15} /></span>
                 </button>
               ))}
               {!visibleFindings.length && !systems.loading && <div className="sc-empty-inline">No persisted findings match this filter.</div>}
@@ -402,11 +422,13 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
         <div ref={drawerRef} className={`sc-drawer ${expanded ? "is-expanded" : ""}`} role="dialog" aria-modal={proposal ? undefined : true} aria-hidden={proposal || undefined} aria-label={expanded ? "Expanded finding details" : "Finding details"}>
           <div className="sc-drawer-head"><div><span className="sc-kicker">{label(selected.domain)} · {label(selected.severity_at_finding)}</span><h2>{selected.check_name || label(selected.check_id)}</h2></div><div><button data-initial-focus type="button" className="sc-icon-button" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Return to drawer" : "Expand"}><ArrowUpRight size={18} /> <span>{expanded ? "Return" : "Expand"}</span></button><button type="button" className="sc-icon-button" onClick={closeFinding} aria-label="Close finding details"><X size={19} /></button></div></div>
           <div className="sc-drawer-body">
-            <div className="sc-evidence-meta"><Proof tone={selected.status === "pass" ? "live" : "attention"}>{label(selected.status)}</Proof><span>Recorded {new Date(selected.created_at).toLocaleString()}</span></div>
-            <section><h3>Signal</h3><p>{selected.check_name || label(selected.check_id)} · {evidenceFilter(selected) === "confirmed" ? "Confirmed" : evidenceFilter(selected) === "attention" ? "Needs attention" : "Unavailable"}</p></section>
+            <div className="sc-evidence-meta"><Proof tone={isResolved(selected) ? "resolved" : selected.status === "pass" ? "live" : "attention"}>{isResolved(selected) ? "Resolved" : label(selected.status)}</Proof><span>Recorded {new Date(selected.created_at).toLocaleString()}</span></div>
+            <section><h3>Signal</h3><p>{selected.check_name || label(selected.check_id)} · {evidenceStateLabel(evidenceFilter(selected))}</p></section>
             <section><h3>Evidence and provenance</h3><p>Persisted finding {selected.id} from Systems Check run {selected.run_id}.</p>{selectedEvidence.rows.length ? <dl>{selectedEvidence.rows.map(([key, value]) => <React.Fragment key={key}><dt>{label(key)}</dt><dd>{value}</dd></React.Fragment>)}</dl> : <p>No presentation-safe evidence fields are available.</p>}{selectedEvidence.hasSuppressed && <p>Additional evidence is retained but not displayed here.</p>}</section>
             <section><h3>Impact</h3><p>{selected.paige_interpretation || "No PAIGE interpretation is attached to this persisted finding."}</p></section>
-            <section><h3>Recommended next step</h3><p>{draftedFixText(selected.paige_drafted_fix) || "Review this finding with PAIGE before any work is prepared or executed."}</p><button type="button" className="sc-button sc-button--paige" onClick={(event) => { proposalReturnFocus.current = event.currentTarget; setProposal(true); }}><Bot size={16} /> Put PAIGE to work</button></section>
+            {isResolved(selected)
+              ? <section><h3>Recommended next step</h3><p>No additional work is being recommended from this resolved record.</p></section>
+              : <section><h3>Recommended next step</h3><p>{draftedFixText(selected.paige_drafted_fix) || "Review this finding with PAIGE before any work is prepared or executed."}</p><button type="button" className="sc-button sc-button--paige" onClick={(event) => { proposalReturnFocus.current = event.currentTarget; setProposal(true); }}><Bot size={16} /> Put PAIGE to work</button></section>}
             <section><h3>Owner decision</h3><p>{selected.resolved_at ? selected.resolution || "A resolution is recorded without an attached decision summary." : "No owner decision is recorded for this finding."}</p></section>
             <section><h3>Durable outcome</h3><p>{selected.resolved_at ? `Resolved ${new Date(selected.resolved_at).toLocaleString()}${selected.resolution_action_id ? ` · Action ${selected.resolution_action_id}` : ""}.` : "No durable outcome is recorded on the tenant rail."}</p></section>
           </div>

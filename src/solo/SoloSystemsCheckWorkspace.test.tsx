@@ -110,6 +110,64 @@ describe("Solo Systems Check workspace", () => {
     expect(host.querySelector(".sc-findings")?.textContent).not.toContain("Payment connection needs attention");
   });
 
+  it("treats resolved failed and unavailable findings as history, not active work", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        resolved_at: "2026-08-27T18:00:00Z",
+        resolution: "Payment connection restored.",
+        resolution_action_id: "action-1",
+      }, {
+        ...finding,
+        id: "finding-3",
+        check_id: "archived_read_error",
+        check_name: "Resolved system read",
+        status: "error",
+        resolved_at: "2026-08-27T18:10:00Z",
+        resolution: "Read restored.",
+      }],
+      run: { ...baseSystems.run, check_count: 2, pass_count: 0, fail_count: 1 },
+    });
+    render();
+    expect(host.textContent).toContain("0 needs attention");
+    expect(host.textContent).toContain("0 unavailable");
+    expect(host.textContent).toContain("No active findings need attention");
+    expect(host.textContent).not.toContain("Next signal to inspect");
+    expect(host.querySelector(".sc-findings")?.textContent).toContain("Resolved");
+
+    act(() => button("Payment connection needs attention")?.click());
+    expect(host.textContent).toContain("Payment connection restored.");
+    expect(host.textContent).toContain("Action action-1");
+    expect(host.textContent).toContain("No additional work is being recommended from this resolved record.");
+    expect(button("Put PAIGE to work")).toBeUndefined();
+  });
+
+  it("keeps unresolved attention ahead of unavailable evidence after resolved history is excluded", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        resolved_at: "2026-08-27T18:00:00Z",
+        resolution: "Completed.",
+      }, {
+        ...finding,
+        id: "finding-open-unavailable",
+        check_id: "open_unavailable",
+        check_name: "Open unavailable read",
+        status: "error",
+      }, {
+        ...finding,
+        id: "finding-open-attention",
+        check_id: "open_attention",
+        check_name: "Open attention item",
+      }],
+      run: { ...baseSystems.run, check_count: 3, pass_count: 0, fail_count: 2 },
+    });
+    render();
+    expect(host.querySelector(".sc-next-signal strong")?.textContent).toBe("Open attention item");
+  });
+
   it("animates only the honest read state and does not manufacture category progress", () => {
     harness.systems.mockReturnValue({ ...baseSystems, scanPending: true });
     render();
@@ -177,8 +235,17 @@ describe("Solo Systems Check workspace", () => {
     harness.systems.mockReturnValue({ ...baseSystems, run: null, findings: [], isError: true });
     render();
     expect(host.textContent).toContain("Systems Check is unavailable");
+    expect(host.textContent).toContain("Emerging signals are unavailable because the current evidence read failed.");
+    expect(host.textContent).not.toContain("from this persisted run");
     act(() => button("Retry current data")?.click());
     expect(refreshSystems).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses no-run wording when no persisted Systems Check exists", () => {
+    harness.systems.mockReturnValue({ ...baseSystems, run: null, findings: [] });
+    render();
+    expect(host.textContent).toContain("Emerging signals are unavailable until a persisted Systems Check run exists.");
+    expect(host.textContent).not.toContain("from this persisted run");
   });
 
   it.each([0, 2])("never infers all-clear from an empty persisted run with check_count=%s", (checkCount) => {
