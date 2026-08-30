@@ -55,6 +55,7 @@ const destinations = [
   "setup",
   "team",
   "connections",
+  "integrations",
   "notifications",
   "security-data",
   "vault",
@@ -83,7 +84,7 @@ describe("Solo Settings rendered customer copy", () => {
     expect(text).toContain("Owners and authorized admins may manage team access. Permissions apply only to this Solo workspace.");
   });
 
-  it("keeps operator-only terminology out of all seven rendered destinations", () => {
+  it("keeps operator-only terminology out of every rendered destination", () => {
     const rendered = destinations.map(renderDestination).join(" ").toLowerCase();
     const forbiddenTerms = [
       "platform operator",
@@ -96,6 +97,15 @@ describe("Solo Settings rendered customer copy", () => {
     ];
 
     for (const term of forbiddenTerms) expect(rendered).not.toContain(term);
+  });
+
+  it("renders Integrations as its own truthful Settings destination", () => {
+    const text = renderedText(renderDestination("integrations"));
+    expect(text).toContain("External tools and bridges");
+    expect(text).toContain("Marketplace handoff");
+    expect(text).toContain("Communications setup stays in Connections");
+    expect(text).not.toContain("Business phone");
+    expect(text).not.toContain("A2P");
   });
 
   it("places the compact Business phone search first in Connections", () => {

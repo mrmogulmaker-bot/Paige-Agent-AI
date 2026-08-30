@@ -13,6 +13,7 @@ describe("Solo Settings ownership contract", () => {
       ["setup", "Setup", "PARTIAL"],
       ["team", "Team", "PARTIAL"],
       ["connections", "Connections", "PARTIAL"],
+      ["integrations", "Integrations", "PARTIAL"],
       ["notifications", "Notifications", "PARTIAL"],
       ["security-data", "Security & data", "PARTIAL"],
       ["vault", "Vault", "PROPOSED"],

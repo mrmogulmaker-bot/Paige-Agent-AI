@@ -219,6 +219,7 @@ export const SOLO_BRANCHES: Branch[] = [
       { slug: "setup", key: "setup", label: "Setup" },
       { slug: "team", key: "team", label: "Team" },
       { slug: "connections", key: "connections", label: "Connections" },
+      { slug: "integrations", key: "integrations", label: "Integrations" },
       { slug: "notifications", key: "notifications", label: "Notifications" },
       { slug: "security-data", key: "security-data", label: "Security & data" },
       { slug: "vault", key: "vault", label: "Vault" },
