@@ -379,6 +379,30 @@ export function CalendarsView() {
    */
   const liveIdentity = useRef({ account: params.account, tenantId: conn.tenantId });
   liveIdentity.current = { account: params.account, tenantId: conn.tenantId };
+
+  /**
+   * Whether the rows on screen belong to the account the URL now names.
+   *
+   * The route moves first and the data follows, so between them `conn.tenantId`,
+   * `calendars`, `draft` and `canWrite` all still describe the account being
+   * LEFT — and `conn.loading` is false, because the hook has not been told yet.
+   * Guarding the callbacks was not enough: the editor is itself a writer, and
+   * its Save and Live controls carry the old calendar's id, so a click in that
+   * window edits the account someone just navigated away from.
+   *
+   * There is no common identifier to compare — the route carries an account
+   * number, the hook a tenant uuid — so the account in force when the data last
+   * settled is recorded, and staleness is the disagreement between that and the
+   * route now. Computed during render, not in an effect, so the editor is never
+   * painted for the wrong account at all.
+   */
+  const settledUnder = useRef(params.account);
+  const lastSeenTenant = useRef(conn.tenantId);
+  if (lastSeenTenant.current !== conn.tenantId) {
+    lastSeenTenant.current = conn.tenantId;
+    settledUnder.current = params.account;
+  }
+  const identityStale = settledUnder.current !== params.account;
   const location = useLocation();
   const account = params.account ?? "";
 
@@ -624,7 +648,7 @@ export function CalendarsView() {
           same account so a refresh does not blank the page, which is right — but
           an editor mounted over an unverified snapshot lets a save overwrite
           whatever changed since. The error notice and its retry stand alone. */}
-      {draft && selected && summaryInput && !conn.error && (
+      {draft && selected && summaryInput && !conn.error && !identityStale && (
         <>
           <SelectedPreset
             row={selected} draft={draft} hosts={hosts} hostsError={conn.hostsError}
