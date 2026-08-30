@@ -592,3 +592,29 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 2. Destructure and check `error` on EVERY supabase read. A `{ data }`-only destructure is the bug.
 3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
    filter is the dangerous shape; a count that silently reads 0 is the same class.
+
+## A dev harness on a fixed port can serve someone else's tree — a 200 is not YOUR 200 (2026-08-30)
+
+**What happened.** The Solo Calendar form-fit drive returned a clean green. It was a **false green**:
+a stale server from an earlier run still held port 5200 and was serving an **older tree**, while the
+new harness had exited non-zero. `curl` answered 200, so every downstream assertion ran happily —
+against code that was not the code under test. It happened **twice** in one session before the
+pattern was named. Both times the fix was to kill the old process by PID and confirm the harness
+answering was the one just started.
+
+**Why the usual checks miss it.** Every signal that normally means "ready" is present: the port is
+open, the page renders, the assertions pass. The one signal that would have caught it — *is the
+process on this port the one I just launched?* — is the one nobody checks, because ports are
+normally free.
+
+**Standing checks before trusting any local drive:**
+1. Confirm the harness process you started is the one bound to the port (PID, not just a 200).
+2. Treat a non-zero exit from the harness launcher as **fatal**, even when the port answers.
+3. Put something build-identifying in the served page when a drive gates a release decision — a
+   200 proves *a* server is up, never that it is yours.
+
+**Sibling failure, same session, same class:** a status report quoted head `587ca463` and a 16-file
+scope for PR #642 — read out of the **wrong worktree** (the older `claude/solo-calendar-native`
+checkout). The branch was fine; the lookup was not. With many worktrees on one repo, `cd` into a
+path and read HEAD is not enough — **verify the branch name is the one you mean** before quoting a
+head, a tree, or a file count into a release record.
