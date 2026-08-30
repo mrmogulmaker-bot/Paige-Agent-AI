@@ -25,11 +25,38 @@ const evidenceFilter = (finding: SystemsCheckFinding): Exclude<EvidenceFilter, "
 const draftedFixText = (fix: SystemsCheckFinding["paige_drafted_fix"]): string | null => {
   if (!fix) return null;
   if (typeof fix === "string") return fix.trim() || null;
-  for (const key of ["brief", "summary", "remediation", "plan", "guidance", "text", "body"]) {
+  for (const key of ["content", "summary", "remediation", "plan", "guidance", "text", "body"]) {
     const value = fix[key];
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
+};
+
+const PRESENTATION_SAFE_EVIDENCE = new Set([
+  "provider", "state", "has_email_identity", "has_primary_phone", "has_a2p_registration",
+  "has_business_phone", "customer_count", "has_name", "has_website", "has_industry", "has_about",
+  "has_active_n8n_workflow", "has_mcp_connection", "scope_note", "payment_methods_declared", "count",
+  "processor_agnostic", "payment_processor_declared", "has_revenue_classification", "integrity_ok",
+  "revenue_class", "custom_pipeline_count", "has_stages", "social_handle_count", "declared_capture_only",
+  "has_published_growth_page", "has_declared_website",
+]);
+
+const evidenceValue = (value: unknown): string | null => {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value) && value.every((item) => ["string", "number", "boolean"].includes(typeof item))) {
+    return value.map(String).join(", ");
+  }
+  return null;
+};
+
+const projectEvidence = (evidence: SystemsCheckFinding["evidence"]) => {
+  if (!evidence) return { rows: [] as Array<[string, string]>, hasSuppressed: false };
+  const rows = Object.entries(evidence).flatMap(([key, value]) => {
+    if (!PRESENTATION_SAFE_EVIDENCE.has(key)) return [];
+    const rendered = evidenceValue(value);
+    return rendered === null ? [] : [[key, rendered] as [string, string]];
+  });
+  return { rows, hasSuppressed: rows.length < Object.keys(evidence).length };
 };
 
 const signalPositions = [
@@ -94,13 +121,16 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
         return rank[a.state] - rank[b.state] || a.domain.localeCompare(b.domain);
       });
   }, [currentFindings]);
+  const completedAt = systems.run?.completed_at ? new Date(systems.run.completed_at) : null;
+  const hasCompletedRun = !!completedAt && !Number.isNaN(completedAt.getTime());
   const isPartial = !!systems.run && (
+    !hasCompletedRun ||
     currentFindings.some((finding) => finding.status === "skip" || finding.status === "error") ||
     (systems.run.check_count ?? currentFindings.length) > currentFindings.length
   );
   const hasCompleteEvidence = currentFindings.length > 0 && !isPartial;
-  const completedAt = systems.run?.completed_at ? new Date(systems.run.completed_at) : null;
-  const isStale = !!completedAt && Date.now() - completedAt.getTime() > 24 * 60 * 60 * 1000;
+  const isStale = hasCompletedRun && Date.now() - completedAt.getTime() > 24 * 60 * 60 * 1000;
+  const selectedEvidence = projectEvidence(selected?.evidence ?? null);
 
   useEffect(() => {
     setFilter("all");
@@ -308,7 +338,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
               </button>
             )}
             {openPaige && <button type="button" className="sc-button sc-button--paige sc-rundown-button" onClick={openPaige}><Bot size={16} aria-hidden="true" /> Open PAIGE for the fuller rundown</button>}
-            {systems.run?.completed_at && <span className="sc-freshness"><Clock3 size={13} aria-hidden="true" /> Last result {completedAt?.toLocaleString()}</span>}
+            {hasCompletedRun && <span className="sc-freshness"><Clock3 size={13} aria-hidden="true" /> Last result {completedAt.toLocaleString()}</span>}
             {systems.isError && <button type="button" className="sc-button" onClick={systems.refresh}>Retry current data</button>}
           </aside>
         </section>
@@ -374,7 +404,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
           <div className="sc-drawer-body">
             <div className="sc-evidence-meta"><Proof tone={selected.status === "pass" ? "live" : "attention"}>{label(selected.status)}</Proof><span>Recorded {new Date(selected.created_at).toLocaleString()}</span></div>
             <section><h3>Signal</h3><p>{selected.check_name || label(selected.check_id)} · {evidenceFilter(selected) === "confirmed" ? "Confirmed" : evidenceFilter(selected) === "attention" ? "Needs attention" : "Unavailable"}</p></section>
-            <section><h3>Evidence and provenance</h3><p>Persisted finding {selected.id} from Systems Check run {selected.run_id}.</p>{selected.evidence ? <dl>{Object.entries(selected.evidence).map(([key, value]) => <React.Fragment key={key}><dt>{label(key)}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></React.Fragment>)}</dl> : <p>No evidence payload is available.</p>}</section>
+            <section><h3>Evidence and provenance</h3><p>Persisted finding {selected.id} from Systems Check run {selected.run_id}.</p>{selectedEvidence.rows.length ? <dl>{selectedEvidence.rows.map(([key, value]) => <React.Fragment key={key}><dt>{label(key)}</dt><dd>{value}</dd></React.Fragment>)}</dl> : <p>No presentation-safe evidence fields are available.</p>}{selectedEvidence.hasSuppressed && <p>Additional evidence is retained but not displayed here.</p>}</section>
             <section><h3>Impact</h3><p>{selected.paige_interpretation || "No PAIGE interpretation is attached to this persisted finding."}</p></section>
             <section><h3>Recommended next step</h3><p>{draftedFixText(selected.paige_drafted_fix) || "Review this finding with PAIGE before any work is prepared or executed."}</p><button type="button" className="sc-button sc-button--paige" onClick={(event) => { proposalReturnFocus.current = event.currentTarget; setProposal(true); }}><Bot size={16} /> Put PAIGE to work</button></section>
             <section><h3>Owner decision</h3><p>{selected.resolved_at ? selected.resolution || "A resolution is recorded without an attached decision summary." : "No owner decision is recorded for this finding."}</p></section>

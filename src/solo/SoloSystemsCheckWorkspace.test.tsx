@@ -193,6 +193,64 @@ describe("Solo Systems Check workspace", () => {
     expect(host.textContent).not.toContain("All available checks are clear");
   });
 
+  it("never infers clear coverage from an unfinished persisted run", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, completed_at: null },
+    });
+    render();
+    expect(host.textContent).toContain("The picture is incomplete");
+    expect(host.textContent).toContain("Overall health cannot be inferred");
+    expect(host.textContent).not.toContain("Available checks are clear");
+  });
+
+  it("shows owner-facing remediation content instead of an internal drafting brief", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        paige_drafted_fix: {
+          brief: "Internal instruction that must not be presented.",
+          content: "Reconnect the approved payment provider, then refresh this evidence.",
+          model: "internal-model-name",
+        },
+      }],
+      run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
+    });
+    render();
+    act(() => button("Payment connection needs attention")?.click());
+    expect(host.textContent).toContain("Reconnect the approved payment provider, then refresh this evidence.");
+    expect(host.textContent).not.toContain("Internal instruction that must not be presented.");
+    expect(host.textContent).not.toContain("internal-model-name");
+  });
+
+  it("projects only presentation-safe evidence fields and never dumps arbitrary payloads", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        evidence: {
+          provider: "Stripe",
+          state: "disconnected",
+          authorization: "Bearer owner-secret",
+          api_key: "sk_live_secret",
+          token_details: { access_token: "nested-secret" },
+          error_message: "raw internal runner exception",
+        },
+      }],
+      run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
+    });
+    render();
+    act(() => button("Payment connection needs attention")?.click());
+    expect(host.textContent).toContain("Provider");
+    expect(host.textContent).toContain("Stripe");
+    expect(host.textContent).toContain("Additional evidence is retained but not displayed here.");
+    expect(host.textContent).not.toContain("owner-secret");
+    expect(host.textContent).not.toContain("sk_live_secret");
+    expect(host.textContent).not.toContain("nested-secret");
+    expect(host.textContent).not.toContain("raw internal runner exception");
+  });
+
   it("labels failed operating reads unavailable instead of claiming the owner is caught up", () => {
     harness.command.mockReturnValue({
       ...baseCommand,
