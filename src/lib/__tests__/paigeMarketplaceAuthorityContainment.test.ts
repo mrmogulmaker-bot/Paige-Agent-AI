@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalDirectFunctionName,
   isMarketplaceDirectFunctionBlocked,
+  retainActiveMarketplaceTenant,
+  resolveActiveMarketplaceTenant,
 } from "../../../supabase/functions/_shared/marketplace-authority-containment";
 
 const chat = readFileSync(
@@ -39,6 +41,79 @@ function between(source: string, start: string, end: string): string {
 }
 
 describe("PAIGE Marketplace authority containment", () => {
+  const tenantA = "11111111-1111-4111-8111-111111111111";
+  const tenantB = "22222222-2222-4222-8222-222222222222";
+
+  it("fails Marketplace browse closed unless the current active account is authoritatively resolved", () => {
+    expect(resolveActiveMarketplaceTenant({
+      activeAccountTenantId: null,
+      expectedTenantId: tenantA,
+      authorizedTenantIds: [tenantA],
+    })).toBeNull();
+    expect(resolveActiveMarketplaceTenant({
+      activeAccountTenantId: tenantA,
+      expectedTenantId: tenantB,
+      authorizedTenantIds: [tenantA, tenantB],
+    })).toBeNull();
+    expect(resolveActiveMarketplaceTenant({
+      activeAccountTenantId: tenantA,
+      expectedTenantId: tenantA,
+      authorizedTenantIds: [tenantB, tenantA],
+    })).toBe(tenantA);
+    expect(resolveActiveMarketplaceTenant({
+      activeAccountTenantId: tenantA,
+      expectedTenantId: tenantA,
+      authorizedTenantIds: [tenantB],
+    })).toBeNull();
+    expect(resolveActiveMarketplaceTenant({
+      activeAccountTenantId: "not-a-tenant-id",
+      expectedTenantId: tenantA,
+      authorizedTenantIds: [tenantA],
+    })).toBeNull();
+  });
+
+  it("uses exact active-account authorization instead of first-membership fallback", () => {
+    const chatAccountResolution = between(
+      chat,
+      "const resolveCurrentMarketplaceTenant",
+      "// ── §16 department registry",
+    );
+    const mcpAccountResolution = between(
+      mcp,
+      "async function marketplaceActorTenantId()",
+      "// ── Tier derivation",
+    );
+    const chatMarketplace = between(
+      chat,
+      'tc.function.name === "marketplace_browse"',
+      'tc.function.name === "search_funding_marketplace"',
+    );
+    const mcpMarketplace = between(
+      mcp,
+      'mcp.tool("marketplace_browse"',
+      "// ============================================================================\n// Stage Automation Rules",
+    );
+    expect(chatMarketplace).toContain("marketplaceTenantId");
+    expect(chatMarketplace).toContain("await resolveCurrentMarketplaceTenant()");
+    expect(chatMarketplace).toContain("retainActiveMarketplaceTenant");
+    expect(chatMarketplace).not.toContain("personaCtx.tenant_id");
+    expect(mcpMarketplace).toContain("marketplaceActorTenantId");
+    expect(mcpMarketplace).not.toContain("await actorTenantId()");
+    expect(chatMarketplace.match(/resolveCurrentMarketplaceTenant\(\)/g)).toHaveLength(2);
+    expect(mcpMarketplace.match(/marketplaceActorTenantId\(\)/g)).toHaveLength(2);
+    for (const resolution of [chatAccountResolution, mcpAccountResolution]) {
+      expect(resolution).toContain('.eq("tenant_id", structurallyCurrentTenant)');
+      expect(resolution).toContain('.eq("status", "active")');
+      expect(resolution).not.toContain(".limit(1)");
+    }
+  });
+
+  it("rejects an account switch or membership revocation before browse dispatch", () => {
+    expect(retainActiveMarketplaceTenant(tenantA, tenantB)).toBeNull();
+    expect(retainActiveMarketplaceTenant(tenantA, null)).toBeNull();
+    expect(retainActiveMarketplaceTenant(tenantA, tenantA)).toBe(tenantA);
+  });
+
   it("exposes only curated Marketplace browse to Chat and MCP", () => {
     expect(mcp).toContain('from "https://esm.sh/@supabase/supabase-js@2.45.0"');
     expect(mcp).not.toContain('from "npm:@supabase/supabase-js');

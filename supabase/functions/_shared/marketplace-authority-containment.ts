@@ -1,4 +1,36 @@
 const EDGE_FUNCTION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const TENANT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type ActiveMarketplaceTenantInput = {
+  activeAccountTenantId: unknown;
+  expectedTenantId: unknown;
+  authorizedTenantIds: readonly unknown[];
+};
+
+const canonicalTenantId = (value: unknown): string | null => {
+  if (typeof value !== "string" || !TENANT_UUID.test(value)) return null;
+  return value.toLowerCase();
+};
+
+/**
+ * Resolve Marketplace browse scope only when the request's active account,
+ * the Chat persona/current-tenant expectation, and an active membership agree.
+ * Membership order is irrelevant; absence or ambiguity always fails closed.
+ */
+export function resolveActiveMarketplaceTenant(input: ActiveMarketplaceTenantInput): string | null {
+  const activeTenantId = canonicalTenantId(input.activeAccountTenantId);
+  const expectedTenantId = canonicalTenantId(input.expectedTenantId);
+  if (!activeTenantId || !expectedTenantId || activeTenantId !== expectedTenantId) return null;
+  const authorized = new Set(input.authorizedTenantIds.map(canonicalTenantId).filter(Boolean));
+  return authorized.has(activeTenantId) ? activeTenantId : null;
+}
+
+/** Reject a tenant accepted earlier in the request if current authority moved or disappeared. */
+export function retainActiveMarketplaceTenant(initialTenantId: unknown, currentTenantId: unknown): string | null {
+  const initial = canonicalTenantId(initialTenantId);
+  const current = canonicalTenantId(currentTenantId);
+  return initial && current && initial === current ? current : null;
+}
 
 /**
  * Return the only representation safe to interpolate into an Edge Function URL.

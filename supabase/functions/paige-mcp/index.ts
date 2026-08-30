@@ -126,7 +126,7 @@ async function audit(action: string, target_type: string | null, target_id: stri
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
 import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
-import { canonicalDirectFunctionName, isMarketplaceDirectFunctionBlocked } from "../_shared/marketplace-authority-containment.ts";
+import { canonicalDirectFunctionName, isMarketplaceDirectFunctionBlocked, resolveActiveMarketplaceTenant, retainActiveMarketplaceTenant } from "../_shared/marketplace-authority-containment.ts";
 // §200: the god/platform actor has no tenant of its own; resolve the operator's
 // designated system tenant from config-as-data (fail-closed null when unset).
 import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
@@ -231,6 +231,37 @@ async function actorTenantId(): Promise<string | null> {
   // workspace by construction.
   if (isPlatformOwner) return await platformOperatorTenantId(admin);
   return null;
+}
+
+/** Marketplace browse never inherits actorTenantId's legacy first-membership fallback. */
+async function marketplaceActorTenantId(): Promise<string | null> {
+  const actor = currentActor();
+  if (!actor.user_id) return null;
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("active_tenant_id")
+    .eq("user_id", actor.user_id)
+    .maybeSingle();
+  if (profileError) return null;
+  const activeTenantId = profile?.active_tenant_id ?? null;
+  const structurallyCurrentTenant = resolveActiveMarketplaceTenant({
+    activeAccountTenantId: activeTenantId,
+    expectedTenantId: activeTenantId,
+    authorizedTenantIds: [activeTenantId],
+  });
+  if (!structurallyCurrentTenant) return null;
+  const { data: memberships, error: membershipError } = await admin
+    .from("tenant_members")
+    .select("tenant_id")
+    .eq("user_id", actor.user_id)
+    .eq("tenant_id", structurallyCurrentTenant)
+    .eq("status", "active");
+  if (membershipError) return null;
+  return resolveActiveMarketplaceTenant({
+    activeAccountTenantId: activeTenantId,
+    expectedTenantId: activeTenantId,
+    authorizedTenantIds: (memberships ?? []).map((row) => row.tenant_id),
+  });
 }
 
 // ── Tier derivation (§9/§25) ────────────────────────────────────────────────
@@ -4502,23 +4533,13 @@ mcp.tool("me_search_lender_products", {
 // §9/§13). We resolve that actor here and pass it to every call.
 // ============================================================================
 
-// Resolve the forgery-resistant actor user_id for the marketplace overloads. A user
-// OAuth token carries its own user_id. The platform (god) key has none, so we back the
-// call with the resolved tenant's OWNER — a real admin the overload's is_tenant_admin_as
-// check will accept. The audit row still records the true mcp:platform actor (audit()
-// reads currentActor()), so the god origin is never lost (§13).
+// Resolve the authenticated actor for the marketplace overload. Platform keys do
+// not carry a current user account context, so browse fails closed for them.
 async function resolveMarketplaceActor(tenantId: string): Promise<string | null> {
   const a = currentActor();
-  if (a.user_id) return a.user_id;
-  // The platform (god) key has no user_id. Only back it with the tenant OWNER when the
-  // resolved tenant is the operator's OWN designated system tenant (§200/§37 lockstep
-  // with actorTenantId()). This guard means the god key can never quietly back a
-  // cross-tenant write — the overload would reject a borrowed non-owner actor, but we
-  // fail closed here first (§9/§17: no silent break-glass). Undesignated => null => null.
-  const operatorTenantId = await platformOperatorTenantId(admin);
-  if (!operatorTenantId || tenantId !== operatorTenantId) return null;
-  const { data } = await admin.from("tenants").select("owner_user_id").eq("id", tenantId).maybeSingle();
-  return (data?.owner_user_id as string | null) ?? null;
+  if (!a.user_id) return null;
+  const activeTenantId = await marketplaceActorTenantId();
+  return activeTenantId === tenantId ? a.user_id : null;
 }
 
 mcp.tool("marketplace_browse", {
@@ -4528,12 +4549,14 @@ mcp.tool("marketplace_browse", {
     query: z.string().optional().describe("Optional free-text to match against safe item name or category."),
   }),
   handler: async ({ category, query }) => {
-    const tenantId = await actorTenantId();
+    const tenantId = await marketplaceActorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
     const actorUserId = await resolveMarketplaceActor(tenantId);
     if (!actorUserId) return err("actor_not_resolved");
     const { data, error } = await admin.rpc("marketplace_catalog_for_tenant", { _tenant_id: tenantId, _actor_user_id: actorUserId });
     if (error) return err("Marketplace browse is unavailable right now.");
+    const returnedTenantId = retainActiveMarketplaceTenant(tenantId, await marketplaceActorTenantId());
+    if (!returnedTenantId) return err("Marketplace browse is unavailable for the current workspace.");
     // deno-lint-ignore no-explicit-any
     let items = (data ?? []) as any[];
     if (category) items = items.filter((i) => String(i.category || "").toLowerCase() === String(category).toLowerCase());

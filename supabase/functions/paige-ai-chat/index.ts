@@ -37,6 +37,7 @@ import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actor
 // (STUDIO_VISUAL_CRITIQUE_ENABLED); with the flag unset this is never called and generation is
 // byte-for-byte unchanged. Turned on only once the Fly renderer + secrets are live (owner-gated).
 import { visualCritiqueEnabled, critiqueImageAndIterate } from "../_shared/visual-critique-gate.ts";
+import { resolveActiveMarketplaceTenant, retainActiveMarketplaceTenant } from "../_shared/marketplace-authority-containment.ts";
 // §26/§34-L6 image memory: capture lives in the shared `generate-image` edge fn (the ONE home every
 // image caller — this tool AND the Vibe Studio frontend — funnels through), not here, so no import.
 // Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
@@ -1366,16 +1367,55 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     // §9: SERVER-DERIVED from the AUTHENTICATED user's profile (`user.id`) via the service client —
     // NEVER a body-supplied id. §13: honest-degrades to null on any error/absence — a missing working
     // context must never break the chat or fabricate a value. cleanTenantId (writer) coerces non-uuid→null.
+    const resolveCurrentMarketplaceTenant = async (): Promise<string | null> => {
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("active_tenant_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (profileError) return null;
+        const activeTenantId = profile?.active_tenant_id ?? null;
+        const structurallyCurrentTenant = resolveActiveMarketplaceTenant({
+          activeAccountTenantId: activeTenantId,
+          expectedTenantId: personaCtx.tenant_id,
+          authorizedTenantIds: [activeTenantId],
+        });
+        if (!structurallyCurrentTenant) return null;
+        const { data: memberships, error: membershipError } = await supabase
+          .from("tenant_members")
+          .select("tenant_id")
+          .eq("user_id", user.id)
+          .eq("tenant_id", structurallyCurrentTenant)
+          .eq("status", "active");
+        if (membershipError) return null;
+        return resolveActiveMarketplaceTenant({
+          activeAccountTenantId: activeTenantId,
+          expectedTenantId: personaCtx.tenant_id,
+          authorizedTenantIds: (memberships ?? []).map((row: any) => row.tenant_id),
+        });
+      } catch {
+        return null;
+      }
+    };
+
     let workingContextTenantId: string | null = null;
+    let marketplaceTenantId: string | null = null;
     try {
-      const { data: wcProfile } = await supabase
+      const { data: wcProfile, error: wcProfileError } = await supabase
         .from("profiles")
         .select("active_tenant_id")
         .eq("user_id", user.id)
         .maybeSingle();
+      if (wcProfileError) throw wcProfileError;
       workingContextTenantId = (wcProfile?.active_tenant_id as string | null) ?? null;
+
+      // Marketplace browse is stricter than general persona rendering: it may
+      // label results only after exact active-account authorization.
+      marketplaceTenantId = await resolveCurrentMarketplaceTenant();
     } catch (e) {
       console.warn("[paige-ai-chat] working-context tenant resolution failed (defaulting to null):", e);
+      marketplaceTenantId = null;
     }
 
     // ── §16 department registry (10-department org model) ────────────────────
@@ -3833,7 +3873,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           }] : []),
-          {
+          ...(marketplaceTenantId ? [{
             type: "function",
             function: {
               name: "marketplace_browse",
@@ -3846,7 +3886,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 }
               }
             }
-          },
+          }] : []),
           {
             type: "function",
             function: {
@@ -5925,14 +5965,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           }
         } else if (tc.function.name === "marketplace_browse") {
           let a: any = {}; try { a = JSON.parse(tc.function.arguments || "{}"); } catch { a = {}; }
+          // Re-resolve at the moment of use. An account switch or membership
+          // revocation during the model round invalidates the earlier snapshot.
+          const dispatchMarketplaceTenantId = retainActiveMarketplaceTenant(
+            marketplaceTenantId,
+            await resolveCurrentMarketplaceTenant(),
+          );
+          if (!dispatchMarketplaceTenantId) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Marketplace browse is unavailable for the current workspace." }) });
+            continue;
+          }
           // Use the service-role actor overload so even a platform owner is evaluated
           // as the authenticated tenant actor. The one-argument RPC intentionally has
           // a platform-wide branch and is therefore not safe for model-facing browse.
           const { data, error } = await supabase.rpc("marketplace_catalog_for_tenant", {
-            _tenant_id: personaCtx.tenant_id,
+            _tenant_id: dispatchMarketplaceTenantId,
             _actor_user_id: user.id,
           });
           if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Marketplace browse is unavailable right now." }) }); continue; }
+          const returnedMarketplaceTenantId = retainActiveMarketplaceTenant(
+            dispatchMarketplaceTenantId,
+            await resolveCurrentMarketplaceTenant(),
+          );
+          if (!returnedMarketplaceTenantId) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Marketplace browse is unavailable for the current workspace." }) });
+            continue;
+          }
           let items = (data ?? []) as any[];
           if (a.category) items = items.filter((i) => String(i.category || "").toLowerCase() === String(a.category).toLowerCase());
           if (a.query) { const q = String(a.query).toLowerCase(); items = items.filter((i) => `${i.name || ""} ${i.category || ""}`.toLowerCase().includes(q)); }
