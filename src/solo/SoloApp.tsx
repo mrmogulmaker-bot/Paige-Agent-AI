@@ -32,7 +32,7 @@ import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
 import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
 import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
 
-const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
+const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
 const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'connections','business-vault':'vault'};
 const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};

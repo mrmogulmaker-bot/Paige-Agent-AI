@@ -5,6 +5,7 @@ import CalendarAdmin, { type TenantCalendarTab } from "@/pages/admin/CalendarAdm
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { subtabByKey, subtabBySlug, type RouteTierKey } from "@/lib/routing/tierBranches";
 import { tenantRoutePrefixForPath } from "@/components/tenant-shell/tenantShellRoutes";
+import { SoloCalendarWorkspace } from "./SoloCalendarWorkspace";
 
 export interface TenantCanonicalCalendarWorkspaceProps {
   tier: Extract<RouteTierKey, "solo" | "agency">;
@@ -67,6 +68,22 @@ export function TenantCanonicalCalendarWorkspace({ tier, openPaige, owner = "dir
 
   if (loading || accountContextLoading) return <CalendarBoundary kind="loading" />;
   if (!activeTenantId) return <CalendarBoundary kind="permission" />;
+
+  // Solo's Calendar is drawn by the Solo-native surface, in the shell's own --pg-*
+  // tokens. It calls the SAME seams (`calendars`, `list_team_bookings`,
+  // `admin_set_booking_status`, `create_internal_booking`) with the SAME
+  // server-resolved tenant — this replaces the presentation, not the data.
+  // Agency/Enterprise keep CalendarAdmin unchanged.
+  if (tier === "solo") {
+    return (
+      <SoloCalendarWorkspace
+        key={activeTenantId}
+        activeTenantId={activeTenantId}
+        connectionsHref={routeRoot ? `${routeRoot}/integrations` : "/admin/setup/integrations"}
+        openPaige={openPaige}
+      />
+    );
+  }
 
   const onTabChange = (tab: TenantCalendarTab) => {
     if (soloClientsOwner && clientsCalendarRoot) {

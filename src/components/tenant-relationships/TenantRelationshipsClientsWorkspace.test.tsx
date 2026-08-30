@@ -20,6 +20,15 @@ const useTenantRelationshipsData = vi.fn();
 const ownerHarness = vi.hoisted(() => ({ conversations: 0, calendars: 0, portals: 0 }));
 
 vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => useTenantContext() }));
+vi.mock("@/components/tenant-calendar/SoloCalendarWorkspace", async () => {
+  const ReactModule = await import("react");
+  return {
+    SoloCalendarWorkspace: class MockSoloCalendar extends ReactModule.Component {
+      mountId = ++ownerHarness.calendars;
+      render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId, "data-solo-native": "true" }); }
+    },
+  };
+});
 vi.mock("@/components/auth/RoleGate", () => ({ RoleGate: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("@/pages/admin/ClientsConversations", async () => {
   const ReactModule = await import("react");
@@ -32,7 +41,7 @@ vi.mock("@/pages/admin/ClientsConversations", async () => {
 });
 vi.mock("@/pages/admin/CalendarAdmin", async () => {
   const ReactModule = await import("react");
-  return { default: class MockCalendar extends ReactModule.Component<{ soloSettings?: boolean }> { mountId = ++ownerHarness.calendars; render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId, "data-solo-settings": String(Boolean(this.props.soloSettings)) }, ReactModule.createElement("h1", null, "Calendar")); } } };
+  return { default: class MockCalendar extends ReactModule.Component<{ soloSettings?: boolean }> { mountId = ++ownerHarness.calendars; render() { return ReactModule.createElement("div", { "data-mocked-calendar": this.mountId, "data-solo-settings": String(Boolean(this.props.soloSettings)) }); } } };
 });
 vi.mock("@/pages/admin/PortalStudio", async () => {
   const ReactModule = await import("react");
@@ -603,10 +612,9 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(host.textContent).not.toContain("Your client book");
     expect(host.querySelector(".trc-workspace--calendar")).not.toBeNull();
     expect(host.querySelector(".trc-heading")).toBeNull();
-    expect(host.querySelectorAll("h1")).toHaveLength(1);
-    expect(host.querySelector("h1")?.textContent).toBe("Calendar");
+    expect(host.querySelectorAll("h1")).toHaveLength(0);
     expect(Array.from(host.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent)).toEqual(["People", "Conversations", "Calendar", "Portal"]);
-    expect(host.querySelector("[data-mocked-calendar]")?.getAttribute("data-solo-settings")).toBe("true");
+    expect(host.querySelector("[data-mocked-calendar]")?.getAttribute("data-solo-native")).toBe("true");
     act(() => root.unmount());
   });
 
