@@ -101,8 +101,15 @@ type ActorCtx = {
   client_id: string | null;
   scopes: string[];
 };
-// @ts-ignore Deno provides this Node-compatible runtime module; no npm type package is required.
-import { AsyncLocalStorage } from "node:async_hooks";
+type AsyncLocalStorageLike<T> = {
+  getStore(): T | undefined;
+  run<R>(store: T, callback: () => R): R;
+};
+type AsyncLocalStorageConstructor = new <T>() => AsyncLocalStorageLike<T>;
+const AsyncLocalStorage = (globalThis as unknown as {
+  process?: { getBuiltinModule?: (name: string) => { AsyncLocalStorage?: AsyncLocalStorageConstructor } };
+}).process?.getBuiltinModule?.("async_hooks")?.AsyncLocalStorage;
+if (!AsyncLocalStorage) throw new Error("AsyncLocalStorage runtime unavailable");
 const actorStore = new AsyncLocalStorage<ActorCtx>();
 function currentActor(): ActorCtx {
   return actorStore.getStore() ?? { kind: "platform", user_id: null, client_id: null, scopes: [] };
