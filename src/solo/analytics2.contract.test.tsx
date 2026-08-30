@@ -74,11 +74,11 @@ describe("Solo Analytics approved workspace contract", () => {
   });
 
   it("keeps one shell-owned PAIGE workspace and no local analysis authority", () => {
-    expect(appSource).toContain("analytics:<Analytics2 accountContext={accountContext} openPaige={openPaige}/>");
+    expect(appSource).toContain("analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>");
     expect(analyticsSource).toContain("openPaige");
     expect(analyticsSource).toContain("Open PAIGE workspace");
     expect(analyticsSource).not.toContain("SoloPaigeWorkspace");
-    expect(analyticsSource).not.toContain("evidenceRef");
+    expect(analyticsSource).not.toContain("openPaige(evidence");
     expect(analyticsSource).not.toContain("setTimeout");
   });
 

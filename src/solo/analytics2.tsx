@@ -2,14 +2,21 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { resolveTenantAccountContext, type TenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
+import {
+  useAnalyticsEvidence,
+  type AnalyticsEvidenceBundle,
+  type AnalyticsRangeKey,
+  type AnalyticsTruthState,
+} from "./data/useAnalyticsEvidence";
 import "./analytics2.css";
 
 type Analytics2Props = {
   accountContext?: TenantAccountContext | null;
+  accountEpoch?: string | null;
   openPaige?: () => void;
 };
 
-type TruthState = "UNAVAILABLE" | "NOT CONNECTED";
+type TruthState = AnalyticsTruthState | "NOT CONNECTED";
 type LensKey = "brief" | "money" | "profit" | "ret" | "mkt" | "dec";
 type Lens = {
   route: LensKey;
@@ -72,6 +79,11 @@ const LENSES: readonly Lens[] = [
 ];
 
 const RANGE_OPTIONS = ["Last 30 days", "Current quarter", "Year to date"] as const;
+const RANGE_KEYS: Record<(typeof RANGE_OPTIONS)[number], AnalyticsRangeKey> = {
+  "Last 30 days": "last_30_days",
+  "Current quarter": "current_quarter",
+  "Year to date": "year_to_date",
+};
 
 function TruthBadge({ truth }: { truth: TruthState }) {
   return <span className="anr-state" data-truth={truth}>{truth}</span>;
@@ -100,11 +112,45 @@ function BriefVisual() {
   </div>;
 }
 
-function FunnelVisual() {
+function FunnelVisual({
+  bundle,
+  loading,
+  isError,
+  retry,
+}: {
+  bundle?: AnalyticsEvidenceBundle;
+  loading: boolean;
+  isError: boolean;
+  retry: () => void;
+}) {
+  if (loading) return <div className="anr-chart-stage" role="status" aria-label="Reading tenant-safe sales funnel evidence.">
+    <div className="anr-cylinder-funnel anr-cylinder-funnel--pending" aria-hidden="true">
+      {[1, 2, 3, 4].map((stage) => <div className="anr-cylinder-stage" data-stage={stage} key={stage}><div><strong>Reading source</strong><span>Count withheld</span></div></div>)}
+    </div>
+    <p className="anr-watermark">Resolving the active account and exact source boundary</p>
+  </div>;
+
+  if (isError) return <div className="anr-chart-stage anr-chart-stage--message" role="alert">
+    <div><strong>Evidence is unavailable or no longer current</strong><p>No previously issued funnel value or stage count was accepted.</p><button type="button" className="anr-secondary" onClick={retry}>Retry evidence read</button></div>
+  </div>;
+
+  if (bundle && bundle.truth_state !== "UNAVAILABLE" && bundle.values.stages.length > 0) {
+    const covered = bundle.coverage.contributing_count;
+    const candidates = bundle.coverage.candidate_count;
+    return <div className="anr-chart-stage" role="group" aria-label={`${bundle.truth_state} sales funnel. ${covered} of ${candidates} candidate deal records contribute.`}>
+      <div className="anr-cylinder-funnel" data-evidence-backed="true" role="list" aria-label="Source-backed funnel stages">
+        {bundle.values.stages.map((stage, index) => <div className="anr-cylinder-stage anr-cylinder-stage--proved" data-stage={index + 1} key={stage.stage_key} role="listitem" tabIndex={0} aria-label={`${stage.label}: ${stage.count} contributing deal records`}>
+          <div><strong>{stage.label}</strong><span><b>{stage.count}</b> deal {stage.count === 1 ? "record" : "records"}</span></div>
+        </div>)}
+      </div>
+      <p className="anr-watermark">{bundle.truth_state} · {covered} of {candidates} candidate records contribute · no conversion implied</p>
+    </div>;
+  }
+
   const stages = ["Qualified lead", "Proposal", "Commitment", "Confirmed outcome"];
-  return <div className="anr-chart-stage" role="img" aria-label="Empty sales funnel stages. No volume or conversion is implied.">
-    <div className="anr-cylinder-funnel">
-      {stages.map((stage, index) => <div className="anr-cylinder-stage" data-stage={index + 1} key={stage} tabIndex={0} aria-label={`${stage}: no proved count`}>
+  return <div className="anr-chart-stage" role="group" aria-label="Empty sales funnel stages. No volume or conversion is implied.">
+    <div className="anr-cylinder-funnel" role="list" aria-label="Unavailable funnel stages">
+      {stages.map((stage, index) => <div className="anr-cylinder-stage" data-stage={index + 1} key={stage} role="listitem" tabIndex={0} aria-label={`${stage}: no proved count`}>
         <div><strong>{stage}</strong><span>No proved count</span></div>
       </div>)}
     </div>
@@ -181,16 +227,31 @@ function DecisionVisual() {
   </div>;
 }
 
-function LensVisual({ lens }: { lens: Lens }) {
+function LensVisual({ lens, bundle, loading, isError, retry }: {
+  lens: Lens;
+  bundle?: AnalyticsEvidenceBundle;
+  loading: boolean;
+  isError: boolean;
+  retry: () => void;
+}) {
   if (lens.route === "brief") return <BriefVisual />;
-  if (lens.route === "money") return <FunnelVisual />;
+  if (lens.route === "money") return <FunnelVisual bundle={bundle} loading={loading} isError={isError} retry={retry} />;
   if (lens.route === "profit") return <FinancialVisual />;
   if (lens.route === "ret") return <RetentionVisual />;
   if (lens.route === "mkt") return <AcquisitionVisual />;
   return <DecisionVisual />;
 }
 
-export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
+const formatBoundary = (value: string) => new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZoneName: "short",
+}).format(new Date(value));
+
+export function Analytics2({ accountContext, accountEpoch = null, openPaige }: Analytics2Props) {
   const [view, setView] = useSubtabRoute("solo", "analytics", "brief");
   const tabs = [
     ["brief", "Brief"],
@@ -204,6 +265,22 @@ export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
   const account = resolveTenantAccountContext(accountContext);
   const accountResolved = account.accountName !== "Your workspace" && account.accountType === "standalone";
   const [range, setRange] = React.useState<(typeof RANGE_OPTIONS)[number]>("Last 30 days");
+  const evidence = useAnalyticsEvidence({
+    accountEpoch,
+    rangeKey: RANGE_KEYS[range],
+    enabled: accountResolved && lens.route === "money",
+  });
+  const bundle = lens.route === "money" ? evidence.bundle : undefined;
+  const activeTruth: TruthState = lens.route === "money"
+    ? bundle?.truth_state ?? "UNAVAILABLE"
+    : lens.truth;
+  const exactRange = bundle ? `${formatBoundary(bundle.range.start)} – ${formatBoundary(bundle.range.end)}` : null;
+  const sourceLabel = bundle ? "Deals + pipelines + pipeline stages" : "No source reference";
+  const freshnessLabel = bundle ? formatBoundary(bundle.freshness.queried_at) : "Not queried";
+  const sourceUpdatedLabel = bundle?.freshness.source_updated_through
+    ? formatBoundary(bundle.freshness.source_updated_through)
+    : "No contributing deal update in range";
+  const evidenceReady = Boolean(evidence.evidenceReference && bundle && bundle.truth_state !== "UNAVAILABLE");
   const [inspectorOpen, setInspectorOpen] = React.useState(false);
   const pageContentRef = React.useRef<HTMLDivElement>(null);
   const dialogRef = React.useRef<HTMLElement>(null);
@@ -285,7 +362,7 @@ export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
     <div className="anr-account-card"><TruthBadge truth="UNAVAILABLE" /><h2>Account context unavailable</h2><p>Analytics cannot resolve a verified active Solo account.</p><p className="anr-muted">No metric request, evidence read, PAIGE context, or action has been prepared.</p></div>
   </section>;
 
-  return <section className="anr-workspace" aria-labelledby="analytics-title" data-analytics-truth={lens.truth}>
+  return <section className="anr-workspace" aria-labelledby="analytics-title" data-analytics-truth={activeTruth}>
     <h1 id="analytics-title" className="anr-sr-only">Analytics</h1>
     <div ref={pageContentRef} className="anr-page-content" aria-hidden={inspectorOpen ? "true" : undefined}>
       <header className="anr-commandbar">
@@ -317,47 +394,47 @@ export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
       </div>
 
       <div className="anr-workspace-grid">
-        <main className="anr-pane anr-primary-pane">
+         <section className="anr-pane anr-primary-pane" aria-label={`${lens.label} evidence workspace`}>
           <header className="anr-pane-heading">
             <div><span className="anr-eyebrow">{lens.label}</span><h2>{lens.title}</h2><p>Exact range · source coverage · freshness stay attached to this view</p></div>
-            <div className="anr-heading-actions"><TruthBadge truth={lens.truth} /><button type="button" className="anr-icon-action" aria-label="Open evidence" onClick={(event) => openEvidence(event.currentTarget)}>↗</button></div>
+            <div className="anr-heading-actions"><TruthBadge truth={activeTruth} /><button type="button" className="anr-icon-action" aria-label="Open evidence" onClick={(event) => openEvidence(event.currentTarget)}>↗</button></div>
           </header>
           <div className="anr-evidence-strip" aria-label="Attached evidence summary">
-            <div><span>Truth</span><strong data-truth={lens.truth}>{lens.truth}</strong></div>
-            <div><span>Range</span><strong>{range}<small>Local preference · unissued</small></strong></div>
-            <div><span>Source</span><strong>No source reference</strong></div>
-            <div><span>Freshness</span><strong>Not queried</strong></div>
+            <div><span>Truth</span><strong data-truth={activeTruth}>{evidence.loading && lens.route === "money" ? "READING" : activeTruth}</strong></div>
+            <div><span>Range</span><strong>{exactRange ?? range}<small>{exactRange ? "Exact server-issued boundary" : "Local preference · unissued"}</small></strong></div>
+            <div><span>Source</span><strong>{sourceLabel}</strong></div>
+            <div><span>Freshness</span><strong>{freshnessLabel}{bundle ? <small>Source updated through {sourceUpdatedLabel}</small> : null}</strong></div>
           </div>
           <div className="anr-pane-scroll">
-            <LensVisual lens={lens} />
+            <LensVisual lens={lens} bundle={bundle} loading={evidence.loading && lens.route === "money"} isError={evidence.isError && lens.route === "money"} retry={() => { void evidence.retry(); }} />
             <div className="anr-contract-grid">
               <section>
                 <span className="anr-eyebrow">Evidence contract</span>
-                <h3>Canonical evidence is unavailable</h3>
+                <h3>{bundle ? bundle.metric.label : "Canonical evidence is unavailable"}</h3>
                 <dl>
-                  <EvidenceRow label="Definition">No canonical definition issued</EvidenceRow>
-                  <EvidenceRow label="Exact range">No server-issued boundary</EvidenceRow>
-                  <EvidenceRow label="Source">No bounded source reference</EvidenceRow>
-                  <EvidenceRow label="Coverage">Unavailable</EvidenceRow>
-                  <EvidenceRow label="Freshness">Not queried</EvidenceRow>
+                  <EvidenceRow label="Definition">{bundle?.metric.definition ?? "No canonical definition issued"}</EvidenceRow>
+                  <EvidenceRow label="Exact range">{exactRange ?? "No server-issued boundary"}</EvidenceRow>
+                  <EvidenceRow label="Source">{bundle ? bundle.source_references.map((source) => source.source).join(" + ") : "No bounded source reference"}</EvidenceRow>
+                  <EvidenceRow label="Coverage">{bundle ? `${bundle.coverage.state} · ${bundle.coverage.contributing_count} of ${bundle.coverage.candidate_count} records contribute` : "Unavailable"}</EvidenceRow>
+                  <EvidenceRow label="Freshness">{freshnessLabel}</EvidenceRow>
                 </dl>
               </section>
               <aside>
                 <strong>Immutable caveat</strong>
-                <p>{lens.summary} Values, formulas, exclusions, or comparisons cannot be redefined by a saved view.</p>
+                <p>{bundle?.caveats.join(" ") ?? `${lens.summary} Values, formulas, exclusions, or comparisons cannot be redefined by a saved view.`}</p>
               </aside>
             </div>
           </div>
-        </main>
+         </section>
 
         <aside className="anr-pane anr-side-pane" aria-label="Truth and governance boundary">
           <div className="anr-side-scroll">
             <section>
               <span className="anr-eyebrow">Truth boundary</span><h2>What this view can say</h2>
               <dl className="anr-truth-list">
-                <div><dt>LIVE</dt><dd>Verified account context and one shell-owned PAIGE workspace.</dd></div>
-                <div><dt>PARTIAL</dt><dd>Navigation and range controls are local, view-only preferences.</dd></div>
-                <div><dt>UNAVAILABLE</dt><dd>Canonical values, formulas, comparisons, recommendations, and actions.</dd></div>
+                <div><dt>LIVE</dt><dd>Verified account context, one shell-owned PAIGE workspace, and source-bound funnel evidence when issued.</dd></div>
+                <div><dt>PARTIAL</dt><dd>Funnel evidence with explicitly enumerated excluded source records; navigation and range controls remain view-only.</dd></div>
+                <div><dt>UNAVAILABLE</dt><dd>Revenue, profitability, retention, attribution, comparisons, recommendations, and actions.</dd></div>
               </dl>
             </section>
             <section>
@@ -365,7 +442,7 @@ export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
               <div className="anr-spine" aria-label="Human to governed page pathway">
                 {["Human", "Read", "Brain", "Trust Compass", "Write", "Rail", "Page"].map((step) => <span key={step} data-live={step === "Human" || step === "Read" || step === "Page"}>{step}</span>)}
               </div>
-              <p>No opaque evidence reference exists, so Brain, Trust Compass, Write, and Rail remain inactive here.</p>
+              <p>{evidenceReady ? "A short-lived opaque evidence reference exists for this read. PAIGE runtime binding, Trust Compass, Write, and Rail remain inactive here." : "No usable opaque evidence reference exists, so Brain, Trust Compass, Write, and Rail remain inactive here."}</p>
             </section>
             <section>
               <span className="anr-eyebrow">Decisions</span><h2>No simulated recommendation queue</h2>
@@ -374,7 +451,7 @@ export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
             </section>
             <section className="anr-paige-boundary">
               <strong>Read boundary</strong>
-              <p>Attach only a presentation-safe opaque reference after a real tenant-scoped resolver exists.</p>
+               <p>{evidenceReady ? "A presentation-safe opaque reference is issued, but the PAIGE runtime is not yet authorized to resolve it." : "Attach only a presentation-safe opaque reference after a real tenant-scoped resolver exists."}</p>
               <button type="button" disabled>Ask PAIGE for a rundown</button>
               <button type="button" disabled>Open analysis workspace</button>
             </section>
@@ -386,23 +463,23 @@ export function Analytics2({ accountContext, openPaige }: Analytics2Props) {
     {inspectorOpen ? createPortal(<div className="anr-layer" data-pg={portalTheme} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEvidence(); }}>
       <section ref={dialogRef} className="anr-drawer" role="dialog" aria-modal="true" aria-labelledby="analytics-evidence-title">
         <header>
-          <div><span className="anr-eyebrow">Evidence inspector</span><h2 id="analytics-evidence-title">{lens.title}</h2><p>Presentation-safe projection · no opaque reference issued</p></div>
+           <div><span className="anr-eyebrow">Evidence inspector</span><h2 id="analytics-evidence-title">{lens.title}</h2><p>Presentation-safe projection · {evidenceReady ? "opaque reference issued" : "no usable opaque reference issued"}</p></div>
           <button ref={closeButtonRef} type="button" className="anr-close" onClick={closeEvidence} aria-label="Close evidence">×</button>
         </header>
         <div className="anr-drawer-scroll">
-          <TruthBadge truth={lens.truth} />
-          <h3>{lens.summary}</h3>
+           <TruthBadge truth={activeTruth} />
+           <h3>{bundle?.metric.label ?? lens.summary}</h3>
           <dl className="anr-evidence-list">
-            <EvidenceRow label="Metric identity">{lens.title} · canonical identity unavailable</EvidenceRow>
-            <EvidenceRow label="Definition">UNAVAILABLE — no canonical definition issued</EvidenceRow>
-            <EvidenceRow label="Formula / version">UNAVAILABLE — no canonical formula or version issued</EvidenceRow>
-            <EvidenceRow label="Exact requested range">UNAVAILABLE — {range} is a local preference, not a server-issued boundary</EvidenceRow>
-            <EvidenceRow label="Source references">No bounded source references issued</EvidenceRow>
-            <EvidenceRow label="Contributing records">UNAVAILABLE — no server-derived count</EvidenceRow>
-            <EvidenceRow label="Completeness / coverage">UNAVAILABLE — completeness cannot be inferred</EvidenceRow>
-            <EvidenceRow label="Exclusions">UNAVAILABLE — exclusions cannot be enumerated without a canonical resolver</EvidenceRow>
-            <EvidenceRow label="Freshness / queried at">NOT QUERIED — no Analytics Evidence Bundle was resolved</EvidenceRow>
-            <EvidenceRow label="Truth state">{lens.truth}</EvidenceRow>
+             <EvidenceRow label="Metric identity">{bundle ? `${bundle.metric.id} · ${bundle.metric.label}` : `${lens.title} · canonical identity unavailable`}</EvidenceRow>
+             <EvidenceRow label="Definition">{bundle?.metric.definition ?? "UNAVAILABLE — no canonical definition issued"}</EvidenceRow>
+             <EvidenceRow label="Formula / version">{bundle ? `${bundle.metric.formula} · ${bundle.metric.version}` : "UNAVAILABLE — no canonical formula or version issued"}</EvidenceRow>
+             <EvidenceRow label="Exact requested range">{exactRange ?? `UNAVAILABLE — ${range} is a local preference, not a server-issued boundary`}</EvidenceRow>
+             <EvidenceRow label="Source references">{bundle ? bundle.source_references.map((source) => `${source.source} (${source.boundary})`).join("; ") : "No bounded source references issued"}</EvidenceRow>
+             <EvidenceRow label="Contributing records">{bundle ? bundle.coverage.contributing_count : "UNAVAILABLE — no server-derived count"}</EvidenceRow>
+             <EvidenceRow label="Completeness / coverage">{bundle ? `${bundle.coverage.state} · ${bundle.coverage.contributing_count} of ${bundle.coverage.candidate_count}` : "UNAVAILABLE — completeness cannot be inferred"}</EvidenceRow>
+             <EvidenceRow label="Exclusions">{bundle ? (bundle.exclusions.length ? bundle.exclusions.map((item) => `${item.reason}: ${item.count}`).join("; ") : "None within the bounded source") : "UNAVAILABLE — exclusions cannot be enumerated without a canonical resolver"}</EvidenceRow>
+             <EvidenceRow label="Freshness / queried at">{bundle ? `${freshnessLabel} · source updated through ${sourceUpdatedLabel} · immutable source revision attached` : "NOT QUERIED — no Analytics Evidence Bundle was resolved"}</EvidenceRow>
+             <EvidenceRow label="Truth state">{activeTruth}</EvidenceRow>
           </dl>
           <div className="anr-next-step"><strong>Next safe step</strong><p>{lens.nextStep}</p></div>
           <div className="anr-boundary">PAIGE may receive only an opaque server-resolved evidence reference. Raw events, customer content, provider payloads, prompts, and client-authoritative values are not exposed here.</div>
