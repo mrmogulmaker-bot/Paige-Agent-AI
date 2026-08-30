@@ -267,7 +267,12 @@ jobs:
         run: npm run smoke:fleet-directory-v3
 
       - name: Smoke — comms webhook authentication (fail-closed decisions)
+        if: ${{ !cancelled() }}
         run: npm run smoke:comms-webhook-auth
+
+      - name: Smoke — comms tenant scope (§9/§53 webhook scoping)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-tenant-scope
 
       - name: Smoke — voice-twiml statusCallback (no credential to an unsigned caller)
         if: ${{ !cancelled() }}

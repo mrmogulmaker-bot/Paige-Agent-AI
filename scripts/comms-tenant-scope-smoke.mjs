@@ -1,0 +1,307 @@
+#!/usr/bin/env node
+/**
+ * The §9/§53 tenant-scope guards on the two comms webhooks — armed.
+ *
+ * WHY THIS EXISTS
+ *
+ * `twilio-status-callback` and `handle-inbound-sms` are this branch's headline
+ * repairs: a delivery receipt must only advance the authenticated tenant's own
+ * message, a tenant-authenticated callback must never reach the platform-tier
+ * operator store, and an inbound text must only resolve a contact inside the
+ * tenant that owns the receiving number.
+ *
+ * All three were enforced in code and covered by NOTHING. `vitest.config.ts` is
+ * `include: ["src/**"]`, so no edge function is reachable by the unit suite, and
+ * the existing smokes cover `voice-twiml` plus the pure auth module only. An
+ * independent review demonstrated that deleting any one of these three guards
+ * left every gate green — the branch's own §9 fixes could be reverted by a later
+ * refactor without a single red check.
+ *
+ * So this drives the REAL handlers and asserts on what they actually READ and
+ * WRITE, not on their prose. Only the Supabase client and the Deno global are
+ * substituted; routing, authentication and scoping are the shipped code.
+ *
+ * READS ARE NOT WRITES. The recorder tags each recorded query with the verb that
+ * built it, because the scope assertions are about the LOOKUP that selects a row.
+ * A follow-up `update(...).eq("id", row.id)` is correctly keyed on the primary key
+ * and carries no tenant_id; folding it into the same bucket would have made the
+ * scope assertion fail for a reason that is not a defect.
+ */
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
+
+const TENANT_A = "aaaaaaaa-1111-4111-8111-111111111111";
+const TENANT_B = "bbbbbbbb-2222-4222-8222-222222222222";
+const SECRET_A = "SECRET-A-" + "a".repeat(48);
+const NUMBER_A = "+15550001111";
+const MASTER_TOKEN = "master-auth-token-for-the-signature-path";
+
+/** Mutable so a single case can adopt the "master token IS set" posture. */
+let env = {};
+const baseEnv = {
+  SUPABASE_URL: "https://ref.functions.supabase.co",
+  SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+};
+const setEnv = (extra = {}) => { env = { ...baseEnv, ...extra }; };
+
+/**
+ * A query recorder. Every `.eq()` is captured so a MISSING tenant predicate is
+ * observable — the defect class here is an absent filter, which a stub that only
+ * returns rows can never reveal.
+ */
+function makeAdmin(rows) {
+  const queries = [];
+  const builder = (table) => {
+    const filters = {};
+    let verb = "select";
+    const q = {
+      select: () => { verb = "select"; return q; },
+      update: () => { verb = "update"; return q; },
+      insert: () => { verb = "insert"; return q; },
+      upsert: () => { verb = "upsert"; return q; },
+      delete: () => { verb = "delete"; return q; },
+      eq: (k, v) => { filters[k] = v; return q; },
+      in: (k, v) => { filters[k] = v; return q; },
+      or: (expr) => { filters.or = expr; return q; },
+      order: () => q, limit: () => q, not: () => q,
+      maybeSingle: async () => {
+        queries.push({ table, verb, filters: { ...filters } });
+        return { data: rows(table, filters) ?? null, error: null };
+      },
+      single: async () => {
+        queries.push({ table, verb, filters: { ...filters } });
+        return { data: rows(table, filters) ?? { id: `${table}-1` }, error: null };
+      },
+      then: (res) => {
+        queries.push({ table, verb, filters: { ...filters } });
+        const r = rows(table, filters);
+        res({ data: r ? [r] : [], error: null });
+      },
+    };
+    return q;
+  };
+  return {
+    queries,
+    /** Any query at all against the table — reads or writes. */
+    touched: (t) => queries.some((q) => q.table === t),
+    /** Every row-SELECTING query on `t` carries `key === val`. */
+    reads: (t) => queries.filter((q) => q.table === t && q.verb === "select"),
+    scoped(t, key, val) {
+      const rs = this.reads(t);
+      return rs.length > 0 && rs.every((r) => r.filters[key] === val);
+    },
+    from: (t) => builder(t),
+    rpc: async () => ({ data: null, error: null }),
+  };
+}
+
+async function bundle(entry, name) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
+  const out = path.join(dir, "mod.mjs");
+  await build({
+    entryPoints: [entry], outfile: out, bundle: true, format: "esm",
+    platform: "neutral", target: "es2022",
+    plugins: [{
+      name: "remote-stub",
+      setup(b) {
+        b.onResolve({ filter: /^https:\/\// }, (a) => ({ path: a.path, namespace: "remote-stub" }));
+        b.onLoad({ filter: /.*/, namespace: "remote-stub" }, () => ({
+          contents: "export function createClient(){ return globalThis.__ADMIN__; }", loader: "js",
+        }));
+      },
+    }],
+  });
+  return out;
+}
+
+/** The real signature routine, so the master-signature posture is genuinely exercised. */
+const { computeTwilioSignature } = await import(
+  pathToFileURL(await bundle("supabase/functions/_shared/twilio-webhook-auth.ts", "auth-mod")).href
+);
+
+let n = 0;
+const check = (label, cond) => { n++; assert.ok(cond, `FAILED: ${label}`); console.log(`  ok  ${label}`); };
+const form = (o) => new URLSearchParams(o).toString();
+
+console.log("comms tenant-scope smoke\n");
+
+// ── twilio-status-callback ──────────────────────────────────────────────────
+{
+  let handler = null;
+  setEnv();
+  globalThis.Deno = { env: { get: (k) => env[k] }, serve: (h) => { handler = h; } };
+  await import(pathToFileURL(await bundle("supabase/functions/twilio-status-callback/index.ts", "status-cb")).href);
+  assert.ok(typeof handler === "function", "FAILED: no status-callback handler captured");
+
+  /** The subaccount row MUST carry the secret back: the handler reads it as
+   *  `expectedSecret` and compares, so a row without it authenticates nothing. */
+  const subaccount = (f) =>
+    f.inbound_webhook_secret === SECRET_A ? { tenant_id: TENANT_A, inbound_webhook_secret: SECRET_A } : null;
+
+  // ── SMS delivery receipt, authenticated as TENANT A by A's own stamped secret.
+  {
+    setEnv();
+    globalThis.__ADMIN__ = makeAdmin((table, f) => {
+      if (table === "tenant_twilio_subaccounts") return subaccount(f);
+      if (table === "messages") return { id: "msg-1", status: "queued", tenant_id: TENANT_A };
+      return null;
+    });
+    const res = await handler(new Request(`https://ref.functions.supabase.co/fn?t=${SECRET_A}`, {
+      method: "POST",
+      body: form({ MessageSid: "SM1", MessageStatus: "delivered" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+    const a = globalThis.__ADMIN__;
+    check("a tenant-authenticated delivery receipt is accepted", res.status === 200);
+    check("...and its message lookup is scoped to the AUTHENTICATED tenant (§9)",
+      a.scoped("messages", "tenant_id", TENANT_A));
+    check("...and it never consults the platform operator store (§53)",
+      !a.touched("operator_messages") && !a.touched("operator_conversations"));
+  }
+
+  // ── VOICE completion, tenant-authenticated, with NO matching tenant row.
+  //    This is the tenant→platform crossing the guard exists to refuse: the
+  //    operator store holds no tenant_id, so reaching it on a tenant's secret
+  //    would let that secret advance a platform-tier row.
+  {
+    setEnv();
+    globalThis.__ADMIN__ = makeAdmin((table, f) => {
+      if (table === "tenant_twilio_subaccounts") return subaccount(f);
+      if (table === "messages") return null; // no tenant voice row matches
+      if (table === "operator_messages") return { id: "op-1", status: "queued", metadata: {} };
+      return null;
+    });
+    const res = await handler(new Request(`https://ref.functions.supabase.co/fn?t=${SECRET_A}`, {
+      method: "POST",
+      body: form({ CallSid: "CA1", CallStatus: "completed", CallDuration: "42" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+    const a = globalThis.__ADMIN__;
+    check("a tenant-authenticated voice callback with no tenant row is acked", res.status === 200);
+    check("...and the operator store is NOT consulted on a tenant secret (§53)",
+      !a.touched("operator_messages"));
+    check("...and its own voice lookup was tenant-scoped (§9)",
+      a.scoped("messages", "tenant_id", TENANT_A));
+  }
+
+  // ── NON-VACUITY. The operator store IS reachable — but only for a callback
+  //    proven by the MASTER Twilio signature, which is account-bound and carries
+  //    no tenant. Without this case the two assertions above could both pass
+  //    because nothing in this handler ever touches that store.
+  {
+    setEnv({ TWILIO_AUTH_TOKEN: MASTER_TOKEN });
+    globalThis.__ADMIN__ = makeAdmin((table) => {
+      if (table === "messages") return null;
+      if (table === "operator_messages") return { id: "op-1", status: "queued", metadata: {} };
+      return null;
+    });
+    const url = "https://ref.functions.supabase.co/fn";
+    const body = form({ CallSid: "CA9", CallStatus: "completed" });
+    const sig = await computeTwilioSignature(MASTER_TOKEN, url, body);
+    const res = await handler(new Request(url, {
+      method: "POST", body,
+      headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sig },
+    }));
+    const a = globalThis.__ADMIN__;
+    check("a master-signature callback is accepted (the signature path really works)", res.status === 200);
+    check("...and DOES reach the operator store, so the §53 refusal above is not vacuous",
+      a.touched("operator_messages"));
+    check("...and its tenant lookup carried NO tenant filter, as a signature is account-bound",
+      a.reads("messages").every((r) => r.filters.tenant_id === undefined));
+  }
+
+  // ── An unstamped, unsigned callback proves nothing and is refused outright.
+  {
+    setEnv();
+    globalThis.__ADMIN__ = makeAdmin(() => null);
+    const res = await handler(new Request("https://ref.functions.supabase.co/fn", {
+      method: "POST",
+      body: form({ MessageSid: "SM8", MessageStatus: "delivered" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+    check("an unauthenticated callback is refused and writes nothing",
+      res.status === 401 && globalThis.__ADMIN__.queries.filter((q) => q.verb !== "select").length === 0);
+  }
+}
+
+// ── handle-inbound-sms ──────────────────────────────────────────────────────
+{
+  let handler = null;
+  setEnv();
+  globalThis.Deno = { env: { get: (k) => env[k] }, serve: (h) => { handler = h; } };
+  await import(pathToFileURL(await bundle("supabase/functions/handle-inbound-sms/index.ts", "inbound-sms")).href);
+  assert.ok(typeof handler === "function", "FAILED: no inbound-sms handler captured");
+
+  const rows = (table, f) => {
+    if (table === "tenant_twilio_subaccounts") {
+      if (f.inbound_webhook_secret === SECRET_A) return { tenant_id: TENANT_A, inbound_webhook_secret: SECRET_A };
+      if (f.tenant_id === TENANT_A) return { tenant_id: TENANT_A, inbound_webhook_secret: SECRET_A };
+      return null;
+    }
+    if (table === "tenant_phone_numbers") return { tenant_id: TENANT_A, phone_number: NUMBER_A, status: "active" };
+    if (table === "communication_preferences") return { user_id: "user-1" };
+    if (table === "clients") return { id: "contact-1", tenant_id: TENANT_A };
+    return null;
+  };
+
+  /**
+   * The reads that RESOLVE a contact from the sender — the only ones a tenant
+   * predicate protects. A later re-read keyed on `id` is a re-read of the contact
+   * this tenant-scoped resolution already returned, so it is deliberately not in
+   * this set; requiring a tenant filter there would assert something that is not
+   * the guard and would fail for a reason that is not a defect.
+   */
+  const SENDER_KEYS = ["phone", "linked_user_id", "or"];
+  const senderResolutions = (a) =>
+    a.reads("clients").filter((r) => SENDER_KEYS.some((k) => k in r.filters));
+
+  const post = (body) =>
+    handler(new Request(`https://ref.functions.supabase.co/fn?t=${SECRET_A}`, {
+      method: "POST", body: form(body),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+
+  // ── An ordinary inbound text: resolves a contact via the sender's number/user.
+  {
+    globalThis.__ADMIN__ = makeAdmin(rows);
+    const res = await post({ To: NUMBER_A, From: "+15559998888", Body: "hello", MessageSid: "SM2" });
+    const a = globalThis.__ADMIN__;
+    check("an authenticated inbound text is accepted", res.status === 200);
+    check("...and it really did resolve a contact from the sender (non-vacuity)",
+      senderResolutions(a).length > 0);
+    check("...and every sender-keyed contact resolution is scoped to the RECEIVING tenant (§9)",
+      senderResolutions(a).every((r) => r.filters.tenant_id === TENANT_A));
+    check("...and no contact is ever resolved inside another tenant",
+      a.reads("clients").every((r) => r.filters.tenant_id !== TENANT_B));
+  }
+
+  // ── STOP takes a DIFFERENT resolution path (the suppression ledger's own
+  //    lookup), which the case above never reaches. Both sites must be scoped.
+  {
+    globalThis.__ADMIN__ = makeAdmin(rows);
+    const res = await post({ To: NUMBER_A, From: "+15559998888", Body: "STOP", MessageSid: "SM3" });
+    const a = globalThis.__ADMIN__;
+    check("an inbound STOP is accepted", res.status === 200);
+    check("...and its contact resolution happened at all (non-vacuity)",
+      senderResolutions(a).length > 0);
+    check("...and is likewise scoped to the RECEIVING tenant (§9)",
+      senderResolutions(a).every((r) => r.filters.tenant_id === TENANT_A));
+  }
+
+  // ── An unstamped inbound text proves nothing and must be refused.
+  {
+    globalThis.__ADMIN__ = makeAdmin(rows);
+    const res = await handler(new Request("https://ref.functions.supabase.co/fn", {
+      method: "POST", body: form({ To: NUMBER_A, From: "+15559998888", Body: "hi", MessageSid: "SM4" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    }));
+    check("an unauthenticated inbound text is refused and files nothing",
+      res.status === 401 && !globalThis.__ADMIN__.touched("paige_conversations"));
+  }
+}
+
+console.log(`\n${n} assertions passed.`);

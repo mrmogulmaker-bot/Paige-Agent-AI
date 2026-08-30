@@ -37,6 +37,7 @@
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
     "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",
+    "smoke:comms-tenant-scope": "node scripts/comms-tenant-scope-smoke.mjs",
     "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",
     "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs"
   },
