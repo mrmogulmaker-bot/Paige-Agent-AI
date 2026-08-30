@@ -1301,11 +1301,22 @@ Deno.serve(async (req) => {
     if (apprErr) {
       console.error("[send-message] approval update failed:", apprErr.code, apprErr.message);
     } else if (!apprRows?.length) {
-      // A 0-row match here leaves the approval `pending` with `claimed_at` set, so
-      // every retry reports already-in-progress while the message HAS been sent.
-      // That state is recoverable only if someone can see it — hence error level.
+      // A 0-row match leaves the approval `pending` with `claimed_at` set, so every
+      // retry reports already-in-progress. Recoverable only if someone can see it —
+      // hence error level.
+      //
+      // The consequence DEPENDS ON WHETHER THE SEND HAPPENED, and this block is not
+      // gated on that: unlike the conversation update above, it runs for a failed
+      // send too (`status` initialises to "failed", and the update itself writes
+      // "pending" for exactly that case). An earlier version of this line asserted
+      // "the message was sent" unconditionally — stating as fact, in the one record
+      // a human would read while diagnosing, something that may not have happened.
+      // That is the same class of defect as a fabricated delivery status, and it
+      // was introduced by the very commit that added this logging.
       console.error(
-        `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — it stays pending though the message was sent. If this fires, the approval row's tenant does not match the send's.`,
+        status === "sent"
+          ? `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — it stays pending though the message WAS sent. If this fires, the approval row's tenant does not match the send's.`
+          : `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — the send did not succeed (status ${status}) and the approval could not be reset to pending. If this fires, the approval row's tenant does not match the send's.`,
       );
     }
   }

@@ -30,14 +30,27 @@
 -- the right way round matters because the first review of this defect named the
 -- wrong mechanism:
 --
---   * The COACH path does NOT leak. `can_access_contact()` (20260721020716) is
---     itself tenant-scoped: every one of its EXISTS arms joins the contact to a
---     tenant the caller belongs to, so a row with a contact is reachable only from
---     inside the tenant that owns it. For a NULL contact_id all four arms are
---     false and the function reduces to its first disjunct, `is_super_admin()` —
---     NOT to false, as an earlier version of this comment said. The effect is the
---     same, because a super_admin also satisfies `is_platform_owner()` in the
---     restrictive half, but the precise reading is the point of this file.
+--   * The COACH path does NOT leak — but NOT for the reason stated here first.
+--     An earlier version of this comment said "every one of its EXISTS arms joins
+--     the contact to a tenant the caller belongs to". That is FALSE, and it is
+--     corrected in place rather than left standing with the correction buried in a
+--     commit message. `can_access_contact()` (20260721020716) has four disjuncts:
+--       1. is_super_admin(_user_id)                      — operator escape
+--       2. clients → tenant_members / agency_can_manage_child   — TENANT-JOINED
+--       3. clients.lead_owner_user_id / cs_primary_user_id /
+--          assigned_coach_user_id / linked_user_id = _user_id   — NOT tenant-joined
+--       4. paige_coach_assignments.rep_user_id = _user_id       — NOT tenant-joined
+--     Arms 3 and 4 match on a DIRECT relationship recorded on the contact, with no
+--     join back to the caller's tenant. In practice those columns name staff of the
+--     contact's own tenant, so this is not a cross-tenant hole; what it does leave
+--     is a stale-assignment residual (a user who keeps a row after leaving the
+--     tenant), which is a separate concern from C-7 and not this file's to fix.
+--     What matters HERE is unchanged and is the part that was always right: for a
+--     NULL contact_id, arms 2, 3 and 4 are all false — nothing joins to a NULL —
+--     so the function reduces to its first disjunct, `is_super_admin()`, NOT to
+--     false as a still-earlier version claimed. The effect is the same, because a
+--     super_admin also satisfies `is_platform_owner()` in the restrictive half, but
+--     the precise reading is the point of this file.
 --
 --   * The ADMIN path DOES. `has_any_role()` reads public.user_roles, which has
 --     no tenant_id (the §59 global-role trap), so the permissive half is true for
@@ -63,8 +76,13 @@
 --   3. tenant_isolation stops admitting NULL
 --   4. the admin policy gains a tenant clause, so it cannot be the whole story
 --
--- (3) alone would close the read. (2) and (4) are there because a single
--- predicate holding the line is how this defect got here.
+-- EITHER (3) OR (4) alone closes the read, and that is measured, not assumed: the
+-- clean-replay cases revert each independently and the orphan row stays refused
+-- both ways. An earlier version of this header said "(3) alone would close the
+-- read", implying (4) was decoration. It is not — with (3) reverted, (4) is the
+-- only thing refusing a NULL-tenant row to a wrong-tenant admin. (2) is what stops
+-- new NULLs arriving at all. A single predicate holding the line is how this
+-- defect got here, which is why the set is deliberately redundant.
 -- =============================================================================
 
 -- 1 ── Backfill. A conversation's tenant is the tenant of its contact; nothing
@@ -165,8 +183,15 @@ with check (
   and (public.is_platform_owner() or tenant_id = public.current_user_tenant_id())
 );
 
--- 3b ── The restrictive policy stops admitting NULL. This is the change that
---       actually closes the read; 3a is depth.
+-- 3b ── The restrictive policy stops admitting NULL.
+--
+--       This used to say "the change that actually closes the read; 3a is depth".
+--       That ranking is wrong and the proof now asserts why: 3a's tenant clause is
+--       false for a NULL tenant_id too, so it refuses the same row on its own. The
+--       two are peers, not principal and understudy — and because either suffices,
+--       neither is pinned by behaviour alone. The clean-replay cases therefore
+--       assert BOTH shipped expressions structurally, out of pg_policies, so
+--       deleting one cannot pass by leaning on the other.
 alter policy "tenant_isolation" on public.paige_conversations
 using (public.is_platform_owner() or tenant_id = public.current_user_tenant_id())
 with check (public.is_platform_owner() or tenant_id = public.current_user_tenant_id());

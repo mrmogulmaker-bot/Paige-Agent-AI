@@ -29,8 +29,29 @@
 #
 #   3. THAT THE CRON-TOUCHING MIGRATIONS DID ANYTHING. `cron.schedule` is stubbed;
 #      it returns an id and schedules nothing, so ~31 migrations apply without their
-#      effect being exercised. Disclosed here because "827 applied" would otherwise
+#      effect being exercised. Disclosed here because "830 applied" would otherwise
 #      imply more than it means.
+#
+# TWO CORRECTIONS TO AN EARLIER VERSION OF THIS FILE, both found by an independent
+# review rather than by me:
+#
+#   · IT DID NOT APPLY MIGRATIONS THE WAY `db push` DOES. Each file was fed to psql
+#     WITHOUT a wrapping transaction, so 20260801120000 — which does
+#     `CREATE TEMP TABLE ... ON COMMIT DROP` and then reads that table — dropped it
+#     underneath itself and failed at `_c169_groups does not exist`. I had filed
+#     that under "known shim gaps", i.e. as a fault in the model rather than
+#     evidence about it. It is now `--single-transaction`, and that migration
+#     applies. This also SETTLES a question a previous commit recorded as
+#     unanswerable from the tree: 20260801120000 is recorded applied in prod's
+#     supabase_migrations.schema_migrations and was applied by db push, and it
+#     cannot have succeeded unless db push wrapped the file. It does.
+#
+#   · THE FAILURE GUARD COMPARED A COUNT. `[ "$fail" -gt 5 ]` let a NEW broken
+#     migration take a known one's slot in total silence — demonstrated by
+#     neutering one known failure and breaking a real migration from this branch,
+#     which produced five failures, ALL ASSERTIONS PASSED, and exit 0. It now
+#     compares the failing SET against a named list, so a substitution, an
+#     addition, or a shim gap being fixed all show as drift.
 #
 # Usage:  sudo ./scripts/proofs/clean-replay.sh
 set -uo pipefail
@@ -58,7 +79,18 @@ su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -q -f $BASE/00-shim.sq
 ok=0; fail=0; : > "$BASE/failures.txt"
 for f in $(ls "$BASE"/migrations/*.sql | sort); do
   v=$(basename "$f" | cut -d_ -f1)
-  if out=$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -v ON_ERROR_STOP=1 -q -f $f" 2>&1); then
+  # --single-transaction, because that is what `supabase db push` actually does.
+  #
+  # SETTLED 2026-08-30, having previously been recorded as unknowable from the
+  # tree. An independent review noticed that 20260801120000 fails here at
+  # `_c169_groups does not exist` — a CREATE TEMP TABLE ... ON COMMIT DROP
+  # autocommitting and dropping itself before the next statement — and applies
+  # cleanly WITH a wrapping transaction. That migration is recorded applied in
+  # prod's supabase_migrations.schema_migrations, and it was applied by db push.
+  # It could not have succeeded unless db push wrapped the file. So the replay
+  # was UNFAITHFUL, and the resulting failure was filed under "known shim gaps"
+  # when it was really this harness diverging from the thing it models.
+  if out=$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -v ON_ERROR_STOP=1 -q --single-transaction -f $f" 2>&1); then
     su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -q -c \"insert into supabase_migrations.schema_migrations(version,name) values ('$v','$(basename "$f")') on conflict do nothing\"" >/dev/null 2>&1
     ok=$((ok+1))
   else
@@ -77,10 +109,15 @@ echo
 cases_out=$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -f $BASE/c7-cases.sql" 2>&1)
 echo "$cases_out" | grep -vE "WARNING|CONTEXT|enqueue"
 
-if echo "$cases_out" | grep -q "ALL ASSERTIONS PASSED"; then
-  cases_rc=0
-elif echo "$cases_out" | grep -q "ASSERTION(S) FAILED"; then
+# FAILED is tested FIRST, deliberately. The failure message embeds the whole
+# assertion log, so a future label containing the phrase "ALL ASSERTIONS PASSED"
+# would have matched inside a FAILING run's own body and scored it green. No
+# current label does, so this was never live — but for the one mechanism whose
+# entire job is telling PASS from FAIL, the safe order costs nothing.
+if echo "$cases_out" | grep -q "ASSERTION(S) FAILED"; then
   cases_rc=1
+elif echo "$cases_out" | grep -q "ALL ASSERTIONS PASSED"; then
+  cases_rc=0
 else
   # Neither sentinel: the block did not reach its own RAISE, so it aborted early.
   # That is a failure, not an unknown — refusing to guess is the point.
@@ -88,9 +125,33 @@ else
   cases_rc=1
 fi
 
-# A migration failure outside the five known shim gaps is also a failure.
-if [ "$fail" -gt 5 ]; then
-  echo "!! $fail migration failures (expected at most the 5 known shim gaps)" >&2
+# A migration failure outside the known shim gaps is also a failure — compared as
+# a LIST, not a count.
+#
+# The count guard was worse than no guard. An independent review neutered one
+# known-failing migration and broke a real one from THIS branch
+# (20261002000000_comms_credential_lockdown_and_readiness), and the harness
+# reported five failures, printed ALL ASSERTIONS PASSED and exited 0: a different
+# five, one of them genuinely broken, entirely silent. Substitution was invisible
+# because nothing ever compared WHICH migrations failed.
+#
+# These four are shim gaps, not defects: objects Supabase provides that the shim
+# does not (auth.refresh_tokens, vault.create_secret). Each is named so that a
+# NEW failure cannot hide behind an old one's slot, and so that a shim gap being
+# FIXED shows up as drift too.
+EXPECTED_FAILURES="20260419011001_cae1c77f-6d84-4463-9f0a-f2068179db74.sql
+20260712134641_cron_token_to_vault_functions.sql
+20260712135910_cron_token_to_vault.sql
+20260712150000_cron_token_to_vault.sql"
+
+actual_failures=$(grep '^=== ' "$BASE/failures.txt" | sed 's/^=== //' | sort)
+expected_sorted=$(printf '%s\n' "$EXPECTED_FAILURES" | sed '/^$/d' | sort)
+if [ "$actual_failures" != "$expected_sorted" ]; then
+  echo "!! migration failure SET differs from the expected shim gaps" >&2
+  echo "--- unexpected (failed but should not have) ---" >&2
+  comm -13 <(printf '%s\n' "$expected_sorted") <(printf '%s\n' "$actual_failures") >&2
+  echo "--- no longer failing (fix the expected list) ---" >&2
+  comm -23 <(printf '%s\n' "$expected_sorted") <(printf '%s\n' "$actual_failures") >&2
   cases_rc=1
 fi
 exit "$cases_rc"

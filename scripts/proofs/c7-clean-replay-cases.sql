@@ -9,6 +9,16 @@ DECLARE
   cA uuid := 'dddd3333-3333-4333-8333-333333333333';
   out text := E'\n'; n bigint; fails int := 0;
   procedure_note text;
+  -- The SHIPPED policy expressions, captured before anything is altered.
+  --
+  -- The previous version restored each policy by writing the fixed definition
+  -- back out as a literal. That silently made the later blocks independent of
+  -- the migration: whatever 20261003000000 actually shipped, by block (b) the
+  -- policies were whatever this file re-declared. Deleting change 3b from the
+  -- migration therefore left every assertion green at exit 0 — the proof was
+  -- grading its own SQL, not the migration.
+  ship_iso_using text; ship_iso_check text;
+  ship_adm_using text; ship_adm_check text;
 BEGIN
   INSERT INTO auth.users (id, aud, role, email) VALUES
     (uA,'authenticated','authenticated','a@t'),(uB,'authenticated','authenticated','b@t'),
@@ -31,6 +41,22 @@ BEGIN
   SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-PROOF' AND tenant_id=tA;
   out := out||format('  trigger derived the tenant from the contact ....... %s   want 1%s',n,E'\n');
   IF n<>1 THEN fails:=fails+1; END IF;
+
+  SELECT qual, with_check INTO ship_iso_using, ship_iso_check
+    FROM pg_policies WHERE schemaname='public' AND tablename='paige_conversations' AND policyname='tenant_isolation';
+  SELECT qual, with_check INTO ship_adm_using, ship_adm_check
+    FROM pg_policies WHERE schemaname='public' AND tablename='paige_conversations' AND policyname='Admins manage all conversations';
+
+  -- STRUCTURAL PIN on each shipped change, independent of any behavioural read.
+  -- Behaviour alone cannot distinguish them here (either change closes the leak
+  -- on its own), so a deletion of the weaker-looking one would otherwise be
+  -- invisible. These read the catalog, which is the migration's actual output.
+  out := out||format('  shipped tenant_isolation drops the NULL escape .... %s   want t%s',
+    (ship_iso_using IS NOT NULL AND ship_iso_using NOT ILIKE '%tenant_id IS NULL%'),E'\n');
+  IF ship_iso_using IS NULL OR ship_iso_using ILIKE '%tenant_id IS NULL%' THEN fails:=fails+1; END IF;
+  out := out||format('  shipped admin policy carries a tenant clause ..... %s   want t%s',
+    (ship_adm_using IS NOT NULL AND ship_adm_using ILIKE '%current_user_tenant_id%'),E'\n');
+  IF ship_adm_using IS NULL OR ship_adm_using NOT ILIKE '%current_user_tenant_id%' THEN fails:=fails+1; END IF;
 
   PERFORM set_config('role','authenticated',true);
 
@@ -106,19 +132,39 @@ BEGIN
   out := out||format('%s  EITHER-ALONE — revert ONLY the NULL escape, still refused %s   want 0 (admin clause holds)%s',E'\n',n,E'\n');
   IF n<>0 THEN fails:=fails+1; END IF;
   RESET role;
-  ALTER POLICY "tenant_isolation" ON public.paige_conversations
-    USING (public.is_platform_owner() OR tenant_id = public.current_user_tenant_id())
-    WITH CHECK (public.is_platform_owner() OR tenant_id = public.current_user_tenant_id());
+  -- Restore to what the MIGRATION shipped, not to a literal written here.
+  IF ship_iso_using IS NULL OR ship_iso_check IS NULL THEN
+    -- Nothing to restore TO. Say so rather than emit `WITH CHECK ()` and die with
+    -- a syntax error that reads like a harness bug.
+    out := out||format('  !! shipped tenant_isolation has no %s expression — cannot restore%s',
+      CASE WHEN ship_iso_using IS NULL THEN 'USING' ELSE 'WITH CHECK' END, E'\n');
+    fails := fails+1;
+  ELSE
+    EXECUTE format('ALTER POLICY %I ON public.paige_conversations USING (%s) WITH CHECK (%s)',
+                   'tenant_isolation', ship_iso_using, ship_iso_check);
+  END IF;
 
-  -- (b) Revert ONLY the admin policy's tenant clause. Also still refused — the
-  --     restrictive policy holds on its own. The mirror of (a).
+  -- (b) Revert ONLY the admin policy's tenant clause, leaving tenant_isolation
+  --     exactly as the migration shipped it, and read C7-ORPHAN.
+  --
+  --     This block used to read C7-PROOF, and an independent review showed that
+  --     made it unfalsifiable: once the trigger stamps tenant A, a tenant-B admin
+  --     is refused by tA <> tB with no NULL involved, so `want 0` held in every
+  --     policy configuration — including the full pre-fix one. The file's own
+  --     comment thirty lines above says exactly this and the assertion broke it.
+  --
+  --     C7-ORPHAN is the row that discriminates: contactless, so still NULL after
+  --     the fix. With the admin clause reverted here, the ONLY thing that can
+  --     refuse it is the shipped tenant_isolation. Delete 3b from the migration
+  --     and this line reads 1 and the harness exits 1 — which is the pin that was
+  --     missing.
   ALTER POLICY "Admins manage all conversations" ON public.paige_conversations
     USING (public.has_any_role(auth.uid(), ARRAY['admin','super_admin']))
     WITH CHECK (public.has_any_role(auth.uid(), ARRAY['admin','super_admin']));
   PERFORM set_config('role','authenticated',true);
   PERFORM set_config('request.jwt.claims',json_build_object('sub',uB,'role','authenticated')::text,true);
-  SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-PROOF';
-  out := out||format('  DEPTH-ONLY — revert the admin clause, still refused ...... %s   want 0 (by tenant_isolation)%s',n,E'\n');
+  SELECT count(*) INTO n FROM public.paige_conversations WHERE source_message_id='C7-ORPHAN';
+  out := out||format('  SHIPPED-3b — revert the admin clause, orphan still refused %s   want 0 (by shipped tenant_isolation)%s',n,E'\n');
   IF n<>0 THEN fails:=fails+1; END IF;
 
   -- (c) BOTH reverted — the true pre-fix state, and the ONLY configuration in which
