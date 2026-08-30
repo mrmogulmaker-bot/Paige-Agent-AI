@@ -38,6 +38,33 @@ function render() { act(() => root.render(<Marketplace />)); }
 function button(name: string) { return [...host.querySelectorAll("button")].find((node) => node.textContent?.includes(name)) as HTMLButtonElement | undefined; }
 
 describe("Solo Marketplace rendered truth", () => {
+  it("binds every capability-copy badge to the displayed copy proof across cards, tabs, and detail", () => {
+    const liveItem = {
+      ...item,
+      safeState: "LIVE" as const,
+      installed: true,
+      installStatus: "active",
+    };
+    harness.read.mockReturnValue({
+      ...ready,
+      items: [liveItem],
+      summary: { ...ready.summary, installed: { state: "PARTIAL", count: 1 } },
+    });
+    render();
+
+    for (const tab of ["Today", "Browse", "Installed"]) {
+      act(() => button(tab)?.click());
+      const card = host.querySelector<HTMLButtonElement>(".mk-card")!;
+      expect(card.querySelector(".mk-card-copy")?.textContent).toBe("Release-bound capability details are unavailable.");
+      expect(card.querySelector(".mk-card-head .mk-truth")?.textContent).toBe("UNAVAILABLE");
+    }
+
+    act(() => host.querySelector<HTMLButtonElement>(".mk-card")!.click());
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.querySelector(".mk-dialog-body section p")?.textContent).toBe("Release-bound capability details are unavailable.");
+    expect(dialog.querySelector(".mk-dialog-hero .mk-truth")?.textContent).toBe("UNAVAILABLE");
+  });
+
   it("preserves the four tabs and renders only server-projected cards", () => {
     render();
     expect([...(host.querySelectorAll(".mk-tabs button"))].map((node) => node.textContent?.trim())).toEqual(["Today", "Browse", "Installed", "Updates"]);
