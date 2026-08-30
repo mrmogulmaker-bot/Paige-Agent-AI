@@ -117,6 +117,14 @@ describe("PAIGE Marketplace authority containment", () => {
   it("exposes only curated Marketplace browse to Chat and MCP", () => {
     expect(mcp).toContain('from "https://esm.sh/@supabase/supabase-js@2.45.0"');
     expect(mcp).not.toContain('from "npm:@supabase/supabase-js');
+    expect(mcp).toContain('from "https://esm.sh/zod@3.25.76"');
+    expect(mcp).not.toContain('from "npm:zod');
+    expect(mcp).toContain('// @ts-types="https://esm.sh/@types/node@22.15.15/async_hooks.d.ts"');
+    expect(mcp).toContain('from "https://esm.sh/hono@4.13.5"');
+    expect(mcp).toContain('from "https://esm.sh/mcp-lite@0.10.0"');
+    expect(mcp).not.toContain('from "npm:');
+    expect(mcp).toContain('Legacy send_sms stays fail-closed until governed outbound authorization exists.');
+    expect(mcp).not.toContain('Authorization: authHeader');
     expect(chat).toContain('name: "marketplace_browse"');
     expect(mcp).toContain('mcp.tool("marketplace_browse"');
     for (const tool of prohibitedTools) {

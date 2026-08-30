@@ -16,9 +16,9 @@
 // Phase 3 (next): OAuth 2.1 + Dynamic Client Registration + per-user RLS tokens.
 // Discovery endpoints below are scaffolding for that work.
 
-import { Hono } from "npm:hono@4";
-import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
-import { z } from "npm:zod@^3.25.0";
+import { Hono } from "https://esm.sh/hono@4.13.5";
+import { McpServer, StreamableHttpTransport } from "https://esm.sh/mcp-lite@0.10.0";
+import { z } from "https://esm.sh/zod@3.25.76";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 import { applyContactSearchFilter, contactSearchTokens, CONTACT_SEARCH_COLUMNS } from "../_shared/contact-search.ts";
@@ -101,6 +101,7 @@ type ActorCtx = {
   client_id: string | null;
   scopes: string[];
 };
+// @ts-types="https://esm.sh/@types/node@22.15.15/async_hooks.d.ts"
 import { AsyncLocalStorage } from "node:async_hooks";
 const actorStore = new AsyncLocalStorage<ActorCtx>();
 function currentActor(): ActorCtx {
@@ -1505,7 +1506,10 @@ mcp.tool("send_btf_template_email", {
     // (the tenant's OWN support/reply address) — falling to the platform-neutral scope
     // default, never a hardcoded operator inbox.
     const tenantIdForReplyTo = await actorTenantId();
-    const operatorForReplyTo = await resolveOperatorIdentity(admin, tenantIdForReplyTo);
+    const operatorForReplyTo = await resolveOperatorIdentity(
+      admin as unknown as Parameters<typeof resolveOperatorIdentity>[0],
+      tenantIdForReplyTo,
+    );
     const tenantReplyTo =
       operatorForReplyTo.support_email ??
       (operatorForReplyTo.sender as { reply_to?: string } | undefined)?.reply_to ??
@@ -2380,6 +2384,7 @@ mcp.tool("send_sms", {
       const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
         method: "POST",
         headers: {
+          // @ts-expect-error Legacy send_sms stays fail-closed until governed outbound authorization exists.
           Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
@@ -5110,7 +5115,7 @@ async function resolveBearer(presented: string): Promise<ActorCtx | null> {
 async function enforceTierAndScope(
   body: any,
   actor: ActorCtx,
-): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+): Promise<{ ok: true } | { ok: false; status: 403; error: string }> {
   // NOTE: this inspects a single JSON-RPC object's `.method`. A JSON-RPC batch
   // ARRAY has no top-level `.method` and would slip past — that is safe TODAY
   // only because the transport (StreamableHttpTransport, no session adapter)
