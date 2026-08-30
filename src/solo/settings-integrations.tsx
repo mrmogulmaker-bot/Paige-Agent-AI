@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Blocks, Network, RefreshCw, ShieldCheck, Store, TriangleAlert, Workflow } from "lucide-react";
+import { Blocks, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -13,6 +13,7 @@ type SafeConnectionStatus = {
   last_sync_at?: string | null;
   last_probed_at?: string | null;
   workflow_count?: number | null;
+  server_url_host?: string | null;
 };
 
 type IntegrationReadState = {
@@ -34,7 +35,19 @@ function sanitizeSafeConnectionStatus(value: unknown): SafeConnectionStatus | nu
     last_sync_at: typeof source.last_sync_at === "string" ? source.last_sync_at : null,
     last_probed_at: typeof source.last_probed_at === "string" ? source.last_probed_at : null,
     workflow_count: typeof source.workflow_count === "number" ? source.workflow_count : null,
+    server_url_host: typeof source.server_url_host === "string" ? source.server_url_host : null,
   };
+}
+
+type ProviderIdentity = "n8n" | "zapier" | "mcp";
+
+function isZapierMcpHost(host: string | null | undefined) {
+  if (!host) return false;
+  try {
+    return new URL(host).hostname.toLowerCase() === "mcp.zapier.com";
+  } catch {
+    return false;
+  }
 }
 
 function statusPresentation(value: SafeConnectionStatus | null) {
@@ -103,20 +116,21 @@ function Truth({ value, capability = false }: { value: SettingsTruth; capability
 function BridgeCard({
   name,
   kind,
-  icon: Icon,
+  provider,
   value,
 }: {
   name: string;
   kind: string;
-  icon: typeof Workflow;
+  provider: ProviderIdentity;
   value: SafeConnectionStatus | null;
 }) {
   const state = statusPresentation(value);
   const evidence = value?.last_sync_at || value?.last_probed_at;
-  return <article className="ss-card ss-integration-card">
+  const mark = provider === "n8n" ? "n8n" : provider === "zapier" ? "zapier" : "MCP";
+  return <article className="ss-card ss-integration-card" data-provider={provider}>
     <header>
-      <span className="ss-card-icon"><Icon aria-hidden /></span>
-      <div className="ss-integration-title"><h2>{value?.label?.trim() || name}</h2><span>{kind}</span></div>
+      <span className="ss-provider-mark" data-provider-mark={provider} aria-hidden>{mark}</span>
+      <div className="ss-integration-title"><h2>{name}</h2><span>{value?.label?.trim() || kind}</span></div>
       <Truth value="LIVE" capability />
     </header>
     <div className="ss-card-body">
@@ -134,8 +148,18 @@ function BridgeCard({
   </article>;
 }
 
+const RECOVERED_SURFACES = [
+  { name: "QuickBooks", truth: "PARTIAL" as SettingsTruth, owner: "Integrations", note: "OAuth and financial sync seams exist, but no canonical active-Solo-tenant readiness projection is proven." },
+  { name: "Stripe Connect", truth: "PARTIAL" as SettingsTruth, owner: "Marketplace / Storefront", note: "Tenant payout-account records exist. They are not Paige subscription or Billing evidence." },
+  { name: "DocuSign", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Legacy admin and signature seams need a tenant-safe governed contract." },
+  { name: "Apollo", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → Clients", note: "Legacy enrichment configuration is platform-global and cannot establish this workspace’s connection." },
+  { name: "Plaid", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → financial owner", note: "Bank-link scaffolding does not prove tenant-safe readiness." },
+  { name: "Webhooks & direct API", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
+] as const;
+
 export function SoloIntegrationsView() {
   const status = useIntegrationStatus();
+  const mcpProvider: ProviderIdentity = isZapierMcpHost(status.mcp?.server_url_host) ? "zapier" : "mcp";
 
   return <div className="ss-integrations">
     <section className="ss-integrations-intro" aria-labelledby="ss-integrations-title">
@@ -147,9 +171,23 @@ export function SoloIntegrationsView() {
     {status.loading ? <div className="ss-state" role="status"><RefreshCw className="ss-spin" />Clearing and resolving this account…</div>
       : status.error ? <div className="ss-state" role="alert"><TriangleAlert /><span><strong>Couldn’t read integration status</strong>No connection state is being claimed for this account.</span><button type="button" onClick={status.retry}>Retry</button></div>
       : <div className="ss-integration-grid">
-        <BridgeCard name="n8n" kind="Workflow bridge" icon={Workflow} value={status.n8n} />
-        <BridgeCard name="MCP / Zapier" kind="External tool bridge" icon={Network} value={status.mcp} />
+        <BridgeCard name="n8n" kind="Workflow bridge" provider="n8n" value={status.n8n} />
+        <BridgeCard name={mcpProvider === "zapier" ? "Zapier MCP" : "MCP bridge"} kind="External tool bridge" provider={mcpProvider} value={status.mcp} />
       </div>}
+
+    <section className="ss-recovered" aria-labelledby="ss-recovered-title">
+      <div className="ss-recovered-heading">
+        <div><span>Version One evidence</span><h2 id="ss-recovered-title">Recovered, not connected</h2></div>
+        <p>No tenant connection is claimed</p>
+      </div>
+      <div className="ss-recovered-grid">
+        {RECOVERED_SURFACES.map((surface) => <article key={surface.name} className="ss-recovered-item">
+          <div><strong>{surface.name}</strong><span>{surface.owner}</span></div>
+          <Truth value={surface.truth} />
+          <p>{surface.note}</p>
+        </article>)}
+      </div>
+    </section>
 
     <div className="ss-integration-grid ss-integration-supporting">
       <section className="ss-card">
@@ -163,3 +201,4 @@ export function SoloIntegrationsView() {
     </div>
   </div>;
 }
+

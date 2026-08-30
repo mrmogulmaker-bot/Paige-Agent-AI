@@ -85,4 +85,54 @@ describe("Solo Settings Integrations truth boundary", () => {
     expect(Array.from(host.querySelectorAll("button")).map((node) => node.textContent)).toEqual(["Retry"]);
     await act(async () => root.unmount());
   });
+
+  it("uses Zapier identity only when the safe MCP host proves Zapier", async () => {
+    rpc.mockImplementation((name: string) => Promise.resolve({
+      data: name === "get_tenant_n8n_connection"
+        ? { configured: false, status: "unconfigured" }
+        : { configured: true, status: "connected", server_url_host: "https://mcp.zapier.com", label: "Automation bridge" },
+      error: null,
+    }));
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+    const zapierCard = host.querySelector('[data-provider="zapier"]');
+    expect(zapierCard?.textContent).toContain("Zapier MCP");
+    expect(zapierCard?.querySelector('[data-provider-mark="zapier"]')?.textContent).toBe("zapier");
+    expect(zapierCard?.querySelector('[data-truth="LIVE"]')).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("keeps unknown MCP servers neutral and separate from Zapier branding", async () => {
+    rpc.mockImplementation((name: string) => Promise.resolve({
+      data: name === "get_tenant_n8n_connection"
+        ? { configured: false, status: "unconfigured" }
+        : { configured: true, status: "connected", server_url_host: "https://tools.example.test", label: "Private tools" },
+      error: null,
+    }));
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+    expect(host.querySelector('[data-provider="zapier"]')).toBeNull();
+    const mcpCard = host.querySelector('[data-provider="mcp"]');
+    expect(mcpCard?.textContent).toContain("Private tools");
+    expect(mcpCard?.querySelector('[data-provider-mark="mcp"]')?.textContent).toBe("MCP");
+    await act(async () => root.unmount());
+  });
+
+  it("labels recovered Version One surfaces as evidence, never tenant connection state", async () => {
+    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+    const recovered = host.querySelector('[aria-labelledby="ss-recovered-title"]');
+    expect(recovered?.textContent).toContain("Recovered, not connected");
+    expect(recovered?.textContent).toContain("QuickBooks");
+    expect(recovered?.textContent).toContain("Webhooks & direct API");
+    expect(recovered?.textContent).toContain("No tenant connection is claimed");
+    expect(recovered?.querySelector('[data-truth="LIVE"]')).toBeNull();
+    expect(recovered?.querySelector("button, a")).toBeNull();
+    await act(async () => root.unmount());
+  });
 });
+
