@@ -380,10 +380,16 @@ export function deliveryStep(r: CommsReadiness): Step {
   return { n: "Delivery", s: "Whether texts actually arrived",
     truth: d.state === "no_activity" ? "UNAVAILABLE" : d.state === "delivering" ? "LIVE" : "PARTIAL",
     tone: d.state === "delivering" ? "ok" : d.state === "no_activity" ? "neutral" : "warn",
+    // Every state is NAMED. The final arm used to be a catch-all reading
+    // "N of M did not arrive", so a sixth resolver state would have rendered as a
+    // delivery failure nobody observed — which is exactly how the Conversations
+    // consumer came to report "Messages are not arriving" on an account with zero
+    // failures. Same canonical record, same mistake, so it is closed here too.
     state: d.state === "no_activity" ? "Nothing sent yet"
       : d.state === "awaiting_receipts" ? `${d.sent_30d} sent, none confirmed yet`
       : d.state === "delivering" ? `${d.delivered_30d} of ${d.sent_30d} delivered`
-      : `${d.failed_30d} of ${d.sent_30d} did not arrive`,
+      : d.state === "mixed" || d.state === "failing" ? `${d.failed_30d} of ${d.sent_30d} did not arrive`
+      : "Not reported",
     // The replies disclosure travels WITH the step, not beside it.
     //
     // The pre-refactor step was named "Delivery and replies" and its detail said
@@ -625,11 +631,15 @@ function ConnectionsView() {
         <div className="ss-grid">
           <Card title="Business texting readiness" icon={Webhook}
             truth={r ? (r.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
-            actions={r ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
+            actions={r && !readFailed ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {readiness.error ? <div className="ss-next">
-                  <strong>Texting is not ready yet</strong>
-                  <p>We couldn&rsquo;t read this account&rsquo;s setup just now, so nothing below is being claimed about it. Try again in a moment.</p>
+              {/* "Texting is not ready yet" is a definite claim about the account,
+                  and it used to head the FAILED-READ block — one line above a
+                  sentence saying nothing is being claimed about the account. The
+                  five Communications cards were repaired and this was missed. */}
+              {readFailed ? <div className="ss-next ss-read-failure" role="status">
+                  <strong>We couldn&rsquo;t read this account&rsquo;s setup</strong>
+                  <p>Nothing below is being claimed about it. Try again in a moment.</p>
                   <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
                 </div>
               : r ? <>

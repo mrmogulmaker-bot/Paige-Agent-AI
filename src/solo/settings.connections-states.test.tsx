@@ -127,19 +127,59 @@ describe("Connections renders its real states", () => {
     await cleanup();
   });
 
-  it("shows a step the SAME number in the card as in the ladder", async () => {
+  it("shows a step the same number in the card AND in the ladder", async () => {
     rpcState.readiness = { data: READY, error: null };
     const { host, cleanup } = await mountConnections();
-    const numberFor = (scope: ParentNode) =>
-      Array.from(scope.querySelectorAll(".ss-step"))
-        .filter((el) => el.querySelector(".ss-step-name strong")?.textContent === "Business details")
+    const numbersFor = (name: string) =>
+      Array.from(host.querySelectorAll(".ss-step"))
+        .filter((el) => el.querySelector(".ss-step-name strong")?.textContent === name)
         .map((el) => el.querySelector(".ss-step-idx")?.textContent);
 
-    const inCard = numberFor(host);
-    expect(inCard.length).toBeGreaterThan(0);
-    // Every rendering of that step agrees, and agrees with its canonical position.
-    expect(new Set(inCard).size).toBe(1);
-    expect(inCard[0]).toBe("2");
+    // The card's lone step, on the default view.
+    const inCard = numbersFor("Business details");
+    expect(inCard).toEqual(["2"]);
+
+    // Now the LADDER, which lives on the other view. An earlier version of this
+    // test never switched, so the ladder was never in the DOM and the whole
+    // component could be deleted with the test still green — it asserted a
+    // cross-rendering agreement while only ever seeing one rendering.
+    const health = Array.from(host.querySelectorAll('button[role="tab"]'))
+      .find((b) => b.textContent === "Health") as HTMLButtonElement | undefined;
+    expect(health).toBeTruthy();
+    await act(async () => { health!.click(); });
+
+    const inLadder = numbersFor("Business details");
+    expect(inLadder).toEqual(["2"]);
+    // The ladder really is rendered now, not an empty list agreeing by default.
+    expect(host.querySelectorAll(".ss-step").length).toBeGreaterThan(4);
+    await cleanup();
+  });
+
+  it("does not claim texting is not ready when the read itself failed", async () => {
+    // The Health card headlined "Texting is not ready yet" over the failed-read
+    // block — a definite claim about the account, one line above a sentence
+    // saying nothing is being claimed about it.
+    rpcState.readiness = { data: null, error: { message: "COMMS_READINESS_FORBIDDEN" } };
+    const { host, cleanup } = await mountConnections();
+    const health = Array.from(host.querySelectorAll('button[role="tab"]'))
+      .find((b) => b.textContent === "Health") as HTMLButtonElement | undefined;
+    await act(async () => { health!.click(); });
+
+    const text = host.textContent ?? "";
+    expect(text).toContain("We couldn\u2019t read this account\u2019s setup");
+    expect(text).not.toContain("Texting is not ready yet");
+    expect(text).not.toContain("Ready to text");
+    await cleanup();
+  });
+
+  it("DOES say texting is not ready when the read succeeded and it is not (non-vacuity)", async () => {
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    const health = Array.from(host.querySelectorAll('button[role="tab"]'))
+      .find((b) => b.textContent === "Health") as HTMLButtonElement | undefined;
+    await act(async () => { health!.click(); });
+    // READY has `can_send_sms: false`, so the claim is true here and must appear.
+    expect(host.textContent ?? "").toContain("Texting is not ready yet");
     await cleanup();
   });
 });

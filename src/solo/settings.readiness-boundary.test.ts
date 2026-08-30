@@ -324,6 +324,23 @@ describe("readiness steps are one shared source", () => {
     expect(delivering.state).toBe("4 of 5 delivered");
   });
 
+  it("does not report a failure for a state it does not recognise", () => {
+    // The final arm used to be a catch-all reading "N of M did not arrive", so a
+    // sixth resolver state would render as a delivery failure nobody observed —
+    // which is exactly how the Conversations consumer of this same record came to
+    // say "Messages are not arriving" on an account with zero failures.
+    const unknown = deliveryStep({ ...BASE,
+      delivery: { state: "something_new" as unknown as "delivering",
+        sent_30d: 5, delivered_30d: 0, failed_30d: 0, last_inbound_at: null } });
+    expect(unknown.state).toBe("Not reported");
+    expect(unknown.state).not.toContain("did not arrive");
+
+    // Non-vacuity: a state that IS a failure still says so.
+    const failing = deliveryStep({ ...BASE,
+      delivery: { state: "failing", sent_30d: 5, delivered_30d: 0, failed_30d: 5, last_inbound_at: null } });
+    expect(failing.state).toBe("5 of 5 did not arrive");
+  });
+
   it("does not let a plan imply that anything was billed or sent", () => {
     const active = billingStep({ subscription: "active", plan_name: "Solo", period_end: null,
       cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0 });

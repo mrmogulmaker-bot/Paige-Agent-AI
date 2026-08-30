@@ -52,6 +52,22 @@ describe("Conversations channel disclosure, fed by the canonical resolver", () =
    * reportable: nothing writes an inbound SMS row to `public.messages`, which is
    * the only thing `last_inbound_at` reads.
    */
+  it("reads inbound_reporting where the RESOLVER puts it, not where we wish it were", () => {
+    // The guard was declared and read at the top level while the resolver nests
+    // it inside `delivery`, so it was `undefined` at runtime and the "available"
+    // branch was dead. This pins the location, not just the behaviour.
+    const nested = { ...READY,
+      delivery: { ...READY.delivery, inbound_reporting: "available" as const,
+        last_inbound_at: "2026-08-29T12:00:00Z" } };
+    expect(sms(getSoloChannelTruth(activeSms, true, nested)).inbound).toBe("Replies received");
+
+    // A record carrying it at the OLD top level must NOT be honoured — that shape
+    // is not something `tenant_comms_readiness()` can return.
+    const topLevel = { ...READY, inbound_reporting: "available",
+      delivery: { ...READY.delivery, last_inbound_at: "2026-08-29T12:00:00Z" } } as unknown as typeof READY;
+    expect(sms(getSoloChannelTruth(activeSms, true, topLevel)).inbound).toBe("Not reported");
+  });
+
   it("never claims replies either way while the resolver says they are unreportable", () => {
     expect(sms(getSoloChannelTruth(activeSms, true, PREPARED)).inbound).toBe("Not reported");
     expect(sms(getSoloChannelTruth(activeSms, true, READY)).inbound).toBe("Not reported");
@@ -60,15 +76,22 @@ describe("Conversations channel disclosure, fed by the canonical resolver", () =
   it("does not claim replies even when a timestamp is present but reporting is unavailable", () => {
     // The exact shape production returns for a tenant who IS receiving replies:
     // a stamp could only appear by accident, and the guard still governs.
-    const withStamp = { ...READY, inbound_reporting: "unavailable" as const,
-      delivery: { ...READY.delivery, last_inbound_at: "2026-08-29T12:00:00Z" } };
+    // Built in the shape the RPC ACTUALLY returns — `inbound_reporting` nested
+    // inside `delivery`. The earlier fixtures put it at the top level, a shape
+    // production cannot produce, so they proved the guard against a record that
+    // never exists and could not reveal that the guard was unreachable.
+    const withStamp = { ...READY,
+      delivery: { ...READY.delivery, inbound_reporting: "unavailable" as const,
+        last_inbound_at: "2026-08-29T12:00:00Z" } };
     expect(sms(getSoloChannelTruth(activeSms, true, withStamp)).inbound).toBe("Not reported");
   });
 
   it("reports replies ONLY when the resolver says inbound reporting is available", () => {
     // Non-vacuity: the branch is reachable, so the assertions above are testing
     // the guard rather than a code path that can never report anything.
-    const live = { ...READY, inbound_reporting: "available" as const };
+    const live = { ...READY,
+      delivery: { ...READY.delivery, inbound_reporting: "available" as const,
+        last_inbound_at: "2026-08-29T12:00:00Z" } };
     expect(sms(getSoloChannelTruth(activeSms, true, live)).inbound).toBe("Replies received");
     const quiet = { ...live, delivery: { ...live.delivery, last_inbound_at: null } };
     expect(sms(getSoloChannelTruth(activeSms, true, quiet)).inbound).toBe("No replies received");

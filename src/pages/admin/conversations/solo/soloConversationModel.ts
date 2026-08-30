@@ -83,19 +83,30 @@ export interface SoloCommsReadinessEvidence {
    * receipts, which is the same class of untruth as the "No replies received"
    * repaired a few lines below it.
    */
-  delivery: { state: "no_activity" | "delivering" | "awaiting_receipts" | "mixed" | "failing"; last_inbound_at: string | null };
-  /**
-   * The resolver's OWN guard on whether replies can be reported at all.
-   *
-   * `tenant_comms_readiness()` returns `inbound_reporting: 'unavailable'` because
-   * `last_inbound_at` reads `public.messages` filtered to inbound, and NOTHING
-   * writes an inbound SMS row there — `handle-inbound-sms` inserts into
-   * `paige_conversations`. The column is therefore structurally always null.
-   *
-   * Optional so a caller with an older record still behaves: absent is treated
-   * as unavailable, which is the safe direction.
-   */
-  inbound_reporting?: "available" | "unavailable";
+  delivery: {
+    state: "no_activity" | "delivering" | "awaiting_receipts" | "mixed" | "failing";
+    last_inbound_at: string | null;
+    /**
+     * The resolver's OWN guard on whether replies can be reported at all.
+     *
+     * `tenant_comms_readiness()` emits `inbound_reporting: 'unavailable'` because
+     * `last_inbound_at` reads `public.messages` filtered to inbound, and NOTHING
+     * writes an inbound SMS row there — `handle-inbound-sms` inserts into
+     * `paige_conversations`. The column is therefore structurally always null.
+     *
+     * NESTED INSIDE `delivery`, because that is where the resolver actually puts
+     * it (migration 20261002000000, inside the `delivery` jsonb). It was declared
+     * and read at the TOP level, so at runtime it was always `undefined` and the
+     * guard could never take its `available` branch. The tenant-visible outcome
+     * was still safe — absent reads as unavailable — but a guard that cannot be
+     * entered is not a guard, and the test fixtures that "locked" it were built
+     * in a shape the RPC cannot produce, so they could not have caught this.
+     *
+     * Optional so a caller with an older record still behaves: absent is treated
+     * as unavailable, which is the safe direction.
+     */
+    inbound_reporting?: "available" | "unavailable";
+  };
 }
 
 export function getSoloChannelTruth(
@@ -160,7 +171,7 @@ export function getSoloChannelTruth(
             // Honour the resolver's published guard; a missing guard reads as
             // unavailable (§13 — absence of proof is not proof of absence).
             inbound:
-              readiness.inbound_reporting === "available"
+              readiness.delivery.inbound_reporting === "available"
                 ? (readiness.delivery.last_inbound_at ? "Replies received" : "No replies received")
                 : "Not reported",
             // Each arm names the state it is reading. `awaiting_receipts` says what

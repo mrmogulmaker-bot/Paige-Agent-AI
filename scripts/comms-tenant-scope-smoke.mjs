@@ -68,6 +68,9 @@ function makeAdmin(rows) {
       update: (row) => { verb = "update"; payload = row; return q; },
       insert: (row) => { verb = "insert"; payload = row; return q; },
       upsert: (row) => { verb = "upsert"; payload = row; return q; },
+      // A DELETE is scoped by FILTERS, not by a payload — so it needs its own
+      // helper. Its tenant predicate is the only thing stopping a lift on one
+      // tenant's number from clearing suppressions on every other tenant.
       delete: () => { verb = "delete"; return q; },
       eq: (k, v) => { filters[k] = v; return q; },
       in: (k, v) => { filters[k] = v; return q; },
@@ -92,6 +95,12 @@ function makeAdmin(rows) {
   return {
     queries,
     rpcs,
+    /** Every DELETE against `t` is filtered by `key === val`. */
+    deletesScoped(t, key, val) {
+      const ds = queries.filter((q) => q.table === t && q.verb === "delete");
+      return ds.length > 0 && ds.every((d) => d.filters[key] === val);
+    },
+    deleted: (t) => queries.some((q) => q.table === t && q.verb === "delete"),
     /** Every write to `t` carries `key === val` in its ROW. */
     writesCarry(t, key, val) {
       const ws = queries.filter((q) => q.table === t && q.verb !== "select");
@@ -357,9 +366,41 @@ console.log("comms tenant-scope smoke\n");
     check("a STOP writes a consent revocation", a.wrote("paige_consent_events"));
     check("...carrying the receiving tenant explicitly (§9)",
       a.writesCarry("paige_consent_events", "tenant_id", TENANT_A));
+  }
+
+  // ── The rail emit, asserted on the branch that REACHES it.
+  //
+  //    This assertion previously sat in the STOP block, where the emit is
+  //    unreachable: it is gated behind `if (contactId)` AFTER the conversation
+  //    insert, which a STOP never performs. `[].every()` is true, so it passed
+  //    while `p_tenant_id` could be replaced with a zero UUID unnoticed — the
+  //    same "assertion that cannot fail" the commit before it claimed to remove.
+  {
+    globalThis.__ADMIN__ = makeAdmin(rows);
+    await post({ To: NUMBER_A, From: "+15559998888", Body: "hello", MessageSid: "SM8" });
+    const a = globalThis.__ADMIN__;
     const rail = a.rpcs.filter((r) => r.name === "record_rail_event");
-    check("...and any rail event it files is tenant-scoped too",
+    check("a plain inbound text files a rail event (non-vacuity)", rail.length > 0);
+    check("...carrying the receiving tenant explicitly (§9)",
       rail.every((r) => r.args?.p_tenant_id === TENANT_A));
+  }
+
+  // ── START / opt-in. A DIFFERENT branch again, and the only one that DELETES.
+  //
+  //    Nothing reached it before: the suite sent "hello" and "STOP" only. Its
+  //    tenant predicate is what stops one person texting START to one tenant's
+  //    number from lifting their suppression on EVERY tenant that ever
+  //    suppressed that address — a cross-tenant write, not merely a read.
+  {
+    globalThis.__ADMIN__ = makeAdmin(rows);
+    const res = await post({ To: NUMBER_A, From: "+15559998888", Body: "START", MessageSid: "SM9" });
+    const a = globalThis.__ADMIN__;
+    check("an inbound START is accepted", res.status === 200);
+    check("...and it really lifts a suppression (non-vacuity)", a.deleted("paige_suppressions"));
+    check("...scoped to the RECEIVING tenant, never every tenant (§9)",
+      a.deletesScoped("paige_suppressions", "tenant_id", TENANT_A));
+    check("...and the consent GRANT it records carries the tenant explicitly (§9)",
+      a.writesCarry("paige_consent_events", "tenant_id", TENANT_A));
   }
 
   // ── A number the tenant no longer holds must not authenticate anything.
