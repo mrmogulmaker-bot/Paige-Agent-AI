@@ -3,6 +3,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
+
 SELECT plan(38);
 
 SELECT ok(
@@ -56,17 +58,17 @@ VALUES
   ('ae100000-0000-0000-0000-000000001111', 'analytics-contract-a', 'Analytics Contract A', 'active', 'standalone', 'ACA', 8100001, '{}'::jsonb),
   ('be200000-0000-0000-0000-000000002222', 'analytics-contract-b', 'Analytics Contract B', 'active', 'standalone', 'ACB', 8200002, '{}'::jsonb);
 
-INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
-  ('ae100000-0000-0000-0000-000000000001', 'ae100000-0000-0000-0000-000000001111'),
-  ('ae100000-0000-0000-0000-000000000002', 'ae100000-0000-0000-0000-000000001111'),
-  ('be200000-0000-0000-0000-000000000001', 'be200000-0000-0000-0000-000000002222')
-ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
-
 INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
   ('ae100000-0000-0000-0000-000000001111', 'ae100000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
   ('be200000-0000-0000-0000-000000002222', 'ae100000-0000-0000-0000-000000000001', 'admin', 'active', false, now()),
   ('ae100000-0000-0000-0000-000000001111', 'ae100000-0000-0000-0000-000000000002', 'coach', 'active', false, now()),
   ('be200000-0000-0000-0000-000000002222', 'be200000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
+
+INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
+  ('ae100000-0000-0000-0000-000000000001', 'ae100000-0000-0000-0000-000000001111'),
+  ('ae100000-0000-0000-0000-000000000002', 'ae100000-0000-0000-0000-000000001111'),
+  ('be200000-0000-0000-0000-000000000001', 'be200000-0000-0000-0000-000000002222')
+ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
 
 INSERT INTO public.pipelines (id, tenant_id, name, is_default) VALUES
   ('ae100000-0000-0000-0000-00000000a001', 'ae100000-0000-0000-0000-000000001111', 'Primary sales', true),
@@ -270,7 +272,8 @@ SELECT is(
 
 RESET ROLE;
 UPDATE public.analytics_evidence_reference
-   SET expires_at = now() - interval '1 second'
+   SET issued_at = now() - interval '16 minutes',
+       expires_at = now() - interval '1 second'
  WHERE token_digest = encode(extensions.digest(convert_to((SELECT evidence_ref FROM analytics_test_refs WHERE name = 'fresh'), 'UTF8'), 'sha256'), 'hex');
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"ae100000-0000-0000-0000-000000000001","role":"authenticated"}', true);
