@@ -409,14 +409,26 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
               </p>
             </RailGroup>
 
-            {/* Calendar settings live on the calendar — each calendar's own drawer,
-                opened from the cog beside it. No general link out of this surface:
-                availability, booking rules, event types and colours are Calendar's,
-                and a standing signpost elsewhere would imply otherwise. */}
+            {/* CHANGED BEHAVIOUR, owner-ruled 2026-08-30 (§58 — called out, not
+                silent): calendar CONFIGURATION now lives in Settings › Connections
+                › Calendars, so this surface carries a standing exit to it. The
+                cog drawers stay exactly as they are — they read a calendar's
+                stored setup in place, which is still the fastest way to check one
+                without leaving the grid. What changed is that editing has a named
+                home, and this rail says where it is instead of implying there
+                isn't one. */}
             <RailGroup title="Settings" defaultOpen={false}>
               <p className="sc-note">
                 <Settings2 className="sc-swatch" style={{ border: 0 }} aria-hidden="true" />
-                Open a calendar's cog above for its hours, booking rules and reminders.
+                Open a calendar's cog above to read its hours, booking rules and reminders.
+              </p>
+              <a className="sc-check" href={connectionsHref}>
+                <SlidersHorizontal className="sc-swatch" style={{ border: 0 }} aria-hidden="true" />
+                <span className="sc-label">Manage calendar settings</span>
+              </a>
+              <p className="sc-note">
+                Availability, booking rules, hosts, links and reminder rules are edited in
+                Settings → Connections → Calendars.
               </p>
               {openPaige && (
                 <button type="button" className="sc-check" onClick={openPaige}>

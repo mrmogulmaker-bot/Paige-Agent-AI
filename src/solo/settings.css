@@ -1,3 +1,23 @@
+/**
+ * Solo Settings.
+ *
+ * CONFIRMED DEFECT, repaired here: this file already styled itself against four
+ * --pg tokens that are defined nowhere in the codebase — --pg-r-panel,
+ * --pg-success, --pg-accent and --pg-danger. An undefined custom property makes
+ * the whole declaration invalid at computed-value time, so every card was
+ * rendering with square corners (border-radius fell back to 0) and the LIVE and
+ * PROPOSED truth badges were rendering in the inherited ink rather than their
+ * status colour. The aliases below map each one onto the palette token it was
+ * plainly reaching for and are scoped to this surface, so the shared palette is
+ * untouched.
+ */
+.solo-settings {
+  --pg-r-panel: var(--pg-r-plate);
+  --pg-success: var(--pg-positive);
+  --pg-danger: var(--pg-negative);
+  --pg-accent: var(--pg-violet);
+}
+
 .solo-settings { container-type: inline-size; min-height: 100%; padding: clamp(18px, 2.2vw, 30px); color: var(--pg-ink); background: var(--pg-canvas); overflow-x: clip; }
 .ss-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; max-width: 1180px; margin: 0 auto 18px; }
 .ss-page-head > div { min-width: 0; }

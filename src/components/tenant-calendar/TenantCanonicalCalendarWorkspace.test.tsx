@@ -142,7 +142,12 @@ describe("TenantCanonicalCalendarWorkspace", () => {
 
     const calendar = container.querySelector("[data-solo-calendar-mock]");
     expect(calendar?.getAttribute("data-tenant")).toBe("tenant-solo");
-    expect(calendar?.getAttribute("data-connections")).toBe("/solo/101/integrations");
+    // CHANGED, owner-ruled 2026-08-30: Solo now addresses the real settings home
+    // rather than the legacy /integrations redirect, and carries the return
+    // contract Settings already validates so the trip back is one click.
+    expect(calendar?.getAttribute("data-connections")).toBe(
+      "/solo/101/settings/connections?origin=calendar&returnTo=%2Fsolo%2F101%2Fclients%2Fcalendar",
+    );
     // Solo carries no nested tab strip — asserting its ABSENCE is the contract.
     expect(container.querySelector("[data-calendar-admin]")).toBeNull();
   });
