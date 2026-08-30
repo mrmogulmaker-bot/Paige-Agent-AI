@@ -149,6 +149,7 @@ export function TenantRelationshipsClientsWorkspace({
 
   const workspaceName = variant === "relationships" ? "Relationships" : "Clients";
   const soloPeople = routeTier === "solo" && variant === "clients" && activeTab === "people";
+  const soloConversations = routeTier === "solo" && variant === "clients" && activeTab === "conversations";
   const soloCalendar = routeTier === "solo" && activeTab === "calendar";
   const proof = activeTab === null
     ? { label: "View · UNAVAILABLE", tone: "unavailable" as const }
@@ -161,8 +162,8 @@ export function TenantRelationshipsClientsWorkspace({
       : { label: `${tabs.find(({ id }) => id === activeTab)?.label ?? workspaceName} · PARTIAL`, tone: "partial" as const };
 
   return (
-    <section className={`trc-workspace${soloPeople ? " trc-workspace--people" : ""}${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
-      {!soloCalendar && !soloPeople && (
+    <section className={`trc-workspace${soloPeople ? " trc-workspace--people" : ""}${soloConversations ? " trc-workspace--conversations" : ""}${soloCalendar ? " trc-workspace--calendar" : ""}`} data-relationship-workspace data-variant={variant}>
+      {!soloCalendar && !soloPeople && !soloConversations && (
         <header className="trc-heading">
           <div>
             <span>{workspaceName} · {activeTenant.name}</span>
@@ -175,7 +176,7 @@ export function TenantRelationshipsClientsWorkspace({
         </header>
       )}
 
-      <div className={`trc-tabs${soloPeople ? " trc-tabs--people" : ""}`} role="tablist" aria-label={`${workspaceName} views`}>
+      <div className={`trc-tabs${soloPeople ? " trc-tabs--people" : ""}${soloConversations ? " trc-tabs--conversations" : ""}`} role="tablist" aria-label={`${workspaceName} views`}>
         {tabs.map((tab, index) => (
           <button
             key={tab.id}
@@ -196,7 +197,7 @@ export function TenantRelationshipsClientsWorkspace({
 
       <div
         id="trc-panel"
-        className={`trc-panel${soloPeople ? " trc-panel--people" : ""}${soloCalendar ? " trc-panel--calendar" : ""}`}
+        className={`trc-panel${soloPeople ? " trc-panel--people" : ""}${soloConversations ? " trc-panel--conversations" : ""}${soloCalendar ? " trc-panel--calendar" : ""}`}
         role="tabpanel"
         aria-labelledby={activeTab ? `trc-tab-${activeTab}` : undefined}
         aria-label={activeTab ? undefined : "Unavailable relationship view"}

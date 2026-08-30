@@ -260,7 +260,8 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     roundTrip("settings", "integrations", "integrations");
     roundTrip("settings", "security-data", "security-data");
     roundTrip("settings", "billing", "billing");
-    expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("The money");
+    expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("Sales funnel");
+    expect(subtabBySlug("solo", "analytics", "market-watch")?.label).toBe("Acquisition");
     expect(subtabBySlug("solo", "paige", "nope")).toBeNull();
     expect(subtabBySlug("solo", "paige", "sub-agents")).toBeNull();
     expect(subtabBySlug("solo", "paige", "actions")).toBeNull();
