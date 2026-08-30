@@ -18,7 +18,7 @@ function CapabilityGlyph({ item, large = false }: { item: MarketplaceItem; large
 function MarketplaceCard({ item, onOpen }: { item: MarketplaceItem; onOpen: (item: MarketplaceItem, trigger: HTMLButtonElement) => void }) {
   const displayCopy = getMarketplaceDisplayCopy(item);
   return <button className="mk-card card" onClick={(event) => onOpen(item, event.currentTarget)} aria-label={`Review ${item.name}`}>
-    <span className="mk-card-head"><CapabilityGlyph item={item} /><span className="mk-card-title"><strong>{item.name}</strong><span>{item.itemType}</span></span><TruthBadge state={item.safeState} /></span>
+    <span className="mk-card-head"><CapabilityGlyph item={item} /><span className="mk-card-title"><strong>{item.name}</strong><span>{item.itemType}</span></span><TruthBadge state={displayCopy.proofState} /></span>
     <span className="mk-card-copy">{displayCopy.summary}</span>
     <span className="mk-card-meta"><span>{item.category}</span><span>Review details <Ic.chev size={13} style={{}} /></span></span>
   </button>;
@@ -70,7 +70,7 @@ function MarketplaceDetail({ item, onClose, onOpenPaige }: {
   return <div className="mk-dialog-layer">
     <button className="mk-dialog-backdrop" onClick={onClose} aria-label="Close capability details" />
     <aside ref={dialogRef} className="mk-dialog" role="dialog" aria-modal="true" aria-labelledby="mk-detail-title">
-      <header className="mk-dialog-hero"><CapabilityGlyph item={item} large /><div><TruthBadge state={item.safeState} /><h2 id="mk-detail-title">{item.name}</h2><p>{item.itemType} · {item.category}</p></div><button ref={closeRef} className="mk-close" onClick={onClose} aria-label="Close capability details"><Ic.x size={16} style={{}} /></button></header>
+      <header className="mk-dialog-hero"><CapabilityGlyph item={item} large /><div><TruthBadge state={displayCopy.proofState} /><h2 id="mk-detail-title">{item.name}</h2><p>{item.itemType} · {item.category}</p></div><button ref={closeRef} className="mk-close" onClick={onClose} aria-label="Close capability details"><Ic.x size={16} style={{}} /></button></header>
       <div className="mk-dialog-body">
         <section><span className="eyebrow">Capability description</span><p>{displayCopy.description}</p></section>
         <section><span className="eyebrow">Release and capability truth</span><div className="mk-facts">{fields.map(([label, state, value]) => <div key={label}><span><strong>{label}</strong><TruthBadge state={state} /></span><p>{value}</p></div>)}</div></section>
