@@ -133,6 +133,8 @@ declare
   v_last_inbound  timestamptz;
   v_delivery      text;
   v_blocked       text;
+  v_billing       record;
+  v_metered_30d   int := 0;
 begin
   -- CALLER SCOPE ENFORCED IN-BODY (§59). This is SECURITY DEFINER because it
   -- reads tenant_twilio_subaccounts, which authenticated no longer holds a
@@ -220,7 +222,45 @@ begin
     else 'delivering'
   end;
 
+  -- Billing for messaging. Settings -> Connections owns billing setup, so the one
+  -- canonical record has to carry it rather than leaving the surface to invent an
+  -- answer. Read-only: this REPORTS billing state and never activates, changes or
+  -- charges anything.
+  --
+  -- SCOPED EXPLICITLY to v_tenant. This function is SECURITY DEFINER, so it
+  -- bypasses platform_subscriptions' RLS entirely; the `where tenant_id` below IS
+  -- the access control, not the policy (§59 — the grant is never the guard).
+  --
+  -- Returns NO provider identifier. stripe_subscription_id and stripe_customer_id
+  -- are deliberately not selected: a Stripe id is a provider payload, and this
+  -- record is consumed by surfaces and by PAIGE.
+  select ps.status,
+         ps.current_period_end,
+         coalesce(ps.cancel_at_period_end, false) as cancel_at_period_end,
+         pl.name as plan_name
+    into v_billing
+    from public.platform_subscriptions ps
+    left join public.platform_subscription_plans pl on pl.id = ps.plan_id
+   where ps.tenant_id = v_tenant
+   order by (ps.status = 'active') desc, ps.current_period_end desc nulls last
+   limit 1;
+
+  -- Whether messaging usage is actually being RECORDED against that plan. Nothing
+  -- has ever written a platform_metered_events row, so for every tenant today this
+  -- resolves to not_recording. Reporting "billed" off an active plan alone would
+  -- claim metering that demonstrably is not happening (§13).
+  select count(*) into v_metered_30d
+    from public.platform_metered_events
+   where tenant_id = v_tenant
+     and created_at > now() - interval '30 days';
+
   -- The blocking reason, in send-path order, so the surface can name ONE next step.
+  --
+  -- Billing is deliberately NOT a term here. This resolver's contract is that it
+  -- enforces the SAME predicate send-message enforces, and send-message does not
+  -- consult billing. Adding it would make can_send_sms disagree with what the send
+  -- path actually does — a readiness record that contradicts the runtime is worse
+  -- than one that reports less. Billing is reported, never gating.
   v_blocked := case
     when v_sub.tenant_id is null            then 'messaging_account_missing'
     when v_sub.creds_complete is not true    then 'messaging_account_inactive'
@@ -265,6 +305,21 @@ begin
                         -- lie as a fabricated positive.
                         'last_inbound_at', v_last_inbound,
                         'inbound_reporting', 'unavailable'),
+    'billing',        jsonb_build_object(
+                        'subscription', case
+                                          when v_billing.status is null then 'absent'
+                                          when v_billing.status = 'active' then 'active'
+                                          else 'inactive' end,
+                        'plan_name',            v_billing.plan_name,
+                        'period_end',           v_billing.current_period_end,
+                        'cancel_at_period_end', coalesce(v_billing.cancel_at_period_end, false),
+                        -- Honest today: nothing writes platform_metered_events, so
+                        -- this is 'not_recording' for every tenant. It is reported
+                        -- rather than hidden so the surface can say messaging usage
+                        -- is not being metered instead of implying that it is.
+                        'usage_metering', case when v_metered_30d > 0
+                                               then 'recording' else 'not_recording' end,
+                        'metered_events_30d', v_metered_30d),
     'tenant_id',      v_tenant,
     'resolved_at',    now()
   );

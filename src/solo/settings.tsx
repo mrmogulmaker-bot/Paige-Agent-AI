@@ -164,6 +164,17 @@ export interface CommsReadiness {
     sent_30d: number; delivered_30d: number; failed_30d: number;
     last_inbound_at: string | null;
   };
+  // Connections owns billing setup, so it comes from the SAME canonical record
+  // rather than a second read. Carries no provider identifier — the resolver
+  // never selects the Stripe subscription/customer ids.
+  billing: {
+    subscription: "active" | "inactive" | "absent";
+    plan_name: string | null;
+    period_end: string | null;
+    cancel_at_period_end: boolean;
+    usage_metering: "recording" | "not_recording";
+    metered_events_30d: number;
+  };
 }
 
 function useCommsReadiness() {
@@ -222,6 +233,47 @@ export const READINESS_COPY: Record<string, { headline: string; next: string }> 
 const STEP_TRUTH = (ok: boolean, partial = false): SettingsTruth =>
   ok ? "LIVE" : partial ? "PARTIAL" : "UNAVAILABLE";
 
+/**
+ * The billing row of the readiness ladder, as a pure function of the billing
+ * record so the tenant-facing strings sit where the boundary is enforceable —
+ * the same reason READINESS_COPY is exported.
+ *
+ * Reported, never gating. A plan is not part of what decides whether a text can
+ * send, so nothing here touches `can_send_sms`; the resolver deliberately keeps
+ * billing out of `blocked_reason` so the record cannot contradict the send path.
+ *
+ * An active plan with nothing metered is NOT "billed". Those are two different
+ * records and the copy keeps them apart rather than letting a plan imply usage
+ * that demonstrably is not being recorded.
+ */
+export function billingStep(b: CommsReadiness["billing"]): {
+  truth: SettingsTruth; tone: "ok" | "warn" | "bad" | "neutral"; state: string; detail: string;
+} {
+  if (b.subscription === "absent") {
+    return {
+      truth: "UNAVAILABLE", tone: "neutral", state: "No plan on file",
+      detail: "No plan is on file for this business, so messaging usage has nothing to bill against.",
+    };
+  }
+  if (b.subscription === "inactive") {
+    return {
+      truth: "PARTIAL", tone: "warn", state: "Plan not active",
+      detail: "The plan on file is not active. Messaging usage would have nothing to bill against.",
+    };
+  }
+  const state = b.plan_name ? `${b.plan_name} plan` : "Plan active";
+  if (b.usage_metering !== "recording") {
+    return {
+      truth: "PARTIAL", tone: "warn", state,
+      detail: "Messaging usage is not being recorded yet, so nothing has been billed against this plan.",
+    };
+  }
+  return {
+    truth: "LIVE", tone: "ok", state,
+    detail: `${b.metered_events_30d} usage ${b.metered_events_30d === 1 ? "event" : "events"} recorded in the last 30 days.`,
+  };
+}
+
 function ReadinessLadder({ r }: { r: CommsReadiness }) {
   const biz = r.business;
   const bizAll = biz.has_name && biz.has_website && biz.has_phone;
@@ -257,6 +309,7 @@ function ReadinessLadder({ r }: { r: CommsReadiness }) {
       detail: r.consent.suppressed_count > 0
         ? `${r.consent.suppressed_count} ${r.consent.suppressed_count === 1 ? "person has" : "people have"} asked you to stop. PAIGE will not text them.`
         : r.consent.state === "ready" ? "Consent is on file." : "No consent or opt-out has been recorded yet." },
+    { n: "Billing for messaging", s: "The plan messaging costs are billed against", ...billingStep(r.billing) },
     { n: "Sending identity", s: "What Conversations sends from",
       truth: STEP_TRUTH(r.can_send_sms), tone: r.can_send_sms ? "ok" : "warn",
       state: r.can_send_sms ? "Ready" : "Not ready for texting",

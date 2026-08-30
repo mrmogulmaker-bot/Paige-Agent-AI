@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { READINESS_COPY } from "./settings";
+import { billingStep, READINESS_COPY, type CommsReadiness } from "./settings";
 
 /**
  * The tenant-facing boundary, locked.
@@ -35,6 +35,10 @@ const FORBIDDEN = [
   "lane b", "claude", "engineering", "backend", "internal",
   "vulnerab", "exploit", "cross-tenant", "handler", "endpoint", "rpc",
   "table", "column", "supabase", "edge function",
+  // Billing reaches this surface now. The processor and its identifiers are
+  // provider payload, never tenant-facing copy (§38 — Paige holds the rail,
+  // the tenant never sees its plumbing).
+  "stripe", "sub_", "cus_", "price_", "processor",
   // §2: "practice" is banned in shipped copy pending HIPAA/SOC-2; the ruled
   // inclusive words are business / company.
   "practice",
@@ -73,5 +77,65 @@ describe("tenant-facing readiness copy", () => {
       expect(copy.next.toLowerCase(), reason).not.toBe(copy.headline.toLowerCase());
       expect(copy.next.split(" ").length, reason).toBeGreaterThan(6);
     }
+  });
+});
+
+/**
+ * The billing row of the ladder. Connections owns billing setup, so its copy
+ * crosses the same tenant-facing boundary as every blocking reason and is locked
+ * the same way.
+ */
+const BILLING_CASES: Array<{ name: string; billing: CommsReadiness["billing"] }> = [
+  { name: "no plan on file", billing: { subscription: "absent", plan_name: null, period_end: null, cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0 } },
+  { name: "plan not active", billing: { subscription: "inactive", plan_name: "Solo", period_end: null, cancel_at_period_end: true, usage_metering: "not_recording", metered_events_30d: 0 } },
+  { name: "active, nothing metered", billing: { subscription: "active", plan_name: "Solo", period_end: "2026-09-19T00:00:00Z", cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0 } },
+  { name: "active, one event metered", billing: { subscription: "active", plan_name: "Solo", period_end: "2026-09-19T00:00:00Z", cancel_at_period_end: false, usage_metering: "recording", metered_events_30d: 1 } },
+  { name: "active, many events metered", billing: { subscription: "active", plan_name: "Solo", period_end: "2026-09-19T00:00:00Z", cancel_at_period_end: false, usage_metering: "recording", metered_events_30d: 12 } },
+  { name: "active with no plan name", billing: { subscription: "active", plan_name: null, period_end: null, cancel_at_period_end: false, usage_metering: "recording", metered_events_30d: 3 } },
+];
+
+describe("tenant-facing billing copy", () => {
+  it("says something for every billing state the resolver can return", () => {
+    for (const { name, billing } of BILLING_CASES) {
+      const row = billingStep(billing);
+      expect(row.state.length, name).toBeGreaterThan(0);
+      expect(row.detail.length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it("never leaks the payment processor or a provider identifier", () => {
+    for (const { name, billing } of BILLING_CASES) {
+      const row = billingStep(billing);
+      const text = `${row.state} ${row.detail}`.toLowerCase();
+      for (const term of FORBIDDEN) {
+        expect(text.includes(term), `${name} leaks "${term}": ${text}`).toBe(false);
+      }
+    }
+  });
+
+  it("never claims usage is billed while nothing is being recorded", () => {
+    const row = billingStep({
+      subscription: "active", plan_name: "Solo", period_end: null,
+      cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0,
+    });
+    // An active plan alone must not read as a settled, green state.
+    expect(row.truth).not.toBe("LIVE");
+    expect(row.detail.toLowerCase()).toContain("not being recorded");
+  });
+
+  it("does not present an absent plan as a failure the tenant caused", () => {
+    const row = billingStep({
+      subscription: "absent", plan_name: null, period_end: null,
+      cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0,
+    });
+    expect(row.tone).toBe("neutral");
+    expect(row.truth).toBe("UNAVAILABLE");
+  });
+
+  it("counts one metered event in the singular", () => {
+    const one = billingStep({ subscription: "active", plan_name: "Solo", period_end: null, cancel_at_period_end: false, usage_metering: "recording", metered_events_30d: 1 });
+    const many = billingStep({ subscription: "active", plan_name: "Solo", period_end: null, cancel_at_period_end: false, usage_metering: "recording", metered_events_30d: 2 });
+    expect(one.detail).toContain("1 usage event ");
+    expect(many.detail).toContain("2 usage events ");
   });
 });
