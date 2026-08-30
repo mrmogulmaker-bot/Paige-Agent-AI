@@ -553,4 +553,44 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
 
     expect(seen!.stale).toBe(true);
   });
+  it("a read STARTED during the outage cannot close the gap when it lands", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    // A range change starts a load WHILE the channel is still down, so its
+    // database snapshot is taken mid-outage.
+    await act(async () => { seen!.refresh(); });
+    // The channel recovers before that load comes back; the catch-up defers.
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    await settle([row("a")]);
+
+    // The channel is healthy NOW, but these rows were read before it recovered:
+    // anything committed in the last moments of the outage is missing from them.
+    // Clearing here would report LIVE over exactly the gap the latch exists for,
+    // and if the deferred catch-up then hangs it would say so indefinitely.
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { await Promise.resolve(); });
+    if (pending.length) await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(false);
+  });
+
+  it("a read in flight across a drop AND recovery cannot close the gap either", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    await act(async () => { void seen!.retry(); });
+    // The channel dies and comes back while that read is still in flight.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settle([row("a")]);
+
+    // Healthy at start and healthy at landing — but not the SAME subscription.
+    // The outage happened underneath this read, so it proves nothing about it.
+    expect(seen!.stale).toBe(true);
+  });
 });

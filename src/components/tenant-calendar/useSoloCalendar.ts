@@ -451,6 +451,13 @@ export function useSoloCalendar(
   const catchUpPending = useRef(false);
   /** Whether the CURRENT subscription is believed to be delivering. */
   const channelHealthy = useRef(false);
+  /**
+   * Bumped every time the channel comes back up, so a read can be told apart
+   * from the subscription it was issued under. "Healthy now" is not enough: a
+   * read taken during an outage, or one that spanned a drop and a recovery,
+   * carries a snapshot from the wrong side of the gap.
+   */
+  const healthEpoch = useRef(0);
   /** Mirrors `channelDown` for callbacks that must stay referentially stable. */
   const channelDownRef = useRef(false);
   useEffect(() => { channelDownRef.current = channelDown; }, [channelDown]);
@@ -505,6 +512,10 @@ export function useSoloCalendar(
       pendingRefresh.current = true;
       return false;
     }
+    // Which live subscription this read is being issued under. -1 means it was
+    // started while the channel was down, so its rows can never prove the gap
+    // closed however healthy things look by the time they land.
+    const startEpoch = channelHealthy.current ? healthEpoch.current : -1;
     const seq = ++bookingSeq.current;
     const myLoad = mode === "load" ? ++loadSeq.current : 0;
     if (mode === "load") loadInFlight.current = true;
@@ -562,10 +573,19 @@ export function useSoloCalendar(
      * legitimately re-set — reporting LIVE over a dead subscription, the exact
      * false confidence this state exists to prevent.
      *
-     * Checking channel health HERE, at the moment the rows arrive, answers both:
-     * whoever read them, the gap is closed only if the channel is live now.
+     * Checking HERE, at the moment the rows arrive, answers both — but health
+     * alone is not the test. A load already in flight when the channel came back
+     * was read from the wrong side of the gap: it can miss anything committed in
+     * the last moments of the outage, and clearing on it would report LIVE over
+     * exactly what the latch exists to flag. So the read must ALSO have been
+     * issued under the subscription that is still live now.
      */
-    if (catchUpPending.current && channelHealthy.current) {
+    if (
+      catchUpPending.current &&
+      channelHealthy.current &&
+      startEpoch >= 0 &&
+      startEpoch === healthEpoch.current
+    ) {
       catchUpPending.current = false;
       setChannelDown(false);
     }
@@ -648,6 +668,9 @@ export function useSoloCalendar(
    */
   const onChannelStatus = useCallback((status: string) => {
     if (status === "SUBSCRIBED") {
+      // A fresh live subscription: reads issued before this moment belong to the
+      // old one and cannot vouch for the gap.
+      if (!channelHealthy.current) healthEpoch.current += 1;
       channelHealthy.current = true;
       if (!catchUpPending.current) return;
       // Resubscribing proves FUTURE changes can arrive again. It proves nothing
