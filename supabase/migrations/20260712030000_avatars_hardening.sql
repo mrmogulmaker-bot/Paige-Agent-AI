@@ -1,19 +1,33 @@
--- Audit hardening for the avatars bucket.
--- 1) Enforce size + type server-side so the client checks are defense-in-depth,
---    not the only gate (a direct API upload can't drop a 500MB file or an
---    HTML/SVG payload onto the platform's public storage origin).
-update storage.buckets
-set file_size_limit = 3145728,  -- 3 MB
-    allowed_mime_types = array['image/png','image/jpeg','image/webp']
-where id = 'avatars';
+-- =============================================================================
+-- Migration 20260712030000 — REPLAY STUB (deliberate no-op, content twin)
+-- =============================================================================
+-- This version and 20260712010206 are the SAME migration applied twice under two
+-- stamps: one is the repo's authored file, the other the reconstruction of the
+-- same SQL from prod's schema_migrations.statements (task #421). Their bodies
+-- are IDENTICAL once comments and whitespace are normalised away — verified by
+-- comparing `sed 's/--.*$//' | tr -s '[:space:]' ' '` on both files.
+--
+-- BOTH stamps are recorded on prod, so BOTH files must keep existing for
+-- `supabase db push`'s "remote migration versions not found in local" history
+-- guard. Neither is ever re-run there.
+--
+-- On a FRESH replay (`db reset`, every Supabase Preview branch) they both ran,
+-- and this one — the later of the two — aborted on a non-idempotent statement
+-- against the object its twin had just created. Because the two bodies are
+-- equivalent, everything this file did is already done by
+--   20260712010206_avatars_hardening.sql
+-- so making it a no-op leaves the replayed schema byte-identical while letting
+-- the replay finish.
+--
+-- The original body remains in git history and in prod's own
+-- schema_migrations.statements.
+--
+-- Precedent: 20250908112911_remote_bootstrap_funding_seed_quarantined.sql.
+-- =============================================================================
 
--- 2) Close cross-tenant enumeration. Public serving of an avatar goes through
---    the public object path (/object/public/avatars/…) which does NOT consult
---    RLS, so <img src> keeps working. The permissive SELECT policy only enabled
---    the authenticated .list()/.download() API — which let any user enumerate
---    every user's uid folder across every tenant. Restrict it to own folder.
-drop policy if exists "avatars public read" on storage.objects;
-create policy "avatars owner list" on storage.objects
-  for select to authenticated using (
-    bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
-  );
+DO $$
+BEGIN
+  -- Intentional no-op: this migration's effect is applied by its content twin
+  -- 20260712010206_avatars_hardening.sql.
+  NULL;
+END $$;

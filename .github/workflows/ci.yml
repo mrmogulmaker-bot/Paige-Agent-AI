@@ -123,6 +123,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
 
+      - name: Managed-schema ownership guard (#643 — migrations replay as `postgres`; ALTER/DROP TABLE on a Supabase-owned schema fails 42501 on every fresh Preview)
+        if: ${{ !cancelled() }}
+        run: npm run lint:managed-schema
+
       - name: Skeleton-content guard (§18/§24 Task #126 — index.html #root must carry only whitelisted SEO copy, no product content)
         if: ${{ !cancelled() }}
         run: npm run lint:skeleton
