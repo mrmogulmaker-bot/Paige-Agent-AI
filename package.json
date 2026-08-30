@@ -19,6 +19,7 @@
     "harness:selftest": "node scripts/live-drive/harness/selftest.mjs",
     "harness:selftest-reject": "node scripts/live-drive/harness/selftest-reject.mjs",
     "lint:definer-fns": "node scripts/ci/definer-fn-lint.mjs",
+    "lint:managed-schema": "node scripts/ci/managed-schema-ownership-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
     "lint:tier-features:test": "node scripts/ci/tier-feature-lint.mjs --self-test",
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
