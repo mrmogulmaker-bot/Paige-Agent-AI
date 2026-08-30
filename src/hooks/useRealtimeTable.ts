@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
@@ -19,6 +19,17 @@ export function useRealtimeTable<T = unknown>(
     filter?: string; // e.g. `tenant_id=eq.${tenantId}`
     schema?: string;
     enabled?: boolean;
+    /**
+     * Channel lifecycle, for callers that must not present stale data as live.
+     * A channel that fails to subscribe — or later drops to `CHANNEL_ERROR` /
+     * `TIMED_OUT` / `CLOSED` — stops delivering silently: `onChange` simply
+     * never fires again, so nothing downstream errors and a surface can keep
+     * asserting it is live over data that can no longer update.
+     *
+     * Optional and additive: callers that do not pass it behave exactly as
+     * before.
+     */
+    onStatus?: (status: string) => void;
   }
 ) {
   const {
@@ -26,7 +37,13 @@ export function useRealtimeTable<T = unknown>(
     filter,
     schema = "public",
     enabled = true,
+    onStatus,
   } = opts ?? {};
+
+  // Held in a ref so a caller passing an inline callback cannot tear down and
+  // re-create the subscription on every render.
+  const statusRef = useRef(onStatus);
+  useEffect(() => { statusRef.current = onStatus; }, [onStatus]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -34,7 +51,7 @@ export function useRealtimeTable<T = unknown>(
       .channel(`rt:${schema}:${table}:${filter ?? "all"}`)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on("postgres_changes" as any, { event, schema, table, ...(filter ? { filter } : {}) }, onChange)
-      .subscribe();
+      .subscribe((status) => { statusRef.current?.(status); });
 
     return () => {
       supabase.removeChannel(channel);

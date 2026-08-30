@@ -429,6 +429,14 @@ export function useSoloCalendar(
   const [lastSyncedMs, setLastSyncedMs] = useState<number | null>(null);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const bookingSeq = useRef(0);
+  /** Load/refresh ordering. A load owns the surface's phase; a refresh is quiet
+   *  and must wait its turn rather than cutting in front of one. */
+  const loadSeq = useRef(0);
+  const loadInFlight = useRef(false);
+  const pendingRefresh = useRef(false);
+  /** Declared before `fetchBookings` so the deferred-refresh path can reach the
+   *  latest reader without depending on it and re-creating the callback. */
+  const fetchRef = useRef<(mode: "load" | "refresh") => Promise<void>>();
   const calendarSeq = useRef(0);
 
   const [from, to] = useMemo(() => rangeFor(view, cursor), [view, cursor]);
@@ -469,7 +477,18 @@ export function useSoloCalendar(
    */
   const fetchBookings = useCallback(async (mode: "load" | "refresh") => {
     if (!activeTenantId) return;
+    // A background refresh must never supersede a load that is still running.
+    // It would take the newer sequence number, the load's rows would then be
+    // discarded as superseded, and if the refresh itself failed its quiet error
+    // path would leave `phase` on "loading" with nothing in it — a blank range
+    // until someone pressed Retry. Defer instead, and run once the load settles.
+    if (mode === "refresh" && loadInFlight.current) {
+      pendingRefresh.current = true;
+      return;
+    }
     const seq = ++bookingSeq.current;
+    const myLoad = mode === "load" ? ++loadSeq.current : 0;
+    if (mode === "load") loadInFlight.current = true;
     if (mode === "load") {
       setPhase("loading"); setBookings([]); setError(null);
       // A fresh load supersedes any earlier refresh failure: whatever it returns
@@ -482,6 +501,15 @@ export function useSoloCalendar(
       _host_ids: null,
       _tenant_id: activeTenantId,
     } as never);
+    // Release the load gate before the supersede guard, so a load that is itself
+    // superseded still hands the gate back and never strands a queued refresh.
+    if (mode === "load" && myLoad === loadSeq.current) {
+      loadInFlight.current = false;
+      if (pendingRefresh.current) {
+        pendingRefresh.current = false;
+        queueMicrotask(() => { void fetchRef.current?.("refresh"); });
+      }
+    }
     if (seq !== bookingSeq.current) return; // superseded by a newer read
     if (err) {
       if (mode === "load") { setError(err.message); setPhase("error"); return; }
@@ -507,6 +535,8 @@ export function useSoloCalendar(
       // Abandon anything in flight: the previous account's bookings must never
       // land after the account has changed (§9).
       bookingSeq.current++;
+      loadInFlight.current = false;
+      pendingRefresh.current = false;
       setPhase("loading");
       setBookings([]);
       setError(null);
@@ -531,13 +561,12 @@ export function useSoloCalendar(
    * event itself is never trusted as data; it only triggers a re-read through
    * the same tenant-isolated RPC every other read goes through.
    */
-  const fetchRef = useRef(fetchBookings);
   useEffect(() => { fetchRef.current = fetchBookings; }, [fetchBookings]);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBookingChange = useCallback(() => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     refreshTimer.current = setTimeout(
-      () => { void fetchRef.current("refresh"); },
+      () => { void fetchRef.current?.("refresh"); },
       LIVE_REFRESH_DEBOUNCE_MS,
     );
   }, []);
@@ -550,12 +579,39 @@ export function useSoloCalendar(
    *  cancels any debounce already queued so one press is one read. */
   const retry = useCallback(async () => {
     if (refreshTimer.current) { clearTimeout(refreshTimer.current); refreshTimer.current = null; }
-    await fetchRef.current("refresh");
+    await fetchRef.current?.("refresh");
+  }, []);
+
+  /**
+   * A change stream that stops delivering fails SILENTLY: `onBookingChange`
+   * simply never fires again, so no read errors and nothing marks the schedule
+   * stale. The surface would go on presenting itself as live over a calendar
+   * that can no longer update — the exact false-confidence the freshness state
+   * exists to prevent. So the channel's own status feeds that same state.
+   */
+  const channelWasDown = useRef(false);
+  const onChannelStatus = useCallback((status: string) => {
+    if (status === "SUBSCRIBED") {
+      if (channelWasDown.current) {
+        channelWasDown.current = false;
+        // Catch up once on reconnect: anything that changed while the channel
+        // was down was never delivered. Fires on the transition only — this is
+        // not a poll.
+        void fetchRef.current?.("refresh");
+      }
+      return;
+    }
+    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      channelWasDown.current = true;
+      console.error("[solo-calendar] realtime channel not delivering:", status);
+      setRefreshFailed(true);
+    }
   }, []);
 
   useRealtimeTable("internal_bookings", onBookingChange, {
     filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
     enabled: Boolean(activeTenantId),
+    onStatus: onChannelStatus,
   });
 
   // A class arrives as a session marker plus one row per attendee. Fold before

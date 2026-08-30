@@ -265,6 +265,20 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   }, [calendars, hidden]);
 
   /** The calendar the open booking belongs to, for its stored colour and title. */
+  /**
+   * A live refresh can move, cancel or delete the very booking whose drawer is
+   * open. `detail` is a snapshot, so without this the grid would show the new
+   * truth while the drawer still reported the old time and status — and its
+   * status buttons would stay live on a row that may no longer exist. Follow the
+   * rows that just arrived; close the drawer if the booking is gone.
+   */
+  useEffect(() => {
+    setDetail((d) => {
+      if (!d) return d;
+      return bookings.find((b) => b.id === d.id) ?? null;
+    });
+  }, [bookings]);
+
   const detailCalendar = useMemo(
     () => (detail ? calendars.find((c) => c.id === detail.calendar_id) ?? null : null),
     [detail, calendars],
