@@ -71,7 +71,7 @@ const ENV = {
 // answer that is nonetheless a well-formed one.
 function makeAdmin() {
   const reads = [];
-  const rowsFor = (table, filters) => {
+  const rowsFor = (table, filters, inFilter) => {
     if (table === "tenant_phone_numbers") {
       if (filters.phone_number && filters.phone_number !== TENANT_NUMBER) return [];
       if (filters.tenant_id && filters.tenant_id !== TENANT) return [];
@@ -81,7 +81,17 @@ function makeAdmin() {
       if (filters.tenant_id !== TENANT) return [];
       return [{ user_id: SEAT, role: "owner" }];
     }
-    if (table === "user_roles") return [{ user_id: OPERATOR_SEAT, role: "super_admin" }];
+    if (table === "user_roles") {
+      // Honour the role filter. With a no-op `in()`, a predicate widened to admit
+      // tenant-tier roles was indistinguishable from the correct operator-only one.
+      if (inFilter && inFilter.k === "role") {
+        const vals = inFilter.vals ?? [];
+        if (!vals.every((v) => v === "super_admin" || v === "platform_admin")) {
+          return [{ user_id: SEAT, role: "admin" }]; // a TENANT member, wrongly admitted
+        }
+      }
+      return [{ user_id: OPERATOR_SEAT, role: "super_admin" }];
+    }
     if (table === "clients") {
       if (filters.tenant_id !== TENANT) return [];
       return [{ id: CONTACT }];
@@ -95,28 +105,49 @@ function makeAdmin() {
     }
     return [];
   };
+  const writes = [];  // every table the handler WROTE to, with its payload
+  const rpcs = [];    // every rpc call, with its arguments
+
   const builder = (table) => {
     const filters = {};
+    let inFilter = null;
     const q = {
       select: () => q,
       eq: (k, v) => { filters[k] = v; return q; },
-      in: () => q,
+      // `in` was a no-op, so role scoping could not be asserted at all: widening the
+      // operator-seat role list to admit tenant-tier roles passed the suite green.
+      in: (k, vals) => { inFilter = { k, vals }; return q; },
       or: () => q,
       order: () => q,
       limit: () => q,
-      maybeSingle: async () => { reads.push(table); const r = rowsFor(table, filters); return { data: r[0] ?? null, error: null }; },
-      single: async () => { reads.push(table); const r = rowsFor(table, filters); return { data: r[0] ?? null, error: null }; },
-      insert: () => q,
-      update: () => q,
-      upsert: () => q,
-      then: (res) => { reads.push(table); res({ data: rowsFor(table, filters), error: null }); },
+      maybeSingle: async () => { reads.push(table); const r = rowsFor(table, filters, inFilter); return { data: r[0] ?? null, error: null }; },
+      // `.insert().select().single()` must return the inserted row the way real
+      // PostgREST does. Returning null made the operator writer throw on `created.id`,
+      // which the handler caught and logged — so the ENTIRE operator persistence path
+      // was dead in the harness, and read as ordinary log noise.
+      single: async () => {
+        reads.push(table);
+        const r = rowsFor(table, filters, inFilter);
+        return { data: r[0] ?? { id: `${table}-row-1` }, error: null };
+      },
+      insert: (payload) => { writes.push({ table, op: "insert", payload }); return q; },
+      update: (payload) => { writes.push({ table, op: "update", payload }); return q; },
+      upsert: (payload) => { writes.push({ table, op: "upsert", payload }); return q; },
+      then: (res) => { reads.push(table); res({ data: rowsFor(table, filters, inFilter), error: null }); },
     };
     return q;
   };
   return {
     reads,
+    writes,
+    rpcs,
+    touched: () => [...new Set([...reads, ...writes.map((w) => w.table)])],
     from: (t) => builder(t),
-    rpc: async (name) => {
+    rpc: async (name, args) => {
+      // The args were discarded, which left the ONE tenant stamp on the write path
+      // unassertable: create_and_attach_conversation's p_tenant_id is, by this
+      // function's own comments, "the ONLY way to stamp the correct tenant".
+      rpcs.push({ name, args });
       if (name === "create_and_attach_conversation") {
         return { data: { contact_id: CONTACT, conversation_id: "conv-1" }, error: null };
       }
@@ -124,6 +155,18 @@ function makeAdmin() {
     },
   };
 }
+
+/**
+ * Tenant DATA stores. An operator call must never read or write one (§9/§53).
+ *
+ * `tenant_phone_numbers` is deliberately NOT here: resolving who owns a dialed
+ * number is how the handler DISCOVERS that a call is the operator's, so reading it
+ * on the operator path is required rather than a leak. Scope is about whose rows
+ * you touch, not whose table name you match.
+ */
+const TENANT_DATA_TABLES = (t) =>
+  t === "messages" || t === "clients" || t === "paige_conversations" ||
+  t === "tenant_members" || t === "tenant_twilio_subaccounts";
 
 // ── Bundle index.ts, stubbing its remote import, and capture the handler. ────
 const stubSrc = `export function createClient(){ return globalThis.__ADMIN__; }`;
@@ -218,6 +261,7 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
   const sig = await computeTwilioSignature(TOKEN, url, body);
 
   globalThis.__ADMIN__ = makeAdmin();
+  const admin3 = globalThis.__ADMIN__;
   const res = await handler(new Request(url, {
     method: "POST", body,
     headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sig },
@@ -232,6 +276,17 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
   // be refused 401 by the fail-closed callback endpoint.
   check("...and the inbound callback is STAMPED, not bare", xml.includes(`?t=${encodeURIComponent(WEBHOOK_SECRET)}`));
   check("...with THIS tenant's secret, not another tenant's", !xml.includes(OTHER_SECRET));
+  // WHERE it lands, not merely that it is present. statusCallback is an attribute of
+  // the dial NOUN (<Number>/<Client>). On the <Dial> VERB Twilio ignores it, the child
+  // leg never reports, and the voice row stays queued forever — silently, and
+  // indistinguishably from the defect this branch exists to fix.
+  check("the callback is on the dial NOUN, not the <Dial> verb", /<Client[^>]*\sstatusCallback=/.test(xml));
+  check("...and <Dial> itself carries no statusCallback", !/<Dial[^>]*\sstatusCallback=/.test(xml));
+  {
+    const conv = admin3.rpcs.find((r) => r.name === "create_and_attach_conversation");
+    check("the conversation RPC ran", !!conv);
+    check("...stamped with THIS tenant", conv?.args?.p_tenant_id === TENANT);
+  }
 
   // Decode the minted token and assert on its PAYLOAD, not merely its presence.
   // Presence alone cannot see a §9 scoping error inside it — an unscoped contact
@@ -279,6 +334,10 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
     check("...with THIS tenant's secret", r.xml.includes(`?t=${encodeURIComponent(WEBHOOK_SECRET)}`));
     check("...never another tenant's", !r.xml.includes(OTHER_SECRET));
     check("...and it is not bare", !r.xml.includes(`statusCallback="${CALLBACK_BASE}"`));
+    check("...on the dial NOUN, not the <Dial> verb", /<Number[^>]*\sstatusCallback=/.test(r.xml));
+    check("...and <Dial> itself carries none", !/<Dial[^>]*\sstatusCallback=/.test(r.xml));
+    const conv = r.admin.rpcs.find((c) => c.name === "create_and_attach_conversation");
+    check("...and the conversation row is stamped with THIS tenant", conv?.args?.p_tenant_id === TENANT);
   }
 
   // 4b. Operator OUTBOUND. Tenant-less by construction (§9/§53): the master leg
@@ -293,6 +352,9 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
     check("...and mints NO co-pilot token (co-pilot is tenant STT)", !r.xml.includes("streamToken"));
     check("...but does keep the bare callback (master signature authenticates it)",
       r.xml.includes(`statusCallback="${CALLBACK_BASE}"`));
+    check("...touches NO tenant data store (§9/§53)", !r.admin.touched().some(TENANT_DATA_TABLES));
+    check("...and its row went to the OPERATOR store",
+      r.admin.writes.some((w) => w.table.startsWith("operator_")));
   }
 
   // 4c. Operator INBOUND — the dialed number is the platform master number, owned
@@ -305,6 +367,21 @@ console.log("voice-twiml handler smoke (real handler, unsigned requests)\n");
     check("...and mints NO co-pilot token", !r.xml.includes("streamToken"));
     check("...and rang an OPERATOR seat, not a tenant seat",
       r.xml.includes(`operator.${OPERATOR_SEAT}`) && !r.xml.includes(`${TENANT}.${SEAT}`));
+    check("...touches NO tenant data store (§9/§53)", !r.admin.touched().some(TENANT_DATA_TABLES));
+    check("...and its row went to the OPERATOR store",
+      r.admin.writes.some((w) => w.table.startsWith("operator_")));
+  }
+
+  // ── 4d. A number NO tenant owns that is ALSO not the operator number must
+  //        DEGRADE, never ring the operator seats. Untested until now, so relaxing
+  //        the operator predicate to `if (opNumber)` let every stray or hostile
+  //        number reach the platform operators' browsers.
+  {
+    const r = await signedPost(`To=%2B15550009999&From=%2B15559998888&CallSid=CAstray`);
+    check("an unowned, non-operator number does NOT ring operator seats",
+      !r.xml.includes(`operator.${OPERATOR_SEAT}`) && !r.xml.includes("<Client"));
+    check("...and degrades to a spoken message", r.xml.includes("<Say"));
+    check("...and rings no tenant seat either", !r.xml.includes(`${TENANT}.${SEAT}`));
   }
 
   ENV.TWILIO_AUTH_TOKEN = undefined;

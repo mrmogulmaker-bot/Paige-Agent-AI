@@ -102,17 +102,28 @@ async function buildCoPilotStreamXml(
   // instance: on this endpoint, nothing secret or capability-bearing leaves in a response to
   // a request we did not authenticate.
   //
-  // §58 — WHAT THIS GATE COSTS, NAMED RATHER THAN LEFT TO BE FOUND. The co-pilot fork is a
-  // PREVIOUSLY-SHIPPED capability (#140 B1), and everything built on it downstream in
-  // paige-stt (#140 B3 — live transcription, commitment capture, at-risk signal, the
-  // auto-drafted follow-up) depends on this token existing. `signatureVerified` is
-  // GLOBALLY FALSE in the documented production credential model, so on that posture this
-  // gate makes the co-pilot — and all of B3 with it — unreachable on every call, not merely
-  // on some. That is a real capability regression and it needs owner sign-off, not a
-  // footnote. It is NOT a reason to weaken the gate: minting the token to an unauthenticated
-  // caller hands them tenant-scoped access to paige-stt, which is strictly worse than the
-  // feature being off. It lifts with per-subaccount signature validation, same as the
-  // statusCallback loss above.
+  // §58 — WHAT THIS GATE COSTS, NAMED RATHER THAN LEFT TO BE FOUND, and stated CONDITIONALLY
+  // because only one of its two premises is established.
+  //
+  // ESTABLISHED: `signatureVerified` is globally false in the documented production
+  // credential model (the master TWILIO_AUTH_TOKEN is deliberately absent), so this gate
+  // returns "" on every call under that posture.
+  //
+  // NOT ESTABLISHED: whether the fork is ACTIVATED on prod. It also requires
+  // VOICE_STT_STREAM_URL and VOICE_STREAM_SECRET, which this file documents as default-OFF
+  // and which no session here can read. So:
+  //   - if the fork IS activated, this is a real regression of a previously-shipped
+  //     capability (#140 B1) and everything downstream of it in paige-stt (#140 B3 — live
+  //     transcription, commitment capture, at-risk signal, the auto-drafted follow-up),
+  //     unreachable on every call, and it needs owner sign-off;
+  //   - if it is NOT activated, this gate costs nothing today and arms the protection
+  //     before the day it would have mattered.
+  // An earlier revision asserted the first case unconditionally without checking the second.
+  //
+  // Either way it is NOT a reason to weaken the gate: minting this token to an
+  // unauthenticated caller hands them tenant-scoped access to paige-stt, which is strictly
+  // worse than the feature being off. It lifts with per-subaccount signature validation,
+  // same as the statusCallback loss above.
   if (!requestAuthenticated) {
     if (Deno.env.get("VOICE_STT_STREAM_URL")) {
       console.warn(
@@ -141,6 +152,14 @@ async function buildCoPilotStreamXml(
     // #168: reuse the contact the voice-row writer already resolved/auto-created (avoids a duplicate
     // lookup and links the co-pilot to the SAME, now-existing contact). Only fall back to a resolve-only
     // lookup when no value was threaded through (undefined) — an explicit null means "no contact", honored.
+    // NOTE (§13) — this fallback is currently UNREACHABLE, and the reason is a defect
+    // rather than tidy design. Both call sites pass `voiceLink.contactId`, typed
+    // `string | null`, never undefined. Worse, `writeVoiceMessageRow` returns null for
+    // TWO different things: "no contact exists" and "the conversation RPC errored / the
+    // writer threw". So on a transient RPC failure the co-pilot mints a CONTACTLESS token
+    // and loses client linkage — exactly the case this resolve-only fallback exists for,
+    // and it structurally cannot run. The remedy is distinguishing the two nulls at the
+    // writer, not deleting this branch. Left in place, and named, rather than removed.
     const contactId = precomputedContactId !== undefined
       ? precomputedContactId
       : await resolveContactByPhone(admin, tenantId, counterpartyPhone);
@@ -665,11 +684,21 @@ Deno.serve(async (req) => {
     // Skip the credential read entirely on an unverified request — nothing downstream can
     // use it, and not reading it is stronger than reading it and discarding it.
     if (!statusCallbackBase || !signatureVerified) return "";
-    const tenantSecret = tenantId
-      ? ((await admin.from("tenant_twilio_subaccounts")
-            .select("inbound_webhook_secret").eq("tenant_id", tenantId).maybeSingle())
-          .data?.inbound_webhook_secret ?? null)
-      : null;
+    let tenantSecret: string | null = null;
+    if (tenantId) {
+      // §32 — LOG the fault. This previously destructured only `.data`, so a PGRST
+      // error (including PGRST116, which `.maybeSingle()` raises when a tenant somehow
+      // has more than one row) silently produced null → no statusCallback → a voice row
+      // that never gets its terminal status, indistinguishable from "no secret on file".
+      // Every sibling lookup in this file logs its error; this one did not.
+      const { data, error } = await admin.from("tenant_twilio_subaccounts")
+        .select("inbound_webhook_secret").eq("tenant_id", tenantId).limit(1).maybeSingle();
+      if (error) {
+        console.error("[voice-twiml] webhook-secret lookup FAILED — emitting no statusCallback:",
+          error.code, error.message, { tenantId });
+      }
+      tenantSecret = (data?.inbound_webhook_secret as string | undefined) ?? null;
+    }
     return resolveStatusCallbackUrl({ base: statusCallbackBase, signatureVerified, tenantId, tenantSecret });
   };
 
