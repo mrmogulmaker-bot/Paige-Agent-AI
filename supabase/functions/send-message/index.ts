@@ -1245,13 +1245,33 @@ Deno.serve(async (req) => {
       status: "replied",
       metadata: { audit_id: auditRow?.id, in_reply_to: body.conversation_id },
     });
-    await admin.from("paige_conversations")
-      .update({ status: "replied" })
-      .eq("id", body.conversation_id);
+    // §9 — scope the update to the send's OWN tenant.
+    //
+    // `admin` is service-role, so RLS does not apply here, and
+    // `body.conversation_id` arrives from the request and is validated nowhere.
+    // The caller gate above requires only a GLOBAL `admin`/`coach` app_role, and
+    // `user_roles` has no tenant column (§59) — so without this predicate a
+    // tenant-A coach who performs any successful send could pass tenant B's
+    // conversation id and flip that row. An unguessable UUID is not access
+    // control.
+    //
+    // Left unscoped when `tenantId` is null: that is the platform-owner path,
+    // which legitimately reaches across tenants. Adding `.eq("tenant_id", null)`
+    // there would match nothing and silently break the operator instead.
+    {
+      const convoUpdate = admin.from("paige_conversations")
+        .update({ status: "replied" })
+        .eq("id", body.conversation_id);
+      await (tenantId ? convoUpdate.eq("tenant_id", tenantId) : convoUpdate);
+    }
   }
 
   if (body.approval_id) {
-    await admin.from("paige_pending_approvals")
+    // Same §9 reasoning as the conversation update above, and a larger blast
+    // radius: this marks an approval APPROVED and stamps who reviewed it. An
+    // unvalidated id here let one tenant's caller approve another tenant's
+    // pending action.
+    const approvalUpdate = admin.from("paige_pending_approvals")
       .update({
         status: status === "sent" ? "approved" : "pending",
         reviewed_by_user_id: user?.id ?? null,
@@ -1260,6 +1280,7 @@ Deno.serve(async (req) => {
         sent_message_audit_id: auditRow?.id ?? null,
       })
       .eq("id", body.approval_id);
+    await (tenantId ? approvalUpdate.eq("tenant_id", tenantId) : approvalUpdate);
   }
 
   // ── Paige Context Rail — COMMS emitter: file 'comms.outbound' after a message

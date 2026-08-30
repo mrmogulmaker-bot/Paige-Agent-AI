@@ -31,9 +31,13 @@
 -- wrong mechanism:
 --
 --   * The COACH path does NOT leak. `can_access_contact()` (20260721020716) is
---     itself tenant-scoped, and returns false for a NULL contact_id — so a
---     contactless inbound row is reachable by no coach at all, and a row with a
---     contact is reachable only from inside the tenant that owns that contact.
+--     itself tenant-scoped: every one of its EXISTS arms joins the contact to a
+--     tenant the caller belongs to, so a row with a contact is reachable only from
+--     inside the tenant that owns it. For a NULL contact_id all four arms are
+--     false and the function reduces to its first disjunct, `is_super_admin()` —
+--     NOT to false, as an earlier version of this comment said. The effect is the
+--     same, because a super_admin also satisfies `is_platform_owner()` in the
+--     restrictive half, but the precise reading is the point of this file.
 --
 --   * The ADMIN path DOES. `has_any_role()` reads public.user_roles, which has
 --     no tenant_id (the §59 global-role trap), so the permissive half is true for
@@ -128,26 +132,30 @@ create trigger trg_paige_conversations_stamp_tenant
 before insert on public.paige_conversations
 for each row execute function public.paige_conversations_stamp_tenant();
 
--- 3 ── The restrictive policy stops admitting NULL. This is the change that
---      actually closes the read; everything else is depth.
-drop policy if exists "tenant_isolation" on public.paige_conversations;
-create policy "tenant_isolation"
-on public.paige_conversations
-as restrictive
-for all
-to authenticated
-using (public.is_platform_owner() or tenant_id = public.current_user_tenant_id())
-with check (public.is_platform_owner() or tenant_id = public.current_user_tenant_id());
+-- 3 ── ORDER AND ATOMICITY MATTER HERE, and the obvious way is wrong.
+--
+--      `db push` does NOT wrap a migration file in a transaction — DDL
+--      auto-commits statement by statement (deploy-migrations.yml says so in its
+--      own caveats). So a `drop policy` + `create policy` pair on the RESTRICTIVE
+--      policy opens a real window: between the two commits the table has NO
+--      restrictive policy, while the OLD, un-narrowed admin policy is still live.
+--      For that window every tenant admin reads and writes EVERY row — the
+--      migration would briefly turn a NULL-row leak into a whole-table one, and
+--      if the recreate then failed, it would stay that way until a re-run.
+--
+--      Two changes close it. Both policies are altered IN PLACE, which is a
+--      single atomic statement each and is already the pattern this repo uses
+--      (20260721002907). And the PERMISSIVE policy is clamped FIRST, so at no
+--      instant is the table wider than it is right now: once the admin policy
+--      carries its tenant clause, a momentarily-absent restrictive policy would
+--      leak nothing anyway, because the only other permissive policies are the
+--      coach ones and `can_access_contact` is itself tenant-scoped.
 
--- 4 ── The admin policy gains a tenant clause. `has_any_role` is tenant-agnostic
---      by construction (user_roles has no tenant_id), so on its own it says
---      nothing about WHICH tenant's rows an admin may touch. Cross-tenant reach
---      is the operator's, never a tenant-level app_role's (§53/§59).
-drop policy if exists "Admins manage all conversations" on public.paige_conversations;
-create policy "Admins manage all conversations"
-on public.paige_conversations
-for all
-to authenticated
+-- 3a ── The admin policy gains a tenant clause. `has_any_role` is tenant-agnostic
+--       by construction (user_roles has no tenant_id), so on its own it says
+--       nothing about WHICH tenant's rows an admin may touch. Cross-tenant reach
+--       belongs to the operator, never to a tenant-level app_role (§53/§59).
+alter policy "Admins manage all conversations" on public.paige_conversations
 using (
   public.has_any_role(auth.uid(), ARRAY['admin','super_admin'])
   and (public.is_platform_owner() or tenant_id = public.current_user_tenant_id())
@@ -156,6 +164,12 @@ with check (
   public.has_any_role(auth.uid(), ARRAY['admin','super_admin'])
   and (public.is_platform_owner() or tenant_id = public.current_user_tenant_id())
 );
+
+-- 3b ── The restrictive policy stops admitting NULL. This is the change that
+--       actually closes the read; 3a is depth.
+alter policy "tenant_isolation" on public.paige_conversations
+using (public.is_platform_owner() or tenant_id = public.current_user_tenant_id())
+with check (public.is_platform_owner() or tenant_id = public.current_user_tenant_id());
 
 comment on function public.paige_conversations_stamp_tenant() is
   'Derives paige_conversations.tenant_id from the row''s contact when a writer omits it. Service-role callers bypass RLS, so this is the only thing standing between an omitted tenant and a row no policy can scope (C-7).';

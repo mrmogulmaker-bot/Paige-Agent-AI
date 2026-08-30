@@ -12,6 +12,19 @@
 -- Set PROVE_FIX to false to see the leak, true to see it closed. Both were run
 -- while writing this; the recorded outputs are in the PR.
 --
+-- WHAT THIS DOES NOT DO, STATED PLAINLY. The fix block below is a RETYPED
+-- approximation of the migration, not the migration itself — psql's \i is not
+-- available through the tooling this was run with. Two shipped statements are
+-- therefore absent from it: the `revoke all on function …` and the second
+-- backfill pass over `metadata->>'tenant_id'`.
+--
+-- Those were covered separately rather than left unproven: the migration file's
+-- own statements were executed verbatim against the preview branch inside an
+-- explicit BEGIN … ROLLBACK, and the resulting `pg_policy` rows were read back to
+-- confirm the restrictive policy stayed RESTRICTIVE and lost its NULL disjunct.
+-- The persisted-apply confirmation (§32.a) comes from `deploy-migrations.yml` at
+-- merge, not from this file. Do not read this proof as "the migration ran".
+--
 -- WHY A LIVE DATABASE AND NOT A UNIT TEST. The defect is the interaction of a
 -- PERMISSIVE policy with a RESTRICTIVE one. Reading the migrations is what
 -- produced the first, WRONG diagnosis of this defect (the coach policy was
