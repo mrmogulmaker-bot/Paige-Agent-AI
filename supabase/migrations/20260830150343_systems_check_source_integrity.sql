@@ -22,6 +22,7 @@ CREATE POLICY scrun_tenant_read ON public.paige_systems_check_run
   USING (
     tenant_id = (SELECT public.current_user_tenant_id())
     OR (SELECT public.is_platform_owner())
+    OR (tenant_id IS NULL AND (SELECT public.is_platform_operator()))
   );
 
 DROP POLICY IF EXISTS scfind_tenant_all ON public.paige_systems_check_finding;
@@ -31,6 +32,7 @@ CREATE POLICY scfind_tenant_read ON public.paige_systems_check_finding
   USING (
     tenant_id = (SELECT public.current_user_tenant_id())
     OR (SELECT public.is_platform_owner())
+    OR (tenant_id IS NULL AND (SELECT public.is_platform_operator()))
   );
 
 DROP POLICY IF EXISTS scbase_tenant_all ON public.paige_systems_check_baseline;
@@ -40,6 +42,7 @@ CREATE POLICY scbase_tenant_read ON public.paige_systems_check_baseline
   USING (
     tenant_id = (SELECT public.current_user_tenant_id())
     OR (SELECT public.is_platform_owner())
+    OR (tenant_id IS NULL AND (SELECT public.is_platform_operator()))
   );
 
 CREATE OR REPLACE FUNCTION public.approve_systems_check_finding(
@@ -116,7 +119,7 @@ BEGIN
         MESSAGE = 'SYSTEMS_CHECK_APPROVAL_UNAVAILABLE';
     END IF;
   ELSE
-    IF NOT public.is_platform_owner(_actor_id) THEN
+    IF NOT public.is_platform_operator() THEN
       RAISE EXCEPTION USING
         ERRCODE = '42501',
         MESSAGE = 'SYSTEMS_CHECK_APPROVAL_UNAVAILABLE';

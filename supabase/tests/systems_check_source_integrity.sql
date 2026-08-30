@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(34);
+SELECT plan(35);
 
 SELECT ok(
   NOT has_table_privilege('authenticated', 'public.paige_systems_check_run', 'INSERT,UPDATE,DELETE'),
@@ -53,6 +53,7 @@ INSERT INTO auth.users (id, aud, role, email) VALUES
   ('d1000000-0000-0000-0000-000000000006', 'authenticated', 'authenticated', 'integrity-no-active@tests.invalid'),
   ('d1000000-0000-0000-0000-000000000007', 'authenticated', 'authenticated', 'integrity-inactive@tests.invalid'),
   ('d1000000-0000-0000-0000-000000000008', 'authenticated', 'authenticated', 'integrity-platform-owner@tests.invalid'),
+  ('d1000000-0000-0000-0000-000000000009', 'authenticated', 'authenticated', 'integrity-platform-admin@tests.invalid'),
   ('e2000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'integrity-other-owner@tests.invalid'),
   ('f3000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'integrity-stale-owner@tests.invalid');
 
@@ -66,6 +67,10 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO public.user_roles (user_id, role)
 VALUES ('d1000000-0000-0000-0000-000000000008', 'super_admin')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.user_roles (user_id, role)
+VALUES ('d1000000-0000-0000-0000-000000000009', 'platform_admin')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.tenants
@@ -128,7 +133,7 @@ VALUES
   ('d1000000-0000-0000-0000-00000000a002', 'd1000000-0000-0000-0000-000000001111', 'scheduled', now() - interval '1 hour', now() - interval '59 minutes', 7, 0, 7, '{}'::jsonb),
   ('e2000000-0000-0000-0000-00000000b001', 'e2000000-0000-0000-0000-000000002222', 'scheduled', now() - interval '1 hour', now() - interval '59 minutes', 1, 0, 1, '{}'::jsonb),
   ('f3000000-0000-0000-0000-00000000c001', 'f3000000-0000-0000-0000-000000003333', 'scheduled', now() - interval '26 hours', now() - interval '25 hours', 1, 0, 1, '{}'::jsonb),
-  ('d1000000-0000-0000-0000-00000000ff01', NULL, 'scheduled', now() - interval '1 hour', now() - interval '59 minutes', 1, 0, 1, '{}'::jsonb);
+  ('d1000000-0000-0000-0000-00000000ff01', NULL, 'scheduled', now() - interval '1 hour', now() - interval '59 minutes', 2, 0, 2, '{}'::jsonb);
 
 INSERT INTO public.paige_actions
   (id, tenant_id, action_kind, from_department, to_department, title, payload, draft_content, status, autonomy_lane)
@@ -153,7 +158,8 @@ VALUES
   ('d1000000-0000-0000-0000-00000000f007', 'd1000000-0000-0000-0000-00000000a002', 'crm_has_customers', 'd1000000-0000-0000-0000-000000001111', 'fail', 'high', '{"source":"owner"}'::jsonb, 'Owner', '{}'::jsonb, NULL, NULL, NULL),
   ('e2000000-0000-0000-0000-00000000f001', 'e2000000-0000-0000-0000-00000000b001', 'comms_configured', 'e2000000-0000-0000-0000-000000002222', 'fail', 'high', '{"source":"other"}'::jsonb, 'Other', '{}'::jsonb, NULL, NULL, NULL),
   ('f3000000-0000-0000-0000-00000000f001', 'f3000000-0000-0000-0000-00000000c001', 'comms_configured', 'f3000000-0000-0000-0000-000000003333', 'fail', 'high', '{"source":"stale"}'::jsonb, 'Stale', '{}'::jsonb, NULL, NULL, NULL),
-  ('d1000000-0000-0000-0000-00000000ff02', 'd1000000-0000-0000-0000-00000000ff01', 'operator_db_health', NULL, 'fail', 'high', '{"source":"operator"}'::jsonb, 'Operator', '{}'::jsonb, NULL, NULL, NULL);
+  ('d1000000-0000-0000-0000-00000000ff02', 'd1000000-0000-0000-0000-00000000ff01', 'operator_db_health', NULL, 'fail', 'high', '{"source":"operator"}'::jsonb, 'Operator', '{}'::jsonb, NULL, NULL, NULL),
+  ('d1000000-0000-0000-0000-00000000ff03', 'd1000000-0000-0000-0000-00000000ff01', 'operator_rls_coverage', NULL, 'fail', 'high', '{"source":"operator-admin"}'::jsonb, 'Operator admin', '{}'::jsonb, NULL, NULL, NULL);
 
 CREATE OR REPLACE FUNCTION pg_temp.expect_approval_denied(p_scope text, p_account bigint, p_finding uuid)
 RETURNS boolean LANGUAGE plpgsql AS $$
@@ -239,6 +245,15 @@ SELECT set_config('request.jwt.claims', '{"sub":"d1000000-0000-0000-0000-0000000
 SELECT ok(pg_temp.expect_approval_denied('tenant', 8100001, 'd1000000-0000-0000-0000-00000000f002'), 'replay against an already-resolved finding is denied');
 SELECT set_config('request.jwt.claims', '{"sub":"d1000000-0000-0000-0000-000000000008","role":"authenticated"}', true);
 SELECT ok(pg_temp.expect_approval_denied('operator', 8100001, 'd1000000-0000-0000-0000-00000000ff02'), 'operator scope rejects a tenant account address');
+
+SELECT set_config('request.jwt.claims', '{"sub":"d1000000-0000-0000-0000-000000000009","role":"authenticated"}', true);
+SELECT is(
+  public.approve_systems_check_finding('operator', NULL, 'd1000000-0000-0000-0000-00000000ff03')->>'status',
+  'approved',
+  'delegated platform admin may record the current operator finding decision'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"d1000000-0000-0000-0000-000000000008","role":"authenticated"}', true);
 SELECT is(
   public.approve_systems_check_finding('operator', NULL, 'd1000000-0000-0000-0000-00000000ff02') ->> 'status',
   'approved',
