@@ -1,4 +1,6 @@
 import React, { act } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,8 +38,48 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 function render() { act(() => root.render(<Marketplace />)); }
 function button(name: string) { return [...host.querySelectorAll("button")].find((node) => node.textContent?.includes(name)) as HTMLButtonElement | undefined; }
+const marketplaceCss = readFileSync(join(process.cwd(), "src/solo/marketplace.css"), "utf8");
 
 describe("Solo Marketplace rendered truth", () => {
+  it("defines the approved light-up interaction contract without using truth colors as decoration", () => {
+    expect(marketplaceCss).toContain("@media (hover:hover) and (pointer:fine)");
+    expect(marketplaceCss).toMatch(/\.mk-interactive:not\(:disabled\):hover/);
+    expect(marketplaceCss).toMatch(/\.mk-interactive:focus-visible/);
+    expect(marketplaceCss).toMatch(/\.mk-interactive:not\(:disabled\):active/);
+    expect(marketplaceCss).toMatch(/\.mk-interactive:disabled/);
+    expect(marketplaceCss).not.toMatch(/\.mk-interactive:(?:hover|active)/);
+    expect(marketplaceCss).toContain("@media(prefers-reduced-motion:reduce)");
+    expect(marketplaceCss).not.toMatch(/\.mk-interactive:(?:hover|focus-visible)[^{]*\{[^}]*(?:--mk-ok|--mk-warn|--mk-unavailable)/);
+    expect(marketplaceCss).toMatch(/\.mk-glyph-connector\{--mk-identity:var\(--ink-2\)\}/);
+    expect(marketplaceCss).toMatch(/\.mk-glyph-workflow\{--mk-identity:var\(--violet-2\)\}/);
+    expect(marketplaceCss).toMatch(/\.mk-glyph-content\{--mk-identity:var\(--violet\)\}/);
+    expect(marketplaceCss).not.toMatch(/\.mk-glyph-(?:connector|workflow|content)\{[^}]*(?:--mk-ok|--mk-warn|--mk-unavailable|--ok|--warn|--bad)/);
+  });
+
+  it("uses one explicit vertical catalogue scroll owner and no primary horizontal card rail", () => {
+    render();
+    expect(host.querySelectorAll('[data-marketplace-scroll-owner="catalogue"]')).toHaveLength(1);
+    expect(host.querySelector('[data-marketplace-scroll-owner="catalogue"]')?.getAttribute("tabindex")).toBe("0");
+    expect(host.querySelector(".mk-card-rail")).toBeNull();
+    expect(host.querySelector(".mk-catalogue-grid")).not.toBeNull();
+    expect(marketplaceCss).toMatch(/\.mk-body\{[^}]*overflow-y:auto/);
+    expect(marketplaceCss).toMatch(/\.mk-body\{[^}]*overflow-x:hidden/);
+    expect(marketplaceCss).toMatch(/\.mk-grid\{[^}]*grid-template-columns:repeat\(auto-fit/);
+    expect(marketplaceCss).toMatch(/\.mk-dialog\{[^}]*background:var\(--surface\)/);
+  });
+
+  it("uses one static truthful promotion and no duplicate white page-heading slab", () => {
+    render();
+    expect(host.querySelector(".pg-hd")).toBeNull();
+    expect(host.querySelectorAll('[data-marketplace-promo-slot="static"]')).toHaveLength(1);
+    expect(host.querySelectorAll(".mk-catalogue-intro")).toHaveLength(1);
+    expect(host.querySelectorAll(".mk-catalogue-intro h1")).toHaveLength(1);
+    expect(host.textContent).not.toContain("Governed capability catalogue");
+    expect(marketplaceCss).toMatch(/\.mk-tabs\{[^}]*background:var\(--rail\)/);
+    expect(marketplaceCss).toMatch(/\.paige-solo \.mk-catalogue-intro h1\{color:#fff\}/);
+    expect(marketplaceCss).toMatch(/\.paige-solo \.mk-catalogue-intro \.btn\{[^}]*background:var\(--gold-bright\)/);
+  });
+
   it("binds every capability-copy badge to the displayed copy proof across cards, tabs, and detail", () => {
     const liveItem = {
       ...item,
