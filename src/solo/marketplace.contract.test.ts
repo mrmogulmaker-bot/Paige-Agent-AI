@@ -14,6 +14,12 @@ describe("Solo Marketplace recovery contract", () => {
     expect(source).not.toMatch(/Editors.? pick|Most installed|Top charts|Recommended for you|ratings?|customer reviews?/i);
   });
 
+  it("never renders or searches unclassified catalogue marketing fields directly", () => {
+    expect(source).not.toMatch(/item\.(?:tagline|description)/);
+    expect(source).toMatch(/getMarketplaceDisplayCopy/);
+    expect(source).toMatch(/getMarketplaceSearchText/);
+  });
+
   it("contains no Marketplace mutation or unsafe detail seam", () => {
     expect(source).not.toMatch(/marketplace_item_detail|marketplace_install|marketplace_uninstall|checkout|start a listing/i);
     expect(source).not.toMatch(/onClick={[^}]*\b(install|update|remove|purchase|activate|publish|execute)\b/i);

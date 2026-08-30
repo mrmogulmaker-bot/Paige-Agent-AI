@@ -16,7 +16,7 @@ import { projectMarketplaceRow } from "./marketplace-truth";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const item = projectMarketplaceRow({
   slug: "operations-review", item_type: "playbook", name: "Operations review",
-  tagline: "A tenant-visible review framework.", description: "A source-backed catalogue description.",
+  tagline: "Paige builds and runs your plays.", description: "Install it now so Paige can execute the workflow.",
   category: "Operations", icon: "clipboard", pricing_model: "free", price_cents: 0,
   requires_embedding: false, installed: false, install_status: null, version: "1.2.0",
 });
@@ -44,6 +44,8 @@ describe("Solo Marketplace rendered truth", () => {
     expect(host.textContent).toContain("Operations review");
     expect(host.textContent).toContain("LIVE");
     expect(host.textContent).toContain("PARTIAL");
+    expect(host.textContent).toContain("Release-bound capability details are unavailable.");
+    expect(host.textContent).not.toContain("Paige builds and runs your plays.");
     expect(host.textContent).not.toMatch(/Editors.? pick|Top charts|rating|review count|most installed/i);
   });
 
@@ -56,10 +58,63 @@ describe("Solo Marketplace rendered truth", () => {
     expect(host.textContent).toContain("Immutable release identity");
     expect(host.textContent).toContain("Default deny until a reviewed declaration exists");
     expect(host.textContent).toContain("It is not attached, sent, installed, activated, purchased, or executed");
+    expect(host.textContent).not.toContain("Install it now so Paige can execute the workflow.");
     await act(async () => button("Open PAIGE workspace")?.click());
     expect(host.querySelector('[role="dialog"]')).toBeNull();
     expect(harness.expandRail).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("withholds unproven catalogue marketing copy from Today, Browse, and Installed cards", () => {
+    const installed = projectMarketplaceRow({
+      slug: "voice-agent", item_type: "connector", name: "Voice Agent",
+      tagline: "Let clients talk to Paige.", description: "Activate Paige to handle every client call.",
+      category: "Connections", icon: null, pricing_model: "paid", price_cents: 4900,
+      requires_embedding: false, installed: true, install_status: "active", version: "2.0.0",
+    });
+    harness.read.mockReturnValue({ ...ready, items: [item, installed], summary: { ...ready.summary, installed: { state: "PARTIAL", count: 1 } } });
+    render();
+    expect(host.textContent).not.toMatch(/Paige builds and runs your plays|Let clients talk to Paige/i);
+    act(() => button("Browse")?.click());
+    expect(host.textContent).not.toMatch(/Paige builds and runs your plays|Let clients talk to Paige/i);
+    act(() => button("Installed")?.click());
+    expect(host.textContent).toContain("Voice Agent");
+    expect(host.textContent).not.toMatch(/Let clients talk to Paige|Activate Paige to handle every client call/i);
+  });
+
+  it("keeps mutable copy unavailable end to end even when every generic release flag is LIVE", async () => {
+    const legacy = projectMarketplaceRow({
+      slug: "autopilot", item_type: "workflow", name: "Autopilot Review",
+      tagline: "Install Paige for autonomous execution.", description: "Purchase this recommended workflow for proven outcomes.",
+      category: "Operations", icon: null, pricing_model: "paid", price_cents: 9900,
+      requires_embedding: false, installed: true, install_status: "active", version: "9.9.9",
+    });
+    const live = { state: "LIVE" as const, value: null };
+    const allGenericLive = {
+      ...legacy, safeState: "LIVE" as const,
+      tenantEligibility: { state: "LIVE" as const, value: "catalogue record" as const },
+      releaseVersion: { state: "LIVE" as const, value: "9.9.9" },
+      publisher: live, releaseIdentity: live, approvedScope: live,
+      declaredCapabilities: live, prerequisites: live,
+    };
+    harness.read.mockReturnValue({ ...ready, items: [allGenericLive], summary: { ...ready.summary, installed: { state: "PARTIAL", count: 1 } } });
+    render();
+    expect(host.textContent).toContain("Release-bound capability details are unavailable.");
+    expect(host.textContent).not.toMatch(/Install Paige|autonomous execution|Purchase this|recommended workflow|proven outcomes/i);
+    act(() => button("Autopilot Review")?.click());
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(host.textContent).not.toMatch(/Install Paige|Purchase this recommended workflow/i);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close capability details"]')?.click());
+    act(() => button("Browse")?.click());
+    const search = host.querySelector<HTMLInputElement>('input[placeholder="Search catalogue capabilities"]')!;
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setInputValue.call(search, "autonomous execution"); search.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(host.textContent).toContain("No matching catalogue records");
+    act(() => { setInputValue.call(search, "workflow"); search.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(host.textContent).toContain("Autopilot Review");
+    act(() => button("Installed")?.click());
+    expect(host.textContent).toContain("Autopilot Review");
+    expect(host.textContent).not.toMatch(/Install Paige|Purchase this recommended workflow/i);
   });
 
   it("renders zero installed and zero update candidates without action controls", () => {
