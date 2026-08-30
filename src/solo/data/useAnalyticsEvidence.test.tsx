@@ -150,6 +150,71 @@ describe("useAnalyticsEvidence", () => {
     expect(host.textContent).toBe("|");
   });
 
+  it("retries by issuing a fresh bundle and never reuses the failed response", async () => {
+    function RetryProbe() {
+      const result = useAnalyticsEvidence({ accountEpoch: "account-a", rangeKey: "last_30_days", enabled: true });
+      return <><output>{result.bundle?.contributing_record_count ?? ""}|{result.evidenceReference ?? ""}</output><button type="button" aria-label="Retry evidence" onClick={() => void result.retry()} /></>;
+    }
+    harness.calls = [
+      Promise.resolve({ data: null, error: { message: "temporarily unavailable" } }),
+      Promise.resolve({ data: issued(3), error: null }),
+    ];
+    await act(async () => {
+      root.render(<QueryClientProvider client={client}><RetryProbe /></QueryClientProvider>);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(host.querySelector("output")?.textContent).toBe("|");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="Retry evidence"]')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(host.querySelector("output")?.textContent).toContain("3|aneb_v1_");
+    expect(harness.rpc.mock.calls.map((call) => call[0])).toEqual([
+      "issue_analytics_evidence_bundle",
+      "issue_analytics_evidence_bundle",
+    ]);
+  });
+
+  it("abandons an unresolved issuance without resolving or exposing its late reference", async () => {
+    const pending = deferred();
+    const remountPending = deferred();
+    const abandonedHost = document.createElement("div");
+    const abandonedRoot = createRoot(abandonedHost);
+    const abandonedClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    document.body.append(abandonedHost);
+    harness.calls = [pending.promise, remountPending.promise];
+
+    try {
+      await act(async () => {
+        abandonedRoot.render(<QueryClientProvider client={abandonedClient}><Probe epoch="account-a" /></QueryClientProvider>);
+        await Promise.resolve();
+      });
+      act(() => abandonedRoot.unmount());
+      await act(async () => {
+        pending.resolve({ data: issued(9), error: null });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+
+      const issueKey = ["analytics-evidence", "sales_funnel.created_deals_by_current_stage", "last_30_days", "account-a"];
+      expect(abandonedClient.getQueryData(issueKey)).toBeUndefined();
+      const remountRoot = createRoot(abandonedHost);
+      try {
+        await act(async () => {
+          remountRoot.render(<QueryClientProvider client={abandonedClient}><Probe epoch="account-a" /></QueryClientProvider>);
+          await Promise.resolve();
+        });
+        expect(abandonedHost.textContent).toBe("|");
+        expect(harness.rpc).toHaveBeenCalledTimes(2);
+      } finally {
+        act(() => remountRoot.unmount());
+      }
+    } finally {
+      abandonedClient.clear();
+      abandonedHost.remove();
+    }
+  });
+
   it("withholds an issued bundle at its exact reference expiry without rotating it", async () => {
     vi.useFakeTimers();
     const first = deferred();

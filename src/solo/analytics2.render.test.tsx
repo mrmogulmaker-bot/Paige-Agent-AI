@@ -154,6 +154,52 @@ describe("Solo Analytics operating workspace", () => {
     expect(host.textContent).not.toMatch(/\b\d+(?:\.\d+)?%\b/);
   });
 
+  it("renders an authoritative zero only when a LIVE bundle includes the source-backed stage", () => {
+    const bundle: AnalyticsEvidenceBundle = {
+      metric: {
+        id: "sales_funnel.created_deals_by_current_stage",
+        label: "Created deals by current stage",
+        definition: "Deal records created in the exact range, grouped by current stage in the unique default pipeline.",
+        formula: "COUNT(deals.id) grouped by current tenant-owned stage",
+        version: "1.0.0",
+      },
+      range: { key: "last_30_days", start: "2026-08-01T00:00:00.000Z", end: "2026-08-31T00:00:00.000Z" },
+      source_references: [
+        { source: "public.deals", boundary: "active tenant and exact half-open range" },
+        { source: "public.pipelines", boundary: "unique active-tenant default pipeline" },
+        { source: "public.pipeline_stages", boundary: "tenant stages in that pipeline" },
+      ],
+      contributing_record_count: 0,
+      coverage: { state: "complete", candidate_count: 0, contributing_count: 0, excluded_count: 0 },
+      exclusions: [],
+      freshness: { queried_at: "2026-08-31T00:00:00.000Z", source_updated_through: null },
+      truth_state: "LIVE",
+      account_epoch_ref: `ae_v1_${"a".repeat(64)}`,
+      source_revision_ref: `sr_v1_${"b".repeat(64)}`,
+      reference_expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      values: {
+        kind: "sales_funnel_stages",
+        pipeline_label: "Primary pipeline",
+        stages: [{ stage_key: "stage_1", label: "Qualified", stage_type: "open", order: 1, count: 0 }],
+      },
+      caveats: ["Current stage is observed at query time; no conversion is implied."],
+    };
+    evidenceHarness.value = {
+      bundle,
+      evidenceReference: `aneb_v1_${"c".repeat(64)}`,
+      loading: false,
+      isError: false,
+      error: null,
+      retry: vi.fn(),
+    };
+    render();
+    act(() => button("Sales funnel")?.click());
+    expect(host.textContent).toContain("LIVE");
+    expect(host.textContent).toContain("0 deal records");
+    expect(host.textContent).toContain("0 of 0 candidate records contribute");
+    expect(host.textContent).not.toMatch(/\b\d+(?:\.\d+)?%\b/);
+  });
+
   it("keeps truth, range, source, and freshness attached to the active visual", () => {
     render();
     const strip = host.querySelector(".anr-evidence-strip");
