@@ -499,7 +499,14 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
   carrier registration now DURABLY SAVES: `comms-a2p-draft` previously did two reads and no write, so
   the prepared draft died with the HTTP response. It persists through
   `tenant_a2p_registration_save_draft` (migration `20261004010000`) into the existing
-  `tenant_a2p_registrations` — no new table, column, or parallel store. **Carrier submission does not
+  `tenant_a2p_registrations`. **Corrected 2026-08-30 (PR #672):** the first version of this
+  entry read "no new table, column, or parallel store". That was true of #665 and is no
+  longer true — #672 adds three nullable columns (`optin_message`, `optout_message`,
+  `help_message`) because the draft generates seven reviewed fields and only four had a
+  home, so three carrier-facing compliance replies were silently dropped. The save seam is
+  now the 8-argument `tenant_a2p_registration_save_draft`; the 5-argument signature is
+  DROPPED so no caller can reach the version that loses them. Absent preserves a field,
+  an EMPTY STRING clears it — an owner must be able to delete a wrong STOP or HELP reply. **Carrier submission does not
   exist:** `comms-a2p-submit` performs no provider call and returns an explicit *prepared, not
   submitted* refusal, and no shipped path sets `submitted_at`. Do not read a `pending` row as a
   filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production

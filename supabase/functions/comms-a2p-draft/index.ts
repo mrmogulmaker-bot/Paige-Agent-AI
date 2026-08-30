@@ -377,13 +377,16 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
       p_use_case: draft.use_case,
       p_campaign_description: draft.campaign_description,
       p_sample_messages: draft.sample_messages,
-      p_optin_flow: draft.optin_flow || null,
+      p_optin_flow: draft.optin_flow ?? null,
       // The three carrier-facing replies the model just wrote. They had no column
       // until 20261004020000, so the durable save simply dropped them and three
       // reviewed compliance sections still died with the response.
-      p_optin_message: draft.optin_message || null,
-      p_optout_message: draft.optout_message || null,
-      p_help_message: draft.help_message || null,
+      // `?? null`, never `|| null`: an empty string means the human DELETED that reply
+      // and must reach the seam as an explicit clear. `||` would turn it back into
+      // "absent", which the save preserves — making the field un-clearable forever.
+      p_optin_message: draft.optin_message ?? null,
+      p_optout_message: draft.optout_message ?? null,
+      p_help_message: draft.help_message ?? null,
       ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
     });
     if (saveErr) {

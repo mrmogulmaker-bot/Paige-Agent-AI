@@ -15,7 +15,10 @@
 //                                 optin_flow, optin_message, optout_message, help_message },
 //                        legal_business_name, website } | { needs_config, error }
 //   comms-a2p-submit ← { legal_business_name, website?, ein?, use_case,
-//                        campaign_description, sample_messages[], optin_flow? }
+//                        campaign_description, sample_messages[], optin_flow?,
+//                        optin_message, optout_message, help_message }
+//   The three replies are sent as themselves — and sent EVEN WHEN EMPTY, because ""
+//   means the owner deleted that reply and omitting the key would preserve it instead.
 //                    → { saved, submitted, a2p_submit_wired, needs_config?, state,
 //                        status, brand_sid, campaign_sid, message }
 //   A non-2xx from either carries { error: { code, message } }, where `code` is the save
@@ -38,7 +41,7 @@
 // §2: A2P copy is coaching-generic (produced by comms-a2p-draft); this tab adds no
 // finance wording. §11: gold is spent ONLY on the one act button; rings stay indigo.
 import { Link } from "react-router-dom";
-import { draftFromRegistration } from "./a2pDraftResume";
+import { draftFromRegistration, hasLeftPreparation } from "./a2pDraftResume";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Sparkles, MessageSquareText, Plus, Trash2, Building2 } from "lucide-react";
@@ -95,6 +98,8 @@ export interface A2PRegistration {
   optin_message: string | null;
   optout_message: string | null;
   help_message: string | null;
+  messaging_service_sid: string | null;
+  approved_at: string | null;
   submitted_at: string | null;
 }
 
@@ -144,8 +149,9 @@ function isSubmittedToCarrier(reg: A2PRegistration): boolean {
 
 /** Prepared and sitting here: a row exists, but nothing has been filed anywhere. */
 function isPreparedOnly(reg: A2PRegistration): boolean {
-  return !reg.submitted_at && !reg.brand_sid && !reg.campaign_sid
-      && reg.status !== "approved" && reg.status !== "rejected";
+  // The SAME predicate the editor uses, so the banner can never promise an edit the
+  // editor will not offer — and neither can drift from the server's nine conditions.
+  return !hasLeftPreparation(reg);
 }
 
 /**
@@ -228,12 +234,25 @@ export function A2PTab() {
     const { data } = await (supabase as any)
       .from("tenant_a2p_registrations")
       .select(
-        "brand_status, campaign_status, status, brand_sid, campaign_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at",
+        "brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at",
       )
       .limit(1)
       .maybeSingle();
     const row = (data as A2PRegistration) ?? null;
     setReg(row);
+    // The legal business name lives on tenant_legal_profile and is a HARD precondition of
+    // the save seam (LEGAL_PROFILE_REQUIRED). Without restoring it, a resumed draft opened
+    // with every reviewed field populated and the save disabled — so the only live control
+    // was another paid generation that overwrites the row. Reopening the copy is not
+    // resuming the flow unless the owner can act on it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: lp } = await (supabase as any)
+      .from("tenant_legal_profile")
+      .select("legal_business_name")
+      .limit(1)
+      .maybeSingle();
+    const storedLegal = (lp as { legal_business_name?: string } | null)?.legal_business_name;
+    if (storedLegal) setLegalName((prev) => prev || storedLegal);
     // Re-open the saved copy. `prev ?? ...` so a draft the owner is CURRENTLY editing
     // is never replaced by the stored one — a reload behind an in-progress edit would
     // otherwise silently discard their unsaved work.
@@ -276,6 +295,9 @@ export function A2PTab() {
       if (payload.legal_business_name && !legalName) setLegalName(payload.legal_business_name);
       const d = payload.draft;
       const texts = (d.sample_messages ?? []).length ? d.sample_messages : ["", ""];
+      // The draft call PERSISTS. Without refreshing, the status panel kept rendering
+      // "Not registered yet" over a registration that now exists.
+      void loadReg();
       setDraft({
         use_case: d.use_case ?? "",
         campaign_description: d.campaign_description ?? "",
@@ -342,10 +364,14 @@ export function A2PTab() {
           use_case: draft.use_case.trim(),
           campaign_description: draft.campaign_description.trim(),
           sample_messages: cleanSamples,
-          optin_flow: draft.optin_flow.trim() || undefined,
-          optin_message: draft.optin_message.trim() || undefined,
-          optout_message: draft.optout_message.trim() || undefined,
-          help_message: draft.help_message.trim() || undefined,
+          // Sent even when empty, same rule as the three replies below.
+          optin_flow: draft.optin_flow.trim(),
+          // Sent even when empty. `|| undefined` dropped the key, the seam read that as
+          // "not mentioned" and preserved the old text — so a reply the owner deleted
+          // came back while the surface said the copy had saved.
+          optin_message: draft.optin_message.trim(),
+          optout_message: draft.optout_message.trim(),
+          help_message: draft.help_message.trim(),
         },
       });
       if (error) {
@@ -629,7 +655,7 @@ export function A2PTab() {
               </div>
 
               {/* The three auto-replies Paige drafted — editable; they travel with the
-                  registration (folded into the opt-in language on submit, §13 nothing dropped). */}
+                  registration in their own columns — the fold into optin_flow is gone (§18). */}
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="a2p-optin-msg">Opt-in reply</Label>

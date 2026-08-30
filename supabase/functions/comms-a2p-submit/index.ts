@@ -151,13 +151,19 @@ Deno.serve(async (req: Request) => {
     const ein = str(body?.ein).trim().slice(0, 32); // never logged
     const useCase = str(body?.use_case).trim().slice(0, 160);
     const campaignDescription = str(body?.campaign_description).trim().slice(0, 2000);
-    const optinFlow = str(body?.optin_flow).trim().slice(0, 2000);
+    // undefined => not mentioned (preserve). "" => cleared. Same rule as the replies.
+    const optinFlow = body?.optin_flow === undefined
+      ? undefined
+      : str(body?.optin_flow).trim().slice(0, 2000);
     // Accepted as their own fields rather than folded into optin_flow. A2PTab used
     // to concatenate them behind labels because there was nowhere else to put them;
     // that kept the text but destroyed its structure, so nothing could read it back.
-    const optinMessage = str(body?.optin_message).trim().slice(0, 320);
-    const optoutMessage = str(body?.optout_message).trim().slice(0, 320);
-    const helpMessage = str(body?.help_message).trim().slice(0, 320);
+    // undefined => the caller did not mention it (preserve). "" => the caller cleared it.
+    const reply = (v: unknown): string | undefined =>
+      v === undefined ? undefined : str(v).trim().slice(0, 320);
+    const optinMessage = reply(body?.optin_message);
+    const optoutMessage = reply(body?.optout_message);
+    const helpMessage = reply(body?.help_message);
     const sampleMessages = (Array.isArray(body?.sample_messages) ? (body!.sample_messages as unknown[]) : [])
       .map((s) => str(s).trim().slice(0, 320))
       .filter(Boolean)
@@ -236,10 +242,11 @@ Deno.serve(async (req: Request) => {
       p_use_case: useCase,
       p_campaign_description: campaignDescription,
       p_sample_messages: sampleMessages,
-      p_optin_flow: optinFlow || null,
-      p_optin_message: optinMessage || null,
-      p_optout_message: optoutMessage || null,
-      p_help_message: helpMessage || null,
+      p_optin_flow: optinFlow ?? null,
+      // `?? null`, never `|| null` — see comms-a2p-draft. An empty string is a delete.
+      p_optin_message: optinMessage ?? null,
+      p_optout_message: optoutMessage ?? null,
+      p_help_message: helpMessage ?? null,
       ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
     });
     if (saveErr) {

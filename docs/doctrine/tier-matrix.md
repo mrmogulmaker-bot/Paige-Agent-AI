@@ -872,6 +872,12 @@ service-role caller (Paige headless, §10) is the only caller that may name a te
 | Prepare / save a draft | ✓ | ✓ admin·coach | ✓ admin·coach | ✓ admin·coach | ✓ admin·coach | 403 | 403 |
 | Submit to a carrier | — | — | — | — | — | — | — |
 
+**Updated 2026-08-30 (PR #672), §66 paid in the same commit.** The prepared draft now keeps
+all seven reviewed fields (three new nullable columns) and can be REOPENED for editing on a
+return visit — #665 persisted four fields and could not reopen any of them, so the surface
+promised an edit it could not deliver. Tier rows below are unchanged: this changes what the
+surface can do for the tiers that already had it, not which tiers see it.
+
 **Submission is `—` for every tier, and that is the shipped state, not an omission.** There is no
 carrier integration: `comms-a2p-submit` persists the reviewed copy and returns an explicit
 *prepared, not submitted* refusal. `submitted_at` is never set by any shipped path. A row therefore

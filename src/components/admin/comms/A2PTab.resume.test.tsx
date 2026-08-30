@@ -37,16 +37,40 @@ const PREPARED_ROW = {
   optout_message: "You are unsubscribed and will get no further texts.",
   help_message: "Reply with your question or call the number on your invoice.",
   submitted_at: null,
+  approved_at: null,
+  messaging_service_sid: null,
 };
 
-const selectState = vi.hoisted(() => ({ row: null as unknown }));
+const selectState = vi.hoisted(() => ({
+  row: null as unknown,
+  legal: { legal_business_name: "Proof Fixture LLC" } as unknown,
+  invoked: [] as { fn: string; body: Record<string, unknown> }[],
+}));
 
+// Keyed by TABLE. A single shared mock fed the registration row to the legal-profile
+// read as well, which would have made the legal-name assertion pass for the wrong reason.
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: () => ({
-      select: () => ({ limit: () => ({ maybeSingle: async () => ({ data: selectState.row, error: null }) }) }),
+    from: (table: string) => ({
+      select: () => ({
+        limit: () => ({
+          maybeSingle: async () => ({
+            data: table === "tenant_legal_profile" ? selectState.legal : selectState.row,
+            error: null,
+          }),
+        }),
+        maybeSingle: async () => ({
+          data: table === "tenant_legal_profile" ? selectState.legal : selectState.row,
+          error: null,
+        }),
+      }),
     }),
-    functions: { invoke: vi.fn(async () => ({ data: {}, error: null })) },
+    functions: {
+      invoke: vi.fn(async (fn: string, opts: { body: Record<string, unknown> }) => {
+        selectState.invoked.push({ fn, body: opts?.body ?? {} });
+        return { data: { saved: true, submitted: false }, error: null };
+      }),
+    },
   },
 }));
 vi.mock("@/hooks/useUserRoles", () => ({ useUserRoles: () => ({ isAdmin: true, roles: ["admin"], loading: false }) }));
@@ -63,7 +87,11 @@ async function mountTab() {
 }
 
 describe("A2P — coming back to a prepared registration", () => {
-  beforeEach(() => { selectState.row = PREPARED_ROW; });
+  beforeEach(() => {
+    selectState.row = PREPARED_ROW;
+    selectState.legal = { legal_business_name: "Proof Fixture LLC" };
+    selectState.invoked = [];
+  });
 
   it("re-opens the saved copy for editing instead of stranding it", async () => {
     // The banner tells the owner they "can keep editing it". The editor is mounted
@@ -84,6 +112,52 @@ describe("A2P — coming back to a prepared registration", () => {
     expect(joined).toContain("You are subscribed to appointment reminders.");
     expect(joined).toContain("You are unsubscribed and will get no further texts.");
     expect(joined).toContain("Reply with your question or call the number on your invoice.");
+    await cleanup();
+  });
+
+  it("comes back ready to ACT, not just to read", async () => {
+    // Restoring the copy is not resuming the flow. `legalName` is set only by typing or
+    // by the draft response, so on a refresh the editor opened with every reviewed field
+    // populated, the legal-business-name field EMPTY, and the save disabled — leaving
+    // "Re-draft with Paige" (a paid call that overwrites the row) as the only live
+    // control. The value is not unknown: the save seam already reads it, and refuses
+    // without it.
+    const { host, cleanup } = await mountTab();
+    const inputs = Array.from(host.querySelectorAll("input")) as HTMLInputElement[];
+    const legal = inputs.find((el) => (el.value || "").includes("Proof Fixture LLC"));
+    expect(legal, "the legal business name should be restored from the tenant's profile").toBeTruthy();
+
+    const save = Array.from(host.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("Approve & save"),
+    ) as HTMLButtonElement | undefined;
+    expect(save, "the save control should exist").toBeTruthy();
+    expect(save!.disabled, "a resumed draft should be savable without paying to regenerate it").toBe(false);
+    await cleanup();
+  });
+
+  it("sends a CLEARED reply as cleared, not as absent", async () => {
+    // Preserve-on-absent is right for a field the caller never mentioned and wrong for one
+    // the owner deleted. Collapsing "" to undefined makes the two indistinguishable, so a
+    // STOP or HELP reply — carrier-facing compliance copy — could never be removed: the
+    // surface reported "saved" and the deleted text came back on the next read.
+    const { host, cleanup } = await mountTab();
+    const areas = Array.from(host.querySelectorAll("textarea")) as HTMLTextAreaElement[];
+    const help = areas.find((el) => el.value.includes("Reply with your question"));
+    expect(help, "the HELP reply should be restored before we can clear it").toBeTruthy();
+
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(help!, "");
+      help!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const save = Array.from(host.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("Approve & save"),
+    ) as HTMLButtonElement;
+    await act(async () => { save.click(); });
+
+    const submit = selectState.invoked.find((c) => c.fn === "comms-a2p-submit");
+    expect(submit, "submit should have been called").toBeTruthy();
+    expect(submit!.body.help_message, "a cleared reply must reach the seam as an explicit clear").toBe("");
     await cleanup();
   });
 

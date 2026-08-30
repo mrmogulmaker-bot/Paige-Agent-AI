@@ -44,12 +44,17 @@ comment on column public.tenant_a2p_registrations.help_message is
   'The reply sent when a client texts HELP. Reviewed by a human, carrier-facing.';
 
 -- ── the save seam now carries all seven reviewed fields ─────────────────────
--- Everything else about this function is unchanged and deliberately so: the
--- caller-scope enforcement, the FOR UPDATE, the immutability re-check inside the
--- DO UPDATE, the stable hints, and the shape-only audit payload all stay exactly
--- as 20261004010000 shipped them. The three new parameters follow the SAME
--- preserve-on-absent rule as optin_flow, because blanking a reviewed compliance
--- reply while reporting success would be the defect this file exists to close.
+-- The caller-scope enforcement, the FOR UPDATE, the immutability re-check inside
+-- the DO UPDATE, the stable hints and the shape-only audit payload stay exactly as
+-- 20261004010000 shipped them. An earlier revision of this header claimed
+-- "everything else is unchanged" while silently tightening the sample truncation
+-- from 1024 to 320 characters; independent review caught it and the 1024 is restored.
+--
+-- The three new parameters do NOT simply copy optin_flow's preserve-on-absent rule.
+-- Absent (null) preserves, but an EMPTY STRING clears, because these are the only
+-- fields a human is likely to need to DELETE — a wrong number in a STOP reply, bad
+-- wording in a HELP reply — and collapsing "cleared" into "absent" made them
+-- permanently un-clearable while reporting success.
 create or replace function public.tenant_a2p_registration_save_draft(
   p_use_case             text,
   p_campaign_description text,
@@ -75,11 +80,23 @@ declare
   v_count      int;
   v_id         uuid;
   v_use        text := nullif(btrim(coalesce(p_use_case,'')), '');
-  v_desc       text := nullif(btrim(coalesce(p_campaign_description,'')), '');
-  v_optin      text := nullif(btrim(coalesce(p_optin_flow,'')), '');
-  v_optin_msg  text := nullif(btrim(coalesce(p_optin_message,'')), '');
-  v_optout_msg text := nullif(btrim(coalesce(p_optout_message,'')), '');
-  v_help_msg   text := nullif(btrim(coalesce(p_help_message,'')), '');
+  -- btrim only. nullif here would erase the difference between absent and cleared
+  -- before the merge below can read it.
+  v_desc       text := case when p_campaign_description is null then null else btrim(p_campaign_description) end;
+  v_optin      text := case when p_optin_flow is null then null else btrim(p_optin_flow) end;
+  -- ABSENT (null) preserves what is stored. EMPTY STRING clears it. Collapsing the two
+  -- made these columns permanently un-clearable: an owner who deleted a wrong STOP or
+  -- HELP reply was told the copy saved and watched the deleted text come back on the next
+  -- read. That is the same lie as a fabricated status, applied to carrier-facing
+  -- compliance text a business may be legally required to correct. `left(..., 320)` matches
+  -- what both edge producers already enforce, so a service-role caller cannot store more
+  -- than a tenant can.
+  v_optin_msg  text := case when p_optin_message  is null then null
+                            else left(btrim(p_optin_message), 320) end;
+  v_optout_msg text := case when p_optout_message is null then null
+                            else left(btrim(p_optout_message), 320) end;
+  v_help_msg   text := case when p_help_message   is null then null
+                            else left(btrim(p_help_message), 320) end;
 begin
   -- ── caller identity (§59 — the grant is never the guard) ─────────────────
   v_is_service := (v_uid is null
@@ -124,7 +141,7 @@ begin
   if jsonb_typeof(coalesce(p_sample_messages,'[]'::jsonb)) <> 'array' then
     raise exception 'sample_messages must be a JSON array' using errcode = '22023', hint = 'SAMPLES_INVALID';
   end if;
-  select coalesce(jsonb_agg(to_jsonb(left(btrim(s.m), 320)) order by s.ord), '[]'::jsonb)
+  select coalesce(jsonb_agg(to_jsonb(left(btrim(s.m), 1024)) order by s.ord), '[]'::jsonb)
     into v_samples
     from (select value #>> '{}' as m, ordinality as ord
             from jsonb_array_elements(coalesce(p_sample_messages,'[]'::jsonb)) with ordinality) s
@@ -143,6 +160,27 @@ begin
       using errcode = '42501', hint = 'REGISTRATION_IMMUTABLE';
   end if;
 
+  -- Resolve absent / cleared / replaced HERE, against the row we are holding a lock on,
+  -- rather than in the DO UPDATE. Doing it through `excluded` cannot work: the INSERT's
+  -- own VALUES are what `excluded` exposes, so normalising '' to NULL there erased the
+  -- difference between "cleared" and "absent" before the conflict branch could read it —
+  -- the exact bug this case was written to catch, reintroduced one layer down.
+  -- The same rule for the two OLDER optional fields. They inherited preserve-on-absent
+  -- from 20261004010000, which was invisible while nothing could reopen a draft; now that
+  -- the editor rehydrates, leaving them un-clearable while the three replies clear would
+  -- be a trap with no rule a person could learn. use_case is untouched: it is required,
+  -- so there is no "cleared" state to express.
+  v_desc  := case when p_campaign_description is null then v_existing.campaign_description
+                  when v_desc  = '' then null else v_desc  end;
+  v_optin := case when p_optin_flow is null then v_existing.optin_flow
+                  when v_optin = '' then null else v_optin end;
+  v_optin_msg  := case when p_optin_message  is null then v_existing.optin_message
+                       when v_optin_msg  = '' then null else v_optin_msg  end;
+  v_optout_msg := case when p_optout_message is null then v_existing.optout_message
+                       when v_optout_msg = '' then null else v_optout_msg end;
+  v_help_msg   := case when p_help_message   is null then v_existing.help_message
+                       when v_help_msg   = '' then null else v_help_msg   end;
+
   insert into public.tenant_a2p_registrations
     (tenant_id, use_case, campaign_description, sample_messages, optin_flow,
      optin_message, optout_message, help_message, status)
@@ -150,12 +188,13 @@ begin
           v_optin_msg, v_optout_msg, v_help_msg, 'pending')
   on conflict (tenant_id) do update
     set use_case             = coalesce(excluded.use_case, tenant_a2p_registrations.use_case),
-        campaign_description = coalesce(excluded.campaign_description, tenant_a2p_registrations.campaign_description),
+        campaign_description = excluded.campaign_description,
         sample_messages      = excluded.sample_messages,
-        optin_flow           = coalesce(excluded.optin_flow, tenant_a2p_registrations.optin_flow),
-        optin_message        = coalesce(excluded.optin_message, tenant_a2p_registrations.optin_message),
-        optout_message       = coalesce(excluded.optout_message, tenant_a2p_registrations.optout_message),
-        help_message         = coalesce(excluded.help_message, tenant_a2p_registrations.help_message),
+        optin_flow           = excluded.optin_flow,
+        -- Already resolved above against the locked row: absent kept, '' cleared.
+        optin_message        = excluded.optin_message,
+        optout_message       = excluded.optout_message,
+        help_message         = excluded.help_message,
         status               = 'pending',
         updated_at           = now()
     where not public.a2p_registration_is_immutable(tenant_a2p_registrations.*)

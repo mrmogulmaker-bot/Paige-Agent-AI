@@ -42,7 +42,9 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
 - `comms-a2p-draft` / `comms-a2p-submit` — both **deployed**. The draft does a real model call.
 - **UPDATED 2026-08-30 (PR #665): the draft now PERSISTS.** Until then `comms-a2p-draft` did two
   reads and no write, so the prepared draft died with the response. It now saves through
-  `tenant_a2p_registration_save_draft` (`20261004010000`) — SECURITY DEFINER, caller scope enforced
+  `tenant_a2p_registration_save_draft` (`20261004010000`, extended to eight arguments by
+  `20261004020000`, which also DROPS the five-argument signature so no caller can reach the
+  version that silently loses three fields) — SECURITY DEFINER, caller scope enforced
   in-body (§59), tenant from `current_user_tenant_id()` and never the body, stable refusal hints.
   `comms-a2p-submit` no longer calls a carrier stub at all: it persists the reviewed copy through the
   same seam and returns an explicit *prepared, not submitted* refusal, so
@@ -54,6 +56,13 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
 - **`A2PTab.tsx` (24 KB) is complete** and mounted only at
   `/admin/clients-hub/conversations/settings?panel=a2p` — behind the Solo redirect (below).
 - Solo Connections shows the state read-only and says "prepared, not submitted", which is correct.
+- **UPDATED 2026-08-30 (PR #672): the draft keeps all SEVEN reviewed fields and can be
+  REOPENED.** #665 persisted four; `optin_message`/`optout_message`/`help_message` had no
+  column, so A2PTab folded them into `optin_flow` behind labels — text kept, structure
+  destroyed, unreadable back. They now have their own columns and the fold is deleted.
+  `loadReg` also rehydrates the editor (`a2pDraftResume.ts`) AND the legal business name,
+  because restoring copy the owner cannot save is not resuming the flow. Absent preserves a
+  field; an empty string clears it, so a wrong STOP/HELP reply can actually be removed.
 - **`submitted_at` is the only honest discriminator.** No shipped path sets it. A2PTab's banner and
   pills key on it rather than on "a row exists with no SID" — that older test matched exactly what a
   durable draft save writes, and would have rendered "Submitted for review" over a registration

@@ -383,6 +383,53 @@ BEGIN
   IF v_pay::text ILIKE '%%OPTIN REPLY%%' OR v_pay::text ILIKE '%%STOP REPLY%%'
      OR v_pay::text ILIKE '%%HELP REPLY%%' THEN fails := fails + 1; END IF;
 
+  -- 16 ── A REVIEWED REPLY THE OWNER DELETES STAYS DELETED.
+  --        Preserve-on-absent is right for a field the caller never mentioned and wrong
+  --        for one a human cleared. Collapsing the two made these columns permanently
+  --        un-clearable: the surface said "saved" and the deleted text came back on the
+  --        next read. These are carrier-facing compliance replies — a wrong number in a
+  --        STOP reply is exactly the thing a business must be able to remove.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'clear coverage', 'Third pass.', SAMPLES, NULL, NULL, '', '', '');
+  RESET role;
+  SELECT coalesce(optin_message,'(null)')||'/'||coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)')
+    INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('  16. cleared replies STAY cleared ............. %s   want (null)/(null)/(null)%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM '(null)/(null)/(null)' THEN fails := fails + 1; END IF;
+
+  -- ...and clearing did not disturb the fields the caller never mentioned.
+  SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and absent fields still preserved ...... %s   want clear coverage%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'clear coverage' THEN fails := fails + 1; END IF;
+
+  -- ...and the same rule reaches the two older optional fields, so a person does not have
+  -- to learn which ones can be deleted and which silently cannot.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft('clear coverage', '', SAMPLES, '', NULL);
+  RESET role;
+  SELECT coalesce(campaign_description,'(null)')||'/'||coalesce(optin_flow,'(null)')
+    INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and desc + optin_flow clear too ........ %s   want (null)/(null)%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM '(null)/(null)' THEN fails := fails + 1; END IF;
+
+  -- 17 ── the sample cap is the one 20261004010000 shipped. An earlier revision of the
+  --       corrective migration silently tightened it 1024 -> 320 under a header claiming
+  --       nothing else changed; independent review caught it.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'cap coverage', 'Fourth pass.', jsonb_build_array(repeat('x', 900)), NULL, NULL);
+  RESET role;
+  SELECT length(sample_messages->>0) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('  17. a 900-char sample is not truncated ....... %s   want 900%s', n, E'\n');
+  IF n <> 900 THEN fails := fails + 1; END IF;
+
   IF fails = 0 THEN RAISE EXCEPTION 'A2P DRAFT PROOF: ALL ASSERTIONS PASSED (rolled back)%', out;
   ELSE RAISE EXCEPTION 'A2P DRAFT PROOF: % ASSERTION(S) FAILED%', fails, out; END IF;
 END $proof$;
