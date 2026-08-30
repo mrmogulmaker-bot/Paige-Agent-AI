@@ -125,6 +125,27 @@ function CapPills({ caps }: { caps: RawCapabilities }) {
   );
 }
 
+/**
+ * Edge-function error codes are internal identifiers, not tenant copy.
+ * `comms-purchase-number` returns machine codes and this surface used to render
+ * them verbatim, so a tenant could be shown "inbound_webhook_secret_missing".
+ * Unknown codes fall back to the generic line rather than leaking the raw value.
+ */
+function purchaseFailureCopy(code: string | undefined): string {
+  switch (code) {
+    case "twilio_subaccount_not_provisioned":
+    case "twilio_subaccount_row_missing":
+    case "inbound_webhook_secret_missing":
+      return "Your business isn't set up to buy numbers yet. Once setup finishes you'll be able to grab one.";
+    case "number_unavailable":
+      return "That one just went to someone else. Pick another and try again.";
+    case "number_purchase_failed":
+      return "The provider couldn't complete that purchase. Try another number.";
+    default:
+      return "Try another — this one may have just been taken.";
+  }
+}
+
 export function NumbersTab() {
   const { toast } = useToast();
 
@@ -206,7 +227,7 @@ export function NumbersTab() {
       if (payload.error || !payload.twilio_sid) {
         toast({
           title: "That number didn't go through",
-          description: payload.error ?? "Try another — this one may have just been taken.",
+          description: purchaseFailureCopy(payload.error),
           variant: "destructive",
         });
         return;

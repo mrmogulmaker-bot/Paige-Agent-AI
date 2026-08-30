@@ -13,7 +13,11 @@ import { READINESS_COPY } from "./settings";
  * ready, so this is where that boundary is enforceable.
  */
 
-/** Every reason `tenant_comms_readiness()` can return in `blocked_reason`. */
+/**
+ * Every reason `tenant_comms_readiness()` can return in `blocked_reason`.
+ * Kept in sync with the CASE in
+ * `supabase/migrations/20261002000000_comms_credential_lockdown_and_readiness.sql`.
+ */
 const BLOCKED_REASONS = [
   "messaging_account_missing",
   "messaging_account_inactive",
@@ -31,6 +35,12 @@ const FORBIDDEN = [
   "lane b", "claude", "engineering", "backend", "internal",
   "vulnerab", "exploit", "cross-tenant", "handler", "endpoint", "rpc",
   "table", "column", "supabase", "edge function",
+  // §2: "practice" is banned in shipped copy pending HIPAA/SOC-2; the ruled
+  // inclusive words are business / company.
+  "practice",
+  // An unbacked claim that someone is already acting on it. Nothing in this
+  // change creates an alert, a ticket or a queue entry (§13).
+  "we are looking into", "we're looking into",
 ];
 
 describe("tenant-facing readiness copy", () => {

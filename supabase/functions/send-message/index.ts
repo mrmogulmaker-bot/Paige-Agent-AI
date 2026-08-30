@@ -12,6 +12,7 @@
 // existing draft row when an approved draft (message_id) is being sent. Idempotent on
 // provider_message_id. The legacy paige_messages_audit write + paige_conversations
 // mirror + JWT gate + SMS path are all preserved unchanged (§37 additive-only).
+import { stampedWebhookUrls } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getOutboundAdapter,
@@ -1070,10 +1071,26 @@ Deno.serve(async (req) => {
       const adapter = getOutboundAdapter("sms");
       if (!adapter) throw new Error("no_sms_adapter_registered");
 
-      // Per-message DLR StatusCallback endpoint (honest-null if unset → number-level cb).
-      const statusCallbackUrl =
-        Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
-        (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : null);
+      // Per-message DLR StatusCallback endpoint.
+      //
+      // MUST carry the tenant's stamped secret. `twilio-status-callback` now fails
+      // CLOSED, and this per-message URL OVERRIDES the number-level one stamped at
+      // purchase — so an unstamped URL here means every delivery receipt for every
+      // tenant is refused with 401 and the row never leaves 'sent'.
+      const stampSecret = tenantId
+        ? ((await admin.from("tenant_twilio_subaccounts")
+              .select("inbound_webhook_secret").eq("tenant_id", tenantId).maybeSingle())
+            .data?.inbound_webhook_secret ?? null)
+        : null;
+      const statusCallbackUrl = stampSecret
+        ? (Deno.env.get("TWILIO_STATUS_CALLBACK_URL")
+            ? `${Deno.env.get("TWILIO_STATUS_CALLBACK_URL")}?t=${encodeURIComponent(stampSecret)}`
+            : supabaseUrl
+              ? stampedWebhookUrls(supabaseUrl, stampSecret).statusCallback
+              : null)
+        // No secret ⇒ emit NO callback rather than one that will be refused. The row
+        // stays at its send-time status, which is honest, instead of accruing 401s.
+        : null;
 
       const outMsg: NormalizedMessage = {
         thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `sms:${body.to}`,

@@ -53,15 +53,24 @@
 -- No direct client access to the credential table at all. Tenant-facing reads go
 -- through `tenant_comms_readiness()` below, which returns only safe fields.
 revoke all on public.tenant_twilio_subaccounts from authenticated;
+-- Table privileges are checked BEFORE RLS, so the operator SELECT policy below
+-- would never run without this: `revoke all` alone yields "permission denied for
+-- table" and the policy is dead. SELECT is granted back and RLS narrows it to
+-- platform operators; INSERT and UPDATE stay revoked, which is the actual repair.
+grant select on public.tenant_twilio_subaccounts to authenticated;
 
 drop policy if exists tenant_twilio_subaccounts_select on public.tenant_twilio_subaccounts;
 drop policy if exists tenant_twilio_subaccounts_insert on public.tenant_twilio_subaccounts;
 drop policy if exists tenant_twilio_subaccounts_update on public.tenant_twilio_subaccounts;
 
--- Platform operators keep a direct read for the Fleet console. Not super_admin
--- only: `is_platform_operator()` is the delegated-operator helper (§53).
+-- DELIBERATELY `is_platform_owner()` (super_admin), NOT the delegated
+-- `is_platform_operator()`. The dropped policy was super_admin-only, and this
+-- table now also holds `inbound_webhook_secret`. Widening the read to
+-- platform_admin would hand delegated operators cleartext credential material,
+-- which §53 freezes to super_admin and §58 would require calling out as a
+-- capability change. Same tier as before, one more column protected.
 create policy tenant_twilio_subaccounts_operator_select on public.tenant_twilio_subaccounts
-  for select to authenticated using (public.is_platform_operator());
+  for select to authenticated using (public.is_platform_owner());
 
 -- `tenant_twilio_subaccounts_service_all` is left exactly as it was.
 
@@ -94,7 +103,7 @@ revoke all on function public.guard_twilio_credential_columns() from public, ano
 
 drop trigger if exists trg_guard_twilio_credential_columns on public.tenant_twilio_subaccounts;
 create trigger trg_guard_twilio_credential_columns
-  before update on public.tenant_twilio_subaccounts
+  before insert or update on public.tenant_twilio_subaccounts
   for each row execute function public.guard_twilio_credential_columns();
 
 comment on function public.guard_twilio_credential_columns() is
@@ -140,7 +149,16 @@ begin
     raise exception 'COMMS_READINESS_FORBIDDEN' using errcode = '42501';
   end if;
 
-  select tenant_id, status, active into v_sub
+  -- Selects the same three credential fields `resolveTwilioCreds` requires. It is
+  -- their PRESENCE, not `status`/`active`, that decides whether a send can
+  -- authenticate — the creds resolver reads `status` and never uses it. Reporting
+  -- "connected" from status alone would let a row with a null api_key_sid render
+  -- "Ready to text" while every send returns twilio_subaccount_api_key_missing.
+  select tenant_id, status, active,
+         (twilio_subaccount_sid is not null
+          and auth_token_vault_ref is not null
+          and api_key_sid is not null) as creds_complete
+    into v_sub
     from public.tenant_twilio_subaccounts
    where tenant_id = v_tenant
    limit 1;
@@ -150,7 +168,9 @@ begin
     from public.tenant_phone_numbers
    where tenant_id = v_tenant
      and status = 'active'
-     and (capabilities->>'sms' is null or (capabilities->>'sms')::boolean is true)
+     -- No ::boolean cast: `{"sms":"yes"}` would raise and take the whole read
+     -- down. Absent or JSON-null means unspecified, which the send path includes.
+     and coalesce(nullif(capabilities->'sms', 'null'::jsonb), 'true'::jsonb) = 'true'::jsonb
    order by is_primary desc, purchased_at desc nulls last
    limit 1;
 
@@ -159,9 +179,18 @@ begin
    where tenant_id = v_tenant
    limit 1;
 
+  -- How many recipients CURRENTLY consent — the latest event per recipient, which
+  -- is what `runPreSend` step 3 evaluates. A raw count of 'granted' rows would
+  -- report "ready" for a contact who granted and later texted STOP.
   select count(*) into v_consent_count
-    from public.paige_consent_events
-   where tenant_id = v_tenant and channel = 'sms' and action = 'granted';
+    from (
+      select distinct on (coalesce(contact_id::text, address_normalized))
+             action
+        from public.paige_consent_events
+       where tenant_id = v_tenant and channel = 'sms'
+       order by coalesce(contact_id::text, address_normalized), created_at desc
+    ) latest
+   where latest.action = 'granted';
 
   select count(*) into v_suppressed
     from public.paige_suppressions
@@ -185,14 +214,16 @@ begin
     when v_sms_total = 0 then 'no_activity'
     when v_sms_failed > 0 and v_sms_delivered = 0 then 'failing'
     when v_sms_failed > 0 then 'mixed'
+    -- Sent, but not one delivery receipt has landed. Calling that "delivering"
+    -- would be a green health claim built on the ABSENCE of evidence.
+    when v_sms_delivered = 0 then 'awaiting_receipts'
     else 'delivering'
   end;
 
   -- The blocking reason, in send-path order, so the surface can name ONE next step.
   v_blocked := case
     when v_sub.tenant_id is null            then 'messaging_account_missing'
-    when coalesce(v_sub.active, false) is not true or v_sub.status <> 'active'
-                                            then 'messaging_account_inactive'
+    when v_sub.creds_complete is not true    then 'messaging_account_inactive'
     when v_num.phone_number is null         then 'no_sms_number'
     when v_a2p.status is null               then 'registration_absent'
     when v_a2p.status <> 'approved'         then 'registration_not_approved'
@@ -204,7 +235,8 @@ begin
     'can_send_sms',   v_blocked is null,
     'blocked_reason', v_blocked,
     'subaccount',     case when v_sub.tenant_id is null then 'absent'
-                           when coalesce(v_sub.active,false) and v_sub.status = 'active' then 'connected'
+                           when v_sub.creds_complete is not true then 'inactive'
+                           when coalesce(v_sub.active,false) and coalesce(v_sub.status,'') = 'active' then 'connected'
                            else 'inactive' end,
     'number',         case when v_num.phone_number is null then 'absent' else 'assigned' end,
     'number_e164',    v_num.phone_number,
@@ -225,7 +257,15 @@ begin
                         'sent_30d',        v_sms_total,
                         'delivered_30d',   v_sms_delivered,
                         'failed_30d',      v_sms_failed,
-                        'last_inbound_at', v_last_inbound),
+                        -- NOT REPORTED, deliberately: nothing writes an inbound
+                        -- SMS row to public.messages (handle-inbound-sms inserts
+                        -- into paige_conversations), so this column is
+                        -- structurally always null. A definite "no replies
+                        -- received" from an unwritten column is the same class of
+                        -- lie as a fabricated positive.
+                        'last_inbound_at', v_last_inbound,
+                        'inbound_reporting', 'unavailable'),
+    'tenant_id',      v_tenant,
     'resolved_at',    now()
   );
 end;
@@ -255,8 +295,13 @@ comment on function public.tenant_comms_readiness() is
 -- token IS resolvable; this is the fallback that lets the handler FAIL CLOSED
 -- instead of accepting anonymous writes to a tenant's consent ledger.
 -- -----------------------------------------------------------------------------
+-- DEFAULT is load-bearing, not cosmetic: `provision-tenant-twilio` does not set
+-- this column, so without a default every tenant provisioned after this migration
+-- would get NULL and `comms-purchase-number` would refuse their every purchase
+-- with no recovery path from any surface.
 alter table public.tenant_twilio_subaccounts
-  add column if not exists inbound_webhook_secret text;
+  add column if not exists inbound_webhook_secret text
+  default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
 
 comment on column public.tenant_twilio_subaccounts.inbound_webhook_secret is
   'Unguessable per-tenant secret embedded in the stamped inbound/status webhook URL. Lets the handlers authenticate a provider callback in a deployment that holds no Twilio auth token. Service-role only: authenticated has no grant on this table, and guard_twilio_credential_columns blocks JWT-bearing rewrites.';
@@ -267,6 +312,17 @@ update public.tenant_twilio_subaccounts
    set inbound_webhook_secret = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
  where inbound_webhook_secret is null;
 
+-- After the backfill nothing may be null again.
+alter table public.tenant_twilio_subaccounts
+  alter column inbound_webhook_secret set not null;
+
+-- A secret must identify at most ONE tenant. Without this, two rows sharing a
+-- value would make the handler's `maybeSingle()` lookup error into a blanket 401
+-- (silent inbound loss), and would make "which tenant does this secret belong to"
+-- ambiguous — the exact question the status callback binds its writes to.
+create unique index if not exists uq_tenant_twilio_inbound_webhook_secret
+  on public.tenant_twilio_subaccounts (inbound_webhook_secret);
+
 -- The guard must also protect the new column.
 create or replace function public.guard_twilio_credential_columns()
 returns trigger
@@ -274,10 +330,42 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_role text := coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '');
 begin
-  if auth.uid() is null then
+  -- Trust is decided by the ROLE, not by the absence of a JWT subject.
+  -- `auth.uid() is null` is also true for `anon` and for any token minted without
+  -- a `sub`, so keying on it would wave through precisely the caller this guard
+  -- exists to stop the moment a future migration re-grants the table.
+  -- Trust exactly two things, and nothing about the database role.
+  --
+  --   1. an explicit `service_role` JWT claim — the PostgREST service path;
+  --   2. the ABSENCE of any request JWT — which is what a migration or a direct
+  --      psql/admin session has.
+  --
+  -- Two rejected alternatives, both of which were written and then disproved by
+  -- a negative control that expected a refusal and got a successful write:
+  --   * `current_user in ('postgres',…)` is ALWAYS TRUE inside this function.
+  --     It is SECURITY DEFINER, so `current_user` is the function OWNER for every
+  --     caller, and the guard would never block anything.
+  --   * `session_user in ('postgres',…)` is correct in production but cannot be
+  --     exercised from an admin connection, so it ships unproven.
+  --   * `auth.uid() is null` is true for `anon` too, and for any token minted
+  --     without a `sub` — it would wave through the very caller this exists to stop.
+  if v_role = 'service_role' or current_setting('request.jwt.claims', true) is null then
     return new;
   end if;
+
+  -- INSERT is covered too. The guard's stated job is surviving a future re-grant,
+  -- and the usual re-grant (`grant all on all tables in schema public`) restores
+  -- INSERT as well — which would let a tenant holding no row yet create one naming
+  -- an arbitrary vault ref.
+  if tg_op = 'INSERT' then
+    raise exception
+      'TWILIO_CREDENTIAL_IMMUTABLE: subaccount rows are created by provisioning, not by a tenant'
+      using errcode = '42501';
+  end if;
+
   if new.auth_token_vault_ref  is distinct from old.auth_token_vault_ref
      or new.api_key_sid        is distinct from old.api_key_sid
      or new.twilio_subaccount_sid is distinct from old.twilio_subaccount_sid

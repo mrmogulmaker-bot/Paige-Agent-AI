@@ -17,6 +17,7 @@ import {
   stampedWebhookUrls,
   inboundSecretForNumber,
 } from "../supabase/functions/_shared/twilio-webhook-auth.ts";
+import { computeTwilioSignature } from "../supabase/functions/_shared/twilio.ts";
 
 const SECRET = "a".repeat(64);
 const req = (url, headers = {}) => new Request(url, { method: "POST", headers });
@@ -62,13 +63,15 @@ console.log("comms-webhook-auth smoke\n");
   check("an unknown recipient is REFUSED, not accepted", r.ok === false && r.reason === "unknown_recipient");
 }
 
-// 6. With a token present, a bad signature is refused and does NOT fall through
-//    to the secret path — otherwise a forged signature would be retried as a secret.
+// 6. A bad signature with NO secret offered is refused as exactly that. (When a
+//    secret IS also offered the request falls through to it — see check 10; that
+//    is deliberate, because tenant numbers are signed with a subaccount token
+//    this deployment does not hold.)
 {
   const r = await authenticateTwilioWebhook(
-    req(`https://x.test/handle-inbound-sms?t=${SECRET}`, { "x-twilio-signature": "not-a-real-signature" }),
+    req("https://x.test/handle-inbound-sms", { "x-twilio-signature": "not-a-real-signature" }),
     "Body=STOP", { authToken: "some-auth-token", expectedSecret: SECRET });
-  check("a bad signature is refused and does not fall through", r.ok === false && r.reason === "bad_signature");
+  check("a bad signature with no secret offered is refused", r.ok === false && r.reason === "bad_signature");
 }
 
 // 7. The stamped URLs name handlers that ACTUALLY EXIST. The previous names
@@ -85,22 +88,86 @@ console.log("comms-webhook-auth smoke\n");
 
 // 8. Secret resolution is keyed on the RECEIVING number's tenant.
 {
-  const admin = {
-    from: (t) => ({
-      select: () => ({
-        eq: (_c, v) => ({
-          maybeSingle: async () =>
-            t === "tenant_phone_numbers"
-              ? { data: v === "+15550001111" ? { tenant_id: "tenant-a" } : null }
-              : { data: v === "tenant-a" ? { inbound_webhook_secret: SECRET } : null },
-        }),
-      }),
-    }),
-  };
+  // Chainable double: `inboundSecretForNumber` filters on both the number AND
+  // status='active', so a double that only supports one `.eq` would hide that.
+  const makeAdmin = () => ({
+    from: (t) => {
+      const filters = {};
+      const chain = {
+        eq: (c, v) => { filters[c] = v; return chain; },
+        maybeSingle: async () =>
+          t === "tenant_phone_numbers"
+            ? {
+                data: filters.phone_number === "+15550001111" && filters.status === "active"
+                  ? { tenant_id: "tenant-a" } : null,
+              }
+            : { data: filters.tenant_id === "tenant-a" ? { inbound_webhook_secret: SECRET } : null },
+      };
+      return { select: () => chain };
+    },
+  });
+  const admin = makeAdmin();
   check("a known number resolves its own tenant's secret",
     (await inboundSecretForNumber(admin, "+15550001111")) === SECRET);
   check("an unknown number resolves NO secret (negative control)",
     (await inboundSecretForNumber(admin, "+15559999999")) === null);
+}
+
+// 9. POSITIVE control for the signature path. Without this, every signature
+//    assertion above would still pass if validateTwilioSignature returned false
+//    unconditionally — a suite that only proves refusals proves half the seam.
+{
+  const url = "https://x.test/twilio-status-callback";
+  const body = "MessageSid=SM123&MessageStatus=delivered";
+  const token = "the-account-auth-token";
+  const sig = await computeTwilioSignature(token, url, body);
+  const r = await authenticateTwilioWebhook(req(url, { "x-twilio-signature": sig }), body,
+    { authToken: token, expectedSecret: null });
+  check("a VALID signature is accepted (positive control)", r.ok === true && r.via === "signature");
+}
+
+// 10. A bad signature must fall through to a correct secret rather than consume
+//     the request — tenant numbers are signed with a subaccount token we do not hold.
+{
+  const r = await authenticateTwilioWebhook(
+    req(`https://x.test/twilio-status-callback?t=${SECRET}`, { "x-twilio-signature": "wrong" }),
+    "Body=x", { authToken: "master-token", expectedSecret: SECRET });
+  check("a bad signature falls through to a valid stamped secret", r.ok === true && r.via === "shared_secret");
+}
+
+// 11. CROSS-TENANT control. Tenant B's secret is real, so it authenticates — the
+//     binding that stops it acting on tenant A lives in the handler, which
+//     resolves WHICH tenant the secret belongs to. Assert the module reports that
+//     ownership rather than a bare yes.
+{
+  // Chainable double: `inboundSecretForNumber` filters on both the number AND
+  // status='active', so a double that only supports one `.eq` would hide that.
+  const makeAdmin = () => ({
+    from: (t) => {
+      const filters = {};
+      const chain = {
+        eq: (c, v) => { filters[c] = v; return chain; },
+        maybeSingle: async () =>
+          t === "tenant_phone_numbers"
+            ? {
+                data: filters.phone_number === "+15550001111" && filters.status === "active"
+                  ? { tenant_id: "tenant-a" } : null,
+              }
+            : { data: filters.tenant_id === "tenant-a" ? { inbound_webhook_secret: SECRET } : null },
+      };
+      return { select: () => chain };
+    },
+  });
+  const admin = makeAdmin();
+  // Tenant B's number resolves NO secret from tenant A's row.
+  check("one tenant's number never resolves another tenant's secret",
+    (await inboundSecretForNumber(admin, "+15557654321")) === null);
+  // And tenant A's own secret does not authenticate when the recipient is unknown.
+  const r = await authenticateTwilioWebhook(
+    req(`https://x.test/handle-inbound-sms?t=${SECRET}`), "Body=STOP",
+    { authToken: null, expectedSecret: await inboundSecretForNumber(admin, "+15557654321") });
+  check("a real secret is refused for a number it does not own",
+    r.ok === false && r.reason === "unknown_recipient");
 }
 
 console.log(`\n${n}/${n} checks passed`);

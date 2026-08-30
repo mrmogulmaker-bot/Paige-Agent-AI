@@ -150,6 +150,7 @@ const PROVIDERS = [
  * webhook detail, no internal diagnostic.
  */
 export interface CommsReadiness {
+  tenant_id: string;
   can_send_sms: boolean;
   blocked_reason: string | null;
   subaccount: "connected" | "inactive" | "absent";
@@ -159,31 +160,47 @@ export interface CommsReadiness {
   a2p: "approved" | "submitted" | "prepared" | "absent";
   consent: { granted_count: number; suppressed_count: number; state: "ready" | "none_recorded" };
   delivery: {
-    state: "no_activity" | "delivering" | "mixed" | "failing";
+    state: "no_activity" | "awaiting_receipts" | "delivering" | "mixed" | "failing";
     sent_30d: number; delivered_30d: number; failed_30d: number;
     last_inbound_at: string | null;
   };
 }
 
 function useCommsReadiness() {
-  const { activeTenantId } = useTenantContext();
+  const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
-  const [state, setState] = useState<{ loading: boolean; error: string | null; value: CommsReadiness | null }>(
-    { loading: true, error: null, value: null });
+  const [state, setState] = useState<{ tenantId: string | null; loading: boolean; error: string | null; value: CommsReadiness | null }>(
+    { tenantId: null, loading: true, error: null, value: null });
   const load = useCallback(async () => {
     const token = gate.current.begin();
     // Clear first: a previous account's readiness must never linger while a new
     // one resolves (§9 — no substitution across an account switch).
-    setState({ loading: true, error: null, value: null });
-    if (!activeTenantId) { setState({ loading: false, error: null, value: null }); return; }
+    setState({ tenantId: null, loading: true, error: null, value: null });
+    if (!activeTenantId) { setState({ tenantId: null, loading: false, error: null, value: null }); return; }
     // RPC is deployed but not yet present in generated database types.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc("tenant_comms_readiness");
     if (!gate.current.isCurrent(token)) return;
-    setState({ loading: false, error: error?.message ?? null, value: error ? null : (data as CommsReadiness ?? null) });
+    const row = (data as CommsReadiness | null) ?? null;
+    // The RPC derives its tenant server-side from the session. If that has not
+    // caught up with the client's active account, the answer belongs to a
+    // DIFFERENT account — discard it rather than render it under this heading.
+    if (row && activeTenantId && row.tenant_id && row.tenant_id !== activeTenantId) {
+      setState({ tenantId: null, loading: true, error: null, value: null });
+      return;
+    }
+    setState({ tenantId: activeTenantId, loading: false, error: error?.message ?? null, value: error ? null : row });
   }, [activeTenantId]);
-  useEffect(() => { void load(); }, [load]);
-  return { ...state, retry: load };
+  useEffect(() => { if (!tenantLoading) void load(); }, [load, tenantLoading]);
+  return {
+    ...state,
+    // Stay in the loading state while the tenant context resolves and until the
+    // answer we hold belongs to the account now on screen. Without this the card
+    // paints "Texting is not ready yet" — a definite claim — before a single read
+    // has been attempted.
+    loading: state.loading || tenantLoading || Boolean(activeTenantId && state.tenantId !== activeTenantId),
+    retry: load,
+  };
 }
 
 /**
@@ -194,8 +211,8 @@ function useCommsReadiness() {
  * A tenant learns what is not ready and the one next thing they can do.
  */
 export const READINESS_COPY: Record<string, { headline: string; next: string }> = {
-  messaging_account_missing:  { headline: "Texting is not ready yet", next: "Your practice needs its own messaging account before a number or business texting can be arranged." },
-  messaging_account_inactive: { headline: "Texting is not ready yet", next: "Your messaging account is not active. We are looking into it — nothing you need to do right now." },
+  messaging_account_missing:  { headline: "Texting is not ready yet", next: "Your business needs its own messaging account before a number or business texting can be arranged." },
+  messaging_account_inactive: { headline: "Texting is not ready yet", next: "Your messaging account is not active, so nothing can send from it yet." },
   no_sms_number:              { headline: "Texting is not ready yet", next: "You do not have a phone number yet. One has to be assigned before you can text." },
   registration_absent:        { headline: "Texting is not ready yet", next: "Carriers require your business to be registered before any text can send. PAIGE can prepare that registration from your business details." },
   registration_not_approved:  { headline: "Texting is not ready yet", next: "Your registration is prepared but has not been filed with carriers. Texting stays off until it is approved." },
@@ -210,7 +227,7 @@ function ReadinessLadder({ r }: { r: CommsReadiness }) {
   const bizAll = biz.has_name && biz.has_website && biz.has_phone;
   const bizSome = biz.has_name || biz.has_website || biz.has_phone;
   const steps: Array<{ n: string; s: string; truth: SettingsTruth; tone: "ok" | "warn" | "bad" | "neutral"; state: string; detail: string }> = [
-    { n: "Messaging account", s: "Your practice's own account for texting",
+    { n: "Messaging account", s: "Your business's own account for texting",
       truth: STEP_TRUTH(r.subaccount === "connected"), tone: r.subaccount === "connected" ? "ok" : "bad",
       state: r.subaccount === "connected" ? "Connected" : r.subaccount === "inactive" ? "Not active" : "Not connected",
       detail: r.subaccount === "connected" ? "Ready." : "Nothing else can be arranged until this is in place." },
@@ -223,14 +240,14 @@ function ReadinessLadder({ r }: { r: CommsReadiness }) {
     { n: "Phone number", s: "The number your texts send from",
       truth: STEP_TRUTH(r.number === "assigned"), tone: r.number === "assigned" ? "ok" : "bad",
       state: r.number === "assigned" ? "Assigned" : "None assigned",
-      detail: r.number === "assigned" ? `${r.number_e164 ?? "On file"} — its record lists SMS capability.` : "No number on this practice." },
+      detail: r.number === "assigned" ? `${r.number_e164 ?? "On file"} — its record lists SMS capability.` : "No number on this business." },
     { n: "Business texting", s: "Carrier approval before any text can send",
       truth: r.a2p === "approved" ? "LIVE" : r.a2p === "absent" ? "UNAVAILABLE" : "PARTIAL",
       tone: r.a2p === "approved" ? "ok" : r.a2p === "absent" ? "bad" : "warn",
       state: r.a2p === "approved" ? "Approved" : r.a2p === "submitted" ? "Filed with carriers"
         : r.a2p === "prepared" ? "Prepared, not submitted" : "Not registered",
-      detail: r.a2p === "approved" ? "Your practice is approved to text."
-        : r.a2p === "prepared" ? "Saved on your practice. Nothing has been filed with any carrier yet."
+      detail: r.a2p === "approved" ? "Your business is approved to text."
+        : r.a2p === "prepared" ? "Saved on your business. Nothing has been filed with any carrier yet."
         : r.a2p === "submitted" ? "Filed. Carriers have not returned a decision."
         : "Texting stays blocked until a registration is approved." },
     { n: "Consent and opt-outs", s: "Who agreed to hear from you, and who said stop",
@@ -245,14 +262,22 @@ function ReadinessLadder({ r }: { r: CommsReadiness }) {
       state: r.can_send_sms ? "Ready" : "Not ready for texting",
       detail: r.can_send_sms ? "Texts send from your own number." : "No permitted texting sender yet." },
     { n: "Delivery and replies", s: "Whether texts arrive and replies come back",
-      truth: r.delivery.state === "no_activity" ? "UNAVAILABLE" : r.delivery.state === "delivering" ? "LIVE" : "PARTIAL",
-      tone: r.delivery.state === "delivering" ? "ok" : r.delivery.state === "no_activity" ? "neutral" : "warn",
+      truth: r.delivery.state === "no_activity" ? "UNAVAILABLE"
+        : r.delivery.state === "delivering" ? "LIVE" : "PARTIAL",
+      tone: r.delivery.state === "delivering" ? "ok"
+        : r.delivery.state === "no_activity" ? "neutral" : "warn",
       state: r.delivery.state === "no_activity" ? "Nothing sent yet"
+        : r.delivery.state === "awaiting_receipts" ? `${r.delivery.sent_30d} sent, none confirmed yet`
         : r.delivery.state === "delivering" ? `${r.delivery.delivered_30d} of ${r.delivery.sent_30d} delivered`
         : `${r.delivery.failed_30d} of ${r.delivery.sent_30d} did not arrive`,
+      // Replies are NOT reported either way: nothing records an inbound text
+      // against this account, so both "replies received" and "no replies
+      // received" would be claims the data cannot support.
       detail: r.delivery.state === "no_activity"
         ? "Nothing has been sent in the last 30 days, so there is nothing to report."
-        : r.delivery.last_inbound_at ? "Replies are reaching your inbox." : "No replies received in the last 30 days." },
+        : r.delivery.state === "awaiting_receipts"
+        ? "Sent, but no delivery confirmations have come back yet."
+        : "Whether replies are arriving is not something we can report yet." },
   ];
   return <div className="ss-ladder">{steps.map((st, i) => (
     <div className="ss-step" data-tone={st.tone} key={st.n}>
@@ -295,8 +320,17 @@ function ConnectionsView() {
         actions={readiness.value && !readiness.value.can_send_sms
           ? <Status tone="warn">Texting is not ready yet</Status>
           : readiness.value ? <Status tone="ok">Ready to text</Status> : undefined}>
-        <ReadState loading={readiness.loading} error={readiness.error} retry={readiness.retry}>
-          {readiness.value ? <>
+        {/* The ruled fallback, for EVERY not-ready path — including an RPC error.
+            ReadState would otherwise print error.message verbatim, which for this
+            resolver means a tenant reading "COMMS_READINESS_FORBIDDEN". */}
+        <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
+          {readiness.error ? (
+            <div className="ss-next">
+              <strong>Texting is not ready yet</strong>
+              <p>We couldn&rsquo;t read this account&rsquo;s setup just now, so nothing below is being claimed about it. Try again in a moment.</p>
+              <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
+            </div>
+          ) : readiness.value ? <>
             {!readiness.value.can_send_sms && readiness.value.blocked_reason && (
               <div className="ss-next">
                 <strong>{(READINESS_COPY[readiness.value.blocked_reason] ?? { headline: "Texting is not ready yet" }).headline}</strong>
@@ -305,7 +339,12 @@ function ConnectionsView() {
             )}
             <ReadinessLadder r={readiness.value}/>
             <p className="ss-note">Each step reports what its own record says. A step that cannot be checked says so rather than assuming it passed.</p>
-          </> : <p>Texting is not ready yet. We could not read this account&rsquo;s setup, so nothing is being claimed about it.</p>}
+          </> : (
+            <div className="ss-next">
+              <strong>Texting is not ready yet</strong>
+              <p>We don&rsquo;t have a setup to read for this account yet.</p>
+            </div>
+          )}
         </ReadState>
       </Card>
       <Card title="Failure states" icon={TriangleAlert} truth="PARTIAL"><div className="ss-state-list"><Status tone="warn">DNS pending</Status><Status tone="bad">DNS failure</Status><Status tone="bad">Token expired / revoked</Status><Status tone="bad">Webhook failure</Status><Status tone="warn">A2P pending</Status><Status tone="bad">A2P rejected</Status><Status tone="ok">A2P approved</Status><Status>Disconnected</Status></div><p className="ss-note">These are supported display states, not claims about this account.</p></Card>

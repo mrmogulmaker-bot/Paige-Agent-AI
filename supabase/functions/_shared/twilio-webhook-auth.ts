@@ -53,11 +53,11 @@ function timingSafeEqual(a: string, b: string): boolean {
  */
 /** The narrow slice of the Supabase client this module needs — typed rather
  *  than `any`, so a shape change is a compile error instead of a runtime one. */
-interface ReadOnlyTable {
-  select: (cols: string) => {
-    eq: (col: string, val: string) => { maybeSingle: () => Promise<{ data: Record<string, unknown> | null }> };
-  };
+interface ReadOnlyFilter {
+  eq: (col: string, val: string) => ReadOnlyFilter;
+  maybeSingle: () => Promise<{ data: Record<string, unknown> | null }>;
 }
+interface ReadOnlyTable { select: (cols: string) => ReadOnlyFilter }
 export interface WebhookAuthAdmin { from: (table: string) => ReadOnlyTable }
 
 export async function inboundSecretForNumber(
@@ -68,6 +68,9 @@ export async function inboundSecretForNumber(
     .from("tenant_phone_numbers")
     .select("tenant_id")
     .eq("phone_number", toNumberNormalized)
+    // A released or suspended number must not authenticate anything. Without
+    // this, a number the tenant no longer holds still resolves their secret.
+    .eq("status", "active")
     .maybeSingle();
   if (!num?.tenant_id) return null;
   const { data: sub } = await admin
@@ -97,12 +100,19 @@ export async function authenticateTwilioWebhook(
   const envToken = typeof Deno !== "undefined" ? Deno.env.get("TWILIO_AUTH_TOKEN") : undefined;
   const token = opts.authToken ?? envToken ?? "";
 
+  const offered = new URL(req.url).searchParams.get("t");
+
   if (sig && token) {
     const ok = await validateTwilioSignature(token, sig, req.url, rawBody);
-    return ok ? { ok: true, via: "signature" } : { ok: false, reason: "bad_signature" };
+    if (ok) return { ok: true, via: "signature" };
+    // Do NOT return here when a secret is also offered. Tenant numbers live on
+    // SUBACCOUNTS, which Twilio signs with the subaccount's token — not the
+    // master one this env var holds. Returning on the signature result would mean
+    // that merely SETTING `TWILIO_AUTH_TOKEN` turns every legitimate,
+    // correctly-stamped tenant callback into a 401.
+    if (!offered) return { ok: false, reason: "bad_signature" };
   }
 
-  const offered = new URL(req.url).searchParams.get("t");
   if (!offered) return { ok: false, reason: "no_proof_offered" };
   if (!opts.expectedSecret) return { ok: false, reason: "unknown_recipient" };
   return timingSafeEqual(offered, opts.expectedSecret)

@@ -219,7 +219,7 @@ async function resolveTenantSeatIdentities(admin: Admin, tenantId: string): Prom
     .filter((u: string | null | undefined): u is string => typeof u === "string" && u.length > 0)
     .map((userId: string) => buildIdentity(tenantId, userId));
   // De-dupe defensively (a member could hold two of the three roles across rows).
-  return [...new Set(ids)];
+  return [...new Set<string>(ids as string[])];
 }
 
 /**
@@ -351,7 +351,7 @@ async function resolveOperatorSeatIdentities(admin: Admin): Promise<string[]> {
     .filter((u: string | null | undefined): u is string => typeof u === "string" && u.length > 0)
     .map((userId: string) => buildOperatorIdentity(userId));
   // De-dupe defensively (a user could hold both super_admin and platform_admin rows).
-  return [...new Set(ids)];
+  return [...new Set<string>(ids as string[])];
 }
 
 /**
@@ -531,9 +531,31 @@ Deno.serve(async (req) => {
   // twilio-status-callback can stamp the voice row's final status + duration. Mirrors send-message's
   // SMS-DLR URL derivation EXACTLY (env override → default). "" ⇒ the noun emits no statusCallback
   // (the row stays 'queued'; honest degrade, never a broken dial).
-  const statusCallbackUrl =
+  //
+  // MUST carry the tenant's stamped secret: `twilio-status-callback` now fails
+  // CLOSED, so an unstamped URL means every call-completion callback is refused
+  // and the voice row never gets its terminal status, duration, recording or
+  // transcript. An operator call (no tenant) keeps the bare URL and is
+  // authenticated by signature; a tenant call without a resolvable secret emits
+  // NO callback rather than one that will be refused.
+  // The tenant is the AUTHENTICATED `client:<tenantId>.<userId>` identity Twilio
+  // derived from the JWT — never a raw parameter (§9). An operator caller
+  // (`client:operator.<userId>`) parses to null here, which is correct: operator
+  // calls stay on the master account and are signature-authenticated.
+  const voiceTenantId = isOperatorClientCaller(from) ? null : (parseClientCaller(from)?.tenantId ?? null);
+  const voiceStampSecret = voiceTenantId
+    ? ((await admin.from("tenant_twilio_subaccounts")
+          .select("inbound_webhook_secret").eq("tenant_id", voiceTenantId).maybeSingle())
+        .data?.inbound_webhook_secret ?? null)
+    : null;
+  const statusCallbackBase =
     Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
     (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : "");
+  const statusCallbackUrl = !statusCallbackBase
+    ? ""
+    : voiceTenantId
+      ? (voiceStampSecret ? `${statusCallbackBase}?t=${encodeURIComponent(voiceStampSecret)}` : "")
+      : statusCallbackBase;
 
   try {
     if (direction === "outbound") {

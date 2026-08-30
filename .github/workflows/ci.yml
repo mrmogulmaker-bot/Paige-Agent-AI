@@ -265,3 +265,6 @@ jobs:
       - name: Smoke — Fleet v3 Directory (lineage and retired-surface guard)
         if: ${{ !cancelled() }}
         run: npm run smoke:fleet-directory-v3
+
+      - name: Smoke — comms webhook authentication (fail-closed decisions)
+        run: npm run smoke:comms-webhook-auth
