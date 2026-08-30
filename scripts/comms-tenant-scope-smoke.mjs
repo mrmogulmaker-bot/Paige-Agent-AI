@@ -62,11 +62,14 @@ function makeAdmin(rows) {
     let payload = null;
     const q = {
       // A chained `.select(...)` after a write must NOT re-tag it as a read.
-      // `insert(...).select("id").single()` is a real write, and recording it as
-      // a select made `wrote()` false for it while `reads()` counted it — so any
-      // future write assertion built this way would have silently miscategorised,
-      // which is the family of trap this whole suite exists to catch.
-      select: () => { if (verb === "select") verb = "select"; return q; },
+      // `insert(...).select("id").single()` is a real write, and this used to
+      // record it as a select — so `wrote()` was false for a genuine write while
+      // `reads()` counted it, and any future write assertion built that way would
+      // have miscategorised silently. `verb` already starts as "select", so the
+      // correct behaviour is simply to leave it alone here. (Written first as
+      // `if (verb === "select") verb = "select"`, which behaves correctly and
+      // reads like a line that does nothing.)
+      select: () => q,
       // The PAYLOAD is captured, not just the verb. A compliance write carries
       // its tenant in the ROW, never in a filter, so a recorder that keeps only
       // filters cannot see the one value that makes the write correct.
@@ -395,6 +398,10 @@ console.log("comms tenant-scope smoke\n");
     const a = globalThis.__ADMIN__;
     const rail = a.rpcs.filter((r) => r.name === "record_rail_event");
     check("a plain inbound text files a rail event (non-vacuity)", rail.length > 0);
+    // Pins the recorder itself: this insert chains `.select("id").single()`, so a
+    // regression that re-tags it as a read makes `wrote()` false and this fails.
+    check("...and the conversation insert is recorded as a WRITE, not a read",
+      a.wrote("paige_conversations"));
     check("...carrying the receiving tenant explicitly (§9)",
       rail.every((r) => r.args?.p_tenant_id === TENANT_A));
   }
