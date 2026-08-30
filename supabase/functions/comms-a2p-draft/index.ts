@@ -301,7 +301,45 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
       help_message: str(parsed?.help_message).trim().slice(0, 320),
     };
 
-    return ok({ draft, legal_business_name: legalName, website: websiteInput });
+    // ── PERSIST. Generating a draft and handing it back in the response was the
+    //    whole defect: nothing in these 309 lines wrote it down, so "prepare a
+    //    registration" did not survive the call. The save goes through
+    //    tenant_a2p_registration_save_draft, which derives the tenant server-side
+    //    for a JWT caller, re-enforces the same admin/coach authority in its body,
+    //    and never sets submitted_at — so the canonical resolver reports `prepared`
+    //    and can never report `submitted` because of this path.
+    //
+    //    The RPC is called with the CALLER'S OWN client so its JWT branch applies;
+    //    only a service-role caller names a tenant, which is the same seam this
+    //    function already documents. A save failure does NOT discard the generated
+    //    draft — the caller still receives it, with `saved: false` and the reason,
+    //    because silently returning a draft that looks saved is the §13 lie this
+    //    change exists to remove.
+    let saved = false;
+    let saveError: string | null = null;
+    try {
+      const writer = isServiceRole
+        ? createClient(supabaseUrl, supabaseServiceKey)
+        : createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
+      const { error: sErr } = await writer.rpc("tenant_a2p_registration_save_draft", {
+        p_use_case: draft.use_case,
+        p_campaign_description: draft.campaign_description,
+        p_sample_messages: draft.sample_messages,
+        p_optin_flow: draft.optin_flow || null,
+        ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
+      });
+      if (sErr) {
+        saveError = sErr.message;
+        console.error("comms-a2p-draft: draft save failed:", sErr.code, sErr.message);
+      } else {
+        saved = true;
+      }
+    } catch (e) {
+      saveError = (e as Error)?.message ?? "save failed";
+      console.error("comms-a2p-draft: draft save threw:", saveError);
+    }
+
+    return ok({ draft, legal_business_name: legalName, website: websiteInput, saved, save_error: saveError });
   } catch (e) {
     console.error("comms-a2p-draft: unhandled error:", e);
     return fail(500, "INTERNAL", (e as Error)?.message || "Failed to draft the A2P copy.");
