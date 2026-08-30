@@ -52,6 +52,7 @@ import {
   availToJson, bookingUrl, buildCalendarPatch, draftFromRow, jsonToAvail, newId, newQuestionId,
   slugify, willSaveAppointmentType, willSaveDateOverride, willSaveQuestion,
 } from "@/lib/calendar/config";
+import { isStale as accountIsStale } from "@/lib/calendar/account-identity";
 import { useCalendarConnections, type CalendarHost, type Capability, type SendReadiness } from "./data/useCalendarConnections";
 import "./connections-calendars.css";
 
@@ -407,7 +408,7 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
 type AccountToken = { account: string | undefined; tenantId: string | null };
 
 function useAccountIdentity(account: string | undefined, tenantId: string | null, accountNumber: number | null) {
-  const stale = Boolean(account && accountNumber !== null && String(accountNumber) !== account);
+  const stale = accountIsStale(account, { tenantId, accountNumber });
 
   const live = useRef({ account, tenantId, stale });
   live.current = { account, tenantId, stale };

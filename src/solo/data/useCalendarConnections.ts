@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { identityFor, reloadIsCurrent } from "@/lib/calendar/account-identity";
 import { createSettingsRequestGate } from "../settings-contract";
 import {
   DEFAULT_AVAIL, SELECT_COLS, availToJson, blankDraft, buildCalendarPatch, randomSuffix, slugify,
@@ -189,13 +190,10 @@ export function useCalendarConnections() {
    */
   const liveTenants = useRef(tenants);
   liveTenants.current = tenants;
-  const addressFor = useCallback((id: string | null) => (
-    // `?? []` because a roster is not guaranteed: the context can hand back a
-    // shape without one, and a hook that throws over a missing address would
-    // take the whole surface down to avoid a stale label — the wrong trade in
-    // both directions. No roster means no address, which reads as "cannot tell".
-    id ? (liveTenants.current ?? []).find((t) => t.id === id)?.account_number ?? null : null
-  ), []);
+  // Both halves of the stamp, from one id against one roster. `identityFor` is
+  // the shared rule and is unit-proven in `account-identity.test.ts`; taking the
+  // pair together is what stops the two fields being sourced separately again.
+  const identityOf = useCallback((id: string | null) => identityFor(id, liveTenants.current), []);
   const gate = useRef(createSettingsRequestGate());
   // The tenant now on screen, readable from inside a closure that was captured
   // under a DIFFERENT one. `load` closes over `activeTenantId`, so a reload
@@ -208,6 +206,11 @@ export function useCalendarConnections() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // The guard lives HERE, not at the call sites, because a call site that
+    // forgets it is exactly how this defect class keeps returning: `disconnect`
+    // was the one reload that never had it. A closure scoped to a departed
+    // account refuses itself, so every caller — present and future — is covered.
+    if (!reloadIsCurrent(activeTenantId, liveTenant.current)) return;
     const token = gate.current.begin();
     // Keep the rows only while the account is the SAME one. On a switch they
     // are cleared outright: `loading` alone left the previous account's selected
@@ -217,7 +220,7 @@ export function useCalendarConnections() {
     // stayed. Same rule the canonical readiness read follows (§9).
     setState((s) => (s.tenantId === activeTenantId
       ? { ...s, loading: true, error: null }
-      : { ...BLANK_STATE, tenantId: activeTenantId, accountNumber: addressFor(activeTenantId), loading: true }));
+      : { ...BLANK_STATE, ...identityOf(activeTenantId), loading: true }));
 
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? null;
@@ -237,8 +240,7 @@ export function useCalendarConnections() {
     if (!activeTenantId) {
       if (!gate.current.isCurrent(token)) return;
       setState({
-        tenantId: activeTenantId,
-        accountNumber: addressFor(activeTenantId),
+        ...identityOf(activeTenantId),
         loading: false,
         error: null,
         empty: true,
@@ -375,8 +377,7 @@ export function useCalendarConnections() {
     }
 
     setState({
-      tenantId: activeTenantId,
-      accountNumber: addressFor(activeTenantId),
+      ...identityOf(activeTenantId),
       loading: false,
       error: null,
       empty: calendars.length === 0,
@@ -388,9 +389,9 @@ export function useCalendarConnections() {
       readiness,
       canWrite: !adminRead.error && adminRead.data === true,
     });
-    // `addressFor` is stable (empty deps, reads a ref), so naming it here costs
+    // `identityOf` is stable (empty deps, reads a ref), so naming it here costs
     // no extra reload and keeps the lint honest rather than silenced.
-  }, [activeTenantId, addressFor]);
+  }, [activeTenantId, identityOf]);
 
   useEffect(() => {
     const activeGate = gate.current;
@@ -497,7 +498,7 @@ export function useCalendarConnections() {
         .from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId).select("id");
       setBusy(null);
       if (rollbackError || (removed?.length ?? 0) === 0) {
-        if (liveTenant.current === activeTenantId) await load();
+        await load();
         return {
           ok: false as const,
           message: `“${created.title}” was created but couldn’t be finished, and removing it didn’t work either. It is saved as a draft, so it is not taking bookings — sign in again and delete or finish it.`,
@@ -522,8 +523,7 @@ export function useCalendarConnections() {
       .select("enabled").maybeSingle();
 
     setBusy(null);
-    // Only refresh if this is still the account on screen. See `liveTenant`.
-    if (liveTenant.current === activeTenantId) await load();
+    await load();
     return { ok: true as const, row: { ...created, enabled: (live as { enabled?: boolean } | null)?.enabled === true } };
   }, [activeTenantId, load]);
 
@@ -583,12 +583,11 @@ export function useCalendarConnections() {
     if (error || (data as { error?: string } | null)?.error) {
       return { ok: false as const, message: error?.message ?? "Could not disconnect" };
     }
-    // Guarded like every other reload here (see `liveTenant`): a disconnect that
-    // finishes after the account moved on must not pull the departing account's
-    // rows back into a surface that has already relabelled itself.
-    if (liveTenant.current === activeTenantId) await load();
+    // No guard needed at the call site: `load` refuses itself when the account
+    // it was scoped to is no longer the live one.
+    await load();
     return { ok: true as const };
-  }, [load, activeTenantId]);
+  }, [load]);
 
   const loading = tenantLoading || state.loading;
   return useMemo(
