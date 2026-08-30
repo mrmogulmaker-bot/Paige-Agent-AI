@@ -28,8 +28,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { identityFor, reloadIsCurrent } from "@/lib/calendar/account-identity";
 import { createSettingsRequestGate } from "../settings-contract";
-import { SELECT_COLS, type CalendarRow } from "@/lib/calendar/config";
+import {
+  DEFAULT_AVAIL, SELECT_COLS, availToJson, blankDraft, buildCalendarPatch, randomSuffix, slugify,
+  type CalendarRow,
+} from "@/lib/calendar/config";
+import { armOAuthReturn, clearOAuthReturn } from "./oauthReturn";
 
 /**
  * `tenant_phone_numbers`, `tenant_a2p_registrations` and the two tenant helper
@@ -75,6 +80,13 @@ export interface SendReadiness {
   sms: Capability;
   /** What is missing, in the tenant's language. Empty when nothing is. */
   missing: string[];
+  /**
+   * The same reasons, tagged with the channel each one actually blocks. A
+   * calendar that only sends email must not be told about a missing text
+   * registration — that is how a correct configuration gets "fixed" into a
+   * broken one.
+   */
+  missingByChannel: { channel: "email" | "sms"; label: string }[];
   /** True when at least one of the four reads failed, so the answer is partial. */
   partial: boolean;
   /**
@@ -84,7 +96,7 @@ export interface SendReadiness {
   outOfScope: boolean;
 }
 
-const READINESS_UNKNOWN: SendReadiness = { email: "unknown", sms: "unknown", missing: [], partial: true, outOfScope: false };
+const READINESS_UNKNOWN: SendReadiness = { email: "unknown", sms: "unknown", missing: [], missingByChannel: [], partial: true, outOfScope: false };
 
 /* ----------------------------------------------------------------- hosts */
 
@@ -100,6 +112,23 @@ export interface CalendarHost {
 /* ------------------------------------------------------------------ hook */
 
 export interface CalendarConnectionsState {
+  /** Which account these rows belong to, so a switch can be told from a refresh. */
+  tenantId: string | null;
+  /**
+   * The ROUTE address of the account these rows belong to (§65 `account_number`).
+   *
+   * `tenantId` is a uuid and the URL carries a number, so on their own the two
+   * cannot be compared — which is why a surface trying to tell "is what I am
+   * showing the account the URL names?" previously had to infer it from the
+   * ORDER the two changed in. That inference breaks whenever they move the other
+   * way round (a tenant switch commits before its navigation), and an inference
+   * that cannot be re-derived gets stuck. Reporting the address alongside the id
+   * makes the question answerable directly, from current values only.
+   *
+   * Null when the tenant is unresolved, or pre-dates the account_number
+   * migration; a null is "cannot tell", never "mismatch".
+   */
+  accountNumber: number | null;
   loading: boolean;
   error: string | null;
   /** Set when the calendars read succeeded but returned nothing. */
@@ -108,6 +137,12 @@ export interface CalendarConnectionsState {
   providersError: string | null;
   calendars: CalendarRow[];
   hosts: Record<string, CalendarHost[]>;
+  /**
+   * Set when the `calendar_hosts` read itself FAILED. A failed read is not an
+   * empty roster: reporting "this calendar has no host" off a transient error
+   * would tell someone their booking page is dead when it is running fine.
+   */
+  hostsError: string | null;
   readiness: SendReadiness;
   /** False when this account may read the configuration but not change it. */
   canWrite: boolean;
@@ -117,25 +152,75 @@ function firstMessage(...errors: (string | null | undefined)[]) {
   return errors.find((e) => typeof e === "string" && e.length > 0) ?? null;
 }
 
+/** The shape an account starts from, and the shape a switch resets to. */
+const BLANK_STATE: CalendarConnectionsState = {
+  tenantId: null,
+  accountNumber: null,
+  loading: true,
+  error: null,
+  empty: false,
+  providers: EMPTY_PROVIDERS,
+  providersError: null,
+  calendars: [],
+  hosts: {},
+  hostsError: null,
+  readiness: READINESS_UNKNOWN,
+  canWrite: false,
+};
+
 export function useCalendarConnections() {
-  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { activeTenantId, tenants, loading: tenantLoading } = useTenantContext();
+
+  /**
+   * The route address of ONE named tenant — not of whoever is active now.
+   *
+   * This distinction is the whole point. A load is scoped to the `activeTenantId`
+   * its callback closed over, and it can finish after the active tenant has moved
+   * on. Reading the CURRENT address at that moment would stamp the departing
+   * account's rows with the arriving account's address, and a stamp that
+   * disagrees with its own rows is worse than none: the guard downstream compares
+   * that address with the route, would find them equal, and would conclude the
+   * pairing is current — exposing an editor over another account's data, which is
+   * exactly what the address was added to prevent.
+   *
+   * So both halves of the stamp are derived from the SAME id at the same moment,
+   * and cannot disagree by construction. Reading the roster through a ref keeps
+   * this out of `load`'s dependencies, so the address resolving a beat after the
+   * tenant costs no second round trip.
+   */
+  const liveTenants = useRef(tenants);
+  liveTenants.current = tenants;
+  // Both halves of the stamp, from one id against one roster. `identityFor` is
+  // the shared rule and is unit-proven in `account-identity.test.ts`; taking the
+  // pair together is what stops the two fields being sourced separately again.
+  const identityOf = useCallback((id: string | null) => identityFor(id, liveTenants.current), []);
   const gate = useRef(createSettingsRequestGate());
-  const [state, setState] = useState<CalendarConnectionsState>({
-    loading: true,
-    error: null,
-    empty: false,
-    providers: EMPTY_PROVIDERS,
-    providersError: null,
-    calendars: [],
-    hosts: {},
-    readiness: READINESS_UNKNOWN,
-    canWrite: false,
-  });
+  // The tenant now on screen, readable from inside a closure that was captured
+  // under a DIFFERENT one. `load` closes over `activeTenantId`, so a reload
+  // fired from a stale closure would read the old account's calendars AND take
+  // a fresh gate token — making itself newer than the account-change load and
+  // overwriting the new account's state with the old account's rows.
+  const liveTenant = useRef(activeTenantId);
+  liveTenant.current = activeTenantId;
+  const [state, setState] = useState<CalendarConnectionsState>(BLANK_STATE);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // The guard lives HERE, not at the call sites, because a call site that
+    // forgets it is exactly how this defect class keeps returning: `disconnect`
+    // was the one reload that never had it. A closure scoped to a departed
+    // account refuses itself, so every caller — present and future — is covered.
+    if (!reloadIsCurrent(activeTenantId, liveTenant.current)) return;
     const token = gate.current.begin();
-    setState((s) => ({ ...s, loading: true, error: null }));
+    // Keep the rows only while the account is the SAME one. On a switch they
+    // are cleared outright: `loading` alone left the previous account's selected
+    // preset and its enabled controls rendering under the new account's loading
+    // shell, so a save or a live-toggle made there wrote to a calendar that was
+    // never on screen — and if the new read failed, those stale details simply
+    // stayed. Same rule the canonical readiness read follows (§9).
+    setState((s) => (s.tenantId === activeTenantId
+      ? { ...s, loading: true, error: null }
+      : { ...BLANK_STATE, ...identityOf(activeTenantId), loading: true }));
 
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? null;
@@ -155,6 +240,7 @@ export function useCalendarConnections() {
     if (!activeTenantId) {
       if (!gate.current.isCurrent(token)) return;
       setState({
+        ...identityOf(activeTenantId),
         loading: false,
         error: null,
         empty: true,
@@ -162,6 +248,7 @@ export function useCalendarConnections() {
         providersError: providerRead.error?.message ?? null,
         calendars: [],
         hosts: {},
+        hostsError: null,
         readiness: READINESS_UNKNOWN,
         canWrite: false,
       });
@@ -205,6 +292,9 @@ export function useCalendarConnections() {
         error: calendarRead.error?.message ?? "Calendar configuration could not load",
         providers: (providerRead.data as ProviderState | null) ?? EMPTY_PROVIDERS,
         providersError: providerRead.error?.message ?? null,
+        // The host read never ran on this pass; a value left over from the last
+        // one would be a claim about a load that did not happen.
+        hostsError: null,
       }));
       return;
     }
@@ -214,12 +304,14 @@ export function useCalendarConnections() {
     // Hosts, for the calendars we can actually see. One read, then grouped —
     // a per-calendar query would be N round trips for a list this small.
     const hosts: Record<string, CalendarHost[]> = {};
+    let hostsError: string | null = null;
     if (calendars.length) {
-      const { data: hostRows } = await supabase
+      const { data: hostRows, error: hostErr } = await supabase
         .from("calendar_hosts")
         .select("calendar_id, user_id, priority, availability_json, timezone")
         .in("calendar_id", calendars.map((c) => c.id));
       if (!gate.current.isCurrent(token)) return;
+      hostsError = hostErr?.message ?? null;
       type HostRow = {
         calendar_id: string; user_id: string; priority: number | null;
         availability_json: unknown; timezone: string | null;
@@ -267,21 +359,25 @@ export function useCalendarConnections() {
       else if (phoneOk === false && a2pOk === false) smsOk = "no";
       else smsOk = "unknown";
 
-      const missing: string[] = [];
-      if (identityOk === "no") missing.push("no sending email address");
-      if (phoneOk === false && a2pOk === false) missing.push("no phone number or texting registration");
-      if (!brandRead.error && !businessPhone) missing.push("no business phone on the profile");
+      const missingByChannel: { channel: "email" | "sms"; label: string }[] = [];
+      if (identityOk === "no") missingByChannel.push({ channel: "email", label: "no sending email address" });
+      if (phoneOk === false && a2pOk === false) missingByChannel.push({ channel: "sms", label: "no phone number or texting registration" });
+      // The business phone is what a text is sent FROM, so its absence blocks
+      // SMS and nothing else.
+      if (!brandRead.error && !businessPhone) missingByChannel.push({ channel: "sms", label: "no business phone on the profile" });
 
       readiness = {
         email: identityOk,
         sms: smsOk,
-        missing,
+        missing: missingByChannel.map((m) => m.label),
+        missingByChannel,
         partial: Boolean(identityRead.error || phoneRead.error || a2pRead.error || brandRead.error),
         outOfScope: false,
       };
     }
 
     setState({
+      ...identityOf(activeTenantId),
       loading: false,
       error: null,
       empty: calendars.length === 0,
@@ -289,10 +385,13 @@ export function useCalendarConnections() {
       providersError: providerRead.error?.message ?? null,
       calendars,
       hosts,
+      hostsError,
       readiness,
       canWrite: !adminRead.error && adminRead.data === true,
     });
-  }, [activeTenantId]);
+    // `identityOf` is stable (empty deps, reads a ref), so naming it here costs
+    // no extra reload and keeps the lint honest rather than silenced.
+  }, [activeTenantId, identityOf]);
 
   useEffect(() => {
     const activeGate = gate.current;
@@ -325,6 +424,109 @@ export function useCalendarConnections() {
     return { ok: true as const, row: saved };
   }, []);
 
+  /**
+   * Create a booking preset, live and bookable from the moment it exists.
+   *
+   * Two things here are not optional, and both are carried over from the builder
+   * this surface replaced rather than re-invented (§18):
+   *
+   *  1. THE CREATOR IS REGISTERED AS A HOST. A calendar with no host has no
+   *     availability to offer, so its public page cannot be booked. Creating one
+   *     without a host produces a live link that is broken on arrival.
+   *  2. A FAILED HOST INSERT ROLLS THE CALENDAR BACK. There is no way to add a
+   *     host from this surface, so a calendar that loses this race would be
+   *     permanently unbookable and unrepairable here. Deleting it is better than
+   *     leaving that behind, and the delete is tenant-scoped so it can only ever
+   *     remove the row we just wrote (§9).
+   *
+   * The slug carries a random suffix because booking links are unique across the
+   * platform: two workspaces both creating "Discovery call" must not collide.
+   */
+  const createCalendar = useCallback(async (title: string) => {
+    const name = title.trim();
+    if (!name) return { ok: false as const, message: "Give the calendar a name first." };
+    if (!activeTenantId) return { ok: false as const, message: "No active workspace — pick one first." };
+
+    setBusy("new");
+    const draft = blankDraft(name);
+    const patch = buildCalendarPatch(draft, DEFAULT_AVAIL);
+    const slug = `${slugify(name) || "calendar"}-${randomSuffix()}`;
+
+    const { data, error } = await supabase
+      .from("calendars")
+      .insert({
+        ...patch,
+        tenant_id: activeTenantId,
+        slug,
+        // Created as a DRAFT and flipped live only once a host exists. A live
+        // calendar with no host is a public link that accepts nothing, and
+        // nothing on this surface can add a host to repair it — so the window
+        // between the two inserts must never be a bookable one.
+        enabled: false,
+        availability_json: availToJson(DEFAULT_AVAIL),
+      } as never)
+      .select(SELECT_COLS)
+      .single();
+
+    if (error || !data) {
+      setBusy(null);
+      const conflict = (error as { code?: string } | null)?.code === "23505";
+      return {
+        ok: false as const,
+        message: conflict ? "That booking link is already taken — try a different name." : (error?.message ?? "Could not create the calendar"),
+      };
+    }
+
+    const created = data as unknown as CalendarRow;
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id ?? null;
+    const hostError = uid
+      ? (await supabase.from("calendar_hosts").insert({ calendar_id: created.id, user_id: uid, priority: 0 })).error
+      : { message: "no-session" };
+
+    if (hostError) {
+      // Best-effort removal. It is deliberately NOT load-bearing: the same lost
+      // session that blocked the host insert also blocks this delete, so the
+      // result is checked rather than assumed, and what is said depends on what
+      // actually happened. The leftover is a draft either way (see above), so
+      // the worst case is an unfinished calendar, never a live unbookable link.
+      // `.select()` so the RESULT is the evidence. A delete that matches no row
+      // — RLS hid it, the filters missed it — succeeds with `error === null`, so
+      // checking only the error would let "nothing was created" be said over a
+      // draft that is still there. Absence of an error is not proof of effect.
+      const { data: removed, error: rollbackError } = await supabase
+        .from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId).select("id");
+      setBusy(null);
+      if (rollbackError || (removed?.length ?? 0) === 0) {
+        await load();
+        return {
+          ok: false as const,
+          message: `“${created.title}” was created but couldn’t be finished, and removing it didn’t work either. It is saved as a draft, so it is not taking bookings — sign in again and delete or finish it.`,
+        };
+      }
+      return {
+        ok: false as const,
+        message: uid
+          ? "Couldn't finish setting the calendar up, so nothing was created. Please try again."
+          : "Your session expired — sign in again and retry.",
+      };
+    }
+
+    // The host is registered, so the link can actually be booked. The state
+    // that comes BACK is what is reported, not the absence of an error: an
+    // update matching zero rows returns no error while `enabled` stays false,
+    // and announcing "live — ready to share" over that is a fabricated status
+    // on the one screen whose job is to report the truth. If the flip did not
+    // take, the calendar is a draft and the surface says draft.
+    const { data: live } = await supabase
+      .from("calendars").update({ enabled: true }).eq("id", created.id).eq("tenant_id", activeTenantId)
+      .select("enabled").maybeSingle();
+
+    setBusy(null);
+    await load();
+    return { ok: true as const, row: { ...created, enabled: (live as { enabled?: boolean } | null)?.enabled === true } };
+  }, [activeTenantId, load]);
+
   /** Flip a calendar between Live and Draft. Draft means the link stops accepting bookings. */
   const setEnabled = useCallback(async (id: string, enabled: boolean) => {
     setBusy(id);
@@ -340,13 +542,34 @@ export function useCalendarConnections() {
    * authorization URL and the browser leaves — nothing is connected here, and
    * nothing is claimed until the callback writes the row and this hook re-reads.
    */
-  const connect = useCallback(async (provider: "google" | "zoom") => {
+  const connect = useCallback(async (provider: "google" | "zoom", returnTo?: string) => {
     setBusy(provider);
+    // Remembered BEFORE the browser leaves, so the callback can put the person
+    // back on the surface they started from instead of the role-default landing
+    // the callback has always used. Same-origin paths only (see oauthReturn).
+    //
+    // GOOGLE ONLY, and that is the whole point. Google returns through a page in
+    // this app, which reads the address. Zoom does NOT: `zoom-oauth-callback` is
+    // an edge function that 302s the browser straight to its own role-based
+    // destination, so a path stored for Zoom is never consumed — it just sits
+    // there. And it would not sit there harmlessly: `CalendarConnectorsPanel`
+    // starts its own Google connect WITHOUT a return path, so its callback would
+    // find the orphaned Zoom-era address and honour it, sending that person to a
+    // surface they were not on. An address is stored only for the journey that
+    // reads it. Giving Zoom a real return path needs a change to its edge
+    // function, which is tracked separately.
+    const consumesReturn = provider === "google";
+    // Arm rather than merely remember: a Google handshake with no return path
+    // must also clear whatever an ABANDONED earlier one left behind (see
+    // armOAuthReturn). Zoom neither writes nor clears, since it never reads.
+    if (consumesReturn) armOAuthReturn(returnTo);
     const fn = provider === "google" ? "google-calendar-oauth-start" : "zoom-oauth-start";
     const { data, error } = await supabase.functions.invoke(fn, { body: { origin: window.location.origin } });
     setBusy(null);
     const url = (data as { authorization_url?: string } | null)?.authorization_url;
     if (error || !url) {
+      // The handshake never started, so nothing will ever read the address.
+      if (returnTo && consumesReturn) clearOAuthReturn();
       return { ok: false as const, message: error?.message ?? "That connection is not switched on yet." };
     }
     return { ok: true as const, url };
@@ -360,14 +583,16 @@ export function useCalendarConnections() {
     if (error || (data as { error?: string } | null)?.error) {
       return { ok: false as const, message: error?.message ?? "Could not disconnect" };
     }
+    // No guard needed at the call site: `load` refuses itself when the account
+    // it was scoped to is no longer the live one.
     await load();
     return { ok: true as const };
   }, [load]);
 
   const loading = tenantLoading || state.loading;
   return useMemo(
-    () => ({ ...state, loading, busy, refresh: load, saveCalendar, setEnabled, connect, disconnect,
+    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, setEnabled, connect, disconnect,
              errorMessage: firstMessage(state.error, state.providersError) }),
-    [state, loading, busy, load, saveCalendar, setEnabled, connect, disconnect],
+    [state, loading, busy, load, createCalendar, saveCalendar, setEnabled, connect, disconnect],
   );
 }

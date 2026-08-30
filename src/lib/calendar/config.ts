@@ -476,6 +476,91 @@ export interface CalendarDraft {
 }
 
 /**
+ * A brand-new calendar, before anyone has configured anything.
+ *
+ * These are working defaults, not placeholders: a preset created from this is
+ * immediately bookable — a weekday week, a half-hour slot, a confirmation and a
+ * day-ahead reminder. That matters because a new calendar goes live on creation,
+ * so anything left unset here would be a public page that cannot take a booking.
+ */
+export function blankDraft(title: string): CalendarDraft {
+  return {
+    type: "personal",
+    title: title.trim(),
+    description: null,
+    color: SWATCHES[0],
+    accent: SWATCHES[0],
+    logo_url: null,
+    duration_min: 30,
+    buffer_before_min: 0,
+    buffer_after_min: 0,
+    min_notice_min: 240,
+    booking_horizon_days: 60,
+    capacity: 1,
+    redirect_url: "",
+    // The creator's own zone, so the first booking page is right without being
+    // touched. Falls back to the shortlist's first entry where Intl is absent.
+    timezone: (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || COMMON_TZ[0];
+      } catch {
+        return COMMON_TZ[0];
+      }
+    })(),
+    group_id: null,
+    theme: "light",
+    subtitle: "",
+    show_company_name: true,
+    // Phone, not Google Meet. `public-booking` only mints a real join URL for
+    // Zoom; its Google Meet branch just labels the null value "link to follow",
+    // so a brand-new preset defaulting to Meet would take a booking and give the
+    // guest no way in. Phone is also what `public-booking` itself falls back to
+    // (`cal.location_type ?? "phone"`), so this agrees with the booking page
+    // rather than quietly disagreeing with it. Connecting Google is optional and
+    // the owner can pick any method in "How to meet".
+    location_options: [{ type: "phone", value: null }],
+    intake_questions: [],
+    appointment_types: [],
+    date_overrides: [],
+    notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
+    assignment_strategy: { mode: "balanced" },
+  };
+}
+
+/* ------------------------------------------------------ the drop predicates
+ *
+ * ONE definition each, used by `buildCalendarPatch` to decide what is saved AND
+ * by the surface to warn that something will not be. They were previously only
+ * expressed as filters inside the patch builder, and every screen that wanted to
+ * warn had to re-state them by hand — which went wrong twice in this file's
+ * lifetime, in the same way both times: a summary reporting an item as
+ * configured moments before the save silently discarded it. A drop rule that
+ * lives in two places is a drop rule that will eventually disagree with itself.
+ */
+
+/** A question with no label is unanswerable; a choice with no options is unpickable. */
+export function willSaveQuestion(q: IntakeQuestion): boolean {
+  const isChoice = !!INTAKE_TYPES.find((t) => t.type === q.type)?.hasOptions;
+  return q.label.trim().length > 0 && !(isChoice && q.options.every((o) => !o.trim()));
+}
+
+/** A service with no name is unpickable on the booking page. */
+export function willSaveAppointmentType(t: AppointmentType): boolean {
+  return t.name.trim().length > 0;
+}
+
+/** A date needs a real date, and — unless it blocks the day — one usable window. */
+export function willSaveDateOverride(o: DateOverride): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(o.date)) return false;
+  return o.blocked || o.windows.some(willSaveWindow);
+}
+
+/** A window that ends before it starts closes the day it was meant to open. */
+export function willSaveWindow(w: { start: string; end: string }): boolean {
+  return /^\d{2}:\d{2}$/.test(w.start) && /^\d{2}:\d{2}$/.test(w.end) && w.end > w.start;
+}
+
+/**
  * Turn a draft into the row patch, applying every clamp and drop rule.
  *
  * The drops are not tidying — each one prevents a booking page that cannot be
@@ -520,7 +605,10 @@ export function buildCalendarPatch(draft: CalendarDraft, avail: AvailState) {
         };
       })
       .filter((q) => q.label.length > 0 && !(q._isChoice && q.options.length === 0))
-      .map(({ _isChoice, ...q }) => q),
+      .map(({ _isChoice, ...q }) => q)
+      // Belt and braces: the mapped filter above and `willSaveQuestion` must
+      // agree, and `config.test.ts` proves they do on the same inputs.
+      ,
     appointment_types: draft.appointment_types
       .map((t) => ({
         id: t.id,
@@ -529,7 +617,7 @@ export function buildCalendarPatch(draft: CalendarDraft, avail: AvailState) {
         duration_min: Math.max(5, Math.min(1440, t.duration_min || 30)),
         price_cents: t.price_cents != null && t.price_cents > 0 ? Math.round(t.price_cents) : null,
       }))
-      .filter((t) => t.name.length > 0),
+      .filter((_, i) => willSaveAppointmentType(draft.appointment_types[i])),
     date_overrides: draft.date_overrides
       .map((o) => ({
         date: o.date,
@@ -540,7 +628,10 @@ export function buildCalendarPatch(draft: CalendarDraft, avail: AvailState) {
               (w) => /^\d{2}:\d{2}$/.test(w.start) && /^\d{2}:\d{2}$/.test(w.end) && w.end > w.start,
             ),
       }))
-      .filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date) && (o.blocked || o.windows.length > 0)),
+      // The date rule is the predicate itself, applied to the DRAFT override so
+      // there is exactly one statement of it. (The map above only trims windows,
+      // so filtering before or after it selects the same overrides.)
+      .filter((_, i) => willSaveDateOverride(draft.date_overrides[i])),
     notify_config: draft.notify_config,
     assignment_strategy: draft.assignment_strategy,
   };

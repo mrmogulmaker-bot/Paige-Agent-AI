@@ -202,6 +202,62 @@ describe("Solo Settings rendered customer copy", () => {
     shellScrollOwner.remove();
   });
 
+  it("opens Calendars when the entry says the link came from Calendar", () => {
+    // The Calendar's "Manage calendar settings" exit carries origin=calendar.
+    // Landing on Communications after following it is how someone concludes the
+    // setting is not there, so the validated entry picks the segment.
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?origin=calendar&returnTo=%2Fsolo%2F1971670%2Fclients%2Fcalendar"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const text = renderedText(html);
+    expect(text).toContain("Booking presets");
+    expect(html).toMatch(/aria-selected="true"[^>]*>Calendars</);
+    // …and an ordinary visit still lands on Communications.
+    const plain = renderDestination("connections");
+    expect(renderedText(plain)).not.toContain("Booking presets");
+    expect(plain).toMatch(/aria-selected="true"[^>]*>Communications</);
+  });
+
+  it("opens Calendars when the OAuth return names that segment", () => {
+    // Which segment you were on is local state and never reaches the URL, so
+    // the return address carries it explicitly — otherwise the callback rebuilds
+    // Settings from the path alone and lands on Communications.
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=calendars"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(html).toMatch(/aria-selected="true"[^>]*>Calendars</);
+  });
+
+  it("ignores a segment the surface does not have, rather than rendering nothing", () => {
+    // The value arrives from a URL. Casting it would select no segment at all
+    // and paint an empty Connections page.
+    testState.tab = "connections";
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=nonsense"]}>
+        <Routes>
+          <Route path="/solo/:account/settings/:tab" element={<SoloSettings />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(html).toMatch(/aria-selected="true"[^>]*>Communications</);
+  });
+
+  it("pins the Connections sub-navigation so the context survives a long scroll", () => {
+    const css = readFileSync(path.resolve(process.cwd(), "src/solo/settings.css"), "utf8");
+    expect(css).toMatch(/\.ss-subnav\s*\{[^}]*position:\s*sticky/);
+    expect(css).toMatch(/\.ss-subnav\s*\{[^}]*background:\s*var\(--pg-canvas\)/);
+  });
+
   it("hides Settings scrollbar chrome without disabling scrolling", () => {
     const css = readFileSync(path.resolve(process.cwd(), "src/solo/settings.css"), "utf8");
     expect(css).toContain(".tcs-main--settings-scrollbar-hidden");

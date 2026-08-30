@@ -9,7 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_AVAIL, availToJson, buildCalendarPatch, draftFromRow, jsonToAvail,
+  DEFAULT_AVAIL, availToJson, blankDraft, buildCalendarPatch, draftFromRow, jsonToAvail,
+  willSaveDateOverride, willSaveQuestion, willSaveAppointmentType,
   normalizeLocationOptions, normalizeNotify, slugify, type CalendarDraft, type CalendarRow,
 } from "./config";
 
@@ -180,5 +181,72 @@ describe("draftFromRow", () => {
     expect(d.assignment_strategy.mode).toBe("balanced");
     expect(d.location_options).toEqual([{ type: "google_meet", value: null }]);
     expect(() => buildCalendarPatch(d, jsonToAvail(row.availability_json))).not.toThrow();
+  });
+});
+
+describe("blankDraft — the defaults a brand-new preset ships with", () => {
+  it("offers phone, not Google Meet, as the meeting method", () => {
+    // `public-booking` mints a real join URL for Zoom only; its Google Meet
+    // branch formats the null value as "link to follow". A new preset is meant
+    // to be shareable immediately, so defaulting to Meet would let it take a
+    // booking and give the guest no way in. Phone is also `public-booking`'s
+    // own fallback, so the two agree.
+    expect(blankDraft("Discovery call").location_options).toEqual([{ type: "phone", value: null }]);
+  });
+
+  it("produces a patch that survives every clamp and drop rule", () => {
+    const d = blankDraft("Discovery call");
+    const patch = buildCalendarPatch(d, DEFAULT_AVAIL);
+    expect(patch.title).toBe("Discovery call");
+    expect(patch.location_type).toBe("phone");
+    // A single method means it is stored as that method, not as "ask_invitee".
+    expect(patch.location_options).toEqual([{ type: "phone", value: null }]);
+    // Nothing a clamp would silently drop: no unanswerable question, no unnamed
+    // service, no date override that closes a day.
+    expect(patch.intake_questions).toEqual([]);
+    expect(patch.appointment_types).toEqual([]);
+    expect(patch.date_overrides).toEqual([]);
+  });
+
+  it("opens the week it ships with, so the first booking page can be booked", () => {
+    // `createCalendar` writes DEFAULT_AVAIL alongside this patch; a preset with
+    // every day closed would be a live link that never offers a slot.
+    const open = Object.values(jsonToAvail(availToJson(DEFAULT_AVAIL))).filter((day) => day.enabled);
+    expect(open.length).toBe(5);
+  });
+});
+
+describe("the drop predicates agree with what the save actually keeps", () => {
+  // These exist so a surface can warn BEFORE the save discards something. That
+  // only works while the two say the same thing, so this pins the equivalence
+  // rather than trusting that two hand-written rules stay in step.
+  const cases = [
+    { label: "a real date with a usable window", o: { date: "2026-09-01", blocked: false, windows: [{ start: "09:00", end: "12:00" }] } },
+    { label: "a real date whose window is inverted", o: { date: "2026-09-01", blocked: false, windows: [{ start: "14:00", end: "10:00" }] } },
+    { label: "a real date with no windows at all", o: { date: "2026-09-01", blocked: false, windows: [] } },
+    { label: "a blocked real date", o: { date: "2026-09-01", blocked: true, windows: [] } },
+    // "Add a date" creates exactly this, and it used to be counted as kept.
+    { label: "a blocked override with no date yet", o: { date: "", blocked: true, windows: [] } },
+    { label: "a malformed date", o: { date: "1/9/26", blocked: true, windows: [] } },
+  ];
+  for (const { label, o } of cases) {
+    it(`agrees on ${label}`, () => {
+      const patch = buildCalendarPatch(draft({ date_overrides: [o] }), DEFAULT_AVAIL);
+      expect(patch.date_overrides.length > 0).toBe(willSaveDateOverride(o));
+    });
+  }
+
+  it("agrees on an unnamed question, which the save discards", () => {
+    const q = { id: "q1", type: "short_text" as const, label: "  ", required: false, options: [], placeholder: null };
+    const patch = buildCalendarPatch(draft({ intake_questions: [q] }), DEFAULT_AVAIL);
+    expect(patch.intake_questions.length > 0).toBe(willSaveQuestion(q));
+    expect(willSaveQuestion(q)).toBe(false);
+  });
+
+  it("agrees on an unnamed service, which the save discards", () => {
+    const t = { id: "t1", name: "", description: "", duration_min: 30, price_cents: null };
+    const patch = buildCalendarPatch(draft({ appointment_types: [t] }), DEFAULT_AVAIL);
+    expect(patch.appointment_types.length > 0).toBe(willSaveAppointmentType(t));
+    expect(willSaveAppointmentType(t)).toBe(false);
   });
 });
