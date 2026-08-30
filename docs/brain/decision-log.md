@@ -509,3 +509,43 @@ Connections**, owned by a different lane — not a tab inside Connections. #640 
 `PROVIDERS` catalogue rather than relocating it, and a rendered test now asserts Connections
 carries no Integrations affordance. The visibility gap until that lane lands is called out on
 #640 under §58.
+
+## 2026-08-30 (later) — The platform capability pipeline, and six independent voice grants
+
+Owner-stated taxonomy, folded into `docs/doctrine/connections-rail-contract.md` §0a/§0b rather than
+into a second doc. It is a governing taxonomy and grants nothing — naming a stage does not create the
+authorization that stage requires.
+
+**Every Paige capability follows:** `Human → Read → Brain → Trust Compass → Write → Rail → Page`.
+Human sets goals/policies/approvals and keeps accountability · Read receives only tenant-safe, proven,
+scoped evidence · Brain derives understanding only from proven records · **Trust Compass decides, per
+tenant AND per capability, whether Paige may observe, prepare, request confirmation, or act, and must
+be server-enforced before autonomous action is claimed** · Write is tenant/account/capability/source/
+scope authorized, durable, attributable, idempotent, recoverable, fail-closed · Rail is durable safe
+evidence/provenance/authority/decisions/outcomes/recovery · Page is where humans understand, govern
+and intervene.
+
+**Voice is SIX independent capabilities, not one switch:** answer inbound · make outbound · sales
+qualification or booking · record/transcribe · write outcomes into client/lead/calendar/follow-up
+records · escalate to a human. A tenant may allow one without another. Recording is separate on
+purpose: it creates durable content about a third party who granted Paige nothing, so it is never a
+side effect of answering a phone.
+
+**§13 finding recorded in the same pass — the rail's never-list is not currently held.** A read of
+every writer of `paige_client_events` (the one rail; one write seam, `record_rail_event`) found FOUR
+emitters putting raw message text into `summary`, which is persisted and broadcast to staff:
+`handle-inbound-sms` (inbound SMS body), `send-message` (outbound body/subject), `paige-ai-chat` (the
+client's chat turn — the model's prompt input), and `customer_respond_to_action` (client free-text,
+untruncated). **All four pre-exist on `main`; none is introduced or changed by #640.** Filed as
+follow-up C-5; each needs its own §37 consumer inventory because `summary` is rendered to clients.
+
+**Two suspicions REFUTED, recorded so nobody re-derives them:** recordings/transcripts do NOT reach
+the rail — `twilio-status-callback` is not a rail writer, and `recording_url`/`transcript` go to
+dedicated columns on `messages`/`operator_messages` (the conversation store, different RLS, no
+broadcast); and no credential, secret, provider payload or model reasoning reaches the rail. The
+"never into PAIGE/Brain context" half IS held: both model-hydration paths project only `event_kind`,
+`title` and `occurred_at`. `paige_llm_trace` is the store that deliberately holds prompts/outputs and
+is not a rail.
+
+New follow-ups: **C-5** rail summary hygiene · **C-6** per-capability Trust Compass enforcement for
+the six voice grants (blocked on C-2, the clamp itself).
