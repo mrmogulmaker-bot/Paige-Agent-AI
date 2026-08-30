@@ -51,6 +51,7 @@ vi.mock("./data/useCalendarConnections", () => ({
 function seam(over: Record<string, unknown> = {}) {
   return {
     loading: false, error: null, empty: false, busy: null, errorMessage: null,
+    accountNumber: null,
     providers: {
       google_calendar_connected: false, google_email: null, google_last_sync_at: null,
       apple_caldav_connected: false, apple_last_sync_at: null, zoom_connected: false, zoom_email: null,
@@ -722,7 +723,7 @@ describe("creation during the identity window", () => {
   const THERE = "/solo/2000000/settings/connections";
 
   function mountRouted(over: Record<string, unknown> = {}) {
-    state.value = seam({ tenantId: "t1", ...over });
+    state.value = seam({ tenantId: "t1", accountNumber: 1971670, ...over });
     container = document.createElement("div");
     document.body.appendChild(container);
     function Surface() {
@@ -875,7 +876,7 @@ describe("identity safety — no callback may act or report for a departed accou
   }
 
   function mountRouted(over: Record<string, unknown> = {}) {
-    state.value = seam({ tenantId: "t1", ...over });
+    state.value = seam({ tenantId: "t1", accountNumber: 1971670, ...over });
     container = document.createElement("div");
     document.body.appendChild(container);
     function Surface() {
@@ -905,7 +906,7 @@ describe("identity safety — no callback may act or report for a departed accou
 
   /** The other account's data finally arrives. */
   const settleTenant = (over: Record<string, unknown>) => {
-    state.value = seam({ tenantId: "t2", ...over });
+    state.value = seam({ tenantId: "t2", accountNumber: 2000000, ...over });
   };
 
   const click = (re: RegExp) => act(() => {
@@ -1023,6 +1024,30 @@ describe("identity safety — no callback may act or report for a departed accou
       move();
       click(/Disconnect/);
       expect(disconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the tenant moving FIRST", () => {
+    it("recovers once the route catches up, instead of locking the surface out", () => {
+      // The order this guard used to assume was route-then-tenant. It is not
+      // guaranteed: `switchTenant` commits the tenant and leaves navigation to
+      // its caller, so the tenant can land first. The old reading recorded the
+      // NEW tenant as belonging to the OLD account and, because the tenant never
+      // changed again, stayed stale forever — editor hidden, create/connect/
+      // disconnect all refusing, until something remounted the surface.
+      const connect = vi.fn(async () => ({ ok: true, url: "https://accounts.example.test/o" }));
+
+      // Route still on 1971670 while the tenant has already moved to 2000000's.
+      mountRouted({ connect, tenantId: "t2", accountNumber: 2000000 });
+      expect(container.querySelector(".cc-preset-card")).toBeTruthy();
+      click(/Connect/);
+      expect(connect).not.toHaveBeenCalled();   // correctly refused: the pair disagrees
+
+      // The URL catches up. Nothing else changes — no remount, no second tenant
+      // change — and the surface must come back on its own.
+      move();
+      click(/Connect/);
+      expect(connect).toHaveBeenCalled();
     });
   });
 

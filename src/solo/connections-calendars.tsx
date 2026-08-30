@@ -368,70 +368,72 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
  * Who a Connections surface belongs to, and whether an answer that arrives
  * later still belongs to them.
  *
- * Two facts move independently. The ROUTE account changes the instant someone
- * navigates. The LOADED tenant only catches up once the tenant context resolves
- * and the hook re-reads, and in the gap between them the loaded id still names
- * the account being LEFT — so a guard built on either one alone waves through
- * exactly the results it exists to reject.
+ * The question is "does what I am showing belong to the account the URL names?",
+ * and it used to be answered by INFERENCE: the route and the loaded tenant have
+ * no identifier in common — a number against a uuid — so the account in force
+ * when the tenant last changed was recorded, and disagreement with the route
+ * meant stale. That reasoning holds only while the route moves first. It does
+ * not: `switchTenant` commits the tenant and leaves navigation to its caller, so
+ * a tenant switch moves them the other way round, records the NEW tenant as
+ * belonging to the OLD account, and then never changes again — leaving the
+ * surface permanently convinced it is stale, with the editor hidden and create,
+ * connect and disconnect all refusing, until something remounts it. An inference
+ * that cannot be re-derived does not recover.
  *
- * There is no common identifier to compare: the route carries an account
- * number, the hook a tenant uuid. So the account in force when the data last
- * SETTLED is recorded, and staleness is the disagreement between that and the
- * route now. It is computed during render rather than in an effect, so a
- * surface is never painted for the wrong account at all.
+ * So the hook no longer infers. `accountNumber` is the route address of the
+ * account whose rows are actually in state (§65), reported by the data hook
+ * beside the tenant id, and staleness is now a direct comparison against the
+ * route. It is computed from current values ONLY — no refs, no history, nothing
+ * to get stuck in — so whichever of the two moves first, the surface is stale
+ * exactly while they disagree and recovers by itself the moment they agree.
+ *
+ * A null address is "cannot tell", never "mismatch": failing open keeps an
+ * unresolvable case usable, where failing closed would reproduce the lock-out
+ * this rewrite exists to remove.
  *
  * Three readings, because three different questions get asked:
  *   `stale`        — render-time. Should this control be shown or enabled?
- *   `isStale()`    — call-time, BEFORE an await. May this act at all? A write
- *                    that has happened cannot be guarded afterwards, so this is
- *                    the only reading that can prevent one.
- *   `stillCurrent` — call-time, AFTER an await, against a token taken before
- *                    it. May this result be shown?
+ *   `isStale()`    — call-time, BEFORE an await. May this act at all? A write, a
+ *                    clipboard entry or a redirect that has happened cannot be
+ *                    guarded afterwards, so this is the only reading that can
+ *                    prevent one.
+ *   `stillCurrent` — call-time, AFTER an await, against a token taken before it.
+ *                    May this result be shown?
  *
- * `capture()`/`stillCurrent()` read refs, never props, because a callback that
- * suspended holds whichever values were current when it was created — which are
- * precisely the stale ones.
+ * The call-time readings go through a ref because a callback that suspended
+ * holds whichever values were current when it was created — precisely the stale
+ * ones.
  */
 type AccountToken = { account: string | undefined; tenantId: string | null };
 
-function useAccountIdentity(account: string | undefined, tenantId: string | null) {
-  const live = useRef<AccountToken>({ account, tenantId });
-  live.current = { account, tenantId };
+function useAccountIdentity(account: string | undefined, tenantId: string | null, accountNumber: number | null) {
+  const stale = Boolean(account && accountNumber !== null && String(accountNumber) !== account);
 
-  const settledUnder = useRef(account);
-  const lastSeenTenant = useRef(tenantId);
-  if (lastSeenTenant.current !== tenantId) {
-    lastSeenTenant.current = tenantId;
-    settledUnder.current = account;
-  }
-  const stale = settledUnder.current !== account;
+  const live = useRef({ account, tenantId, stale });
+  live.current = { account, tenantId, stale };
 
-  const isStale = useCallback(() => settledUnder.current !== live.current.account, []);
-  const capture = useCallback((): AccountToken => ({ ...live.current }), []);
+  const isStale = useCallback(() => live.current.stale, []);
+  const capture = useCallback((): AccountToken => (
+    { account: live.current.account, tenantId: live.current.tenantId }
+  ), []);
   const stillCurrent = useCallback((t: AccountToken) => (
     live.current.account === t.account
     && live.current.tenantId === t.tenantId
-    // Not merely unchanged, but SETTLED. Given the pre-await `isStale()` checks
-    // every caller here performs, this clause is provably redundant: a token
-    // can only be captured while settled, and if neither field moved then the
-    // tenant did not move, so the pair is still settled. It is kept anyway, and
-    // deliberately — this entire defect class exists because callbacks were
-    // added to this surface WITHOUT the guard, so the reading that costs
-    // nothing and still holds for a future caller who forgets the pre-check is
-    // the one worth keeping. Honest note: no test exercises it, because none
-    // can while every caller pre-checks.
-    && settledUnder.current === live.current.account
+    // Both unchanged AND the pair currently agrees. The first two alone would
+    // wave through a result captured during a window that has not resolved.
+    && !live.current.stale
   ), []);
 
-  return useMemo(() => ({ stale, isStale, capture, stillCurrent }),
-    [stale, isStale, capture, stillCurrent]);
+  return useMemo(() => ({ stale, isStale, capture, stillCurrent }), [stale, isStale, capture, stillCurrent]);
 }
+
+type AccountIdentity = ReturnType<typeof useAccountIdentity>;
 
 export function CalendarsView() {
   const conn = useCalendarConnections();
   /** The account on screen right now, readable from inside an older closure. */
   const params = useParams();
-  const identity = useAccountIdentity(params.account, conn.tenantId);
+  const identity = useAccountIdentity(params.account, conn.tenantId, conn.accountNumber);
   const identityStale = identity.stale;
   const location = useLocation();
   const account = params.account ?? "";
@@ -704,7 +706,7 @@ export function CalendarsView() {
 
   return (
     <div className="cc">
-      <ConnectedAccounts conn={conn} returnTo={returnHere} />
+      <ConnectedAccounts conn={conn} returnTo={returnHere} identity={identity} />
 
       <section className="cc-sec">
         <div className="cc-head">
@@ -880,17 +882,16 @@ function EmptyBody({ canWrite, onCreate, disabled }: { canWrite: boolean; onCrea
   );
 }
 
-function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCalendarConnections>; returnTo: string }) {
+function ConnectedAccounts({ conn, returnTo, identity }: { conn: ReturnType<typeof useCalendarConnections>; returnTo: string; identity: AccountIdentity }) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const p = conn.providers;
 
-  /**
-   * This panel is mounted OUTSIDE the editor's staleness gate — it is the first
-   * thing on the surface and never unmounts — so it carries its own identity
-   * and both of its callbacks must ask for themselves.
-   */
-  const identity = useAccountIdentity(useParams().account, conn.tenantId);
+  // The identity is handed DOWN rather than derived a second time here. This
+  // panel sits outside the editor's staleness gate and never unmounts, so both
+  // of its callbacks must ask the question — but two instances of the same
+  // reading are two things that can drift apart, and one of them remounting
+  // alone would be enough.
 
   const start = async (provider: "google" | "zoom") => {
     if (identity.isStale()) return;

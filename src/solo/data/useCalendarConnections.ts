@@ -113,6 +113,21 @@ export interface CalendarHost {
 export interface CalendarConnectionsState {
   /** Which account these rows belong to, so a switch can be told from a refresh. */
   tenantId: string | null;
+  /**
+   * The ROUTE address of the account these rows belong to (§65 `account_number`).
+   *
+   * `tenantId` is a uuid and the URL carries a number, so on their own the two
+   * cannot be compared — which is why a surface trying to tell "is what I am
+   * showing the account the URL names?" previously had to infer it from the
+   * ORDER the two changed in. That inference breaks whenever they move the other
+   * way round (a tenant switch commits before its navigation), and an inference
+   * that cannot be re-derived gets stuck. Reporting the address alongside the id
+   * makes the question answerable directly, from current values only.
+   *
+   * Null when the tenant is unresolved, or pre-dates the account_number
+   * migration; a null is "cannot tell", never "mismatch".
+   */
+  accountNumber: number | null;
   loading: boolean;
   error: string | null;
   /** Set when the calendars read succeeded but returned nothing. */
@@ -139,6 +154,7 @@ function firstMessage(...errors: (string | null | undefined)[]) {
 /** The shape an account starts from, and the shape a switch resets to. */
 const BLANK_STATE: CalendarConnectionsState = {
   tenantId: null,
+  accountNumber: null,
   loading: true,
   error: null,
   empty: false,
@@ -152,7 +168,14 @@ const BLANK_STATE: CalendarConnectionsState = {
 };
 
 export function useCalendarConnections() {
-  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { activeTenantId, activeTenant, loading: tenantLoading } = useTenantContext();
+  // Held in a ref, like `liveTenant` below and for the same reason: `load` closes
+  // over its dependencies, and this must be read at the moment the rows are
+  // stored rather than when the callback was built. Keeping it out of `load`'s
+  // deps also stops the address resolving a beat after the tenant from costing a
+  // second round trip for data that has not changed.
+  const liveAccountNumber = useRef(activeTenant?.account_number ?? null);
+  liveAccountNumber.current = activeTenant?.account_number ?? null;
   const gate = useRef(createSettingsRequestGate());
   // The tenant now on screen, readable from inside a closure that was captured
   // under a DIFFERENT one. `load` closes over `activeTenantId`, so a reload
@@ -174,7 +197,7 @@ export function useCalendarConnections() {
     // stayed. Same rule the canonical readiness read follows (§9).
     setState((s) => (s.tenantId === activeTenantId
       ? { ...s, loading: true, error: null }
-      : { ...BLANK_STATE, tenantId: activeTenantId, loading: true }));
+      : { ...BLANK_STATE, tenantId: activeTenantId, accountNumber: liveAccountNumber.current, loading: true }));
 
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? null;
@@ -195,6 +218,7 @@ export function useCalendarConnections() {
       if (!gate.current.isCurrent(token)) return;
       setState({
         tenantId: activeTenantId,
+        accountNumber: liveAccountNumber.current,
         loading: false,
         error: null,
         empty: true,
@@ -332,6 +356,7 @@ export function useCalendarConnections() {
 
     setState({
       tenantId: activeTenantId,
+      accountNumber: liveAccountNumber.current,
       loading: false,
       error: null,
       empty: calendars.length === 0,
