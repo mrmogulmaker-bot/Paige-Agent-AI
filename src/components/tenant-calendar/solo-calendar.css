@@ -276,6 +276,28 @@
 .sc-ev:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
 .sc-ev-time { flex: none; color: var(--pg-muted); font-family: var(--pg-font-data); font-size: 10px; }
 .sc-ev-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The compact state for the week grid. Hidden until the container query below swaps
+   it in — see the query for the measured reason it exists. */
+.sc-ev-compact {
+  display: none;
+  /* `min-width: 0` + `flex: 1 1 auto` and NOT `flex: none`: a non-shrinking span
+     spills past the chip's own border instead of fitting inside it, which is how the
+     first version of this overflowed by up to 16.9px at the 520px mount and still
+     measured "unclipped" — the span never clipped ITSELF. It shrinks now, and the
+     drive asserts overflow against the CHIP box, not the span. */
+  min-width: 0; flex: 1 1 auto;
+  overflow: hidden; text-overflow: ellipsis;
+  color: var(--pg-ink-2);
+  /* 10px, matching the surface's existing data-label size (.sc-ev-time) rather than
+     the chip's body size. Measured: a conflicted chip gives the label 29px once the
+     flag takes its share, and "2:30p" at body size needs 33px — it truncated to a
+     fragment. The minute is exactly what distinguishes the two halves of an overlap,
+     so shortening the text further was not an option; the data scale already existed. */
+  font-size: 10px;
+  font-family: var(--pg-font-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 /* .8, not .55. Measured with axe: at .55 the chip title resolved to 4.02:1 in Obsidian
    and 2.72:1 in Mineral, both under the 4.5:1 AA floor — a cancelled appointment is
    still information the tenant has to be able to read. The line-through, not the
@@ -360,6 +382,34 @@
   .sc-rail { display: none; }
   .sc-options-btn { display: inline-flex; }
 }
+/* Compact week chips.
+   MEASURED, not guessed. The chip's title needs 78px to render without clipping. In
+   the mount that actually holds this surface it gets: 177px at 1536, 123px at 1536
+   with PAIGE open, 153px at 1366, 99px at 1366+PAIGE, 104px at 1024, 116px at 900 —
+   all fine — but 79px at 1024+PAIGE (63px of title) and 61px at 900+PAIGE (45px of
+   title). Below roughly a 700px container the title stops being readable and starts
+   being a fragment cut mid-word, which is not a finished responsive state.
+
+   So under that width the chip states the one fact that still fits and is worth
+   reading in a grid: when it starts. The full title, time and status never leave —
+   they are the chip's aria-label (set explicitly in EventChip for exactly this
+   reason) and the booking drawer. The conflict flag is untouched at every width.
+
+   Both GRIDS, not the agenda. The month chip is worse than clipped at 520px — its
+   title resolves to a clientWidth of ZERO, invisible rather than truncated — and it
+   already renders `.sc-ev-time`, so it needs the title hidden but no stand-in. The
+   agenda's rows are 492px wide at that same frame and are deliberately untouched. */
+@container solo-calendar-mount (max-width: 700px) {
+  .sc-ev--grid .sc-ev-title { display: none; }
+  .sc-ev--compactable .sc-ev-compact { display: inline; }
+  /* Reclaim the chrome the label needs. Measured on a CONFLICTED chip at the 520px
+     mount: 61.3px of chip, less a 3px colour border, 1px border, 12px padding, a 5px
+     gap and an 11px flag, left 29.3px — and "2:30p" needs 30px. One pixel short, so
+     it ellipsised to "2:3…" and lost the minute, which is the only thing telling the
+     two halves of an overlap apart. This gives it 32.3px instead of squeaking by. */
+  .sc-ev--compactable { padding-left: 5px; padding-right: 5px; gap: 4px; }
+}
+
 @container solo-calendar-mount (max-width: 620px) {
   .sc-bar { gap: 7px; padding: 9px 11px; }
   .sc-cell { min-height: 74px; }

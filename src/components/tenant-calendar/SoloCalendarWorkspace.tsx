@@ -49,6 +49,25 @@ function offsetLabel(min: number): string {
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
+/** The compact time for a starved grid column: "9a", "10a", "2:30p", "12p".
+ *  Measured reason it is not just `timeLabel`: at a 520px mount the week chip is 61px
+ *  with ~49px of content box, and "10:00 AM" renders at 52.8px — it overflowed the
+ *  chip by 7.5px, and by 16.9px once a conflict flag shared the row. This drops the
+ *  space, the meridiem letter, and ":00" on the hour, which is what "concise" has to
+ *  mean at that width. It is derived from the same real start time, never a guess,
+ *  and the full "9:00 AM" is still in the chip's accessible name and the drawer. */
+function compactTimeLabel(iso: string) {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", hour12: true })
+    .formatToParts(d);
+  const get = (t: string) => parts.find((x) => x.type === t)?.value ?? "";
+  const hour = get("hour");
+  const minute = get("minute");
+  const meridiem = get("dayPeriod").trim().toLowerCase().charAt(0);
+  // A locale with no dayPeriod (24-hour) keeps hour:minute and simply has no suffix.
+  if (!meridiem) return minute === "00" ? hour : `${hour}:${minute}`;
+  return minute === "00" ? `${hour}${meridiem}` : `${hour}:${minute}${meridiem}`;
+}
 function hourLabel(h: number) {
   const d = new Date(); d.setHours(h, 0, 0, 0);
   return d.toLocaleTimeString(undefined, { hour: "numeric" });
@@ -693,20 +712,47 @@ interface ViewProps {
   onOpen: (b: SoloBooking) => void;
 }
 
-function EventChip({ b, conflict, color, onOpen, showTime = true }: {
-  b: SoloBooking; conflict: boolean; color: string; onOpen: (b: SoloBooking) => void; showTime?: boolean;
+function EventChip({ b, conflict, color, onOpen, showTime = true, grid = false }: {
+  b: SoloBooking; conflict: boolean; color: string; onOpen: (b: SoloBooking) => void;
+  showTime?: boolean;
+  /** True for the week and month GRIDS, whose columns get narrow; false for the agenda,
+   *  whose rows are 492px even at the tightest frame and need no compact treatment. */
+  grid?: boolean;
 }) {
+  /* The accessible name is stated EXPLICITLY rather than left to the visible text,
+     because the visible text is width-dependent: in the week grid below the compact
+     breakpoint the title is replaced by the start time (see .sc-ev-compact). A name
+     assembled from content would quietly shrink with the column. This one does not —
+     it carries the title, the time, and any status, at every width. */
+  const status = isOff(b) ? (b.status === "cancelled" ? "cancelled" : "no-show") : null;
+  const label = [
+    b.title,
+    timeLabel(b.start_at),
+    status,
+    conflict ? "overlaps another appointment on this host" : null,
+  ].filter(Boolean).join(" · ");
   return (
     <button
       type="button"
-      className={`sc-ev${isOff(b) ? " sc-ev--off" : ""}${conflict ? " sc-ev--conflict" : ""}`}
+      // Two independent marks. `sc-ev--grid` says this chip lives in a column that can
+      // get too narrow for a title (week and month, never the agenda). `sc-ev--compactable`
+      // says it has a compact stand-in to swap IN — only the week chip does, because the
+      // month chip already renders `.sc-ev-time`.
+      className={`sc-ev${grid ? " sc-ev--grid" : ""}${showTime ? "" : " sc-ev--compactable"}${isOff(b) ? " sc-ev--off" : ""}${conflict ? " sc-ev--conflict" : ""}`}
       style={{ ["--sc-ev-color" as string]: color }}
       onClick={() => onOpen(b)}
-      title={`${b.title} · ${timeLabel(b.start_at)}`}
+      title={label}
+      aria-label={label}
     >
       {conflict && <span className="sc-ev-flag"><TriangleAlert aria-hidden="true" /></span>}
       {showTime && <span className="sc-ev-time">{timeLabel(b.start_at)}</span>}
       <span className="sc-ev-title">{b.title}</span>
+      {/* Week-grid only. Below the compact breakpoint the column is too narrow for a
+          title to say anything — it clipped mid-word — so the chip states the one fact
+          that still fits and is worth reading at a glance: when it starts. Hidden by
+          default; the container query does the swap. Month and agenda already render
+          `.sc-ev-time`, so they are left alone. */}
+      {!showTime && <span className="sc-ev-compact" aria-hidden="true">{compactTimeLabel(b.start_at)}</span>}
     </button>
   );
 }
@@ -756,7 +802,7 @@ function WeekView({ cursor, bookings, today, conflicts, colorFor, onOpen, hours:
                 return (
                   <div className={`sc-hour-cell${cls}`} key={`${d.toISOString()}-${h}`}>
                     {slot.map((b) => (
-                      <EventChip key={b.id} b={b} conflict={conflicts.has(b.id)} color={colorFor(b)} onOpen={onOpen} showTime={false} />
+                      <EventChip key={b.id} b={b} conflict={conflicts.has(b.id)} color={colorFor(b)} onOpen={onOpen} showTime={false} grid />
                     ))}
                   </div>
                 );
@@ -796,7 +842,7 @@ function MonthView({ cursor, bookings, today, conflicts, colorFor, onOpen, onOpe
               >
                 <span className="sc-daynum">{d.getDate()}</span>
                 {shown.map((b) => (
-                  <EventChip key={b.id} b={b} conflict={conflicts.has(b.id)} color={colorFor(b)} onOpen={onOpen} />
+                  <EventChip key={b.id} b={b} conflict={conflicts.has(b.id)} color={colorFor(b)} onOpen={onOpen} grid />
                 ))}
                 {list.length > shown.length && (
                   // Opens the DAY, not the fourth booking. Pointing "+2 more" at one

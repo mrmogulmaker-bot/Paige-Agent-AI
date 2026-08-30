@@ -19,6 +19,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { SoloCalendarWorkspace } from "@/components/tenant-calendar/SoloCalendarWorkspace";
 import "@/index.css";
+// The production mount's own stylesheet, because it is what DECLARES the
+// `solo-calendar-mount` container the calendar's container queries resolve against.
+import "@/components/tenant-relationships/tenant-relationships-clients-workspace.css";
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") === "light" ? "light" : "dark";
@@ -40,12 +43,21 @@ const paigeOpen = params.get("paige") === "open";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <div style={{ height: "100vh", display: "grid", gridTemplateColumns: paigeOpen ? "minmax(0,1fr) 380px" : "minmax(0,1fr)", background: "var(--pg-canvas)" }}>
+      {/* The `trc-canonical-mount--direct` wrapper is NOT decoration — it is the element
+          that declares `container-name: solo-calendar-mount; container-type: inline-size`
+          (tenant-relationships-clients-workspace.css), which every container query in
+          solo-calendar.css resolves against. Mounting the calendar bare, as this harness
+          first did, left `container-type: normal` and silently disabled every one of
+          those queries, so a responsive rule could be "proven" in a frame where it had
+          never fired. This mirrors TenantRelationshipsClientsWorkspace's real markup. */}
       <div style={{ minWidth: 0, minHeight: 0, display: "grid" }}>
-        <SoloCalendarWorkspace
-          activeTenantId="harness-tenant"
-          connectionsHref="/solo/1/settings/integrations"
-          openPaige={() => undefined}
-        />
+        <div className="trc-canonical-mount trc-canonical-mount--direct" data-calendar-owner="clients">
+          <SoloCalendarWorkspace
+            activeTenantId="harness-tenant"
+            connectionsHref="/solo/1/settings/integrations"
+            openPaige={() => undefined}
+          />
+        </div>
       </div>
       {paigeOpen && (
         <aside style={{ minWidth: 0, borderLeft: "1px solid var(--pg-line)", background: "var(--pg-workspace)" }} aria-hidden="true" />

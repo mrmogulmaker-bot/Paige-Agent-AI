@@ -307,6 +307,83 @@ describe("Solo Calendar — no control is hidden at narrow widths", () => {
 // point: a Calendar-configured SMS reminder needs a channel Calendar does not own.
 // These tests pin that seam in BOTH directions, because the failure mode is a
 // standing link that quietly implies Connections owns scheduling.
+// The compact state is driven by a container query, which jsdom does not evaluate — so
+// these tests pin the two things that must be TRUE IN THE MARKUP for that query to be
+// able to do its job, and the rendered-browser drive proves the swap itself at every
+// required frame. Splitting it this way keeps each layer honest about what it can see.
+describe("Solo Calendar — the chip survives a narrow column", () => {
+  const withOne = () => {
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: "#2E7D8F", type: "meeting" })];
+    state.bookings = [booking({
+      id: "b1", title: "Quarterly planning session with the onboarding team",
+      start_at: todayAt(9), end_at: todayAt(10), calendar_id: "cal-1",
+    })];
+  };
+  const weekChip = () => container.querySelector<HTMLButtonElement>("button.sc-ev--grid.sc-ev--compactable");
+
+  it("names the chip explicitly, so the accessible name cannot shrink with the column", () => {
+    withOne();
+    mount();
+    const chip = weekChip()!;
+    // The visible text is width-dependent; the NAME is not. It must carry the title
+    // and the time whether or not the title is the thing on screen.
+    expect(chip.getAttribute("aria-label")).toMatch(/Quarterly planning session with the onboarding team/);
+    expect(chip.getAttribute("aria-label")).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/i);
+  });
+
+  it("carries a compact stand-in for the title in the week grid", () => {
+    withOne();
+    mount();
+    const chip = weekChip()!;
+    const compact = chip.querySelector(".sc-ev-compact");
+    expect(compact, "the week chip needs something to swap in when the column starves").toBeTruthy();
+    // It states the start time in the short form — "9a", "10a", "2:30p" — derived from
+    // the same real start_at, never a placeholder. Measured reason for the short form:
+    // "10:00 AM" overflowed the chip at the 520px mount, by 16.9px once a conflict flag
+    // shared the row. ":00" is dropped on the hour; the minute is kept when it matters.
+    expect(compact!.textContent).toMatch(/^\d{1,2}(:\d{2})?[ap]?$/i);
+    // The full, unabbreviated time stays on the accessible name.
+    expect(chip.getAttribute("aria-label")).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/i);
+    // and it is hidden from assistive tech, because the aria-label already says it.
+    expect(compact!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("marks week and month chips as grid chips, and leaves the agenda alone", () => {
+    withOne();
+    mount();
+    expect(weekChip(), "week chip should be a grid chip").toBeTruthy();
+
+    click(buttonByText(/^Month$/));
+    const monthChip = container.querySelector("button.sc-ev--grid");
+    expect(monthChip, "month chip should be a grid chip").toBeTruthy();
+    // The month chip already renders a time, so it needs no second stand-in.
+    expect(monthChip!.classList.contains("sc-ev--compactable")).toBe(false);
+    expect(monthChip!.querySelector(".sc-ev-time")).toBeTruthy();
+
+    click(buttonByText(/^Agenda$/));
+    // Agenda rows are 492px wide even at the tightest measured frame; compacting them
+    // would remove readable text for no reason.
+    expect(container.querySelector("button.sc-ev.sc-ev--grid")).toBeNull();
+    expect(container.querySelector("button.sc-ev")).toBeTruthy();
+  });
+
+  it("keeps the conflict flag and the cancelled state independent of the swap", () => {
+    state.calendars = [calendarMeta({ id: "cal-1", title: "Consults", color: "#2E7D8F", type: "meeting" })];
+    state.bookings = [
+      booking({ id: "x1", title: "One", start_at: todayAt(14), end_at: todayAt(15), calendar_id: "cal-1" }),
+      booking({ id: "x2", title: "Two", start_at: todayAt(14, 30), end_at: todayAt(15, 30), calendar_id: "cal-1" }),
+      booking({ id: "x3", title: "Gone", start_at: todayAt(11), end_at: todayAt(12), status: "cancelled", calendar_id: "cal-1" }),
+    ];
+    mount();
+    // Both halves of a real overlap stay flagged, and the flag is not part of the
+    // text that the compact treatment replaces.
+    expect(container.querySelectorAll("button.sc-ev--conflict .sc-ev-flag").length).toBe(2);
+    const off = container.querySelector("button.sc-ev--off");
+    expect(off, "a cancelled booking keeps its own state class").toBeTruthy();
+    expect(off!.getAttribute("aria-label")).toMatch(/cancelled/i);
+  });
+});
+
 describe("Solo Calendar — calendar settings stay Calendar-owned", () => {
   const withNotify = (notify_config: unknown) => {
     state.calendars = [calendarMeta({

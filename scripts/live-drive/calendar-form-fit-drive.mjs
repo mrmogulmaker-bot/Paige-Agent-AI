@@ -58,6 +58,38 @@ const measure = () => {
   const scrollers = [...document.querySelectorAll(".sc-root *")]
     .filter((el) => el.scrollHeight - el.clientHeight > 4 && getComputedStyle(el).overflowY !== "visible")
     .map((el) => (el.className || "").toString().split(" ")[0]);
+  // Chip legibility. Whatever a grid chip SHOWS must fit; a title clipped mid-word
+  // or collapsed to zero width is not a finished responsive state.
+  const vis = (el) => !!el && getComputedStyle(el).display !== "none";
+  const gridChips = [...document.querySelectorAll("button.sc-ev--grid")];
+  const chipReport = gridChips.map((c) => {
+    const t = c.querySelector(".sc-ev-title");
+    const k = c.querySelector(".sc-ev-compact");
+    const m = c.querySelector(".sc-ev-time");
+    const shown = vis(t) ? t : (vis(k) ? k : (vis(m) ? m : null));
+    const width = shown ? shown.clientWidth : 0;
+    // Overflow is measured against the CHIP's content box, not the span's own scroll
+    // width. A span with `flex: none` never clips ITSELF — it spills past its parent,
+    // which is exactly the defect the first version of this check reported as clean.
+    const cs = getComputedStyle(c);
+    const cr = c.getBoundingClientRect();
+    const inner = cr.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+    const spills = shown ? shown.getBoundingClientRect().right - inner : 0;
+    return {
+      spills: +spills.toFixed(1),
+      compactTruncated: vis(k) && k.scrollWidth > k.clientWidth + 0.5,
+      shows: vis(t) ? "title" : (vis(k) ? "compact" : (vis(m) ? "time" : "nothing")),
+      // LEGIBLE, not "never ellipsised". A long title trimmed with an ellipsis in a
+      // roomy chip is ordinary and fine; the defect is a starved chip showing a
+      // fragment. 44px is about seven characters at this size — below that the text
+      // has stopped saying anything and the compact treatment should have taken over.
+      illegible: shown ? (shown.scrollWidth > shown.clientWidth + 0.5 && width < 44) : true,
+      width,
+      named: (c.getAttribute("aria-label") || "").length > 0,
+    };
+  });
+  const railEl = document.querySelector(".sc-rail");
+  const railCollapsed = !railEl || getComputedStyle(railEl).display === "none";
   const cogEls = [...document.querySelectorAll("button.sc-cog")];
   const cogsVisible = cogEls.filter((el) => {
     const cs = getComputedStyle(el);
@@ -68,8 +100,22 @@ const measure = () => {
   const events = document.querySelectorAll("button.sc-ev").length;
   return {
     overflowX, overflowY, clipped, scrollers, hourCells, events,
-    cogs: cogEls.length, cogsVisible,
-    rootWidth: root ? Math.round(root.getBoundingClientRect().width) : 0,
+    chipShows: [...new Set(chipReport.map((c) => c.shows))].sort().join("+"),
+    chipsIllegible: chipReport.filter((c) => c.illegible).length,
+    chipsSpilling: chipReport.filter((c) => c.spills > 1).length,
+    compactTruncated: chipReport.filter((c) => c.compactTruncated).length,
+    worstSpillPx: chipReport.length ? Math.max(0, ...chipReport.map((c) => c.spills)) : 0,
+    narrowestChipText: chipReport.length ? Math.min(...chipReport.map((c) => c.width)) : 0,
+    chipsUnnamed: chipReport.filter((c) => !c.named).length,
+    chipsBlank: chipReport.filter((c) => c.width <= 0).length,
+    gridChips: chipReport.length,
+    cogs: cogEls.length, cogsVisible, railCollapsed,
+    rootWidth: (() => {
+      // The mount that DECLARES the container query context — the width every
+      // responsive rule in this surface actually resolves against.
+      const mount = document.querySelector(".trc-canonical-mount--direct") || root;
+      return mount ? Math.round(mount.getBoundingClientRect().width) : 0;
+    })(),
     bodyBg: getComputedStyle(document.body).backgroundColor,
     dataPg: de.getAttribute("data-pg"),
   };
@@ -125,11 +171,65 @@ for (const frame of FRAMES) {
       check(m.scrollers.length > 0, `${id}: no internal scroll owner`);
       // The cog is the only route to a calendar's configuration, so it must be
       // visible without a hover the user has no reason to attempt.
-      check(m.cogsVisible === m.cogs && m.cogs > 0, `${id}: per-calendar settings cog not visible`, `${m.cogsVisible}/${m.cogs}`);
+      // Below the rail breakpoint the rail is display:none BY DESIGN and every rail
+      // control — the settings cog included — moves into the View options drawer. That
+      // drawer path is asserted separately below; here the cog is only required to be
+      // visible when the rail itself is on screen.
+      if (!m.railCollapsed) {
+        check(m.cogsVisible === m.cogs && m.cogs > 0, `${id}: per-calendar settings cog not visible`, `${m.cogsVisible}/${m.cogs}`);
+      }
+      // Whatever the chip shows must be READABLE — never a fragment cut mid-word, and
+      // never an element collapsed to zero width, at any of the required frames.
+      check(m.chipsIllegible === 0, `${id}: grid chip text starved to a fragment`, `${m.chipsIllegible}/${m.gridChips}, narrowest ${m.narrowestChipText}px`);
+      // Text must sit INSIDE its chip. This is the check that catches a non-shrinking
+      // span painting over the chip border and the cell beside it.
+      check(m.chipsSpilling === 0, `${id}: grid chip text spills past the chip`, `${m.chipsSpilling}/${m.gridChips}, worst ${m.worstSpillPx}px`);
+      // The compact label is already the short form. Ellipsising it destroys the very
+      // detail it exists to carry (the minute that separates an overlap), so ANY
+      // truncation of it is a failure — no tolerance, unlike a long title.
+      check(m.compactTruncated === 0, `${id}: compact chip label truncated`, `${m.compactTruncated}/${m.gridChips}`);
+      check(m.chipsBlank === 0, `${id}: grid chip shows nothing`, `${m.chipsBlank}/${m.gridChips}`);
+      // The accessible name must survive the compact swap — it is where the full
+      // title, time and status live once the visible text is abbreviated.
+      check(m.chipsUnnamed === 0, `${id}: grid chip has no accessible name`, `${m.chipsUnnamed}/${m.gridChips}`);
+      // The swap is width-driven and must fire ONLY where it was measured to be
+      // needed: the two constrained mounts (644px and 520px), never the roomy ones.
+      const constrained = m.rootWidth <= 700;
+      check(
+        constrained ? m.chipShows === "compact" : m.chipShows === "title",
+        `${id}: wrong chip treatment at ${m.rootWidth}px mount`,
+        `shows ${m.chipShows}`,
+      );
       rows.push({ id, ...m, bodyBg: m.bodyBg });
       await ctx.close();
     }
   }
+}
+
+// The collapsed-rail path. Below the breakpoint the rail is gone, so the ONLY route to
+// a calendar's configuration is the View options drawer — if the cog did not travel
+// with the rail body, per-calendar settings would be unreachable at these widths.
+{
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/?theme=dark&data=dense&paige=open`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".sc-root");
+  const railGone = await page.evaluate(() => {
+    const r = document.querySelector(".sc-rail");
+    return !r || getComputedStyle(r).display === "none";
+  });
+  check(railGone, "900x1000+paige: rail expected to be collapsed at this width");
+  await page.getByRole("button", { name: /View options/i }).click();
+  await page.waitForSelector('[role="dialog"]');
+  await page.waitForTimeout(300);
+  const inDrawer = await page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"]');
+    const cogs = [...d.querySelectorAll("button.sc-cog")];
+    return cogs.filter((c) => getComputedStyle(c).display !== "none" && c.getBoundingClientRect().width > 0).length;
+  });
+  check(inDrawer > 0, "collapsed rail: settings cog unreachable in View options", `${inDrawer} visible`);
+  await page.screenshot({ path: path.join(OUT, "collapsed-rail-view-options.png") });
+  await ctx.close();
 }
 
 // Theme parity: the two themes must actually differ on the painted ground.
