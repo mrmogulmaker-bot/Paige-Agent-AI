@@ -414,7 +414,14 @@ function main() {
   try {
     for (const [label, sha] of [["base", baseSha], ["head", headSha]]) {
       const dir = path.join(tmp, label);
-      execFileSync("git", ["worktree", "add", "--detach", dir, sha], { cwd: repo, stdio: "inherit" });
+      // Captured, not inherited: checking out a 3000-file tree prints a progress line per
+      // percent, twice per run, which buries the verdict. A failure still throws with its
+      // stderr attached.
+      try {
+        execFileSync("git", ["worktree", "add", "--detach", dir, sha], { cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
+      } catch (e) {
+        throw new Error(`could not create the ${label} worktree at ${sha}: ${e.stderr ?? e.message ?? e}`);
+      }
       const got = git(dir, "rev-parse", "HEAD");
       if (got !== sha) {
         throw new Error(`${label} worktree resolved to ${got} but ${sha} was requested - refusing to grade an unbound tree`);
