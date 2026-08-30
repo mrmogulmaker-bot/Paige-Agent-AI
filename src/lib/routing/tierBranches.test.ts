@@ -158,13 +158,14 @@ describe("Sub-tab tree (§65 3-level, agency verified 2026-08-17)", () => {
 });
 
 describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", () => {
-  it("makes Settings the one visible Solo owner with the approved seven destinations", () => {
+  it("makes Settings the one visible Solo owner with the approved eight destinations", () => {
     const settings = branchBySlug("solo", "settings");
     expect(settings?.key).toBe("settings");
     expect(settings?.subtabs?.map(({ slug, label }) => [slug, label])).toEqual([
       ["setup", "Setup"],
       ["team", "Team"],
       ["connections", "Connections"],
+      ["integrations", "Integrations"],
       ["notifications", "Notifications"],
       ["security-data", "Security & data"],
       ["vault", "Vault"],
@@ -209,9 +210,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("growth")).toBe(6);
     expect(count("analytics")).toBe(6);
     expect(count("marketplace")).toBe(4);
-    expect(count("settings")).toBe(7);
+    expect(count("settings")).toBe(8);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(44);
+    expect(total).toBe(45);
     // first sub-tab is the screen's default (bare branch renders it).
     expect(defaultSubtabSlug("solo", "command-center")).toBe("systems-check");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
@@ -256,6 +257,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     }
     roundTrip("analytics", "market-watch", "mkt");
     roundTrip("settings", "connections", "connections");
+    roundTrip("settings", "integrations", "integrations");
     roundTrip("settings", "security-data", "security-data");
     roundTrip("settings", "billing", "billing");
     expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("The money");
