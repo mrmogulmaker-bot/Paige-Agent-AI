@@ -7,6 +7,30 @@
 
 BEGIN;
 
+CREATE TABLE IF NOT EXISTS public.paige_systems_check_signal_reference (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_digest text NOT NULL UNIQUE
+    CHECK (token_digest ~ '^[0-9a-f]{64}$'),
+  finding_id uuid NOT NULL
+    REFERENCES public.paige_systems_check_finding(id) ON DELETE CASCADE,
+  issued_to uuid NOT NULL,
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  CHECK (expires_at > issued_at)
+);
+
+CREATE INDEX IF NOT EXISTS paige_systems_check_signal_reference_actor_idx
+  ON public.paige_systems_check_signal_reference (issued_to, finding_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS paige_systems_check_signal_reference_expiry_idx
+  ON public.paige_systems_check_signal_reference (expires_at)
+  WHERE revoked_at IS NULL;
+
+ALTER TABLE public.paige_systems_check_signal_reference ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.paige_systems_check_signal_reference FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.paige_systems_check_signal_reference
+  FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.resolve_systems_check_signal_reference(
   p_account_number bigint,
   p_signal_ref text
@@ -27,6 +51,8 @@ DECLARE
   _coverage text;
   _safe_source text;
   _safe_category text;
+  _signal_kind text;
+  _signal_label text;
   _next_state text;
 BEGIN
   IF _actor_id IS NULL
@@ -85,12 +111,22 @@ BEGIN
 
   SELECT
     f.status,
+    f.check_id,
     reg.domain,
     reg.data_source,
     r.id AS run_id,
     r.check_count
     INTO _signal
     FROM public.paige_systems_check_finding f
+    JOIN public.paige_systems_check_signal_reference ref
+      ON ref.finding_id = f.id
+     AND ref.issued_to = _actor_id
+     AND ref.revoked_at IS NULL
+     AND ref.expires_at > now()
+     AND ref.token_digest = encode(
+       extensions.digest(convert_to(p_signal_ref, 'UTF8'), 'sha256'),
+       'hex'
+     )
     JOIN public.paige_systems_check_run r
       ON r.id = f.run_id
      AND r.tenant_id = f.tenant_id
@@ -98,10 +134,11 @@ BEGIN
       ON reg.check_id = f.check_id
    WHERE f.tenant_id = _tenant_id
      AND reg.scope = 'tenant'
+     AND reg.mvp_locked = true
+     AND reg.vertical_playbook_id IS NULL
      AND f.status IN ('pass', 'fail')
      AND f.resolved_at IS NULL
      AND f.resolution IS NULL
-     AND f.resolution_action_id IS NULL
      AND r.completed_at IS NOT NULL
      AND r.started_at <= r.completed_at
      AND r.completed_at <= now()
@@ -112,13 +149,6 @@ BEGIN
         WHERE latest.tenant_id = _tenant_id
         ORDER BY latest.started_at DESC, latest.created_at DESC, latest.id DESC
         LIMIT 1
-     )
-     AND p_signal_ref = 'scsig_v1_' || encode(
-       extensions.digest(
-         convert_to('systems-check-signal:v1:' || f.id::text, 'UTF8'),
-         'sha256'
-       ),
-       'hex'
      )
    LIMIT 1;
 
@@ -164,7 +194,26 @@ BEGIN
     ELSE 'unavailable'
   END;
 
-  IF _safe_source = 'unavailable' OR _safe_category = 'unavailable' THEN
+  SELECT mapped.signal_kind, mapped.signal_label
+    INTO _signal_kind, _signal_label
+    FROM (VALUES
+      ('comms_configured', 'communications_readiness', 'Communications readiness'),
+      ('website_connected', 'website_presence', 'Website presence'),
+      ('social_accounts_connected', 'social_presence_record', 'Social presence record'),
+      ('automation_wired', 'automation_readiness', 'Automation readiness'),
+      ('company_info_populated', 'business_profile', 'Business profile'),
+      ('crm_has_customers', 'customer_records', 'Customer records'),
+      ('sales_pipeline_configured', 'sales_pipeline', 'Sales pipeline'),
+      ('revenue_tracking_configured', 'revenue_tracking', 'Revenue tracking'),
+      ('payment_processor_connected', 'payment_readiness', 'Payment readiness'),
+      ('payment_method_options', 'payment_options', 'Payment options')
+    ) AS mapped(check_id, signal_kind, signal_label)
+   WHERE mapped.check_id = _signal.check_id;
+
+  IF _safe_source = 'unavailable'
+     OR _safe_category = 'unavailable'
+     OR _signal_kind IS NULL
+     OR _signal_label IS NULL THEN
     RAISE EXCEPTION USING
       ERRCODE = '42501',
       MESSAGE = 'SYSTEMS_CHECK_SIGNAL_UNAVAILABLE';
@@ -179,6 +228,8 @@ BEGIN
   RETURN jsonb_build_object(
     'signal_ref', p_signal_ref,
     'status', _signal.status,
+    'signal_kind', _signal_kind,
+    'signal_label', _signal_label,
     'category', _safe_category,
     'source', _safe_source,
     'freshness', 'current',
@@ -194,26 +245,42 @@ CREATE OR REPLACE FUNCTION public.issue_systems_check_signal_reference(
 )
 RETURNS text
 LANGUAGE plpgsql
-STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, extensions
 AS $$
 DECLARE
+  _actor_id uuid := auth.uid();
   _signal_ref text;
 BEGIN
-  IF auth.uid() IS NULL OR p_account_number IS NULL OR p_finding_id IS NULL THEN
+  IF _actor_id IS NULL OR p_account_number IS NULL OR p_finding_id IS NULL THEN
     RAISE EXCEPTION USING
       ERRCODE = '42501',
       MESSAGE = 'SYSTEMS_CHECK_SIGNAL_UNAVAILABLE';
   END IF;
 
-  _signal_ref := 'scsig_v1_' || encode(
-    extensions.digest(
-      convert_to('systems-check-signal:v1:' || p_finding_id::text, 'UTF8'),
-      'sha256'
-    ),
-    'hex'
+  -- Serialize replacement for one actor/source pair so concurrent issuance leaves
+  -- exactly one active handle and never exposes a plaintext token in storage.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_finding_id::text || ':' || _actor_id::text, 0)
   );
+
+  UPDATE public.paige_systems_check_signal_reference ref
+     SET revoked_at = now()
+   WHERE ref.finding_id = p_finding_id
+     AND ref.issued_to = _actor_id
+     AND ref.revoked_at IS NULL;
+
+  _signal_ref := 'scsig_v1_' || encode(extensions.gen_random_bytes(32), 'hex');
+
+  INSERT INTO public.paige_systems_check_signal_reference
+    (token_digest, finding_id, issued_to, expires_at)
+  VALUES
+    (
+      encode(extensions.digest(convert_to(_signal_ref, 'UTF8'), 'sha256'), 'hex'),
+      p_finding_id,
+      _actor_id,
+      now() + interval '15 minutes'
+    );
 
   -- Resolution performs the complete account, actor, tenant, freshness, lifecycle,
   -- and presentation-safety gate before a reference is issued.
@@ -232,8 +299,10 @@ GRANT EXECUTE ON FUNCTION public.issue_systems_check_signal_reference(bigint, uu
 GRANT EXECUTE ON FUNCTION public.resolve_systems_check_signal_reference(bigint, text)
   TO authenticated;
 
+COMMENT ON TABLE public.paige_systems_check_signal_reference IS
+  'Contract A ephemeral reference registry. Stores only a token digest, source finding link, actor, and lifecycle timestamps; no evidence, tenant duplicate, prompt, action, authority, or outcome data. No client role has table access.';
 COMMENT ON FUNCTION public.issue_systems_check_signal_reference(bigint, uuid) IS
-  'Contract A issuer. Returns an opaque digest-backed reference only after server-side active-account, tenant-role, current-run, freshness, unresolved-state, and safe-source validation. Performs no write.';
+  'Contract A issuer. Mints a 15-minute random actor-bound handle, stores only its digest, and returns it only after server-side active-account, tenant-role, current-run, freshness, unresolved-state, and safe-source validation. Writes reference lifecycle only; never mutates source truth or files an action/outcome.';
 COMMENT ON FUNCTION public.resolve_systems_check_signal_reference(bigint, text) IS
   'Contract A resolver. Returns only a fixed presentation-safe structural allowlist. Never returns raw Systems Check evidence, prompts, interpretations, drafted fixes, errors, internal IDs, or model metadata; performs no write.';
 
