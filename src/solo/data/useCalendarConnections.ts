@@ -168,14 +168,30 @@ const BLANK_STATE: CalendarConnectionsState = {
 };
 
 export function useCalendarConnections() {
-  const { activeTenantId, activeTenant, loading: tenantLoading } = useTenantContext();
-  // Held in a ref, like `liveTenant` below and for the same reason: `load` closes
-  // over its dependencies, and this must be read at the moment the rows are
-  // stored rather than when the callback was built. Keeping it out of `load`'s
-  // deps also stops the address resolving a beat after the tenant from costing a
-  // second round trip for data that has not changed.
-  const liveAccountNumber = useRef(activeTenant?.account_number ?? null);
-  liveAccountNumber.current = activeTenant?.account_number ?? null;
+  const { activeTenantId, tenants, loading: tenantLoading } = useTenantContext();
+
+  /**
+   * The route address of ONE named tenant — not of whoever is active now.
+   *
+   * This distinction is the whole point. A load is scoped to the `activeTenantId`
+   * its callback closed over, and it can finish after the active tenant has moved
+   * on. Reading the CURRENT address at that moment would stamp the departing
+   * account's rows with the arriving account's address, and a stamp that
+   * disagrees with its own rows is worse than none: the guard downstream compares
+   * that address with the route, would find them equal, and would conclude the
+   * pairing is current — exposing an editor over another account's data, which is
+   * exactly what the address was added to prevent.
+   *
+   * So both halves of the stamp are derived from the SAME id at the same moment,
+   * and cannot disagree by construction. Reading the roster through a ref keeps
+   * this out of `load`'s dependencies, so the address resolving a beat after the
+   * tenant costs no second round trip.
+   */
+  const liveTenants = useRef(tenants);
+  liveTenants.current = tenants;
+  const addressFor = useCallback((id: string | null) => (
+    id ? liveTenants.current.find((t) => t.id === id)?.account_number ?? null : null
+  ), []);
   const gate = useRef(createSettingsRequestGate());
   // The tenant now on screen, readable from inside a closure that was captured
   // under a DIFFERENT one. `load` closes over `activeTenantId`, so a reload
@@ -197,7 +213,7 @@ export function useCalendarConnections() {
     // stayed. Same rule the canonical readiness read follows (§9).
     setState((s) => (s.tenantId === activeTenantId
       ? { ...s, loading: true, error: null }
-      : { ...BLANK_STATE, tenantId: activeTenantId, accountNumber: liveAccountNumber.current, loading: true }));
+      : { ...BLANK_STATE, tenantId: activeTenantId, accountNumber: addressFor(activeTenantId), loading: true }));
 
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? null;
@@ -218,7 +234,7 @@ export function useCalendarConnections() {
       if (!gate.current.isCurrent(token)) return;
       setState({
         tenantId: activeTenantId,
-        accountNumber: liveAccountNumber.current,
+        accountNumber: addressFor(activeTenantId),
         loading: false,
         error: null,
         empty: true,
@@ -356,7 +372,7 @@ export function useCalendarConnections() {
 
     setState({
       tenantId: activeTenantId,
-      accountNumber: liveAccountNumber.current,
+      accountNumber: addressFor(activeTenantId),
       loading: false,
       error: null,
       empty: calendars.length === 0,
@@ -368,7 +384,9 @@ export function useCalendarConnections() {
       readiness,
       canWrite: !adminRead.error && adminRead.data === true,
     });
-  }, [activeTenantId]);
+    // `addressFor` is stable (empty deps, reads a ref), so naming it here costs
+    // no extra reload and keeps the lint honest rather than silenced.
+  }, [activeTenantId, addressFor]);
 
   useEffect(() => {
     const activeGate = gate.current;
@@ -561,9 +579,12 @@ export function useCalendarConnections() {
     if (error || (data as { error?: string } | null)?.error) {
       return { ok: false as const, message: error?.message ?? "Could not disconnect" };
     }
-    await load();
+    // Guarded like every other reload here (see `liveTenant`): a disconnect that
+    // finishes after the account moved on must not pull the departing account's
+    // rows back into a surface that has already relabelled itself.
+    if (liveTenant.current === activeTenantId) await load();
     return { ok: true as const };
-  }, [load]);
+  }, [load, activeTenantId]);
 
   const loading = tenantLoading || state.loading;
   return useMemo(
