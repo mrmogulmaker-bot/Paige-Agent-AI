@@ -7,7 +7,7 @@ describe("Marketplace scroll ownership", () => {
     const app = readFileSync(resolve(process.cwd(), "src/solo/SoloApp.tsx"), "utf8");
     const css = readFileSync(resolve(process.cwd(), "src/solo/marketplace.css"), "utf8");
     expect(app).toMatch(/const full=[^;]*route==='market'/);
-    expect(css).toMatch(/\.mk-body\{[^}]*overflow:auto/s);
+    expect(css).toMatch(/\.mk-body\{[^}]*overflow-y:auto[^}]*overflow-x:hidden/s);
     expect(css).not.toMatch(/\.mk-workspace\{[^}]*overflow:auto/s);
   });
 });
