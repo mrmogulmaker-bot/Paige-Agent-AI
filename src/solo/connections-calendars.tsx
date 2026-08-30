@@ -364,45 +364,75 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
 
 /* ------------------------------------------------------------ the surface */
 
+/**
+ * Who a Connections surface belongs to, and whether an answer that arrives
+ * later still belongs to them.
+ *
+ * Two facts move independently. The ROUTE account changes the instant someone
+ * navigates. The LOADED tenant only catches up once the tenant context resolves
+ * and the hook re-reads, and in the gap between them the loaded id still names
+ * the account being LEFT — so a guard built on either one alone waves through
+ * exactly the results it exists to reject.
+ *
+ * There is no common identifier to compare: the route carries an account
+ * number, the hook a tenant uuid. So the account in force when the data last
+ * SETTLED is recorded, and staleness is the disagreement between that and the
+ * route now. It is computed during render rather than in an effect, so a
+ * surface is never painted for the wrong account at all.
+ *
+ * Three readings, because three different questions get asked:
+ *   `stale`        — render-time. Should this control be shown or enabled?
+ *   `isStale()`    — call-time, BEFORE an await. May this act at all? A write
+ *                    that has happened cannot be guarded afterwards, so this is
+ *                    the only reading that can prevent one.
+ *   `stillCurrent` — call-time, AFTER an await, against a token taken before
+ *                    it. May this result be shown?
+ *
+ * `capture()`/`stillCurrent()` read refs, never props, because a callback that
+ * suspended holds whichever values were current when it was created — which are
+ * precisely the stale ones.
+ */
+type AccountToken = { account: string | undefined; tenantId: string | null };
+
+function useAccountIdentity(account: string | undefined, tenantId: string | null) {
+  const live = useRef<AccountToken>({ account, tenantId });
+  live.current = { account, tenantId };
+
+  const settledUnder = useRef(account);
+  const lastSeenTenant = useRef(tenantId);
+  if (lastSeenTenant.current !== tenantId) {
+    lastSeenTenant.current = tenantId;
+    settledUnder.current = account;
+  }
+  const stale = settledUnder.current !== account;
+
+  const isStale = useCallback(() => settledUnder.current !== live.current.account, []);
+  const capture = useCallback((): AccountToken => ({ ...live.current }), []);
+  const stillCurrent = useCallback((t: AccountToken) => (
+    live.current.account === t.account
+    && live.current.tenantId === t.tenantId
+    // Not merely unchanged, but SETTLED. Given the pre-await `isStale()` checks
+    // every caller here performs, this clause is provably redundant: a token
+    // can only be captured while settled, and if neither field moved then the
+    // tenant did not move, so the pair is still settled. It is kept anyway, and
+    // deliberately — this entire defect class exists because callbacks were
+    // added to this surface WITHOUT the guard, so the reading that costs
+    // nothing and still holds for a future caller who forgets the pre-check is
+    // the one worth keeping. Honest note: no test exercises it, because none
+    // can while every caller pre-checks.
+    && settledUnder.current === live.current.account
+  ), []);
+
+  return useMemo(() => ({ stale, isStale, capture, stillCurrent }),
+    [stale, isStale, capture, stillCurrent]);
+}
+
 export function CalendarsView() {
   const conn = useCalendarConnections();
   /** The account on screen right now, readable from inside an older closure. */
   const params = useParams();
-  /**
-   * Who the surface belongs to right now, as two independent facts.
-   *
-   * The ROUTE account changes the instant someone navigates. The LOADED tenant
-   * only catches up once the tenant context resolves and the hook re-reads, and
-   * in the gap between them the loaded id still names the account being left —
-   * so a guard built on it alone would wave through exactly the results it
-   * exists to reject. Both are captured, and either moving is enough.
-   */
-  const liveIdentity = useRef({ account: params.account, tenantId: conn.tenantId });
-  liveIdentity.current = { account: params.account, tenantId: conn.tenantId };
-
-  /**
-   * Whether the rows on screen belong to the account the URL now names.
-   *
-   * The route moves first and the data follows, so between them `conn.tenantId`,
-   * `calendars`, `draft` and `canWrite` all still describe the account being
-   * LEFT — and `conn.loading` is false, because the hook has not been told yet.
-   * Guarding the callbacks was not enough: the editor is itself a writer, and
-   * its Save and Live controls carry the old calendar's id, so a click in that
-   * window edits the account someone just navigated away from.
-   *
-   * There is no common identifier to compare — the route carries an account
-   * number, the hook a tenant uuid — so the account in force when the data last
-   * settled is recorded, and staleness is the disagreement between that and the
-   * route now. Computed during render, not in an effect, so the editor is never
-   * painted for the wrong account at all.
-   */
-  const settledUnder = useRef(params.account);
-  const lastSeenTenant = useRef(conn.tenantId);
-  if (lastSeenTenant.current !== conn.tenantId) {
-    lastSeenTenant.current = conn.tenantId;
-    settledUnder.current = params.account;
-  }
-  const identityStale = settledUnder.current !== params.account;
+  const identity = useAccountIdentity(params.account, conn.tenantId);
+  const identityStale = identity.stale;
   const location = useLocation();
   const account = params.account ?? "";
 
@@ -486,7 +516,8 @@ export function CalendarsView() {
     setSaving(true);
     const desired = slugify(slugInput);
     const body = desired && desired !== selected.slug ? { ...patch, slug: desired } : patch;
-    const startedUnder = { ...liveIdentity.current, calendar: selected.id };
+    const token = identity.capture();
+    const editing = selected.id;
     const result = await conn.saveCalendar(selected.id, body as Record<string, unknown>);
     // Always, whoever the result belongs to — the flag is local to this surface
     // and a request that never clears it leaves the editor read-only forever.
@@ -510,11 +541,7 @@ export function CalendarsView() {
      * looking at, in either direction: neither the success nor the failure is
      * about anything on their screen.
      */
-    const now = liveIdentity.current;
-    if (now.account !== startedUnder.account
-      || now.tenantId !== startedUnder.tenantId
-      || liveSelected.current !== startedUnder.calendar
-      || settledUnder.current !== now.account) return;
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
     if (!result.ok) { setNotice({ tone: "bad", text: result.message }); return; }
     // From the row that was actually stored, not the draft that was sent. The
     // patch clamps and drops — an unnamed question, an unusable date override —
@@ -522,7 +549,7 @@ export function CalendarsView() {
     // database about what exists, moments after saying the save worked.
     hydrate(result.row);
     setNotice({ tone: "info", text: "Saved. The public page now uses these settings." });
-  }, [selected, patch, slugInput, conn, hydrate]);
+  }, [selected, patch, slugInput, conn, hydrate, identity]);
 
   const jumpTo = useCallback((key: AreaKey) => {
     setOpen((o) => ({ ...o, [key]: true }));
@@ -546,14 +573,6 @@ export function CalendarsView() {
   }, []);
 
   const create = useCallback(async (title: string) => {
-    // The account this create belongs to — route AND loaded tenant, because
-    // they move at different times (see `liveIdentity`). The hook already
-    // refuses to reload a departed account, but that guard is inside the hook:
-    // this caller writes its OWN state, and publishing a title, a notice and a
-    // selected id here would show the new account a success for a calendar
-    // absent from its list and select an id belonging to the old one. Fixing
-    // the hook was not enough; every writer of account-scoped state needs the
-    // same question asked, against an identity that is actually current.
     // Checked BEFORE anything is created: the new calendar becomes the selection,
     // and the hydration effect would replace the current draft with it. Guarding
     // the preset cards left this second route to the same silent loss.
@@ -572,11 +591,10 @@ export function CalendarsView() {
     // calendar `createCalendar` has already inserted into the account being
     // left. A write that has happened cannot be guarded after the fact; the
     // only working guard is the one that declines to make it.
-    if (settledUnder.current !== liveIdentity.current.account) return false;
-    const startedUnder = liveIdentity.current;
+    if (identity.isStale()) return false;
+    const token = identity.capture();
     const r = await conn.createCalendar(title);
-    const now = liveIdentity.current;
-    if (now.account !== startedUnder.account || now.tenantId !== startedUnder.tenantId) return false;
+    if (!identity.stillCurrent(token)) return false;
     if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return false; }
     // Select what was just made and open its Details, so naming it lands you
     // straight in the thing you now have to configure.
@@ -590,7 +608,7 @@ export function CalendarsView() {
       ? { tone: "info", text: `“${r.row.title}” is live — its booking link is ready to share.` }
       : { tone: "warn", text: `“${r.row.title}” was created as a draft. Switch it to Live when you are ready to take bookings.` });
     return true;
-  }, [conn]);
+  }, [conn, identity]);
 
   /**
    * Switching presets is a navigation, and it used to be a silent delete.
@@ -616,13 +634,40 @@ export function CalendarsView() {
   }, [selected?.id]);
 
   const copyLink = useCallback(async (slug: string) => {
+    // Refused before the write, not after it. The harm here is not a misplaced
+    // notice but the clipboard itself: `slug` belongs to the account being
+    // left, so a copy that goes through hands someone a working booking link
+    // for a calendar that is not on their screen — and they will paste it.
+    if (identity.isStale()) return;
+    const token = identity.capture();
     try {
       await navigator.clipboard.writeText(bookingUrl(slug));
-      setNotice({ tone: "info", text: "Booking link copied." });
     } catch {
-      setNotice({ tone: "warn", text: "Your browser blocked the copy — select the link and copy it manually." });
+      if (identity.stillCurrent(token)) {
+        setNotice({ tone: "warn", text: "Your browser blocked the copy — select the link and copy it manually." });
+      }
+      return;
     }
-  }, []);
+    if (!identity.stillCurrent(token)) return;
+    setNotice({ tone: "info", text: "Booking link copied." });
+  }, [identity]);
+
+  /**
+   * Flipping a preset between Live and Draft.
+   *
+   * Hoisted out of the JSX it used to be written inline in, because an inline
+   * arrow cannot be guarded without repeating the guard at the call site, and
+   * an unguarded one writes A's failure into B: the toggle cannot be CLICKED
+   * while the route is stale (the editor is hidden), but it can be clicked the
+   * instant before and land the instant after.
+   */
+  const toggleLive = useCallback(async (v: boolean) => {
+    if (!selected || identity.isStale()) return;
+    const token = identity.capture();
+    const r = await conn.setEnabled(selected.id, v);
+    if (!identity.stillCurrent(token)) return;
+    if (!r.ok) setNotice({ tone: "bad", text: r.message });
+  }, [selected, conn, identity]);
 
   const ro = !conn.canWrite || saving;
   const hosts = selected ? conn.hosts[selected.id] ?? [] : [];
@@ -736,10 +781,7 @@ export function CalendarsView() {
             issues={issues.map(([key, s]) => ({ key, title: AREA_META.find((a) => a.key === key)!.title, ...s }))}
             onJump={jumpTo}
             onCopy={() => copyLink(selected.slug)}
-            onToggleLive={async (v) => {
-              const r = await conn.setEnabled(selected.id, v);
-              if (!r.ok) setNotice({ tone: "bad", text: r.message });
-            }}
+            onToggleLive={toggleLive}
           />
 
           {!conn.canWrite && (
@@ -843,19 +885,41 @@ function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCale
   const [error, setError] = useState<string | null>(null);
   const p = conn.providers;
 
+  /**
+   * This panel is mounted OUTSIDE the editor's staleness gate — it is the first
+   * thing on the surface and never unmounts — so it carries its own identity
+   * and both of its callbacks must ask for themselves.
+   */
+  const identity = useAccountIdentity(useParams().account, conn.tenantId);
+
   const start = async (provider: "google" | "zoom") => {
+    if (identity.isStale()) return;
     setPending(provider); setError(null);
     // The return address is handed over BEFORE the browser leaves, so the
     // callback lands back here instead of on the role-default page.
+    const token = identity.capture();
     const r = await conn.connect(provider, returnTo);
+    // Always, whoever the answer belongs to: `pending` disables every Connect
+    // and Disconnect control on this panel, so a request that never clears it
+    // leaves the account someone IS looking at unable to connect anything.
     setPending(null);
+    // Nothing below may run for a departed account, and the redirect is the
+    // reason the check is here rather than only around `setError`: `returnTo`
+    // was built from the address being left, so sending the browser into an
+    // OAuth handshake now would hand a provider the wrong account's return
+    // path and land the person back on a surface they had navigated away from.
+    if (!identity.stillCurrent(token)) return;
     if (!r.ok) { setError(r.message); return; }
     window.location.href = r.url;
   };
+
   const drop = async (provider: "google" | "zoom") => {
+    if (identity.isStale()) return;
     setPending(provider); setError(null);
+    const token = identity.capture();
     const r = await conn.disconnect(provider);
     setPending(null);
+    if (!identity.stillCurrent(token)) return;
     if (!r.ok) setError(r.message);
   };
 

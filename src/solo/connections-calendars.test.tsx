@@ -832,3 +832,217 @@ describe("creation during the identity window", () => {
     expect(text()).not.toMatch(/The public page now uses these settings/i);
   });
 });
+
+/**
+ * Identity safety across every async callback on this surface.
+ *
+ * The class these cover: a callback captures account-scoped context, awaits,
+ * and then writes state, launches a flow, or touches the clipboard without
+ * asking whether the answer still belongs to the account on screen. The route
+ * account changes the instant someone navigates; the loaded tenant only catches
+ * up when the hook re-reads. Anything resolving in or after that gap reports
+ * account A's outcome into account B.
+ *
+ * Every test drives the REAL navigation rather than remounting. A remount
+ * resets the ref the whole guard is built on, so a remount-based test passes
+ * with no guard at all and proves nothing.
+ */
+describe("identity safety — no callback may act or report for a departed account", () => {
+  const HERE = "/solo/1971670/settings/connections";
+  const THERE = "/solo/2000000/settings/connections";
+
+  /** Swap `window.location` for a recorder, so a redirect is observable. */
+  function captureRedirects() {
+    const original = Object.getOwnPropertyDescriptor(window, "location");
+    const seen: string[] = [];
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { get href() { return ""; }, set href(v: string) { seen.push(v); } },
+    });
+    return {
+      seen,
+      restore: () => {
+        if (original) Object.defineProperty(window, "location", original);
+      },
+    };
+  }
+
+  /** A promise whose resolution this test controls. */
+  function deferred<T>() {
+    let settle: (v: T) => void = () => {};
+    const promise = new Promise<T>((res) => { settle = res; });
+    return { promise, settle: (v: T) => settle(v) };
+  }
+
+  function mountRouted(over: Record<string, unknown> = {}) {
+    state.value = seam({ tenantId: "t1", ...over });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    function Surface() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <CalendarsView />
+          <button type="button" data-move onClick={() => navigate(THERE)}>move</button>
+        </>
+      );
+    }
+    act(() => {
+      createRoot(container).render(
+        <MemoryRouter initialEntries={[HERE]}>
+          <Routes>
+            <Route path="/solo/:account/settings/connections" element={<Surface />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+  }
+
+  // The route moves. The tenant does NOT — that gap is the whole defect.
+  const move = () => act(() => {
+    container.querySelector<HTMLButtonElement>("button[data-move]")?.click();
+  });
+
+  /** The other account's data finally arrives. */
+  const settleTenant = (over: Record<string, unknown>) => {
+    state.value = seam({ tenantId: "t2", ...over });
+  };
+
+  const click = (re: RegExp) => act(() => {
+    [...container.querySelectorAll("button")].find((b) => re.test(b.textContent ?? ""))?.click();
+  });
+
+  describe("copy link", () => {
+    it("does not announce a copy that finished after the account changed", async () => {
+      const write = deferred<void>();
+      const clipboard = { writeText: vi.fn(() => write.promise) };
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+
+      mountRouted();
+      click(/^\s*Copy\s*$/);
+      expect(clipboard.writeText).toHaveBeenCalled();
+      move();
+      settleTenant({});
+      await act(async () => { write.settle(); });
+
+      expect(text()).not.toMatch(/Booking link copied/i);
+    });
+  });
+
+  describe("live toggle", () => {
+    it("does not report a failed flip into the account that inherited the screen", async () => {
+      const flip = deferred<{ ok: boolean; message: string }>();
+      const setEnabled = vi.fn(() => flip.promise);
+      mountRouted({ setEnabled });
+
+      act(() => { container.querySelector<HTMLButtonElement>(".cc-toggle, [role=switch]")?.click(); });
+      move();
+      await act(async () => { flip.settle({ ok: false, message: "Could not switch this calendar." }); });
+
+      expect(text()).not.toMatch(/Could not switch this calendar/i);
+    });
+  });
+
+  describe("connected accounts — connect", () => {
+    it("never launches the provider handshake for the account being left", async () => {
+      // The redirect is the sharpest edge in the whole class: `returnTo` was
+      // built from the departing address, so going through would hand the
+      // provider the wrong account's return path.
+      const loc = captureRedirects();
+      const handshake = deferred<{ ok: boolean; url: string }>();
+      const connect = vi.fn(() => handshake.promise);
+      try {
+        mountRouted({ connect });
+        click(/Connect/);
+        expect(connect).toHaveBeenCalled();
+        move();
+        await act(async () => { handshake.settle({ ok: true, url: "https://accounts.example.test/o/oauth2" }); });
+
+        expect(loc.seen).toEqual([]);
+      } finally {
+        loc.restore();
+      }
+    });
+
+    it("refuses to start a handshake at all once the route has already moved", async () => {
+      // This panel is mounted OUTSIDE the editor's staleness gate and never
+      // unmounts, so unlike the editor's controls it is still clickable during
+      // the window. The refusal has to happen before the call, not after it.
+      const connect = vi.fn(async () => ({ ok: true, url: "https://accounts.example.test/o/oauth2" }));
+      mountRouted({ connect });
+      move();
+      click(/Connect/);
+      expect(connect).not.toHaveBeenCalled();
+    });
+
+    it("does not show the departing account's connect failure, and leaves the panel usable", async () => {
+      const handshake = deferred<{ ok: boolean; message: string }>();
+      const connect = vi.fn(() => handshake.promise);
+      mountRouted({ connect });
+      click(/Connect/);
+      move();
+      await act(async () => { handshake.settle({ ok: false, message: "Google refused the handshake." }); });
+
+      expect(text()).not.toMatch(/Google refused the handshake/i);
+      // Cleanup still ran: a `pending` that never clears disables every control
+      // on this panel, so the account someone IS on could connect nothing.
+      const connects = [...container.querySelectorAll("button")].filter((b) => /Connect/.test(b.textContent ?? ""));
+      expect(connects.length).toBeGreaterThan(0);
+      expect(connects.every((b) => b.disabled)).toBe(false);
+    });
+  });
+
+  describe("connected accounts — disconnect", () => {
+    it("does not show the departing account's disconnect failure", async () => {
+      const drop = deferred<{ ok: boolean; message: string }>();
+      const disconnect = vi.fn(() => drop.promise);
+      mountRouted({
+        disconnect,
+        providers: {
+          google_calendar_connected: true, google_email: "ops@example.test", google_last_sync_at: null,
+          apple_caldav_connected: false, apple_last_sync_at: null, zoom_connected: false, zoom_email: null,
+        },
+      });
+      click(/Disconnect/);
+      expect(disconnect).toHaveBeenCalled();
+      move();
+      await act(async () => { drop.settle({ ok: false, message: "Could not disconnect Google." }); });
+
+      expect(text()).not.toMatch(/Could not disconnect Google/i);
+    });
+
+    it("refuses to disconnect at all once the route has already moved", () => {
+      const disconnect = vi.fn(async () => ({ ok: true }));
+      mountRouted({
+        disconnect,
+        providers: {
+          google_calendar_connected: true, google_email: "ops@example.test", google_last_sync_at: null,
+          apple_caldav_connected: false, apple_last_sync_at: null, zoom_connected: false, zoom_email: null,
+        },
+      });
+      move();
+      click(/Disconnect/);
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("delayed tenant settlement", () => {
+    it("stays refused for as long as the tenant lags, then works again once it lands", () => {
+      // The window is defined by the DISAGREEMENT, not by elapsed time: it
+      // persists exactly as long as the loaded tenant names the old account.
+      const connect = vi.fn(async () => ({ ok: true, url: "https://accounts.example.test/o" }));
+      mountRouted({ connect });
+      move();
+      click(/Connect/);
+      expect(connect).not.toHaveBeenCalled();
+
+      // The new account's data arrives; the surface is coherent again.
+      settleTenant({ connect });
+      act(() => {
+        container.querySelector<HTMLButtonElement>("button[data-move]")?.click();
+      });
+      click(/Connect/);
+      expect(connect).toHaveBeenCalled();
+    });
+  });
+});
