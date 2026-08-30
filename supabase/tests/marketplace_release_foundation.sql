@@ -7,12 +7,9 @@ BEGIN;
 SELECT plan(61);
 
 SELECT ok(
-  has_function_privilege('authenticated', 'public.marketplace_release_catalog()', 'EXECUTE'),
-  'authenticated callers can reach the catalogue body gate'
-);
-SELECT ok(
-  has_function_privilege('authenticated', 'public.marketplace_release_detail(text)', 'EXECUTE'),
-  'authenticated callers can reach the detail body gate'
+  has_function_privilege('authenticated', 'public.marketplace_release_catalog()', 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.marketplace_release_detail(text)', 'EXECUTE'),
+  'authenticated callers can reach both catalogue and detail body gates'
 );
 SELECT ok(
   NOT has_function_privilege('anon', 'public.marketplace_release_catalog()', 'EXECUTE')
@@ -65,17 +62,18 @@ VALUES
   ('81000000-0000-0000-0000-000000001111', 'market-contract-a', 'Market Contract A', 'active', 'standalone', 'MCA', 9100001, '{}'::jsonb),
   ('82000000-0000-0000-0000-000000002222', 'market-contract-b', 'Market Contract B', 'active', 'standalone', 'MCB', 9200002, '{}'::jsonb);
 
+INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
+  ('81000000-0000-0000-0000-000000001111', '81000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
+  ('81000000-0000-0000-0000-000000001111', '81000000-0000-0000-0000-000000000002', 'member', 'active', false, now()),
+  ('82000000-0000-0000-0000-000000002222', '82000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
+
+-- Active account context is only valid after the canonical membership exists.
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('81000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000001111'),
   ('81000000-0000-0000-0000-000000000002', '81000000-0000-0000-0000-000000001111'),
   ('82000000-0000-0000-0000-000000000001', '82000000-0000-0000-0000-000000002222'),
   ('83000000-0000-0000-0000-000000000001', NULL)
 ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
-
-INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
-  ('81000000-0000-0000-0000-000000001111', '81000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
-  ('81000000-0000-0000-0000-000000001111', '81000000-0000-0000-0000-000000000002', 'member', 'active', false, now()),
-  ('82000000-0000-0000-0000-000000002222', '82000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
 
 SELECT set_config('request.jwt.claims', '{"sub":"83000000-0000-0000-0000-000000000001","role":"service_role"}', true);
 
