@@ -61,7 +61,7 @@ function seam(over: Record<string, unknown> = {}) {
     hostsError: null,
     readiness: READY,
     canWrite: true,
-    refresh: vi.fn(), saveCalendar: vi.fn(), setEnabled: vi.fn(), connect: vi.fn(), disconnect: vi.fn(),
+    refresh: vi.fn(), createCalendar: vi.fn(), saveCalendar: vi.fn(), setEnabled: vi.fn(), connect: vi.fn(), disconnect: vi.fn(),
     ...over,
   };
 }
@@ -393,5 +393,107 @@ describe("what the surface must not silently destroy or misreport", () => {
     // Reporting it as no open hours would send someone to fix a working calendar.
     mount({ calendars: [calendar({ availability_json: [] })] });
     expect(text()).not.toMatch(/no open hours/i);
+  });
+});
+
+describe("the OAuth return address is only stored for the journey that reads it", () => {
+  const clickConnect = (label: RegExp) => {
+    const card = [...container.querySelectorAll(".cc-acct")].find((a) => label.test(a.textContent ?? ""));
+    act(() => { card?.querySelector<HTMLButtonElement>("button.cc-btn")?.click(); });
+  };
+
+  it("hands Google a return path, because its callback is a page in this app that reads one", () => {
+    const connect = vi.fn().mockResolvedValue({ ok: false, message: "harness: no handshake" });
+    mount({ connect });
+    clickConnect(/Google Calendar/);
+    expect(connect).toHaveBeenCalledWith("google", expect.stringContaining("/settings/connections"));
+  });
+
+  it("hands Zoom the same path, and the seam decides not to store it", () => {
+    // The surface does not know which callbacks consume an address — the data
+    // seam does. This asserts the surface keeps passing it, so the decision has
+    // exactly one home; `useCalendarConnections` is where Zoom is excluded.
+    const connect = vi.fn().mockResolvedValue({ ok: false, message: "harness: no handshake" });
+    mount({ connect });
+    clickConnect(/Zoom/);
+    expect(connect).toHaveBeenCalledWith("zoom", expect.stringContaining("/settings/connections"));
+  });
+});
+
+describe("jumping to an area never depends on a browser-only method", () => {
+  it("moves focus to the area it opens even where scrollIntoView does not exist", async () => {
+    // jsdom implements neither scrollIntoView nor smooth scrolling. An unguarded
+    // call here throws two animation frames after the click, from inside a frame
+    // callback no test can catch — so the guard is asserted, not assumed.
+    mount({ hosts: {} });
+    const issue = container.querySelector<HTMLButtonElement>(".cc-issue");
+    expect(issue).toBeTruthy();
+    act(() => { issue?.click(); });
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    });
+    // The area opened and its own trigger took focus.
+    const team = [...container.querySelectorAll<HTMLElement>(".cc-area")]
+      .find((a) => /Team & hosts/.test(a.textContent ?? ""));
+    expect(team?.dataset.open).toBe("true");
+    expect(document.activeElement).toBe(team?.querySelector(".cc-area-t"));
+  });
+});
+
+describe("a booking preset can actually be created", () => {
+  // jsdom does not implement form submission, so clicking a type="submit" button
+  // never fires onSubmit there. Real browsers do (and that is what gives the
+  // field Enter-to-create), so the event is dispatched directly — the same
+  // pattern the existing phone-search test uses.
+  const submitNewPreset = () =>
+    container.querySelector("form.cc-new")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+
+  const typeInto = (el: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setter.call(el, value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+
+  it("offers the control in the empty state that promises it", () => {
+    // The empty copy says creating one gives you a public link straight away.
+    // Before this, it said that and offered nothing — the surface could not
+    // create the thing it exists to manage.
+    mount({ empty: true, calendars: [] });
+    expect(text()).toMatch(/gives you a public link straight away/i);
+    expect(byText(/New preset/)).toBeTruthy();
+  });
+
+  it("creates from a name alone, then selects what it made", async () => {
+    const created = calendar({ id: "cal-new", title: "Strategy session", slug: "strategy-session-ab12" });
+    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: created });
+    mount({ createCalendar, calendars: [calendar(), created] });
+
+    act(() => { byText(/New preset/)?.click(); });
+    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    expect(field).toBeTruthy();
+    typeInto(field!, "Strategy session");
+    await act(async () => { submitNewPreset(); });
+
+    expect(createCalendar).toHaveBeenCalledWith("Strategy session");
+    expect(text()).toMatch(/is live — its booking link is ready to share/i);
+    // The new one is now the selected preset, with its Details open to configure.
+    expect(text()).toMatch(/Strategy session/);
+  });
+
+  it("reports a failed creation instead of pretending it worked", async () => {
+    const createCalendar = vi.fn().mockResolvedValue({ ok: false, message: "That booking link is already taken — try a different name." });
+    mount({ createCalendar });
+    act(() => { byText(/New preset/)?.click(); });
+    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    typeInto(field!, "Discovery call");
+    await act(async () => { submitNewPreset(); });
+    expect(text()).toMatch(/already taken/i);
+  });
+
+  it("does not offer creation to an account that cannot write", () => {
+    mount({ canWrite: false });
+    expect(byText(/New preset/)?.disabled).toBe(true);
   });
 });

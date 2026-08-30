@@ -476,6 +476,51 @@ export interface CalendarDraft {
 }
 
 /**
+ * A brand-new calendar, before anyone has configured anything.
+ *
+ * These are working defaults, not placeholders: a preset created from this is
+ * immediately bookable — a weekday week, a half-hour slot, a confirmation and a
+ * day-ahead reminder. That matters because a new calendar goes live on creation,
+ * so anything left unset here would be a public page that cannot take a booking.
+ */
+export function blankDraft(title: string): CalendarDraft {
+  return {
+    type: "personal",
+    title: title.trim(),
+    description: null,
+    color: SWATCHES[0],
+    accent: SWATCHES[0],
+    logo_url: null,
+    duration_min: 30,
+    buffer_before_min: 0,
+    buffer_after_min: 0,
+    min_notice_min: 240,
+    booking_horizon_days: 60,
+    capacity: 1,
+    redirect_url: "",
+    // The creator's own zone, so the first booking page is right without being
+    // touched. Falls back to the shortlist's first entry where Intl is absent.
+    timezone: (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || COMMON_TZ[0];
+      } catch {
+        return COMMON_TZ[0];
+      }
+    })(),
+    group_id: null,
+    theme: "light",
+    subtitle: "",
+    show_company_name: true,
+    location_options: [{ type: "google_meet", value: null }],
+    intake_questions: [],
+    appointment_types: [],
+    date_overrides: [],
+    notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
+    assignment_strategy: { mode: "balanced" },
+  };
+}
+
+/**
  * Turn a draft into the row patch, applying every clamp and drop rule.
  *
  * The drops are not tidying — each one prevents a booking page that cannot be

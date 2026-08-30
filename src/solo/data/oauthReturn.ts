@@ -46,6 +46,19 @@ export function rememberOAuthReturn(path: string): void {
   }
 }
 
+/**
+ * Drop a stored return path without reading it. Used when the handshake that
+ * would have consumed it never starts, so an address for a journey that was
+ * abandoned cannot be picked up by an unrelated later one.
+ */
+export function clearOAuthReturn(): void {
+  try {
+    window.sessionStorage.removeItem(KEY);
+  } catch {
+    // Storage unavailable — there was nothing to clear.
+  }
+}
+
 /** Read the stored return path once, clearing it whether or not it was usable. */
 export function takeOAuthReturn(): string | null {
   let raw: string | null = null;

@@ -5,7 +5,7 @@
  * never become a redirect.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { isSafeReturnPath, rememberOAuthReturn, takeOAuthReturn } from "./oauthReturn";
+import { clearOAuthReturn, isSafeReturnPath, rememberOAuthReturn, takeOAuthReturn } from "./oauthReturn";
 
 const KEY = "paige.oauth.return";
 
@@ -67,5 +67,19 @@ describe("remember / take", () => {
   it("survives unreadable storage without throwing", () => {
     window.sessionStorage.setItem(KEY, "not json");
     expect(takeOAuthReturn()).toBeNull();
+  });
+});
+
+describe("clear", () => {
+  beforeEach(() => window.sessionStorage.clear());
+
+  it("drops a stored path without reading it", () => {
+    rememberOAuthReturn("/solo/1971670/settings/connections");
+    clearOAuthReturn();
+    expect(takeOAuthReturn()).toBeNull();
+  });
+
+  it("is safe to call when nothing was stored", () => {
+    expect(() => clearOAuthReturn()).not.toThrow();
   });
 });

@@ -42,7 +42,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import {
   CalendarCheck, CalendarDays, CalendarX2, ChevronRight, Copy, ExternalLink,
   Info, Link2, Loader2, Plus, RefreshCw, Trash2, TriangleAlert,
-  Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown,
+  Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown, CalendarPlus,
 } from "lucide-react";
 import {
   type AvailState, type CalendarDraft, type CalendarRow, type NotifyConfig,
@@ -274,6 +274,56 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
   }
 }
 
+/**
+ * Creating a preset. Name it and it exists — live, bookable, hosted by you, with
+ * working defaults — and the ten areas below are how you shape it from there.
+ *
+ * A name is all that is asked for because everything else has a sane default and
+ * is editable in place; demanding a form up front would put a wall in front of
+ * the one thing this surface exists to let someone do.
+ */
+function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promise<void>; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+
+  const submit = async () => {
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    await onCreate(title);
+    setSaving(false);
+    setTitle("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <Btn size="s" onClick={() => setOpen(true)} disabled={disabled}>
+        <CalendarPlus aria-hidden /> New preset
+      </Btn>
+    );
+  }
+  return (
+    <form className="cc-new" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+      <input
+        ref={inputRef} className="cc-in" value={title} disabled={saving}
+        aria-label="Name for the new booking preset" placeholder="Discovery call"
+        onChange={(e) => setTitle(e.target.value)}
+        // Escape backs out without creating anything, and returns focus to the
+        // control that opened this.
+        onKeyDown={(e) => { if (e.key === "Escape") { setTitle(""); setOpen(false); } }}
+      />
+      <Btn kind="act" type="submit" size="s" disabled={saving || !title.trim()}>
+        {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarPlus aria-hidden />} Create
+      </Btn>
+      <Btn kind="ghost" size="s" onClick={() => { setTitle(""); setOpen(false); }} disabled={saving}>Cancel</Btn>
+    </form>
+  );
+}
+
 /* ------------------------------------------------------------ the surface */
 
 export function CalendarsView() {
@@ -346,11 +396,32 @@ export function CalendarsView() {
     setOpen((o) => ({ ...o, [key]: true }));
     // Two frames: one for the open state to commit, one for layout to settle, so
     // the scroll lands on the expanded plate rather than its collapsed height.
+    //
+    // `scrollIntoView` is feature-detected rather than assumed. It always exists
+    // in a browser, but this runs a full two frames after the click — long enough
+    // to land in a torn-down or non-browser environment (jsdom does not implement
+    // it), where an unguarded call throws from inside a frame callback that no
+    // test can catch. Moving focus is the part that actually matters for
+    // keyboard users, so it happens either way.
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      areaRefs.current[key]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      areaRefs.current[key]?.querySelector<HTMLButtonElement>(".cc-area-t")?.focus({ preventScroll: true });
+      const area = areaRefs.current[key];
+      if (!area) return;
+      if (typeof area.scrollIntoView === "function") {
+        area.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      area.querySelector<HTMLButtonElement>(".cc-area-t")?.focus({ preventScroll: true });
     }));
   }, []);
+
+  const create = useCallback(async (title: string) => {
+    const r = await conn.createCalendar(title);
+    if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return; }
+    // Select what was just made and open its Details, so naming it lands you
+    // straight in the thing you now have to configure.
+    setSelectedId(r.row.id);
+    setOpen({ details: true });
+    setNotice({ tone: "info", text: `“${r.row.title}” is live — its booking link is ready to share.` });
+  }, [conn]);
 
   const copyLink = useCallback(async (slug: string) => {
     try {
@@ -392,6 +463,7 @@ export function CalendarsView() {
               who hosts it, and what happens after. Changes here take effect on the live link.
             </p>
           </div>
+          {!conn.loading && !conn.error && <NewPreset onCreate={create} disabled={!conn.canWrite || conn.busy === "new"} />}
         </div>
 
         {conn.loading ? <LoadingBody /> : conn.error ? (
@@ -400,7 +472,7 @@ export function CalendarsView() {
             <Btn kind="ghost" size="s" onClick={conn.refresh}><RefreshCw aria-hidden /> Retry</Btn>
           </Notice>
         ) : conn.empty ? (
-          <EmptyBody />
+          <EmptyBody canWrite={conn.canWrite} onCreate={create} busy={conn.busy === "new"} />
         ) : (
           <div className="cc-presets" role="tablist" aria-label="Booking presets">
             {conn.calendars.map((c) => (
@@ -524,7 +596,7 @@ function LoadingBody() {
   );
 }
 
-function EmptyBody() {
+function EmptyBody({ canWrite, onCreate, busy }: { canWrite: boolean; onCreate: (title: string) => Promise<void>; busy: boolean }) {
   return (
     <div className="cc-empty">
       <CalendarDays aria-hidden />
@@ -534,6 +606,9 @@ function EmptyBody() {
         happens after. Creating one gives you a public link straight away. Connecting a calendar
         account above is separate; you can do either first.
       </p>
+      {/* The copy above promises creation, so the control that does it belongs
+          here rather than only in the header the reader has scrolled past. */}
+      {canWrite && <div className="cc-empty-act"><NewPreset onCreate={onCreate} disabled={busy} /></div>}
     </div>
   );
 }

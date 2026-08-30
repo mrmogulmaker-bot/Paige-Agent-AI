@@ -29,8 +29,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
-import { SELECT_COLS, type CalendarRow } from "@/lib/calendar/config";
-import { rememberOAuthReturn } from "./oauthReturn";
+import {
+  DEFAULT_AVAIL, SELECT_COLS, availToJson, blankDraft, buildCalendarPatch, randomSuffix, slugify,
+  type CalendarRow,
+} from "@/lib/calendar/config";
+import { clearOAuthReturn, rememberOAuthReturn } from "./oauthReturn";
 
 /**
  * `tenant_phone_numbers`, `tenant_a2p_registrations` and the two tenant helper
@@ -350,6 +353,81 @@ export function useCalendarConnections() {
     return { ok: true as const, row: saved };
   }, []);
 
+  /**
+   * Create a booking preset, live and bookable from the moment it exists.
+   *
+   * Two things here are not optional, and both are carried over from the builder
+   * this surface replaced rather than re-invented (§18):
+   *
+   *  1. THE CREATOR IS REGISTERED AS A HOST. A calendar with no host has no
+   *     availability to offer, so its public page cannot be booked. Creating one
+   *     without a host produces a live link that is broken on arrival.
+   *  2. A FAILED HOST INSERT ROLLS THE CALENDAR BACK. There is no way to add a
+   *     host from this surface, so a calendar that loses this race would be
+   *     permanently unbookable and unrepairable here. Deleting it is better than
+   *     leaving that behind, and the delete is tenant-scoped so it can only ever
+   *     remove the row we just wrote (§9).
+   *
+   * The slug carries a random suffix because booking links are unique across the
+   * platform: two workspaces both creating "Discovery call" must not collide.
+   */
+  const createCalendar = useCallback(async (title: string) => {
+    const name = title.trim();
+    if (!name) return { ok: false as const, message: "Give the calendar a name first." };
+    if (!activeTenantId) return { ok: false as const, message: "No active workspace — pick one first." };
+
+    setBusy("new");
+    const draft = blankDraft(name);
+    const patch = buildCalendarPatch(draft, DEFAULT_AVAIL);
+    const slug = `${slugify(name) || "calendar"}-${randomSuffix()}`;
+
+    const { data, error } = await supabase
+      .from("calendars")
+      .insert({
+        ...patch,
+        tenant_id: activeTenantId,
+        slug,
+        // Live on creation: the defaults above are a working configuration, so
+        // the link is ready to share. Flip it to Draft to take it off the air.
+        enabled: true,
+        availability_json: availToJson(DEFAULT_AVAIL),
+      } as never)
+      .select(SELECT_COLS)
+      .single();
+
+    if (error || !data) {
+      setBusy(null);
+      const conflict = (error as { code?: string } | null)?.code === "23505";
+      return {
+        ok: false as const,
+        message: conflict ? "That booking link is already taken — try a different name." : (error?.message ?? "Could not create the calendar"),
+      };
+    }
+
+    const created = data as unknown as CalendarRow;
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id ?? null;
+    const hostError = uid
+      ? (await supabase.from("calendar_hosts").insert({ calendar_id: created.id, user_id: uid, priority: 0 })).error
+      : { message: "no-session" };
+
+    if (hostError) {
+      // Roll back rather than leave a live link nobody can book (see above).
+      await supabase.from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId);
+      setBusy(null);
+      return {
+        ok: false as const,
+        message: uid
+          ? "Couldn't finish setting the calendar up, so nothing was created. Please try again."
+          : "Your session expired — sign in again and retry.",
+      };
+    }
+
+    setBusy(null);
+    await load();
+    return { ok: true as const, row: created };
+  }, [activeTenantId, load]);
+
   /** Flip a calendar between Live and Draft. Draft means the link stops accepting bookings. */
   const setEnabled = useCallback(async (id: string, enabled: boolean) => {
     setBusy(id);
@@ -370,12 +448,26 @@ export function useCalendarConnections() {
     // Remembered BEFORE the browser leaves, so the callback can put the person
     // back on the surface they started from instead of the role-default landing
     // the callback has always used. Same-origin paths only (see oauthReturn).
-    if (returnTo) rememberOAuthReturn(returnTo);
+    //
+    // GOOGLE ONLY, and that is the whole point. Google returns through a page in
+    // this app, which reads the address. Zoom does NOT: `zoom-oauth-callback` is
+    // an edge function that 302s the browser straight to its own role-based
+    // destination, so a path stored for Zoom is never consumed — it just sits
+    // there. And it would not sit there harmlessly: `CalendarConnectorsPanel`
+    // starts its own Google connect WITHOUT a return path, so its callback would
+    // find the orphaned Zoom-era address and honour it, sending that person to a
+    // surface they were not on. An address is stored only for the journey that
+    // reads it. Giving Zoom a real return path needs a change to its edge
+    // function, which is tracked separately.
+    const consumesReturn = provider === "google";
+    if (returnTo && consumesReturn) rememberOAuthReturn(returnTo);
     const fn = provider === "google" ? "google-calendar-oauth-start" : "zoom-oauth-start";
     const { data, error } = await supabase.functions.invoke(fn, { body: { origin: window.location.origin } });
     setBusy(null);
     const url = (data as { authorization_url?: string } | null)?.authorization_url;
     if (error || !url) {
+      // The handshake never started, so nothing will ever read the address.
+      if (returnTo && consumesReturn) clearOAuthReturn();
       return { ok: false as const, message: error?.message ?? "That connection is not switched on yet." };
     }
     return { ok: true as const, url };
@@ -395,8 +487,8 @@ export function useCalendarConnections() {
 
   const loading = tenantLoading || state.loading;
   return useMemo(
-    () => ({ ...state, loading, busy, refresh: load, saveCalendar, setEnabled, connect, disconnect,
+    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, setEnabled, connect, disconnect,
              errorMessage: firstMessage(state.error, state.providersError) }),
-    [state, loading, busy, load, saveCalendar, setEnabled, connect, disconnect],
+    [state, loading, busy, load, createCalendar, saveCalendar, setEnabled, connect, disconnect],
   );
 }
