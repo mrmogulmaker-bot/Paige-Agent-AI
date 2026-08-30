@@ -72,15 +72,17 @@ VALUES
   ('c3000000-0000-0000-0000-000000003333', 'signal-contract-stale', 'Signal Contract Stale', 'active', 'standalone', 'SCS', 7300003, '{}'::jsonb);
 
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
-  ('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000001111'),
-  ('a1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000001111'),
-  ('a1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000001111'),
-  ('a1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000001111'),
-  ('a1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000001111'),
+  ('a1000000-0000-0000-0000-000000000001', NULL),
+  ('a1000000-0000-0000-0000-000000000002', NULL),
+  ('a1000000-0000-0000-0000-000000000003', NULL),
+  ('a1000000-0000-0000-0000-000000000004', NULL),
+  ('a1000000-0000-0000-0000-000000000005', NULL),
   ('a1000000-0000-0000-0000-000000000006', NULL),
-  ('a1000000-0000-0000-0000-000000000007', 'a1000000-0000-0000-0000-000000001111'),
-  ('b2000000-0000-0000-0000-000000000001', 'b2000000-0000-0000-0000-000000002222'),
-  ('c3000000-0000-0000-0000-000000000001', 'c3000000-0000-0000-0000-000000003333');
+  ('a1000000-0000-0000-0000-000000000007', NULL),
+  ('b2000000-0000-0000-0000-000000000001', NULL),
+  ('c3000000-0000-0000-0000-000000000001', NULL)
+ON CONFLICT (user_id) DO UPDATE
+SET active_tenant_id = EXCLUDED.active_tenant_id;
 
 INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
   ('a1000000-0000-0000-0000-000000001111', 'a1000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
@@ -92,6 +94,21 @@ INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, j
   ('b2000000-0000-0000-0000-000000002222', 'a1000000-0000-0000-0000-000000000001', 'admin', 'active', false, now()),
   ('b2000000-0000-0000-0000-000000002222', 'b2000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
   ('c3000000-0000-0000-0000-000000003333', 'c3000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
+
+UPDATE public.profiles
+   SET active_tenant_id = CASE
+     WHEN user_id = 'b2000000-0000-0000-0000-000000000001' THEN 'b2000000-0000-0000-0000-000000002222'::uuid
+     WHEN user_id = 'c3000000-0000-0000-0000-000000000001' THEN 'c3000000-0000-0000-0000-000000003333'::uuid
+     ELSE 'a1000000-0000-0000-0000-000000001111'::uuid
+   END
+ WHERE user_id IN (
+   'a1000000-0000-0000-0000-000000000001',
+   'a1000000-0000-0000-0000-000000000002',
+   'a1000000-0000-0000-0000-000000000003',
+   'a1000000-0000-0000-0000-000000000004',
+   'b2000000-0000-0000-0000-000000000001',
+   'c3000000-0000-0000-0000-000000000001'
+ );
 
 INSERT INTO public.clients
   (id, tenant_id, linked_user_id, created_by, first_name, last_name, email)
@@ -186,7 +203,7 @@ ALTER TABLE contract_a_result ADD COLUMN payload jsonb;
 UPDATE contract_a_result
 SET payload = public.resolve_systems_check_signal_reference(7100001, signal_ref);
 
-SELECT like(signal_ref, 'scsig_v1_%', 'owner receives a versioned opaque signal reference') FROM contract_a_result;
+SELECT alike(signal_ref, 'scsig_v1_%', 'owner receives a versioned opaque signal reference') FROM contract_a_result;
 SELECT is((payload ->> 'status'), 'fail', 'current own-tenant signal exposes safe status') FROM contract_a_result;
 SELECT is((payload ->> 'category'), 'comms_deliverability', 'current own-tenant signal exposes safe category') FROM contract_a_result;
 SELECT is((payload ->> 'source'), 'tenant_records', 'raw data-source name is mapped to a presentation-safe source') FROM contract_a_result;
@@ -204,7 +221,7 @@ SELECT ok(
   (SELECT payload::text FROM contract_a_result) !~* '(SECRET_|evidence|interpretation|draft|prompt|internal|model|triggered_by|tenant_id|run_id|check_id|resolution|title|summary|payload)',
   'raw evidence, prompts, internal metadata, identifiers, and secret-like values do not cross the boundary'
 );
-SELECT unlike(
+SELECT unalike(
   (SELECT signal_ref FROM contract_a_result),
   '%a1000000-0000-0000-0000-00000000f002%',
   'opaque reference does not embed the raw finding identifier'
@@ -231,10 +248,10 @@ SELECT is(
 );
 
 SELECT set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
-SELECT like(public.issue_systems_check_signal_reference(7100001, 'a1000000-0000-0000-0000-00000000f002'), 'scsig_v1_%', 'active tenant admin may issue an actor-bound safe reference');
+SELECT alike(public.issue_systems_check_signal_reference(7100001, 'a1000000-0000-0000-0000-00000000f002'), 'scsig_v1_%', 'active tenant admin may issue an actor-bound safe reference');
 
 SELECT set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
-SELECT like(public.issue_systems_check_signal_reference(7100001, 'a1000000-0000-0000-0000-00000000f002'), 'scsig_v1_%', 'active tenant coach may issue an actor-bound safe reference');
+SELECT alike(public.issue_systems_check_signal_reference(7100001, 'a1000000-0000-0000-0000-00000000f002'), 'scsig_v1_%', 'active tenant coach may issue an actor-bound safe reference');
 
 SELECT set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT ok(pg_temp.expect_issue_unavailable(7100001, 'a1000000-0000-0000-0000-00000000f002'), 'ordinary member is denied');
@@ -266,13 +283,13 @@ UPDATE public.profiles
  WHERE user_id = 'a1000000-0000-0000-0000-000000000001';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
-SELECT set_config('search_path', 'pg_temp, public', true);
-SELECT is(
+SELECT set_config('search_path', 'pg_temp, public, extensions', true);
+SELECT extensions.is(
   public.resolve_systems_check_signal_reference(7100001, (SELECT signal_ref FROM contract_a_result)) ->> 'signal_kind',
-  'communications_readiness',
+  'communications_readiness'::text,
   'hostile caller search path cannot shadow the resolver dependencies'
 );
-SELECT set_config('search_path', '"$user", public', true);
+SELECT set_config('search_path', '"$user", public, extensions', true);
 SELECT ok(pg_temp.expect_signal_unavailable(7100001, 'scsig_v1_0000000000000000000000000000000000000000000000000000000000000000'), 'missing source is denied with the generic response');
 SELECT ok(
   pg_temp.expect_signal_unavailable(
