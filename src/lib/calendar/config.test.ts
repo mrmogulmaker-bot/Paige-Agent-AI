@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_AVAIL, availToJson, buildCalendarPatch, draftFromRow, jsonToAvail,
+  DEFAULT_AVAIL, availToJson, blankDraft, buildCalendarPatch, draftFromRow, jsonToAvail,
   normalizeLocationOptions, normalizeNotify, slugify, type CalendarDraft, type CalendarRow,
 } from "./config";
 
@@ -180,5 +180,37 @@ describe("draftFromRow", () => {
     expect(d.assignment_strategy.mode).toBe("balanced");
     expect(d.location_options).toEqual([{ type: "google_meet", value: null }]);
     expect(() => buildCalendarPatch(d, jsonToAvail(row.availability_json))).not.toThrow();
+  });
+});
+
+describe("blankDraft — the defaults a brand-new preset ships with", () => {
+  it("offers phone, not Google Meet, as the meeting method", () => {
+    // `public-booking` mints a real join URL for Zoom only; its Google Meet
+    // branch formats the null value as "link to follow". A new preset is meant
+    // to be shareable immediately, so defaulting to Meet would let it take a
+    // booking and give the guest no way in. Phone is also `public-booking`'s
+    // own fallback, so the two agree.
+    expect(blankDraft("Discovery call").location_options).toEqual([{ type: "phone", value: null }]);
+  });
+
+  it("produces a patch that survives every clamp and drop rule", () => {
+    const d = blankDraft("Discovery call");
+    const patch = buildCalendarPatch(d, DEFAULT_AVAIL);
+    expect(patch.title).toBe("Discovery call");
+    expect(patch.location_type).toBe("phone");
+    // A single method means it is stored as that method, not as "ask_invitee".
+    expect(patch.location_options).toEqual([{ type: "phone", value: null }]);
+    // Nothing a clamp would silently drop: no unanswerable question, no unnamed
+    // service, no date override that closes a day.
+    expect(patch.intake_questions).toEqual([]);
+    expect(patch.appointment_types).toEqual([]);
+    expect(patch.date_overrides).toEqual([]);
+  });
+
+  it("opens the week it ships with, so the first booking page can be booked", () => {
+    // `createCalendar` writes DEFAULT_AVAIL alongside this patch; a preset with
+    // every day closed would be a live link that never offers a slot.
+    const open = Object.values(jsonToAvail(availToJson(DEFAULT_AVAIL))).filter((day) => day.enabled);
+    expect(open.length).toBe(5);
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { takeOAuthReturn } from "@/solo/data/oauthReturn";
+import { takeOAuthReturn, clearOAuthReturn } from "@/solo/data/oauthReturn";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,12 +56,20 @@ export default function GoogleCalendarCallback() {
     const code = params.get("code");
     const stateParam = params.get("state");
     const error = params.get("error");
+    // A return address belongs to THIS handshake and dies with it, however it
+    // ends. Consuming it only on success left it in storage for its whole TTL
+    // after a declined consent screen or a failed exchange — and the next Google
+    // connect, started somewhere that asked for no return path at all, would
+    // then finish by redirecting to Calendars. Every terminal path below clears
+    // it; the success path consumes it.
     if (error) {
+      clearOAuthReturn();
       setState("error");
       setMessage(`Google returned an error: ${error}`);
       return;
     }
     if (!code || !stateParam) {
+      clearOAuthReturn();
       setState("error");
       setMessage("Missing code or state parameter.");
       return;
@@ -72,6 +80,7 @@ export default function GoogleCalendarCallback() {
       });
       const result = data as { error?: string; google_email?: string; return_origin?: string } | null;
       if (error || result?.error) {
+        clearOAuthReturn();
         setState("error");
         setMessage(result?.error ?? error?.message ?? "Failed to complete connection.");
         return;

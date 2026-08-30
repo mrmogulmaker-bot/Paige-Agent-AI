@@ -282,7 +282,7 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
  * is editable in place; demanding a form up front would put a wall in front of
  * the one thing this surface exists to let someone do.
  */
-function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promise<void>; disabled: boolean }) {
+function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promise<boolean>; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
@@ -293,8 +293,12 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
   const submit = async () => {
     if (!title.trim() || saving) return;
     setSaving(true);
-    await onCreate(title);
+    const created = await onCreate(title);
     setSaving(false);
+    // Only stand down on success. Closing the form after a failure threw away
+    // the name the person had typed and left them looking at a button again,
+    // with the reason for the failure rendered somewhere they were not.
+    if (!created) return;
     setTitle("");
     setOpen(false);
   };
@@ -415,12 +419,19 @@ export function CalendarsView() {
 
   const create = useCallback(async (title: string) => {
     const r = await conn.createCalendar(title);
-    if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return; }
+    if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return false; }
     // Select what was just made and open its Details, so naming it lands you
     // straight in the thing you now have to configure.
     setSelectedId(r.row.id);
     setOpen({ details: true });
-    setNotice({ tone: "info", text: `“${r.row.title}” is live — its booking link is ready to share.` });
+    // `enabled` is what the row actually came back as, not what was intended:
+    // the calendar is created as a draft and flipped live once its host exists,
+    // and if that flip did not take, calling it live here would be a fabricated
+    // status on the one screen that is supposed to report the truth.
+    setNotice(r.row.enabled
+      ? { tone: "info", text: `“${r.row.title}” is live — its booking link is ready to share.` }
+      : { tone: "warn", text: `“${r.row.title}” was created as a draft. Switch it to Live when you are ready to take bookings.` });
+    return true;
   }, [conn]);
 
   const copyLink = useCallback(async (slug: string) => {
@@ -499,6 +510,16 @@ export function CalendarsView() {
         )}
       </section>
 
+      {/* Outside the selected-calendar block on purpose. When the FIRST preset
+          fails to create there is no selection yet, so a notice rendered in
+          there would be mounted nowhere — silently swallowing the error in the
+          exact empty-state flow this control was added for. */}
+      {notice && (
+        <Notice tone={notice.tone} icon={notice.tone === "bad" ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
+          {notice.text}
+        </Notice>
+      )}
+
       {draft && selected && summaryInput && (
         <>
           <SelectedPreset
@@ -512,12 +533,6 @@ export function CalendarsView() {
               if (!r.ok) setNotice({ tone: "bad", text: r.message });
             }}
           />
-
-          {notice && (
-            <Notice tone={notice.tone} icon={notice.tone === "bad" ? <TriangleAlert aria-hidden /> : <Info aria-hidden />}>
-              {notice.text}
-            </Notice>
-          )}
 
           {!conn.canWrite && (
             <Notice tone="info" icon={<Info aria-hidden />}>
@@ -596,7 +611,7 @@ function LoadingBody() {
   );
 }
 
-function EmptyBody({ canWrite, onCreate, busy }: { canWrite: boolean; onCreate: (title: string) => Promise<void>; busy: boolean }) {
+function EmptyBody({ canWrite, onCreate, busy }: { canWrite: boolean; onCreate: (title: string) => Promise<boolean>; busy: boolean }) {
   return (
     <div className="cc-empty">
       <CalendarDays aria-hidden />

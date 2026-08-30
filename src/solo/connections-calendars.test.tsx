@@ -492,6 +492,45 @@ describe("a booking preset can actually be created", () => {
     expect(text()).toMatch(/already taken/i);
   });
 
+  // The previous version of the test above used the DEFAULT fixture, which has
+  // calendars and therefore a selected preset — and the failure notice used to
+  // live inside the selected-preset block. So it passed while the empty-state
+  // flow, the only one the control was added for, showed nothing at all. This
+  // drives the flow that was actually broken.
+  it("shows why the FIRST preset could not be created, with no calendar selected", async () => {
+    const createCalendar = vi.fn().mockResolvedValue({ ok: false, message: "That booking link is already taken — try a different name." });
+    mount({ createCalendar, empty: true, calendars: [] });
+    act(() => { byText(/New preset/)?.click(); });
+    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    typeInto(field!, "Discovery call");
+    await act(async () => { submitNewPreset(); });
+    expect(text()).toMatch(/already taken/i);
+  });
+
+  it("keeps the typed name and the form open when creation fails", async () => {
+    const createCalendar = vi.fn().mockResolvedValue({ ok: false, message: "That booking link is already taken — try a different name." });
+    mount({ createCalendar, empty: true, calendars: [] });
+    act(() => { byText(/New preset/)?.click(); });
+    typeInto(container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]')!, "Discovery call");
+    await act(async () => { submitNewPreset(); });
+    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    expect(field).toBeTruthy();
+    expect(field!.value).toBe("Discovery call");
+  });
+
+  it("calls a calendar that came back as a draft a draft, not live", async () => {
+    // The row is created disabled and flipped live only once its host exists.
+    // If that flip did not take, saying "is live" would be a fabricated status.
+    const created = calendar({ id: "cal-draft", title: "Strategy session", enabled: false });
+    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: created });
+    mount({ createCalendar, calendars: [calendar(), created] });
+    act(() => { byText(/New preset/)?.click(); });
+    typeInto(container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]')!, "Strategy session");
+    await act(async () => { submitNewPreset(); });
+    expect(text()).toMatch(/was created as a draft/i);
+    expect(text()).not.toMatch(/Strategy session” is live/i);
+  });
+
   it("does not offer creation to an account that cannot write", () => {
     mount({ canWrite: false });
     expect(byText(/New preset/)?.disabled).toBe(true);

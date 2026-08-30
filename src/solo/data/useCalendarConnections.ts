@@ -137,6 +137,13 @@ function firstMessage(...errors: (string | null | undefined)[]) {
 export function useCalendarConnections() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
+  // The tenant now on screen, readable from inside a closure that was captured
+  // under a DIFFERENT one. `load` closes over `activeTenantId`, so a reload
+  // fired from a stale closure would read the old account's calendars AND take
+  // a fresh gate token — making itself newer than the account-change load and
+  // overwriting the new account's state with the old account's rows.
+  const liveTenant = useRef(activeTenantId);
+  liveTenant.current = activeTenantId;
   const [state, setState] = useState<CalendarConnectionsState>({
     loading: true,
     error: null,
@@ -387,9 +394,11 @@ export function useCalendarConnections() {
         ...patch,
         tenant_id: activeTenantId,
         slug,
-        // Live on creation: the defaults above are a working configuration, so
-        // the link is ready to share. Flip it to Draft to take it off the air.
-        enabled: true,
+        // Created as a DRAFT and flipped live only once a host exists. A live
+        // calendar with no host is a public link that accepts nothing, and
+        // nothing on this surface can add a host to repair it — so the window
+        // between the two inserts must never be a bookable one.
+        enabled: false,
         availability_json: availToJson(DEFAULT_AVAIL),
       } as never)
       .select(SELECT_COLS)
@@ -412,9 +421,21 @@ export function useCalendarConnections() {
       : { message: "no-session" };
 
     if (hostError) {
-      // Roll back rather than leave a live link nobody can book (see above).
-      await supabase.from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId);
+      // Best-effort removal. It is deliberately NOT load-bearing: the same lost
+      // session that blocked the host insert also blocks this delete, so the
+      // result is checked rather than assumed, and what is said depends on what
+      // actually happened. The leftover is a draft either way (see above), so
+      // the worst case is an unfinished calendar, never a live unbookable link.
+      const { error: rollbackError } = await supabase
+        .from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId);
       setBusy(null);
+      if (rollbackError) {
+        if (liveTenant.current === activeTenantId) await load();
+        return {
+          ok: false as const,
+          message: `“${created.title}” was created but couldn’t be finished, and removing it didn’t work either. It is saved as a draft, so it is not taking bookings — sign in again and delete or finish it.`,
+        };
+      }
       return {
         ok: false as const,
         message: uid
@@ -423,9 +444,16 @@ export function useCalendarConnections() {
       };
     }
 
+    // The host is registered, so the link can actually be booked. If this last
+    // flip fails the calendar simply stays a draft, which the surface reports
+    // honestly — the returned row carries what is really true, not the intent.
+    const { error: liveError } = await supabase
+      .from("calendars").update({ enabled: true }).eq("id", created.id).eq("tenant_id", activeTenantId);
+
     setBusy(null);
-    await load();
-    return { ok: true as const, row: created };
+    // Only refresh if this is still the account on screen. See `liveTenant`.
+    if (liveTenant.current === activeTenantId) await load();
+    return { ok: true as const, row: { ...created, enabled: !liveError } };
   }, [activeTenantId, load]);
 
   /** Flip a calendar between Live and Draft. Draft means the link stops accepting bookings. */

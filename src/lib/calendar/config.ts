@@ -511,7 +511,14 @@ export function blankDraft(title: string): CalendarDraft {
     theme: "light",
     subtitle: "",
     show_company_name: true,
-    location_options: [{ type: "google_meet", value: null }],
+    // Phone, not Google Meet. `public-booking` only mints a real join URL for
+    // Zoom; its Google Meet branch just labels the null value "link to follow",
+    // so a brand-new preset defaulting to Meet would take a booking and give the
+    // guest no way in. Phone is also what `public-booking` itself falls back to
+    // (`cal.location_type ?? "phone"`), so this agrees with the booking page
+    // rather than quietly disagreeing with it. Connecting Google is optional and
+    // the owner can pick any method in "How to meet".
+    location_options: [{ type: "phone", value: null }],
     intake_questions: [],
     appointment_types: [],
     date_overrides: [],
