@@ -190,7 +190,11 @@ export function useCalendarConnections() {
   const liveTenants = useRef(tenants);
   liveTenants.current = tenants;
   const addressFor = useCallback((id: string | null) => (
-    id ? liveTenants.current.find((t) => t.id === id)?.account_number ?? null : null
+    // `?? []` because a roster is not guaranteed: the context can hand back a
+    // shape without one, and a hook that throws over a missing address would
+    // take the whole surface down to avoid a stale label — the wrong trade in
+    // both directions. No roster means no address, which reads as "cannot tell".
+    id ? (liveTenants.current ?? []).find((t) => t.id === id)?.account_number ?? null : null
   ), []);
   const gate = useRef(createSettingsRequestGate());
   // The tenant now on screen, readable from inside a closure that was captured
