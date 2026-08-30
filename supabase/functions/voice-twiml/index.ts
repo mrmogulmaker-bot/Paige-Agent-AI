@@ -49,6 +49,7 @@ import {
   isOperatorClientCaller,
   parseClientCaller,
   parseOperatorClientCaller,
+  resolveStatusCallbackUrl,
   sanitizePhoneFilter,
   voiceThreadKey,
   CALL_UNAVAILABLE_MESSAGE,
@@ -506,6 +507,11 @@ Deno.serve(async (req) => {
   //    set (single-account/dev, or once subaccount tokens are wired) a bad signature is a
   //    hard 403 — never a silent accept.
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  // TRUE only when this request carried a signature we actually VERIFIED. Reaching past the
+  // block below with the token set means the HMAC matched (a mismatch returns 403), so this
+  // flag is the single honest answer to "do we know Twilio sent this?" — and it is the gate
+  // on emitting anything secret-bearing further down.
+  let signatureVerified = false;
   if (authToken) {
     const sig = req.headers.get("x-twilio-signature");
     const ok = await validateTwilioSignature(authToken, sig, req.url, rawBody);
@@ -513,6 +519,7 @@ Deno.serve(async (req) => {
       console.error("[voice-twiml] REJECTED: invalid x-twilio-signature", { hasSig: !!sig, url: req.url });
       return new Response("invalid_signature", { status: 403 });
     }
+    signatureVerified = true;
   } else {
     console.warn("[voice-twiml] TWILIO_AUTH_TOKEN not set — accepting unsigned (see §13 caveat in header)");
   }
@@ -532,30 +539,57 @@ Deno.serve(async (req) => {
   // SMS-DLR URL derivation EXACTLY (env override → default). "" ⇒ the noun emits no statusCallback
   // (the row stays 'queued'; honest degrade, never a broken dial).
   //
-  // MUST carry the tenant's stamped secret: `twilio-status-callback` now fails
-  // CLOSED, so an unstamped URL means every call-completion callback is refused
-  // and the voice row never gets its terminal status, duration, recording or
-  // transcript. An operator call (no tenant) keeps the bare URL and is
-  // authenticated by signature; a tenant call without a resolvable secret emits
-  // NO callback rather than one that will be refused.
-  // The tenant is the AUTHENTICATED `client:<tenantId>.<userId>` identity Twilio
-  // derived from the JWT — never a raw parameter (§9). An operator caller
-  // (`client:operator.<userId>`) parses to null here, which is correct: operator
-  // calls stay on the master account and are signature-authenticated.
+  // `twilio-status-callback` now fails CLOSED, so a callback URL is only useful when it
+  // carries proof — either the master signature (operator/master-account calls) or the
+  // receiving tenant's stamped `?t=` secret.
+  //
+  // ── WHY THIS IS GATED ON `signatureVerified` (the defect this gate exists to prevent) ──
+  // The TwiML we return here is the HTTP RESPONSE BODY handed to whoever POSTed. A stamped
+  // URL therefore DISCLOSES `inbound_webhook_secret` to the caller. That is safe only when
+  // we know the caller is Twilio. This function is `verify_jwt = false`, and in the prod
+  // credential model TWILIO_AUTH_TOKEN is deliberately ABSENT — so without this gate an
+  // anonymous POST of `From=client:<any tenantId>.<any userId>` would have made us look up
+  // that tenant's secret and hand it back in `<Number statusCallback="…?t=SECRET">`. The
+  // holder of that long-lived secret can then forge inbound SMS, suppressions and consent
+  // events against the tenant — i.e. it would have handed away the very fail-closed posture
+  // the rest of this change establishes.
+  //
+  // An earlier revision of this block called `From` "the AUTHENTICATED client identity …
+  // never a raw parameter (§9)". That is true of Twilio's own request and FALSE of an
+  // unsigned one: with no signature to check, every field here is attacker-supplied. §9
+  // scope is only as non-forgeable as the authentication underneath it.
+  //
+  // So: emit a secret-bearing (or signature-authenticated) callback ONLY on a verified
+  // request. Unverified ⇒ NO callback at all. The honest cost is stated in §13 terms below.
   const voiceTenantId = isOperatorClientCaller(from) ? null : (parseClientCaller(from)?.tenantId ?? null);
-  const voiceStampSecret = voiceTenantId
+  const statusCallbackBase =
+    Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
+    (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : "");
+
+  // §13 — the honest degrade, named rather than silent. While TWILIO_AUTH_TOKEN is unset we
+  // cannot authenticate a voice webhook, so we emit no completion callback and the voice row
+  // keeps its non-terminal status (no duration/recording/transcript stamp). That is a REAL
+  // capability loss versus the fail-open predecessor, and it is logged on every call so it is
+  // visible in the function logs instead of being discovered as missing data. It lifts the
+  // moment voice webhooks can be authenticated (master TWILIO_AUTH_TOKEN, or the tracked
+  // per-subaccount signature validation) — no change here is needed to restore it.
+  if (statusCallbackBase && !signatureVerified) {
+    console.warn(
+      "[voice-twiml] unsigned request — emitting NO statusCallback (a stamped URL would disclose the tenant's webhook secret to an unauthenticated caller). Voice row will not receive a terminal status until voice webhooks can be authenticated.",
+    );
+  }
+
+  const voiceStampSecret = signatureVerified && voiceTenantId
     ? ((await admin.from("tenant_twilio_subaccounts")
           .select("inbound_webhook_secret").eq("tenant_id", voiceTenantId).maybeSingle())
         .data?.inbound_webhook_secret ?? null)
     : null;
-  const statusCallbackBase =
-    Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
-    (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : "");
-  const statusCallbackUrl = !statusCallbackBase
-    ? ""
-    : voiceTenantId
-      ? (voiceStampSecret ? `${statusCallbackBase}?t=${encodeURIComponent(voiceStampSecret)}` : "")
-      : statusCallbackBase;
+  const statusCallbackUrl = resolveStatusCallbackUrl({
+    base: statusCallbackBase,
+    signatureVerified,
+    tenantId: voiceTenantId,
+    tenantSecret: voiceStampSecret,
+  });
 
   try {
     if (direction === "outbound") {

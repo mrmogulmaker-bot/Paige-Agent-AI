@@ -63,12 +63,28 @@ drop policy if exists tenant_twilio_subaccounts_select on public.tenant_twilio_s
 drop policy if exists tenant_twilio_subaccounts_insert on public.tenant_twilio_subaccounts;
 drop policy if exists tenant_twilio_subaccounts_update on public.tenant_twilio_subaccounts;
 
--- DELIBERATELY `is_platform_owner()` (super_admin), NOT the delegated
--- `is_platform_operator()`. The dropped policy was super_admin-only, and this
--- table now also holds `inbound_webhook_secret`. Widening the read to
--- platform_admin would hand delegated operators cleartext credential material,
--- which §53 freezes to super_admin and §58 would require calling out as a
--- capability change. Same tier as before, one more column protected.
+-- §58 — THIS NARROWS A PREVIOUSLY-SHIPPED READ. Stated plainly rather than left to
+-- be discovered: the dropped `tenant_twilio_subaccounts_select` was
+--     is_platform_owner()
+--     OR (tenant_id = current_user_tenant_id() AND has_any_role(auth.uid(), ARRAY['admin','coach']))
+-- (migration 20260726210000, lines 385-390). So a tenant admin/coach COULD read
+-- their own tenant's row directly over PostgREST. That capability is REMOVED here
+-- and NOT restored: the row holds `auth_token_vault_ref`, `api_key_sid` and now
+-- `inbound_webhook_secret`, and forging an inbound webhook only requires the last
+-- of those — a tenant-role read of it defeats the fail-closed authentication this
+-- migration exists to establish. The tenant-facing need that read served (is
+-- messaging wired up?) is met by `tenant_comms_readiness()` below, which is
+-- callable by exactly the same admin/coach roles and returns only safe fields.
+-- No surface in the repo selected this table from the client (§37: the only
+-- readers are service-role edge functions, which bypass RLS), so nothing breaks;
+-- the removal is called out because it is a real narrowing, not because it broke
+-- something.
+--
+-- The operator read is DELIBERATELY `is_platform_owner()` (super_admin), NOT the
+-- delegated `is_platform_operator()`: widening it to platform_admin would hand
+-- delegated operators cleartext credential material, which §53 freezes to
+-- super_admin. Same operator tier as the dropped policy, one more column
+-- protected, and the tenant-role branch dropped as described above.
 create policy tenant_twilio_subaccounts_operator_select on public.tenant_twilio_subaccounts
   for select to authenticated using (public.is_platform_owner());
 

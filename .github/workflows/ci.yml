@@ -268,3 +268,7 @@ jobs:
 
       - name: Smoke — comms webhook authentication (fail-closed decisions)
         run: npm run smoke:comms-webhook-auth
+
+      - name: Smoke — voice-twiml statusCallback (no credential to an unsigned caller)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-twiml-callback
