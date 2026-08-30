@@ -121,6 +121,21 @@ for (const data of ["empty", "error", "calendars-error"]) {
   await ctx.close();
 }
 
+// The freshness state carries its own copy, its own tag and its own control, in
+// both themes — so it carries its own contrast and its own name/role/value.
+for (const theme of THEMES) {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/?theme=${theme}&data=dense`, { waitUntil: "networkidle" });
+  await page.waitForSelector("button.sc-ev");
+  await page.evaluate(() => window.__calHarness.setBookingReads("fail"));
+  await page.evaluate(() => window.__calHarness.fireBookingChange());
+  await page.waitForSelector('[role="status"]', { timeout: 5000 });
+  await page.addScriptTag({ path: AXE_PATH });
+  results.push(await scan(page, `state-stale-${theme}`));
+  await ctx.close();
+}
+
 await browser.close();
 
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ tags: TAGS, results }, null, 2));
