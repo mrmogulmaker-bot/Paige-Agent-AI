@@ -451,6 +451,41 @@ describe("what the surface must not silently destroy or misreport", () => {
     expect(container.querySelector(".cc-selected")).toBeNull();
   });
 
+  it("refuses to switch preset while there are unsaved edits, rather than dropping them", () => {
+    // The hydration effect replaces the draft with the newly selected row, so
+    // switching used to discard the edits silently — with the unsaved-changes
+    // bar on screen the whole time.
+    const a = calendar({ id: "cal-a", title: "Discovery call" });
+    const b = calendar({ id: "cal-b", title: "Strategy session", slug: "strategy" });
+    mount({ calendars: [a, b] });
+    const nameField = container.querySelector<HTMLInputElement>('input[aria-label*="Name"], .cc-in');
+    expect(nameField).toBeTruthy();
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(nameField!, "Discovery call EDITED"); nameField!.dispatchEvent(new Event("input", { bubbles: true })); });
+
+    const other = [...container.querySelectorAll<HTMLButtonElement>(".cc-preset-card")]
+      .find((c) => /Strategy session/.test(c.textContent ?? ""));
+    act(() => { other?.click(); });
+
+    expect(text()).toMatch(/Save or discard your changes before switching/i);
+    // …and the edit is still there, on the preset it belongs to.
+    expect(container.querySelector<HTMLInputElement>(".cc-in")?.value).toBe("Discovery call EDITED");
+  });
+
+  it("reports a provider read failure as not checked, and offers no connect", () => {
+    // EMPTY_PROVIDERS on a failed read used to render "Not connected" with a
+    // Connect button directly under a notice saying nothing was known — which
+    // invites an OAuth round trip for an account that may already be linked.
+    mount({ providersError: "permission denied" });
+    expect(text()).toMatch(/Couldn’t read your connections/i);
+    expect(text()).toMatch(/Not checked/);
+    expect(text()).not.toMatch(/Not connected/);
+    const connects = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .filter((b) => /^Connect$/.test((b.textContent ?? "").trim()));
+    expect(connects.length).toBeGreaterThan(0);
+    expect(connects.every((b) => b.disabled)).toBe(true);
+  });
+
   it("does not invent a fault where the stored value is a legitimate default", () => {
     // An empty availability_json means "the default weekday hours", not "closed".
     // Reporting it as no open hours would send someone to fix a working calendar.

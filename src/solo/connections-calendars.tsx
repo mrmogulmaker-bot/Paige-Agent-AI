@@ -417,6 +417,10 @@ export function CalendarsView() {
   );
   const slugChanged = Boolean(selected && slugify(slugInput) && slugify(slugInput) !== selected.slug);
   const dirty = Boolean(patch && savedPatch && (JSON.stringify(patch) !== JSON.stringify(savedPatch) || slugChanged));
+  // Read by `selectPreset`, which is declared above this line and must see the
+  // CURRENT value rather than the one captured when it was created.
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
 
   const set = useCallback(<K extends keyof CalendarDraft>(key: K, value: CalendarDraft[K]) => {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
@@ -491,6 +495,29 @@ export function CalendarsView() {
     return true;
   }, [conn]);
 
+  /**
+   * Switching presets is a navigation, and it used to be a silent delete.
+   *
+   * The hydration effect replaces the draft with whichever row is selected, so
+   * clicking another preset while the current one had unsaved edits discarded
+   * them — and coming back reloaded the stored version, with the surface having
+   * shown an unsaved-changes bar the whole time. Nothing warned, and nothing
+   * could be recovered. The bar's own Discard is right there, so the honest
+   * behaviour is to refuse the switch and say which two ways out exist.
+   */
+  const selectPreset = useCallback((id: string) => {
+    if (id === selected?.id) return;
+    if (dirtyRef.current) {
+      setNotice({
+        tone: "warn",
+        text: "Save or discard your changes before switching to another preset — they would be lost otherwise.",
+      });
+      return;
+    }
+    setSelectedId(id);
+    setNotice(null);
+  }, [selected?.id]);
+
   const copyLink = useCallback(async (slug: string) => {
     try {
       await navigator.clipboard.writeText(bookingUrl(slug));
@@ -562,7 +589,7 @@ export function CalendarsView() {
             {conn.calendars.map((c) => (
               <button key={c.id} type="button" role="tab" className="cc-preset-card"
                 aria-selected={selected?.id === c.id}
-                onClick={() => { setSelectedId(c.id); setNotice(null); }}>
+                onClick={() => selectPreset(c.id)}>
                 {/* The NAME gets the whole first line. Sharing it with the state
                     pill truncated real titles to "Harness discov…" at four cards
                     across, which is the one thing on the card you pick by. */}
@@ -755,6 +782,7 @@ function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCale
               <span>Two-way sync with your Google account.</span>
             </span>
             {conn.loading ? <Pill>Checking</Pill>
+              : conn.providersError ? <Pill>Not checked</Pill>
               : p.google_calendar_connected ? <Pill tone="live">Connected</Pill> : <Pill>Not connected</Pill>}
           </div>
           {p.google_calendar_connected && (
@@ -767,7 +795,7 @@ function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCale
               ? <Btn size="s" kind="danger" onClick={() => drop("google")} disabled={pending !== null}>
                   {pending === "google" ? <Loader2 className="cc-spin" aria-hidden /> : <Trash2 aria-hidden />} Disconnect
                 </Btn>
-              : <Btn size="s" onClick={() => start("google")} disabled={pending !== null}>
+              : <Btn size="s" onClick={() => start("google")} disabled={pending !== null || Boolean(conn.providersError)}>
                   {pending === "google" ? <Loader2 className="cc-spin" aria-hidden /> : <Link2 aria-hidden />} Connect
                 </Btn>}
           </div>
@@ -781,6 +809,7 @@ function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCale
               <span>Adds a meeting link to each booking automatically.</span>
             </span>
             {conn.loading ? <Pill>Checking</Pill>
+              : conn.providersError ? <Pill>Not checked</Pill>
               : p.zoom_connected ? <Pill tone="live">Connected</Pill> : <Pill>Not connected</Pill>}
           </div>
           {p.zoom_connected && <span className="cc-acct-detail">{p.zoom_email ?? "Connected account"}</span>}
@@ -789,7 +818,7 @@ function ConnectedAccounts({ conn, returnTo }: { conn: ReturnType<typeof useCale
               ? <Btn size="s" kind="danger" onClick={() => drop("zoom")} disabled={pending !== null}>
                   {pending === "zoom" ? <Loader2 className="cc-spin" aria-hidden /> : <Trash2 aria-hidden />} Disconnect
                 </Btn>
-              : <Btn size="s" onClick={() => start("zoom")} disabled={pending !== null}>
+              : <Btn size="s" onClick={() => start("zoom")} disabled={pending !== null || Boolean(conn.providersError)}>
                   {pending === "zoom" ? <Loader2 className="cc-spin" aria-hidden /> : <Link2 aria-hidden />} Connect
                 </Btn>}
           </div>
