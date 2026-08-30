@@ -47,13 +47,13 @@ vi.mock("@/integrations/supabase/client", () => ({
 let sub: {
   table: string;
   handler: () => void;
-  opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void };
+  opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void; resubscribeKey?: number };
 } | null = null;
 vi.mock("@/hooks/useRealtimeTable", () => ({
   useRealtimeTable: (
     table: string,
     onChange: () => void,
-    opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void },
+    opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void; resubscribeKey?: number },
   ) => { sub = { table, handler: onChange, opts }; },
 }));
 
@@ -421,6 +421,212 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
 
     act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
     await settle([row("a")]);
+    expect(seen!.stale).toBe(false);
+  });
+  // ---- Codex P2 on the SHIPPED #652: the catch-up must EARN the LIVE state ----
+
+  it("stays stale while the reconnect catch-up read is still in flight", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    // SUBSCRIBED only proves FUTURE changes can arrive. Everything that changed
+    // during the outage was never delivered, so the rows on screen are still
+    // stale until the catch-up read lands. Clearing here would flash a LIVE that
+    // is not yet true.
+    expect(seen!.stale).toBe(true);
+
+    await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(false);
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
+  });
+
+  it("stays stale indefinitely when the catch-up read never settles", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    // Nothing resolves the catch-up. A hung read must never resolve to LIVE.
+    await tick(60_000);
+
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("stays stale when the catch-up read FAILS, until a later one lands", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settleError("network");
+    expect(seen!.stale).toBe(true);
+
+    // The channel is live — SUBSCRIBED arrived and nothing has contradicted it —
+    // so the next read that LANDS closes the gap the failed one left open. That
+    // is the reachable recovery: the person presses Retry and gets a live
+    // calendar back, without needing the subscription torn down and rebuilt.
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(false);
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
+  });
+
+  // ---- Retry must be a REACHABLE recovery, not a read that changes nothing ----
+
+  it("Retry on a dead channel asks for a fresh subscription", async () => {
+    await mount();
+    await settle([row("a")]);
+    const keyBefore = sub!.opts!.resubscribeKey;
+
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { void seen!.retry(); });
+
+    // A read cannot revive a subscription. Without this the person's only way
+    // back to a live calendar is a full page reload.
+    expect(sub!.opts!.resubscribeKey).not.toBe(keyBefore);
+  });
+
+  it("Retry on a HEALTHY channel does not churn the subscription", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    const keyBefore = sub!.opts!.resubscribeKey;
+
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a")]);
+
+    expect(sub!.opts!.resubscribeKey).toBe(keyBefore);
+  });
+  // ---- Codex on THIS PR: the catch-up must be bound to channel health ----
+
+  it("does not clear the latch when the channel dies again during the catch-up read", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    // The replacement channel dies while the catch-up RPC is still in flight.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    await settle([row("a"), row("b")]);
+
+    // The read succeeded, but the subscription it was supposed to vindicate is
+    // dead again. Reporting LIVE here is the exact false confidence this whole
+    // surface exists to prevent.
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("clears the latch when a catch-up deferred behind a load finally lands", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    // A range change starts a LOAD; the channel recovers while it is in flight,
+    // so the catch-up refresh is deferred behind it rather than running now.
+    await act(async () => { seen!.refresh(); });
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    await settle([row("a"), row("b")]);   // the load lands
+    await act(async () => { await Promise.resolve(); });
+    if (pending.length) await settle([row("a"), row("b")]);  // the deferred refresh lands
+
+    // The gap IS closed — the rows on screen came back over a live channel.
+    // Losing that because the catch-up was queued rather than run would strand a
+    // healthy calendar on PARTIAL until the next resubscription.
+    expect(seen!.stale).toBe(false);
+  });
+
+  it("a read that lands while the channel is still down never clears the latch", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    await act(async () => { seen!.refresh(); });
+    await settle([row("z")]);
+
+    expect(seen!.stale).toBe(true);
+  });
+  it("a read STARTED during the outage cannot close the gap when it lands", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    // A range change starts a load WHILE the channel is still down, so its
+    // database snapshot is taken mid-outage.
+    await act(async () => { seen!.refresh(); });
+    // The channel recovers before that load comes back; the catch-up defers.
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    await settle([row("a")]);
+
+    // The channel is healthy NOW, but these rows were read before it recovered:
+    // anything committed in the last moments of the outage is missing from them.
+    // Clearing here would report LIVE over exactly the gap the latch exists for,
+    // and if the deferred catch-up then hangs it would say so indefinitely.
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { await Promise.resolve(); });
+    if (pending.length) await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(false);
+  });
+
+  it("a read in flight across a drop AND recovery cannot close the gap either", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    await act(async () => { void seen!.retry(); });
+    // The channel dies and comes back while that read is still in flight.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settle([row("a")]);
+
+    // Healthy at start and healthy at landing — but not the SAME subscription.
+    // The outage happened underneath this read, so it proves nothing about it.
+    expect(seen!.stale).toBe(true);
+  });
+  it("carries no outage debt across an account change", async () => {
+    // The reset branch clears the owed gap and the health flag but deliberately
+    // does NOT reset the epoch: it only ever needs to be COMPARABLE, and leaving
+    // it monotonic is what guarantees a read issued for the previous account can
+    // never match an epoch belonging to the next one.
+    await mount("tenant-1");
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { root.render(<Probe tenantId={null} />); });
+    expect(seen!.stale).toBe(false);
+
+    await act(async () => { root.render(<Probe tenantId="tenant-2" />); });
+    await settle([row("b")]);
+
+    // A fresh account starts clean: the previous account's outage is not its
+    // problem, and nothing is owed that a later read could wrongly "close".
+    expect(seen!.stale).toBe(false);
+
+    // And the new subscription still reports honestly on its own terms.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("an initial load before any SUBSCRIBED neither clears nor claims anything", async () => {
+    // Nothing is owed on a fresh mount, so the -1 sentinel a pre-subscription
+    // read carries has nothing to act on. It must not throw, and it must not
+    // leave the surface asserting a freshness it never established.
+    await mount();
+    await settle([row("a")]);
+    expect(seen!.stale).toBe(false);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
     expect(seen!.stale).toBe(false);
   });
 });
