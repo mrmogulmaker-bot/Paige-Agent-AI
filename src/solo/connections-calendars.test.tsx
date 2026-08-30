@@ -799,4 +799,36 @@ describe("creation during the identity window", () => {
     move();
     expect(inEmpty()?.disabled).toBe(true);
   });
+
+  it("throws away a save that lands after the route moved, rather than pouring it into the new account", async () => {
+    // The reported race, driven end to end. A save for account A is still in
+    // flight when the route moves; B's rows settle first; the callback then
+    // resumes and hydrates. Nothing downstream corrects it — the hydration
+    // effect keys on `selected`, which has already become B's calendar and does
+    // not change again — so A's values would sit under B's selection until the
+    // next save wrote them into B's row.
+    let settle: (r: unknown) => void = () => {};
+    const saveCalendar = vi.fn(() => new Promise((res) => { settle = res; }));
+    const a = calendar({ id: "cal-a", title: "Discovery call" });
+    mountRouted({ calendars: [a], hosts: { "cal-a": [] }, saveCalendar });
+
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    const nameField = container.querySelector<HTMLInputElement>(".cc-in");
+    act(() => { setter.call(nameField!, "A EDITED"); nameField!.dispatchEvent(new Event("input", { bubbles: true })); });
+    act(() => {
+      [...container.querySelectorAll("button")].find((b) => /Save changes/.test(b.textContent ?? ""))?.click();
+    });
+    expect(saveCalendar).toHaveBeenCalled();
+
+    // The other account arrives — new tenant, its own calendar — and the route
+    // follows. Both halves matter: a guard on either one alone has a window.
+    const b = calendar({ id: "cal-b", title: "B preset", slug: "b-preset", tenant_id: "t2" });
+    state.value = seam({ tenantId: "t2", calendars: [b], hosts: { "cal-b": [] }, saveCalendar });
+    move();
+
+    await act(async () => { settle({ ok: true, row: { ...a, title: "A EDITED" } }); });
+
+    expect(container.querySelector<HTMLInputElement>(".cc-in")?.value).toBe("B preset");
+    expect(text()).not.toMatch(/The public page now uses these settings/i);
+  });
 });

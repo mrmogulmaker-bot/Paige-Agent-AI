@@ -419,6 +419,16 @@ export function CalendarsView() {
     () => conn.calendars.find((c) => c.id === selectedId) ?? conn.calendars[0] ?? null,
     [conn.calendars, selectedId],
   );
+  /**
+   * Which calendar is on screen right now, readable from inside an await.
+   *
+   * `selectedId` can be null and the selection then falls through to the first
+   * row, so the answer is `selected`, not the state — and a callback that
+   * suspended holds whichever value was current when it was created. A save
+   * that lands after the person moved on has to be able to ask.
+   */
+  const liveSelected = useRef<string | null>(selected?.id ?? null);
+  liveSelected.current = selected?.id ?? null;
 
   /**
    * Hydrate the editable draft when the SELECTION changes — and only then, so
@@ -476,8 +486,35 @@ export function CalendarsView() {
     setSaving(true);
     const desired = slugify(slugInput);
     const body = desired && desired !== selected.slug ? { ...patch, slug: desired } : patch;
+    const startedUnder = { ...liveIdentity.current, calendar: selected.id };
     const result = await conn.saveCalendar(selected.id, body as Record<string, unknown>);
+    // Always, whoever the result belongs to — the flag is local to this surface
+    // and a request that never clears it leaves the editor read-only forever.
     setSaving(false);
+    /**
+     * Everything below writes editor state, so the result has to still be the
+     * one this editor is showing.
+     *
+     * A save for A that is still in flight when the route moves to B lands
+     * AFTER B's rows have settled, and `hydrate` then puts A's values into the
+     * draft while `selected` is B's calendar. Nothing corrects it: the
+     * hydration effect keys on `selected`, which has already changed and does
+     * not change again, so the mismatch is invisible until the next save writes
+     * A's values into B's calendar. The same holds for a preset switch inside
+     * one account, and for the window where the route has moved but the tenant
+     * has not — the editor is hidden there, but the corrupted draft would be
+     * waiting when it comes back.
+     *
+     * There is no notice on this path. A save that belongs to an account
+     * someone has left cannot be reported into the account they are now
+     * looking at, in either direction: neither the success nor the failure is
+     * about anything on their screen.
+     */
+    const now = liveIdentity.current;
+    if (now.account !== startedUnder.account
+      || now.tenantId !== startedUnder.tenantId
+      || liveSelected.current !== startedUnder.calendar
+      || settledUnder.current !== now.account) return;
     if (!result.ok) { setNotice({ tone: "bad", text: result.message }); return; }
     // From the row that was actually stored, not the draft that was sent. The
     // patch clamps and drops — an unnamed question, an unusable date override —
