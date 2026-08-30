@@ -19,7 +19,7 @@
 import { Hono } from "npm:hono@4";
 import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
 import { z } from "npm:zod@^3.25.0";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 import { applyContactSearchFilter, contactSearchTokens, CONTACT_SEARCH_COLUMNS } from "../_shared/contact-search.ts";
 

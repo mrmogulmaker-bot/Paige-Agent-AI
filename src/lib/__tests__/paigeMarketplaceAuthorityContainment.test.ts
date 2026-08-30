@@ -40,6 +40,8 @@ function between(source: string, start: string, end: string): string {
 
 describe("PAIGE Marketplace authority containment", () => {
   it("exposes only curated Marketplace browse to Chat and MCP", () => {
+    expect(mcp).toContain('from "https://esm.sh/@supabase/supabase-js@2.45.0"');
+    expect(mcp).not.toContain('from "npm:@supabase/supabase-js');
     expect(chat).toContain('name: "marketplace_browse"');
     expect(mcp).toContain('mcp.tool("marketplace_browse"');
     for (const tool of prohibitedTools) {
