@@ -29,7 +29,53 @@
 --
 -- §59 — THE GRANT IS NEVER THE GUARD. This is SECURITY DEFINER, so it bypasses RLS;
 -- every caller-scope rule below is enforced IN THE BODY, and anon holds no EXECUTE.
+--
+-- WHAT AN INDEPENDENT REVIEW CHANGED HERE. The first version of this function was
+-- concurrency-unsafe and could destroy a live registration:
+--
+--   · The immutability check was a bare SELECT with no row lock, and the upsert's
+--     DO UPDATE carried no WHERE. Two concurrent sessions were demonstrated
+--     overwriting an APPROVED, carrier-linked registration, downgrading it
+--     approved -> pending while leaving approved_at and brand_sid set, and the
+--     audit row still recorded 'prepared'. The read now takes FOR UPDATE and the
+--     DO UPDATE re-checks immutability in its own WHERE, so the guard is part of
+--     the write rather than a hopeful precondition.
+--   · Immutability was keyed on submitted_at/status alone. `comms-a2p-submit`
+--     writes status='pending' with submitted_at=null today (its carrier calls are
+--     stubs), so that guard could never fire against the real submit path and a
+--     re-draft silently replaced copy a human had reviewed. It is now keyed on
+--     ANY evidence the registration has left preparation, including a provider SID
+--     and the per-leg brand/campaign statuses.
+--   · An empty description or opt-in flow NULLed the stored value while reporting
+--     success. Absent fields now preserve what is already there.
+--   · Service-role detection trusted the JWT claim alone. It now follows the
+--     repository precedent (_marketplace_is_service_role): the claim OR a real
+--     service_role database session.
+--
+-- Every refusal carries a STABLE hint so callers can branch on a code rather than
+-- parse a sentence.
 -- =============================================================================
+
+-- Has this registration left preparation? Any one of these means a human or a
+-- carrier has acted on it and a draft save must not touch it.
+create or replace function public.a2p_registration_is_immutable(r public.tenant_a2p_registrations)
+returns boolean
+language sql
+immutable
+as $$
+  select r.submitted_at is not null
+      or r.approved_at is not null
+      or r.status in ('submitted','in_review','approved','rejected','suspended')
+      or r.brand_sid is not null
+      or r.campaign_sid is not null
+      or r.messaging_service_sid is not null
+      or r.brand_status is distinct from 'pending'
+      or r.campaign_status is distinct from 'pending';
+$$;
+
+comment on function public.a2p_registration_is_immutable(public.tenant_a2p_registrations) is
+  'True when a registration has left preparation — submitted, approved, rejected, suspended, or '
+  'carrier-linked by any provider SID or advanced per-leg status. A draft save must refuse these.';
 
 create or replace function public.tenant_a2p_registration_save_draft(
   p_use_case             text,
@@ -47,7 +93,7 @@ declare
   v_is_service boolean;
   v_tenant     uuid;
   v_legal      text;
-  v_existing   record;
+  v_existing   public.tenant_a2p_registrations%rowtype;
   v_samples    jsonb;
   v_count      int;
   v_id         uuid;
@@ -59,9 +105,14 @@ begin
   -- A NULL auth.uid() is either the trusted service role or an unauthenticated
   -- caller; they are NOT the same and must not be collapsed. anon also holds no
   -- EXECUTE, but that grant is a second line, never the first (§59).
-  v_is_service := (v_uid is null and coalesce(auth.role(), '') = 'service_role');
+  -- Follows the repository precedent (_marketplace_is_service_role): the verified
+  -- claim OR a genuine service_role database session. The claim alone is a
+  -- self-report, and §59 does not let a self-report be the guard.
+  v_is_service := (v_uid is null
+                   and (coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') = 'service_role'
+                        or session_user = 'service_role'));
   if v_uid is null and not v_is_service then
-    raise exception 'authentication required' using errcode = '42501';
+    raise exception 'authentication required' using errcode = '42501', hint = 'UNAUTHENTICATED';
   end if;
 
   if v_uid is not null then
@@ -70,7 +121,7 @@ begin
     --    can never redirect the write (§9).
     v_tenant := public.current_user_tenant_id();
     if v_tenant is null then
-      raise exception 'no tenant resolved for this account' using errcode = '42501';
+      raise exception 'no tenant resolved for this account' using errcode = '42501', hint = 'NO_TENANT';
     end if;
     -- Capability: the same authority comms-a2p-draft enforces. `has_any_role` reads
     -- the tenant-agnostic user_roles table, which is safe ONLY because the tenant
@@ -78,15 +129,16 @@ begin
     if not (public.is_platform_owner()
             or public.has_any_role(v_uid, array['admin','coach'])) then
       raise exception 'admin or coach access required to prepare a registration'
-        using errcode = '42501';
+        using errcode = '42501', hint = 'FORBIDDEN';
     end if;
   else
     -- ── service-role caller (Paige headless, §10): must name the tenant.
     if p_tenant_id is null then
-      raise exception 'p_tenant_id is required for a service-role caller' using errcode = '22023';
+      raise exception 'p_tenant_id is required for a service-role caller'
+        using errcode = '22023', hint = 'TENANT_REQUIRED';
     end if;
     if not exists (select 1 from public.tenants t where t.id = p_tenant_id) then
-      raise exception 'unknown tenant' using errcode = '42501';
+      raise exception 'unknown tenant' using errcode = '42501', hint = 'UNKNOWN_TENANT';
     end if;
     v_tenant := p_tenant_id;
   end if;
@@ -95,16 +147,19 @@ begin
   select nullif(btrim(lp.legal_business_name), '') into v_legal
     from public.tenant_legal_profile lp where lp.tenant_id = v_tenant;
   if v_legal is null then
+    -- The requirement is real: carriers register a legal entity, not a nickname.
+    -- The caller gets a STABLE code so the surface can name the missing record and
+    -- route the owner to the business profile that owns it, instead of failing mutely.
     raise exception 'a legal business name is required before a registration can be prepared'
-      using errcode = '23514';
+      using errcode = '23514', hint = 'LEGAL_PROFILE_REQUIRED';
   end if;
 
   -- ── validation ────────────────────────────────────────────────────────────
   if v_use is null then
-    raise exception 'a use case is required' using errcode = '23514';
+    raise exception 'a use case is required' using errcode = '23514', hint = 'USE_CASE_REQUIRED';
   end if;
   if jsonb_typeof(coalesce(p_sample_messages, '[]'::jsonb)) <> 'array' then
-    raise exception 'sample_messages must be a JSON array' using errcode = '22023';
+    raise exception 'sample_messages must be a JSON array' using errcode = '22023', hint = 'SAMPLES_INVALID';
   end if;
   -- Keep only non-blank strings, cap the length and the count. Carriers require at
   -- least two real samples, which is the same bar comms-a2p-draft applies before it
@@ -117,31 +172,44 @@ begin
      and s.ord <= 10;
   v_count := jsonb_array_length(v_samples);
   if v_count < 2 then
-    raise exception 'at least two sample messages are required' using errcode = '23514';
+    raise exception 'at least two sample messages are required' using errcode = '23514', hint = 'SAMPLES_REQUIRED';
   end if;
 
   -- ── never overwrite a registration that has left preparation ──────────────
-  select id, status, submitted_at into v_existing
-    from public.tenant_a2p_registrations where tenant_id = v_tenant;
-  if found and (v_existing.submitted_at is not null
-                or v_existing.status in ('submitted','in_review','approved')) then
-    raise exception 'this registration has already been submitted and cannot be edited as a draft'
-      using errcode = '42501';
+  -- FOR UPDATE: without it this read was a precondition another session could
+  -- invalidate before the write landed, which is exactly how an approved,
+  -- carrier-linked registration was demonstrated being downgraded to pending.
+  select * into v_existing
+    from public.tenant_a2p_registrations where tenant_id = v_tenant
+    for update;
+  if found and public.a2p_registration_is_immutable(v_existing) then
+    raise exception 'this registration has left preparation and cannot be edited as a draft'
+      using errcode = '42501', hint = 'REGISTRATION_IMMUTABLE';
   end if;
 
   -- ── the write. Campaign fields only; every provider- and submission-owned
   --    column is deliberately absent from both the INSERT and the UPDATE.
+  -- The WHERE on DO UPDATE re-checks immutability AS PART OF THE WRITE, so a row
+  -- that became immutable between the locking read and here is refused rather than
+  -- clobbered. An absent description or opt-in flow PRESERVES the stored value —
+  -- blanking a field while returning success was its own defect.
   insert into public.tenant_a2p_registrations
     (tenant_id, use_case, campaign_description, sample_messages, optin_flow, status)
   values (v_tenant, v_use, v_desc, v_samples, v_optin, 'pending')
   on conflict (tenant_id) do update
-    set use_case             = excluded.use_case,
-        campaign_description = excluded.campaign_description,
+    set use_case             = coalesce(excluded.use_case, tenant_a2p_registrations.use_case),
+        campaign_description = coalesce(excluded.campaign_description, tenant_a2p_registrations.campaign_description),
         sample_messages      = excluded.sample_messages,
-        optin_flow           = excluded.optin_flow,
+        optin_flow           = coalesce(excluded.optin_flow, tenant_a2p_registrations.optin_flow),
         status               = 'pending',
         updated_at           = now()
+    where not public.a2p_registration_is_immutable(tenant_a2p_registrations.*)
   returning id into v_id;
+
+  if v_id is null then
+    raise exception 'this registration has left preparation and cannot be edited as a draft'
+      using errcode = '42501', hint = 'REGISTRATION_IMMUTABLE';
+  end if;
 
   -- ── provenance on the EXISTING audit seam. Shape only — never the draft text,
   --    never a sample message, never a provider payload or credential.

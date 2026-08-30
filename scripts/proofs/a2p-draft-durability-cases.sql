@@ -27,23 +27,28 @@ DECLARE
   uA uuid := 'aa000000-0000-4000-8000-0000000000a2';   -- admin of tenant A
   uB uuid := 'bb000000-0000-4000-8000-0000000000b2';   -- admin of tenant B
   uNo uuid := 'cc000000-0000-4000-8000-0000000000c2';  -- active member of A, no role
+  tC uuid := 'cc000000-0000-4000-8000-0000000000c3';  -- tenant with NO legal profile
+  uC uuid := 'cc000000-0000-4000-8000-0000000000c4';
   n bigint; out text := E'\n'; fails int := 0; allowed boolean;
-  v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_src text;
+  v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_desc_after text; v_optin_after text; v_hint text;
   SAMPLES constant jsonb := '["Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
                               "Thanks for booking. Reply STOP to opt out."]'::jsonb;
 BEGIN
   INSERT INTO auth.users (id, aud, role, email) VALUES
     (uA,'authenticated','authenticated','a2p-a@t'),
     (uB,'authenticated','authenticated','a2p-b@t'),
-    (uNo,'authenticated','authenticated','a2p-none@t');
+    (uNo,'authenticated','authenticated','a2p-none@t'),
+    (uC,'authenticated','authenticated','a2p-c@t');
   INSERT INTO public.tenants (id, slug, name, account_number_prefix, account_number)
-  VALUES (tA,'a2p-a','A2P A','A2A','910001'),(tB,'a2p-b','A2P B','A2B','910002');
+  VALUES (tA,'a2p-a','A2P A','A2A','910001'),(tB,'a2p-b','A2P B','A2B','910002'),
+         (tC,'a2p-c','A2P C','A2C','910003');
   INSERT INTO public.tenant_members (tenant_id,user_id,status,role) VALUES
-    (tA,uA,'active','owner'),(tB,uB,'active','owner'),(tA,uNo,'active','member');
-  INSERT INTO public.user_roles (user_id,role) VALUES (uA,'admin'),(uB,'admin') ON CONFLICT DO NOTHING;
+    (tA,uA,'active','owner'),(tB,uB,'active','owner'),(tA,uNo,'active','member'),
+    (tC,uC,'active','owner');
+  INSERT INTO public.user_roles (user_id,role) VALUES (uA,'admin'),(uB,'admin'),(uC,'admin') ON CONFLICT DO NOTHING;
   DELETE FROM public.user_roles WHERE user_id = uNo;
   INSERT INTO public.tenant_legal_profile (tenant_id, legal_business_name)
-  VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC');
+  VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC');   -- tC deliberately has NONE
 
   -- 1 ── the seam exists
   allowed := to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)') IS NOT NULL;
@@ -52,25 +57,24 @@ BEGIN
     RAISE EXCEPTION 'A2P DRAFT PROOF: 1 ASSERTION(S) FAILED — no durable save seam; cases 2-9 unreachable.%', out;
   END IF;
 
-  -- 1b ── STRUCTURAL PINS on the two guards behaviour cannot isolate.
+  -- 1b ── NO STRUCTURAL PIN. A real cross-tenant authorization test instead.
   --
-  --   A pre-existing BEFORE INSERT trigger, trg_tenant_a2p_registrations_tenant,
-  --   stamps tenant_id from the caller's own session. It independently defeats a
-  --   redirected write, so case 5 proves the SYSTEM is safe but can never prove
-  --   THIS function derives the tenant server-side — verified by mutation: making
-  --   the JWT branch honour p_tenant_id left case 5 green because the trigger
-  --   corrected it. Likewise an unauthenticated caller is refused a second time by
-  --   the service-role branch. Both guards are therefore pinned against the shipped
-  --   source, the same way the C-7 policy changes had to be.
-  SELECT pg_get_functiondef('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)'::regprocedure)
-    INTO v_src;
-  allowed := v_src LIKE '%v_tenant := public.current_user_tenant_id();%'
-         AND v_src NOT LIKE '%coalesce(p_tenant_id, public.current_user_tenant_id())%';
-  out := out||format('  1b. JWT branch derives tenant server-side ..... %s   want t%s', allowed, E'\n');
-  IF NOT allowed THEN fails := fails + 1; END IF;
-  allowed := v_src LIKE '%if v_uid is null and not v_is_service then%';
-  out := out||format('  1c. unauthenticated caller refused in-body .... %s   want t%s', allowed, E'\n');
-  IF NOT allowed THEN fails := fails + 1; END IF;
+  --   The previous version asserted on the shipped function TEXT, because
+  --   trg_tenant_a2p_registrations_tenant re-stamps tenant_id on INSERT and so
+  --   hides a redirected write. An independent review defeated that pin with a
+  --   semantically-equivalent rewrite -- it kept the literal the pin matched and
+  --   added `if p_tenant_id is not null then v_tenant := p_tenant_id; end if;`
+  --   one line later -- and scored 13/13 while running a full cross-tenant IDOR.
+  --   The tell was in the output and no assertion cared: tenant B's call wrote an
+  --   AUDIT ROW under tenant A's tenant_id, and read A's legal profile and A's
+  --   submission state on the way.
+  --
+  --   So the boundary is now measured, not described. Case 5 below counts EVERY
+  --   trace a foreign caller could leave in tenant A -- registration content and
+  --   audit rows -- which is what the trigger cannot launder.
+  SELECT count(*) INTO n FROM public.paige_audit_log WHERE tenant_id = tA;
+  out := out||format('  1b. tenant A audit baseline ................... %s   want 0%s', n, E'\n');
+  IF n <> 0 THEN fails := fails + 1; END IF;
 
   -- 2 ── an admin of tenant A durably saves a draft
   PERFORM set_config('role','authenticated',true);
@@ -97,17 +101,22 @@ BEGIN
   out := out||format('  4. readiness reports a2p ...................... %s   want prepared%s', v_a2p, E'\n');
   IF v_a2p IS DISTINCT FROM 'prepared' THEN fails := fails + 1; END IF;
 
-  -- 5 ── TENANT ISOLATION: tenant B naming tenant A never redirects the write
+  -- 5 ── TENANT ISOLATION, measured by EVERY trace a foreign caller can leave.
   PERFORM set_config('role','authenticated',true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub',uB,'role','authenticated')::text, true);
   BEGIN PERFORM public.tenant_a2p_registration_save_draft('marketing','Tenant B copy', SAMPLES, NULL, tA);
   EXCEPTION WHEN OTHERS THEN NULL; END;
   RESET role;
   SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tA;
-  out := out||format('  5. tenant A''s row still its own ............... %s   want customer care%s', v_use, E'\n');
+  out := out||format('  5. tenant A''s registration untouched ......... %s   want customer care%s', v_use, E'\n');
   IF v_use IS DISTINCT FROM 'customer care' THEN fails := fails + 1; END IF;
-  -- Non-vacuity: the call must have SUCCEEDED against B's own tenant. Without this a
-  -- write that was silently dropped would read exactly like correct isolation.
+  -- The audit trail is the trace the tenant-stamping trigger does NOT correct, so
+  -- it is where a redirected call shows up even when the row itself looks right.
+  SELECT count(*) INTO n FROM public.paige_audit_log WHERE tenant_id = tA;
+  out := out||format('     ...and left NO audit row in tenant A ...... %s   want 1 (only A''s own save)%s', n, E'\n');
+  IF n <> 1 THEN fails := fails + 1; END IF;
+  -- Non-vacuity: the call must have SUCCEEDED against B's own tenant. A silently
+  -- dropped write would otherwise read exactly like correct isolation.
   SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tB AND use_case = 'marketing';
   out := out||format('     ...and B''s own row WAS written ............ %s   want 1%s', n, E'\n');
   IF n <> 1 THEN fails := fails + 1; END IF;
@@ -159,6 +168,82 @@ BEGIN
           OR v_pay::text ILIKE '%customer care%';
   out := out||format('     payload leaks draft content ................ %s   want f%s', allowed, E'\n');
   IF allowed THEN fails := fails + 1; END IF;
+
+  -- 10 ── D3: a registration carrying a CARRIER SID is immutable, even when its
+  --        status still reads 'pending'. comms-a2p-submit writes pending/null today,
+  --        so a guard keyed only on submitted_at could never fire against the real
+  --        submit path and a re-draft silently replaced human-reviewed copy.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'pending', submitted_at = NULL, brand_sid = 'BN-CARRIER-LINKED',
+         use_case = 'human reviewed copy'
+   WHERE tenant_id = tA;
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uA,'role','authenticated')::text, true);
+  allowed := false;
+  BEGIN PERFORM public.tenant_a2p_registration_save_draft('re-draft','overwrite', SAMPLES, NULL, NULL); allowed := true;
+  EXCEPTION WHEN OTHERS THEN allowed := false; END;
+  RESET role;
+  SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tA;
+  out := out||format('  10. carrier-linked row re-drafted ............. %s   want f (use_case %s)%s',
+                     allowed, v_use, E'\n');
+  IF allowed OR v_use IS DISTINCT FROM 'human reviewed copy' THEN fails := fails + 1; END IF;
+
+  -- 11 ── D4: an absent description/opt-in PRESERVES what is stored. Blanking a
+  --        field while returning success was its own defect.
+  UPDATE public.tenant_a2p_registrations
+     SET brand_sid = NULL, status = 'pending', submitted_at = NULL,
+         campaign_description = 'EXISTING DESCRIPTION', optin_flow = 'EXISTING OPTIN'
+   WHERE tenant_id = tA;
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uA,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft('still fine', NULL, SAMPLES, NULL, NULL);
+  RESET role;
+  SELECT campaign_description, optin_flow INTO v_desc_after, v_optin_after
+    FROM public.tenant_a2p_registrations WHERE tenant_id = tA;
+  out := out||format('  11. absent fields preserved ................... %s / %s   want EXISTING DESCRIPTION / EXISTING OPTIN%s',
+                     coalesce(v_desc_after,'(null)'), coalesce(v_optin_after,'(null)'), E'\n');
+  IF v_desc_after IS DISTINCT FROM 'EXISTING DESCRIPTION'
+     OR v_optin_after IS DISTINCT FROM 'EXISTING OPTIN' THEN fails := fails + 1; END IF;
+
+  -- 12 ── an APPROVED registration is immutable and is never downgraded.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'approved', approved_at = now(), brand_sid = 'BN-APPROVED', use_case = 'approved copy'
+   WHERE tenant_id = tA;
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uA,'role','authenticated')::text, true);
+  allowed := false;
+  BEGIN PERFORM public.tenant_a2p_registration_save_draft('downgrade','attempt', SAMPLES, NULL, NULL); allowed := true;
+  EXCEPTION WHEN OTHERS THEN allowed := false; END;
+  RESET role;
+  SELECT status, use_case INTO v_status, v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tA;
+  out := out||format('  12. approved row downgraded ................... %s   want f (status %s, use_case %s)%s',
+                     allowed, v_status, v_use, E'\n');
+  IF allowed OR v_status <> 'approved' OR v_use IS DISTINCT FROM 'approved copy' THEN fails := fails + 1; END IF;
+
+  -- 13 ── D1: PRODUCTION-SHAPED FIRST USE. Every tenant on prod today has NO
+  --        tenant_legal_profile row (13 tenants, 0 profiles). The first version of
+  --        this proof SEEDED one, which is precisely how it certified a function
+  --        that would have refused for 100% of real tenants while the edge function
+  --        returned 200. Tenant C is deliberately left without a legal profile.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uC,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    PERFORM public.tenant_a2p_registration_save_draft('first use','no legal profile yet', SAMPLES, NULL, NULL);
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false;
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('  13. first-use tenant WITHOUT a legal profile .. refused=%s hint=%s   want t / LEGAL_PROFILE_REQUIRED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'LEGAL_PROFILE_REQUIRED' THEN fails := fails + 1; END IF;
+  -- ...and nothing was persisted for it. A refusal that still wrote a row would be
+  -- the same silent-success defect wearing a different mask.
+  SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tC;
+  out := out||format('      ...and persisted nothing .................. %s   want 0%s', n, E'\n');
+  IF n <> 0 THEN fails := fails + 1; END IF;
 
   IF fails = 0 THEN RAISE EXCEPTION 'A2P DRAFT PROOF: ALL ASSERTIONS PASSED (rolled back)%', out;
   ELSE RAISE EXCEPTION 'A2P DRAFT PROOF: % ASSERTION(S) FAILED%', fails, out; END IF;

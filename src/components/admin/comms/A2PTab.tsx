@@ -30,6 +30,7 @@
 // the generated types (RLS scopes it to the caller's tenant).
 // §2: A2P copy is coaching-generic (produced by comms-a2p-draft); this tab adds no
 // finance wording. §11: gold is spent ONLY on "Approve & submit"; rings stay indigo.
+import { Link } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Sparkles, MessageSquareText, Plus, Trash2, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -131,6 +132,10 @@ export function A2PTab() {
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftUnavailable, setDraftUnavailable] = useState(false);
+  // A refusal the owner can ACT on is different from one they cannot. The draft
+  // seam returns a stable code; LEGAL_PROFILE_REQUIRED names a missing business
+  // record and has a real place to go and fix it.
+  const [needsLegalProfile, setNeedsLegalProfile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const loadReg = useCallback(async () => {
@@ -159,6 +164,7 @@ export function A2PTab() {
   const runDraft = async () => {
     setDrafting(true);
     setDraftUnavailable(false);
+    setNeedsLegalProfile(false);
     try {
       const { data, error } = await supabase.functions.invoke("comms-a2p-draft", {
         body: {
@@ -167,7 +173,17 @@ export function A2PTab() {
           use_case_hint: useCaseHint || undefined,
         },
       });
-      if (error) throw error;
+      if (error) {
+        // supabase-js wraps a non-2xx; the structured body carries our stable code.
+        let code = "";
+        try {
+          const ctx = (error as { context?: Response }).context;
+          const body = ctx ? await ctx.clone().json() : null;
+          code = String((body as { error?: { code?: string } } | null)?.error?.code ?? "");
+        } catch { /* fall through to the generic refusal below */ }
+        if (code === "LEGAL_PROFILE_REQUIRED") { setNeedsLegalProfile(true); return; }
+        throw error;
+      }
       const payload = (data ?? {}) as { draft?: A2PDraft; needs_config?: boolean; legal_business_name?: string };
       // §13: an unconfigured model degrades honestly — no fabricated draft.
       if (payload.needs_config || !payload.draft) {
@@ -406,6 +422,19 @@ export function A2PTab() {
               {drafting ? "Paige is writing it…" : draft ? "Re-draft with Paige" : "Draft with Paige"}
             </Button>
           </div>
+
+          {needsLegalProfile && (
+            <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+              <strong className="text-foreground">Add your legal business name first.</strong>{" "}
+              <span className="text-muted-foreground">
+                Carriers register a legal entity, so this can&rsquo;t be prepared until your business
+                profile has one. Nothing was saved.
+              </span>{" "}
+              <Link to="/admin/setup/legal" className="underline underline-offset-2">
+                Open business profile
+              </Link>
+            </div>
+          )}
 
           {draftUnavailable && (
             <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">

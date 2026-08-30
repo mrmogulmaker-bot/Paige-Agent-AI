@@ -6,10 +6,12 @@
 // opt-in/opt-out/help message language. The coach reviews, edits, approves, and submits — WITHOUT
 // ever opening Twilio or writing 10DLC compliance copy (§36 intuitiveness, §7 tenant-authored).
 //
-// This is a PURE DRAFT — ZERO DB writes (mirrors growth-page-draft's posture). The approved copy is
-// persisted only by the separate, gated comms-a2p-submit. The MODEL call is real (§13); the actual
-// TrustHub SUBMIT is not-yet-wired (createBrand/createCampaign are honest needs_config stubs) and is
-// owned by comms-a2p-submit.
+// This DRAFTS and then DURABLY SAVES the prepared registration. It used to be a pure read that
+// returned the draft and wrote nothing, so "prepare a registration" did not survive the call; the
+// save now goes through tenant_a2p_registration_save_draft. Persisting is NOT submitting: the row is
+// written status='pending' with submitted_at untouched, so the canonical resolver reports `prepared`.
+// The MODEL call is real (§13); the TrustHub SUBMIT remains unwired (createBrand/createCampaign are
+// honest needs_config stubs), and comms-a2p-submit now refuses submission explicitly.
 //
 // ── CONTRACT ────────────────────────────────────────────────────────────────
 // POST (JWT required; verify_jwt=true). Service-role bearer = Paige's headless agent (§10) may name
@@ -31,8 +33,13 @@
 //            help_message: string             // HELP reply
 //          },
 //          legal_business_name: string,       // echoed back (from the form or brand), for the submit step
-//          website: string
+//          website: string,
+//          saved: true                        // the draft is DURABLY persisted as `prepared`
 //        }
+//   422  { error: { code: "LEGAL_PROFILE_REQUIRED" | "REGISTRATION_IMMUTABLE" | ..., message } }
+//        A draft that could not be saved is NEVER returned as a 200. The generated copy is discarded
+//        rather than handed back looking stored — a response that reads as success while nothing
+//        persisted is the defect this function was changed to remove.
 //   4xx/5xx { error: { code, message } }   // structured, non-2xx on failure (never a 200-with-error)
 //   200     { needs_config: true, error }   // no model configured — HONEST degrade (§13), not a fake draft
 //
@@ -302,44 +309,39 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
     };
 
     // ── PERSIST. Generating a draft and handing it back in the response was the
-    //    whole defect: nothing in these 309 lines wrote it down, so "prepare a
+    //    whole defect: nothing in this function wrote it down, so "prepare a
     //    registration" did not survive the call. The save goes through
     //    tenant_a2p_registration_save_draft, which derives the tenant server-side
     //    for a JWT caller, re-enforces the same admin/coach authority in its body,
     //    and never sets submitted_at — so the canonical resolver reports `prepared`
     //    and can never report `submitted` because of this path.
     //
-    //    The RPC is called with the CALLER'S OWN client so its JWT branch applies;
-    //    only a service-role caller names a tenant, which is the same seam this
-    //    function already documents. A save failure does NOT discard the generated
-    //    draft — the caller still receives it, with `saved: false` and the reason,
-    //    because silently returning a draft that looks saved is the §13 lie this
-    //    change exists to remove.
-    let saved = false;
-    let saveError: string | null = null;
-    try {
-      const writer = isServiceRole
-        ? createClient(supabaseUrl, supabaseServiceKey)
-        : createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
-      const { error: sErr } = await writer.rpc("tenant_a2p_registration_save_draft", {
-        p_use_case: draft.use_case,
-        p_campaign_description: draft.campaign_description,
-        p_sample_messages: draft.sample_messages,
-        p_optin_flow: draft.optin_flow || null,
-        ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
-      });
-      if (sErr) {
-        saveError = sErr.message;
-        console.error("comms-a2p-draft: draft save failed:", sErr.code, sErr.message);
-      } else {
-        saved = true;
-      }
-    } catch (e) {
-      saveError = (e as Error)?.message ?? "save failed";
-      console.error("comms-a2p-draft: draft save threw:", saveError);
+    //    A FAILED SAVE IS A FAILED REQUEST. An earlier revision returned 200 with
+    //    `saved: false`; the only caller never read that field, so on a tenant with
+    //    no legal profile — which is every tenant in production today — the draft
+    //    would have looked saved and persisted nothing. That is the same class of
+    //    lie as a fabricated status, so the failure is now a non-2xx carrying the
+    //    RPC's STABLE hint as its code.
+    const writer = isServiceRole
+      ? createClient(supabaseUrl, supabaseServiceKey)
+      : createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
+    const { error: saveErr } = await writer.rpc("tenant_a2p_registration_save_draft", {
+      p_use_case: draft.use_case,
+      p_campaign_description: draft.campaign_description,
+      p_sample_messages: draft.sample_messages,
+      p_optin_flow: draft.optin_flow || null,
+      ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
+    });
+    if (saveErr) {
+      // `hint` is the RPC's stable machine code; the message is already
+      // tenant-safe (it names a missing business record, never a credential).
+      const code = (saveErr.hint || "").trim() || "DRAFT_NOT_SAVED";
+      console.error("comms-a2p-draft: draft save refused:", code, saveErr.code, saveErr.message);
+      return fail(code === "LEGAL_PROFILE_REQUIRED" || code === "REGISTRATION_IMMUTABLE" ? 422 : 500,
+                  code, saveErr.message);
     }
 
-    return ok({ draft, legal_business_name: legalName, website: websiteInput, saved, save_error: saveError });
+    return ok({ draft, legal_business_name: legalName, website: websiteInput, saved: true });
   } catch (e) {
     console.error("comms-a2p-draft: unhandled error:", e);
     return fail(500, "INTERNAL", (e as Error)?.message || "Failed to draft the A2P copy.");
