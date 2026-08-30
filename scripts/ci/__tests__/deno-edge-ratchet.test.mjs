@@ -58,8 +58,8 @@ const unclassified = (extra = {}) => ({ ran: true, present: true, outcome: "uncl
 const absent = (extra = {}) => ({ ran: true, present: false, outcome: "absent", diagnostics: [], ...extra });
 const abandoned = (extra = {}) => ({ ran: false, present: true, outcome: "abandoned", diagnostics: [], ...extra });
 
-const run = (base, head, changedFiles = []) =>
-  typeof R.compareFunction === "function" ? R.compareFunction({ fn: FN, base, head, changedFiles }) : ["compareFunction missing"];
+const run = (base, head, changedFiles = [], depsMatch = true) =>
+  typeof R.compareFunction === "function" ? R.compareFunction({ fn: FN, base, head, changedFiles, depsMatch }) : ["compareFunction missing"];
 
 console.log("\ndiagnostic parsing");
 {
@@ -82,6 +82,20 @@ console.log("\ndiagnostic parsing");
     R.looksLikeResolutionFailure("error: Could not find a matching package for 'npm:zod@3.23.8'"));
   check("does not mistake an ordinary type error for one",
     !R.looksLikeResolutionFailure("TS2769 [ERROR]: No overload matches this call."));
+
+  // An unattributed diagnostic must never inherit another unattributed diagnostic.
+  const noLoc = ["TS2769 [ERROR]: No overload matches this call.", "", "TS2769 [ERROR]: No overload matches this call."].join("\n");
+  const un = R.normalizeDiagnostics(noLoc);
+  check("two unattributed diagnostics do not collapse onto one key",
+    un.length === 2 && un[0].file !== un[1].file, JSON.stringify(un));
+
+  // Both legs live under different worktree roots, so a repo file outside supabase/functions/
+  // must key identically on each side or it always reads as NEW.
+  const outsideBase = R.normalizeDiagnostics("TS2304 [ERROR]: Cannot find name 'z'.\n    at file:///tmp/wt/base/src/lib/x.ts:3:4", "/tmp/wt/base");
+  const outsideHead = R.normalizeDiagnostics("TS2304 [ERROR]: Cannot find name 'z'.\n    at file:///tmp/wt/head/src/lib/x.ts:9:4", "/tmp/wt/head");
+  check("a repo file outside supabase/functions keys the same under both worktree roots",
+    outsideBase[0]?.file === outsideHead[0]?.file && outsideBase[0]?.file === "src/lib/x.ts",
+    JSON.stringify([outsideBase[0], outsideHead[0]]));
 
   const parseReportedErrorCount = requireExport("parseReportedErrorCount");
   if (parseReportedErrorCount) {
@@ -126,6 +140,9 @@ console.log("\nleg classification (the runner's half of the contract)");
 
     check("a spawn failure is `abandoned` and did not run",
       (() => { const l = classifyLeg({ present: true, spawnFailed: true, raw: "ENOENT" }); return l.outcome === "abandoned" && l.ran === false; })());
+
+    check("a tree/worktree presence disagreement is `unclassified`, never `absent`",
+      classifyLeg({ present: true, mismatch: "tree says present, worktree says absent" }).outcome === "unclassified");
 
     check("a missing entry file is `absent`, and absent is not clean",
       (() => { const l = classifyLeg({ present: false }); return l.outcome === "absent" && l.present === false; })());
@@ -248,6 +265,36 @@ console.log("\nshared-dependency policy");
     !both.some((f) => f.includes("TS2769")), JSON.stringify(both));
 }
 
+console.log("\ndependency-input parity");
+{
+  const inherited = [d(SHARED, "TS2769")];
+  check("matching dependency inputs allow inheritance",
+    run(dirty(inherited), dirty([...inherited]), [ENTRY], true).length === 0);
+  const drift = run(dirty(inherited), dirty([...inherited]), [ENTRY], false);
+  check("DIFFERING dependency inputs credit no baseline - the same diagnostic no longer inherits",
+    drift.length > 0, JSON.stringify(drift));
+  check("and the verdict names the dependency drift",
+    drift.some((f) => /dependency inputs/i.test(f)), JSON.stringify(drift));
+  check("differing dependency inputs with a genuinely clean head still passes",
+    run(dirty(inherited), clean(), [ENTRY], false).length === 0);
+}
+
+console.log("\nentry-file inheritance is deliberate and bounded");
+{
+  // The entry file is EXEMPT from the changed-file rule on purpose: making whoever touches a
+  // debt-carrying index.ts clear that debt is exactly the tax this ratchet exists to remove.
+  // Pinned here so the exemption is a decision on record, not an accident nobody tested.
+  const own = [d(ENTRY, "TS2304", "Cannot find name 'x'.")];
+  check("an entry-file diagnostic is inherited even though the entry file changed",
+    run(dirty(own), dirty([...own]), [ENTRY]).length === 0);
+  check("but a SECOND copy of it still fails the count rule",
+    run(dirty(own), dirty([...own, d(ENTRY, "TS2304", "Cannot find name 'x'.")]), [ENTRY])
+      .some((f) => f.includes("INCREASED")));
+  check("and a different diagnostic in the same changed entry file is NEW",
+    run(dirty(own), dirty([...own, d(ENTRY, "TS2322", "Type 'a' is not assignable to type 'b'.")]), [ENTRY])
+      .some((f) => f.includes("NEW diagnostic TS2322")));
+}
+
 console.log("\nmultiple affected functions");
 {
   if (typeof R.compareAll === "function") {
@@ -264,7 +311,7 @@ console.log("\nmultiple affected functions");
     const oneUnclassified = R.compareAll({ functions: [rec("fn-a", clean(), clean()), rec("fn-b", clean(), unclassified())] });
     check("a single unclassified function among several fails the whole run", oneUnclassified.ok === false);
 
-    check("an empty function list is not a pass when functions were expected",
+    check("an empty function list is vacuously ok HERE - the set-size binding lives in main(), not the comparator",
       R.compareAll({ functions: [] }).ok === true);
   }
 }
@@ -341,11 +388,12 @@ function makeShim(withDeno = true) {
   return dir;
 }
 /** Run the real runner. Returns { status, stdout, out } — never throws on a nonzero exit. */
-function runRunner({ repo, base, head, fns, plan, shimDir, out, extraEnv = {}, cwd }) {
+function runRunner({ repo, base, head, fns, plan, shimDir, out, extraEnv = {}, cwd, expect }) {
   const outDir = out ?? path.join(repo, "evidence");
   const log = path.join(repo, "shim.log");
   writeFileSync(log, "");
   const args = [SCRIPT, "--base", base, "--head", head, "--functions", fns.join(","), "--out", outDir];
+  if (expect !== undefined) args.push("--expect", expect);
   const env = {
     ...process.env,
     PATH: `${shimDir}${path.delimiter}${process.env.PATH}`,
@@ -460,8 +508,9 @@ console.log("\nrunner — real script, disposable repository, real candidate");
         plan: { head: { signal: "SIGKILL" } } });
       check("runner: a signal-killed head leg FAILS as abandoned",
         r.status !== 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: evidence is still written for an abandoned leg", r.evidence !== null);
       check("runner: and it is recorded as abandoned, not clean",
-        r.evidence?.functions?.[0]?.head?.outcome === "abandoned" || r.evidence === null,
+        r.evidence?.functions?.[0]?.head?.outcome === "abandoned",
         JSON.stringify(r.evidence?.functions?.[0]?.head));
     }
 
@@ -478,6 +527,13 @@ console.log("\nrunner — real script, disposable repository, real candidate");
         !/mergecommit/.test(r.shimLog), r.shimLog);
       check("runner: and the head leg saw the head commit's content",
         /:: head/.test(r.shimLog), r.shimLog);
+      // Without this, a regression that checked the HEAD tree for BOTH legs would make every
+      // leg pair identical, turn every real regression into an inherited-looking pass, and
+      // leave the whole suite green.
+      check("runner: and the base leg saw the BASE commit's content",
+        /:: base/.test(r.shimLog), r.shimLog);
+      check("runner: exactly one base leg and one head leg ran, base first",
+        (r.shimLog.match(/:: (base|head)/g) ?? []).join(",") === ":: base,:: head", r.shimLog);
       check("runner: records the resolved head SHA in the evidence",
         r.evidence?.headSha === headSha, `${r.evidence?.headSha} vs ${headSha}`);
       check("runner: records the resolved base SHA in the evidence",
@@ -545,12 +601,84 @@ console.log("\nrunner — real script, disposable repository, real candidate");
         existsSync(path.join(one.outDir, "fn-alpha.head.txt")) && existsSync(path.join(one.outDir, "fn-gamma.head.txt")));
     }
 
+    // -- THE SECOND DEFECT: a zero exit that still reported errors ---------
+    // `deno check` writes diagnostics to STDERR. execFileSync returns only stdout on a zero
+    // exit, so the classifier was handed "" and the contradiction guard could never fire.
+    {
+      const { root, baseSha, headSha } = build();
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], shimDir: shim,
+        plan: { head: { exit: 0, out: `TS2304 [ERROR]: Cannot find name 'ghost'.\n    at file:///x/supabase/functions/${FNX}/index.ts:1:1\nFound 1 error.` } } });
+      check("runner: a ZERO exit that still reported errors FAILS as unclassified",
+        r.status !== 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: and the head outcome is unclassified, not clean",
+        r.evidence?.functions?.[0]?.head?.outcome === "unclassified",
+        JSON.stringify(r.evidence?.functions?.[0]?.head?.outcome));
+    }
+    {
+      // Diagnostics on stderr with a NONZERO exit must be read normally, not lost.
+      const { root, baseSha, headSha } = build();
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], shimDir: shim,
+        plan: { head: { exit: 1, out: `TS2304 [ERROR]: Cannot find name 'ghost'.\n    at file:///x/supabase/functions/${FNX}/index.ts:1:1\nFound 1 error.` } } });
+      check("runner: stderr diagnostics are captured and classified",
+        r.evidence?.functions?.[0]?.head?.outcome === "diagnostics" && r.status !== 0,
+        JSON.stringify(r.evidence?.functions?.[0]?.head?.outcome));
+      check("runner: and the transcript a reviewer downloads is NOT empty",
+        (readFileSync(path.join(r.outDir, `${FNX}.head.txt`), "utf8") || "").includes("TS2304"),
+        JSON.stringify(readFileSync(path.join(r.outDir, `${FNX}.head.txt`), "utf8").slice(0, 120)));
+    }
+
+    // -- illegal function names must not escape the evidence directory -----
+    {
+      // The evidence dir is nested two deep inside the disposable repo, so the escape target
+      // `../../etc.base.txt` lands INSIDE that repo. The assertion is then hermetic rather than
+      // depending on whatever happens to be sitting in the system temp directory.
+      const { root, baseSha, headSha } = build();
+      const nested = path.join(root, "ev", "inner");
+      const escapeTarget = path.resolve(nested, "..", "..", "etc.base.txt");
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: ["../../etc"], plan: {}, shimDir: shim, out: nested });
+      check("runner: a function name that is not a single path segment FAILS",
+        r.status !== 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: and no transcript escapes the evidence directory",
+        !existsSync(escapeTarget), escapeTarget);
+    }
+
     // -- expected-count binding (an empty set is not a silent pass) --------
     {
       const { root, baseSha, headSha } = build();
       const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [], plan: {}, shimDir: shim,
         extraEnv: { RATCHET_EXPECT: "2" } });
-      check("runner: fewer functions than CI resolved FAILS", r.status !== 0, `${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: fewer functions than CI resolved FAILS (env form)", r.status !== 0, `${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: and the abort reason is written as evidence, not left to the upload step",
+        r.evidence?.aborted !== undefined, JSON.stringify(r.evidence));
+    }
+    {
+      // The FLAG is what CI actually passes; it had no coverage at all.
+      const { root, baseSha, headSha } = build();
+      const mismatch = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], plan: {}, shimDir: shim, expect: "3" });
+      check("runner: --expect mismatch FAILS (flag form)", mismatch.status !== 0, `${mismatch.status}\n${mismatch.stdout}`);
+
+      const empty = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], plan: {}, shimDir: shim, expect: "" });
+      check("runner: an explicitly EMPTY --expect FAILS rather than disabling the guard",
+        empty.status !== 0, `${empty.status}\n${empty.stdout}${empty.stderr}`);
+
+      const nan = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], plan: {}, shimDir: shim, expect: "abc" });
+      check("runner: a non-numeric --expect FAILS", nan.status !== 0, `${nan.status}\n${nan.stdout}`);
+
+      const good = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], plan: {}, shimDir: shim, expect: "1" });
+      check("runner: a matching --expect passes", good.status === 0, `${good.status}\n${good.stdout}${good.stderr}`);
+    }
+
+    // -- the entry point must actually run from any path -------------------
+    {
+      const spaced = mkdtempSync(path.join(tmpdir(), "ratchet space "));
+      const copy = path.join(spaced, "r.mjs");
+      writeFileSync(copy, readFileSync(SCRIPT, "utf8"));
+      let status = 0;
+      try { execFileSync(process.execPath, [copy], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
+      catch (e) { status = e.status ?? -1; }
+      check("runner: main() still runs from a path containing a space (percent-encoding guard)",
+        status === 2, `status=${status} (expected 2 - '--base is required')`);
+      rmSync(spaced, { recursive: true, force: true });
     }
   } finally {
     for (const r of repos) { try { rmSync(r, { recursive: true, force: true }); } catch { } }

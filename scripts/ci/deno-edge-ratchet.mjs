@@ -38,10 +38,11 @@
  * writes both as inspectable evidence, which is then re-read from disk before any verdict is
  * reported. Missing evidence is a failure, never a warning.
  */
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // -- pure comparator ---------------------------------------------------------
 
@@ -78,9 +79,17 @@ export function looksLikeResolutionFailure(raw) {
 }
 
 /** Absolute runner paths differ between legs and machines; compare repo-relative. */
-export function repoRelative(file) {
+export function repoRelative(file, root = null) {
   const i = file.indexOf("supabase/functions/");
   if (i >= 0) return file.slice(i);
+  // Both legs now live under DIFFERENT temporary worktree roots, so an absolute path outside
+  // supabase/functions/ could never match across legs and every such diagnostic would read as
+  // NEW. Strip the leg's own root so a repo file keys identically on both sides.
+  if (root) {
+    const abs = file.startsWith("/") ? file : `/${file}`;
+    const rel = path.relative(root, abs);
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) return rel;
+  }
   const j = file.indexOf("/scripts/");
   if (j >= 0) return file.slice(j + 1);
   return file;
@@ -94,7 +103,7 @@ export function repoRelative(file) {
  * (origin file, error code, message), kept as a multiset so a SECOND copy of an existing
  * error still fails the count rule.
  */
-export function normalizeDiagnostics(raw) {
+export function normalizeDiagnostics(raw, root = null) {
   const text = String(raw ?? "").replace(ANSI, "");
   const lines = text.split("\n");
   const out = [];
@@ -108,7 +117,15 @@ export function normalizeDiagnostics(raw) {
       const at = /at file:\/\/\/(\S+?):\d+:\d+/.exec(lines[j]);
       if (at) { file = at[1]; break; }
     }
-    out.push({ code, message: message.trim(), file: repoRelative(file) });
+    // A diagnostic whose origin the gate could not name is NOT inheritable: keying every
+    // unattributed diagnostic as the same "unknown" would let two structurally unrelated
+    // errors inherit each other across legs. The ordinal makes each one unique, so it can
+    // only ever read as NEW.
+    out.push({
+      code,
+      message: message.trim(),
+      file: file === "unknown" ? `unattributed#${out.length}` : repoRelative(file, root),
+    });
   }
   return out;
 }
@@ -130,7 +147,16 @@ export function parseReportedErrorCount(raw) {
  * ran to completion and we understand its result" lands on `unclassified` or `abandoned`,
  * both of which the comparator fails closed on.
  */
-export function classifyLeg({ present, exit, raw, signal = null, spawnFailed = false, attempts = 1 }) {
+export function classifyLeg({ present, exit, raw, signal = null, spawnFailed = false, attempts = 1, root = null, mismatch = null }) {
+  // The git tree and the worktree filesystem disagree about whether the entry exists. That is
+  // not "deleted" and it is not "clean" - it is a materialisation we cannot reason about.
+  if (mismatch) {
+    return {
+      ran: true, present: present !== false, outcome: "unclassified", exit: exit ?? null,
+      diagnostics: [], reportedCount: null, attempts, raw: String(raw ?? "").slice(0, RAW_LIMIT),
+      unclassifiedReason: mismatch,
+    };
+  }
   if (present === false) {
     return { ran: true, present: false, outcome: "absent", exit: null, diagnostics: [], reportedCount: null, attempts, raw: "" };
   }
@@ -146,7 +172,7 @@ export function classifyLeg({ present, exit, raw, signal = null, spawnFailed = f
     };
   }
 
-  const diagnostics = normalizeDiagnostics(text);
+  const diagnostics = normalizeDiagnostics(text, root);
   const reportedCount = parseReportedErrorCount(text);
   const leg = { ran: true, present: true, exit, diagnostics, reportedCount, attempts, raw: trimmedRaw };
   const unclassified = (reason) => ({ ...leg, outcome: "unclassified", unclassifiedReason: reason });
@@ -189,7 +215,7 @@ function excerpt(raw, lines = 6) {
  * Compare one function's two legs.
  * @returns {string[]} failure reasons; empty means this function passes the ratchet.
  */
-export function compareFunction({ fn, base, head, changedFiles = [] }) {
+export function compareFunction({ fn, base, head, changedFiles = [], depsMatch = true }) {
   const fail = [];
   const entry = `supabase/functions/${fn}/index.ts`;
   const changed = new Set(changedFiles);
@@ -232,6 +258,18 @@ export function compareFunction({ fn, base, head, changedFiles = [] }) {
   // credited with NOTHING and the head must be clean on its own merits. Strictly stricter than
   // ratcheting, never weaker. An UNCLASSIFIED base is the same situation with a different
   // cause, and gets the same treatment rather than being mistaken for a clean baseline.
+  // The two legs must have been compiled against the same dependency inputs, or the "baseline"
+  // is base code judged against the HEAD's dependencies. An ordinary lockfile bump is enough to
+  // inject a diagnostic into BOTH transcripts, where it then matches and is waved through as
+  // inherited. When the inputs differ, nothing is inherited.
+  if (depsMatch === false) {
+    if (head.outcome === "clean") {
+      console.log(`    note: ${fn} - dependency inputs differ between the two revisions; NO baseline credited, head is clean on its own merits`);
+      return [];
+    }
+    return [`${fn}: the dependency inputs (lockfiles / deno config) DIFFER between base and head, so the base transcript is not a comparable baseline - NO baseline credited, and the head must be clean on its own merits; it reported ${head.diagnostics?.length ?? 0} diagnostic(s)`];
+  }
+
   if (base.outcome === "resolution-failure" || base.outcome === "unclassified") {
     const why = base.outcome === "unclassified"
       ? `BASE check outcome is UNCLASSIFIED (exit ${base.exit ?? "?"}) - ${base.unclassifiedReason ?? "the gate could not interpret the result"}`
@@ -256,7 +294,13 @@ export function compareFunction({ fn, base, head, changedFiles = [] }) {
   const b = tally(baseDiags);
   const h = tally(headDiags);
 
-  // An inherited diagnostic is only inherited while its origin file is unchanged.
+  // An inherited diagnostic in a changed SHARED dependency is not inherited. The entry file is
+  // deliberately exempt: clearing a debt-carrying index.ts is exactly the cost this ratchet
+  // exists to stop charging to whoever touches the function next. The exemption is bounded by
+  // the count rule below - a second copy of an existing entry-file error still fails - and it
+  // is the one place identity is (file, code, message) without a line anchor, so a same-code,
+  // same-message error elsewhere in that file can inherit. That is a known, accepted limit,
+  // recorded here rather than left for a reader to discover.
   for (const d of headDiags) {
     if (d.file !== entry && changed.has(d.file)) {
       fail.push(`${fn}: diagnostic ${d.code} in ${d.file} cannot be inherited - that file CHANGED in this PR, so it is candidate code`);
@@ -321,26 +365,38 @@ function arg(name, fallback = null) {
 
 /** One raw invocation. Distinguishes "exited with a status" from "never completed". */
 function invokeCheck(cwd, entry) {
-  try {
-    const raw = execFileSync("deno", ["check", "--no-lock", entry], {
-      cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024,
-    });
-    return { exit: 0, raw };
-  } catch (e) {
-    const out = `${e.stdout ?? ""}\n${e.stderr ?? ""}`;
-    if (e.signal) return { signal: e.signal, raw: out };
-    if (e.status === null || e.status === undefined) {
-      return { spawnFailed: true, raw: `${out}\n${e.code ?? ""} ${e.message ?? e}`.trim() };
-    }
-    return { exit: e.status, raw: out };
-  }
+  // spawnSync, NOT execFileSync. On a ZERO exit execFileSync returns stdout and DISCARDS
+  // stderr - and `deno check` writes every diagnostic to stderr. That made the zero-exit
+  // contradiction guard in classifyLeg() unreachable (it was always handed ""), so any check
+  // that reported errors while exiting 0 read as clean, and every clean leg's evidence
+  // transcript was empty by construction. Both streams are merged here on EVERY path so
+  // classification sees the same text whatever the exit status.
+  const r = spawnSync("deno", ["check", "--no-lock", entry], {
+    cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+  });
+  const raw = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
+  // Includes ENOBUFS on an output larger than maxBuffer: truncated output is not a result.
+  if (r.error) return { spawnFailed: true, raw: `${raw}\n${r.error.message ?? r.error}`.trim() };
+  if (r.signal) return { signal: r.signal, raw };
+  if (r.status === null || r.status === undefined) return { spawnFailed: true, raw };
+  return { exit: r.status, raw };
 }
 
-function runCheck(cwd, entry) {
-  if (!existsSync(path.join(cwd, entry))) return classifyLeg({ present: false });
+function runCheck(cwd, entry, treePresent) {
+  const onDisk = existsSync(path.join(cwd, entry));
+  // "Absent" must be EARNED from the git tree, never inferred from a missing file. A worktree
+  // that failed to materialise a path, or an untracked stray, both looked like a deleted
+  // function - and a deleted function is an unconditional pass.
+  if (onDisk !== treePresent) {
+    return classifyLeg({
+      present: onDisk, root: cwd,
+      mismatch: `the git tree at this revision says the entry is ${treePresent ? "present" : "absent"} but the worktree says ${onDisk ? "present" : "absent"}`,
+    });
+  }
+  if (!onDisk) return classifyLeg({ present: false });
   let leg;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    leg = classifyLeg({ present: true, ...invokeCheck(cwd, entry), attempts: attempt });
+    leg = classifyLeg({ present: true, root: cwd, ...invokeCheck(cwd, entry), attempts: attempt });
     if (leg.outcome !== "abandoned") return leg;
     if (attempt < MAX_ATTEMPTS) {
       console.log(`    retry: ${entry} leg abandoned (${leg.signal ?? "spawn failure"}) - attempt ${attempt + 1}/${MAX_ATTEMPTS}`);
@@ -354,22 +410,73 @@ function git(repo, ...args) {
   return execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
+/** A function name is a single path segment. Anything else can escape the evidence directory. */
+const LEGAL_FN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** Does this revision's TREE carry the entry file? Authoritative, unlike the filesystem. */
+function entryInTree(repo, sha, entry) {
+  try { execFileSync("git", ["cat-file", "-e", `${sha}:${entry}`], { cwd: repo, stdio: "ignore" }); return true; }
+  catch { return false; }
+}
+
+/**
+ * Blob ids of everything that decides what the check RESOLVES to. If these differ between the
+ * two revisions, the base transcript is base code compiled against different inputs, and its
+ * diagnostics are not a baseline the head may inherit.
+ */
+// DENO inputs only. Edge functions are Deno and deploy with no node_modules, so the runner does
+// not stage one (see the worktree loop) and npm lockfiles are not inputs to this check. Listing
+// package.json here instead would withdraw inheritance on every PR that touches an unrelated
+// frontend dependency - reimposing the exact tax this ratchet exists to remove.
+const DEP_INPUTS = ["deno.lock", "deno.json", "deno.jsonc", "import_map.json"];
+function depFingerprint(repo, sha) {
+  return DEP_INPUTS.map((f) => {
+    try { return `${f}=${git(repo, "rev-parse", `${sha}:${f}`)}`; }
+    catch { return `${f}=absent`; }
+  }).join(" ");
+}
+
+/** Write what we know before dying, so `if-no-files-found: error` reports the real cause. */
+function abort(outDir, evidence, reason, code = 1) {
+  console.log(`::error::deno-edge-ratchet: ${reason}`);
+  try {
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(path.join(outDir, "evidence.json"), JSON.stringify({ ...evidence, aborted: reason }, null, 2));
+  } catch { /* the exit code is the verdict either way */ }
+  process.exit(code);
+}
+
 function main() {
   const baseRef = arg("base");
   const headRef = arg("head", "HEAD");
   const fnsArg = arg("functions", "");
   const outDir = arg("out", "deno-ratchet-evidence");
-  const expectRaw = arg("expect", process.env.RATCHET_EXPECT ?? null);
+  // Distinguish "not passed" from "passed as empty". `arg()` treats an empty value as absent,
+  // so the raw argv is inspected directly: an explicitly empty --expect used to silently
+  // disable the one control standing between "graded nothing" and a green verdict.
+  const expectIdx = process.argv.indexOf("--expect");
+  const expectGiven = expectIdx >= 0 || process.env.RATCHET_EXPECT !== undefined;
+  const expectRaw = expectIdx >= 0 ? (process.argv[expectIdx + 1] ?? "") : (process.env.RATCHET_EXPECT ?? null);
   const fns = [...new Set(fnsArg.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean))];
 
-  if (!baseRef) { console.error("::error::deno-edge-ratchet: --base <ref> is required"); process.exit(2); }
+  const evidence = { baseRef, headRef, baseSha: null, headSha: null, runnerCheckout: null, changedFiles: [], functions: [] };
 
-  // The set CI resolved and the set the ratchet graded must be the same set. Silently grading
-  // fewer functions than were affected is a pass nobody asked for.
-  const expect = expectRaw === null || expectRaw === "" ? null : Number(expectRaw);
-  if (expect !== null && Number.isFinite(expect) && fns.length !== expect) {
-    console.error(`::error::deno-edge-ratchet: CI resolved ${expect} affected function(s) but ${fns.length} reached the ratchet - refusing to report a verdict on a set that does not match.`);
-    process.exit(1);
+  if (!baseRef) abort(outDir, evidence, "--base <ref> is required", 2);
+
+  for (const fn of fns) {
+    if (!LEGAL_FN.test(fn)) {
+      abort(outDir, evidence, `illegal function name ${JSON.stringify(fn)} - a function name is a single path segment`, 2);
+    }
+  }
+
+  // The set CI resolved and the set the ratchet graded must be the same set. An expectation we
+  // cannot read is a configuration error, never a reason to skip the check.
+  const expect = Number(expectRaw);
+  if (expectGiven && (expectRaw === "" || expectRaw === null || !Number.isFinite(expect))) {
+    abort(outDir, evidence, `--expect ${JSON.stringify(expectRaw)} is not a number - refusing to grade an unbounded set`, 2);
+  }
+  if (expectGiven && fns.length !== expect) {
+    abort(outDir, evidence, `CI resolved ${expect} affected function(s) but ${fns.length} reached the ratchet - refusing to report a verdict on a set that does not match.`);
   }
 
   const repo = process.cwd();
@@ -379,21 +486,24 @@ function main() {
   // name. Resolving both refs up front also turns a bad ref into a loud failure, not a silent one.
   let baseSha, headSha;
   try { baseSha = git(repo, "rev-parse", "--verify", `${baseRef}^{commit}`); }
-  catch { console.error(`::error::deno-edge-ratchet: base ref '${baseRef}' does not resolve to a commit`); process.exit(2); }
+  catch { abort(outDir, evidence, `base ref '${baseRef}' does not resolve to a commit`, 2); }
   try { headSha = git(repo, "rev-parse", "--verify", `${headRef}^{commit}`); }
-  catch { console.error(`::error::deno-edge-ratchet: head ref '${headRef}' does not resolve to a commit`); process.exit(2); }
+  catch { abort(outDir, evidence, `head ref '${headRef}' does not resolve to a commit`, 2); }
+  evidence.baseSha = baseSha;
+  evidence.headSha = headSha;
 
-  let runnerCheckout = null;
-  try { runnerCheckout = git(repo, "rev-parse", "HEAD"); } catch { /* not fatal; recorded as null */ }
-  if (runnerCheckout && runnerCheckout !== headSha) {
-    console.log(`note: the runner's working tree is ${runnerCheckout}, not the PR head ${headSha}.`);
+  try { evidence.runnerCheckout = git(repo, "rev-parse", "HEAD"); } catch { /* recorded as null */ }
+  if (evidence.runnerCheckout && evidence.runnerCheckout !== headSha) {
+    console.log(`note: the runner's working tree is ${evidence.runnerCheckout}, not the PR head ${headSha}.`);
     console.log("      both legs are checked in detached worktrees at their exact SHAs, so the verdict is bound to the head named above.");
   }
 
-  const evidence = {
-    baseRef, headRef, baseSha, headSha, runnerCheckout,
-    changedFiles: [], functions: [],
-  };
+  const baseDeps = depFingerprint(repo, baseSha);
+  const headDeps = depFingerprint(repo, headSha);
+  evidence.baseDepFingerprint = baseDeps;
+  evidence.headDepFingerprint = headDeps;
+  const depsMatch = baseDeps === headDeps;
+  if (!depsMatch) console.log("note: dependency inputs differ between the two revisions - no diagnostic will be credited as inherited.");
 
   if (fns.length === 0) {
     console.log("deno-edge-ratchet: no affected functions - nothing to compare.");
@@ -406,11 +516,15 @@ function main() {
     .split("\n").map((s) => s.trim()).filter(Boolean);
   const changedFiles = evidence.changedFiles;
 
-  // Both legs run in detached worktrees at their exact SHAs, sharing the head's node_modules so
-  // the two runs are otherwise identical.
+  // Both legs run in detached worktrees at their exact SHAs, and NEITHER is given a
+  // node_modules. Staging the head's tree into the base leg (as this did originally) meant the
+  // "baseline" was base code compiled against HEAD-controlled dependency inputs: a lockfile bump
+  // can inject the same diagnostic into both transcripts, where it then matches and is waved
+  // through as inherited. Edge functions deploy to Deno with no node_modules, so the honest
+  // comparison is the one without it, and each leg resolves through its own committed Deno
+  // config - which the fingerprint above still compares.
   const tmp = mkdtempSync(path.join(tmpdir(), "deno-ratchet-"));
   const trees = {};
-  const nm = path.join(repo, "node_modules");
   try {
     for (const [label, sha] of [["base", baseSha], ["head", headSha]]) {
       const dir = path.join(tmp, label);
@@ -422,49 +536,57 @@ function main() {
       } catch (e) {
         throw new Error(`could not create the ${label} worktree at ${sha}: ${e.stderr ?? e.message ?? e}`);
       }
+      // Registered BEFORE the assertion below, so a failed assertion still gets cleaned up.
+      trees[label] = dir;
       const got = git(dir, "rev-parse", "HEAD");
       if (got !== sha) {
         throw new Error(`${label} worktree resolved to ${got} but ${sha} was requested - refusing to grade an unbound tree`);
       }
-      if (existsSync(nm)) {
-        try { symlinkSync(nm, path.join(dir, "node_modules"), "dir"); } catch { /* already present */ }
-      }
-      trees[label] = dir;
     }
 
     for (const fn of fns) {
       const entry = `supabase/functions/${fn}/index.ts`;
       console.log(`--- ratchet ${fn}`);
-      const base = runCheck(trees.base, entry);
-      const head = runCheck(trees.head, entry);
+      const base = runCheck(trees.base, entry, entryInTree(repo, baseSha, entry));
+      const head = runCheck(trees.head, entry, entryInTree(repo, headSha, entry));
       const say = (leg) => `${leg.outcome}${leg.diagnostics?.length ? ` (${leg.diagnostics.length} diagnostic(s))` : ""}${leg.unclassifiedReason ? ` - ${leg.unclassifiedReason}` : ""}`;
       console.log(`    base @ ${baseSha.slice(0, 8)}: ${say(base)}`);
       console.log(`    head @ ${headSha.slice(0, 8)}: ${say(head)}`);
-      evidence.functions.push({ fn, base, head, changedFiles });
+      evidence.functions.push({ fn, base, head, changedFiles, depsMatch });
     }
   } finally {
     for (const dir of Object.values(trees)) {
       try { execFileSync("git", ["worktree", "remove", "--force", dir], { cwd: repo, stdio: "ignore" }); } catch { /* best effort */ }
     }
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    // A worktree killed mid-run leaves a stale administrative entry behind; prune it.
+    try { execFileSync("git", ["worktree", "prune"], { cwd: repo, stdio: "ignore" }); } catch { /* best effort */ }
   }
 
   mkdirSync(outDir, { recursive: true });
   writeFileSync(path.join(outDir, "evidence.json"), JSON.stringify(evidence, null, 2));
   for (const rec of evidence.functions) {
-    writeFileSync(path.join(outDir, `${rec.fn}.base.txt`), rec.base.raw ?? "");
-    writeFileSync(path.join(outDir, `${rec.fn}.head.txt`), rec.head.raw ?? "");
+    for (const leg of ["base", "head"]) {
+      const target = path.join(outDir, `${rec.fn}.${leg}.txt`);
+      // Belt and braces alongside LEGAL_FN: evidence never lands outside the uploaded directory.
+      if (!path.resolve(target).startsWith(path.resolve(outDir) + path.sep)) {
+        abort(outDir, evidence, `refusing to write evidence outside ${outDir}: ${target}`, 2);
+      }
+      writeFileSync(target, rec[leg].raw ?? "");
+    }
   }
 
-  // Re-read from disk: a verdict backed by evidence nobody can open is not a verdict.
+  // Re-read from disk and grade THAT. The artifact a reviewer downloads is the artifact the
+  // verdict was computed from, so a serialisation defect cannot leave the two disagreeing.
   const missing = verifyEvidenceArtifacts(outDir, evidence);
   if (missing.length) {
     for (const m of missing) console.log(`::error::${m}`);
     console.log(`\ndeno edge ratchet: evidence is incomplete, so no verdict is reported. ${missing.length} artifact problem(s).`);
     process.exit(1);
   }
+  const onDisk = JSON.parse(readFileSync(path.join(outDir, "evidence.json"), "utf8"));
 
-  const { ok, failures } = compareAll(evidence);
+  const { ok, failures } = compareAll(onDisk);
   if (!ok) {
     for (const f of failures) console.log(`::error::${f}`);
     console.log(`\ndeno edge ratchet: ${failures.length} blocking finding(s). Evidence in ${outDir}/.`);
@@ -473,7 +595,10 @@ function main() {
   console.log(`\ndeno edge ratchet: no new or increased diagnostics across ${fns.length} function(s). Evidence in ${outDir}/.`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL, not string concatenation: `import.meta.url` is percent-encoded and argv[1] is
+// not, so a workspace path containing a space, '%', '#' or non-ASCII made main() never run -
+// the entire gate a silent no-op exiting 0.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { main(); }
   catch (e) {
     // An unexpected throw is not a pass. Say what happened and fail closed.

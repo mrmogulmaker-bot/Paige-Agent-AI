@@ -213,7 +213,20 @@ jobs:
         id: affected_fns
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.fn_count != '0' }}
         run: |
-          python3 .github/scripts/edge-affected.py < changed_fns.txt | tee affected_fns.txt
+          # pipefail: GitHub's default shell is `bash -e {0}` with NO pipefail, so a pipeline
+          # reports the LAST command's status. `... | tee affected_fns.txt` therefore returned
+          # tee's 0 even when the resolver crashed, leaving affected_fns.txt EMPTY, count=0, the
+          # ratchet step skipped, no evidence uploaded, and the job green having type-checked
+          # nothing. Redirect instead of piping so there is no pipeline to mask.
+          set -o pipefail
+          python3 .github/scripts/edge-affected.py < changed_fns.txt > affected_fns.txt
+          cat affected_fns.txt
+          # A change under supabase/functions/<fn>/ is affected by construction, so a non-empty
+          # input that resolves to zero functions is a resolver failure, not an empty answer.
+          if [ "$(grep -c . changed_fns.txt || true)" -gt 0 ] && [ "$(grep -c . affected_fns.txt || true)" -eq 0 ]; then
+            echo "::error::edge-affected resolved 0 functions from $(grep -c . changed_fns.txt) changed edge-function file(s) - treating as a resolver failure, not an empty result."
+            exit 1
+          fi
           echo "count=$(grep -c . affected_fns.txt || true)" >> "$GITHUB_OUTPUT"
 
       # UNCONDITIONAL. The ratchet's own contract tests drive a REAL `deno check` against a
@@ -244,7 +257,9 @@ jobs:
       # No continue-on-error, no `exit 0`, no advisory green, no per-PR exception. Both legs are
       # uploaded as evidence so a reviewer can read what each actually produced.
       - name: Deno ratchet (affected edge functions — fails on NEW or increased diagnostics)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        # `count != ''` as well as `!= '0'`: an empty count means the resolve step did not run or
+        # produced no output, and an unbounded run is a configuration error, not a no-op pass.
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
         env:
           BASE: ${{ steps.mergebase.outputs.mb }}
           HEAD: ${{ github.event.pull_request.head.sha }}
@@ -262,7 +277,7 @@ jobs:
             --out deno-ratchet-evidence
 
       - name: Upload Deno ratchet evidence (base and head legs)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
         uses: actions/upload-artifact@v4
         with:
           name: deno-ratchet-evidence
@@ -272,6 +287,12 @@ jobs:
           # by nothing. The runner also re-reads every artifact from disk before it reports a
           # verdict, so this is the second of two independent checks on the same property.
           if-no-files-found: error
+
+      # The ratchet needs a PR base, so it cannot run on a push to main. Say so in the log: an
+      # absent gate should never have to be inferred from a missing step.
+      - name: Note — edge ratchet needs a PR base
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        run: echo "::notice::deno edge ratchet skipped - no PR base for a ${{ github.event_name }} event; affected edge functions were NOT type-checked in this run."
 
       # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----
       # A comparator that decides a gate is itself a gate. RATCHET_REQUIRE_DENO=1 turns the
