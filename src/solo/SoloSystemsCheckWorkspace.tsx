@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowUpRight, Bot, ChevronRight, Clock3, RefreshCw, X,
 } from "lucide-react";
@@ -92,6 +92,7 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState("");
   const returnFocus = useRef<HTMLElement | null>(null);
+  const restoreFindingFocus = useRef(false);
   const proposalReturnFocus = useRef<HTMLElement | null>(null);
   const decisionReturnFocus = useRef<HTMLElement | null>(null);
   const scrollOwnerRef = useRef<HTMLDivElement | null>(null);
@@ -153,13 +154,15 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
     setDecisionBusy(false);
     decisionBusyRef.current = false;
     setDecisionMessage("");
+    restoreFindingFocus.current = false;
+    returnFocus.current = null;
   }, [command.accountEpoch]);
 
   const closeFinding = () => {
     setProposal(false);
     setSelected(null);
     setExpanded(false);
-    returnFocus.current?.focus();
+    restoreFindingFocus.current = true;
   };
 
   const closeProposal = () => {
@@ -185,9 +188,14 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige }: Props) 
     if (decision) decisionRef.current?.querySelector<HTMLElement>("[data-initial-focus]")?.focus();
   }, [decision]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (scrollOwnerRef.current) scrollOwnerRef.current.inert = Boolean(selected || proposal || decision);
     if (drawerRef.current) drawerRef.current.inert = proposal;
+    if (!selected && !proposal && !decision && restoreFindingFocus.current) {
+      restoreFindingFocus.current = false;
+      const target = returnFocus.current;
+      if (target?.isConnected) target.focus();
+    }
   }, [decision, proposal, selected]);
 
   useEffect(() => {
