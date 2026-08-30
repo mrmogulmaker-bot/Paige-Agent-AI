@@ -10,49 +10,63 @@ BEGIN;
 
 INSERT INTO auth.users (id, aud, role, email) VALUES
   ('7a110000-0000-0000-0000-0000000000a2', 'authenticated', 'authenticated', 'mind-rail-owner@x.invalid'),
+  ('7a110000-0000-0000-0000-0000000000a3', 'authenticated', 'authenticated', 'mind-rail-stale-owner-role@x.invalid'),
   ('7a110000-0000-0000-0000-0000000000a1', 'authenticated', 'authenticated', 'mind-rail-admin@x.invalid'),
   ('7a110000-0000-0000-0000-0000000000c1', 'authenticated', 'authenticated', 'mind-rail-coach@x.invalid'),
   ('7a110000-0000-0000-0000-0000000000b1', 'authenticated', 'authenticated', 'mind-rail-member@x.invalid'),
   ('7a110000-0000-0000-0000-0000000000d1', 'authenticated', 'authenticated', 'mind-rail-other@x.invalid'),
   ('7a110000-0000-0000-0000-0000000000e1', 'authenticated', 'authenticated', 'mind-rail-no-tenant@x.invalid'),
-  ('7a110000-0000-0000-0000-0000000000f1', 'authenticated', 'authenticated', 'mind-rail-linked-client@x.invalid');
+  ('7a110000-0000-0000-0000-0000000000f1', 'authenticated', 'authenticated', 'mind-rail-linked-client@x.invalid'),
+  ('7a110000-0000-0000-0000-0000000000f2', 'authenticated', 'authenticated', 'mind-rail-inactive-tenant@x.invalid');
 
 INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, features) VALUES
   ('7a110000-0000-0000-0000-000000001111', 'mind-rail-t1', 'Mind Rail T1', 'active', 'standalone', 'MRT1', '{}'::jsonb),
-  ('7a110000-0000-0000-0000-000000002222', 'mind-rail-t2', 'Mind Rail T2', 'active', 'standalone', 'MRT2', '{}'::jsonb);
+  ('7a110000-0000-0000-0000-000000002222', 'mind-rail-t2', 'Mind Rail T2', 'active', 'standalone', 'MRT2', '{}'::jsonb),
+  ('7a110000-0000-0000-0000-000000003333', 'mind-rail-t3', 'Mind Rail T3', 'suspended', 'standalone', 'MRT3', '{}'::jsonb);
 
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('7a110000-0000-0000-0000-0000000000a2', NULL),
+  ('7a110000-0000-0000-0000-0000000000a3', NULL),
   ('7a110000-0000-0000-0000-0000000000a1', NULL),
   ('7a110000-0000-0000-0000-0000000000c1', NULL),
   ('7a110000-0000-0000-0000-0000000000b1', NULL),
   ('7a110000-0000-0000-0000-0000000000d1', NULL),
   ('7a110000-0000-0000-0000-0000000000e1', NULL),
-  ('7a110000-0000-0000-0000-0000000000f1', NULL)
+  ('7a110000-0000-0000-0000-0000000000f1', NULL),
+  ('7a110000-0000-0000-0000-0000000000f2', NULL)
 ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
-  ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000a2', 'owner', 'active', true, now()),
+  -- Canonical tenant ownership is the explicit is_owner signal, independent of
+  -- the legacy role enum value. The inverse fixture below must stay denied.
+  ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000a2', 'member', 'active', true, now()),
+  ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000a3', 'owner', 'active', false, now()),
   ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000a1', 'admin', 'active', false, now()),
+  ('7a110000-0000-0000-0000-000000002222', '7a110000-0000-0000-0000-0000000000a1', 'admin', 'active', false, now()),
   ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000c1', 'coach', 'active', false, now()),
   ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000b1', 'member', 'active', false, now()),
   ('7a110000-0000-0000-0000-000000002222', '7a110000-0000-0000-0000-0000000000d1', 'admin', 'active', false, now()),
-  ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000f1', 'member', 'active', false, now());
+  ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000e1', 'admin', 'active', false, now()),
+  ('7a110000-0000-0000-0000-000000001111', '7a110000-0000-0000-0000-0000000000f1', 'admin', 'active', false, now()),
+  ('7a110000-0000-0000-0000-000000003333', '7a110000-0000-0000-0000-0000000000f2', 'admin', 'active', false, now());
 
 UPDATE public.profiles
 SET active_tenant_id = CASE user_id
   WHEN '7a110000-0000-0000-0000-0000000000d1'::uuid THEN '7a110000-0000-0000-0000-000000002222'::uuid
   WHEN '7a110000-0000-0000-0000-0000000000e1'::uuid THEN NULL
+  WHEN '7a110000-0000-0000-0000-0000000000f2'::uuid THEN '7a110000-0000-0000-0000-000000003333'::uuid
   ELSE '7a110000-0000-0000-0000-000000001111'::uuid
 END
 WHERE user_id IN (
   '7a110000-0000-0000-0000-0000000000a2',
+  '7a110000-0000-0000-0000-0000000000a3',
   '7a110000-0000-0000-0000-0000000000a1',
   '7a110000-0000-0000-0000-0000000000c1',
   '7a110000-0000-0000-0000-0000000000b1',
   '7a110000-0000-0000-0000-0000000000d1',
   '7a110000-0000-0000-0000-0000000000e1',
-  '7a110000-0000-0000-0000-0000000000f1'
+  '7a110000-0000-0000-0000-0000000000f1',
+  '7a110000-0000-0000-0000-0000000000f2'
 );
 
 INSERT INTO public.user_roles (user_id, role)
@@ -186,6 +200,14 @@ BEGIN
   FROM public.get_solo_mind_rail_events('7a110000-0000-0000-0000-000000001111', NULL, 50);
   IF row_count <> 3 THEN RAISE EXCEPTION 'FAIL_COACH_SCOPE: coach saw % rows', row_count; END IF;
 
+  -- A legacy role='owner' value without the canonical ownership signal does
+  -- not grant Mind access.
+  PERFORM set_config('request.jwt.claims', '{"sub":"7a110000-0000-0000-0000-0000000000a3","role":"authenticated"}', true);
+  blocked := false;
+  BEGIN PERFORM * FROM public.get_solo_mind_rail_events('7a110000-0000-0000-0000-000000001111', NULL, 50);
+  EXCEPTION WHEN insufficient_privilege THEN blocked := true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'FAIL_STALE_OWNER_ROLE: legacy owner role gained access'; END IF;
+
   -- Re-check membership on every call: a session whose authority becomes stale
   -- is denied immediately.
   RESET ROLE;
@@ -216,6 +238,14 @@ BEGIN
   BEGIN PERFORM * FROM public.get_solo_mind_rail_events('7a110000-0000-0000-0000-000000001111', NULL, 50);
   EXCEPTION WHEN insufficient_privilege THEN blocked := true; END;
   IF NOT blocked THEN RAISE EXCEPTION 'FAIL_NO_CONTEXT: unscoped caller gained access'; END IF;
+
+  -- An otherwise-authorized admin in an inactive tenant is denied by tenant
+  -- status rather than by membership or active-account mismatch.
+  PERFORM set_config('request.jwt.claims', '{"sub":"7a110000-0000-0000-0000-0000000000f2","role":"authenticated"}', true);
+  blocked := false;
+  BEGIN PERFORM * FROM public.get_solo_mind_rail_events('7a110000-0000-0000-0000-000000003333', NULL, 50);
+  EXCEPTION WHEN insufficient_privilege THEN blocked := true; END;
+  IF NOT blocked THEN RAISE EXCEPTION 'FAIL_INACTIVE_TENANT: inactive tenant gained access'; END IF;
 
   PERFORM set_config('request.jwt.claims', '{"sub":"7a110000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
   blocked := false;
