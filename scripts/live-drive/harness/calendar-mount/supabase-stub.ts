@@ -72,7 +72,7 @@ function bookings() {
   const row = (o: Record<string, unknown>) => ({
     status: "scheduled", source: "manual", guest_email: null, guest_phone: null,
     location_type: "video", location_value: null, notes: null, booking_kind: "appointment",
-    capacity: null, host_user_id: "host-a", host_full_name: "Harness host A",
+    capacity: null, class_session_id: null, host_user_id: "host-a", host_full_name: "Harness host A",
     timezone: "UTC", calendar_id: "cal-1", guest_name: null, ...o,
   });
 
@@ -86,6 +86,16 @@ function bookings() {
     row({ id: "b5", title: "Harness slot 5 with a deliberately long title to pressure min-width and force ellipsis", start_at: at(3, 11), end_at: at(3, 12), calendar_id: "cal-3" }),
     row({ id: "b6", title: "Harness slot 6", start_at: at(3, 16), end_at: at(3, 17), status: "cancelled" }),
     row({ id: "b7", title: "Harness slot 7", start_at: at(4, 8), end_at: at(4, 9), calendar_id: null }),
+    // A class plus its attendee seats — three rows that must render as ONE chip
+    // and produce ZERO conflicts, which is what the fold is for. Rendering them
+    // unfolded is the shipped defect this fixture now catches in geometry.
+    row({ id: "c1", title: "Harness group session", booking_kind: "class_session", capacity: 6, start_at: at(1, 13), end_at: at(1, 14), calendar_id: "cal-2" }),
+    ...["s1", "s2", "s3"].map((id, i) =>
+      row({
+        id, title: "Harness group session", booking_kind: "class_seat", class_session_id: "c1",
+        guest_name: `Harness attendee ${i + 1}`, start_at: at(1, 13), end_at: at(1, 14), calendar_id: "cal-2",
+      }),
+    ),
     // Day 5 stacked five deep so the month cell overflows its 3-chip cap.
     ...[8, 9, 10, 11, 12].map((h, i) =>
       row({ id: `b8${i}`, title: `Harness slot 8.${i + 1}`, start_at: at(5, h), end_at: at(5, h + 1) }),
@@ -123,6 +133,16 @@ export const supabase = {
   auth: {
     getUser: () => Promise.resolve({ data: { user: { id: "harness-user" } }, error: null }),
   },
+  /** Realtime needs a live socket a geometry harness does not have. This quiet
+   *  channel is what an idle subscription renders as — no events, no refetch —
+   *  so the measured layout is the same one a real page shows between changes.
+   *  It exists because `useRealtimeTable` would otherwise throw on `.channel`,
+   *  and a thrown hook renders nothing at all to measure. */
+  channel: () => {
+    const ch = { on: () => ch, subscribe: () => ch, unsubscribe: () => ch };
+    return ch;
+  },
+  removeChannel: () => {},
 };
 
 export default { supabase };

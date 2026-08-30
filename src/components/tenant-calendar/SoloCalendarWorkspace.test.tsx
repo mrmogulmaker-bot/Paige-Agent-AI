@@ -22,10 +22,16 @@ vi.mock("./useSoloCalendar", async () => {
   const actual = await vi.importActual<typeof import("./useSoloCalendar")>("./useSoloCalendar");
   return {
     ...actual,
-    useSoloCalendar: () => ({
-      bookings: state.bookings,
+    useSoloCalendar: () => {
+      // Mirrors the real hook exactly: the class fold runs BEFORE the grid and
+      // the conflict detector see anything, so these tests exercise the shipped
+      // folding logic rather than a convenient stand-in for it.
+      const folded = actual.foldClassSeats(state.bookings);
+      return {
+      bookings: folded.visible,
       calendars: state.calendars,
-      conflicts: actual.findConflicts(state.bookings),
+      seatsBySession: folded.seatsBySession,
+      conflicts: actual.findConflicts(folded.visible),
       phase: state.phase,
       error: state.error,
       calendarsError: null,
@@ -36,7 +42,8 @@ vi.mock("./useSoloCalendar", async () => {
         const c = state.calendars.find((x) => x.id === b.calendar_id);
         return c?.color || c?.accent || actual.DEFAULT_CALENDAR_COLOR;
       },
-    }),
+      };
+    },
   };
 });
 
@@ -60,7 +67,7 @@ function booking(over: Partial<SoloBooking> & { id: string; start_at: string; en
     title: "Discovery call", status: "scheduled", source: "manual",
     guest_name: null, guest_email: null, guest_phone: null, calendar_id: null,
     location_type: null, location_value: null, notes: null,
-    booking_kind: "appointment", capacity: null,
+    booking_kind: "appointment", capacity: null, class_session_id: null,
     intake_answers: null, appointment_type: null,
     host_user_id: "host-a", host_full_name: null, timezone: null,
     ...over,
@@ -450,5 +457,93 @@ describe("Solo Calendar — calendar settings stay Calendar-owned", () => {
     openConfig();
     expect(container.querySelector('a[href="/solo/1/integrations"]')).toBeTruthy();
     expect(text()).toMatch(/Email and SMS · to guest and host/i);
+  });
+});
+
+describe("Solo Calendar — a class is one appointment, not one per attendee", () => {
+  /** The shape `list_team_bookings` really returns for a group booking: the
+   *  session marker plus one `class_seat` per attendee, all on the same host at
+   *  the same hour. */
+  function groupBooking(seats: { id: string; name: string; email?: string; status?: string }[]) {
+    return [
+      booking({
+        id: "class-1", title: "Group coaching", booking_kind: "class_session",
+        capacity: 8, start_at: todayAt(10), end_at: todayAt(11),
+      }),
+      ...seats.map((s) =>
+        booking({
+          id: s.id, title: "Group coaching", booking_kind: "class_seat",
+          class_session_id: "class-1", guest_name: s.name, guest_email: s.email ?? null,
+          status: s.status ?? "scheduled", start_at: todayAt(10), end_at: todayAt(11),
+        }),
+      ),
+    ];
+  }
+
+  it("draws the class once, however many people are booked into it", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One" },
+      { id: "seat-2", name: "Attendee Two" },
+      { id: "seat-3", name: "Attendee Three" },
+    ]);
+    mount();
+    expect(container.querySelectorAll("button.sc-ev")).toHaveLength(1);
+  });
+
+  it("does not accuse the host of double-booking themselves with their own class", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One" },
+      { id: "seat-2", name: "Attendee Two" },
+    ]);
+    mount();
+    expect(container.querySelectorAll(".sc-ev--conflict")).toHaveLength(0);
+    expect(text()).toMatch(/No overlapping appointments in this range/i);
+  });
+
+  it("lists the real attendees in the class detail", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One", email: "one@example.com" },
+      { id: "seat-2", name: "Attendee Two", email: "two@example.com" },
+    ]);
+    mount();
+    click(chip(/Group coaching/));
+    const d = dialog();
+    expect(d?.textContent).toMatch(/Who is booked/);
+    expect(d?.textContent).toMatch(/Attendee One/);
+    expect(d?.textContent).toMatch(/one@example\.com/);
+    expect(d?.textContent).toMatch(/Attendee Two/);
+    expect(d?.textContent).toMatch(/2 of 8 booked/);
+  });
+
+  it("keeps a cancelled attendee on the record without counting them as booked", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One" },
+      { id: "seat-2", name: "Attendee Two", status: "cancelled" },
+    ]);
+    mount();
+    click(chip(/Group coaching/));
+    expect(dialog()?.textContent).toMatch(/1 of 8 booked/);
+    expect(dialog()?.textContent).toMatch(/Attendee Two/);
+  });
+
+  it("says a class is empty rather than showing an authoritative-looking count", () => {
+    state.bookings = [
+      booking({
+        id: "class-1", title: "Group coaching", booking_kind: "class_session",
+        capacity: 8, start_at: todayAt(10), end_at: todayAt(11),
+      }),
+    ];
+    mount();
+    click(chip(/Group coaching/));
+    expect(dialog()?.textContent).toMatch(/No attendee is booked into this session yet/i);
+  });
+
+  it("still flags a real clash between the class and a separate appointment", () => {
+    state.bookings = [
+      ...groupBooking([{ id: "seat-1", name: "Attendee One" }]),
+      booking({ id: "solo", title: "Discovery call", start_at: todayAt(10, 30), end_at: todayAt(11, 30) }),
+    ];
+    mount();
+    expect(container.querySelectorAll(".sc-ev--conflict")).toHaveLength(2);
   });
 });

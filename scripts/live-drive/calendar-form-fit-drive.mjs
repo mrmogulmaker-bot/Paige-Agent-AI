@@ -232,6 +232,38 @@ for (const frame of FRAMES) {
   await ctx.close();
 }
 
+// Class folding, in a REAL render. The harness feeds one `class_session` plus three
+// `class_seat` rows — the exact shape `list_team_bookings` returns for a group
+// booking. The grid must draw ONE chip for it, mark none of them a host conflict,
+// and the detail must carry the real attendee records the fold set aside. Rendering
+// the seats unfolded is the defect this asserts against.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/?theme=dark&data=dense`, { waitUntil: "networkidle" });
+  await page.waitForSelector("button.sc-ev");
+  const cls = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll("button.sc-ev")];
+    const group = chips.filter((c) => /Harness group session/.test(c.getAttribute("title") ?? ""));
+    return {
+      count: group.length,
+      conflicted: group.filter((c) => c.classList.contains("sc-ev--conflict")).length,
+    };
+  });
+  check(cls.count === 1, "a class draws ONE chip, not one per attendee", `${cls.count} chips`);
+  check(cls.conflicted === 0, "no attendee is flagged as a host conflict with its own class", `${cls.conflicted} flagged`);
+
+  await page.locator('button.sc-ev[title*="Harness group session"]').first().click();
+  await page.waitForSelector('[role="dialog"]');
+  const detail = await page.evaluate(() => document.querySelector('[role="dialog"]')?.textContent ?? "");
+  check(/Who is booked/.test(detail), "class detail carries the attendee section");
+  check(/3 of 6 booked/.test(detail), "attendee count comes from the real seat rows", detail.slice(0, 200));
+  check(/Harness attendee 1/.test(detail) && /Harness attendee 3/.test(detail), "every attendee record survives the fold");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(OUT, "class-detail-attendees.png") });
+  await ctx.close();
+}
+
 // Theme parity: the two themes must actually differ on the painted ground.
 const darkBg = rows.find((r) => r.id.startsWith("1366x768-dark"))?.bodyBg;
 const lightBg = rows.find((r) => r.id.startsWith("1366x768-light"))?.bodyBg;

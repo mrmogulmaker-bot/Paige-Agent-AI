@@ -6,7 +6,7 @@ import {
 import {
   DEFAULT_CALENDAR_COLOR, UNASSIGNED_CALENDAR, addDays, availabilityFor, hourOf,
   parseIntakeQuestions, parseNotifyConfig, parseOverrides, parseWindows,
-  rangeFor, rangeLabel, startOfDay, startOfWeek, useSoloCalendar, wantsSms,
+  rangeFor, rangeLabel, seatsHeld, startOfDay, startOfWeek, useSoloCalendar, wantsSms,
   type CalendarReminder, type SoloBooking, type SoloCalendarMeta, type ViewMode,
 } from "./useSoloCalendar";
 import "./solo-calendar.css";
@@ -207,7 +207,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   const [configFor, setConfigFor] = useState<SoloCalendarMeta | null>(null);
 
   const cal = useSoloCalendar(activeTenantId, view, cursor);
-  const { bookings, calendars, conflicts, phase, error, colorForBooking } = cal;
+  const { bookings, calendars, seatsBySession, conflicts, phase, error, colorForBooking } = cal;
 
   const visible = useMemo(
     () => bookings.filter((b) => !hidden.has(b.calendar_id ?? UNASSIGNED_CALENDAR)),
@@ -259,6 +259,16 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   const detailCalendar = useMemo(
     () => (detail ? calendars.find((c) => c.id === detail.calendar_id) ?? null : null),
     [detail, calendars],
+  );
+
+  /**
+   * The attendee rows this class was folded from. A group booking comes back as a
+   * session marker plus one `class_seat` per attendee; the grid draws the session
+   * once, and the real attendee records surface here instead of being lost.
+   */
+  const detailSeats = useMemo(
+    () => (detail?.booking_kind === "class_session" ? seatsBySession.get(detail.id) ?? [] : []),
+    [detail, seatsBySession],
   );
 
   /**
@@ -508,6 +518,34 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
             <dt>Time zone</dt><dd>{detail.timezone || "Not recorded"}</dd>
             {detail.notes && (<><dt>Notes</dt><dd>{detail.notes}</dd></>)}
           </dl>
+
+          {/* A class's attendees. Every line is a real `class_seat` row the fold set
+              aside; the count is the seats that exist and still hold a place, never
+              derived from capacity, and a class nobody has joined says exactly that
+              rather than rendering an authoritative-looking 0 of N. */}
+          {detail.booking_kind === "class_session" && (
+            <section className="sc-sub">
+              <h3>Who is booked</h3>
+              <p className="sc-note">
+                {detailSeats.length === 0
+                  ? "No attendee is booked into this session yet."
+                  : `${seatsHeld(detailSeats).length}${detail.capacity != null ? ` of ${detail.capacity}` : ""} booked.`}
+              </p>
+              {detailSeats.length > 0 && (
+                <dl className="sc-kv">
+                  {detailSeats.map((seat) => (
+                    <div key={seat.id} style={{ display: "contents" }}>
+                      <dt>{seat.guest_name || "Not recorded"}</dt>
+                      <dd>
+                        {seat.guest_email || "Email not recorded"}
+                        {isOff(seat) ? ` · ${seat.status}` : ""}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </section>
+          )}
 
           {/* Intake answers are returned by `list_team_bookings`; the question LABELS
               live on the calendar row, so the two are joined here. An answer whose

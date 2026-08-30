@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 
 /**
  * Real calendar reads/writes for the Solo-native Calendar surface.
@@ -32,6 +33,10 @@ export interface SoloBooking {
   notes: string | null;
   booking_kind: string;
   capacity: number | null;
+  /** Set on a `class_seat` row: the `class_session` it belongs to. Returned by
+   *  `list_team_bookings` and previously discarded here, which is what left a
+   *  class rendering once per attendee. */
+  class_session_id: string | null;
   host_user_id: string | null;
   host_full_name: string | null;
   timezone: string | null;
@@ -190,6 +195,53 @@ export function findConflicts(bookings: SoloBooking[]): Set<string> {
   return conflicted;
 }
 
+/* ------------------------------------------------------ class seat folding --- */
+
+export interface FoldedBookings {
+  /** What the grid and the conflict detector see: one row per real appointment. */
+  visible: SoloBooking[];
+  /** Every attendee row, kept whole, filed under the session it belongs to. */
+  seatsBySession: Map<string, SoloBooking[]>;
+}
+
+/**
+ * Fold a class's attendee rows onto the class itself.
+ *
+ * `list_team_bookings` returns a group booking as a `class_session` marker PLUS
+ * one `class_seat` row per attendee, every one of them carrying the session's
+ * host and its exact start/end. Handing those rows straight to the surface draws
+ * the class once per attendee, and handing them to `findConflicts` reports every
+ * attendee as a double-booking of the host — both of which shipped.
+ *
+ * The seats are folded, never DISCARDED: the detail drawer lists the real
+ * attendees off this map, and a seat whose session is not in the fetched range
+ * stays visible on its own rather than disappearing from the schedule.
+ */
+export function foldClassSeats(rows: SoloBooking[]): FoldedBookings {
+  const sessionIds = new Set<string>();
+  for (const b of rows) if (b.booking_kind === "class_session") sessionIds.add(b.id);
+
+  const seatsBySession = new Map<string, SoloBooking[]>();
+  const visible: SoloBooking[] = [];
+  for (const b of rows) {
+    const sid = b.class_session_id;
+    if (b.booking_kind === "class_seat" && sid && sessionIds.has(sid)) {
+      const held = seatsBySession.get(sid);
+      if (held) held.push(b); else seatsBySession.set(sid, [b]);
+      continue;
+    }
+    visible.push(b);
+  }
+  return { visible, seatsBySession };
+}
+
+/** The attendees who still hold their place. A cancelled or no-show seat stays in
+ *  the record — the detail can say so — but is never counted as booked. The count
+ *  is only ever the rows that exist; it is never derived from capacity (§13). */
+export function seatsHeld(seats: SoloBooking[] | undefined): SoloBooking[] {
+  return (seats ?? []).filter(occupiesTime);
+}
+
 /* ------------------------------------------------------------ availability --- */
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -321,8 +373,11 @@ export function hourOf(hhmm: string): number {
 export type LoadPhase = "loading" | "ready" | "error";
 
 export interface UseSoloCalendarResult {
+  /** Folded: a class is ONE appointment here, never one per attendee. */
   bookings: SoloBooking[];
   calendars: SoloCalendarMeta[];
+  /** The attendee rows a class was folded from, keyed by session id. */
+  seatsBySession: Map<string, SoloBooking[]>;
   conflicts: Set<string>;
   phase: LoadPhase;
   error: string | null;
@@ -342,12 +397,18 @@ export interface CreateBookingInput {
   blocked: boolean;
 }
 
+/** One read per burst. A cancel-and-rebook writes several rows in quick
+ *  succession; this is long enough to arrive as one refresh and short enough
+ *  that the schedule is current before anyone looks away. Matches the interval
+ *  the admin calendar has used since the live schedule shipped. */
+const LIVE_REFRESH_DEBOUNCE_MS = 400;
+
 export function useSoloCalendar(
   activeTenantId: string | null,
   view: ViewMode,
   cursor: Date,
 ): UseSoloCalendarResult {
-  const [bookings, setBookings] = useState<SoloBooking[]>([]);
+  const [rawBookings, setBookings] = useState<SoloBooking[]>([]);
   const [calendars, setCalendars] = useState<SoloCalendarMeta[]>([]);
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -380,27 +441,93 @@ export function useSoloCalendar(
     return () => { cancelled = true; };
   }, [activeTenantId, nonce]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const seq = ++bookingSeq.current;
-    setPhase("loading");
-    setBookings([]);
-    setError(null);
+  /**
+   * The one booking read, in two modes.
+   *
+   * "load" is a first paint or a range change: the previous account's or week's
+   * events must not linger, so it clears and shows the loading state. "refresh"
+   * is a live update behind an unchanged view: it must NOT blank a schedule that
+   * is on screen and still true, so it leaves everything standing and swaps the
+   * rows in when the read lands.
+   *
+   * Every read takes a sequence number and drops itself if a newer one has
+   * started, so a slow response can never overwrite a fresher one.
+   */
+  const fetchBookings = useCallback(async (mode: "load" | "refresh") => {
     if (!activeTenantId) return;
-    void (async () => {
-      const { data, error: err } = await supabase.rpc("list_team_bookings" as never, {
-        _from: fromIso,
-        _to: toIso,
-        _host_ids: null,
-        _tenant_id: activeTenantId,
-      } as never);
-      if (cancelled || seq !== bookingSeq.current) return;
-      if (err) { setError(err.message); setPhase("error"); return; }
-      setBookings((data as SoloBooking[] | null) ?? []);
-      setPhase("ready");
-    })();
-    return () => { cancelled = true; };
-  }, [activeTenantId, fromIso, toIso, nonce]);
+    const seq = ++bookingSeq.current;
+    if (mode === "load") { setPhase("loading"); setBookings([]); setError(null); }
+    const { data, error: err } = await supabase.rpc("list_team_bookings" as never, {
+      _from: fromIso,
+      _to: toIso,
+      _host_ids: null,
+      _tenant_id: activeTenantId,
+    } as never);
+    if (seq !== bookingSeq.current) return; // superseded by a newer read
+    if (err) {
+      if (mode === "load") { setError(err.message); setPhase("error"); return; }
+      // A background refresh that fails must not tear down a schedule the person
+      // is reading. It is reported loudly rather than swallowed (§32) and the
+      // last known-true rows stay on screen until the next event or navigation.
+      console.error("[solo-calendar] live booking refresh failed", err);
+      return;
+    }
+    setBookings((data as SoloBooking[] | null) ?? []);
+    setPhase("ready");
+  }, [activeTenantId, fromIso, toIso]);
+
+  useEffect(() => {
+    if (!activeTenantId) {
+      // Abandon anything in flight: the previous account's bookings must never
+      // land after the account has changed (§9).
+      bookingSeq.current++;
+      setPhase("loading");
+      setBookings([]);
+      setError(null);
+      return;
+    }
+    void fetchBookings("load");
+  }, [fetchBookings, activeTenantId, nonce]);
+
+  /**
+   * Live invalidation.
+   *
+   * A guest booking through the public page, or a teammate creating, moving or
+   * cancelling an appointment, changes none of this hook's dependencies — so
+   * without a change subscription the open Calendar keeps showing a schedule
+   * that is no longer true until someone navigates or reloads.
+   *
+   * This is the same seam the admin calendar uses: `internal_bookings` changes
+   * filtered to the SERVER-RESOLVED tenant, delivered by Postgres under the
+   * subscriber's own RLS — so it enables a change stream and widens nothing. The
+   * event itself is never trusted as data; it only triggers a re-read through
+   * the same tenant-isolated RPC every other read goes through.
+   */
+  const fetchRef = useRef(fetchBookings);
+  useEffect(() => { fetchRef.current = fetchBookings; }, [fetchBookings]);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onBookingChange = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(
+      () => { void fetchRef.current("refresh"); },
+      LIVE_REFRESH_DEBOUNCE_MS,
+    );
+  }, []);
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+  useRealtimeTable("internal_bookings", onBookingChange, {
+    filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
+    enabled: Boolean(activeTenantId),
+  });
+
+  // A class arrives as a session marker plus one row per attendee. Fold before
+  // anything else sees the rows, so the grid draws one appointment and the
+  // conflict detector never mistakes a classmate for a double-booked host.
+  const { visible: bookings, seatsBySession } = useMemo(
+    () => foldClassSeats(rawBookings),
+    [rawBookings],
+  );
 
   const conflicts = useMemo(() => findConflicts(bookings), [bookings]);
 
@@ -464,7 +591,7 @@ export function useSoloCalendar(
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   return {
-    bookings, calendars, conflicts, phase, error, calendarsError,
+    bookings, calendars, seatsBySession, conflicts, phase, error, calendarsError,
     refresh, setStatus, createBooking, colorForBooking,
   };
 }
