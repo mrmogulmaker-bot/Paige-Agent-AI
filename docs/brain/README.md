@@ -100,6 +100,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/doctrine/compliance-checklist-template.md` | Tier-matrix compliance checklist to run per crew | Compliance pass on a tenant-scoped surface |
 | `docs/doctrine/producer-inventory-template.md` | §37 × tier producer-inventory worksheet | Hardening/altering any endpoint contract |
 | `docs/doctrine/money-spine-architecture.md` | Full money architecture — Paige-held vs facilitated rails (§38) | Any payment/billing surface |
+| `docs/doctrine/connections-rail-contract.md` | The Page/Rail/PAIGE/Brain contract for Connections & A2P — what may reach the rail, what PAIGE may read/do, and the 4 missing shared contracts (C-1…C-4) nobody may substitute for | Any provider-setup, readiness, A2P or communications-outcome work |
 | `docs/doctrine/paige-c-suite-roster.md` | Named-agent VP roster (VERA/NEXUS/CURA/…) | Referencing or forging a Paige VP/sub-agent |
 | `docs/doctrine/paige-os-architecture.md` | Paige-as-OS architecture (§35) | OS-shaped primitive decisions |
 | `docs/doctrine/paige-practice-blueprints-2026-07-29.md` | One-click vertical "Blueprint" install layer | Playbook/Blueprint/vertical-preset work |

@@ -467,3 +467,45 @@ END as permanent palette entries. Unbuilt slots use the pack's **absence treatme
 **Verification posture.** Auth-gated surfaces are checked by `scripts/live-drive/harness/`
 (geometry, mocked provider, real IA). **§32.c is NOT discharged by it** — the harness proves
 geometry, never that the authenticated console renders. See `cd-pack-port-playbook.md` §5–6.
+
+## 2026-08-30 — Connections/A2P: the Page/Rail/PAIGE/Brain contract, and what it does NOT authorize
+
+**Owner-stated standing architectural contract** (full text:
+`docs/doctrine/connections-rail-contract.md`). Recorded here so a later session does not
+re-derive it or, worse, build a private copy of a primitive it names as missing.
+
+**The one rule under all four layers:** use the existing Paige foundation. No parallel rail,
+action queue, autonomy store, memory store, provider adapter, or PAIGE workspace. A shared
+contract that does not exist is a **scoped follow-up**, never a fake implementation.
+
+- **Page** = Settings → Connections, the single human-management surface for provider setup and
+  readiness. Conversations consumes only the named canonical readiness result and does not
+  reproduce setup logic. Calendar may read notification config but does not own Communications.
+  Billing stays its own area; Connections may disclose a phone-related billing prerequisite.
+- **Rail** = durable, tenant-scoped, presentation-safe evidence/provenance/decisions/outcomes.
+  Six safe Connections event kinds are enumerated in the doc. **Never** raw phone content,
+  customer messages, prompts, credentials, provider payloads, secret references, hidden
+  reasoning, or full configuration.
+- **PAIGE** = one governed interface reading safe server-resolved references. Every write goes
+  through the existing Action Bus: tenant/account/capability/source/scope checked, durable,
+  attributable, idempotent, recoverable, **fail closed**.
+- **Brain** = derives only from proven, scoped records. Not a provider-data or prompt store.
+
+**The prohibition that binds today.** The Trust Compass is **not** yet a proven tenant-and-
+capability enforcement clamp — do not claim it authorizes A2P, phone, billing or provider
+actions. Until that clamp and the authorized execution contracts exist, Paige must not silently
+call Twilio, search/purchase/assign a number, submit an A2P registration, alter credentials,
+activate billing, or send a message. Copy promising any of those is a §13 violation even when it
+reads as help.
+
+**Four missing shared contracts, named so nobody substitutes for one:** C-1 Rail event kinds for
+Connections · C-2 the Trust Compass clamp · C-3 authorized execution contracts for provider
+actions · C-4 the safe PAIGE readiness-read seam (blocked behind in-flight PRs on the same file;
+forcing a conflicting edit was explicitly refused). Until C-4 lands, Connections copy must not
+promise Paige can act on readiness, because she cannot yet see it.
+
+**IA correction on the same day:** Integrations is a **separate top-level Settings item beneath
+Connections**, owned by a different lane — not a tab inside Connections. #640 removed the
+`PROVIDERS` catalogue rather than relocating it, and a rendered test now asserts Connections
+carries no Integrations affordance. The visibility gap until that lane lands is called out on
+#640 under §58.
