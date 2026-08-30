@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Bell, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
+import { Bell, Blocks, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
 import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -34,8 +34,8 @@ import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPane
 
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
-const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'connections','business-vault':'vault'};
-const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
+const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'integrations','business-vault':'vault'};
+const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,integrations:Blocks,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
 
 const SoloClientsRoute=({openPaige})=>{const[tab]=useSubtabRoute("solo","clients","people");return isLegacyRelationshipOwner("solo",tab)?<ClientsHub openPaige={openPaige}/>:<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={openPaige}/>};
 

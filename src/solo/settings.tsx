@@ -26,6 +26,7 @@ import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloBusiness } from "./data/useSoloBusiness";
 import { useSoloOwner } from "./data/useSoloOwner";
 import { useSoloComms } from "./data/useSoloComms";
+import { SoloIntegrationsView } from "./settings-integrations";
 import {
   createSettingsRequestGate,
   getCustomDomainPresentation,
@@ -211,7 +212,7 @@ function BillingView() {
 
 export function SoloSettings() {
   const [tab] = useSubtabRoute("solo", "settings", "setup");
-  const tabs=[['setup','Setup'],['team','Team'],['connections','Connections'],['notifications','Notifications'],['security-data','Security & data'],['vault','Vault'],['billing','Billing']];
+  const tabs=[['setup','Setup'],['team','Team'],['connections','Connections'],['integrations','Integrations'],['notifications','Notifications'],['security-data','Security & data'],['vault','Vault'],['billing','Billing']];
   const location = useLocation();
   const params = useParams();
   const account = params.account ?? "";
@@ -223,9 +224,9 @@ export function SoloSettings() {
     return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
   }, []);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
+  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
   return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Provider, identity, and readiness truth in one owned home." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
+    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Provider, identity, and readiness truth in one owned home." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>
   </div>;
