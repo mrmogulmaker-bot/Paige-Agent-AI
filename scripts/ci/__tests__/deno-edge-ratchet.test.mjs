@@ -281,11 +281,13 @@ console.log("\ndependency-input parity");
 
 console.log("\ndependency fingerprint is coupled to the flags the check actually passes");
 {
-  // The fingerprint must list ONLY inputs the invocation consumes. Fingerprinting an input the
-  // command explicitly disables withdraws inherited credit for a file the compiler never reads,
-  // failing a legitimate PR. Fingerprinting one it DOES consume too little would let a real
-  // dependency change be waved through as inherited. Both directions are pinned here so a
-  // future edit to either side cannot silently change how anything is graded.
+  // Three things are pinned, and it takes all three: the FLAG LIST, the INPUT LIST, and the
+  // biconditional between them. Pinning only the pair `--no-lock` <-> `deno.lock` would leave a
+  // hole an adversarial review found and proved: `CHECK_FLAGS` could grow `--no-remote`,
+  // `--no-npm`, `--cached-only`, `--config` or `--import-map` - each of which changes what the
+  // check resolves - with no DEP_INPUTS consequence and no failing assertion. So the flag list is
+  // pinned exactly too, and adding a flag is a deliberate edit here where its input consequence
+  // must be stated.
   const DEP_INPUTS = R.DEP_INPUTS;
   const CHECK_FLAGS = R.CHECK_FLAGS;
 
@@ -297,6 +299,11 @@ console.log("\ndependency fingerprint is coupled to the flags the check actually
     check("the check still runs with --no-lock (behaviour preserved)",
       CHECK_FLAGS.includes("--no-lock"), JSON.stringify(CHECK_FLAGS));
 
+    // THE FLAG LIST ITSELF. Without this, a resolution-changing flag can be added silently.
+    check("CHECK_FLAGS is exactly the flag set this gate is proven against",
+      JSON.stringify(CHECK_FLAGS) === JSON.stringify(["--no-lock"]),
+      `${JSON.stringify(CHECK_FLAGS)} - adding a flag changes what the check resolves; state its DEP_INPUTS consequence here`);
+
     // THE INVARIANT, stated in both directions.
     const lockDisabled = CHECK_FLAGS.includes("--no-lock");
     const lockFingerprinted = DEP_INPUTS.includes("deno.lock");
@@ -305,7 +312,7 @@ console.log("\ndependency fingerprint is coupled to the flags the check actually
       `--no-lock=${lockDisabled} but deno.lock in DEP_INPUTS=${lockFingerprinted}`);
 
     // Exact set, so any future add or removal has to be a deliberate edit here too.
-    check("DEP_INPUTS is exactly the consumed Deno config inputs",
+    check("DEP_INPUTS is exactly this list (the conventional Deno config inputs, not a resolved set)",
       JSON.stringify(DEP_INPUTS) === JSON.stringify(["deno.json", "deno.jsonc", "import_map.json"]),
       JSON.stringify(DEP_INPUTS));
 
@@ -321,11 +328,18 @@ console.log("\ndependency fingerprint is coupled to the flags the check actually
       JSON.stringify(R.checkArgv("supabase/functions/x/index.ts")));
 
     // The runner must invoke through checkArgv, not a second inlined copy of the flags -
-    // otherwise the invariant above guards a constant nothing actually uses.
+    // otherwise everything above guards a constant nothing actually uses. Asserted against the
+    // source with the sanctioned declaration removed, and quote-agnostic: an earlier version
+    // counted double-quoted occurrences, so re-quoting the identical array to single quotes
+    // failed with "inlined occurrences: 0" - a false red accusing the code of a defect it did
+    // not have.
     const src = readFileSync(SCRIPT, "utf8");
-    check("the runner spawns via checkArgv(), with no inlined second copy of the flags",
-      /spawnSync\("deno", checkArgv\(entry\)/.test(src) && (src.match(/"--no-lock"/g) ?? []).length === 1,
-      `inlined --no-lock occurrences: ${(src.match(/"--no-lock"/g) ?? []).length}`);
+    check("the runner spawns via checkArgv()",
+      /spawnSync\(\s*"deno"\s*,\s*checkArgv\(\s*entry\s*\)/.test(src), "spawnSync call site");
+    const withoutDecl = src.replace(/export const CHECK_FLAGS =[\s\S]*?\n}\n/, "");
+    const strays = withoutDecl.match(/['"]--no-[a-z-]+['"]/g) ?? [];
+    check("no check flag literal exists outside the CHECK_FLAGS declaration",
+      strays.length === 0, `flags declared outside CHECK_FLAGS: ${JSON.stringify(strays)}`);
   }
 }
 
