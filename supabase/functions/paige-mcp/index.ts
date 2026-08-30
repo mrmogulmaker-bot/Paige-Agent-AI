@@ -101,7 +101,7 @@ type ActorCtx = {
   client_id: string | null;
   scopes: string[];
 };
-import type {} from "https://esm.sh/@types/node@22.15.15/index.d.ts";
+// @ts-ignore Deno provides this Node-compatible runtime module; no npm type package is required.
 import { AsyncLocalStorage } from "node:async_hooks";
 const actorStore = new AsyncLocalStorage<ActorCtx>();
 function currentActor(): ActorCtx {

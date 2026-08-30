@@ -119,7 +119,7 @@ describe("PAIGE Marketplace authority containment", () => {
     expect(mcp).not.toContain('from "npm:@supabase/supabase-js');
     expect(mcp).toContain('from "https://esm.sh/zod@3.25.76"');
     expect(mcp).not.toContain('from "npm:zod');
-    expect(mcp).toContain('import type {} from "https://esm.sh/@types/node@22.15.15/index.d.ts"');
+    expect(mcp).toContain('// @ts-ignore Deno provides this Node-compatible runtime module; no npm type package is required.');
     expect(mcp).toContain('from "https://esm.sh/hono@4.13.5"');
     expect(mcp).toContain('from "https://esm.sh/mcp-lite@0.10.0"');
     expect(mcp).not.toContain('from "npm:');
