@@ -358,6 +358,20 @@ export function verifyEvidenceArtifacts(outDir, evidence) {
 /** Abandonment is infrastructure noise and may be retried. A diagnostic never is. */
 const MAX_ATTEMPTS = 2;
 
+/**
+ * The flags every leg is checked with, in ONE place.
+ *
+ * `--no-lock`: these functions carry no committed deno.lock, and a lockfile mismatch would fail
+ * for a reason unrelated to type safety. Because the flag makes the lockfile inert, `deno.lock`
+ * must NOT appear in DEP_INPUTS - fingerprinting an input the compiler never reads would
+ * withdraw inherited credit over a file that cannot affect either leg. The two are pinned to
+ * each other by a contract test, in both directions, so changing one without the other fails.
+ */
+export const CHECK_FLAGS = ["--no-lock"];
+export function checkArgv(entry) {
+  return ["check", ...CHECK_FLAGS, entry];
+}
+
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
@@ -371,7 +385,7 @@ function invokeCheck(cwd, entry) {
   // that reported errors while exiting 0 read as clean, and every clean leg's evidence
   // transcript was empty by construction. Both streams are merged here on EVERY path so
   // classification sees the same text whatever the exit status.
-  const r = spawnSync("deno", ["check", "--no-lock", entry], {
+  const r = spawnSync("deno", checkArgv(entry), {
     cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
   });
   const raw = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
@@ -424,11 +438,18 @@ function entryInTree(repo, sha, entry) {
  * two revisions, the base transcript is base code compiled against different inputs, and its
  * diagnostics are not a baseline the head may inherit.
  */
-// DENO inputs only. Edge functions are Deno and deploy with no node_modules, so the runner does
-// not stage one (see the worktree loop) and npm lockfiles are not inputs to this check. Listing
-// package.json here instead would withdraw inheritance on every PR that touches an unrelated
-// frontend dependency - reimposing the exact tax this ratchet exists to remove.
-const DEP_INPUTS = ["deno.lock", "deno.json", "deno.jsonc", "import_map.json"];
+// ONLY inputs the invocation actually consumes.
+//
+// npm lockfiles are excluded because edge functions are Deno and deploy with no node_modules, so
+// the runner stages none (see the worktree loop); listing package.json would withdraw inheritance
+// on every PR touching an unrelated frontend dependency - the exact tax this ratchet removes.
+//
+// `deno.lock` is excluded for the same reason one step further in: CHECK_FLAGS passes
+// `--no-lock`, so the lockfile cannot influence either leg. Fingerprinting it would fail a PR
+// that changed a file the compiler never read. If `--no-lock` is ever dropped, `deno.lock`
+// becomes a real input and belongs here - the contract test asserts that biconditional, so
+// neither side can move without the other.
+export const DEP_INPUTS = ["deno.json", "deno.jsonc", "import_map.json"];
 function depFingerprint(repo, sha) {
   return DEP_INPUTS.map((f) => {
     try { return `${f}=${git(repo, "rev-parse", `${sha}:${f}`)}`; }
