@@ -169,4 +169,10 @@ if [ "$actual_failures" != "$expected_sorted" ]; then
   cases_rc=1
 fi
 if [ "$a2p_rc" -ne 0 ]; then cases_rc=1; fi
+
+# D2 is the one fix a single-session DO block structurally cannot pin — see the
+# script's header. It runs last because it commits fixtures and cleans them up.
+if ! bash "$REPO/scripts/proofs/a2p-concurrency-proof.sh" "$BASE" "$PGBIN" "$USER_NAME"; then
+  cases_rc=1
+fi
 exit "$cases_rc"

@@ -16,21 +16,29 @@
 //                        legal_business_name, website } | { needs_config, error }
 //   comms-a2p-submit ← { legal_business_name, website?, ein?, use_case,
 //                        campaign_description, sample_messages[], optin_flow? }
-//                    → { saved, a2p_submit_wired, needs_config?, brand_status,
-//                        campaign_status, status, brand_sid, campaign_sid, message }
+//                    → { saved, submitted, a2p_submit_wired, needs_config?, state,
+//                        status, brand_sid, campaign_sid, message }
+//   A non-2xx from either carries { error: { code, message } }, where `code` is the save
+//   seam's STABLE hint — read it, never the sentence.
 //
-// §13 HONESTY: the carrier SUBMIT is not yet wired (twilio.ts createBrand/createCampaign
-// are needs_config stubs). So on submit we NEVER show a fake "Approved" or a fabricated
-// SID — we show the truthful "Submitted for review — being set up; you'll be notified
-// when it's approved." The Paige-drafted COPY is real (a real model call); the SUBMIT is
-// pending-not-yet-live, surfaced as such.
+// §13 HONESTY: carrier submission does not exist. It is not "a stub that returns no SID":
+// the stub calls were REMOVED, so nothing here can send anything. This surface therefore
+// must never render a submitted state it cannot produce.
+//   A REGRESSION THIS TAB ALMOST SHIPPED: the banner and pills keyed on "a row exists with
+//   no SID" and read "Submitted for review — you'll be notified the moment it's approved."
+//   That was survivable only while nothing wrote the row. Once the draft path began saving
+//   durably, that shape became the NORMAL result of "Draft with Paige", and the surface
+//   would have told owners their registration was filed when nothing had been sent and
+//   nothing would ever notify them. `submitted_at` — which only a real submission path may
+//   set — is now the discriminator: prepared says prepared.
 //
 // §9: draft + submit derive the tenant server-side (JWT); this client never sends a
 // tenant. The status read uses (supabase as any) because tenant_a2p_registrations isn't in
 // the generated types (RLS scopes it to the caller's tenant).
 // §2: A2P copy is coaching-generic (produced by comms-a2p-draft); this tab adds no
-// finance wording. §11: gold is spent ONLY on "Approve & submit"; rings stay indigo.
+// finance wording. §11: gold is spent ONLY on the one act button; rings stay indigo.
 import { Link } from "react-router-dom";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Sparkles, MessageSquareText, Plus, Trash2, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,7 +97,7 @@ interface A2PRegistration {
 // A2P status enum → StatePill. Gold is reserved for the act (Approve & submit), so status
 // pills NEVER use gold: approved=success, submitted/in_review=pending, rejected=error,
 // pending=off (neutral). (§11 gold-only-on-act.)
-function statusPill(raw: string): { state: PillState; label: string } {
+function statusPill(raw: string, submittedAt: string | null): { state: PillState; label: string } {
   switch (raw) {
     case "approved":
       return { state: "success", label: "Approved" };
@@ -98,9 +106,12 @@ function statusPill(raw: string): { state: PillState; label: string } {
     case "submitted":
       return { state: "pending", label: "Submitted" };
     case "pending":
-      // A row EXISTS but the carrier submit hasn't run — "Being set up" matches the banner, never the
-      // contradictory "Not started" the empty (no-row) case shows (§13 honesty on a compliance surface).
-      return { state: "pending", label: "Being set up" };
+      // A row EXISTS but nothing has been submitted. "Being set up" implied someone
+      // else was working it; nobody is. The caller passes submittedAt so this can say
+      // which it actually is (§13 — a compliance surface must not imply a filing).
+      return submittedAt
+        ? { state: "pending", label: "Submitted" }
+        : { state: "off", label: "Prepared" };
     case "suspended":
       return { state: "error", label: "Suspended" };
     case "rejected":
@@ -110,10 +121,70 @@ function statusPill(raw: string): { state: PillState; label: string } {
   }
 }
 
-/** A registration that exists but has no real SID yet is honestly "being set up" (§13). */
-function isPendingSetup(reg: A2PRegistration): boolean {
-  return !reg.brand_sid && !reg.campaign_sid && reg.status !== "approved" && reg.status !== "rejected";
+/**
+ * Has this registration actually been SUBMITTED to a carrier?
+ *
+ * This used to be `isPendingSetup` — no SID and not yet resolved — and it rendered a
+ * banner reading "Submitted for review … you'll be notified the moment it's approved".
+ * That was survivable only while nothing wrote the row. The durable draft save writes
+ * exactly this shape (status 'pending', no SIDs), so the banner became reachable from
+ * "Draft with Paige" and would have told owners their registration was filed when
+ * nothing had been sent and nothing would ever notify them.
+ *
+ * `submitted_at` is the one field that distinguishes the two, and only the submission
+ * path may set it — so it is the honest discriminator (§13).
+ */
+function isSubmittedToCarrier(reg: A2PRegistration): boolean {
+  return !!reg.submitted_at && reg.status !== "approved" && reg.status !== "rejected";
 }
+
+/** Prepared and sitting here: a row exists, but nothing has been filed anywhere. */
+function isPreparedOnly(reg: A2PRegistration): boolean {
+  return !reg.submitted_at && !reg.brand_sid && !reg.campaign_sid
+      && reg.status !== "approved" && reg.status !== "rejected";
+}
+
+/**
+ * The stable refusal code behind a non-2xx from either A2P function.
+ *
+ * supabase-js wraps the response; the structured body carries `error.code`. Reading it is
+ * what separates a refusal the owner can ACT on from the generic "try again" that no
+ * amount of retrying will clear.
+ */
+async function refusalCode(error: unknown): Promise<string> {
+  try {
+    const ctx = (error as { context?: Response }).context;
+    const body = ctx ? await ctx.clone().json() : null;
+    return String((body as { error?: { code?: string } } | null)?.error?.code ?? "");
+  } catch {
+    return "";
+  }
+}
+
+/** What to tell the owner for each refusal the save seam can return. */
+const REFUSAL_COPY: Record<string, { title: string; description: string }> = {
+  SAMPLES_REQUIRED: {
+    title: "Add a sample message",
+    description: "Carriers need at least one example of what you'll text clients. Nothing was saved.",
+  },
+  SAMPLES_INVALID: {
+    title: "Those samples couldn't be read",
+    description: "Re-enter the sample messages as plain text. Nothing was saved.",
+  },
+  USE_CASE_REQUIRED: {
+    title: "Add a use case",
+    description: "Carriers need a short description of what the texting is for. Nothing was saved.",
+  },
+  REGISTRATION_IMMUTABLE: {
+    title: "This registration can no longer be edited",
+    description:
+      "It has moved past preparation, so its copy is locked. Reload to see where it stands.",
+  },
+  FORBIDDEN: {
+    title: "You don't have access to change this",
+    description: "Ask a workspace admin to prepare the registration.",
+  },
+};
 
 export function A2PTab() {
   const { toast } = useToast();
@@ -136,6 +207,11 @@ export function A2PTab() {
   // seam returns a stable code; LEGAL_PROFILE_REQUIRED names a missing business
   // record and has a real place to go and fix it.
   const [needsLegalProfile, setNeedsLegalProfile] = useState(false);
+  // Who can actually FIX a missing legal business name. /admin/setup/legal is AdminOnly,
+  // while the route that mounts this tab has no gate and comms-a2p-draft admits `coach` —
+  // so an unconditional link handed coaches a control that denies them. Offer the link to
+  // whoever can use it, and tell everyone else who to ask.
+  const { isAdmin } = useUserRoles();
   const [submitting, setSubmitting] = useState(false);
 
   const loadReg = useCallback(async () => {
@@ -175,13 +251,10 @@ export function A2PTab() {
       });
       if (error) {
         // supabase-js wraps a non-2xx; the structured body carries our stable code.
-        let code = "";
-        try {
-          const ctx = (error as { context?: Response }).context;
-          const body = ctx ? await ctx.clone().json() : null;
-          code = String((body as { error?: { code?: string } } | null)?.error?.code ?? "");
-        } catch { /* fall through to the generic refusal below */ }
+        const code = await refusalCode(error);
         if (code === "LEGAL_PROFILE_REQUIRED") { setNeedsLegalProfile(true); return; }
+        const known = REFUSAL_COPY[code];
+        if (known) { toast({ ...known, variant: "destructive" }); return; }
         throw error;
       }
       const payload = (data ?? {}) as { draft?: A2PDraft; needs_config?: boolean; legal_business_name?: string };
@@ -271,19 +344,34 @@ export function A2PTab() {
           optin_flow: optinCombined || undefined,
         },
       });
-      if (error) throw error;
-      const payload = (data ?? {}) as { saved?: boolean; a2p_submit_wired?: boolean; message?: string };
+      if (error) {
+        // Previously a bare `throw` into a catch that said "Try again in a moment" — which
+        // is wrong for every refusal here, because none of them clear by waiting, and the
+        // reviewed copy the owner had just approved was lost behind it.
+        const code = await refusalCode(error);
+        if (code === "LEGAL_PROFILE_REQUIRED") { setNeedsLegalProfile(true); return; }
+        const known = REFUSAL_COPY[code];
+        if (known) { toast({ ...known, variant: "destructive" }); return; }
+        throw error;
+      }
+      const payload = (data ?? {}) as { saved?: boolean; submitted?: boolean; a2p_submit_wired?: boolean; message?: string };
       if (!payload.saved) {
         toast({ title: "That didn't go through", description: "Try again in a moment.", variant: "destructive" });
         return;
       }
       // §13: honest — the carrier submit isn't wired, so we celebrate "saved & submitted for
       // review", never "approved". The status panel below reflects the real pending state.
+      // The backend reports `submitted` explicitly and, today, always false: carrier
+      // registration is not wired, so nothing is sent and nothing is queued. Titling this
+      // "Submitted for review" regardless is the same fabricated-outcome class as a made-up
+      // delivery receipt — it just sounds like good news. Report what came back (§13).
       toast({
-        title: payload.a2p_submit_wired ? "Submitted to carriers" : "Submitted for review",
+        title: payload.submitted ? "Submitted to carriers" : "Saved — not submitted",
         description:
           payload.message ??
-          "Your registration is being set up — you'll be notified the moment it's approved.",
+          (payload.submitted
+            ? "Your registration is with the carriers now."
+            : "Your reviewed copy is saved. Carrier submission isn't available yet, so nothing has been sent."),
       });
       setDraft(null);
       await loadReg();
@@ -294,7 +382,8 @@ export function A2PTab() {
     }
   };
 
-  const pendingSetup = reg ? isPendingSetup(reg) : false;
+  const submittedToCarrier = reg ? isSubmittedToCarrier(reg) : false;
+  const preparedOnly = reg ? isPreparedOnly(reg) : false;
 
   return (
     <div className="space-y-6">
@@ -316,10 +405,17 @@ export function A2PTab() {
           />
         ) : (
           <div className="space-y-4">
-            {pendingSetup && (
+            {submittedToCarrier && (
               <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-                Submitted for review — your A2P registration is being set up. You'll be notified the moment
-                it's approved and your practice can text clients.
+                Submitted for review — your A2P registration is being set up. You&rsquo;ll be notified the
+                moment it&rsquo;s approved and your business can text clients.
+              </div>
+            )}
+            {preparedOnly && (
+              <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Prepared, not submitted — your registration is written and saved here. Carrier
+                submission isn&rsquo;t available yet, so nothing has been sent and nothing is queued.
+                You can keep editing it until it can be filed.
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
@@ -328,7 +424,7 @@ export function A2PTab() {
                 ["Brand", reg.brand_status, reg.brand_sid],
                 ["Campaign", reg.campaign_status, reg.campaign_sid],
               ] as const).map(([label, raw, sid]) => {
-                const pill = statusPill(raw);
+                const pill = statusPill(raw, reg.submitted_at);
                 return (
                   <div
                     key={label}
@@ -430,9 +526,15 @@ export function A2PTab() {
                 Carriers register a legal entity, so this can&rsquo;t be prepared until your business
                 profile has one. Nothing was saved.
               </span>{" "}
-              <Link to="/admin/setup/legal" className="underline underline-offset-2">
-                Open business profile
-              </Link>
+              {isAdmin ? (
+                <Link to="/admin/setup/legal?tab=templates" className="underline underline-offset-2">
+                  Open business profile
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">
+                  Ask a workspace admin to add it under Setup &rsaquo; Legal &rsaquo; Templates.
+                </span>
+              )}
             </div>
           )}
 
@@ -556,10 +658,10 @@ export function A2PTab() {
               <div className="flex items-center gap-3 pt-1">
                 {/* GOLD — the one act on this surface: approve the copy and submit it (§11). */}
                 <Button variant="gold" disabled={!canSubmit} onClick={() => void submit()}>
-                  {submitting ? "Submitting…" : "Approve & submit"}
+                  {submitting ? "Saving…" : "Approve & save"}
                 </Button>
                 <span className="text-xs text-muted-foreground">
-                  Paige submits it for you — no carrier forms, no portals.
+                  Paige writes it and saves it here. Carrier submission isn&rsquo;t available yet.
                 </span>
               </div>
             </div>

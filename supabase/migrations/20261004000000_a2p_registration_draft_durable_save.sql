@@ -106,8 +106,11 @@ begin
   -- A NULL auth.uid() is either the trusted service role or an unauthenticated
   -- caller; they are NOT the same and must not be collapsed. anon also holds no
   -- EXECUTE, but that grant is a second line, never the first (§59).
-  -- Byte-for-byte the repository precedent (_marketplace_is_service_role): the
-  -- request claim OR a genuine service_role database session.
+  -- The repository precedent's rule (_marketplace_is_service_role): the request claim
+  -- OR a genuine service_role database session. Not byte-for-byte, and an earlier
+  -- revision of this comment wrongly said it was: this adds the `auth.uid() is null`
+  -- conjunct, which the shared helper does not carry. That makes it STRICTER, never
+  -- looser — a caller with a real user identity is never treated as the service role.
   --
   -- Stated precisely, because an earlier draft of this comment overclaimed: the
   -- claim ALONE is sufficient here. That is safe in the path this function is
@@ -179,8 +182,15 @@ begin
    where nullif(btrim(s.m), '') is not null
      and s.ord <= 10;
   v_count := jsonb_array_length(v_samples);
-  if v_count < 2 then
-    raise exception 'at least two sample messages are required' using errcode = '23514', hint = 'SAMPLES_REQUIRED';
+  -- ONE, not two. An earlier revision of this function required two, which quietly
+  -- tightened a contract that was already shipped: comms-a2p-submit documents and
+  -- accepts 1..5, and A2PTab's canSubmit allows one. A caller sending a single sample
+  -- got SAMPLES_REQUIRED, which was not in either function's 422 list, so it surfaced
+  -- as an HTTP 500 and the reviewed copy was lost behind "Try again in a moment."
+  -- A new shared seam adopts its producers' contract; it does not silently redefine it
+  -- (§37 — the producer inventory this floor was set without).
+  if v_count < 1 then
+    raise exception 'at least one sample message is required' using errcode = '23514', hint = 'SAMPLES_REQUIRED';
   end if;
 
   -- ── never overwrite a registration that has left preparation ──────────────

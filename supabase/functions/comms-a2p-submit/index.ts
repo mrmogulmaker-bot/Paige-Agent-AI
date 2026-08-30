@@ -12,13 +12,17 @@
 // queue, no retry. A promise with no mechanism is the same class of lie as a fabricated SID, so the
 // endpoint now refuses submission outright and says so. It NEVER fabricates a SID or an approved
 // state:
-//   • It records the APPROVED COPY (real — the coach authored/approved it) into the registration row.
+//   • It records the four campaign fields the coach reviewed — use_case, campaign_description,
+//     sample_messages, optin_flow — through the shared seam. legal_business_name, website and ein
+//     are validated and then DISCARDED here: legal identity lives on tenant_legal_profile, which is
+//     that fact's one home, and this function does not write it.
 //   • brand_status / campaign_status / status stay 'pending'; brand_sid / campaign_sid stay NULL;
-//     submitted_at is set ONLY if a real SID actually comes back (today it never does).
-//   • The response carries { a2p_submit_wired: false, needs_config: true } + a clear message so no
-//     caller mistakes "copy saved" for "registered with carriers".
-// When TrustHub is wired, the stubs return real SIDs and this same code path records them + advances
-// the statuses — the contract is stable, only the stub bodies change.
+//     submitted_at is NEVER set by this path — there is no stub call and no branch that could
+//     record a SID. Only a real submission path may set it.
+//   • The response carries { submitted: false, a2p_submit_wired: false, needs_config: true } + a
+//     clear message so no caller mistakes "copy saved" for "registered with carriers".
+// Wiring TrustHub is NOT a matter of the stubs returning real SIDs — the stub calls were removed.
+// It means adding a submission path, and that path is what will set submitted_at.
 //
 // ── CONTRACT ────────────────────────────────────────────────────────────────
 // POST (JWT required; verify_jwt=true). Service-role bearer = Paige headless (§10) may name a tenant.
@@ -37,16 +41,17 @@
 //
 //   200  {
 //          saved: true,
-//          a2p_submit_wired: false,     // §13 — carrier submit not wired yet
+//          submitted: false,            // §13 — nothing was sent and nothing is queued
+//          a2p_submit_wired: false,     // carrier submit not wired yet
 //          needs_config: true,          // (present while unwired)
-//          brand_status: "pending",
-//          campaign_status: "pending",
+//          state: "prepared",
 //          status: "pending",
 //          brand_sid: null,
 //          campaign_sid: null,
-//          message: string              // human-readable "saved, pending, not yet submitted to carriers"
+//          message: string              // human-readable "saved, prepared, NOT submitted"
 //        }
-//   4xx/5xx { error: { code, message } }
+//   4xx/5xx { error: { code, message } }  // code is the save seam's STABLE hint; see
+//                                         // SAVE_REFUSAL_STATUS for the status each maps to.
 //
 // ── DOCTRINE ────────────────────────────────────────────────────────────────
 //  §9  tenant server-DERIVED (current_user_tenant_id()) for JWT callers, NEVER the body. The
@@ -95,6 +100,30 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
     return null;
   }
 }
+
+
+/**
+ * The save RPC's stable hints → HTTP.
+ *
+ * These are all conditions the CALLER can see and act on: a missing business record, a
+ * sample list that needs a message, a registration that has moved past preparation. Only
+ * two were mapped, so every other stable refusal fell through to a 500 — which the UI
+ * renders as an unactionable "Try again in a moment" no amount of retrying will clear,
+ * and which loses whatever the owner had written. An unmapped stable code is a bug in
+ * this table, never a server error, so the fallback below says so explicitly.
+ */
+const SAVE_REFUSAL_STATUS: Record<string, number> = {
+  UNAUTHENTICATED: 401,
+  NO_TENANT: 403,
+  FORBIDDEN: 403,
+  TENANT_REQUIRED: 400,
+  UNKNOWN_TENANT: 400,
+  LEGAL_PROFILE_REQUIRED: 422,
+  USE_CASE_REQUIRED: 422,
+  SAMPLES_INVALID: 422,
+  SAMPLES_REQUIRED: 422,
+  REGISTRATION_IMMUTABLE: 422,
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -204,8 +233,7 @@ Deno.serve(async (req: Request) => {
     if (saveErr) {
       const code = (saveErr.hint || "").trim() || "SAVE_FAILED";
       console.error("comms-a2p-submit: reviewed copy not saved:", code, saveErr.code, saveErr.message);
-      return fail(code === "LEGAL_PROFILE_REQUIRED" || code === "REGISTRATION_IMMUTABLE" ? 422 : 500,
-                  code, saveErr.message);
+      return fail(SAVE_REFUSAL_STATUS[code] ?? 500, code, saveErr.message);
     }
 
     return ok({

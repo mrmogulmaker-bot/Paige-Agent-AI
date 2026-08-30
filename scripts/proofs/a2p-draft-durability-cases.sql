@@ -107,7 +107,12 @@ BEGIN
   -- 5 ── TENANT ISOLATION, measured by EVERY trace a foreign caller can leave.
   PERFORM set_config('role','authenticated',true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub',uB,'role','authenticated')::text, true);
-  BEGIN PERFORM public.tenant_a2p_registration_save_draft('marketing','Tenant B copy', SAMPLES, NULL, tA);
+  -- The RESULT is captured, not discarded. PERFORM throws the return value away, and an
+  -- escape that READS across the boundary and never writes leaves no row and no audit row
+  -- to count -- so every assertion below would pass while the function handed tenant B
+  -- tenant A's legal name and registration state. A read-only IDOR is still an IDOR.
+  v_pay := NULL;
+  BEGIN v_pay := public.tenant_a2p_registration_save_draft('marketing','Tenant B copy', SAMPLES, NULL, tA);
   EXCEPTION WHEN OTHERS THEN NULL; END;
   RESET role;
   SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tA;
@@ -123,6 +128,19 @@ BEGIN
   SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tB AND use_case = 'marketing';
   out := out||format('     ...and B''s own row WAS written ............ %s   want 1%s', n, E'\n');
   IF n <> 1 THEN fails := fails + 1; END IF;
+  -- The payload may carry ONLY these keys. Anything else is data crossing the boundary in
+  -- the return value rather than in a row -- the one escape route the row and audit counts
+  -- above are structurally blind to.
+  SELECT coalesce(string_agg(k, ',' ORDER BY k), '(none)') INTO v_use
+    FROM jsonb_object_keys(coalesce(v_pay,'{}'::jsonb)) k;
+  out := out||format('     ...and returned ONLY its own keys ......... %s%s   want a2p,ok,registration_id,sample_count%s',
+                     v_use, '', E'\n');
+  IF v_pay IS NOT NULL AND v_use IS DISTINCT FROM 'a2p,ok,registration_id,sample_count' THEN fails := fails + 1; END IF;
+  -- ...and the id it returned is B's OWN registration, never A's.
+  SELECT count(*) INTO n FROM public.tenant_a2p_registrations
+   WHERE id = (v_pay ->> 'registration_id')::uuid AND tenant_id = tB;
+  out := out||format('     ...and the id returned is B''s own ......... %s   want 1%s', n, E'\n');
+  IF v_pay IS NOT NULL AND n <> 1 THEN fails := fails + 1; END IF;
 
   -- 6 ── CAPABILITY: a roleless active member is refused, fail-closed
   IF uNo IS NULL THEN

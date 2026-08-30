@@ -111,6 +111,30 @@ function buildPracticeBlock(pb: unknown): string {
   return `\n\nTHIS PRACTICE — write the copy NATIVE to this specific business, never a generic template:\n${lines}`;
 }
 
+
+/**
+ * The save RPC's stable hints → HTTP.
+ *
+ * These are all conditions the CALLER can see and act on: a missing business record, a
+ * sample list that needs a message, a registration that has moved past preparation. Only
+ * two were mapped, so every other stable refusal fell through to a 500 — which the UI
+ * renders as an unactionable "Try again in a moment" no amount of retrying will clear,
+ * and which loses whatever the owner had written. An unmapped stable code is a bug in
+ * this table, never a server error, so the fallback below says so explicitly.
+ */
+const SAVE_REFUSAL_STATUS: Record<string, number> = {
+  UNAUTHENTICATED: 401,
+  NO_TENANT: 403,
+  FORBIDDEN: 403,
+  TENANT_REQUIRED: 400,
+  UNKNOWN_TENANT: 400,
+  LEGAL_PROFILE_REQUIRED: 422,
+  USE_CASE_REQUIRED: 422,
+  SAMPLES_INVALID: 422,
+  SAMPLES_REQUIRED: 422,
+  REGISTRATION_IMMUTABLE: 422,
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return fail(405, "METHOD_NOT_ALLOWED", "POST only.");
@@ -213,6 +237,33 @@ Deno.serve(async (req: Request) => {
 
     // Business name the copy is written for: the form value wins; else the tenant brand.
     const legalName = legalNameInput || brandName;
+
+    // One client for both the pre-spend read and the save: a service-role caller reads and
+    // writes as the service role, a JWT caller as themselves, so the read is RLS-scoped the
+    // same way the write is.
+    const writer = isServiceRole
+      ? createClient(supabaseUrl, supabaseServiceKey)
+      : createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
+
+    // ── 4b. Refuse BEFORE spending a frontier call ──────────────────────────
+    // The save requires a legal business name, and on production today zero of the
+    // thirteen tenants have one — so every "Draft with Paige" click buys a reasoning-tier
+    // completion and then refuses to keep the result. The gate belongs in front of the
+    // spend, not behind it. This is the same predicate the RPC enforces; the RPC still
+    // enforces it, because a check here is a courtesy and never the authority (§59).
+    {
+      const { data: lp } = await writer
+        .from("tenant_legal_profile")
+        .select("legal_business_name")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      const storedLegalName = str((lp as { legal_business_name?: unknown } | null)?.legal_business_name).trim();
+      if (!storedLegalName) {
+        return fail(422, "LEGAL_PROFILE_REQUIRED",
+          "Add your legal business name to the business profile first — carriers register a legal entity, " +
+          "so a registration cannot be prepared without one. Nothing was saved.");
+      }
+    }
 
     // ── 5. The draft ────────────────────────────────────────────────────────
     const SYSTEM = `You are Paige, drafting the A2P 10DLC campaign registration copy for a client-based service business${legalName ? ` called "${legalName}"` : ""}. Carriers (via Twilio/TrustHub) review this copy to approve business texting — it must read as a legitimate, specific, compliant SMS program.
@@ -322,9 +373,6 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
     //    would have looked saved and persisted nothing. That is the same class of
     //    lie as a fabricated status, so the failure is now a non-2xx carrying the
     //    RPC's STABLE hint as its code.
-    const writer = isServiceRole
-      ? createClient(supabaseUrl, supabaseServiceKey)
-      : createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
     const { error: saveErr } = await writer.rpc("tenant_a2p_registration_save_draft", {
       p_use_case: draft.use_case,
       p_campaign_description: draft.campaign_description,
@@ -337,8 +385,7 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
       // tenant-safe (it names a missing business record, never a credential).
       const code = (saveErr.hint || "").trim() || "DRAFT_NOT_SAVED";
       console.error("comms-a2p-draft: draft save refused:", code, saveErr.code, saveErr.message);
-      return fail(code === "LEGAL_PROFILE_REQUIRED" || code === "REGISTRATION_IMMUTABLE" ? 422 : 500,
-                  code, saveErr.message);
+      return fail(SAVE_REFUSAL_STATUS[code] ?? 500, code, saveErr.message);
     }
 
     return ok({ draft, legal_business_name: legalName, website: websiteInput, saved: true });
