@@ -131,7 +131,44 @@ describe("Solo Settings Integrations truth boundary", () => {
     expect(recovered?.textContent).toContain("Webhooks & direct API");
     expect(recovered?.textContent).toContain("No tenant connection is claimed");
     expect(recovered?.querySelector('[data-truth="LIVE"]')).toBeNull();
-    expect(recovered?.querySelector("button, a")).toBeNull();
+    expect(recovered?.querySelector("button")).toBeNull();
+    expect(Array.from(recovered?.querySelectorAll("a") ?? []).map((link) => link.textContent?.trim())).toEqual([]);
+    await act(async () => root.unmount());
+  });
+
+  it("admits only proven Solo destinations and never links legacy provider editors", async () => {
+    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter initialEntries={["/solo/1971670/settings/integrations"]}><SoloIntegrationsView /></MemoryRouter>));
+
+    const destinations = Array.from(host.querySelectorAll("a")).map((link) => ({
+      text: link.textContent?.trim(),
+      href: link.getAttribute("href"),
+    }));
+    expect(destinations).toEqual([
+      { text: "Open Automations", href: "/solo/1971670/automations" },
+      { text: "Browse Marketplace", href: "/solo/1971670/marketplace" },
+    ]);
+    expect(host.innerHTML).not.toContain("/admin/integrations");
+    expect(host.innerHTML).not.toContain("/mcp/authorize");
+    expect(host.textContent).toContain("No safe Solo configuration handoff is available yet.");
+    await act(async () => root.unmount());
+  });
+
+  it("renders the catalogue as a labelled keyboard-scrollable browse region", async () => {
+    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+
+    const catalogue = host.querySelector('[role="region"][aria-label="Integration catalogue"]');
+    expect(catalogue).not.toBeNull();
+    expect(catalogue?.getAttribute("tabindex")).toBe("0");
+    expect(catalogue?.querySelectorAll("article")).toHaveLength(8);
+    expect(catalogue?.textContent).toContain("Automation");
+    expect(catalogue?.textContent).toContain("Financial tools");
+    expect(catalogue?.textContent).toContain("Setup handoff unavailable");
     await act(async () => root.unmount());
   });
 });
