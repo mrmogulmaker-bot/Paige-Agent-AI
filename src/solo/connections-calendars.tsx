@@ -367,9 +367,18 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
 export function CalendarsView() {
   const conn = useCalendarConnections();
   /** The account on screen right now, readable from inside an older closure. */
-  const liveTenantId = useRef(conn.tenantId);
-  liveTenantId.current = conn.tenantId;
   const params = useParams();
+  /**
+   * Who the surface belongs to right now, as two independent facts.
+   *
+   * The ROUTE account changes the instant someone navigates. The LOADED tenant
+   * only catches up once the tenant context resolves and the hook re-reads, and
+   * in the gap between them the loaded id still names the account being left —
+   * so a guard built on it alone would wave through exactly the results it
+   * exists to reject. Both are captured, and either moving is enough.
+   */
+  const liveIdentity = useRef({ account: params.account, tenantId: conn.tenantId });
+  liveIdentity.current = { account: params.account, tenantId: conn.tenantId };
   const location = useLocation();
   const account = params.account ?? "";
 
@@ -455,15 +464,18 @@ export function CalendarsView() {
   }, []);
 
   const create = useCallback(async (title: string) => {
-    // The account this create belongs to. The hook already refuses to reload a
-    // departed account, but that guard is inside the hook — this caller writes
-    // its OWN state, and publishing a title, a notice and a selected id here
-    // would show the new account a success for a calendar absent from its list
-    // and select an id belonging to the old one. Fixing the hook was not enough;
-    // every writer of account-scoped state needs the same question asked.
-    const startedUnder = liveTenantId.current;
+    // The account this create belongs to — route AND loaded tenant, because
+    // they move at different times (see `liveIdentity`). The hook already
+    // refuses to reload a departed account, but that guard is inside the hook:
+    // this caller writes its OWN state, and publishing a title, a notice and a
+    // selected id here would show the new account a success for a calendar
+    // absent from its list and select an id belonging to the old one. Fixing
+    // the hook was not enough; every writer of account-scoped state needs the
+    // same question asked, against an identity that is actually current.
+    const startedUnder = liveIdentity.current;
     const r = await conn.createCalendar(title);
-    if (liveTenantId.current !== startedUnder) return false;
+    const now = liveIdentity.current;
+    if (now.account !== startedUnder.account || now.tenantId !== startedUnder.tenantId) return false;
     if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return false; }
     // Select what was just made and open its Details, so naming it lands you
     // straight in the thing you now have to configure.
