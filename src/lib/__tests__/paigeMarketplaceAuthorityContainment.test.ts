@@ -119,8 +119,9 @@ describe("PAIGE Marketplace authority containment", () => {
     expect(mcp).not.toContain('from "npm:@supabase/supabase-js');
     expect(mcp).toContain('from "https://esm.sh/zod@3.25.76"');
     expect(mcp).not.toContain('from "npm:zod');
-    expect(mcp).toContain('getBuiltinModule?.("async_hooks")?.AsyncLocalStorage');
+    expect(mcp).toContain('from "https://deno.land/std@0.177.0/node/async_hooks.ts"');
     expect(mcp).not.toContain('from "node:async_hooks"');
+    expect(mcp).not.toContain('getBuiltinModule?.("async_hooks")');
     expect(mcp).toContain('from "https://esm.sh/hono@4.13.5"');
     expect(mcp).toContain('from "https://esm.sh/mcp-lite@0.10.0"');
     expect(mcp).not.toContain('from "npm:');

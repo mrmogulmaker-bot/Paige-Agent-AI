@@ -101,16 +101,11 @@ type ActorCtx = {
   client_id: string | null;
   scopes: string[];
 };
-type AsyncLocalStorageLike<T> = {
-  getStore(): T | undefined;
-  run<R>(store: T, callback: () => R): R;
+import { AsyncLocalStorage } from "https://deno.land/std@0.177.0/node/async_hooks.ts";
+const actorStore = new AsyncLocalStorage() as {
+  getStore(): ActorCtx | undefined;
+  run<R>(store: ActorCtx, callback: () => R): R;
 };
-type AsyncLocalStorageConstructor = new <T>() => AsyncLocalStorageLike<T>;
-const AsyncLocalStorage = (globalThis as unknown as {
-  process?: { getBuiltinModule?: (name: string) => { AsyncLocalStorage?: AsyncLocalStorageConstructor } };
-}).process?.getBuiltinModule?.("async_hooks")?.AsyncLocalStorage;
-if (!AsyncLocalStorage) throw new Error("AsyncLocalStorage runtime unavailable");
-const actorStore = new AsyncLocalStorage<ActorCtx>();
 function currentActor(): ActorCtx {
   return actorStore.getStore() ?? { kind: "platform", user_id: null, client_id: null, scopes: [] };
 }
