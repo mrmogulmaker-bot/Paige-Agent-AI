@@ -29,6 +29,8 @@ DECLARE
   uNo uuid := 'cc000000-0000-4000-8000-0000000000c2';  -- active member of A, no role
   tC uuid := 'cc000000-0000-4000-8000-0000000000c3';  -- tenant with NO legal profile
   uC uuid := 'cc000000-0000-4000-8000-0000000000c4';
+  tD uuid := 'dd000000-0000-4000-8000-0000000000d1';  -- service-role target, untouched by other cases
+  uD uuid := 'dd000000-0000-4000-8000-0000000000d2';
   n bigint; out text := E'\n'; fails int := 0; allowed boolean;
   v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_desc_after text; v_optin_after text; v_hint text;
   SAMPLES constant jsonb := '["Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
@@ -38,17 +40,18 @@ BEGIN
     (uA,'authenticated','authenticated','a2p-a@t'),
     (uB,'authenticated','authenticated','a2p-b@t'),
     (uNo,'authenticated','authenticated','a2p-none@t'),
-    (uC,'authenticated','authenticated','a2p-c@t');
+    (uC,'authenticated','authenticated','a2p-c@t'),
+    (uD,'authenticated','authenticated','a2p-d@t');
   INSERT INTO public.tenants (id, slug, name, account_number_prefix, account_number)
   VALUES (tA,'a2p-a','A2P A','A2A','910001'),(tB,'a2p-b','A2P B','A2B','910002'),
-         (tC,'a2p-c','A2P C','A2C','910003');
+         (tC,'a2p-c','A2P C','A2C','910003'),(tD,'a2p-d','A2P D','A2D','910004');
   INSERT INTO public.tenant_members (tenant_id,user_id,status,role) VALUES
     (tA,uA,'active','owner'),(tB,uB,'active','owner'),(tA,uNo,'active','member'),
-    (tC,uC,'active','owner');
+    (tC,uC,'active','owner'),(tD,uD,'active','owner');
   INSERT INTO public.user_roles (user_id,role) VALUES (uA,'admin'),(uB,'admin'),(uC,'admin') ON CONFLICT DO NOTHING;
   DELETE FROM public.user_roles WHERE user_id = uNo;
   INSERT INTO public.tenant_legal_profile (tenant_id, legal_business_name)
-  VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC');   -- tC deliberately has NONE
+  VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC'),(tD,'Headless Fixture LLC');   -- tC deliberately has NONE
 
   -- 1 ── the seam exists
   allowed := to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)') IS NOT NULL;
@@ -143,6 +146,40 @@ BEGIN
   RESET role;
   out := out||format('  7. anon allowed to save ....................... %s   want f%s', allowed, E'\n');
   IF allowed THEN fails := fails + 1; END IF;
+
+  -- 7b ── the IN-BODY unauthenticated refusal, which case 7 cannot reach.
+  --
+  --   Case 7 runs as `anon`, and anon holds no EXECUTE grant — so it is refused by
+  --   the GRANT before the function body runs. Verified by mutation: deleting the
+  --   in-body `if v_uid is null and not v_is_service then raise` left case 7 green.
+  --   §59 is explicit that the grant is never the guard, so the guard needs a caller
+  --   that HAS execute and still has no identity: role `authenticated` with a claim
+  --   carrying no `sub`. auth.uid() is then null and the claim role is not
+  --   service_role, so only the in-body check can refuse it.
+  --
+  --   It passes p_tenant_id deliberately. Without it, a caller that got past the
+  --   guard would be refused a second time by TENANT_REQUIRED and the case would go
+  --   green for the wrong reason. With it, removing the guard writes a row to a
+  --   tenant the caller never authenticated as — so the assertion pins the hint,
+  --   not merely the refusal.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    PERFORM public.tenant_a2p_registration_save_draft('no-sub attempt','body', SAMPLES, NULL, tB);
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false;
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('  7b. authenticated-but-no-sub refused .......... refused=%s hint=%s   want t / UNAUTHENTICATED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'UNAUTHENTICATED' THEN fails := fails + 1; END IF;
+  -- ...and tenant B's own prepared copy is untouched by the attempt.
+  SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tB;
+  out := out||format('      ...and tenant B copy untouched ............ %s   want marketing%s', coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'marketing' THEN fails := fails + 1; END IF;
 
   -- 8 ── a SUBMITTED registration is never silently rewritten by a draft save
   UPDATE public.tenant_a2p_registrations SET submitted_at = now(), status = 'submitted' WHERE tenant_id = tA;
@@ -243,6 +280,38 @@ BEGIN
   -- the same silent-success defect wearing a different mask.
   SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tC;
   out := out||format('      ...and persisted nothing .................. %s   want 0%s', n, E'\n');
+  IF n <> 0 THEN fails := fails + 1; END IF;
+
+  -- 14 ── THE SERVICE-ROLE PATH (§10, Paige headless). This is the highest-privilege
+  --        branch in the function — it is the only caller that may name a tenant and
+  --        so the only one that can write outside its own scope — and until now it had
+  --        NO coverage at all. Two things must hold: it cannot write anonymously into
+  --        an unnamed tenant, and when it does name one the write lands there.
+  PERFORM set_config('role','service_role',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('role','service_role')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    PERFORM public.tenant_a2p_registration_save_draft('headless','no tenant named', SAMPLES, NULL, NULL);
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  out := out||format('  14. service role without a named tenant ....... refused=%s hint=%s   want t / TENANT_REQUIRED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'TENANT_REQUIRED' THEN fails := fails + 1; END IF;
+
+  -- ...and a NAMED tenant is honoured — Paige can prepare on a tenant's behalf.
+  PERFORM public.tenant_a2p_registration_save_draft('headless care','Prepared by Paige.', SAMPLES, 'website form', tD);
+  RESET role;
+  SELECT use_case, status, submitted_at INTO v_use, v_status, v_sub
+    FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...named tenant written ................... %s / %s / submitted-null=%s   want headless care / pending / t%s',
+                     coalesce(v_use,'(none)'), coalesce(v_status,'(none)'), (v_sub IS NULL), E'\n');
+  IF v_use IS DISTINCT FROM 'headless care' OR v_status IS DISTINCT FROM 'pending' OR v_sub IS NOT NULL THEN fails := fails + 1; END IF;
+  -- ...and it did NOT leak into the other tenants it never named.
+  SELECT count(*) INTO n FROM public.tenant_a2p_registrations
+   WHERE tenant_id <> tD AND use_case IN ('headless','headless care');
+  out := out||format('      ...and no other tenant touched ............ %s   want 0%s', n, E'\n');
   IF n <> 0 THEN fails := fails + 1; END IF;
 
   IF fails = 0 THEN RAISE EXCEPTION 'A2P DRAFT PROOF: ALL ASSERTIONS PASSED (rolled back)%', out;

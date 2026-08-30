@@ -48,9 +48,10 @@
 --     and the per-leg brand/campaign statuses.
 --   · An empty description or opt-in flow NULLed the stored value while reporting
 --     success. Absent fields now preserve what is already there.
---   · Service-role detection trusted the JWT claim alone. It now follows the
---     repository precedent (_marketplace_is_service_role): the claim OR a real
---     service_role database session.
+--   · Service-role detection read auth.role() only, which is null on a direct
+--     service_role database session. It now matches the repository precedent
+--     (_marketplace_is_service_role) exactly: the request claim OR a real
+--     service_role session, so both legitimate callers are recognised.
 --
 -- Every refusal carries a STABLE hint so callers can branch on a code rather than
 -- parse a sentence.
@@ -105,9 +106,16 @@ begin
   -- A NULL auth.uid() is either the trusted service role or an unauthenticated
   -- caller; they are NOT the same and must not be collapsed. anon also holds no
   -- EXECUTE, but that grant is a second line, never the first (§59).
-  -- Follows the repository precedent (_marketplace_is_service_role): the verified
-  -- claim OR a genuine service_role database session. The claim alone is a
-  -- self-report, and §59 does not let a self-report be the guard.
+  -- Byte-for-byte the repository precedent (_marketplace_is_service_role): the
+  -- request claim OR a genuine service_role database session.
+  --
+  -- Stated precisely, because an earlier draft of this comment overclaimed: the
+  -- claim ALONE is sufficient here. That is safe in the path this function is
+  -- reached through — PostgREST populates request.jwt.claims from a JWT it has
+  -- already verified, so a caller cannot assert `service_role` without holding a
+  -- service_role key. The session_user arm is not a second factor; it covers the
+  -- other legitimate caller, a direct service_role database session, where no
+  -- request claim exists at all. Neither arm is a self-report the caller invented.
   v_is_service := (v_uid is null
                    and (coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') = 'service_role'
                         or session_user = 'service_role'));
