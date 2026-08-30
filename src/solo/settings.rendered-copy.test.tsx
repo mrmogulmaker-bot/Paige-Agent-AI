@@ -55,6 +55,7 @@ const destinations = [
   "setup",
   "team",
   "connections",
+  "integrations",
   "notifications",
   "security-data",
   "vault",
@@ -83,7 +84,7 @@ describe("Solo Settings rendered customer copy", () => {
     expect(text).toContain("Owners and authorized admins may manage team access. Permissions apply only to this Solo workspace.");
   });
 
-  it("keeps operator-only terminology out of all seven rendered destinations", () => {
+  it("keeps operator-only terminology out of every rendered destination", () => {
     const rendered = destinations.map(renderDestination).join(" ").toLowerCase();
     const forbiddenTerms = [
       "platform operator",
@@ -96,6 +97,15 @@ describe("Solo Settings rendered customer copy", () => {
     ];
 
     for (const term of forbiddenTerms) expect(rendered).not.toContain(term);
+  });
+
+  it("renders Integrations as its own truthful Settings destination", () => {
+    const text = renderedText(renderDestination("integrations"));
+    expect(text).toContain("External tools and bridges");
+    expect(text).toContain("Marketplace handoff");
+    expect(text).toContain("Communications setup stays in Connections");
+    expect(text).not.toContain("Business phone");
+    expect(text).not.toContain("A2P");
   });
 
   /**
@@ -129,15 +139,28 @@ describe("Solo Settings rendered customer copy", () => {
     expect(html).not.toContain("ss-phone-setup");
   });
 
-  it("keeps Integrations out of Connections entirely", () => {
-    // Integrations is its own top-level Settings destination in a separate lane.
-    // Connections owning a second home for it is the §18 duplication the split
-    // exists to prevent.
+  /**
+   * NARROWED, and the narrowing is the honest part.
+   *
+   * This asserted that Connections contained no connector names at all. That
+   * passed — but only because #660's `Available` catalogue sits behind its own
+   * tab and the default view is Communications. A test that green-lights on
+   * which tab happens to be selected is not evidence about the seam; it is
+   * evidence about a default.
+   *
+   * What this PR was actually told to do is narrower: do not BUILD Integrations
+   * as a tab inside Connections. That is what is asserted now. #660's Available
+   * catalogue predates the split, is annotated there as owner-locked, and is
+   * deliberately left alone — whether it still earns a place in Connections now
+   * that #657 ships a real Integrations destination is the owner's call and
+   * that lane's, not this PR's.
+   */
+  it("does not build an Integrations tab inside Connections", () => {
     const text = renderedText(renderDestination("connections"));
+    // No Integrations destination of Connections' own — the §18 duplication.
     expect(text).not.toContain("Integrations");
-    for (const connector of ["Zapier", "Make.com", "n8n", "WhatsApp"]) {
-      expect(text, `connector catalogue leaked into Connections: ${connector}`).not.toContain(connector);
-    }
+    // And Connections opens on Communications, not on a connector catalogue.
+    expect(text).toContain("Business phone");
   });
 
   it("keeps number search non-mutating and explains the unavailable execution contract", async () => {

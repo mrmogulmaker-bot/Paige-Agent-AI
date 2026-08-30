@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getMarketplaceDisplayCopy,
+  getMarketplaceSearchText,
   projectMarketplaceRow,
   parseMarketplaceRows,
   summarizeMarketplace,
@@ -40,6 +42,45 @@ describe("Marketplace truth projection", () => {
     const item = projectMarketplaceRow({ ...row, version: null });
     expect(item.safeState).toBe("UNAVAILABLE");
     expect(item.releaseVersion).toEqual({ state: "UNAVAILABLE", value: null });
+  });
+
+  it.each([
+    "Let clients talk to Paige.",
+    "Paige builds and runs your plays.",
+    "Paige handles your business-coaching pipeline.",
+    "Install it to activate autonomous execution.",
+    "Recommended paid upgrade with proven outcomes.",
+  ])("withholds unproven catalogue copy regardless of its claim: %s", (claim) => {
+    const item = projectMarketplaceRow({ ...row, tagline: claim, description: claim });
+    expect(getMarketplaceDisplayCopy(item)).toEqual({
+      proofState: "UNAVAILABLE",
+      summary: "Release-bound capability details are unavailable.",
+      description: "Release-bound capability details are unavailable.",
+    });
+    expect(getMarketplaceSearchText(item)).not.toContain(claim);
+  });
+
+  it("never treats generic LIVE release proof as safe-copy authority", () => {
+    const unproven = projectMarketplaceRow({ ...row, tagline: "Neutral words.", description: "Neutral words." });
+    const forceLive = { state: "LIVE" as const, value: null };
+    const proven = {
+      ...unproven,
+      safeState: "LIVE" as const,
+      tenantEligibility: { state: "LIVE" as const, value: "catalogue record" as const },
+      releaseVersion: { state: "LIVE" as const, value: "1.2.0" },
+      publisher: forceLive,
+      releaseIdentity: forceLive,
+      approvedScope: forceLive,
+      declaredCapabilities: forceLive,
+      prerequisites: forceLive,
+    };
+    expect(getMarketplaceDisplayCopy(unproven).proofState).toBe("UNAVAILABLE");
+    expect(getMarketplaceDisplayCopy(proven)).toEqual({
+      proofState: "UNAVAILABLE",
+      summary: "Release-bound capability details are unavailable.",
+      description: "Release-bound capability details are unavailable.",
+    });
+    expect(getMarketplaceSearchText(proven)).not.toContain("Neutral words.");
   });
 
   it("does not promote absent visible install joins into complete entitlement truth", () => {

@@ -18,6 +18,12 @@ export type MarketplaceItem = {
   declaredCapabilities: TruthValue<null>; prerequisites: TruthValue<null>; safeState: MarketplaceTruthState;
 };
 
+export type MarketplaceDisplayCopy = {
+  proofState: MarketplaceTruthState;
+  summary: string;
+  description: string;
+};
+
 const unavailable = (): TruthValue<null> => ({ state: "UNAVAILABLE", value: null });
 
 export function projectMarketplaceRow(row: MarketplaceCatalogRow): MarketplaceItem {
@@ -40,6 +46,15 @@ export function summarizeMarketplace(items: MarketplaceItem[]) {
     installed: { state: "PARTIAL" as const, count: installedCount },
     updates: { state: "UNAVAILABLE" as const, count: null },
   };
+}
+
+export function getMarketplaceDisplayCopy(_item: MarketplaceItem): MarketplaceDisplayCopy {
+  const summary = "Release-bound capability details are unavailable.";
+  return { proofState: "UNAVAILABLE", summary, description: summary };
+}
+
+export function getMarketplaceSearchText(item: MarketplaceItem): string {
+  return `${item.name} ${item.itemType} ${item.category}`;
 }
 
 export function parseMarketplaceRows(value: unknown): MarketplaceItem[] | null {

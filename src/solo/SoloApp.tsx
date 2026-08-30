@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Bell, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
+import { Bell, Blocks, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
 import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -34,8 +34,8 @@ import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPane
 
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
-const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'connections','business-vault':'vault'};
-const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
+const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'integrations','business-vault':'vault'};
+const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,integrations:Blocks,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
 
 const SoloClientsRoute=({openPaige})=>{const[tab]=useSubtabRoute("solo","clients","people");return isLegacyRelationshipOwner("solo",tab)?<ClientsHub openPaige={openPaige}/>:<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={openPaige}/>};
 
@@ -211,7 +211,7 @@ const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
 const accountEpochKey=activeTenantId??'resolving';
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,settings:<SoloSettings/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings/>};
 const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
 const contextualNavigation=route==='settings'&&urlDriven?{
   label:'Settings',

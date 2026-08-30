@@ -21,6 +21,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { ShieldCheck, Sparkles, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { toast } from "sonner";
 import { SectionCard, EmptyState, StatePill, type PillState } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ function draftedFixText(fix: SystemsCheckFinding["paige_drafted_fix"]): string |
 
 export function SystemsCheckTile({ scope }: { scope: SystemsCheckScope }) {
   const { run, findings, loading, isError, scanPending, refresh } = useSystemsCheck(scope);
+  const { activeTenant } = useTenantContext();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -159,27 +161,17 @@ export function SystemsCheckTile({ scope }: { scope: SystemsCheckScope }) {
   async function approve(f: SystemsCheckFinding) {
     setBusyId(f.id);
     try {
-      // TENANT finding with a filed remediation action → the existing action-bus seam.
-      // record_only + confirm lane: advancing it accepts Paige's drafted work item.
-      if (f.resolution_action_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase as any).rpc("advance_action", {
-          p_action_id: f.resolution_action_id,
-          p_to_status: "executing",
-        });
-        if (error || (data && data.ok === false)) {
-          toast.error(error?.message ?? data?.error ?? "Couldn't approve that fix.");
-          return;
-        }
-      }
-      // Mark the finding resolved so it leaves the open queue (RLS gates tenant vs operator).
+      // One server seam owns the whole decision: account/role/current-source validation,
+      // optional existing Action Bus advancement, immutable finding truth, and audit record.
+      // The browser sends no evidence, drafted fix, action payload, status, or timestamp.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: fErr } = await (supabase as any)
-        .from("paige_systems_check_finding")
-        .update({ resolution: "approved", resolved_at: new Date().toISOString() })
-        .eq("id", f.id);
-      if (fErr) {
-        toast.error(fErr.message ?? "Couldn't record that approval.");
+      const { data, error } = await (supabase as any).rpc("approve_systems_check_finding", {
+        p_scope: scope,
+        p_account_number: scope === "tenant" ? activeTenant?.account_number ?? null : null,
+        p_finding_id: f.id,
+      });
+      if (error || (data && data.ok === false)) {
+        toast.error(error?.message ?? data?.error ?? "Couldn't record that approval.");
         return;
       }
       // Honest per scope (§13): a TENANT finding advanced a real action-bus item (Paige acts on it);

@@ -3,7 +3,7 @@ import { useAgentPresence } from "@/components/ui/paige/AgentPresenceContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, PageHead } from "./_shared";
 import { useSoloMarketplace } from "./data/useSoloMarketplace";
-import { toMarketplacePaigeReference, type MarketplaceItem, type MarketplaceTruthState } from "./marketplace-truth";
+import { getMarketplaceDisplayCopy, getMarketplaceSearchText, toMarketplacePaigeReference, type MarketplaceItem, type MarketplaceTruthState } from "./marketplace-truth";
 import "./marketplace.css";
 
 function TruthBadge({ state }: { state: MarketplaceTruthState }) {
@@ -16,9 +16,10 @@ function CapabilityGlyph({ item, large = false }: { item: MarketplaceItem; large
 }
 
 function MarketplaceCard({ item, onOpen }: { item: MarketplaceItem; onOpen: (item: MarketplaceItem, trigger: HTMLButtonElement) => void }) {
+  const displayCopy = getMarketplaceDisplayCopy(item);
   return <button className="mk-card card" onClick={(event) => onOpen(item, event.currentTarget)} aria-label={`Review ${item.name}`}>
     <span className="mk-card-head"><CapabilityGlyph item={item} /><span className="mk-card-title"><strong>{item.name}</strong><span>{item.itemType}</span></span><TruthBadge state={item.safeState} /></span>
-    <span className="mk-card-copy">{item.tagline || "A source-provided summary is unavailable from the current catalogue read."}</span>
+    <span className="mk-card-copy">{displayCopy.summary}</span>
     <span className="mk-card-meta"><span>{item.category}</span><span>Review details <Ic.chev size={13} style={{}} /></span></span>
   </button>;
 }
@@ -33,16 +34,15 @@ function EmptyState({ title, copy, state = "LIVE" }: { title: string; copy: stri
   return <div className="mk-state card" role="status"><TruthBadge state={state} /><h2>{title}</h2><p>{copy}</p></div>;
 }
 
-function MarketplaceDetail({ item, onClose, onOpenPaige, restoreFocus }: {
+function MarketplaceDetail({ item, onClose, onOpenPaige }: {
   item: MarketplaceItem; onClose: () => void; onOpenPaige: () => void;
-  restoreFocus: React.MutableRefObject<HTMLButtonElement | null>;
 }) {
   const closeRef = React.useRef<HTMLButtonElement>(null);
   const dialogRef = React.useRef<HTMLElement>(null);
   const reference = toMarketplacePaigeReference(item);
+  const displayCopy = getMarketplaceDisplayCopy(item);
 
   React.useEffect(() => {
-    const trigger = restoreFocus.current;
     closeRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -54,8 +54,8 @@ function MarketplaceDetail({ item, onClose, onOpenPaige, restoreFocus }: {
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); trigger?.focus(); };
-  }, [onClose, restoreFocus]);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, [onClose]);
 
   const fields = [
     ["Catalogue membership", item.tenantEligibility.state, "Returned by the current caller-scoped catalogue read; immutable release eligibility is not proven."],
@@ -72,7 +72,7 @@ function MarketplaceDetail({ item, onClose, onOpenPaige, restoreFocus }: {
     <aside ref={dialogRef} className="mk-dialog" role="dialog" aria-modal="true" aria-labelledby="mk-detail-title">
       <header className="mk-dialog-hero"><CapabilityGlyph item={item} large /><div><TruthBadge state={item.safeState} /><h2 id="mk-detail-title">{item.name}</h2><p>{item.itemType} · {item.category}</p></div><button ref={closeRef} className="mk-close" onClick={onClose} aria-label="Close capability details"><Ic.x size={16} style={{}} /></button></header>
       <div className="mk-dialog-body">
-        <section><span className="eyebrow">Catalogue description</span><p>{item.description || item.tagline || "A description is unavailable from the current catalogue read."}</p></section>
+        <section><span className="eyebrow">Capability description</span><p>{displayCopy.description}</p></section>
         <section><span className="eyebrow">Release and capability truth</span><div className="mk-facts">{fields.map(([label, state, value]) => <div key={label}><span><strong>{label}</strong><TruthBadge state={state} /></span><p>{value}</p></div>)}</div></section>
         <section className="mk-paige-read" data-marketplace-paige-reference={reference.schema}><span className="eyebrow">Safe-reference preview</span><h3>PAIGE attachment unavailable</h3><p>This curated reference shows the proposed read contract. It is not attached, sent, installed, activated, purchased, or executed from this page.</p><dl><div><dt>Reference</dt><dd>{reference.capabilityRef}</dd></div><div><dt>Catalogue state</dt><dd>{reference.tenantEligibility.state}</dd></div><div><dt>Version authority</dt><dd>{reference.version.state}</dd></div></dl><button className="btn btn-p" onClick={() => { onClose(); queueMicrotask(onOpenPaige); }}><Ic.spark size={14} style={{}} />Open PAIGE workspace</button></section>
         <section className="mk-action-floor"><TruthBadge state="UNAVAILABLE" /><div><strong>Entitlement actions are not available</strong><p>Installation, removal, updates, purchase, and activation wait for immutable release authority, Marketplace-specific approval, and durable outcome contracts.</p></div></section>
@@ -95,15 +95,22 @@ export const Marketplace = () => {
   const [category, setCategory] = React.useState("All");
   const [openItem, setOpenItem] = React.useState<MarketplaceItem | null>(null);
   const restoreFocus = React.useRef<HTMLButtonElement | null>(null);
+  const wasDetailOpen = React.useRef(false);
   const pageRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (openItem) pageRef.current?.setAttribute("inert", "");
-    else pageRef.current?.removeAttribute("inert");
+  React.useLayoutEffect(() => {
+    const wasOpen = wasDetailOpen.current;
+    if (openItem) {
+      pageRef.current?.setAttribute("inert", "");
+    } else {
+      pageRef.current?.removeAttribute("inert");
+      if (wasOpen) queueMicrotask(() => restoreFocus.current?.focus());
+    }
+    wasDetailOpen.current = Boolean(openItem);
   }, [openItem]);
   const categories = React.useMemo(() => ["All", ...new Set(read.items.map((item) => item.category))], [read.items]);
   const visibleItems = React.useMemo(() => read.items.filter((item) => {
     const matchesCategory = category === "All" || item.category === category;
-    return matchesCategory && `${item.name} ${item.tagline || ""} ${item.itemType} ${item.category}`.toLowerCase().includes(query.trim().toLowerCase());
+    return matchesCategory && getMarketplaceSearchText(item).toLowerCase().includes(query.trim().toLowerCase());
   }), [category, query, read.items]);
   const installedItems = read.items.filter((item) => item.installed);
   const openDetail = (item: MarketplaceItem, trigger: HTMLButtonElement) => { restoreFocus.current = trigger; setOpenItem(item); };
@@ -122,6 +129,6 @@ export const Marketplace = () => {
       <p className="mk-source-note">Source: <code>{read.source}</code>. This existing server RPC applies caller-scoped catalogue rules, but its response does not prove immutable release authority or complete entitlement state. The page treats the tenant identifier only as an address.</p>
     </div>
     </div>
-    {openItem && <MarketplaceDetail item={openItem} onClose={() => setOpenItem(null)} onOpenPaige={expandRail} restoreFocus={restoreFocus} />}
+    {openItem && <MarketplaceDetail item={openItem} onClose={() => setOpenItem(null)} onOpenPaige={expandRail} />}
   </div>;
 };

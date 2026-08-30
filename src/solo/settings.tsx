@@ -26,6 +26,7 @@ import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloBusiness } from "./data/useSoloBusiness";
 import { useSoloOwner } from "./data/useSoloOwner";
 import { useSoloComms } from "./data/useSoloComms";
+import { SoloIntegrationsView } from "./settings-integrations";
 import {
   createSettingsRequestGate,
   getCustomDomainPresentation,
@@ -36,6 +37,7 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
+import { CalendarsView } from "./connections-calendars";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -483,6 +485,15 @@ function Subsection({ id, title, blurb, children }: { id: string; title: string;
   </section>;
 }
 
+const PROVIDERS = [
+  ["Gmail", "OAuth mailbox", "PARTIAL"], ["Outlook", "OAuth mailbox", "UNAVAILABLE"],
+  ["SMTP / Resend", "Outbound sending", "PARTIAL"], ["Twilio", "SMS, MMS & voice", "PARTIAL"],
+  ["Vapi", "Voice", "UNAVAILABLE"], ["Meta IG / FB", "Business messaging", "PARTIAL"],
+  ["Apple Messages for Business", "Business messaging", "PROPOSED"], ["WhatsApp / RCS", "Vocabulary only", "PROPOSED"],
+  ["n8n", "Tenant automation seam", "PARTIAL"], ["Zapier / MCP", "Fragmented connection seams", "PARTIAL"],
+  ["Direct APIs", "Permission-specific", "PARTIAL"], ["Make.com", "No connector seam", "UNAVAILABLE"],
+] as const;
+
 /**
  * Settings → Connections.
  *
@@ -498,18 +509,33 @@ function Subsection({ id, title, blurb, children }: { id: string; title: string;
 function ConnectionsView() {
   const comms = useSoloComms();
   const identity = useManagedIdentity();
-  const [view, setView] = useState<"communications" | "health">("communications");
+  // The owner-locked Connections shape, from #660: Communications owns whether a
+  // message can send, Calendars owns scheduling configuration, Health reports
+  // readiness, and Available stays the provider catalogue.
+  //
+  // This branch had independently narrowed the segment to Communications+Health
+  // and deleted the provider catalogue. #660 shipped first and annotates this
+  // shape as owner-locked, so its structure stands: deleting a surface another
+  // lane shipped is not this PR's call (§58). What this branch changes is what
+  // Communications and Health CONTAIN, not which areas exist.
+  const [view, setView] = useState<"communications" | "calendars" | "health" | "available">("communications");
   const identityStatus = identity.value?.default_email_status ?? null;
   const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
   const readiness = useCommsReadiness();
   const r = readiness.value;
 
-  // Integrations is deliberately NOT a tab here. It is its own Settings
-  // destination, so Connections does not become a second home for it (§18).
+  // Integrations is deliberately NOT built as a tab here. It is its own Settings
+  // destination, shipped by #657, so Connections does not become a second home
+  // for it (§18). `Available` below is #660's provider CATALOGUE, which predates
+  // that split and is annotated there as part of the owner-locked shape — it is
+  // preserved rather than deleted, because removing another lane's shipped
+  // surface is not this PR's call (§58).
   const TABS = [
     ["communications", "Communications"],
+    ["calendars", "Calendars"],
     ["health", "Health"],
+    ["available", "Available"],
   ] as const;
 
   /** The ruled fallback for a not-ready path where the read SUCCEEDED and there
@@ -557,6 +583,8 @@ function ConnectionsView() {
         <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}>{label}</button>
       ))}
     </div>
+
+    {view === "calendars" && <CalendarsView/>}
 
     {view === "communications" && <div className="ss-sections">
       {readFailureNotice}
@@ -703,6 +731,14 @@ function ConnectionsView() {
         </div>
       </Subsection>
     </div>}
+
+    {/* #660's provider catalogue, preserved verbatim. This branch had deleted it
+        and disclosed the resulting visibility gap under §58; #657 then shipped a
+        real top-level Integrations owner, and #660 annotated Available as part of
+        the owner-locked Connections shape. Both facts point the same way: keep it,
+        withdraw the removal, and leave whether Available still earns a place here
+        to the owner and the lane that owns it. */}
+    {view === "available" && <div className="ss-provider-grid">{PROVIDERS.map(([name,kind,truth])=><article key={name}><Smartphone/><div><strong>{name}</strong><span>{kind}</span></div><Truth value={truth}/></article>)}</div>}
   </>;
 }
 
@@ -749,7 +785,7 @@ function BillingView() {
 
 export function SoloSettings() {
   const [tab] = useSubtabRoute("solo", "settings", "setup");
-  const tabs=[['setup','Setup'],['team','Team'],['connections','Connections'],['notifications','Notifications'],['security-data','Security & data'],['vault','Vault'],['billing','Billing']];
+  const tabs=[['setup','Setup'],['team','Team'],['connections','Connections'],['integrations','Integrations'],['notifications','Notifications'],['security-data','Security & data'],['vault','Vault'],['billing','Billing']];
   const location = useLocation();
   const params = useParams();
   const account = params.account ?? "";
@@ -761,9 +797,9 @@ export function SoloSettings() {
     return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
   }, []);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
+  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
   return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Provider, identity, and readiness truth in one owned home." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
+    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>
   </div>;

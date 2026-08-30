@@ -428,7 +428,41 @@ export function useSoloCalendar(
   const [nonce, setNonce] = useState(0);
   const [lastSyncedMs, setLastSyncedMs] = useState<number | null>(null);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  /**
+   * Channel health, tracked SEPARATELY from read freshness.
+   *
+   * These are two different truths and one boolean cannot carry both. A read can
+   * succeed at this instant while the subscription is dead — and then a
+   * successful Retry would clear a "stale" flag that also stood for "the channel
+   * is down", putting the surface back to LIVE over a calendar that still cannot
+   * receive changes. Only resubscription clears this one.
+   */
+  const [channelDown, setChannelDown] = useState(false);
   const bookingSeq = useRef(0);
+  /** Load/refresh ordering. A load owns the surface's phase; a refresh is quiet
+   *  and must wait its turn rather than cutting in front of one. */
+  const loadSeq = useRef(0);
+  const loadInFlight = useRef(false);
+  const pendingRefresh = useRef(false);
+  /** Declared before `fetchBookings` so the deferred-refresh path can reach the
+   *  latest reader without depending on it and re-creating the callback. */
+  const fetchRef = useRef<(mode: "load" | "refresh") => Promise<boolean>>();
+  /** An outage gap is owed: the channel dropped and no read has closed it yet. */
+  const catchUpPending = useRef(false);
+  /** Whether the CURRENT subscription is believed to be delivering. */
+  const channelHealthy = useRef(false);
+  /**
+   * Bumped every time the channel comes back up, so a read can be told apart
+   * from the subscription it was issued under. "Healthy now" is not enough: a
+   * read taken during an outage, or one that spanned a drop and a recovery,
+   * carries a snapshot from the wrong side of the gap.
+   */
+  const healthEpoch = useRef(0);
+  /** Mirrors `channelDown` for callbacks that must stay referentially stable. */
+  const channelDownRef = useRef(false);
+  useEffect(() => { channelDownRef.current = channelDown; }, [channelDown]);
+  /** Bumped to ask the shared hook for a brand-new subscription. */
+  const [resubscribeKey, setResubscribeKey] = useState(0);
   const calendarSeq = useRef(0);
 
   const [from, to] = useMemo(() => rangeFor(view, cursor), [view, cursor]);
@@ -469,7 +503,22 @@ export function useSoloCalendar(
    */
   const fetchBookings = useCallback(async (mode: "load" | "refresh") => {
     if (!activeTenantId) return;
+    // A background refresh must never supersede a load that is still running.
+    // It would take the newer sequence number, the load's rows would then be
+    // discarded as superseded, and if the refresh itself failed its quiet error
+    // path would leave `phase` on "loading" with nothing in it — a blank range
+    // until someone pressed Retry. Defer instead, and run once the load settles.
+    if (mode === "refresh" && loadInFlight.current) {
+      pendingRefresh.current = true;
+      return false;
+    }
+    // Which live subscription this read is being issued under. -1 means it was
+    // started while the channel was down, so its rows can never prove the gap
+    // closed however healthy things look by the time they land.
+    const startEpoch = channelHealthy.current ? healthEpoch.current : -1;
     const seq = ++bookingSeq.current;
+    const myLoad = mode === "load" ? ++loadSeq.current : 0;
+    if (mode === "load") loadInFlight.current = true;
     if (mode === "load") {
       setPhase("loading"); setBookings([]); setError(null);
       // A fresh load supersedes any earlier refresh failure: whatever it returns
@@ -482,9 +531,20 @@ export function useSoloCalendar(
       _host_ids: null,
       _tenant_id: activeTenantId,
     } as never);
-    if (seq !== bookingSeq.current) return; // superseded by a newer read
+    // Release the load gate before the supersede guard, so a load that is itself
+    // superseded still hands the gate back and never strands a queued refresh.
+    if (mode === "load" && myLoad === loadSeq.current) {
+      loadInFlight.current = false;
+      if (pendingRefresh.current) {
+        pendingRefresh.current = false;
+        queueMicrotask(() => { void fetchRef.current?.("refresh"); });
+      }
+    }
+    // Superseded by a newer read. Its rows are not ours to publish, and it is
+    // not ours to call a success either — the newer read owns that answer.
+    if (seq !== bookingSeq.current) return false;
     if (err) {
-      if (mode === "load") { setError(err.message); setPhase("error"); return; }
+      if (mode === "load") { setError(err.message); setPhase("error"); return false; }
       // A background refresh that fails must not tear down a schedule the person
       // is reading, so the rows stay. But they are now of unknown freshness, and
       // the person reading them has to be told: `stale` drives a visible state on
@@ -492,7 +552,7 @@ export function useSoloCalendar(
       // (§32 — never swallow), but it is no longer the only report.
       console.error("[solo-calendar] live booking refresh failed", err);
       setRefreshFailed(true);
-      return;
+      return false;
     }
     setBookings((data as SoloBooking[] | null) ?? []);
     setPhase("ready");
@@ -500,6 +560,36 @@ export function useSoloCalendar(
     // never advance it, or the surface would claim a freshness it does not have.
     setLastSyncedMs(Date.now());
     setRefreshFailed(false);
+    /**
+     * A read that LANDS over a LIVE subscription is what actually closes an
+     * outage gap — so the clearing decision belongs here, with the read, not
+     * with whichever caller happened to ask for it.
+     *
+     * Binding it to the caller broke two ways. A catch-up deferred behind a
+     * load returns `false` to its caller and settles later, so its success
+     * never reached the handler that was waiting for it and a caught-up
+     * calendar stayed stale. And a catch-up whose channel died again mid-flight
+     * still resolved `true`, so the caller cleared a latch that had just been
+     * legitimately re-set — reporting LIVE over a dead subscription, the exact
+     * false confidence this state exists to prevent.
+     *
+     * Checking HERE, at the moment the rows arrive, answers both — but health
+     * alone is not the test. A load already in flight when the channel came back
+     * was read from the wrong side of the gap: it can miss anything committed in
+     * the last moments of the outage, and clearing on it would report LIVE over
+     * exactly what the latch exists to flag. So the read must ALSO have been
+     * issued under the subscription that is still live now.
+     */
+    if (
+      catchUpPending.current &&
+      channelHealthy.current &&
+      startEpoch >= 0 &&
+      startEpoch === healthEpoch.current
+    ) {
+      catchUpPending.current = false;
+      setChannelDown(false);
+    }
+    return true;
   }, [activeTenantId, fromIso, toIso]);
 
   useEffect(() => {
@@ -507,6 +597,11 @@ export function useSoloCalendar(
       // Abandon anything in flight: the previous account's bookings must never
       // land after the account has changed (§9).
       bookingSeq.current++;
+      loadInFlight.current = false;
+      pendingRefresh.current = false;
+      catchUpPending.current = false;
+      channelHealthy.current = false;
+      setChannelDown(false);
       setPhase("loading");
       setBookings([]);
       setError(null);
@@ -531,13 +626,12 @@ export function useSoloCalendar(
    * event itself is never trusted as data; it only triggers a re-read through
    * the same tenant-isolated RPC every other read goes through.
    */
-  const fetchRef = useRef(fetchBookings);
   useEffect(() => { fetchRef.current = fetchBookings; }, [fetchBookings]);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBookingChange = useCallback(() => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
     refreshTimer.current = setTimeout(
-      () => { void fetchRef.current("refresh"); },
+      () => { void fetchRef.current?.("refresh"); },
       LIVE_REFRESH_DEBOUNCE_MS,
     );
   }, []);
@@ -550,12 +644,58 @@ export function useSoloCalendar(
    *  cancels any debounce already queued so one press is one read. */
   const retry = useCallback(async () => {
     if (refreshTimer.current) { clearTimeout(refreshTimer.current); refreshTimer.current = null; }
-    await fetchRef.current("refresh");
+    // Re-reading cannot revive a dead subscription. Without also rebuilding it,
+    // "try again" would fetch fresh rows and leave the surface permanently
+    // stale — technically honest, but a dead end: the only way back to a live
+    // calendar would be a full page reload. Asking for a new subscription makes
+    // the recovery reachable, and it stays truthful either way — the new channel
+    // reports SUBSCRIBED and the catch-up clears it, or it does not and the
+    // surface stays stale.
+    // Gate on channel HEALTH, not on the stale flag. The surface can be stale
+    // while the subscription is perfectly live — an outage gap the catch-up has
+    // not closed yet — and rebuilding a working channel to fix that would just
+    // churn it. Only a channel we believe is dead needs replacing.
+    if (!channelHealthy.current) setResubscribeKey((n) => n + 1);
+    await fetchRef.current?.("refresh");
+  }, []);
+
+  /**
+   * A change stream that stops delivering fails SILENTLY: `onBookingChange`
+   * simply never fires again, so no read errors and nothing marks the schedule
+   * stale. The surface would go on presenting itself as live over a calendar
+   * that can no longer update — the exact false-confidence the freshness state
+   * exists to prevent. So the channel's own status feeds that same state.
+   */
+  const onChannelStatus = useCallback((status: string) => {
+    if (status === "SUBSCRIBED") {
+      // A fresh live subscription: reads issued before this moment belong to the
+      // old one and cannot vouch for the gap.
+      if (!channelHealthy.current) healthEpoch.current += 1;
+      channelHealthy.current = true;
+      if (!catchUpPending.current) return;
+      // Resubscribing proves FUTURE changes can arrive again. It proves nothing
+      // about the rows already on screen: everything that changed during the
+      // outage was never delivered, so they are still stale. So this only ASKS
+      // for the catch-up read; the stale state is cleared by that read landing
+      // over a live channel, never by this status alone. A failed, hung, or
+      // deferred catch-up therefore leaves the surface exactly where it was:
+      // stale, with a way to try again. Fires on the transition only — not a poll.
+      void fetchRef.current?.("refresh");
+      return;
+    }
+    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      channelHealthy.current = false;
+      catchUpPending.current = true;
+      console.error("[solo-calendar] realtime channel not delivering:", status);
+      setChannelDown(true);
+    }
   }, []);
 
   useRealtimeTable("internal_bookings", onBookingChange, {
     filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
     enabled: Boolean(activeTenantId),
+    onStatus: onChannelStatus,
+    resubscribeKey,
   });
 
   // A class arrives as a session marker plus one row per attendee. Fold before
@@ -634,7 +774,9 @@ export function useSoloCalendar(
 
   return {
     bookings, calendars, seatsBySession, conflicts, phase, error, calendarsError,
-    stale: refreshFailed, lastSyncedAt, retry,
+    // Either truth makes the schedule unreliable: the last read failed, or the
+    // change stream is not delivering. Both must clear before this says LIVE.
+    stale: refreshFailed || channelDown, lastSyncedAt, retry,
     refresh, setStatus, createBooking, colorForBooking,
   };
 }
