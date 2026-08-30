@@ -47,13 +47,13 @@ vi.mock("@/integrations/supabase/client", () => ({
 let sub: {
   table: string;
   handler: () => void;
-  opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void };
+  opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void; resubscribeKey?: number };
 } | null = null;
 vi.mock("@/hooks/useRealtimeTable", () => ({
   useRealtimeTable: (
     table: string,
     onChange: () => void,
-    opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void },
+    opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void; resubscribeKey?: number },
   ) => { sub = { table, handler: onChange, opts }; },
 }));
 
@@ -422,5 +422,89 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
     act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
     await settle([row("a")]);
     expect(seen!.stale).toBe(false);
+  });
+  // ---- Codex P2 on the SHIPPED #652: the catch-up must EARN the LIVE state ----
+
+  it("stays stale while the reconnect catch-up read is still in flight", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    // SUBSCRIBED only proves FUTURE changes can arrive. Everything that changed
+    // during the outage was never delivered, so the rows on screen are still
+    // stale until the catch-up read lands. Clearing here would flash a LIVE that
+    // is not yet true.
+    expect(seen!.stale).toBe(true);
+
+    await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(false);
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
+  });
+
+  it("stays stale indefinitely when the catch-up read never settles", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    // Nothing resolves the catch-up. A hung read must never resolve to LIVE.
+    await tick(60_000);
+
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("stays stale when the catch-up read FAILS, until a later one lands", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settleError("network");
+    expect(seen!.stale).toBe(true);
+
+    // A bare read still does not clear it. The catch-up failed, so the outage
+    // gap is UNCLOSED — rows fetched now are current, but nothing has proven the
+    // subscription is delivering again.
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(true);
+
+    // Only the rebuilt subscription reporting in, AND its catch-up landing,
+    // closes the gap.
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settle([row("a"), row("b")]);
+    expect(seen!.stale).toBe(false);
+  });
+
+  // ---- Retry must be a REACHABLE recovery, not a read that changes nothing ----
+
+  it("Retry on a dead channel asks for a fresh subscription", async () => {
+    await mount();
+    await settle([row("a")]);
+    const keyBefore = sub!.opts!.resubscribeKey;
+
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { void seen!.retry(); });
+
+    // A read cannot revive a subscription. Without this the person's only way
+    // back to a live calendar is a full page reload.
+    expect(sub!.opts!.resubscribeKey).not.toBe(keyBefore);
+  });
+
+  it("Retry on a HEALTHY channel does not churn the subscription", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    const keyBefore = sub!.opts!.resubscribeKey;
+
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a")]);
+
+    expect(sub!.opts!.resubscribeKey).toBe(keyBefore);
   });
 });

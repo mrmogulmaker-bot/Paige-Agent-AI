@@ -446,7 +446,12 @@ export function useSoloCalendar(
   const pendingRefresh = useRef(false);
   /** Declared before `fetchBookings` so the deferred-refresh path can reach the
    *  latest reader without depending on it and re-creating the callback. */
-  const fetchRef = useRef<(mode: "load" | "refresh") => Promise<void>>();
+  const fetchRef = useRef<(mode: "load" | "refresh") => Promise<boolean>>();
+  /** Mirrors `channelDown` for callbacks that must stay referentially stable. */
+  const channelDownRef = useRef(false);
+  useEffect(() => { channelDownRef.current = channelDown; }, [channelDown]);
+  /** Bumped to ask the shared hook for a brand-new subscription. */
+  const [resubscribeKey, setResubscribeKey] = useState(0);
   const calendarSeq = useRef(0);
 
   const [from, to] = useMemo(() => rangeFor(view, cursor), [view, cursor]);
@@ -494,7 +499,7 @@ export function useSoloCalendar(
     // until someone pressed Retry. Defer instead, and run once the load settles.
     if (mode === "refresh" && loadInFlight.current) {
       pendingRefresh.current = true;
-      return;
+      return false;
     }
     const seq = ++bookingSeq.current;
     const myLoad = mode === "load" ? ++loadSeq.current : 0;
@@ -520,9 +525,11 @@ export function useSoloCalendar(
         queueMicrotask(() => { void fetchRef.current?.("refresh"); });
       }
     }
-    if (seq !== bookingSeq.current) return; // superseded by a newer read
+    // Superseded by a newer read. Its rows are not ours to publish, and it is
+    // not ours to call a success either — the newer read owns that answer.
+    if (seq !== bookingSeq.current) return false;
     if (err) {
-      if (mode === "load") { setError(err.message); setPhase("error"); return; }
+      if (mode === "load") { setError(err.message); setPhase("error"); return false; }
       // A background refresh that fails must not tear down a schedule the person
       // is reading, so the rows stay. But they are now of unknown freshness, and
       // the person reading them has to be told: `stale` drives a visible state on
@@ -530,7 +537,7 @@ export function useSoloCalendar(
       // (§32 — never swallow), but it is no longer the only report.
       console.error("[solo-calendar] live booking refresh failed", err);
       setRefreshFailed(true);
-      return;
+      return false;
     }
     setBookings((data as SoloBooking[] | null) ?? []);
     setPhase("ready");
@@ -538,6 +545,7 @@ export function useSoloCalendar(
     // never advance it, or the surface would claim a freshness it does not have.
     setLastSyncedMs(Date.now());
     setRefreshFailed(false);
+    return true;
   }, [activeTenantId, fromIso, toIso]);
 
   useEffect(() => {
@@ -591,6 +599,14 @@ export function useSoloCalendar(
    *  cancels any debounce already queued so one press is one read. */
   const retry = useCallback(async () => {
     if (refreshTimer.current) { clearTimeout(refreshTimer.current); refreshTimer.current = null; }
+    // Re-reading cannot revive a dead subscription. Without also rebuilding it,
+    // "try again" would fetch fresh rows and leave the surface permanently
+    // stale — technically honest, but a dead end: the only way back to a live
+    // calendar would be a full page reload. Asking for a new subscription makes
+    // the recovery reachable, and it stays truthful either way — the new channel
+    // reports SUBSCRIBED and the catch-up clears it, or it does not and the
+    // surface stays stale.
+    if (channelDownRef.current) setResubscribeKey((n) => n + 1);
     await fetchRef.current?.("refresh");
   }, []);
 
@@ -604,14 +620,22 @@ export function useSoloCalendar(
   const channelWasDown = useRef(false);
   const onChannelStatus = useCallback((status: string) => {
     if (status === "SUBSCRIBED") {
-      if (channelWasDown.current) {
+      if (!channelWasDown.current) return;
+      // Resubscribing proves FUTURE changes can arrive again. It proves nothing
+      // about the rows already on screen: everything that changed during the
+      // outage was never delivered, so they are still stale. Clearing here would
+      // show a LIVE calendar that has not caught up yet — and if the catch-up
+      // then fails, or never returns at all, it would keep showing it.
+      //
+      // So the stale state is held until the catch-up read actually lands. A
+      // failed or hung catch-up leaves it exactly where it was: stale, with a
+      // way to try again. Fires on the transition only — this is not a poll.
+      void (async () => {
+        const caughtUp = await fetchRef.current?.("refresh");
+        if (!caughtUp) return;
         channelWasDown.current = false;
         setChannelDown(false);
-        // Catch up once on reconnect: anything that changed while the channel
-        // was down was never delivered. Fires on the transition only — this is
-        // not a poll.
-        void fetchRef.current?.("refresh");
-      }
+      })();
       return;
     }
     if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -625,6 +649,7 @@ export function useSoloCalendar(
     filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
     enabled: Boolean(activeTenantId),
     onStatus: onChannelStatus,
+    resubscribeKey,
   });
 
   // A class arrives as a session marker plus one row per attendee. Fold before
