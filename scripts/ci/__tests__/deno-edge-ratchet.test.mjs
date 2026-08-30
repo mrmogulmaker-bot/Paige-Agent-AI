@@ -279,6 +279,70 @@ console.log("\ndependency-input parity");
     run(dirty(inherited), clean(), [ENTRY], false).length === 0);
 }
 
+console.log("\ndependency fingerprint is coupled to the flags the check actually passes");
+{
+  // Three things are pinned, and it takes all three: the FLAG LIST, the INPUT LIST, and the
+  // biconditional between them. Pinning only the pair `--no-lock` <-> `deno.lock` would leave a
+  // hole an adversarial review found and proved: `CHECK_FLAGS` could grow `--no-remote`,
+  // `--no-npm`, `--cached-only`, `--config` or `--import-map` - each of which changes what the
+  // check resolves - with no DEP_INPUTS consequence and no failing assertion. So the flag list is
+  // pinned exactly too, and adding a flag is a deliberate edit here where its input consequence
+  // must be stated.
+  const DEP_INPUTS = R.DEP_INPUTS;
+  const CHECK_FLAGS = R.CHECK_FLAGS;
+
+  check("export DEP_INPUTS exists", Array.isArray(DEP_INPUTS), JSON.stringify(DEP_INPUTS));
+  check("export CHECK_FLAGS exists", Array.isArray(CHECK_FLAGS), JSON.stringify(CHECK_FLAGS));
+  check("export checkArgv() exists", typeof R.checkArgv === "function");
+
+  if (Array.isArray(DEP_INPUTS) && Array.isArray(CHECK_FLAGS)) {
+    check("the check still runs with --no-lock (behaviour preserved)",
+      CHECK_FLAGS.includes("--no-lock"), JSON.stringify(CHECK_FLAGS));
+
+    // THE FLAG LIST ITSELF. Without this, a resolution-changing flag can be added silently.
+    check("CHECK_FLAGS is exactly the flag set this gate is proven against",
+      JSON.stringify(CHECK_FLAGS) === JSON.stringify(["--no-lock"]),
+      `${JSON.stringify(CHECK_FLAGS)} - adding a flag changes what the check resolves; state its DEP_INPUTS consequence here`);
+
+    // THE INVARIANT, stated in both directions.
+    const lockDisabled = CHECK_FLAGS.includes("--no-lock");
+    const lockFingerprinted = DEP_INPUTS.includes("deno.lock");
+    check("deno.lock is fingerprinted IF AND ONLY IF the lockfile is not disabled",
+      lockFingerprinted === !lockDisabled,
+      `--no-lock=${lockDisabled} but deno.lock in DEP_INPUTS=${lockFingerprinted}`);
+
+    // Exact set, so any future add or removal has to be a deliberate edit here too.
+    check("DEP_INPUTS is exactly this list (the conventional Deno config inputs, not a resolved set)",
+      JSON.stringify(DEP_INPUTS) === JSON.stringify(["deno.json", "deno.jsonc", "import_map.json"]),
+      JSON.stringify(DEP_INPUTS));
+
+    check("no npm lockfile is fingerprinted (edge functions carry no node_modules)",
+      !DEP_INPUTS.includes("package-lock.json") && !DEP_INPUTS.includes("package.json"),
+      JSON.stringify(DEP_INPUTS));
+  }
+
+  if (typeof R.checkArgv === "function") {
+    check("checkArgv() is built from CHECK_FLAGS and ends with the entry",
+      JSON.stringify(R.checkArgv("supabase/functions/x/index.ts")) ===
+        JSON.stringify(["check", ...(R.CHECK_FLAGS ?? []), "supabase/functions/x/index.ts"]),
+      JSON.stringify(R.checkArgv("supabase/functions/x/index.ts")));
+
+    // The runner must invoke through checkArgv, not a second inlined copy of the flags -
+    // otherwise everything above guards a constant nothing actually uses. Asserted against the
+    // source with the sanctioned declaration removed, and quote-agnostic: an earlier version
+    // counted double-quoted occurrences, so re-quoting the identical array to single quotes
+    // failed with "inlined occurrences: 0" - a false red accusing the code of a defect it did
+    // not have.
+    const src = readFileSync(SCRIPT, "utf8");
+    check("the runner spawns via checkArgv()",
+      /spawnSync\(\s*"deno"\s*,\s*checkArgv\(\s*entry\s*\)/.test(src), "spawnSync call site");
+    const withoutDecl = src.replace(/export const CHECK_FLAGS =[\s\S]*?\n}\n/, "");
+    const strays = withoutDecl.match(/['"]--no-[a-z-]+['"]/g) ?? [];
+    check("no check flag literal exists outside the CHECK_FLAGS declaration",
+      strays.length === 0, `flags declared outside CHECK_FLAGS: ${JSON.stringify(strays)}`);
+  }
+}
+
 console.log("\nentry-file inheritance is deliberate and bounded");
 {
   // The entry file is EXEMPT from the changed-file rule on purpose: making whoever touches a
@@ -679,6 +743,90 @@ console.log("\nrunner — real script, disposable repository, real candidate");
       check("runner: main() still runs from a path containing a space (percent-encoding guard)",
         status === 2, `status=${status} (expected 2 - '--base is required')`);
       rmSync(spaced, { recursive: true, force: true });
+    }
+  } finally {
+    for (const r of repos) { try { rmSync(r, { recursive: true, force: true }); } catch { } }
+    rmSync(shim, { recursive: true, force: true });
+  }
+}
+
+console.log("\nrunner — a lockfile the check ignores must not change grading");
+{
+  // The behavioural half of the coupling proof. Two legs carrying the SAME inherited
+  // diagnostic must still pass when the only other difference is a file `--no-lock` makes
+  // inert. With deno.lock fingerprinted this run fails for a file the compiler never read.
+  const FNL = "disposable-lockfile-probe";
+  const shim = makeShim();
+  const repos = [];
+  const DIAG = `TS2769 [ERROR]: No overload matches this call.\n    at file:///x/supabase/functions/_shared/helper.ts:1:1\nFound 1 error.`;
+
+  /** base and head differ only in the named root files; the function itself is untouched. */
+  const buildWithRootFiles = (baseFiles, headFiles) => {
+    const { root, git } = makeRepo();
+    repos.push(root);
+    writeFn(root, FNL, "base");
+    for (const [f, v] of Object.entries(baseFiles)) writeFileSync(path.join(root, f), v);
+    git("add", "-A"); git("commit", "-qm", "base");
+    const baseSha = git("rev-parse", "HEAD").trim();
+    writeFn(root, FNL, "head");
+    for (const [f, v] of Object.entries(headFiles)) writeFileSync(path.join(root, f), v);
+    git("add", "-A"); git("commit", "-qm", "head");
+    return { root, baseSha, headSha: git("rev-parse", "HEAD").trim() };
+  };
+
+  try {
+    // Control: no root config at all, identical inherited diagnostic -> inherited, passes.
+    {
+      const { root, baseSha, headSha } = buildWithRootFiles({}, {});
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNL], shimDir: shim,
+        plan: { base: { exit: 1, out: DIAG }, head: { exit: 1, out: DIAG } } });
+      check("runner: an identical inherited diagnostic passes with no config present",
+        r.status === 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+    }
+
+    // THE REGRESSION: only deno.lock changed. --no-lock means the compiler never reads it.
+    {
+      const { root, baseSha, headSha } = buildWithRootFiles(
+        { "deno.lock": '{"version":"3","packages":{}}' },
+        { "deno.lock": '{"version":"4","packages":{"npm:zod@3.23.8":{}}}' });
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNL], shimDir: shim,
+        plan: { base: { exit: 1, out: DIAG }, head: { exit: 1, out: DIAG } } });
+      check("runner: a CHANGED deno.lock alone does NOT withdraw inherited credit",
+        r.status === 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: and no dependency-drift note is emitted for it",
+        !/dependency inputs differ/i.test(r.stdout + r.stderr), r.stdout + r.stderr);
+    }
+
+    // ...and an ADDED deno.lock is equally inert.
+    {
+      const { root, baseSha, headSha } = buildWithRootFiles({}, { "deno.lock": '{"version":"4"}' });
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNL], shimDir: shim,
+        plan: { base: { exit: 1, out: DIAG }, head: { exit: 1, out: DIAG } } });
+      check("runner: an ADDED deno.lock alone does NOT withdraw inherited credit",
+        r.status === 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+    }
+
+    // The mechanism is intact: a config the check DOES consume still withdraws credit.
+    {
+      const { root, baseSha, headSha } = buildWithRootFiles(
+        { "deno.json": '{"imports":{"@x/":"https://example.test/a/"}}' },
+        { "deno.json": '{"imports":{"@x/":"https://example.test/b/"}}' });
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNL], shimDir: shim,
+        plan: { base: { exit: 1, out: DIAG }, head: { exit: 1, out: DIAG } } });
+      check("runner: a CHANGED deno.json DOES withdraw inherited credit",
+        r.status !== 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
+      check("runner: and says so, naming the dependency drift",
+        /dependency inputs/i.test(r.stdout + r.stderr), r.stdout + r.stderr);
+    }
+
+    // A changed consumed config with a genuinely clean head is still fine.
+    {
+      const { root, baseSha, headSha } = buildWithRootFiles(
+        { "import_map.json": '{"imports":{"a":"./a.ts"}}' },
+        { "import_map.json": '{"imports":{"a":"./b.ts"}}' });
+      const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNL], plan: {}, shimDir: shim });
+      check("runner: a changed import_map with a clean head still passes",
+        r.status === 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
     }
   } finally {
     for (const r of repos) { try { rmSync(r, { recursive: true, force: true }); } catch { } }

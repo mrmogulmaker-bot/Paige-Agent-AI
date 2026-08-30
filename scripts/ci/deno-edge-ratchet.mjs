@@ -358,6 +358,28 @@ export function verifyEvidenceArtifacts(outDir, evidence) {
 /** Abandonment is infrastructure noise and may be retried. A diagnostic never is. */
 const MAX_ATTEMPTS = 2;
 
+/**
+ * The flags every leg is checked with, in ONE place.
+ *
+ * `--no-lock`: these functions carry no committed deno.lock, and a lockfile mismatch would fail
+ * for a reason unrelated to type safety. Verified on deno 2.9.6 that the flag disables lockfile
+ * influence completely rather than merely skipping the write: a corrupted integrity hash fails
+ * the check at exit 10 without it and passes with it, an explicit `deno.json` "lock" field does
+ * not re-enable it, and DENO_FROZEN_LOCKFILE does not override it. Because the lockfile is inert,
+ * `deno.lock` must NOT appear in DEP_INPUTS - fingerprinting an input the compiler never reads
+ * would withdraw inherited credit over a file that cannot affect either leg.
+ *
+ * The contract test pins BOTH this list and that biconditional exactly, because a flag added here
+ * can change what the check resolves with no DEP_INPUTS consequence at all. `--no-remote`,
+ * `--no-npm` or `--cached-only` would neuter the gate; `--config` or `--import-map` would
+ * introduce a consumed input nothing fingerprints. Adding any flag is therefore a deliberate edit
+ * to the test as well, where its DEP_INPUTS consequence has to be stated.
+ */
+export const CHECK_FLAGS = Object.freeze(["--no-lock"]);
+export function checkArgv(entry) {
+  return ["check", ...CHECK_FLAGS, entry];
+}
+
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
@@ -371,7 +393,7 @@ function invokeCheck(cwd, entry) {
   // that reported errors while exiting 0 read as clean, and every clean leg's evidence
   // transcript was empty by construction. Both streams are merged here on EVERY path so
   // classification sees the same text whatever the exit status.
-  const r = spawnSync("deno", ["check", "--no-lock", entry], {
+  const r = spawnSync("deno", checkArgv(entry), {
     cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
   });
   const raw = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
@@ -424,11 +446,32 @@ function entryInTree(repo, sha, entry) {
  * two revisions, the base transcript is base code compiled against different inputs, and its
  * diagnostics are not a baseline the head may inherit.
  */
-// DENO inputs only. Edge functions are Deno and deploy with no node_modules, so the runner does
-// not stage one (see the worktree loop) and npm lockfiles are not inputs to this check. Listing
-// package.json here instead would withdraw inheritance on every PR that touches an unrelated
-// frontend dependency - reimposing the exact tax this ratchet exists to remove.
-const DEP_INPUTS = ["deno.lock", "deno.json", "deno.jsonc", "import_map.json"];
+// The CONVENTIONAL Deno config inputs, fingerprinted at both revisions.
+//
+// npm lockfiles are excluded because edge functions are Deno and deploy with no node_modules, so
+// the runner stages none (see the worktree loop); listing package.json would withdraw inheritance
+// on every PR touching an unrelated frontend dependency - the exact tax this ratchet removes.
+//
+// `deno.lock` is excluded because CHECK_FLAGS passes `--no-lock`, so the lockfile cannot influence
+// either leg. Fingerprinting it would fail a PR that changed a file the compiler never read. If
+// `--no-lock` is ever dropped, `deno.lock` becomes a real input and belongs here - the contract
+// test asserts that biconditional, so neither side can move without the other.
+//
+// HONEST BOUND, so the next reader does not over-trust this list. It is the conventional set, NOT
+// a resolved one:
+//   - `import_map.json` is listed defensively. Deno never auto-discovers a bare import map; it is
+//     read only when a `deno.json` "importMap" field or `--import-map` names it. Fingerprinting it
+//     anyway costs nothing but inherited credit in a case that cannot arise today.
+//   - A `deno.json` "importMap" pointing at some OTHER path (say `./tools/edge-imports.json`)
+//     names a genuinely consumed file this list does not follow. A resolution-changing edit to
+//     that file, with `deno.json` itself byte-identical, would be credited as inherited.
+// Both are inert in this repository, which tracks none of these files at all - every entry
+// resolves `absent` on both legs. Following the "importMap" pointer is tracked, not done here.
+//
+// Per-directory `deno.json` files under supabase/functions/ are deliberately NOT listed: Deno
+// discovers config from the CWD upward, and both legs run with cwd at the worktree root, so a
+// nested config is never read by this check.
+export const DEP_INPUTS = Object.freeze(["deno.json", "deno.jsonc", "import_map.json"]);
 function depFingerprint(repo, sha) {
   return DEP_INPUTS.map((f) => {
     try { return `${f}=${git(repo, "rev-parse", `${sha}:${f}`)}`; }
