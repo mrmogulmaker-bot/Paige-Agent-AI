@@ -109,7 +109,11 @@ const fail = (message: string) => Promise.resolve({ data: null, error: { message
 /** Mirrors only the surface `useSoloCalendar` actually touches. */
 /** Flipped by the drive to exercise a failed live refresh; "ok" by default so
  *  every existing frame measures exactly what it measured before. */
-let bookingReadMode: "ok" | "fail" = "ok";
+/** "empty" lets a drive prove what happens when a booking DISAPPEARS between
+ *  reads — the case that closes an open drawer out from under the reader. It is
+ *  not expressible with ok/fail alone, so the focus behaviour on that path could
+ *  not be driven in a browser without it. */
+let bookingReadMode: "ok" | "fail" | "empty" = "ok";
 const listeners = new Set<() => void>();
 
 export const supabase = {
@@ -134,6 +138,7 @@ export const supabase = {
       // landed, so the surface has real rows on screen when the refresh fails —
       // which is the only state the freshness warning is about.
       if (bookingReadMode === "fail") return fail("Harness: refresh refused");
+      if (bookingReadMode === "empty") return { data: [], error: null };
       return ok(state() === "empty" ? [] : bookings());
     }
     // Writes are not exercised by a geometry render; they resolve without effect.
@@ -169,7 +174,7 @@ export const supabase = {
   /** Deliver a booking change the way a Postgres event would. */
   fireBookingChange: () => { listeners.forEach((cb) => cb()); },
   /** Make the next booking reads succeed or fail. */
-  setBookingReads: (mode: "ok" | "fail") => { bookingReadMode = mode; },
+  setBookingReads: (mode: "ok" | "fail" | "empty") => { bookingReadMode = mode; },
 };
 
 export default { supabase };

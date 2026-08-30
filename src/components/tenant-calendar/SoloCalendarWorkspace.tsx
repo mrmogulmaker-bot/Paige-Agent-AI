@@ -116,6 +116,14 @@ interface DrawerProps {
   foot?: React.ReactNode;
   /** The retired design's second width, for editors that need the room. */
   wide?: boolean;
+  /**
+   * Where focus goes when the element that OPENED the drawer is no longer in the
+   * document. That is not hypothetical: a live refresh can delete the booking
+   * whose drawer is open, which removes its chip too — so the usual restore
+   * target is gone at exactly the moment the panel closes by itself, and focus
+   * would otherwise be restored nowhere and land on `document.body`.
+   */
+  focusFallbackRef?: React.RefObject<HTMLElement>;
 }
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -130,13 +138,17 @@ const FOCUSABLE =
  * The element that opened the drawer is captured on mount and refocused on unmount,
  * so keyboard users land back where they were, not at the top of the document.
  */
-function Drawer({ title, sub, onClose, children, foot, wide }: DrawerProps) {
+function Drawer({ title, sub, onClose, children, foot, wide, focusFallbackRef }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const headingId = useId();
 
   useEffect(() => {
     restoreRef.current = document.activeElement as HTMLElement | null;
+    // Captured at setup: the fallback is a stable element that outlives the
+    // drawer, and reading a ref during cleanup is the pattern react-hooks warns
+    // about.
+    const fallback = focusFallbackRef?.current ?? null;
     panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
@@ -157,9 +169,12 @@ function Drawer({ title, sub, onClose, children, foot, wide }: DrawerProps) {
     return () => {
       window.removeEventListener("keydown", onKey);
       const el = restoreRef.current;
-      if (el && document.contains(el)) el.focus();
+      if (el && document.contains(el)) { el.focus(); return; }
+      // The opener is gone. Land somewhere real inside the surface rather than
+      // dropping the keyboard user on the document body.
+      fallback?.focus();
     };
-  }, [onClose]);
+  }, [onClose, focusFallbackRef]);
 
   return (
     <>
@@ -200,6 +215,10 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
   const [colorBy, setColorBy] = useState<"calendar" | "host">("calendar");
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const [detail, setDetail] = useState<SoloBooking | null>(null);
+  /** Focus lands here if a drawer closes after its opener has left the DOM.
+   *  `tabIndex={-1}` makes it programmatically focusable without adding a stop
+   *  to the Tab order. */
+  const boardRef = useRef<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -482,7 +501,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
         )}
       </div>
 
-      <div className="sc-board">
+      <div className="sc-board" ref={boardRef} tabIndex={-1}>
         <div className="sc-rail">
           <div className="sc-rail-scroll">
             {railBody}
@@ -523,6 +542,7 @@ export function SoloCalendarWorkspace({ activeTenantId, connectionsHref, openPai
           title={detail.title || "Appointment"}
           sub={`${new Date(detail.start_at).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · ${timeLabel(detail.start_at)} – ${timeLabel(detail.end_at)}`}
           onClose={() => { setDetail(null); setActionMsg(null); }}
+          focusFallbackRef={boardRef}
           foot={
             <>
               {/* The five values `admin_set_booking_status` actually accepts. 'blocked'

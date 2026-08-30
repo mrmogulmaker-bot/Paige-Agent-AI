@@ -676,6 +676,25 @@ describe("Solo Calendar — an open drawer follows the live rows", () => {
     expect(dialog()?.textContent).toContain("cancelled");
   });
 
+  it("keeps focus inside the surface when the drawer closes because its booking vanished", () => {
+    // The drawer restores focus to the element that opened it — but that element
+    // is the chip, and when the booking is deleted the chip is gone too. Without
+    // a fallback, focus is restored NOWHERE and a keyboard user is dropped onto
+    // document.body with the panel gone from under them.
+    state.bookings = [booking({ id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11) })];
+    mount();
+    const opener = chip(/Discovery call/)!;
+    opener.focus();
+    click(opener);
+    expect(dialog()).toBeTruthy();
+
+    refreshWith([]);
+
+    expect(dialog()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(container.contains(document.activeElement)).toBe(true);
+  });
+
   it("closes the drawer when the booking is GONE, rather than leaving actions on a row that no longer exists", () => {
     state.bookings = [booking({ id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11) })];
     mount();
