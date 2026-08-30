@@ -71,7 +71,19 @@ export interface SoloCommsReadinessEvidence {
   can_send_sms: boolean;
   a2p: "approved" | "submitted" | "prepared" | "absent";
   number_e164: string | null;
-  delivery: { state: "no_activity" | "delivering" | "mixed" | "failing"; last_inbound_at: string | null };
+  /**
+   * `awaiting_receipts` is the resolver's fifth state and was missing here.
+   *
+   * The RPC emits it when messages were SENT but not one delivery receipt has
+   * landed (migration 20261002000000, `v_sms_delivered = 0` with no failures).
+   * `ClientsConversations.tsx` casts the raw RPC row straight into this type, so
+   * the value flowed through at runtime and fell into the final `else` of the
+   * health ternary, rendering **"Messages are not arriving"** on an account where
+   * zero messages had failed — a definite negative asserted from the ABSENCE of
+   * receipts, which is the same class of untruth as the "No replies received"
+   * repaired a few lines below it.
+   */
+  delivery: { state: "no_activity" | "delivering" | "awaiting_receipts" | "mixed" | "failing"; last_inbound_at: string | null };
   /**
    * The resolver's OWN guard on whether replies can be reported at all.
    *
@@ -151,11 +163,18 @@ export function getSoloChannelTruth(
               readiness.inbound_reporting === "available"
                 ? (readiness.delivery.last_inbound_at ? "Replies received" : "No replies received")
                 : "Not reported",
+            // Each arm names the state it is reading. `awaiting_receipts` says what
+            // is actually known — messages went out, nothing has come back to
+            // confirm either way — instead of reporting a failure nobody observed.
             operationalHealth:
               readiness.delivery.state === "delivering" ? "Delivering"
               : readiness.delivery.state === "no_activity" ? "Nothing sent yet"
+              : readiness.delivery.state === "awaiting_receipts" ? "Sent, no delivery confirmations yet"
               : readiness.delivery.state === "mixed" ? "Some messages did not arrive"
-              : "Messages are not arriving",
+              : readiness.delivery.state === "failing" ? "Messages are not arriving"
+              // An unrecognised state is not evidence of anything. Naming a
+              // failure here would re-create the defect this arm exists to fix.
+              : "Not reported",
             // Deliberately still NOT reported: nothing in this repository records
             // webhook registration health, so claiming it would be a fabrication.
             webhookHealth: "Not reported",

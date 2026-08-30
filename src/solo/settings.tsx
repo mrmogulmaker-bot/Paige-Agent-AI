@@ -292,6 +292,9 @@ export function billingStep(b: CommsReadiness["billing"]): {
 export type Step = {
   n: string; s: string; truth: SettingsTruth;
   tone: "ok" | "warn" | "bad" | "neutral"; state: string; detail: string;
+  /** Position in the canonical path, stamped by `readinessSteps` so a step
+   *  rendered on its own carries the same number the ladder gives it. */
+  no?: number;
 };
 
 export function messagingAccountStep(r: CommsReadiness): Step {
@@ -381,11 +384,21 @@ export function deliveryStep(r: CommsReadiness): Step {
       : d.state === "awaiting_receipts" ? `${d.sent_30d} sent, none confirmed yet`
       : d.state === "delivering" ? `${d.delivered_30d} of ${d.sent_30d} delivered`
       : `${d.failed_30d} of ${d.sent_30d} did not arrive`,
-    detail: d.state === "no_activity"
+    // The replies disclosure travels WITH the step, not beside it.
+    //
+    // The pre-refactor step was named "Delivery and replies" and its detail said
+    // outright that whether replies arrive is not something we can report. The
+    // restructure narrowed the step to delivery and left that sentence only as a
+    // note on one card — so the Health ladder, which is where it used to live,
+    // silently stopped disclosing it (§58). Appending it here means every
+    // rendering of this step carries it, and no future re-arrangement of the
+    // surface can drop it without deleting the step.
+    detail: (d.state === "no_activity"
       ? "Nothing has been sent in the last 30 days, so there is nothing to report."
       : d.state === "awaiting_receipts"
       ? "Sent, but no delivery confirmations have come back yet."
-      : "Counted from delivery receipts on what was sent in the last 30 days." };
+      : "Counted from delivery receipts on what was sent in the last 30 days.")
+      + " Whether replies are arriving is not reported — nothing on this account records them." };
 }
 
 export function billingRow(r: CommsReadiness): Step {
@@ -397,13 +410,29 @@ export function readinessSteps(r: CommsReadiness): Step[] {
   return [
     messagingAccountStep(r), businessDetailsStep(r), phoneStep(r), registrationStep(r),
     consentStep(r), billingRow(r), textingSenderStep(r), deliveryStep(r),
-  ];
+  ].map((st, i) => ({ ...st, no: i + 1 }));
 }
 
-function StepRows({ steps, offset = 0 }: { steps: Step[]; offset?: number }) {
+/**
+ * A step's number is its POSITION IN THE PATH, not its index in whatever subset
+ * is being drawn.
+ *
+ * Rendering one step on its own numbered it from that one-element array, so
+ * "Business details" read as step 1 inside the registration card and step 2 in
+ * the ladder — one step, two numbers, one surface. A hand-maintained order
+ * constant would fix the symptom and then drift the first time a step is renamed
+ * (a first attempt at this got four of the eight names wrong), so the number is
+ * STAMPED BY the canonical list instead. A caller wanting one step asks for it by
+ * name and gets that step's real number with it.
+ */
+export function stepByName(r: CommsReadiness, name: string): Step[] {
+  return readinessSteps(r).filter((st) => st.n === name);
+}
+
+function StepRows({ steps }: { steps: Step[] }) {
   return <div className="ss-ladder">{steps.map((st, i) => (
     <div className="ss-step" data-tone={st.tone} key={st.n}>
-      <span className="ss-step-idx">{i + 1 + offset}</span>
+      <span className="ss-step-idx">{st.no ?? i + 1}</span>
       <div className="ss-step-name"><strong>{st.n}</strong><span>{st.s}</span></div>
       <div className="ss-step-state"><em>{st.state}</em>{st.detail}</div>
       <Truth value={st.truth}/>
@@ -458,6 +487,38 @@ function ConnectionsView() {
     <strong>Texting is not ready yet</strong><p>{body}</p>
   </div>;
 
+  /**
+   * A FAILED READ IS NOT AN EMPTY ACCOUNT, and the difference is the whole point.
+   *
+   * These cards pass `error={null}` to ReadState deliberately: ReadState prints
+   * `error.message` verbatim, and this resolver's message is a raw
+   * `COMMS_READINESS_FORBIDDEN` / `COMMS_READINESS_NO_TENANT` — an internal
+   * diagnostic, not something to show a tenant. But suppressing the MESSAGE is
+   * not licence to suppress the FACT. Without this, a resolver failure rendered
+   * five confident sentences of the form "No X record has been read for this
+   * account yet" — each a statement about the ACCOUNT, made when nothing about
+   * the account had been learned — with no error and no retry on the default view.
+   *
+   * That is reachable, not hypothetical: the resolver raises FORBIDDEN for any
+   * authenticated caller who is not admin / coach / platform-operator, so a
+   * sales_rep or an ungranted team member met exactly this on every load.
+   *
+   * So: one notice states that the read failed and offers the retry, and each
+   * card fallback says which of the two actually happened.
+   */
+  const readFailed = !readiness.loading && !!readiness.error;
+  const noRecord = (what: string) =>
+    readFailed
+      ? <p>We couldn&rsquo;t read this account&rsquo;s setup just now, so nothing is being claimed about its {what}.</p>
+      : <p>No {what} record has been read for this account yet.</p>;
+  const readFailureNotice = readFailed
+    ? <div className="ss-next ss-read-failure" role="status">
+        <strong>We couldn&rsquo;t read this account&rsquo;s setup</strong>
+        <p>Nothing below is being claimed about this account until the read succeeds.</p>
+        <p><button type="button" className="ss-retry" onClick={readiness.retry}>Try again</button></p>
+      </div>
+    : null;
+
   return <>
     <div className="ss-segment" role="tablist" aria-label="Connections areas">
       {TABS.map(([key, label]) => (
@@ -466,6 +527,7 @@ function ConnectionsView() {
     </div>
 
     {view === "communications" && <div className="ss-sections">
+      {readFailureNotice}
       <Subsection id="ss-sub-phone" title="Business phone"
         blurb="The number this business texts and calls from.">
         <div className="ss-grid">
@@ -475,7 +537,7 @@ function ConnectionsView() {
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
               {r ? <><p>{phoneStep(r).detail}</p>
                 {r.number === "assigned" && <div className="ss-fields"><Field label="Number" value={r.number_e164}/></div>}
-              </> : <p>No number record has been read for this account yet.</p>}
+              </> : noRecord("number")}
             </ReadState>
           </Card>
           <PhoneSetupPanel/>
@@ -491,10 +553,10 @@ function ConnectionsView() {
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
               {r ? <>
                 <p>{registrationStep(r).detail}</p>
-                <StepRows steps={[businessDetailsStep(r)]}/>
+                <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
                 <p className="ss-note">Filing with a carrier is not something this surface can do. A registration can be
                   prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
-              </> : <p>No registration record has been read for this account yet.</p>}
+              </> : noRecord("registration")}
             </ReadState>
           </Card>
           <Card title="Consent and opt-outs" icon={ShieldCheck}
@@ -502,7 +564,7 @@ function ConnectionsView() {
             actions={r ? <Status tone={consentStep(r).tone}>{consentStep(r).state}</Status> : undefined}>
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
               {r ? <p>{consentStep(r).detail}</p>
-                 : <p>No consent record has been read for this account yet.</p>}
+                 : noRecord("consent")}
             </ReadState>
             <p className="ss-note">Consent is recorded when a person replies to confirm. Nothing else on this account writes it.</p>
           </Card>
@@ -535,7 +597,7 @@ function ConnectionsView() {
             truth={r ? deliveryStep(r).truth : "PARTIAL"}
             actions={r ? <Status tone={deliveryStep(r).tone}>{deliveryStep(r).state}</Status> : undefined}>
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {r ? <p>{deliveryStep(r).detail}</p> : <p>No delivery record has been read for this account yet.</p>}
+              {r ? <p>{deliveryStep(r).detail}</p> : noRecord("delivery")}
             </ReadState>
             {/* Three things are deliberately absent, each because no record backs
                 them: whether replies arrive (nothing writes an inbound SMS row),
@@ -548,7 +610,7 @@ function ConnectionsView() {
             truth={r ? billingStep(r.billing).truth : "PARTIAL"}
             actions={r ? <Status tone={billingStep(r.billing).tone}>{billingStep(r.billing).state}</Status> : undefined}>
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {r ? <p>{billingStep(r.billing).detail}</p> : <p>No billing record has been read for this account yet.</p>}
+              {r ? <p>{billingStep(r.billing).detail}</p> : noRecord("billing")}
             </ReadState>
             <p className="ss-note">Reported here because messaging costs bill against it. Plans and payment are owned by
               Settings → Billing, not by Connections.</p>

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   billingStep, consentStep, deliveryStep, phoneStep, readinessSteps, registrationStep,
-  READINESS_COPY, type CommsReadiness,
-} from "./settings";
+  READINESS_COPY, stepByName, type CommsReadiness, type Step } from "./settings";
 
 /**
  * The tenant-facing boundary, locked.
@@ -240,11 +239,27 @@ describe("readiness steps are one shared source", () => {
 
   it("the ladder is built from the same functions the subsections call", () => {
     const steps = readinessSteps(BASE);
+    // `readinessSteps` stamps `no`; everything else must come from the step
+    // function untouched, or the two renderings can drift apart again.
+    const content = (st: Step | undefined) => { const { no: _no, ...rest } = st ?? ({} as Step); return rest; };
     const byName = (n: string) => steps.find((s) => s.n === n);
-    expect(byName("Phone number")).toEqual(phoneStep(BASE));
-    expect(byName("Business texting")).toEqual(registrationStep(BASE));
-    expect(byName("Consent and opt-outs")).toEqual(consentStep(BASE));
-    expect(byName("Delivery")).toEqual(deliveryStep(BASE));
+    expect(content(byName("Phone number"))).toEqual(phoneStep(BASE));
+    expect(content(byName("Business texting"))).toEqual(registrationStep(BASE));
+    expect(content(byName("Consent and opt-outs"))).toEqual(consentStep(BASE));
+    expect(content(byName("Delivery"))).toEqual(deliveryStep(BASE));
+  });
+
+  it("gives a step the SAME number wherever it is rendered", () => {
+    // A step drawn on its own used to be numbered from the one-element array it
+    // was passed, so "Business details" read as step 1 inside the registration
+    // card and step 2 in the ladder — one step, two numbers, one surface.
+    const steps = readinessSteps(BASE);
+    expect(steps.map((s) => s.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    for (const st of steps) {
+      const alone = stepByName(BASE, st.n);
+      expect(alone).toHaveLength(1);
+      expect(alone[0].no).toBe(st.no);
+    }
   });
 
   it("names the email sending identity distinctly from the texting sender", () => {
@@ -293,8 +308,14 @@ describe("readiness steps are one shared source", () => {
     for (const state of ["no_activity", "awaiting_receipts", "delivering", "mixed", "failing"] as const) {
       const st = deliveryStep({ ...BASE, delivery: { ...BASE.delivery, state } });
       const text = `${st.state} ${st.detail}`.toLowerCase();
-      // Replies are unreportable: nothing writes an inbound SMS row.
-      expect(text).not.toContain("repl");
+      // Replies are unreportable: nothing writes an inbound SMS row. Saying so is
+      // the opposite of a claim, so the step must CARRY the disclosure — an
+      // earlier version of this test banned the word "repl" outright, which is
+      // how the disclosure came to be dropped from the ladder unnoticed (§58).
+      expect(st.detail).toContain("Whether replies are arriving is not reported");
+      // ...but it must never assert a direction.
+      expect(text).not.toContain("replies received");
+      expect(text).not.toContain("no replies");
       expect(text).not.toContain("webhook");
     }
     // Non-vacuity: it does report what receipts actually counted.
