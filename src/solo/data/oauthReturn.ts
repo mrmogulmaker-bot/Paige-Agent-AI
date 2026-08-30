@@ -77,3 +77,22 @@ export function takeOAuthReturn(): string | null {
     return null;
   }
 }
+
+/**
+ * Arm the return store for a Google handshake that is about to start.
+ *
+ * The invariant has ONE home because it has two producers: this surface, which
+ * supplies a return path, and the admin connectors panel, which does not. Only
+ * remembering — never clearing — left an entry alive whenever a handshake
+ * simply never came back: abandoning Google's consent page produces no callback
+ * at all, so nothing on the error paths runs, and the address survived its full
+ * TTL. The next Google handshake, wanting no return, then consumed it and
+ * landed that person on a surface they were never on.
+ *
+ * So starting a handshake without a return path is itself a statement: there is
+ * nowhere to come back to, and any address still lying around is stale.
+ */
+export function armOAuthReturn(returnTo?: string | null): void {
+  if (returnTo) rememberOAuthReturn(returnTo);
+  else clearOAuthReturn();
+}

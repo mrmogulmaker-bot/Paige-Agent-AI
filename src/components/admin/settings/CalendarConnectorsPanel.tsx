@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { resolveFunctionError } from "@/lib/integrations/connectError";
 import { toast } from "sonner";
 import { Link as LinkIcon, Unlink, Loader2, CalendarCheck, Video, Apple } from "lucide-react";
+import { armOAuthReturn } from "@/solo/data/oauthReturn";
 
 interface ConnState {
   google_calendar_connected: boolean;
@@ -65,6 +66,11 @@ export function CalendarConnectorsPanel() {
 
   const connectGoogle = async () => {
     setConnecting(true);
+    // This panel has nowhere to come back to, and says so. Without it, an
+    // address abandoned by a handshake started elsewhere would still be sitting
+    // in session storage, and THIS callback would consume it — sending someone
+    // who connected from here to a surface they never opened.
+    armOAuthReturn(null);
     const { data, error } = await supabase.functions.invoke("google-calendar-oauth-start", {
       body: { origin: window.location.origin },
     });

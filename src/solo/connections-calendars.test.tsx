@@ -545,6 +545,22 @@ describe("a booking preset can actually be created", () => {
     expect(text()).not.toMatch(/Strategy session” is live/i);
   });
 
+  it("refuses a second concurrent create while one is already running", async () => {
+    // The empty state renders two of these forms — header and empty body. Once
+    // open they used to ignore `disabled`, so the second could submit while the
+    // first was still in flight and create a duplicate preset.
+    const createCalendar = vi.fn().mockResolvedValue({ ok: true, row: calendar({ id: "cal-new" }) });
+    mount({ createCalendar, empty: true, calendars: [], busy: "new" });
+    const opener = [...container.querySelectorAll("button")].find((b) => /New preset/.test(b.textContent ?? ""));
+    act(() => { opener?.click(); });
+    const field = container.querySelector<HTMLInputElement>('input[aria-label*="new booking preset"]');
+    if (field) {
+      typeInto(field, "Discovery call");
+      await act(async () => { submitNewPreset(); });
+    }
+    expect(createCalendar).not.toHaveBeenCalled();
+  });
+
   it("does not offer creation to an account that cannot write", () => {
     mount({ canWrite: false });
     expect(byText(/New preset/)?.disabled).toBe(true);

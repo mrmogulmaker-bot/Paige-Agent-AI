@@ -33,7 +33,7 @@ import {
   DEFAULT_AVAIL, SELECT_COLS, availToJson, blankDraft, buildCalendarPatch, randomSuffix, slugify,
   type CalendarRow,
 } from "@/lib/calendar/config";
-import { clearOAuthReturn, rememberOAuthReturn } from "./oauthReturn";
+import { armOAuthReturn, clearOAuthReturn } from "./oauthReturn";
 
 /**
  * `tenant_phone_numbers`, `tenant_a2p_registrations` and the two tenant helper
@@ -111,6 +111,8 @@ export interface CalendarHost {
 /* ------------------------------------------------------------------ hook */
 
 export interface CalendarConnectionsState {
+  /** Which account these rows belong to, so a switch can be told from a refresh. */
+  tenantId: string | null;
   loading: boolean;
   error: string | null;
   /** Set when the calendars read succeeded but returned nothing. */
@@ -134,6 +136,21 @@ function firstMessage(...errors: (string | null | undefined)[]) {
   return errors.find((e) => typeof e === "string" && e.length > 0) ?? null;
 }
 
+/** The shape an account starts from, and the shape a switch resets to. */
+const BLANK_STATE: CalendarConnectionsState = {
+  tenantId: null,
+  loading: true,
+  error: null,
+  empty: false,
+  providers: EMPTY_PROVIDERS,
+  providersError: null,
+  calendars: [],
+  hosts: {},
+  hostsError: null,
+  readiness: READINESS_UNKNOWN,
+  canWrite: false,
+};
+
 export function useCalendarConnections() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
@@ -144,23 +161,20 @@ export function useCalendarConnections() {
   // overwriting the new account's state with the old account's rows.
   const liveTenant = useRef(activeTenantId);
   liveTenant.current = activeTenantId;
-  const [state, setState] = useState<CalendarConnectionsState>({
-    loading: true,
-    error: null,
-    empty: false,
-    providers: EMPTY_PROVIDERS,
-    providersError: null,
-    calendars: [],
-    hosts: {},
-    hostsError: null,
-    readiness: READINESS_UNKNOWN,
-    canWrite: false,
-  });
+  const [state, setState] = useState<CalendarConnectionsState>(BLANK_STATE);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const token = gate.current.begin();
-    setState((s) => ({ ...s, loading: true, error: null }));
+    // Keep the rows only while the account is the SAME one. On a switch they
+    // are cleared outright: `loading` alone left the previous account's selected
+    // preset and its enabled controls rendering under the new account's loading
+    // shell, so a save or a live-toggle made there wrote to a calendar that was
+    // never on screen — and if the new read failed, those stale details simply
+    // stayed. Same rule the canonical readiness read follows (§9).
+    setState((s) => (s.tenantId === activeTenantId
+      ? { ...s, loading: true, error: null }
+      : { ...BLANK_STATE, tenantId: activeTenantId, loading: true }));
 
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id ?? null;
@@ -180,6 +194,7 @@ export function useCalendarConnections() {
     if (!activeTenantId) {
       if (!gate.current.isCurrent(token)) return;
       setState({
+        tenantId: activeTenantId,
         loading: false,
         error: null,
         empty: true,
@@ -316,6 +331,7 @@ export function useCalendarConnections() {
     }
 
     setState({
+      tenantId: activeTenantId,
       loading: false,
       error: null,
       empty: calendars.length === 0,
@@ -426,10 +442,14 @@ export function useCalendarConnections() {
       // result is checked rather than assumed, and what is said depends on what
       // actually happened. The leftover is a draft either way (see above), so
       // the worst case is an unfinished calendar, never a live unbookable link.
-      const { error: rollbackError } = await supabase
-        .from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId);
+      // `.select()` so the RESULT is the evidence. A delete that matches no row
+      // — RLS hid it, the filters missed it — succeeds with `error === null`, so
+      // checking only the error would let "nothing was created" be said over a
+      // draft that is still there. Absence of an error is not proof of effect.
+      const { data: removed, error: rollbackError } = await supabase
+        .from("calendars").delete().eq("id", created.id).eq("tenant_id", activeTenantId).select("id");
       setBusy(null);
-      if (rollbackError) {
+      if (rollbackError || (removed?.length ?? 0) === 0) {
         if (liveTenant.current === activeTenantId) await load();
         return {
           ok: false as const,
@@ -444,16 +464,20 @@ export function useCalendarConnections() {
       };
     }
 
-    // The host is registered, so the link can actually be booked. If this last
-    // flip fails the calendar simply stays a draft, which the surface reports
-    // honestly — the returned row carries what is really true, not the intent.
-    const { error: liveError } = await supabase
-      .from("calendars").update({ enabled: true }).eq("id", created.id).eq("tenant_id", activeTenantId);
+    // The host is registered, so the link can actually be booked. The state
+    // that comes BACK is what is reported, not the absence of an error: an
+    // update matching zero rows returns no error while `enabled` stays false,
+    // and announcing "live — ready to share" over that is a fabricated status
+    // on the one screen whose job is to report the truth. If the flip did not
+    // take, the calendar is a draft and the surface says draft.
+    const { data: live } = await supabase
+      .from("calendars").update({ enabled: true }).eq("id", created.id).eq("tenant_id", activeTenantId)
+      .select("enabled").maybeSingle();
 
     setBusy(null);
     // Only refresh if this is still the account on screen. See `liveTenant`.
     if (liveTenant.current === activeTenantId) await load();
-    return { ok: true as const, row: { ...created, enabled: !liveError } };
+    return { ok: true as const, row: { ...created, enabled: (live as { enabled?: boolean } | null)?.enabled === true } };
   }, [activeTenantId, load]);
 
   /** Flip a calendar between Live and Draft. Draft means the link stops accepting bookings. */
@@ -488,7 +512,10 @@ export function useCalendarConnections() {
     // reads it. Giving Zoom a real return path needs a change to its edge
     // function, which is tracked separately.
     const consumesReturn = provider === "google";
-    if (returnTo && consumesReturn) rememberOAuthReturn(returnTo);
+    // Arm rather than merely remember: a Google handshake with no return path
+    // must also clear whatever an ABANDONED earlier one left behind (see
+    // armOAuthReturn). Zoom neither writes nor clears, since it never reads.
+    if (consumesReturn) armOAuthReturn(returnTo);
     const fn = provider === "google" ? "google-calendar-oauth-start" : "zoom-oauth-start";
     const { data, error } = await supabase.functions.invoke(fn, { body: { origin: window.location.origin } });
     setBusy(null);

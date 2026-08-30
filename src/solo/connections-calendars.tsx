@@ -291,7 +291,12 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
   const submit = async () => {
-    if (!title.trim() || saving) return;
+    // `disabled` is in the guard, not just on the closed button. The empty state
+    // renders TWO of these forms — one in the header, one in the empty body —
+    // and once open they stop consulting it: submitting the first sets the
+    // shared busy flag, but the second, guarding only its OWN `saving`, would
+    // still go through and create a duplicate preset.
+    if (!title.trim() || saving || disabled) return;
     setSaving(true);
     const created = await onCreate(title);
     setSaving(false);
@@ -313,14 +318,14 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
   return (
     <form className="cc-new" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <input
-        ref={inputRef} className="cc-in" value={title} disabled={saving}
+        ref={inputRef} className="cc-in" value={title} disabled={saving || disabled}
         aria-label="Name for the new booking preset" placeholder="Discovery call"
         onChange={(e) => setTitle(e.target.value)}
         // Escape backs out without creating anything, and returns focus to the
         // control that opened this.
         onKeyDown={(e) => { if (e.key === "Escape") { setTitle(""); setOpen(false); } }}
       />
-      <Btn kind="act" type="submit" size="s" disabled={saving || !title.trim()}>
+      <Btn kind="act" type="submit" size="s" disabled={saving || disabled || !title.trim()}>
         {saving ? <Loader2 className="cc-spin" aria-hidden /> : <CalendarPlus aria-hidden />} Create
       </Btn>
       <Btn kind="ghost" size="s" onClick={() => { setTitle(""); setOpen(false); }} disabled={saving}>Cancel</Btn>
