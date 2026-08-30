@@ -74,6 +74,31 @@ describe("Conversations channel disclosure, fed by the canonical resolver", () =
     expect(sms(getSoloChannelTruth(activeSms, true, quiet)).inbound).toBe("No replies received");
   });
 
+  it("never reports a delivery failure that nothing actually failed", () => {
+    // `awaiting_receipts` — sent, but not one receipt back — was missing from the
+    // type, so it fell into the final `else` and rendered "Messages are not
+    // arriving" on an account with ZERO failures. A negative asserted from the
+    // absence of evidence, in the same file as the reply-claim repair above.
+    const awaiting = { ...READY,
+      delivery: { ...READY.delivery, state: "awaiting_receipts" as const,
+        sent_30d: 7, delivered_30d: 0, failed_30d: 0 } };
+    const health = sms(getSoloChannelTruth(activeSms, true, awaiting)).operationalHealth;
+    expect(health).toBe("Sent, no delivery confirmations yet");
+    expect(health).not.toContain("not arriving");
+
+    // Non-vacuity: a state that genuinely IS failing still says so.
+    const failing = { ...READY,
+      delivery: { ...READY.delivery, state: "failing" as const,
+        sent_30d: 7, delivered_30d: 0, failed_30d: 7 } };
+    expect(sms(getSoloChannelTruth(activeSms, true, failing)).operationalHealth)
+      .toBe("Messages are not arriving");
+
+    // An unrecognised state is not evidence of anything either.
+    const unknown = { ...READY,
+      delivery: { ...READY.delivery, state: "something_new" as unknown as "delivering" } };
+    expect(sms(getSoloChannelTruth(activeSms, true, unknown)).operationalHealth).toBe("Not reported");
+  });
+
   it("leaves every other channel untouched by SMS readiness", () => {
     const withR = getSoloChannelTruth(activeSms, true, READY);
     const without = getSoloChannelTruth(activeSms, true);

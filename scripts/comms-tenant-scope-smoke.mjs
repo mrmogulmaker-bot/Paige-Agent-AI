@@ -55,29 +55,34 @@ const setEnv = (extra = {}) => { env = { ...baseEnv, ...extra }; };
  */
 function makeAdmin(rows) {
   const queries = [];
+  const rpcs = [];
   const builder = (table) => {
     const filters = {};
     let verb = "select";
+    let payload = null;
     const q = {
       select: () => { verb = "select"; return q; },
-      update: () => { verb = "update"; return q; },
-      insert: () => { verb = "insert"; return q; },
-      upsert: () => { verb = "upsert"; return q; },
+      // The PAYLOAD is captured, not just the verb. A compliance write carries
+      // its tenant in the ROW, never in a filter, so a recorder that keeps only
+      // filters cannot see the one value that makes the write correct.
+      update: (row) => { verb = "update"; payload = row; return q; },
+      insert: (row) => { verb = "insert"; payload = row; return q; },
+      upsert: (row) => { verb = "upsert"; payload = row; return q; },
       delete: () => { verb = "delete"; return q; },
       eq: (k, v) => { filters[k] = v; return q; },
       in: (k, v) => { filters[k] = v; return q; },
       or: (expr) => { filters.or = expr; return q; },
       order: () => q, limit: () => q, not: () => q,
       maybeSingle: async () => {
-        queries.push({ table, verb, filters: { ...filters } });
+        queries.push({ table, verb, filters: { ...filters }, payload });
         return { data: rows(table, filters) ?? null, error: null };
       },
       single: async () => {
-        queries.push({ table, verb, filters: { ...filters } });
+        queries.push({ table, verb, filters: { ...filters }, payload });
         return { data: rows(table, filters) ?? { id: `${table}-1` }, error: null };
       },
       then: (res) => {
-        queries.push({ table, verb, filters: { ...filters } });
+        queries.push({ table, verb, filters: { ...filters }, payload });
         const r = rows(table, filters);
         res({ data: r ? [r] : [], error: null });
       },
@@ -86,6 +91,13 @@ function makeAdmin(rows) {
   };
   return {
     queries,
+    rpcs,
+    /** Every write to `t` carries `key === val` in its ROW. */
+    writesCarry(t, key, val) {
+      const ws = queries.filter((q) => q.table === t && q.verb !== "select");
+      return ws.length > 0 && ws.every((w) => w.payload && w.payload[key] === val);
+    },
+    wrote: (t) => queries.some((q) => q.table === t && q.verb !== "select"),
     /** Any query at all against the table — reads or writes. */
     touched: (t) => queries.some((q) => q.table === t),
     /** Every row-SELECTING query on `t` carries `key === val`. */
@@ -95,7 +107,9 @@ function makeAdmin(rows) {
       return rs.length > 0 && rs.every((r) => r.filters[key] === val);
     },
     from: (t) => builder(t),
-    rpc: async () => ({ data: null, error: null }),
+    /** RPC arguments are recorded too — `record_rail_event` carries its tenant
+     *  as an argument, so an unrecorded call is an unobservable §9 decision. */
+    rpc: async (name, args) => { rpcs.push({ name, args: args ?? null }); return { data: null, error: null }; },
   };
 }
 
@@ -159,8 +173,14 @@ console.log("comms tenant-scope smoke\n");
     check("a tenant-authenticated delivery receipt is accepted", res.status === 200);
     check("...and its message lookup is scoped to the AUTHENTICATED tenant (§9)",
       a.scoped("messages", "tenant_id", TENANT_A));
-    check("...and it never consults the platform operator store (§53)",
-      !a.touched("operator_messages") && !a.touched("operator_conversations"));
+    // NOT asserted here: "the SMS branch never touches the operator store."
+    // `operator_messages` appears only inside the VOICE handler, so on this path
+    // that could not fail under any mutation — it would be decoration wearing a
+    // guard's name. The §53 refusal is asserted below, on the branch that has an
+    // operator path to refuse.
+    check("...and the update is keyed on the row that lookup returned",
+      a.queries.filter((q) => q.table === "messages" && q.verb === "update")
+        .every((w) => w.filters.id === "msg-1"));
   }
 
   // ── VOICE completion, tenant-authenticated, with NO matching tenant row.
@@ -236,17 +256,36 @@ console.log("comms tenant-scope smoke\n");
   await import(pathToFileURL(await bundle("supabase/functions/handle-inbound-sms/index.ts", "inbound-sms")).href);
   assert.ok(typeof handler === "function", "FAILED: no inbound-sms handler captured");
 
-  const rows = (table, f) => {
+  /**
+   * `opts.linkedUser` decides WHICH contact-resolution branch the handler takes.
+   *
+   * There are THREE sender-keyed resolution sites, not two: `linked_user_id`,
+   * the `phone` fallback beneath it, and `resolveContactForTenant`'s `or(phone…)`
+   * on the STOP path. A fixture that always returns a `communication_preferences`
+   * row makes `prefs?.user_id` truthy every time, so the first branch always wins
+   * and the `phone` fallback is DEAD in every case — its tenant predicate could
+   * be deleted with the whole suite still green. Returning null here reaches it.
+   *
+   * `opts.numberStatus` exercises the released/suspended-number guard.
+   */
+  const makeRows = (opts = {}) => (table, f) => {
     if (table === "tenant_twilio_subaccounts") {
       if (f.inbound_webhook_secret === SECRET_A) return { tenant_id: TENANT_A, inbound_webhook_secret: SECRET_A };
       if (f.tenant_id === TENANT_A) return { tenant_id: TENANT_A, inbound_webhook_secret: SECRET_A };
       return null;
     }
-    if (table === "tenant_phone_numbers") return { tenant_id: TENANT_A, phone_number: NUMBER_A, status: "active" };
-    if (table === "communication_preferences") return { user_id: "user-1" };
+    if (table === "tenant_phone_numbers") {
+      // The handler filters on status; honour it rather than returning
+      // unconditionally, or a dropped `.eq("status","active")` is invisible.
+      const want = opts.numberStatus ?? "active";
+      if (f.status !== undefined && f.status !== want) return null;
+      return { tenant_id: TENANT_A, phone_number: NUMBER_A, status: want };
+    }
+    if (table === "communication_preferences") return opts.linkedUser === false ? null : { user_id: "user-1" };
     if (table === "clients") return { id: "contact-1", tenant_id: TENANT_A };
     return null;
   };
+  const rows = makeRows();
 
   /**
    * The reads that RESOLVE a contact from the sender — the only ones a tenant
@@ -290,6 +329,45 @@ console.log("comms tenant-scope smoke\n");
       senderResolutions(a).length > 0);
     check("...and is likewise scoped to the RECEIVING tenant (§9)",
       senderResolutions(a).every((r) => r.filters.tenant_id === TENANT_A));
+  }
+
+  // ── The SAME text, resolved through the `phone` FALLBACK branch.
+  //    Without this the fallback's tenant predicate is never executed at all.
+  {
+    globalThis.__ADMIN__ = makeAdmin(makeRows({ linkedUser: false }));
+    const res = await post({ To: NUMBER_A, From: "+15559998888", Body: "hello", MessageSid: "SM5" });
+    const a = globalThis.__ADMIN__;
+    check("an inbound text still resolves when the sender has no linked user", res.status === 200);
+    const byPhone = a.reads("clients").filter((r) => "phone" in r.filters);
+    check("...and the PHONE-fallback resolution really ran (non-vacuity)", byPhone.length > 0);
+    check("...and it too is scoped to the RECEIVING tenant (§9)",
+      byPhone.every((r) => r.filters.tenant_id === TENANT_A));
+  }
+
+  // ── The compliance writes carry their tenant in the ROW, not in a filter.
+  //    On the service-role path `current_user_tenant_id()` is NULL, so the
+  //    explicit column is the only thing scoping a contactless STOP.
+  {
+    globalThis.__ADMIN__ = makeAdmin(rows);
+    await post({ To: NUMBER_A, From: "+15559998888", Body: "STOP", MessageSid: "SM6" });
+    const a = globalThis.__ADMIN__;
+    check("a STOP writes a suppression row", a.wrote("paige_suppressions"));
+    check("...carrying the receiving tenant explicitly (§9)",
+      a.writesCarry("paige_suppressions", "tenant_id", TENANT_A));
+    check("a STOP writes a consent revocation", a.wrote("paige_consent_events"));
+    check("...carrying the receiving tenant explicitly (§9)",
+      a.writesCarry("paige_consent_events", "tenant_id", TENANT_A));
+    const rail = a.rpcs.filter((r) => r.name === "record_rail_event");
+    check("...and any rail event it files is tenant-scoped too",
+      rail.every((r) => r.args?.p_tenant_id === TENANT_A));
+  }
+
+  // ── A number the tenant no longer holds must not authenticate anything.
+  {
+    globalThis.__ADMIN__ = makeAdmin(makeRows({ numberStatus: "released" }));
+    const res = await post({ To: NUMBER_A, From: "+15559998888", Body: "hello", MessageSid: "SM7" });
+    check("a RELEASED number no longer resolves its tenant's secret, so the text is refused",
+      res.status === 401 && !globalThis.__ADMIN__.touched("paige_conversations"));
   }
 
   // ── An unstamped inbound text proves nothing and must be refused.
