@@ -40,9 +40,12 @@ function between(source: string, start: string, end: string): string {
 
 describe("PAIGE Marketplace authority containment", () => {
   it("exposes only curated Marketplace browse to Chat and MCP", () => {
-    for (const source of [chat, mcp]) {
-      expect(source).toContain("marketplace_browse");
-      for (const tool of prohibitedTools) expect(source).not.toContain(tool);
+    expect(chat).toContain('name: "marketplace_browse"');
+    expect(mcp).toContain('mcp.tool("marketplace_browse"');
+    for (const tool of prohibitedTools) {
+      expect(chat).not.toContain(`name: "${tool}"`);
+      expect(chat).not.toContain(`tc.function.name === "${tool}"`);
+      expect(mcp).not.toContain(`mcp.tool("${tool}"`);
     }
   });
 
@@ -108,7 +111,12 @@ describe("PAIGE Marketplace authority containment", () => {
       "const MUTATING_TOOLS",
       "const TOOL_LABELS",
     );
-    for (const tool of prohibitedTools) expect(autonomy).not.toContain(tool);
+    // Install/remove remain fail-safe mutation tombstones, but have no registered
+    // schema or dispatch branch for either `auto` or confirmed execution to reach.
+    expect(autonomy).toContain('"marketplace_install"');
+    expect(autonomy).toContain('"marketplace_uninstall"');
+    expect(autonomy).not.toContain("marketplace_recommend");
+    expect(autonomy).not.toContain("marketplace_my_capabilities");
 
     const chatMarketplace = between(
       chat,

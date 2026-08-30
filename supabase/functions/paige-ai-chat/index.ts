@@ -5066,6 +5066,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // tools are never gated. This is the single control that stops Paige from
     // "jumping the gun" — creating a pipeline (etc.) without proposing first.
     const MUTATING_TOOLS = new Set<string>([
+      // Containment tombstones: these Marketplace mutations are deliberately not
+      // registered or dispatched. Keeping them classified as mutating means a
+      // future accidental re-registration still cannot inherit read semantics.
+      "marketplace_install", "marketplace_uninstall",
       "crm_update_contact", "crm_create_contact", "crm_delete_contact",
       "update_business_profile",
       "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
