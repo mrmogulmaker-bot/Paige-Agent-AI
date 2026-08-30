@@ -39,10 +39,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          # No `cache: npm` and `npm install` (not `npm ci`): the repo's canonical lockfile is
-          # bun.lockb (see security-audit.yml), and there is no committed package-lock.json — which
-          # both the npm cache key and `npm ci` require. This mirrors security-audit.yml's install.
-          # A bun-based CI for prod-build fidelity is a tracked Lane F follow-up.
+          # `cache: npm` keys on the committed package-lock.json. Both this and `npm ci` below were
+          # previously impossible because no package-lock.json was committed; it now is.
+          # NOTE: bun.lockb remains the lockfile PRODUCTION installs from (vercel.json pins
+          # `installCommand: bun install`), so this npm lane governs CI only. Converging the two
+          # lockfiles, or moving CI to bun for prod-build fidelity, is a tracked follow-up.
+          cache: npm
 
       - name: Install
         # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: CI never launches a browser (the live-drive helper +
@@ -52,7 +54,11 @@ jobs:
         # running live-drive. (scoped to CI, not global — see scripts/live-drive/README.md.)
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: npm install --no-audit --no-fund
+        # `npm ci`, not `npm install`: it installs the exact tree the committed lockfile records and
+        # FAILS if package.json and the lockfile disagree, instead of silently re-resolving. That
+        # re-resolution is what let an upstream unpublish (@splinetool/animation-core) break every
+        # branch's install at once — CI could not have been pinned to a known-good tree.
+        run: npm ci --no-audit --no-fund
 
       # --- Changed-file gates (PR only — a push to main has no PR base). Cheap checks first. -----
       # Compute the MERGE-BASE once and diff against it, not the raw base-branch tip. base.sha is
@@ -116,6 +122,10 @@ jobs:
       - name: Tier-feature guard (§60 — render gates must not hardcode a tier; use useTierFeatures)
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
+
+      - name: Managed-schema ownership guard (#643 — migrations replay as `postgres`; ALTER/DROP TABLE on a Supabase-owned schema fails 42501 on every fresh Preview)
+        if: ${{ !cancelled() }}
+        run: npm run lint:managed-schema
 
       - name: Skeleton-content guard (§18/§24 Task #126 — index.html #root must carry only whitelisted SEO copy, no product content)
         if: ${{ !cancelled() }}
@@ -203,41 +213,97 @@ jobs:
         id: affected_fns
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.fn_count != '0' }}
         run: |
-          python3 .github/scripts/edge-affected.py < changed_fns.txt | tee affected_fns.txt
+          # pipefail: GitHub's default shell is `bash -e {0}` with NO pipefail, so a pipeline
+          # reports the LAST command's status. `... | tee affected_fns.txt` therefore returned
+          # tee's 0 even when the resolver crashed, leaving affected_fns.txt EMPTY, count=0, the
+          # ratchet step skipped, no evidence uploaded, and the job green having type-checked
+          # nothing. Redirect instead of piping so there is no pipeline to mask.
+          set -o pipefail
+          python3 .github/scripts/edge-affected.py < changed_fns.txt > affected_fns.txt
+          cat affected_fns.txt
+          # A change under supabase/functions/<fn>/ is affected by construction, so a non-empty
+          # input that resolves to zero functions is a resolver failure, not an empty answer.
+          if [ "$(grep -c . changed_fns.txt || true)" -gt 0 ] && [ "$(grep -c . affected_fns.txt || true)" -eq 0 ]; then
+            echo "::error::edge-affected resolved 0 functions from $(grep -c . changed_fns.txt) changed edge-function file(s) - treating as a resolver failure, not an empty result."
+            exit 1
+          fi
           echo "count=$(grep -c . affected_fns.txt || true)" >> "$GITHUB_OUTPUT"
 
+      # UNCONDITIONAL. The ratchet's own contract tests drive a REAL `deno check` against a
+      # disposable candidate, and they run in the whole-repo gate block below whether or not this
+      # PR touched an edge function. A comparator-only suite proved insufficient once already:
+      # the shipped runner classified an unexplained nonzero exit as clean while every synthetic
+      # comparator test passed. So deno is always present, and RATCHET_REQUIRE_DENO makes its
+      # absence a hard failure rather than a quietly skipped case.
       - name: Setup Deno
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        if: ${{ !cancelled() }}
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
-      - name: Deno check (affected edge functions)
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+      # RATCHET, not a wall — and never a relaxation. The all-or-nothing form of this check
+      # turned red on the first PR to touch a function carrying inherited debt, for errors the
+      # PR did not write; the pressure that creates is to weaken the gate, which is the one
+      # outcome that must not happen. So the SAME pinned check runs on the PR base and on the
+      # head, and only NEW or INCREASED diagnostics fail.
+      #
+      # Two rules stop it becoming a rubber stamp:
+      #   - A module-resolution failure is never ratchetable. It is not a type-check result; it
+      #     means the file was not checked at all. On the head that is fatal. On the base it
+      #     means the baseline is unknowable, so NOTHING is credited and the head must be clean.
+      #   - An inherited diagnostic is inherited only while its origin file is byte-identical
+      #     across the two legs. A CHANGED shared dependency is candidate code, not baseline.
+      #
+      # No continue-on-error, no `exit 0`, no advisory green, no per-PR exception. Both legs are
+      # uploaded as evidence so a reviewer can read what each actually produced.
+      - name: Deno ratchet (affected edge functions — fails on NEW or increased diagnostics)
+        # `count != ''` as well as `!= '0'`: an empty count means the resolve step did not run or
+        # produced no output, and an unbounded run is a configuration error, not a no-op pass.
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
+        env:
+          BASE: ${{ steps.mergebase.outputs.mb }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          # The set CI resolved and the set the ratchet grades must be identical. Without this,
+          # an empty or truncated affected_fns.txt makes the ratchet report "nothing to compare"
+          # and exit 0 while functions were in fact affected.
+          EXPECT: ${{ steps.affected_fns.outputs.count }}
         run: |
           set -uo pipefail
-          failed=0
-          while read -r fn; do
-            [ -n "$fn" ] || continue
-            entry="supabase/functions/$fn/index.ts"
-            if [ ! -f "$entry" ]; then
-              # A function can be affected-by-import yet have no index.ts (deleted in this PR).
-              # Say so rather than silently counting it as checked.
-              echo "::notice::skipping $fn — no $entry (deleted or entry-less)"
-              continue
-            fi
-            echo "--- deno check $entry"
-            # Remote deps are fetched fresh; --no-lock because these functions have no committed
-            # deno.lock and a lockfile mismatch would fail for a reason unrelated to type safety.
-            deno check --no-lock "$entry" || failed=1
-          done < affected_fns.txt
-          if [ "$failed" -ne 0 ]; then
-            echo "::error::deno check failed for at least one affected edge function (see above)."
-            exit 1
-          fi
-          echo "All affected edge functions type-check."
+          node scripts/ci/deno-edge-ratchet.mjs \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --functions "$(tr '\n' ' ' < affected_fns.txt)" \
+            --expect "$EXPECT" \
+            --out deno-ratchet-evidence
+
+      - name: Upload Deno ratchet evidence (base and head legs)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '' && steps.affected_fns.outputs.count != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deno-ratchet-evidence
+          path: deno-ratchet-evidence/
+          # ERROR, not warn. The whole point of the two legs is that a reviewer can read what each
+          # actually produced; evidence that silently failed to appear leaves a green gate backed
+          # by nothing. The runner also re-reads every artifact from disk before it reports a
+          # verdict, so this is the second of two independent checks on the same property.
+          if-no-files-found: error
+
+      # The ratchet needs a PR base, so it cannot run on a push to main. Say so in the log: an
+      # absent gate should never have to be inferred from a missing step.
+      - name: Note — edge ratchet needs a PR base
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        run: echo "::notice::deno edge ratchet skipped - no PR base for a ${{ github.event_name }} event; affected edge functions were NOT type-checked in this run."
 
       # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----
+      # A comparator that decides a gate is itself a gate. RATCHET_REQUIRE_DENO=1 turns the
+      # real-deno leg from an "unverified here" note into a hard failure, so CI can never report
+      # this suite green on the synthetic legs alone.
+      - name: Deno ratchet contract tests (comparator + real runner + real deno)
+        if: ${{ !cancelled() }}
+        env:
+          RATCHET_REQUIRE_DENO: '1'
+        run: npm run test:deno-ratchet
+
       - name: Typecheck (ratchet — fails on NEW type errors only)
         if: ${{ !cancelled() }}
         run: npm run ci:tsc
@@ -255,3 +321,23 @@ jobs:
       - name: Smoke — Fleet v3 Directory (lineage and retired-surface guard)
         if: ${{ !cancelled() }}
         run: npm run smoke:fleet-directory-v3
+
+      - name: Smoke — comms webhook authentication (fail-closed decisions)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-webhook-auth
+
+      - name: Smoke — comms tenant scope (§9/§53 webhook scoping)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-tenant-scope
+
+      - name: Lint — every paige_conversations insert stamps a tenant (C-7)
+        if: ${{ !cancelled() }}
+        run: npm run lint:conversation-tenant
+
+      - name: Smoke — voice-twiml statusCallback (no credential to an unsigned caller)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-twiml-callback
+
+      - name: Smoke — voice-twiml handler (nothing secret leaves on an unsigned request)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:voice-twiml-handler

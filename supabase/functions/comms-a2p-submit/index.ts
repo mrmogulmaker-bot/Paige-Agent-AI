@@ -1,21 +1,28 @@
-// comms-a2p-submit — the coach APPROVES the Paige-drafted A2P copy and submits it (§36).
+// comms-a2p-submit — the coach approves the Paige-drafted A2P copy. IT DOES NOT SUBMIT.
 //
-// After comms-a2p-draft produced the campaign copy and the coach reviewed/edited/approved it, this
-// function (a) attempts the real carrier registration through the ONE Twilio seam
-// (twilio.ts createBrand → createCampaign) and (b) PERSISTS the approved copy + honest status into
-// tenant_a2p_registrations — so the coach's work is never lost and the status surface has a row to
-// show. The coach never opens Twilio/TrustHub.
+// After comms-a2p-draft produced the campaign copy and the coach reviewed and edited it, this
+// function PERSISTS that reviewed copy through the shared durable seam
+// (tenant_a2p_registration_save_draft) and returns an explicit "prepared, not submitted" refusal.
+// It performs NO provider call.
 //
-// ── §13 HONESTY — the SUBMIT IS NOT YET WIRED ───────────────────────────────
-// createBrand/createCampaign are honest needs_config STUBS today (A2P/TrustHub live submit is not
-// built). So this function NEVER fabricates a brand/campaign SID or an "approved" state:
-//   • It records the APPROVED COPY (real — the coach authored/approved it) into the registration row.
+// ── §13 HONESTY — SUBMISSION IS REFUSED, NOT DEFERRED ───────────────────────
+// It used to call createBrand/createCampaign (honest needs_config stubs) and, because they return no
+// SID, write status='pending' while telling the coach their copy "will be submitted automatically
+// once A2P registration is enabled". Nothing would ever pick it up: there is no carrier contract, no
+// queue, no retry. A promise with no mechanism is the same class of lie as a fabricated SID, so the
+// endpoint now refuses submission outright and says so. It NEVER fabricates a SID or an approved
+// state:
+//   • It records the four campaign fields the coach reviewed — use_case, campaign_description,
+//     sample_messages, optin_flow — through the shared seam. legal_business_name, website and ein
+//     are validated and then DISCARDED here: legal identity lives on tenant_legal_profile, which is
+//     that fact's one home, and this function does not write it.
 //   • brand_status / campaign_status / status stay 'pending'; brand_sid / campaign_sid stay NULL;
-//     submitted_at is set ONLY if a real SID actually comes back (today it never does).
-//   • The response carries { a2p_submit_wired: false, needs_config: true } + a clear message so no
-//     caller mistakes "copy saved" for "registered with carriers".
-// When TrustHub is wired, the stubs return real SIDs and this same code path records them + advances
-// the statuses — the contract is stable, only the stub bodies change.
+//     submitted_at is NEVER set by this path — there is no stub call and no branch that could
+//     record a SID. Only a real submission path may set it.
+//   • The response carries { submitted: false, a2p_submit_wired: false, needs_config: true } + a
+//     clear message so no caller mistakes "copy saved" for "registered with carriers".
+// Wiring TrustHub is NOT a matter of the stubs returning real SIDs — the stub calls were removed.
+// It means adding a submission path, and that path is what will set submitted_at.
 //
 // ── CONTRACT ────────────────────────────────────────────────────────────────
 // POST (JWT required; verify_jwt=true). Service-role bearer = Paige headless (§10) may name a tenant.
@@ -34,16 +41,17 @@
 //
 //   200  {
 //          saved: true,
-//          a2p_submit_wired: false,     // §13 — carrier submit not wired yet
+//          submitted: false,            // §13 — nothing was sent and nothing is queued
+//          a2p_submit_wired: false,     // carrier submit not wired yet
 //          needs_config: true,          // (present while unwired)
-//          brand_status: "pending",
-//          campaign_status: "pending",
+//          state: "prepared",
 //          status: "pending",
 //          brand_sid: null,
 //          campaign_sid: null,
-//          message: string              // human-readable "saved, pending, not yet submitted to carriers"
+//          message: string              // human-readable "saved, prepared, NOT submitted"
 //        }
-//   4xx/5xx { error: { code, message } }
+//   4xx/5xx { error: { code, message } }  // code is the save seam's STABLE hint; see
+//                                         // SAVE_REFUSAL_STATUS for the status each maps to.
 //
 // ── DOCTRINE ────────────────────────────────────────────────────────────────
 //  §9  tenant server-DERIVED (current_user_tenant_id()) for JWT callers, NEVER the body. The
@@ -56,11 +64,11 @@
 //      default 'pending' and are written with in-enum values; sample_messages is jsonb; use_case /
 //      campaign_description / optin_flow are nullable text.
 //  §13 no fabricated SID/approved state; honest needs_config surfaced.
-//  §18 reuses twilio.ts createBrand/createCampaign — no inline TrustHub REST.
+//  §18 one write path: persistence goes through tenant_a2p_registration_save_draft, the same seam
+//      the draft path uses, so there is one immutability guard and no second registration store.
 //  §2  the copy is coaching-generic by construction (produced by comms-a2p-draft, §2). This function
 //      does not add finance wording.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { createBrand, createCampaign } from "../_shared/twilio.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -92,6 +100,30 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
     return null;
   }
 }
+
+
+/**
+ * The save RPC's stable hints → HTTP.
+ *
+ * These are all conditions the CALLER can see and act on: a missing business record, a
+ * sample list that needs a message, a registration that has moved past preparation. Only
+ * two were mapped, so every other stable refusal fell through to a 500 — which the UI
+ * renders as an unactionable "Try again in a moment" no amount of retrying will clear,
+ * and which loses whatever the owner had written. An unmapped stable code is a bug in
+ * this table, never a server error, so the fallback below says so explicitly.
+ */
+const SAVE_REFUSAL_STATUS: Record<string, number> = {
+  UNAUTHENTICATED: 401,
+  NO_TENANT: 403,
+  FORBIDDEN: 403,
+  TENANT_REQUIRED: 400,
+  UNKNOWN_TENANT: 400,
+  LEGAL_PROFILE_REQUIRED: 422,
+  USE_CASE_REQUIRED: 422,
+  SAMPLES_INVALID: 422,
+  SAMPLES_REQUIRED: 422,
+  REGISTRATION_IMMUTABLE: 422,
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -174,67 +206,49 @@ Deno.serve(async (req: Request) => {
       return ok({ needs_config: true, error: "tenant_not_resolved", message: "No active workspace to register." });
     }
 
-    // ── 4. Attempt the real carrier registration through the ONE Twilio seam (§18) ──
-    // Today these are honest needs_config stubs — we branch on the REAL result (§13). We never
-    // fabricate a SID; a SID is recorded ONLY if one genuinely comes back.
-    const brandResult = await createBrand({ tenantId, legalBusinessName: legalName, ein: ein || undefined });
-    const brandSid = brandResult.ok ? str((brandResult.data as Record<string, unknown> | null)?.sid) || null : null;
-
-    let campaignSid: string | null = null;
-    if (brandSid) {
-      const campaignResult = await createCampaign({ tenantId, brandSid, useCase });
-      campaignSid = campaignResult.ok ? str((campaignResult.data as Record<string, unknown> | null)?.sid) || null : null;
-    }
-
-    // Honest status derivation: a status only advances past 'pending' when a REAL SID exists.
-    const brandStatus = brandSid ? "submitted" : "pending";
-    const campaignStatus = campaignSid ? "submitted" : "pending";
-    const overallStatus = campaignSid ? "submitted" : "pending";
-    const wired = Boolean(brandSid); // whether the carrier submit actually happened
-    const submittedAt = wired ? new Date().toISOString() : null;
-
-    // ── 5. Persist the approved copy + honest status (§37 producer) ─────────
-    // Upsert on the one-per-tenant unique (tenant_id). JWT path omits tenant_id (trigger derives it);
-    // service-role path sets it explicitly (trigger coalesces to it under a null session).
-    const row: Record<string, unknown> = {
-      brand_status: brandStatus,
-      campaign_status: campaignStatus,
-      status: overallStatus,
-      brand_sid: brandSid,           // NULL today — never a fabricated SID (§13)
-      campaign_sid: campaignSid,     // NULL today
-      use_case: useCase,
-      campaign_description: campaignDescription,
-      sample_messages: sampleMessages,   // jsonb
-      optin_flow: optinFlow || null,
-      submitted_at: submittedAt,     // NULL until a real carrier submit happens (§13)
-    };
-    if (isServiceRole) row.tenant_id = tenantId;
-
-    const { data: saved, error: upErr } = await writeClient
-      .from("tenant_a2p_registrations")
-      .upsert(row, { onConflict: "tenant_id" })
-      .select("id, brand_status, campaign_status, status, brand_sid, campaign_sid, submitted_at")
-      .maybeSingle();
-
-    if (upErr) {
-      console.error("comms-a2p-submit: registration write failed:", upErr.message);
-      return fail(500, "SAVE_FAILED", `Could not save the A2P registration: ${upErr.message}`);
+    // ── 4. SUBMISSION IS REFUSED, EXPLICITLY, AND NOTHING EXTERNAL IS CALLED ──
+    //
+    // This function used to call createBrand/createCampaign (both honest
+    // needs_config stubs) and then upsert whatever came back. Because they always
+    // return no SID, it wrote status='pending' with submitted_at=null and told the
+    // coach their copy was "saved… will be submitted automatically once A2P
+    // registration is enabled". That reads as a queued submission. Nothing is
+    // queued: there is no carrier contract, no retry, and nothing that would ever
+    // pick it up. It also meant the durable draft path's immutability guard could
+    // never fire against a real submit, so re-drafting silently replaced copy a
+    // human had reviewed.
+    //
+    // Until a real carrier submission contract exists, this endpoint does not
+    // submit and does not pretend to. It performs NO provider call. It persists the
+    // reviewed copy through the SAME durable seam the draft path uses — one write
+    // path, one immutability guard, no second registration store — and returns an
+    // explicit "prepared, not submitted" refusal.
+    const { error: saveErr } = await writeClient.rpc("tenant_a2p_registration_save_draft", {
+      p_use_case: useCase,
+      p_campaign_description: campaignDescription,
+      p_sample_messages: sampleMessages,
+      p_optin_flow: optinFlow || null,
+      ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
+    });
+    if (saveErr) {
+      const code = (saveErr.hint || "").trim() || "SAVE_FAILED";
+      console.error("comms-a2p-submit: reviewed copy not saved:", code, saveErr.code, saveErr.message);
+      return fail(SAVE_REFUSAL_STATUS[code] ?? 500, code, saveErr.message);
     }
 
     return ok({
       saved: true,
-      id: saved?.id ?? null,
-      // §13: whether the carrier submit actually ran. FALSE while the TrustHub stubs are unwired.
-      a2p_submit_wired: wired,
-      ...(wired ? {} : { needs_config: true }),
-      brand_status: saved?.brand_status ?? brandStatus,
-      campaign_status: saved?.campaign_status ?? campaignStatus,
-      status: saved?.status ?? overallStatus,
-      brand_sid: saved?.brand_sid ?? null,
-      campaign_sid: saved?.campaign_sid ?? null,
-      message: wired
-        ? "Submitted to carriers for review. Brand and campaign are pending approval."
-        : "Your approved copy is saved. Carrier registration isn't live yet — it will be submitted automatically once A2P registration is enabled, and the status here will update.",
+      submitted: false,
+      a2p_submit_wired: false,
+      needs_config: true,
+      state: "prepared",
+      status: "pending",
+      brand_sid: null,
+      campaign_sid: null,
+      message:
+        "Your reviewed copy is saved and prepared. It has NOT been submitted — carrier registration " +
+        "is not available yet, so nothing has been sent to a carrier and nothing is queued. When " +
+        "submission is available you will be able to send it from here.",
     });
   } catch (e) {
     console.error("comms-a2p-submit: unhandled error:", e);

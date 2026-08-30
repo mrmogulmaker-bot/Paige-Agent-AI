@@ -200,9 +200,13 @@ export interface ConversationsComposerModel {
   // core (passthrough → MessageComposer)
   value: string;
   onChange: (v: string) => void;
-  onSend: () => void;
+  onSend: () => void | Promise<void>;
   sending: boolean;
   disabled?: boolean;
+  /** Disable only send while the reply remains editable (validation, DND, association, permission). */
+  sendDisabled?: boolean;
+  /** Solo reply opt-in: plain Enter sends; Shift+Enter inserts a newline. */
+  sendOnEnter?: boolean;
   placeholder?: string;
   note?: ReactNode;
   sendLabel?: string;
@@ -240,6 +244,11 @@ export interface ConversationsComposerModel {
   // templates (gated by capabilities.hasTemplates)
   templates?: EmailTemplate[];
   onApplyTemplate?: (key: string) => void;
+  // discoverable saved snippets; insertion remains editable and never sends
+  snippets?: Array<{ id: string; trigger: string; name: string; body: string }>;
+  onApplySnippet?: (id: string) => void;
+  /** Solo opt-in; false preserves the established template Select for every other consumer. */
+  showCombinedInsert?: boolean;
 
   // signature (gated by capabilities.hasSignature && signatureAvailable)
   signatureAvailable?: boolean;

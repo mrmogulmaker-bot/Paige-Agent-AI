@@ -36,6 +36,8 @@ export type RouteTierKey =
 export interface SubTab {
   /** URL segment `/agency/{n}/{branch}/{slug}` — human mental-model word, url-safe. */
   slug: string;
+  /** Previously shipped URL segments that resolve to this canonical subtab. */
+  aliases?: string[];
   /** Rail glyph, where the tier's design gives one (the operator settings back-menu). */
   glyph?: string;
   /** The screen's internal sub-tab id (its `useState` value). May differ from slug. */
@@ -102,10 +104,10 @@ export interface TierTree {
  * SOLO_BRANCHES — the Solo tree (13). Shared by `solo` AND `sub_account` (§11c/§60).
  * Keys match `src/solo/SoloApp.tsx`'s `screens` registry.
  *
- * Sub-tabs verified screen-by-screen against the Solo screen SOURCE 2026-08-18 (55 across 11
+ * Sub-tabs verified screen-by-screen against the Solo screen SOURCE (47 across 9
  * branches) — a source read, not a browser drive; the §32.c live-drive is owed separately.
  * `tierBranches.test.ts` enforces this by parsing each screen's rendered strip, so the pairing
- * can't silently drift. Solo's internal sub-tab keys are its OWN abbreviations (`know`/`sub`/`pipe`/`sch`/
+ * can't silently drift. Solo's internal sub-tab keys remain screen-owned (`pipe`/`sch`/
  * `ov`/`mkt`/`dir`/`biz`…) and deliberately DIFFER from the agency keys for the same mental-model
  * slug — the two tiers are separate shells with separate `useState` vocabularies. Do NOT
  * "normalize" a Solo key to match its agency twin: the key is what the screen actually switches
@@ -114,26 +116,22 @@ export interface TierTree {
 export const SOLO_BRANCHES: Branch[] = [
   {
     slug: "command-center", key: "home", label: "Command Center", group: "main",
-    // `home`'s label is "Command Center" (== branch); slug'd "overview" to avoid
-    // /command-center/command-center. Source: src/solo/CommandCenter.tsx.
+    // Systems Check is the canonical Solo landing surface. The former overview
+    // address remains a compatibility alias of the same owner.
     subtabs: [
-      { slug: "overview", key: "home", label: "Command Center", hidden: true },
-      { slug: "systems-check", key: "sys", label: "Systems Check" },
-      { slug: "directory", key: "dir", label: "Directory" },
-      { slug: "history", key: "hist", label: "History" },
+      { slug: "systems-check", aliases: ["overview"], key: "sys", label: "Systems Check" },
+      { slug: "mind", aliases: ["directory", "history"], key: "mind", label: "Mind" },
     ],
   },
   {
     slug: "paige", key: "paige", label: "Paige", group: "main",
-    // Source: src/solo/paigehub.tsx. NB `know`/`sub`/`act`/`team` — agency uses
-    // knowledge/agents/actions/pteam for the same slugs.
+    // Source: src/solo/SoloPaigeWorkspace.tsx. Solo intentionally exposes the
+    // customer-facing Chat, Knowledge, Helpers, and Capabilities contract only.
     subtabs: [
       { slug: "chat", key: "chat", label: "Chat" },
-      { slug: "knowledge", key: "know", label: "Knowledge" },
-      { slug: "sub-agents", key: "sub", label: "Sub-Agents" },
-      { slug: "actions", key: "act", label: "Actions" },
-      { slug: "skills", key: "skills", label: "Skills" },
-      { slug: "paige-team", key: "team", label: "Paige Team" },
+      { slug: "knowledge", key: "knowledge", label: "Knowledge" },
+      { slug: "helpers", key: "helpers", label: "Helpers" },
+      { slug: "capabilities", key: "capabilities", label: "Capabilities" },
     ],
   },
   // Trust Compass has NO sub-tabs in Solo (full-page department drilldown, no sub-tab strip).
@@ -150,49 +148,44 @@ export const SOLO_BRANCHES: Branch[] = [
   },
   {
     slug: "clients", key: "clients", label: "Clients", group: "main",
-    // Source: src/solo/conversations.tsx (ClientsHub). Solo owns a direct client book, so it
-    // carries Delivery + Client Portal where the agency tree carries sub-account management.
-    // SINGULAR `pipeline` is deliberate and is the ONE shared-concept slug that differs from
-    // agency's (`pipelines`): a solo operator runs one pipeline, an agency views many across a
-    // book, and each tier's slug matches its own visible label. Do NOT "align" them — agency's
-    // URLs have shipped (§58) and the divergence is semantic, not drift.
-    // OUT OF SCOPE (§13, so the next slice doesn't think this branch is fully mapped): the
-    // `convo` sub-tab renders a nested 6-destination strip of its own (Manual Actions, Snippets,
-    // Trigger Links, Analytics, Settings — conversations.tsx `Conversations`). That is a 4th URL
-    // level; `useSubtabRoute` reads splat index [1] only, so those stay local state for now.
-    // Same shape in `paige`: the Sub-Agents and Skills consoles carry their own nested strips.
+    // Owner-approved relationship workspace. Pipeline remains under Campaigns. Delivery is
+    // preserved in its legacy implementation but is not a Clients subtab. Hidden compatibility
+    // entries keep previously copied URLs resolvable without presenting them as current IA.
     subtabs: [
       { slug: "people", key: "people", label: "People" },
-      { slug: "pipeline", key: "pipe", label: "Pipeline" },
-      { slug: "conversations", key: "convo", label: "Conversations" },
-      { slug: "delivery", key: "deliv", label: "Delivery" },
-      { slug: "client-portal", key: "portal", label: "Client Portal" },
+      { slug: "conversations", key: "conversations", label: "Conversations" },
+      { slug: "calendar", key: "calendar", label: "Calendar" },
+      { slug: "portal", aliases: ["client-portal"], key: "portal", label: "Portal" },
+      { slug: "pipeline", key: "pipe", label: "Pipeline", hidden: true },
+      { slug: "delivery", key: "deliv", label: "Delivery", hidden: true },
     ],
   },
   {
     slug: "calendar", key: "cal", label: "Calendar", group: "main",
-    // Source: src/solo/calendar-book.tsx. Solo has a Routing sub-tab the agency tree lacks.
+    // One canonical Calendar owner. Legacy slugs remain aliases so copied links
+    // resolve without preserving the retired fixture IA.
     subtabs: [
-      { slug: "schedule", key: "sch", label: "Schedule" },
-      { slug: "booking-links", key: "links", label: "Booking links" },
-      { slug: "routing", key: "route", label: "Routing" },
-      { slug: "availability", key: "avail", label: "Availability" },
-      { slug: "requests", key: "req", label: "Requests" },
-      { slug: "settings", key: "set", label: "Settings" },
+      { slug: "week", aliases: ["calendar", "schedule"], key: "calendar", label: "Calendar" },
+      { slug: "agenda", aliases: ["requests"], key: "agenda", label: "Agenda" },
+      { slug: "tasks", key: "tasks", label: "Tasks" },
+      { slug: "booking-pages", aliases: ["booking-links", "routing"], key: "booking", label: "Booking pages" },
+      { slug: "availability", key: "availability", label: "Availability" },
+      { slug: "connections", aliases: ["settings"], key: "connections", label: "Connections" },
     ],
   },
   {
-    slug: "growth", key: "growth", label: "Growth", group: "main",
-    // Source: src/solo/growth2.tsx. Vibe Studio is NOT a sub-tab — a full-screen overlay
-    // opened from the header; not deep-linkable here.
+    slug: "growth", key: "growth", label: "Campaigns", group: "main",
+    // Campaigns owns six customer-facing reporting views. Vibe Studio remains the
+    // sole creative owner and opens through its existing side action. Retired
+    // creative slugs resolve to a Campaigns-owned compatibility landing, never a
+    // fabricated Vibe library or asset route.
     subtabs: [
-      { slug: "overview", key: "ov", label: "Overview" },
-      { slug: "brand-kit", key: "brand", label: "Brand Kit" },
-      { slug: "social", key: "soc", label: "Social" },
-      { slug: "pages", key: "pg", label: "Pages" },
-      { slug: "funnels", key: "fn", label: "Funnels" },
-      { slug: "forms", key: "fm", label: "Forms" },
-      { slug: "builders", key: "ext", label: "Builders" },
+      { slug: "overview", aliases: ["active"], key: "ov", label: "Overview" },
+      { slug: "catalog", aliases: ["brand-kit", "pages", "funnels", "forms", "builders"], key: "catalog", label: "Catalog" },
+      { slug: "sales", key: "sales", label: "Sales" },
+      { slug: "pipeline", key: "pipeline", label: "Pipeline" },
+      { slug: "social", key: "social", label: "Social" },
+      { slug: "performance", key: "performance", label: "Performance" },
     ],
   },
   {
@@ -200,11 +193,11 @@ export const SOLO_BRANCHES: Branch[] = [
     // Source: src/solo/analytics2.tsx.
     subtabs: [
       { slug: "brief", key: "brief", label: "Brief" },
-      { slug: "money", key: "money", label: "The money" },
-      { slug: "profitability", key: "profit", label: "Profitability" },
+      { slug: "money", key: "money", label: "Sales funnel" },
+      { slug: "profitability", key: "profit", label: "Revenue & profit" },
       { slug: "retention", key: "ret", label: "Retention" },
+      { slug: "market-watch", key: "mkt", label: "Acquisition" },
       { slug: "decisions", key: "dec", label: "Decisions" },
-      { slug: "market-watch", key: "mkt", label: "Market watch" },
     ],
   },
   {
@@ -218,40 +211,19 @@ export const SOLO_BRANCHES: Branch[] = [
       { slug: "updates", key: "updates", label: "Updates" },
     ],
   },
-  // Business Vault has NO sub-tabs in Solo — its `tabstrip`-classed chip rows are a due-date
-  // bucket FILTER + a bulk-action bar, not destinations (src/solo/vault.tsx).
-  { slug: "business-vault", key: "vault", label: "Business Vault", group: "platform" },
   {
-    slug: "integrations", key: "integrations", label: "Integrations", group: "platform",
-    // Solo's Integrations is FULLY BUILT (src/solo/integrations.tsx) with three real sub-tabs
-    // — unlike the agency twin, which is still a placeholder stub.
+    slug: "settings", key: "settings", label: "Settings", group: "platform",
+    // Owner-locked Solo Settings taxonomy. Previously shipped Setup, Team, Integrations,
+    // and Business Vault paths are compatibility redirects in SoloApp, never parallel owners.
     subtabs: [
-      { slug: "catalog", key: "cat", label: "Catalog" },
-      { slug: "web-automator", key: "auto", label: "Web Automator" },
-      { slug: "activity", key: "act", label: "Activity" },
-    ],
-  },
-  {
-    slug: "team", key: "team", label: "Team", group: "platform",
-    // Source: src/solo/team.tsx. Same six slugs as agency; abbreviated keys.
-    subtabs: [
-      { slug: "roster", key: "roster", label: "Roster" },
-      { slug: "directory", key: "dir", label: "Directory" },
-      { slug: "roles-invites", key: "roles", label: "Roles & invites" },
-      { slug: "workload", key: "work", label: "Workload" },
-      { slug: "performance", key: "perf", label: "Performance" },
-      { slug: "activity", key: "act", label: "Activity" },
-    ],
-  },
-  {
-    slug: "setup", key: "setup", label: "Setup", group: "platform",
-    // Source: src/solo/setup.tsx — FIVE. Presence + Banking are agency-only sub-tabs.
-    subtabs: [
-      { slug: "business", key: "biz", label: "Business" },
-      { slug: "owner", key: "owner", label: "Owner" },
-      { slug: "contacts", key: "contacts", label: "Contacts" },
-      { slug: "people", key: "people", label: "People" },
-      { slug: "comms-data", key: "comms", label: "Comms & data" },
+      { slug: "setup", key: "setup", label: "Setup" },
+      { slug: "team", key: "team", label: "Team" },
+      { slug: "connections", key: "connections", label: "Connections" },
+      { slug: "integrations", key: "integrations", label: "Integrations" },
+      { slug: "notifications", key: "notifications", label: "Notifications" },
+      { slug: "security-data", key: "security-data", label: "Security & data" },
+      { slug: "vault", key: "vault", label: "Vault" },
+      { slug: "billing", key: "billing", label: "Billing" },
     ],
   },
 ];
@@ -303,23 +275,28 @@ export const AGENCY_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "clients", key: "fleet", label: "Clients", group: "main",
-    // Labels are the agency variant; own-account mode relabels sub-accounts→"Clients",
-    // pipelines→"Pipeline" (slugs stay stable).
+    slug: "clients", key: "fleet", label: "Relationships", group: "main",
+    // Agency Parent and Enterprise own Relationships. Portal is addressable only for a
+    // server-confirmed acting child and remains hidden from parent navigation.
     subtabs: [
-      { slug: "sub-accounts", key: "directory", label: "Sub-accounts" },
-      { slug: "pipelines", key: "pipes", label: "Pipelines" },
-      { slug: "conversations", key: "convos", label: "Conversations" },
+      { slug: "people", key: "people", label: "People" },
+      { slug: "conversations", key: "conversations", label: "Conversations" },
+      { slug: "calendar", key: "calendar", label: "Calendar" },
+      { slug: "segments", key: "segments", label: "Segments" },
+      { slug: "portal", key: "portal", label: "Portal", hidden: true },
+      { slug: "sub-accounts", key: "directory", label: "Sub-accounts", hidden: true },
+      { slug: "pipelines", key: "pipes", label: "Pipelines", hidden: true },
     ],
   },
   {
     slug: "calendar", key: "calendar", label: "Calendar", group: "main",
     subtabs: [
-      { slug: "schedule", key: "schedule", label: "Schedule" },
-      { slug: "booking-links", key: "links", label: "Booking links" },
-      { slug: "availability", key: "avail", label: "Availability" },
-      { slug: "requests", key: "requests", label: "Requests" },
-      { slug: "settings", key: "settings", label: "Settings" },
+      { slug: "week", aliases: ["calendar", "schedule"], key: "calendar", label: "Calendar" },
+      { slug: "agenda", aliases: ["requests"], key: "agenda", label: "Agenda" },
+      { slug: "tasks", key: "tasks", label: "Tasks" },
+      { slug: "booking-pages", aliases: ["booking-links"], key: "booking", label: "Booking pages" },
+      { slug: "availability", key: "availability", label: "Availability" },
+      { slug: "connections", aliases: ["settings"], key: "connections", label: "Connections" },
     ],
   },
   // Client Support has NO sub-tabs (single ticket surface + status filter chips).
@@ -407,6 +384,29 @@ export const AGENCY_BRANCHES: Branch[] = [
     ],
   },
 ];
+
+/**
+ * Direct Sub-account compatibility tree. It keeps the shared AgencyApp screen keys while
+ * presenting the owner-approved Clients matrix. The route is an address only; AgencyApp's
+ * server-resolved tenant context remains the authority for every read.
+ */
+export const SUB_ACCOUNT_BRANCHES: Branch[] = AGENCY_BRANCHES.map((branch) =>
+  branch.slug === "clients"
+    ? {
+        ...branch,
+        label: "Clients",
+        subtabs: [
+          { slug: "people", key: "people", label: "People" },
+          { slug: "conversations", key: "conversations", label: "Conversations" },
+          { slug: "calendar", key: "calendar", label: "Calendar" },
+          { slug: "portal", key: "portal", label: "Portal" },
+          { slug: "segments", key: "segments", label: "Segments", hidden: true },
+          { slug: "sub-accounts", key: "directory", label: "Sub-accounts", hidden: true },
+          { slug: "pipelines", key: "pipes", label: "Pipelines", hidden: true },
+        ],
+      }
+    : branch,
+);
 
 /**
  * OPERATOR_BRANCHES — the Platform Operator (God-tier) tree. **17 branches / 78 sub-tabs.**
@@ -637,7 +637,7 @@ export const TIER_TREES: Record<RouteTierKey, TierTree> = {
   // : "sub_account", …)`. Thread the tier through SoloApp the same way BEFORE
   // mounting it at /business; it was left hardcoded here only because there is
   // no second mount to parameterize against yet.
-  sub_account: { root: "/business", branches: AGENCY_BRANCHES },
+  sub_account: { root: "/business", branches: SUB_ACCOUNT_BRANCHES },
 };
 
 /** The tree for a tier. */
@@ -675,7 +675,7 @@ export function defaultSubtabSlug(tier: RouteTierKey, branchSlug: string): strin
 
 /** Resolve a sub-tab URL slug → its SubTab within a branch (null if not a sub-tab). */
 export function subtabBySlug(tier: RouteTierKey, branchSlug: string, subSlug: string): SubTab | null {
-  return branchBySlug(tier, branchSlug)?.subtabs?.find((s) => s.slug === subSlug) ?? null;
+  return branchBySlug(tier, branchSlug)?.subtabs?.find((s) => s.slug === subSlug || s.aliases?.includes(subSlug)) ?? null;
 }
 
 /** Resolve a screen's internal sub-tab key → its SubTab (for state→URL migration sites). */
@@ -713,3 +713,4 @@ export function subtabPath(tier: RouteTierKey, account: string, branchSlug: stri
   if (tree.accountSegment === false) return `${tree.root}/${branchSlug}/${subSlug}`;
   return `${tree.root}/${account}/${branchSlug}/${subSlug}`;
 }
+

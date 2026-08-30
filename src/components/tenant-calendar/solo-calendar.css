@@ -1,0 +1,525 @@
+/*
+ * Solo-native Calendar.
+ *
+ * Written directly in the shell's own --pg-* tokens, so Mineral and Obsidian both
+ * come from the palette rather than from a theme override. There is deliberately
+ * NOT a single `[class*="…"]` selector reaching into another component's Tailwind
+ * class names, and not one `!important`: the retired override sheet used five of
+ * each to shrink a foreign StatTile, and a utility rename would have silently
+ * broken it with no failing test.
+ *
+ * Scroll ownership is explicit. `.sc-root` is a fixed-height grid that never grows
+ * the document; only `.sc-grid-scroll`, `.sc-rail-scroll` and `.sc-drawer-body`
+ * scroll, each with `overscroll-behavior: contain`.
+ */
+
+.sc-root {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  color: var(--pg-ink);
+  background: var(--pg-workspace);
+  font-family: var(--pg-font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- toolbar (the only header; the Clients tab strip already names this view) ---- */
+
+.sc-bar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pg-line-soft);
+  background: var(--pg-spine);
+  flex-wrap: wrap;
+}
+.sc-bar-spacer { flex: 1 1 auto; min-width: 8px; }
+
+.sc-range {
+  min-width: 0;
+  font: 600 var(--pg-t-lead) var(--pg-font-display);
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-btn {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid var(--pg-line);
+  border-radius: var(--pg-r-chip);
+  color: var(--pg-ink-2);
+  background: var(--pg-surface);
+  font: 500 var(--pg-t-body) var(--pg-font-ui);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.sc-btn:hover { color: var(--pg-ink); border-color: var(--pg-line-strong); background: var(--pg-raised); }
+.sc-btn:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
+.sc-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.sc-btn svg { width: 14px; height: 14px; }
+.sc-btn--icon { width: 32px; padding: 0; justify-content: center; }
+.sc-btn--gold { color: var(--pg-gold-core); border-color: var(--pg-line-authority); background: var(--pg-gold-bloom); }
+.sc-btn--gold:hover { color: var(--pg-gold-core); border-color: var(--pg-line-authority); }
+.sc-btn--danger { color: var(--pg-negative); }
+
+.sc-seg { display: inline-flex; padding: 2px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); background: var(--pg-surface); gap: 2px; }
+.sc-seg button {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--pg-muted);
+  background: transparent;
+  font: 500 var(--pg-t-body) var(--pg-font-ui);
+  cursor: pointer;
+}
+.sc-seg button[aria-pressed="true"] { color: var(--pg-ink); background: var(--pg-raised); box-shadow: var(--pg-e1); }
+.sc-seg button:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: -1px; }
+
+/* ---- truth notice ---- */
+
+/* One grid row for the truth strips, however many are showing — see the note at
+   the wrapper in SoloCalendarWorkspace: a fourth child of .sc-root steals the
+   flexible row from .sc-board. */
+.sc-truths { min-width: 0; }
+
+.sc-truth {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--pg-line-soft);
+  color: var(--pg-muted);
+  background: var(--pg-canvas);
+  font-size: var(--pg-t-label);
+  line-height: 1.5;
+}
+.sc-tag {
+  display: inline-flex;
+  min-height: 19px;
+  flex: none;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid var(--pg-line);
+  border-radius: var(--pg-r-pill);
+  font: 600 10px var(--pg-font-data);
+  letter-spacing: .07em;
+}
+.sc-tag--live { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 40%, transparent); }
+.sc-tag--partial { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 40%, transparent); }
+.sc-tag--unavailable { color: var(--pg-muted); }
+.sc-tag--proposed { color: var(--pg-violet); border-color: color-mix(in srgb, var(--pg-violet) 40%, transparent); }
+
+/* ---- board: rail + canvas, both scroll internally ---- */
+
+.sc-board {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 204px minmax(0, 1fr);
+  gap: 0;
+}
+.sc-rail {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  border-right: 1px solid var(--pg-line-soft);
+  background: var(--pg-canvas);
+}
+.sc-rail-scroll { min-height: 0; padding: 12px; overflow-y: auto; overscroll-behavior: contain; }
+
+.sc-group + .sc-group { margin-top: 6px; }
+.sc-group-head {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--pg-r-chip);
+  color: var(--pg-muted);
+  background: transparent;
+  font: 600 var(--pg-t-label) var(--pg-font-ui);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sc-group-head:hover { color: var(--pg-ink-2); background: var(--pg-lift); }
+.sc-group-head:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: -2px; }
+.sc-group-head svg { width: 13px; height: 13px; flex: none; transition: transform 160ms ease; }
+.sc-group-head[aria-expanded="true"] svg.sc-chev { transform: rotate(90deg); }
+.sc-group-body { padding: 4px 2px 10px; display: grid; gap: 2px; }
+
+.sc-check {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--pg-r-chip);
+  color: var(--pg-ink-2);
+  background: transparent;
+  font: 500 var(--pg-t-body) var(--pg-font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.sc-check:hover { background: var(--pg-lift); }
+.sc-check:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: -2px; }
+.sc-check span.sc-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-swatch { width: 11px; height: 11px; flex: none; border-radius: 3px; border: 1px solid var(--pg-line-strong); }
+.sc-check[aria-pressed="false"] { color: var(--pg-faint); }
+/* The swatch is hollow when the layer is off. Done with a modifier rather than an
+   `!important` override of the inline colour, so the rule stays overridable. */
+.sc-swatch--off { background: transparent; }
+
+.sc-note { padding: 2px 6px 0; color: var(--pg-faint); font-size: 10px; line-height: 1.45; }
+
+/* The freshness state sits in the same strip the LIVE line uses, so a stale
+   calendar reads as one more row of chrome rather than a new region: same height,
+   same padding, same border — the grid below does not move. The PARTIAL tag already
+   carries the caution tone from `--pg-warning`; nothing here is gold (gold is the
+   act, §11) and nothing is destructive-red, since the person's own data is intact. */
+.sc-truth--stale { color: var(--pg-ink-2); }
+.sc-stale-retry { margin-left: auto; flex: none; }
+
+/* ---- canvas ---- */
+
+.sc-canvas { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+
+.sc-dow {
+  display: grid;
+  min-width: 0;
+  border-bottom: 1px solid var(--pg-line);
+  background: var(--pg-spine);
+}
+.sc-dow > div {
+  min-width: 0;
+  padding: 7px 8px;
+  color: var(--pg-muted);
+  font: 600 var(--pg-t-label) var(--pg-font-ui);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.sc-dow > div + div { border-left: 1px solid var(--pg-line-soft); }
+.sc-dow .sc-dow-num { display: block; margin-top: 1px; color: var(--pg-ink); font: 600 15px var(--pg-font-display); letter-spacing: -.01em; }
+.sc-dow .sc-dow-today .sc-dow-num { color: var(--pg-gold-core); }
+
+.sc-grid-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* week grid: hour rows.
+   The rows FILL the available height rather than sitting at their content height,
+   so a laptop viewport shows a full working day instead of a short grid above a
+   band of dead space. They still hold a floor, so once the day no longer fits,
+   `.sc-grid-scroll` takes over as the scroll owner. */
+.sc-week {
+  display: grid;
+  min-width: 0;
+  min-height: 100%;
+  grid-auto-rows: minmax(30px, 1fr);
+}
+.sc-hour-label {
+  padding: 0 8px;
+  border-right: 1px solid var(--pg-line-soft);
+  border-bottom: 1px solid var(--pg-line-soft);
+  color: var(--pg-faint);
+  font: 500 10px var(--pg-font-data);
+  text-align: right;
+  /* The label sits INSIDE its own row rather than straddling the boundary, so the
+     first visible hour is never sheared by the scroll container's top edge. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-top: 3px;
+}
+.sc-hour-cell { min-width: 0; border-bottom: 1px solid var(--pg-line-soft); border-left: 1px solid var(--pg-line-soft); padding: 2px; display: grid; gap: 2px; align-content: start; }
+
+/* month grid */
+.sc-month { display: grid; min-width: 0; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.sc-cell {
+  display: grid;
+  min-width: 0;
+  min-height: 92px;
+  align-content: start;
+  gap: 3px;
+  padding: 5px 5px 7px;
+  border-bottom: 1px solid var(--pg-line-soft);
+  border-left: 1px solid var(--pg-line-soft);
+}
+.sc-cell--out { background: var(--pg-canvas); }
+.sc-cell--out .sc-daynum { color: var(--pg-faint); }
+.sc-cell--today { background: var(--pg-gold-bloom); }
+.sc-daynum { color: var(--pg-ink-2); font: 500 var(--pg-t-label) var(--pg-font-data); }
+.sc-cell--today .sc-daynum { color: var(--pg-gold-core); font-weight: 700; }
+.sc-more { padding: 0 3px; color: var(--pg-muted); font-size: 10px; text-align: left; background: none; border: 0; cursor: pointer; }
+.sc-more:hover { color: var(--pg-ink-2); }
+
+/* ---- an event ---- */
+
+.sc-ev {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid var(--sc-ev-color, var(--pg-line));
+  border-left-width: 3px;
+  border-radius: 6px;
+  color: var(--pg-ink-2);
+  background: color-mix(in srgb, var(--sc-ev-color, var(--pg-line)) 13%, var(--pg-surface));
+  font: 500 var(--pg-t-label) var(--pg-font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms ease, transform 130ms ease;
+}
+.sc-ev:hover { background: color-mix(in srgb, var(--sc-ev-color, var(--pg-line)) 24%, var(--pg-surface)); }
+.sc-ev:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
+.sc-ev-time { flex: none; color: var(--pg-muted); font-family: var(--pg-font-data); font-size: 10px; }
+.sc-ev-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The compact state for the week grid. Hidden until the container query below swaps
+   it in — see the query for the measured reason it exists. */
+.sc-ev-compact {
+  display: none;
+  /* `min-width: 0` + `flex: 1 1 auto` and NOT `flex: none`: a non-shrinking span
+     spills past the chip's own border instead of fitting inside it, which is how the
+     first version of this overflowed by up to 16.9px at the 520px mount and still
+     measured "unclipped" — the span never clipped ITSELF. It shrinks now, and the
+     drive asserts overflow against the CHIP box, not the span. */
+  min-width: 0; flex: 1 1 auto;
+  overflow: hidden; text-overflow: ellipsis;
+  color: var(--pg-ink-2);
+  /* 10px, matching the surface's existing data-label size (.sc-ev-time) rather than
+     the chip's body size. Measured: a conflicted chip gives the label 29px once the
+     flag takes its share, and "2:30p" at body size needs 33px — it truncated to a
+     fragment. The minute is exactly what distinguishes the two halves of an overlap,
+     so shortening the text further was not an option; the data scale already existed. */
+  font-size: 10px;
+  font-family: var(--pg-font-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* .8, not .55. Measured with axe: at .55 the chip title resolved to 4.02:1 in Obsidian
+   and 2.72:1 in Mineral, both under the 4.5:1 AA floor — a cancelled appointment is
+   still information the tenant has to be able to read. The line-through, not the
+   dimming, is what carries the state, so this keeps the reading and clears the floor. */
+.sc-ev--off { opacity: .8; text-decoration: line-through; }
+.sc-ev--conflict { border-color: var(--pg-negative); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pg-negative) 30%, transparent); }
+.sc-ev-flag { flex: none; color: var(--pg-negative); }
+.sc-ev-flag svg { width: 11px; height: 11px; display: block; }
+
+/* ---- states ---- */
+
+.sc-state { display: grid; min-height: 220px; place-content: center; justify-items: center; gap: 7px; padding: 30px; text-align: center; }
+.sc-state h3 { color: var(--pg-ink); font: 600 var(--pg-t-lead) var(--pg-font-display); }
+.sc-state p { max-width: 46ch; color: var(--pg-muted); font-size: var(--pg-t-body); line-height: 1.55; }
+.sc-state svg { width: 22px; height: 22px; color: var(--pg-faint); }
+
+/* ---- drawer (a slide-out panel, NOT a detached browser window) ---- */
+
+.sc-scrim { position: fixed; inset: 0; z-index: 80; background: color-mix(in srgb, var(--pg-env) 62%, transparent); backdrop-filter: blur(3px); }
+.sc-drawer {
+  position: fixed;
+  z-index: 81;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(456px, 96vw);
+  flex-direction: column;
+  border-left: 1px solid var(--pg-line);
+  /* --pg-surface, NOT --pg-artifact. `artifact` is the paper an artifact is rendered
+     on and is light in BOTH themes (#e9e4da dark / #fffdf8 light); this is chrome, and
+     it writes --pg-ink on itself. In Obsidian that painted near-white text on cream at
+     about 1.05:1 — the whole drawer was unreadable. The drawer's own footer already
+     used --pg-surface, so it was internally inconsistent too. */
+  background: var(--pg-surface);
+  box-shadow: var(--pg-e4);
+  animation: sc-slide 200ms cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes sc-slide { from { transform: translateX(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .sc-drawer { animation: none; }
+  .sc-ev, .sc-btn, .sc-group-head svg { transition: none; }
+}
+.sc-drawer-head { display: flex; flex: none; align-items: flex-start; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--pg-line-soft); }
+.sc-drawer-head h2 { min-width: 0; color: var(--pg-ink); font: 600 var(--pg-t-lead) var(--pg-font-display); letter-spacing: -.01em; }
+.sc-drawer-head p { margin-top: 2px; color: var(--pg-muted); font-size: var(--pg-t-label); }
+.sc-drawer-body { min-height: 0; flex: 1; padding: 14px 16px 20px; overflow-y: auto; overscroll-behavior: contain; }
+.sc-drawer-foot { display: flex; flex: none; flex-wrap: wrap; gap: 7px; padding: 11px 16px; border-top: 1px solid var(--pg-line-soft); background: var(--pg-surface); }
+
+.sc-kv { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 6px 10px; align-items: baseline; }
+.sc-kv dt { color: var(--pg-muted); font-size: var(--pg-t-label); }
+.sc-kv dd { min-width: 0; margin: 0; color: var(--pg-ink-2); font-size: var(--pg-t-body); line-height: 1.5; overflow-wrap: anywhere; }
+
+.sc-field { display: grid; gap: 5px; margin-bottom: 12px; }
+.sc-field label { color: var(--pg-muted); font-size: var(--pg-t-label); }
+.sc-field input, .sc-field select {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--pg-line);
+  border-radius: var(--pg-r-chip);
+  color: var(--pg-ink);
+  background: var(--pg-surface);
+  font: 400 var(--pg-t-body) var(--pg-font-ui);
+}
+.sc-field input:focus-visible, .sc-field select:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
+
+.sc-msg { margin-bottom: 12px; padding: 9px 11px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); color: var(--pg-ink-2); font-size: var(--pg-t-body); line-height: 1.5; }
+.sc-msg--bad { color: var(--pg-negative); border-color: color-mix(in srgb, var(--pg-negative) 42%, transparent); }
+
+/* ---- form fit ---- */
+
+/* The Clients panel is the width budget, so this responds to its OWN inline size
+   rather than the viewport: the same breakpoints must fire when PAIGE opens and
+   takes a third of the surface, not only when the window narrows. */
+/* The rail's controls must never simply disappear. Below the rail breakpoint the
+   toolbar grows a "View options" button that opens the SAME controls in a drawer,
+   so calendar toggles, colour coding and settings stay reachable at every width. */
+.sc-options-btn { display: none; }
+
+@container solo-calendar-mount (max-width: 900px) {
+  .sc-board { grid-template-columns: minmax(0, 1fr); }
+  .sc-rail { display: none; }
+  .sc-options-btn { display: inline-flex; }
+}
+/* Compact week chips.
+   MEASURED, not guessed. The chip's title needs 78px to render without clipping. In
+   the mount that actually holds this surface it gets: 177px at 1536, 123px at 1536
+   with PAIGE open, 153px at 1366, 99px at 1366+PAIGE, 104px at 1024, 116px at 900 —
+   all fine — but 79px at 1024+PAIGE (63px of title) and 61px at 900+PAIGE (45px of
+   title). Below roughly a 700px container the title stops being readable and starts
+   being a fragment cut mid-word, which is not a finished responsive state.
+
+   So under that width the chip states the one fact that still fits and is worth
+   reading in a grid: when it starts. The full title, time and status never leave —
+   they are the chip's aria-label (set explicitly in EventChip for exactly this
+   reason) and the booking drawer. The conflict flag is untouched at every width.
+
+   Both GRIDS, not the agenda. The month chip is worse than clipped at 520px — its
+   title resolves to a clientWidth of ZERO, invisible rather than truncated — and it
+   already renders `.sc-ev-time`, so it needs the title hidden but no stand-in. The
+   agenda's rows are 492px wide at that same frame and are deliberately untouched. */
+@container solo-calendar-mount (max-width: 700px) {
+  .sc-ev--grid .sc-ev-title { display: none; }
+  .sc-ev--compactable .sc-ev-compact { display: inline; }
+  /* Reclaim the chrome the label needs. Measured on a CONFLICTED chip at the 520px
+     mount: 61.3px of chip, less a 3px colour border, 1px border, 12px padding, a 5px
+     gap and an 11px flag, left 29.3px — and "2:30p" needs 30px. One pixel short, so
+     it ellipsised to "2:3…" and lost the minute, which is the only thing telling the
+     two halves of an overlap apart. This gives it 32.3px instead of squeaking by. */
+  .sc-ev--compactable { padding-left: 5px; padding-right: 5px; gap: 4px; }
+}
+
+@container solo-calendar-mount (max-width: 620px) {
+  .sc-bar { gap: 7px; padding: 9px 11px; }
+  .sc-cell { min-height: 74px; }
+}
+
+/* --- availability, day list and per-calendar configuration ---------------- */
+
+/* Stored open hours. Drawn ONLY where a calendar actually stores windows; an
+   unconfigured calendar leaves the grid in its resting state rather than being
+   painted with hours the tenant never set. */
+.sc-hour-cell--open { background: color-mix(in srgb, var(--pg-positive) 7%, transparent); }
+.sc-hour-cell--closed {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--pg-line) 40%, transparent) 0 3px,
+    transparent 3px 7px
+  );
+}
+.sc-dow-off {
+  margin-left: 5px; padding: 0 4px; border-radius: var(--pg-r-chip);
+  background: color-mix(in srgb, var(--pg-warning) 18%, transparent);
+  color: var(--pg-warning); font-size: 9px; letter-spacing: .04em; text-transform: uppercase;
+}
+
+.sc-check-row { display: flex; align-items: stretch; gap: 2px; }
+.sc-check-row .sc-check { flex: 1; min-width: 0; }
+/* Persistently visible, not hover-revealed. Since the rail carries no standing link
+   out of the surface, this cog is the ONLY route to a calendar's own configuration —
+   and a control a pointer user only discovers by grazing the row is reachable but not
+   discoverable (§36). Its visual treatment is Claude Design's call; that it can be
+   found at all is a behavioural requirement. */
+.sc-cog { flex: none; opacity: .55; }
+.sc-check-row:hover .sc-cog, .sc-cog:hover, .sc-cog:focus-visible { opacity: 1; }
+
+.sc-off-tag {
+  margin-left: auto; padding: 0 4px; border-radius: var(--pg-r-chip);
+  border: 1px solid var(--pg-line); color: var(--pg-faint);
+  font-size: 9px; letter-spacing: .04em; text-transform: uppercase;
+}
+
+.sc-swatch--inline {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+  margin-right: 6px; vertical-align: -1px; border: 0;
+}
+
+.sc-daylist { display: grid; gap: 3px; }
+.sc-dayrow {
+  display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0;
+  padding: 7px 9px; border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  background: var(--pg-surface); color: var(--pg-ink); text-align: left;
+  font: 500 var(--pg-t-body) var(--pg-font-ui);
+  transition: background 130ms ease, border-color 130ms ease;
+}
+.sc-dayrow:hover { background: var(--pg-raised); border-color: var(--pg-line); }
+.sc-dayrow:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 1px; }
+.sc-dayrow-time { margin-left: auto; flex: none; color: var(--pg-muted); font-size: var(--pg-t-label); }
+
+.sc-sub { margin-top: 14px; }
+.sc-sub h3 {
+  margin-bottom: 6px; color: var(--pg-muted);
+  font: 600 var(--pg-t-label) var(--pg-font-ui);
+  letter-spacing: .09em; text-transform: uppercase;
+}
+
+.sc-hours { display: grid; gap: 3px; }
+.sc-hours li {
+  display: flex; gap: 10px; padding: 5px 9px;
+  border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-chip);
+  color: var(--pg-ink); font-size: var(--pg-t-body);
+}
+.sc-hours-day { width: 34px; flex: none; color: var(--pg-muted); font-weight: 600; }
+/* The reminder list reuses the hours ROW, but its lead column holds a phrase
+   ("2 hours before"), not a three-letter day name — so it sizes to its content and
+   never wraps inside a 34px column. */
+.sc-hours--wide .sc-hours-lead { flex: none; min-width: 108px; color: var(--pg-muted); font-weight: 600; }
+.sc-hours--wide li { align-items: baseline; }
+
+.sc-drawer--wide { width: min(640px, 96vw); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-dayrow, .sc-cog { transition: none; }
+}
+
+/* Inline remediation link inside a note. Underlined so it is unmistakably a link at
+   note weight, and it inherits the note's colour rather than competing with the act
+   colour — this is a path to fix a channel, not a primary action.
+
+   The selector carries `[data-pg] a` deliberately. The platform sets
+   `[data-pg] a { color: var(--pg-gold-core); text-decoration: none; }` (index.css),
+   specificity (0,1,1) — a bare `.sc-inline-link` at (0,1,0) lost to it, so this link
+   rendered GOLD with NO underline. Measured with axe: 2.8:1 against the surrounding
+   note text in Obsidian and 1.19:1 in Mineral, under the 3:1 floor, with no other
+   distinguishing style — a WCAG 1.4.1 failure, and gold spent on something that is
+   not the act (§11). (0,1,2) wins without reaching for !important. */
+[data-pg] a.sc-inline-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+[data-pg] a.sc-inline-link:hover { text-decoration-thickness: 2px; }

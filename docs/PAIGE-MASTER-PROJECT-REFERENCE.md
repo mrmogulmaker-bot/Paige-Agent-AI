@@ -495,6 +495,15 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
 - **Backend:** `public.messages` (jsonb substrate) + `public.threads` (aggregate) + `send-message` edge fn; `usePaigeThreads.ts` hook.
 - **Operator (God) SMS:** `paige-operator-sms-send` edge fn (from PR #408) — see the Fleet Comms 500 gap in Section 5.
 - Doctrine: §7 intelligent portal · §36 draft-first/one-click · §49 unified inline-single-conversation.
+- **A2P registration — PREPARED is shipped; SUBMITTED is not (PR #665, 2026-08-30).** Preparing a
+  carrier registration now DURABLY SAVES: `comms-a2p-draft` previously did two reads and no write, so
+  the prepared draft died with the HTTP response. It persists through
+  `tenant_a2p_registration_save_draft` (migration `20261004010000`) into the existing
+  `tenant_a2p_registrations` — no new table, column, or parallel store. **Carrier submission does not
+  exist:** `comms-a2p-submit` performs no provider call and returns an explicit *prepared, not
+  submitted* refusal, and no shipped path sets `submitted_at`. Do not read a `pending` row as a
+  filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production
+  tenants** currently have, so refusal is the first-use path for every tenant today.
 
 ### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
 
@@ -629,6 +638,18 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+### Solo Clients → Conversations — implementation awaiting exact-head release verification (2026-08-28)
+
+The owner-approved Solo redesign is intentionally confined to the existing workspace directly below
+`People · Conversations · Calendar · Portal`. It adds no route-local Clients hero, title banner, or
+parallel inbox. The Conversations-owned implementation provides a unified queue/thread workspace,
+a permanently mounted sibling client-context pane, canonical People/Portal/Campaigns/Connections
+links, human/PAIGE-draft/governed handling truth, permission-bound composer tools, channel readiness,
+account-epoch clearing, pane-owned scrolling, and constrained-center form-fit. Provider connection
+does not prove identity, send permission, A2P, inbound, webhook, mailbox, or operational readiness.
+Video and Apple Messages for Business remain unavailable unless separately proven. Ordinary consumer
+iMessage is never claimed. No backend, provider, schema, auth, or business-data mutation is in scope.
 
 ### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
 
@@ -1016,6 +1037,43 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+- **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
+  banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for
+  review — you'll be notified the moment it's approved."** That was survivable only while nothing
+  wrote the row. The same PR made the draft save durable, writing exactly that shape
+  (`status='pending'`, no SIDs), so the false claim went from unreachable to the **normal result of
+  clicking "Draft with Paige"** — on a compliance surface, over a registration nobody had filed, with
+  no mechanism that could ever notify anyone. Corrected to key on `submitted_at`, which no shipped
+  path sets. **The general lesson: making a backend honest is incomplete until whatever RENDERS it is
+  re-checked against the new reality.** A copy string that was true under the old behaviour is not
+  automatically true under the new one.
+
+- **2026-08-30 — a migration version collision would have skipped a migration on prod, silently
+  (PR #665).** #666 landed `20261004000000_analytics_evidence_bundle.sql`, sharing a version prefix
+  with #665's migration — the only duplicate across 836 files. `supabase_migrations.schema_migrations`
+  is keyed on the VERSION, and `db push` applies only versions it lacks, so the second migration would
+  never have run on production while CI, the `db-live` tag and every badge stayed green — and the edge
+  functions, which do deploy, would have called a function that was never created. The clean replay
+  cannot catch this: it iterates FILES and dedupes only the recorded row, so both run locally.
+  **Check the migration version namespace on every re-ground**; renamed to `20261004010000`.
+
+- **2026-08-30 — "all assertions passed" said nothing about the fix it was written for (PR #665).**
+  Three separate times a green proof measured something other than what it named: negative cases
+  passed an empty sample array so validation refused them before the guard under test ran; the
+  anonymous-caller case ran as `anon`, which holds no EXECUTE grant, so the grant refused it and the
+  in-body check was never reached (§59 inverted); and reverting the entire owner-locked D2 concurrency
+  mechanism left every assertion green. Also: a structural pin on function TEXT was defeated by a
+  rewrite that kept the matched literal and added a redirect one line later, scoring 13/13 while
+  running a full cross-tenant IDOR. **Boundaries are measured, never described** — every trace a
+  foreign caller could leave, plus the RETURN VALUE, since a read-only escape writes nothing.
+
+- **2026-08-28 — a Clients subtab must not grow a second Clients header.** Solo Conversations owns
+  only the canvas below the shared `People · Conversations · Calendar · Portal` strip. A route-local
+  “Your client book,” “Client conversations,” status banner, or decorative hero duplicates the shell,
+  consumes the form-fit budget, and violates the owner-approved hierarchy. Regression coverage now
+  forbids those labels in the Solo Conversations mount and scopes ancestor-chrome suppression to the
+  Conversations descendant only; People-owned wrapper files remain untouched.
+
 - **2026-08-18 — "latent structural weakness rather than a confirmed live leak" was too optimistic.**
   `docs/doctrine/role-taxonomy-and-matrix.md` §4 hedged that most reads also filter by tenant via RLS,
   so the mis-scoped global grants were a latent weakness. **R1 found a LIVE platform-seam escalation**
@@ -1331,3 +1389,44 @@ The tenant prototype now implements Signal Field, Living Lineage, Creation Chamb
 ### Calendar, Conversations, and spatial workspace pass — 2026-08-22
 
 The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.
+
+### Solo Command Center Mind — owner-approved build in draft review (2026-08-28)
+
+- **Status: DRAFT PR ONLY; not shipped, merged, or deployed.** Owner-approved prototype:
+  `paige-command-center-mind-flow-prototype.html`, SHA-256
+  `2CE38FC21DD1C6B6DD0C5816A63E2FA09F80245F09BB73F809DA52089F69`, 57,193 bytes.
+- Solo Command Center's proposed customer-facing information architecture is exactly
+  **Systems Check · Mind**. Systems Check remains first/default. Retired Solo Directory and History
+  addresses resolve to canonical Mind; Agency, Sub-account, Enterprise, and operator owners remain
+  unchanged.
+- Mind is a read-only governed record index over existing tenant-scoped owners: indexed knowledge is
+  LIVE; current pending decision references are LIVE SOURCE but non-actionable here; the latest Systems Check snapshot
+  is PARTIAL history. Full historical series, resolved-decision history, helper provenance, and inferred
+  semantic/causal relationships remain UNAVAILABLE.
+- The interactive 3D topology is a PROPOSED presentation, not a new data owner. It is still by default.
+  Direct mouse/keyboard manipulation is not business activity; finite motion may occur only after a
+  genuinely newly observed grounded record. One existing PAIGE workspace remains the only workspace,
+  and opening it does not attach, prefill, send, prepare, or start work.
+- Tenant identity remains server-resolved. The Mind data child does not mount while `activeTenantId` is
+  unresolved and remounts by tenant epoch so prior-account state and late responses cannot paint the
+  next account.
+
+### Solo Systems Check Operating Signal — owner-approved build in draft review (2026-08-29)
+
+- **Status: DRAFT PR ONLY; not shipped, merged, deployed, or production-accepted.** The owner approved
+  the Operating Signal prototype and authorized implementation through a green draft PR and preview;
+  the separate final go-live gate remains required.
+- The Solo Systems Check is a compact business-awareness surface over the existing tenant-scoped
+  `systems_check_snapshot` rail. Persisted findings are grouped into confirmed, needs-attention, and
+  unavailable reads; missing or partial evidence never becomes inferred health. Refresh motion is
+  finite, interruptible, and labeled as a read with no manufactured per-category progress; reduced
+  motion preserves the same text and state.
+- Finding detail follows the grounded chain **signal → evidence/provenance → impact → recommended next
+  step → owner decision → durable outcome**. Missing interpretation, decision, or resolution records
+  are stated as missing. The one existing PAIGE workspace is the only executive-rundown/action seam;
+  opening it does not attach context, prefill a message, send, prepare, or start work.
+- **Explicitly deferred/unavailable in this slice:** emerging trend analysis, market/competitor pulse,
+  capacity watchpoints, owner-configurable watchpoints, and any separate phone/A2P readiness logic.
+  A future communications read may consume only the canonical server-resolved `can_send_sms` result
+  when that narrow contract exists. Systems Check does not own Settings, Calendar, Conversations,
+  Mind, the shared shell, provider configuration, or new backend logic.

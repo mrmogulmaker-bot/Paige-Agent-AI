@@ -19,12 +19,14 @@
     "harness:selftest": "node scripts/live-drive/harness/selftest.mjs",
     "harness:selftest-reject": "node scripts/live-drive/harness/selftest-reject.mjs",
     "lint:definer-fns": "node scripts/ci/definer-fn-lint.mjs",
+    "lint:managed-schema": "node scripts/ci/managed-schema-ownership-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
     "lint:tier-features:test": "node scripts/ci/tier-feature-lint.mjs --self-test",
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
     "smoke:fleet-directory-v3": "node scripts/fleet-directory-v3-smoke.mjs",
+    "smoke:spline-runtime": "node scripts/spline-runtime-smoke.mjs",
     "harness:serve": "vite --config scripts/live-drive/harness/mount/vite.config.ts",
     "lint:alias-ratchet": "node scripts/ci/alias-ratchet.mjs",
     "lint:pg-tokens": "node scripts/ci/pg-token-parity.mjs",
@@ -34,6 +36,12 @@
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
+    "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",
+    "smoke:comms-tenant-scope": "node scripts/comms-tenant-scope-smoke.mjs",
+    "lint:conversation-tenant": "node scripts/comms-conversation-tenant-lint.mjs",
+    "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",
+    "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs",
+    "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs",
     "test:knowledge-scope": "node --import ./scripts/knowledge-scope/register.mjs scripts/knowledge-scope/stage1-check.mjs"
   },
   "dependencies": {
@@ -133,6 +141,7 @@
     "vite": "^5.4.21"
   },
   "overrides": {
+    "@splinetool/runtime": "1.9.28",
     "esbuild": "^0.25.10",
     "picomatch": "^4.0.3",
     "rollup": "^4.52.4",
@@ -140,6 +149,7 @@
     "ws": "^8.18.4"
   },
   "resolutions": {
+    "@splinetool/runtime": "1.9.28",
     "esbuild": "^0.25.10",
     "picomatch": "^4.0.3",
     "rollup": "^4.52.4",

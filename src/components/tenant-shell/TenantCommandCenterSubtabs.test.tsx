@@ -12,10 +12,22 @@ import { TenantSystemsCheckSecondaryView } from "./TenantSystemsCheckSecondaryVi
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const useSystemsCheck = vi.fn();
+const tenantHarness = vi.hoisted(() => ({ activeTenantId: "account-a" as string | null }));
 
 vi.mock("@/hooks/useSystemsCheck", () => ({
   useSystemsCheck: (...args: unknown[]) => useSystemsCheck(...args),
 }));
+vi.mock("@/hooks/useTenantContext", () => ({
+  useTenantContext: () => tenantHarness,
+}));
+vi.mock("@/solo/SoloSystemsCheckWorkspace", () => ({
+  SoloSystemsCheckWorkspace: () => <div>Canonical Solo Systems Check</div>,
+}));
+vi.mock("@/solo/SoloMindWorkspace", () => ({
+  SoloMindWorkspace: () => <div>Canonical Solo Mind</div>,
+}));
+
+import { CommandHub } from "@/solo/CommandCenter";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -92,13 +104,13 @@ describe("tenant Command Center secondary tabs", () => {
     });
   });
 
-  it("keeps Fleet operator-only while every tenant registry exposes the ruled three-tab strip", () => {
+  it("keeps non-Solo owners unchanged while Solo exposes only Systems Check and Mind", () => {
     expect(OPERATOR_SLOTS.find((slot) => slot.id === "fleet")).toMatchObject({
       label: "Fleet",
       views: ["Systems check", "Directory", "History"],
     });
 
-    for (const tier of ["solo", "sub_account", "agency", "enterprise"] as const) {
+    for (const tier of ["sub_account", "agency", "enterprise"] as const) {
       const command = branchBySlug(tier, "command-center");
       expect(command?.label).toBe("Command Center");
       expect(command?.subtabs?.filter((tab) => !tab.hidden).map((tab) => tab.label)).toEqual([
@@ -108,12 +120,18 @@ describe("tenant Command Center secondary tabs", () => {
       ]);
       expect(command?.subtabs?.[0]).toMatchObject({ label: "Command Center", hidden: true });
     }
+
+    const solo = branchBySlug("solo", "command-center");
+    expect(solo?.subtabs?.map((tab) => tab.label)).toEqual([
+      "Systems Check", "Mind",
+    ]);
+    expect(solo?.subtabs?.[0]).toMatchObject({ slug: "systems-check", key: "sys" });
   });
 
   it.each([
-    ["src/solo/CommandCenter.tsx", ["Systems Check", "Directory", "History"]],
+    ["src/solo/CommandCenter.tsx", ["Systems Check", "Mind"]],
     ["src/agency/CommandCenter.tsx", ["Systems Check", "Directory", "History"]],
-  ])("renders only the three ruled secondary labels in %s", (path, labels) => {
+  ])("renders the ruled secondary labels in %s", (path, labels) => {
     const screen = source(path);
     for (const label of labels) expect(screen).toContain(`"${label}"`);
     expect(screen).not.toMatch(/\["(?:home|main)",\s*"Command Center"/);
@@ -155,16 +173,35 @@ describe("tenant Command Center secondary tabs", () => {
     expect(html).not.toContain("Passing");
   });
 
-  it("keeps the Core Workspace at the branch root and the live Systems Check tenant-scoped", () => {
+  it("makes the Solo root the canonical Systems Check owner while Agency keeps its Core owner", () => {
     const solo = source("src/solo/CommandCenter.tsx");
     const agency = source("src/agency/CommandCenter.tsx");
-    expect(solo).toContain('useSubtabRoute("solo", "command-center", "home")');
-    expect(solo).toContain('tab === "home"');
-    expect(solo).toContain('<SystemsCheckTile scope="tenant"');
+    expect(solo).toContain('useSubtabRoute("solo", "command-center", "sys")');
+    expect(solo).not.toContain('tab === "home"');
+    expect(solo).not.toContain("SystemsCheckTile");
+    expect(solo).toContain("SoloSystemsCheckWorkspace");
+    expect(solo).toContain("SoloMindWorkspace");
+    expect(solo).not.toContain("TenantSystemsCheckSecondaryView");
+    expect(solo).toContain('background: "var(--pg-spine)"');
+    expect(solo).not.toContain("<SubTabs");
     expect(agency).toContain('isAgency ? "agency" : "sub_account"');
     expect(agency).toContain('currentTab === "main"');
     expect(agency).toContain('<SystemsCheckTile scope="tenant"');
     expect(source("src/components/tenant-shell/TenantSystemsCheckSecondaryView.tsx")).not.toMatch(/PaigePanel|PaigeWorkspace/);
+  });
+
+  it("keeps the Solo strip compact and theme-continuous instead of a white band", () => {
+    const solo = source("src/solo/CommandCenter.tsx");
+    expect(solo).toContain('aria-label="Command Center sections"');
+    expect(solo).toContain('background: "var(--pg-spine)"');
+    expect(solo).toContain('borderBottom: "1px solid var(--pg-line)"');
+    expect(solo).not.toMatch(/background:\s*["'](?:#fff|white|var\(--surface\))["']/i);
+  });
+
+  it("keys the canonical Solo workspace by the server-resolved account epoch", () => {
+    const solo = source("src/solo/CommandCenter.tsx");
+    expect(solo).toContain('key={activeTenantId ?? "unresolved"}');
+    expect(solo).toContain("const { activeTenantId } = useTenantContext()");
   });
 
   it.each([
@@ -211,11 +248,75 @@ describe("tenant Command Center secondary tabs", () => {
   });
 
   it("keeps Solo and Enterprise route construction in their existing account trees", () => {
-    expect(subtabPath("solo", "7001001", "command-center", "directory")).toBe(
-      "/solo/7001001/command-center/directory",
+    expect(subtabPath("solo", "7001001", "command-center", "mind")).toBe(
+      "/solo/7001001/command-center/mind",
     );
     expect(subtabPath("enterprise", "6001001", "command-center", "history")).toBe(
       "/enterprise/6001001/command-center/history",
     );
   });
+
+  it.each([
+    "/solo/7001001/command-center/directory",
+    "/solo/7001001/command-center/history",
+  ])("resolves the retired Solo compatibility entry %s to Mind without retaining a tab", (entry) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    act(() => root.render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route
+            path="/solo/:account/*"
+            element={<><CommandHub accountContext={null} openPaige={vi.fn()} /><LocationProbe /></>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    ));
+    expect(host.textContent).toContain("Canonical Solo Mind");
+    expect(host.textContent).not.toContain("Directory");
+    expect(host.textContent).not.toContain("History");
+    expect(host.textContent).toContain("Previous record address opened in Mind.");
+    expect(host.querySelector("[data-location]")?.textContent).toBe(
+      "/solo/7001001/command-center/mind",
+    );
+    act(() => root.unmount());
+  });
+
+  it("keeps the active Solo tab perceivable in forced colors and omits stale panel relationships", () => {
+    const solo = source("src/solo/CommandCenter.tsx");
+    const css = source("src/solo/solo-mind-workspace.css");
+    expect(solo).toContain('aria-current={active ? "page" : undefined}');
+    expect(solo).toContain('aria-controls={active ? `command-panel-${key}` : undefined}');
+    expect(css).toContain('[role="tab"][aria-selected="true"]');
+    expect(css).toContain("Highlight");
+  });
+
+  it.each([
+    "/solo/7001001/command-center",
+    "/solo/7001001/command-center/overview",
+  ])("resolves the Solo compatibility entry %s to one canonical Systems Check address", (entry) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    act(() => root.render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route
+            path="/solo/:account/*"
+            element={<><CommandHub accountContext={null} openPaige={vi.fn()} /><LocationProbe /></>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    ));
+    expect(host.textContent).toContain("Canonical Solo Systems Check");
+    expect(host.querySelector("[data-location]")?.textContent).toBe(
+      "/solo/7001001/command-center/systems-check",
+    );
+    act(() => root.unmount());
+  });
 });
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-location>{location.pathname}</output>;
+}
+

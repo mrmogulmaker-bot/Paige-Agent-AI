@@ -15,7 +15,7 @@
 // motion-safe.
 import { useRef, useState } from "react";
 import {
-  Loader2, Paperclip, Sparkles, Clock, ChevronDown, X, Pencil, AlertTriangle,
+  Loader2, Paperclip, Sparkles, Clock, ChevronDown, X, Pencil, AlertTriangle, Plus,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -35,13 +35,13 @@ import type { ConversationsComposerModel, DraftTone } from "./conversationsAdapt
 export function ConversationsRichComposer(model: ConversationsComposerModel) {
   const {
     capabilities: caps,
-    value, onChange, onSend, sending, disabled, placeholder, note, sendLabel, rows, textareaClassName,
+    value, onChange, onSend, sending, disabled, sendDisabled, sendOnEnter, placeholder, note, sendLabel, rows, textareaClassName,
     identities, identityId, onIdentityChange, showIdentity = true,
     showSubject = false, subject = "", onSubjectChange,
     attachments = [], uploading = false, onAttachFiles, onRemoveAttachment,
     showDraftWithPaige = false, onDraftWithPaige, drafting = false, draftReadingDoc = false,
     draftFlags = [], canDraft = true,
-    templates = [], onApplyTemplate,
+    templates = [], onApplyTemplate, snippets = [], onApplySnippet, showCombinedInsert = false,
     signatureAvailable = false, appendSignature = true, onToggleSignature,
     scheduledFor, onSchedule,
     showDictation = false, onDictate, onDictateError,
@@ -54,12 +54,15 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
   const [draftGuide, setDraftGuide] = useState("");
   const [draftTone, setDraftTone] = useState<DraftTone>("professional");
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fireDraft = () => onDraftWithPaige?.({ guide: draftGuide.trim(), tone: draftTone });
 
   const renderDraft = caps.canDraftWithPaige && showDraftWithPaige && !!onDraftWithPaige;
   const renderTemplates = caps.hasTemplates && templates.length > 0 && !!onApplyTemplate;
+  const renderSnippets = snippets.length > 0 && !!onApplySnippet;
+  const renderInsert = showCombinedInsert && (renderSnippets || renderTemplates);
   const renderSignature = caps.hasSignature && signatureAvailable && !!onToggleSignature;
   const renderAttach = caps.hasAttachments && !!onAttachFiles;
   const renderSchedule = caps.canSchedule && !!onSchedule;
@@ -79,7 +82,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
 
       <div className="flex flex-wrap items-center gap-2">
         {showIdentity && identities.length > 0 && (
-          <Select value={identityId} onValueChange={onIdentityChange}>
+          <Select value={identityId} onValueChange={onIdentityChange} disabled={disabled}>
             <SelectTrigger className="h-9 min-w-[220px]">
               <SelectValue placeholder="Sending address" />
             </SelectTrigger>
@@ -105,6 +108,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
           <Input
             value={subject}
             onChange={(e) => onSubjectChange?.(e.target.value)}
+            disabled={disabled}
             placeholder="Subject"
             className="h-9 flex-1 min-w-[180px]"
           />
@@ -135,12 +139,12 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
       {renderAttach && (
         <>
           <input
-            ref={fileInputRef} type="file" multiple hidden
+            ref={fileInputRef} type="file" multiple hidden disabled={disabled}
             onChange={(e) => { if (e.target.files?.length) onAttachFiles?.(e.target.files); e.target.value = ""; }}
           />
           {/* Attach — leads the cluster; neutral/indigo utility (gold is Send, §11). */}
           <Button variant="outline" size="sm" className="h-8"
-            onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            onClick={() => fileInputRef.current?.click()} disabled={disabled || uploading}>
             {uploading
               ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
@@ -155,7 +159,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
         <DictationMicButton
           onText={(seg) => (onDictate ? onDictate(seg) : onChange(appendDictation(value, seg)))}
           onError={(msg) => onDictateError?.(msg)}
-          disabled={sending || drafting || uploading}
+          disabled={disabled || sending || drafting || uploading}
           variant="outline"
           size="sm"
           label="Dictate"
@@ -172,7 +176,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
             variant="outline" size="sm"
             className="h-8 min-w-[8.5rem] justify-center rounded-r-none border-r-0 border-[hsl(var(--primary)/0.4)]"
             onClick={fireDraft}
-            disabled={drafting || sending || uploading || !canDraft}
+            disabled={disabled || drafting || sending || uploading || !canDraft}
             aria-busy={drafting}
             title={!canDraft ? "Add a recipient to draft a reply" : undefined}
           >
@@ -188,7 +192,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
               <Button
                 variant="outline" size="sm"
                 className="h-8 rounded-l-none border-[hsl(var(--primary)/0.4)] px-2"
-                aria-label="Guide Paige's draft" disabled={drafting}
+                aria-label="Guide Paige's draft" disabled={disabled || drafting}
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </Button>
@@ -200,10 +204,11 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
               <Textarea
                 id="draft-guide" rows={2} value={draftGuide}
                 onChange={(e) => setDraftGuide(e.target.value)}
+                disabled={disabled}
                 placeholder="e.g. Confirm the Thursday call and ask for their intake form"
                 className="resize-none text-sm"
               />
-              <Select value={draftTone} onValueChange={(v) => setDraftTone(v as DraftTone)}>
+              <Select value={draftTone} onValueChange={(v) => setDraftTone(v as DraftTone)} disabled={disabled}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="professional">Professional</SelectItem>
@@ -213,7 +218,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
                 </SelectContent>
               </Select>
               <Button variant="outline" size="sm" className="h-8 w-full"
-                onClick={() => { fireDraft(); setDraftGuideOpen(false); }} disabled={drafting}>
+                onClick={() => { fireDraft(); setDraftGuideOpen(false); }} disabled={disabled || drafting}>
                 <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Draft it
               </Button>
             </PopoverContent>
@@ -221,16 +226,55 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
         </div>
       )}
 
-      {/* Saved email templates — non-gold utility (§11). */}
-      {renderTemplates && (
-        <Select onValueChange={(k) => onApplyTemplate?.(k)}>
+      {/* One discoverable snippets/templates utility. Radix Popover owns Escape dismissal and
+          trigger-focus restoration; choosing content only inserts editable text and never sends. */}
+      {renderInsert && (
+        <Popover open={insertOpen} onOpenChange={setInsertOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8" disabled={disabled}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Insert
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="max-h-72 w-72 overflow-y-auto p-2" aria-label="Insert a snippet or template">
+            {renderSnippets && (
+              <div>
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Snippets</p>
+                {snippets.map((snippet) => (
+                  <button key={snippet.id} type="button" className="w-full rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    onClick={() => { onApplySnippet?.(snippet.id); setInsertOpen(false); }}>
+                    <span className="block text-xs font-medium">{snippet.name}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">{snippet.trigger} · {snippet.body}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {renderTemplates && (
+              <div className={cn(renderSnippets && "mt-2 border-t border-border pt-2")}>
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Email templates</p>
+                {templates.map((template) => (
+                  <button key={template.template_key} type="button" className="w-full rounded-md px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    onClick={() => { onApplyTemplate?.(template.template_key); setInsertOpen(false); }}>
+                    <span className="block text-xs font-medium">{template.subject}</span>
+                    <span className="block text-[10px] text-muted-foreground">{template.category}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
+
+      {/* Preserve the established non-Solo template control unless a scope explicitly opts into
+          the combined picker above. */}
+      {renderTemplates && !showCombinedInsert && (
+        <Select onValueChange={(key) => onApplyTemplate?.(key)} disabled={disabled}>
           <SelectTrigger className="h-8 w-[190px]">
             <SelectValue placeholder="Insert template…" />
           </SelectTrigger>
           <SelectContent>
-            {templates.map((t) => (
-              <SelectItem key={t.template_key} value={t.template_key}>
-                <span className="mr-1.5 text-xs text-muted-foreground">[{t.category}]</span>{t.subject}
+            {templates.map((template) => (
+              <SelectItem key={template.template_key} value={template.template_key}>
+                <span className="mr-1.5 text-xs text-muted-foreground">[{template.category}]</span>{template.subject}
               </SelectItem>
             ))}
           </SelectContent>
@@ -241,6 +285,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
         <Button
           variant="outline" size="sm" className="h-8"
           aria-pressed={appendSignature}
+          disabled={disabled}
           data-state={appendSignature ? "on" : "off"}
           onClick={onToggleSignature}
         >
@@ -253,7 +298,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
         <>
           <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8">
+              <Button variant="outline" size="sm" className="h-8" disabled={disabled}>
                 <Clock className="mr-1.5 h-3.5 w-3.5" />
                 {scheduledFor ? "Scheduled" : "Schedule"}
               </Button>
@@ -311,7 +356,7 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
     || showSubject
     || (renderAttach && attachments.length > 0)
     || (renderDraft && draftFlags.length > 0);
-  const hasToolbar = renderAttach || showDictation || renderDraft || renderTemplates || renderSignature || renderSchedule;
+  const hasToolbar = renderAttach || showDictation || renderDraft || renderInsert || renderTemplates || renderSignature || renderSchedule;
 
   return (
     <MessageComposer
@@ -320,6 +365,8 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
       onSend={onSend}
       sending={sending}
       disabled={disabled}
+      sendDisabled={sendDisabled}
+      sendOnEnter={sendOnEnter}
       placeholder={placeholder}
       note={note}
       sendLabel={sendLabel}
@@ -327,12 +374,12 @@ export function ConversationsRichComposer(model: ConversationsComposerModel) {
       header={hasHeader ? header : undefined}
       toolbar={hasToolbar ? toolbar : undefined}
       textareaClassName={cn(textareaClassName, renderAttach && dragOver && "ring-2 ring-[hsl(var(--ring))]")}
-      onDrop={renderAttach ? (e) => {
+      onDrop={renderAttach && !disabled ? (e) => {
         e.preventDefault(); onDragLeaveZone?.();
         if (e.dataTransfer.files?.length) onDropFiles?.(e.dataTransfer.files);
       } : undefined}
-      onDragOver={renderAttach ? (e) => { e.preventDefault(); onDragOverZone?.(); } : undefined}
-      onDragLeave={renderAttach ? () => onDragLeaveZone?.() : undefined}
+      onDragOver={renderAttach && !disabled ? (e) => { e.preventDefault(); onDragOverZone?.(); } : undefined}
+      onDragLeave={renderAttach && !disabled ? () => onDragLeaveZone?.() : undefined}
     />
   );
 }

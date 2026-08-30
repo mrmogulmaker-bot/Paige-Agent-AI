@@ -14,7 +14,7 @@
  * (null-tenant) calendars. On create we register the creator as a calendar_host
  * so the booking engine has an availability owner.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays, Plus, Copy, ExternalLink, Loader2, Trash2, Pencil, Palette, Globe, Check,
   FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound, ChevronUp, ChevronDown, Clock,
@@ -46,330 +46,29 @@ import {
 import { StatePill, StatRow, StatTile, FilterChip } from "@/components/ui/page";
 import { toast } from "sonner";
 import { useTenantContext } from "@/hooks/useTenantContext";
-
-export interface CalendarRow {
-  id: string;
-  tenant_id: string | null;
-  slug: string;
-  type: string;
-  title: string | null;
-  description: string | null;
-  logo_url: string | null;
-  accent: string | null;
-  color: string | null;
-  duration_min: number;
-  buffer_before_min: number;
-  buffer_after_min: number;
-  min_notice_min: number;
-  booking_horizon_days: number;
-  capacity: number;
-  redirect_url: string;
-  timezone: string;
-  availability_json: DayWindow[] | null;
-  enabled: boolean;
-  group_id: string | null;
-  created_by: string | null;
-  theme: string;
-  subtitle: string | null;
-  show_company_name: boolean;
-  location_type: string;
-  location_value: string | null;
-  location_options: LocationOption[];
-  intake_questions: IntakeQuestion[];
-  appointment_types: AppointmentType[];
-  date_overrides: DateOverride[];
-  notify_config: NotifyConfig;
-  assignment_strategy: AssignmentStrategy;
-}
-
-// How round-robin picks which host takes each new booking (§9 tenant-scoped).
-export interface AssignmentStrategy { mode: "balanced" | "availability" | "priority" }
-const ASSIGNMENT_MODES: { value: AssignmentStrategy["mode"]; label: string; desc: string }[] = [
-  { value: "balanced", label: "Balanced", desc: "Spread evenly — the next booking goes to the free host with the fewest upcoming." },
-  { value: "availability", label: "First available", desc: "Fill the earliest open slot across the team, whoever it belongs to." },
-  { value: "priority", label: "By priority", desc: "Send to the top of the order first; fall to the next only when they're booked." },
-];
-function normalizeAssignmentStrategy(raw: unknown): AssignmentStrategy {
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const mode = o.mode === "availability" || o.mode === "priority" ? o.mode : "balanced";
-  return { mode };
-}
-
-export interface LocationOption { type: string; value: string | null; }
-
-// Owner-authored booking-form questions (tenant-scoped, §9).
-export interface IntakeQuestion {
-  id: string; label: string; type: string; required: boolean;
-  options: string[]; placeholder: string | null;
-}
-export const INTAKE_TYPES: { type: string; label: string; hasOptions?: boolean }[] = [
-  { type: "text", label: "Short answer" },
-  { type: "textarea", label: "Paragraph" },
-  { type: "select", label: "Dropdown", hasOptions: true },
-  { type: "radio", label: "Single choice", hasOptions: true },
-  { type: "checkbox", label: "Multiple choice", hasOptions: true },
-  { type: "phone", label: "Phone" },
-  { type: "url", label: "Website / URL" },
-  { type: "number", label: "Number" },
-];
-function normalizeIntake(raw: unknown): IntakeQuestion[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((q, i) => {
-    const o = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
-    return {
-      id: String(o.id ?? `q${i}`),
-      label: String(o.label ?? ""),
-      type: INTAKE_TYPES.some((t) => t.type === o.type) ? String(o.type) : "text",
-      required: o.required === true,
-      options: Array.isArray(o.options) ? o.options.map((x) => String(x)) : [],
-      placeholder: typeof o.placeholder === "string" ? o.placeholder : null,
-    };
-  });
-}
-// Stable-ish id for a new question without pulling in a uuid dep.
-function newQuestionId(): string {
-  return `q_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
-}
-function newId(prefix: string): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
-}
-
-// Appointment types — a "service menu" on one booking page (tenant-scoped, §9).
-// price_cents is optional (§2): a service can be free / not-collected-here.
-export interface AppointmentType { id: string; name: string; description: string; duration_min: number; price_cents: number | null; }
-function normalizeAppointmentTypes(raw: unknown): AppointmentType[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((t, i) => {
-    const o = (t && typeof t === "object" ? t : {}) as Record<string, unknown>;
-    const cents = Number(o.price_cents);
-    return {
-      id: String(o.id ?? `t${i}`),
-      name: String(o.name ?? ""),
-      description: typeof o.description === "string" ? o.description : "",
-      duration_min: Math.max(5, Math.min(1440, Number(o.duration_min) || 30)),
-      price_cents: Number.isFinite(cents) && cents > 0 ? Math.round(cents) : null,
-    };
-  });
-}
-
-// Date-specific overrides — block a day, or set special hours (tenant-scoped, §9).
-export interface DateWindow { start: string; end: string; }
-export interface DateOverride { date: string; blocked: boolean; windows: DateWindow[]; }
-function normalizeDateOverrides(raw: unknown): DateOverride[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((o) => {
-    const r = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;
-    return {
-      date: String(r.date ?? ""),
-      blocked: r.blocked === true,
-      windows: Array.isArray(r.windows)
-        ? r.windows.map((w) => {
-            const ww = (w && typeof w === "object" ? w : {}) as Record<string, unknown>;
-            return { start: String(ww.start ?? "09:00"), end: String(ww.end ?? "17:00") };
-          })
-        : [],
-    };
-  }).filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date));
-}
-
-// `to` = who a reminder targets: guest (default), host, or both. subject/body are
-// optional owner-authored copy with {{merge_fields}} (empty = built-in default).
-export interface NotifyReminder { channel: string; offset_min: number; to?: string; subject?: string; body?: string; }
-// A booking-lifecycle trigger: an opt-in message on created / cancelled /
-// rescheduled, beyond the built-in emails. Absent array = nothing extra sends.
-export interface NotifyLifecycle {
-  event: "created" | "cancelled" | "rescheduled";
-  channel: string; to: string; subject?: string; body?: string;
-}
-// followup_offset_min = minutes AFTER the meeting ends to send the follow-up.
-export interface NotifyConfig {
-  confirm_guest: boolean; confirm_host: boolean; reminders: NotifyReminder[];
-  followup_guest: boolean; followup_offset_min: number;
-  followup_subject?: string; followup_body?: string;
-  lifecycle: NotifyLifecycle[];
-}
-const DEFAULT_NOTIFY: NotifyConfig = {
-  confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 1440 }],
-  followup_guest: false, followup_offset_min: 60, lifecycle: [],
-};
-// Merge fields the owner can drop into any subject/body — rendered server-side
-// per booking. Shown as clickable hint chips next to each copy field.
-const MERGE_FIELDS: { token: string; label: string }[] = [
-  { token: "{{guest_name}}", label: "Guest name" },
-  { token: "{{when}}", label: "Date & time" },
-  { token: "{{where}}", label: "Location" },
-  { token: "{{service}}", label: "Service" },
-  { token: "{{title}}", label: "Session title" },
-];
-// Who a reminder / lifecycle message reaches.
-const NOTIFY_TARGETS = [
-  { value: "guest", label: "Guest" },
-  { value: "host", label: "Host" },
-  { value: "both", label: "Both" },
-];
-// Booking-lifecycle events a tenant can attach an opt-in message to.
-const LIFECYCLE_EVENTS: { value: NotifyLifecycle["event"]; label: string; hint: string }[] = [
-  { value: "created", label: "When a booking is made", hint: "Sends the moment someone books — on top of the confirmation above." },
-  { value: "cancelled", label: "When a booking is cancelled", hint: "Sends when a guest cancels via their manage link." },
-  { value: "rescheduled", label: "When a booking is moved", hint: "Sends when a guest reschedules to a new time." },
-];
-// How a reminder reaches the guest. SMS/Both need a phone on file + a texting
-// connection on the workspace; email always sends. Coaching-generic (§2).
-const REMINDER_CHANNELS = [
-  { value: "email", label: "Email" },
-  { value: "sms", label: "SMS" },
-  { value: "both", label: "Both" },
-];
-const REMINDER_OFFSETS = [
-  { min: 15, label: "15 min before" },
-  { min: 60, label: "1 hour before" },
-  { min: 120, label: "2 hours before" },
-  { min: 1440, label: "1 day before" },
-  { min: 2880, label: "2 days before" },
-  { min: 10080, label: "1 week before" },
-];
-const FOLLOWUP_OFFSETS = [
-  { min: 0, label: "Right after it ends" },
-  { min: 60, label: "1 hour after" },
-  { min: 180, label: "3 hours after" },
-  { min: 1440, label: "1 day after" },
-  { min: 2880, label: "2 days after" },
-  { min: 10080, label: "1 week after" },
-];
+// The calendar configuration model — types, constants, normalizers and the
+// patch builder — lives in one place now that a second surface edits the same
+// rows (§18). This file kept the copy for as long as it was the only editor.
+import {
+  type AssignmentStrategy, type LocationOption, type IntakeQuestion, type AppointmentType,
+  type DateWindow, type DateOverride, type NotifyReminder, type NotifyLifecycle,
+  type NotifyConfig, type DayWindow, type CalendarRow, type AvailState,
+  SELECT_COLS, ASSIGNMENT_MODES, INTAKE_TYPES, DEFAULT_NOTIFY, MERGE_FIELDS, NOTIFY_TARGETS,
+  LIFECYCLE_EVENTS, REMINDER_CHANNELS, REMINDER_OFFSETS, FOLLOWUP_OFFSETS, MEETING_METHODS,
+  TYPES, TYPE_LABEL, SWATCHES, COMMON_TZ, DURATION_PRESETS, BOOKING_HORIZON_PRESETS,
+  DAY_NAMES, DEFAULT_AVAIL, optStr, normalizeAssignmentStrategy, normalizeIntake,
+  normalizeAppointmentTypes, normalizeDateOverrides, normalizeNotify, normalizeLocationOptions,
+  slugify, randomSuffix, newId, newQuestionId, initials, availToJson, jsonToAvail,
+} from "@/lib/calendar/config";
+export type {
+  CalendarRow, IntakeQuestion, AppointmentType, DateOverride, DateWindow, NotifyConfig,
+  NotifyReminder, NotifyLifecycle, LocationOption, AssignmentStrategy, DayWindow,
+} from "@/lib/calendar/config";
+export { INTAKE_TYPES } from "@/lib/calendar/config";
 
 export interface CalendarGroup { id: string; name: string; tenant_id: string | null; }
 interface PersonRow { user_id: string; full_name: string | null; avatar_url: string | null; count: number; }
 
-type DayWindow = { day: number; start: string; end: string };
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-type AvailState = Record<number, { enabled: boolean; start: string; end: string }>;
-const DEFAULT_AVAIL: AvailState = Object.fromEntries(
-  [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
-);
-
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
-
-// Meeting methods the owner can offer. Enable one → fixed; enable several → the
-// invitee chooses on the booking page. in_person/custom carry a value field.
-const MEETING_METHODS = [
-  { type: "google_meet", label: "Google Meet", needsValue: false, placeholder: "" },
-  { type: "zoom", label: "Zoom", needsValue: false, placeholder: "" },
-  { type: "phone", label: "Phone call", needsValue: false, placeholder: "" },
-  { type: "in_person", label: "In person", needsValue: true, placeholder: "123 Main St, Suite 200" },
-  { type: "custom", label: "Custom", needsValue: true, placeholder: "https://… or instructions" },
-];
-function normalizeLocationOptions(raw: unknown): LocationOption[] {
-  const arr = Array.isArray(raw) ? raw : [];
-  const out = arr
-    .map((o) => (o && typeof o === "object" ? o : {}) as Record<string, unknown>)
-    .map((o) => ({ type: String(o.type ?? ""), value: typeof o.value === "string" ? o.value : null }))
-    .filter((o) => MEETING_METHODS.some((m) => m.type === o.type));
-  return out.length ? out : [{ type: "google_meet", value: null }];
-}
-
-const TYPES = [
-  { value: "personal", label: "One-on-one", hint: "A single host meets one guest at a time." },
-  { value: "event", label: "Group / class", hint: "One session, many attendees (webinar, class)." },
-  { value: "round_robin", label: "Round-robin", hint: "Rotate bookings across a team." },
-  { value: "collective", label: "Collective", hint: "Several hosts must all attend." },
-];
-const TYPE_LABEL: Record<string, string> = Object.fromEntries(TYPES.map((t) => [t.value, t.label]));
-
-// Brand-forward palette — gold + indigo lead (doctrine §6), then distinct hues
-// so many calendars stay visually separable in the agenda.
-const SWATCHES = [
-  "#EBB94C", "#7A67E8", "#2DD4BF", "#F472B6", "#60A5FA",
-  "#34D399", "#FB923C", "#A78BFA", "#F87171", "#94A3B8",
-];
-
-const COMMON_TZ = [
-  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-  "America/Phoenix", "America/Anchorage", "Pacific/Honolulu", "Europe/London", "UTC",
-];
-
-const DURATION_PRESETS = [15, 30, 45, 60, 90];
-// How far out guests may book. Tenant-authored per calendar (§9).
-const BOOKING_HORIZON_PRESETS: { days: number; label: string }[] = [
-  { days: 7, label: "1 week out" },
-  { days: 14, label: "2 weeks out" },
-  { days: 30, label: "1 month out" },
-  { days: 60, label: "2 months out" },
-  { days: 90, label: "3 months out" },
-  { days: 180, label: "6 months out" },
-  { days: 365, label: "1 year out" },
-  { days: 730, label: "Open — 2 years out" },
-];
-
-// Trim to a clean optional string (undefined when empty) so we never persist "".
-function optStr(v: unknown): string | undefined {
-  return typeof v === "string" && v.trim() ? v : undefined;
-}
-// Coerce a possibly-partial/legacy notify_config jsonb into a safe shape.
-function normalizeNotify(raw: unknown): NotifyConfig {
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const reminders = Array.isArray(o.reminders)
-    ? (o.reminders as unknown[])
-        .map((r) => (r && typeof r === "object" ? r : {}) as Record<string, unknown>)
-        .filter((r) => typeof r.offset_min === "number")
-        .map((r) => ({
-          channel: typeof r.channel === "string" ? r.channel : "email",
-          offset_min: r.offset_min as number,
-          to: r.to === "host" || r.to === "both" ? (r.to as string) : "guest",
-          subject: optStr(r.subject), body: optStr(r.body),
-        }))
-    : [...DEFAULT_NOTIFY.reminders];
-  const lifecycle = Array.isArray(o.lifecycle)
-    ? (o.lifecycle as unknown[])
-        .map((l) => (l && typeof l === "object" ? l : {}) as Record<string, unknown>)
-        .filter((l) => l.event === "created" || l.event === "cancelled" || l.event === "rescheduled")
-        .map((l) => ({
-          event: l.event as NotifyLifecycle["event"],
-          channel: l.channel === "sms" || l.channel === "both" ? (l.channel as string) : "email",
-          to: l.to === "host" || l.to === "both" ? (l.to as string) : "guest",
-          subject: optStr(l.subject), body: optStr(l.body),
-        }))
-    : [];
-  return {
-    confirm_guest: o.confirm_guest !== false,
-    confirm_host: o.confirm_host !== false,
-    reminders,
-    followup_guest: o.followup_guest === true,
-    followup_offset_min: typeof o.followup_offset_min === "number" ? o.followup_offset_min : DEFAULT_NOTIFY.followup_offset_min,
-    followup_subject: optStr(o.followup_subject), followup_body: optStr(o.followup_body),
-    lifecycle,
-  };
-}
-function initials(name: string | null): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
-}
-function slugify(s: string): string {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-}
-function randomSuffix(): string {
-  // Fixed-length, collision-resistant. crypto.randomUUID is available in every
-  // browser we target; Math.random is only a last-resort fallback.
-  const raw = typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID().replace(/-/g, "")
-    : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-  return raw.slice(0, 8);
-}
-function availToJson(a: AvailState): DayWindow[] {
-  return [0, 1, 2, 3, 4, 5, 6]
-    .filter((d) => a[d]?.enabled && a[d].start < a[d].end)
-    .map((d) => ({ day: d, start: a[d].start, end: a[d].end }));
-}
-function jsonToAvail(json: DayWindow[] | null | undefined): AvailState {
-  const next: AvailState = JSON.parse(JSON.stringify(DEFAULT_AVAIL));
-  if (Array.isArray(json) && json.length) {
-    for (const d of [0, 1, 2, 3, 4, 5, 6]) next[d].enabled = false;
-    for (const w of json) {
-      if (w && typeof w.day === "number") next[w.day] = { enabled: true, start: w.start, end: w.end };
-    }
-  }
-  return next;
-}
 
 function ColorSwatches({ value, onChange }: { value: string | null; onChange: (c: string) => void }) {
   return (
@@ -653,25 +352,40 @@ function DateOverridesEditor({ overrides, onChange }: { overrides: DateOverride[
 
 type BuilderState = { mode: "create"; type?: string } | { mode: "edit"; calendar: CalendarRow };
 
-export default function CalendarsPanel() {
-  const { activeTenantId, isPlatformStaff } = useTenantContext();
+export default function CalendarsPanel({ activeTenantId: suppliedTenantId }: { activeTenantId?: string | null } = {}) {
+  const tenantContext = useTenantContext();
+  const activeTenantId = suppliedTenantId ?? tenantContext.activeTenantId;
+  const { isPlatformStaff } = tenantContext;
   const [rows, setRows] = useState<CalendarRow[]>([]);
   const [groups, setGroups] = useState<CalendarGroup[]>([]);
   const [people, setPeople] = useState<PersonRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CalendarRow | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
   const [typeChooser, setTypeChooser] = useState(false);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
-    const [{ data, error }, { data: grp }] = await Promise.all([
-      supabase.from("calendars").select(SELECT_COLS).order("created_at", { ascending: false }),
-      supabase.from("calendar_groups").select("id, name, tenant_id").order("name"),
-    ]);
-    if (error) toast.error(error.message);
-    const calRows = (data as CalendarRow[]) ?? [];
+    setLoadError(null);
+    setRows([]);
+    setGroups([]);
+    setPeople([]);
+    let calendarsQuery = supabase.from("calendars").select(SELECT_COLS).order("created_at", { ascending: false });
+    let groupsQuery = supabase.from("calendar_groups").select("id, name, tenant_id").order("name");
+    calendarsQuery = activeTenantId ? calendarsQuery.eq("tenant_id", activeTenantId) : calendarsQuery.is("tenant_id", null);
+    groupsQuery = activeTenantId ? groupsQuery.eq("tenant_id", activeTenantId) : groupsQuery.is("tenant_id", null);
+    const [{ data, error }, { data: grp, error: groupError }] = await Promise.all([calendarsQuery, groupsQuery]);
+    if (seq !== loadSeq.current) return;
+    if (error || groupError) {
+      setLoadError(error?.message ?? groupError?.message ?? "Calendar settings could not load");
+      setLoading(false);
+      return;
+    }
+    const calRows = (data as unknown as CalendarRow[]) ?? [];
     setRows(calRows);
     setGroups((grp as CalendarGroup[]) ?? []);
 
@@ -679,6 +393,7 @@ export default function CalendarsPanel() {
     const owners = Array.from(new Set(calRows.map((c) => c.created_by).filter(Boolean))) as string[];
     if (owners.length) {
       const { data: profs } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", owners);
+      if (seq !== loadSeq.current) return;
       type Prof = { user_id: string; full_name: string | null; avatar_url: string | null };
       const nameMap = new Map(((profs as Prof[] | null) ?? []).map((p) => [p.user_id, p]));
       const counts = new Map<string, number>();
@@ -693,12 +408,17 @@ export default function CalendarsPanel() {
       setPeople([]);
     }
     setLoading(false);
-  }, []);
+  }, [activeTenantId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { loadSeq.current += 1; };
+  }, [load]);
 
   const assignGroup = async (calId: string, groupId: string | null) => {
-    const { error } = await supabase.from("calendars").update({ group_id: groupId }).eq("id", calId);
+    let query = supabase.from("calendars").update({ group_id: groupId }).eq("id", calId);
+    query = activeTenantId ? query.eq("tenant_id", activeTenantId) : query.is("tenant_id", null);
+    const { error } = await query;
     if (error) { toast.error(error.message); return; }
     setRows((r) => r.map((x) => x.id === calId ? { ...x, group_id: groupId } : x));
   };
@@ -749,7 +469,9 @@ export default function CalendarsPanel() {
               <Switch
                 checked={c.enabled}
                 onCheckedChange={async (v) => {
-                  const { error } = await supabase.from("calendars").update({ enabled: v }).eq("id", c.id);
+                  let query = supabase.from("calendars").update({ enabled: v }).eq("id", c.id);
+                  query = activeTenantId ? query.eq("tenant_id", activeTenantId) : query.is("tenant_id", null);
+                  const { error } = await query;
                   if (error) toast.error(error.message);
                   else setRows((r) => r.map((x) => x.id === c.id ? { ...x, enabled: v } : x));
                 }}
@@ -836,7 +558,13 @@ export default function CalendarsPanel() {
           </div>
         )}
 
-        {loading ? (
+        {loadError ? (
+          <div className="rounded-lg border border-destructive/30 p-8 text-center" role="alert">
+            <p className="text-sm font-medium">Scheduling calendars couldn't load</p>
+            <p className="mt-1 text-xs text-muted-foreground">No empty state or calendar count is inferred from this failed account-scoped read.</p>
+            <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>Retry</Button>
+          </div>
+        ) : loading ? (
           <div className="py-10 flex items-center justify-center gap-2 text-muted-foreground text-sm">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading calendars…
           </div>
@@ -909,7 +637,9 @@ export default function CalendarsPanel() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 const t = deleteTarget!; setDeleteTarget(null);
-                const { error } = await supabase.from("calendars").delete().eq("id", t.id);
+                let query = supabase.from("calendars").delete().eq("id", t.id);
+                query = activeTenantId ? query.eq("tenant_id", activeTenantId) : query.is("tenant_id", null);
+                const { error } = await query;
                 if (error) toast.error(error.message);
                 else { setRows((r) => r.filter((x) => x.id !== t.id)); toast.success("Calendar deleted"); }
               }}>
@@ -1261,10 +991,10 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost, calendarTimez
 
 // GHL-style "Choose calendar type" step — opens on New calendar, then the builder.
 const TYPE_CARDS = [
-  { value: "personal", icon: UserRound, title: "Personal booking", desc: "Schedules one-on-one meetings with a specific team member.", eg: "Client meetings, private consultations." },
-  { value: "round_robin", icon: Repeat, title: "Round robin", desc: "Distributes appointments among team members in a rotating order.", eg: "Sales calls, onboarding sessions." },
-  { value: "event", icon: GraduationCap, title: "Class booking", desc: "One host meets with multiple participants.", eg: "Webinars, group training, online classes." },
-  { value: "collective", icon: UsersRound, title: "Collective booking", desc: "Multiple hosts meet with one participant.", eg: "Panel interviews, committee reviews." },
+  { value: "personal", icon: UserRound, title: "Personal booking", desc: "Schedules one-on-one meetings with a specific team member.", eg: "Client meetings, private consultations.", truth: "LIVE" },
+  { value: "round_robin", icon: Repeat, title: "Round robin", desc: "Distributes appointments among team members in a rotating order.", eg: "Sales calls, onboarding sessions.", truth: "LIVE" },
+  { value: "event", icon: GraduationCap, title: "Class booking", desc: "One host meets with multiple participants. Internal quick-create parity and direct end-to-end coverage remain incomplete.", eg: "Webinars, group training, online classes.", truth: "PARTIAL" },
+  { value: "collective", icon: UsersRound, title: "Collective booking", desc: "Multiple required hosts meet with one participant. Internal quick-create parity and direct end-to-end coverage remain incomplete.", eg: "Panel interviews, committee reviews.", truth: "PARTIAL" },
 ];
 
 function CalendarTypeChooser({ open, onOpenChange, onPick }: {
@@ -1286,7 +1016,7 @@ function CalendarTypeChooser({ open, onOpenChange, onPick }: {
                   <t.icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <div className="font-semibold text-sm">{t.title}</div>
+                  <div className="flex items-center gap-2"><span className="font-semibold text-sm">{t.title}</span><Badge variant="outline" className="text-[9px]">{t.truth}</Badge></div>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.desc}</p>
                   <p className="text-xs text-muted-foreground/70 mt-1">E.g.: {t.eg}</p>
                 </div>
@@ -1460,7 +1190,9 @@ function CalendarBuilderSheet({
     if (isEdit && existing) {
       const desiredSlug = slugify(slugInput);
       const patchWithSlug = desiredSlug && desiredSlug !== existing.slug ? { ...patch, slug: desiredSlug } : patch;
-      const { data, error } = await supabase.from("calendars").update(patchWithSlug).eq("id", existing.id).select(SELECT_COLS).single();
+      let query = supabase.from("calendars").update(patchWithSlug as never).eq("id", existing.id);
+      query = tenantId ? query.eq("tenant_id", tenantId) : query.is("tenant_id", null);
+      const { data, error } = await query.select(SELECT_COLS).single();
       setSaving(false);
       if (error || !data) {
         if ((error as { code?: string })?.code === "23505") toast.error("That booking link is taken — pick another.");
@@ -1468,7 +1200,7 @@ function CalendarBuilderSheet({
         return;
       }
       toast.success("Calendar saved");
-      onSaved(data as CalendarRow, false);
+      onSaved(data as unknown as CalendarRow, false);
       onOpenChange(false);
       return;
     }
@@ -1482,7 +1214,7 @@ function CalendarBuilderSheet({
     // availability, so its public booking link should accept bookings right away
     // (toggle it back to Draft on the card to unpublish).
     const { data, error } = await supabase
-      .from("calendars").insert({ tenant_id: tenantId, slug, enabled: true, ...patch }).select(SELECT_COLS).single();
+      .from("calendars").insert({ tenant_id: tenantId, slug, enabled: true, ...patch } as never).select(SELECT_COLS).single();
     if (error || !data) {
       setSaving(false);
       if ((error as { code?: string })?.code === "23505") toast.error("That booking link is taken — pick another.");
@@ -1497,14 +1229,16 @@ function CalendarBuilderSheet({
       ? (await supabase.from("calendar_hosts").insert({ calendar_id: data.id, user_id: uid, priority: 0 })).error
       : new Error("no-session");
     if (hostErr) {
-      await supabase.from("calendars").delete().eq("id", data.id);
+      let rollback = supabase.from("calendars").delete().eq("id", data.id);
+      rollback = tenantId ? rollback.eq("tenant_id", tenantId) : rollback.is("tenant_id", null);
+      await rollback;
       setSaving(false);
       toast.error(uid ? "Couldn't finish setting up the calendar — please try again." : "Session expired — please sign in again.");
       return;
     }
     setSaving(false);
     toast.success("Calendar created and live — its booking link is ready to share");
-    onSaved(data as CalendarRow, true);
+    onSaved(data as unknown as CalendarRow, true);
   };
 
   return (

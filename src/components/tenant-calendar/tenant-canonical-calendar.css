@@ -1,0 +1,303 @@
+.tcal-shell {
+  display: grid;
+  grid-template-areas: "header summary" "tabs tabs";
+  grid-template-columns: minmax(0, 1fr) minmax(560px, .95fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 2px 20px;
+  min-height: 0;
+  container-type: inline-size;
+}
+
+.tcal-header {
+  grid-area: header;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.tcal-header > div {
+  gap: 10px;
+}
+
+.tcal-header h1 {
+  font-size: 1.45rem;
+  line-height: 1.15;
+}
+
+.tcal-header p {
+  margin-top: 2px;
+  max-width: 58ch;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tcal-summary {
+  grid-area: summary;
+  min-width: 0;
+  align-self: start;
+}
+
+.tcal-summary > div {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tcal-summary .tcal-stat {
+  min-width: 0;
+  padding: 6px 8px;
+  box-shadow: none;
+}
+
+.tcal-stat > div {
+  align-items: center;
+  gap: 6px;
+}
+
+.tcal-stat [class*="text-2xl"] {
+  margin-top: 0;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+.tcal-stat [class*="uppercase"] {
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.tcal-stat [class*="mt-2"] {
+  margin-top: 1px;
+  font-size: 10px;
+}
+
+.tcal-stat [class*="h-9"][class*="w-9"] {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.tcal-stat [class*="h-9"] svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tcal-tabs-root {
+  grid-area: tabs;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  gap: 2px;
+}
+
+.tcal-tablist {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 1px;
+}
+
+.tcal-tablist > [role="tab"] {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.tcal-calendar-panel {
+  display: grid;
+  grid-template-areas: "truth toolbar" "board board";
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  min-height: 0;
+  margin-top: 0 !important;
+}
+
+.tcal-truth-stack {
+  display: grid;
+  grid-area: truth;
+  min-width: 0;
+  gap: 4px;
+}
+
+.tcal-truth-stack > div {
+  align-items: center;
+  padding-block: 3px;
+}
+
+.tcal-truth-stack span:last-child {
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.tcal-toolbar {
+  display: flex;
+  grid-area: toolbar;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 8px;
+}
+
+.tcal-read-state {
+  grid-area: board;
+  min-width: 0;
+}
+
+.tcal-board {
+  display: grid;
+  grid-area: board;
+  grid-template-areas: "filters canvas inspector";
+  grid-template-columns: 210px minmax(0, 1fr) 260px;
+  min-width: 0;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.tcal-canvas {
+  position: relative;
+  grid-area: canvas;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tcal-filters {
+  grid-area: filters;
+  min-width: 0;
+  max-height: 650px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tcal-inspector {
+  grid-area: inspector;
+  min-width: 0;
+  max-height: 650px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid hsl(var(--border));
+  border-radius: .65rem;
+  background: hsl(var(--card));
+  padding: 16px;
+}
+
+.tcal-kicker {
+  margin: 0 0 16px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.tcal-inspector-item {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: .55rem;
+  background: hsl(var(--background));
+  padding: 12px;
+  text-align: left;
+}
+
+.tcal-inspector-item:hover,
+.tcal-inspector-item:focus-visible {
+  border-color: hsl(var(--primary));
+  outline: none;
+}
+
+.tcal-inspector-item span,
+.tcal-inspector-item small {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+@media (max-width: 1279px) {
+  .tcal-board {
+    grid-template-areas:
+      "filters canvas"
+      "inspector inspector";
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .tcal-inspector { max-height: 220px; }
+}
+
+@media (max-width: 1199px) {
+  .tcal-shell {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tcal-summary > div {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .tcal-calendar-panel {
+    grid-template-areas: "truth" "toolbar" "board";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tcal-toolbar {
+    justify-content: space-between;
+  }
+
+  .tcal-board {
+    grid-template-areas:
+      "canvas"
+      "filters"
+      "inspector";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tcal-filters,
+  .tcal-inspector { max-height: 260px; }
+}
+
+/* The center workspace narrows independently when navigation or the single
+   PAIGE workspace is expanded, so reflow from Calendar's actual owner width. */
+@container (max-width: 900px) {
+  .tcal-calendar-panel {
+    grid-template-areas: "truth" "toolbar" "board";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tcal-toolbar {
+    justify-content: space-between;
+  }
+
+  .tcal-board {
+    grid-template-areas:
+      "canvas"
+      "filters"
+      "inspector";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tcal-canvas { min-height: 520px; }
+  .tcal-filters,
+  .tcal-inspector { max-height: 260px; }
+}
+
+@media (max-width: 639px) {
+  .tcal-summary > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tcal-truth-stack span:last-child {
+    overflow: visible;
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tcal-board *,
+  .tcal-board *::before,
+  .tcal-board *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

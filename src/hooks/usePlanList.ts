@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { friendlyPlanError } from "@/lib/planning";
 
@@ -63,6 +63,11 @@ export interface UsePlanListOpts {
    * than plan-window dates. */
   byItemDate?: boolean;
   enabled?: boolean;
+  /**
+   * Authenticated tenant epoch. The RPC still derives authority server-side;
+   * this key only clears client residue and rejects late responses after a switch.
+   */
+  tenantScopeKey?: string | null;
 }
 
 export interface UsePlanListResult {
@@ -82,20 +87,31 @@ export interface UsePlanListResult {
 }
 
 export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
-  const { scope = "mine", from, to, status, contactId, byItemDate, enabled = true } = opts;
+  const { scope = "mine", from, to, status, contactId, byItemDate, enabled = true, tenantScopeKey } = opts;
   const [plans, setPlans] = useState<Plan[]>([]);
   const [looseItems, setLooseItems] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const requestSeq = useRef(0);
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!enabled) { setLoading(false); return; }
+    const seq = ++requestSeq.current;
+    if (!enabled || tenantScopeKey === null) {
+      setPlans([]);
+      setLooseItems([]);
+      setUserId(null);
+      setError(null);
+      setForbidden(false);
+      setLoading(false);
+      return;
+    }
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      if (seq !== requestSeq.current) return;
       const uid = user?.id ?? null;
       setUserId(uid);
 
@@ -112,6 +128,7 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
       if (scope === "mine" && uid) params.p_assigned_to_user_id = uid;
 
       const { data, error: rpcErr } = await supabase.rpc("plan_list", params);
+      if (seq !== requestSeq.current) return;
       if (rpcErr) throw rpcErr;
 
       const payload = (data ?? {}) as { plans?: Plan[]; loose_items?: PlanItem[] };
@@ -129,8 +146,9 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
       setPlans(nextPlans.map((p) => ({ ...p, items: p.items ?? [] })));
       setLooseItems(nextLoose);
       setForbidden(false);
-    } catch (e: any) {
-      const raw = String(e?.message || "");
+    } catch (e: unknown) {
+      if (seq !== requestSeq.current) return;
+      const raw = e instanceof Error ? e.message : String(e ?? "");
       // A client (non-member) is refused by the RPC — that's a graceful "not
       // available here" state, not an error banner with an internal code.
       setForbidden(raw.includes("PLAN_FORBIDDEN") || raw.includes("PLAN_NO_TENANT"));
@@ -138,9 +156,18 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
       setPlans([]);
       setLooseItems([]);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [enabled, scope, from, to, status, contactId, byItemDate]);
+  }, [enabled, scope, from, to, status, contactId, byItemDate, tenantScopeKey]);
+
+  useEffect(() => {
+    requestSeq.current += 1;
+    setPlans([]);
+    setLooseItems([]);
+    setUserId(null);
+    setError(null);
+    setForbidden(false);
+  }, [tenantScopeKey]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 

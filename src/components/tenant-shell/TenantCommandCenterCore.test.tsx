@@ -51,7 +51,7 @@ describe("tenant Command Center core workspace", () => {
     expect(host.textContent).toContain("Attention · LIVE");
     expect(host.textContent).not.toMatch(/Bellweather|Ridgeline|Hartwell|Ledgerly/);
     expect(Array.from(host.querySelectorAll("a")).map((link) => link.getAttribute("href"))).toEqual(
-      expect.arrayContaining(["/solo/1971670/clients", "/solo/1971670/calendar", "/solo/1971670/setup"]),
+      expect.arrayContaining(["/solo/1971670/clients", "/solo/1971670/calendar", "/solo/1971670/settings"]),
     );
 
     const command = Array.from(host.querySelectorAll("button")).find((button) =>
@@ -62,16 +62,59 @@ describe("tenant Command Center core workspace", () => {
     act(() => root.unmount());
   });
 
+  it.each([
+    ["/solo/42/command-center", "/solo/42/calendar"],
+    ["/business/9082725/command-center", "/business/9082725/calendar"],
+    ["/agency/1924546/command-center", "/agency/1924546/calendar"],
+    [
+      "/agency/1924546/sub/9082725/command-center",
+      "/agency/1924546/sub/9082725/calendar",
+    ],
+    ["/enterprise/7/command-center", "/enterprise/7/calendar"],
+  ])("keeps Calendar attention links inside the active account tree at %s", (pathname, expectedHref) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+
+    act(() => root.render(
+      <MemoryRouter initialEntries={[pathname]}>
+        <TenantCommandCenterCore
+          accountContext={{ accountName: "Supplied account", accountType: "standalone" }}
+          openPaige={vi.fn()}
+          data={{
+            greeting: { name: "Owner", dateLabel: "Today", summary: "Review today's work." },
+            metrics: [],
+            approvals: [],
+            attention: { tasks_due: 2, upcoming_sessions_7d: 1 },
+            attentionState: "LIVE",
+            departments: [],
+            departmentState: "UNAVAILABLE",
+            loading: false,
+            approve: vi.fn(),
+            decline: vi.fn(),
+            refresh: vi.fn(),
+          }}
+        />
+      </MemoryRouter>,
+    ));
+
+    const attentionHrefs = Array.from(host.querySelectorAll("a"))
+      .filter((link) => /Tasks due|Sessions this week/.test(link.textContent ?? ""))
+      .map((link) => link.getAttribute("href"));
+    expect(attentionHrefs).toEqual([expectedHref, expectedHref]);
+    expect(attentionHrefs).not.toContain("/admin/calendar");
+    act(() => root.unmount());
+  });
+
   it("keeps secondary ownership out of Command Center and reuses the live Systems Check", () => {
     const agency = source("src/agency/CommandCenter.tsx");
     const solo = source("src/solo/CommandCenter.tsx");
 
     expect(agency).toContain("<AgencyCommandCenterCore");
-    expect(solo).toContain("<SoloCommandCenterCore");
+    expect(solo).toContain("<SoloSystemsCheckWorkspace");
     expect(agency).not.toContain('["team", "Team Pulse"');
     expect(agency).not.toContain('["pipe", "Prospect Pipeline"');
     expect(agency).toMatch(/<SystemsCheckTile scope="tenant"\s*\/>/);
-    expect(solo).toMatch(/<SystemsCheckTile scope="tenant"\s*\/>/);
+    expect(solo).not.toContain("SystemsCheckTile");
   });
 
   it("propagates one authenticated account context from each route owner into the shared core", () => {
@@ -83,7 +126,7 @@ describe("tenant Command Center core workspace", () => {
     expect(soloOwner).toContain("resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id})");
     expect(soloOwner).toContain("<CommandHub accountContext={accountContext}");
     expect(soloOwner).toContain("accountName={accountContext.accountName}");
-    expect(soloAdapter).toContain("<SoloCommandCenterCore accountContext={accountContext}");
+    expect(soloAdapter).toContain("<SoloSystemsCheckWorkspace accountContext={accountContext} openPaige={openPaige}");
     expect(soloOwner).not.toContain("Your business");
 
     expect(agencyOwner).toContain("const accountContext = resolveTenantAccountContext(");

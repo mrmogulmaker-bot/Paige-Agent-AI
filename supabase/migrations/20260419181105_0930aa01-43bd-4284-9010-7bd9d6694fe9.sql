@@ -71,8 +71,23 @@ CREATE POLICY "Coaches can view assigned dispute outcomes"
 -- ============================================================
 -- 4. Realtime channel authorization
 -- ============================================================
-ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
-
+-- `ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY` was removed here (#643).
+-- It was both redundant and unauthorized:
+--   * redundant — Supabase provisions realtime.messages with RLS already enabled
+--     (relrowsecurity = true before any migration in this history runs), so the
+--     statement never changed anything;
+--   * unauthorized — that table is owned by `supabase_realtime_admin`, and migrations
+--     replay as `postgres`, which is neither a member of that role nor a superuser.
+--     ALTER TABLE requires ownership, so on a fresh database it raised
+--     `42501 must be owner of table messages` and aborted the entire replay.
+-- On production the migration had been applied through the dashboard as a more
+-- privileged role, so the failure only ever surfaced on a Supabase Preview branch.
+--
+-- The authorization intent is unchanged and is carried entirely by the policies below.
+-- CREATE POLICY / DROP POLICY on realtime.messages is the supported Realtime
+-- Authorization mechanism and is verified to succeed as `postgres`; the later
+-- 20260712141503_user_presence_realtime_topic_rls follows the same pattern and notes
+-- in its own header that realtime.messages is already RLS-on with no policies.
 DROP POLICY IF EXISTS "Users can subscribe to own topics" ON realtime.messages;
 CREATE POLICY "Users can subscribe to own topics"
   ON realtime.messages

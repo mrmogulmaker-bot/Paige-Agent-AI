@@ -50,6 +50,7 @@ export interface CommandMetric {
 }
 
 export interface CommandCenterData {
+  accountEpoch: string | null;
   approvals: CommandApproval[];
   metrics: CommandMetric[];
   attention: PracticeAttention | undefined;
@@ -57,6 +58,8 @@ export interface CommandCenterData {
   greeting: { name: string; dateLabel: string; summary: string };
   counts: { approvals: number };
   loading: boolean;
+  isError: boolean;
+  departmentsConfigured: boolean;
   /** True only when there is genuinely nothing to show (fresh, empty book). */
   empty: boolean;
   approve: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -93,11 +96,20 @@ function firstToken(name: string): string {
 }
 
 export function useCommandCenter(): CommandCenterData {
-  const { items, loading: approvalsLoading, refresh: refreshApprovals } =
+  const { activeTenant, activeTenantId } = useTenantContext();
+  const { items, loading: approvalsLoading, error: approvalsError, refresh: refreshApprovals } =
     usePendingApprovals({ scope: "all" });
-  const { metrics: m, attention, loading: dashLoading, refetch } = usePracticeDashboard();
-  const { departments } = usePaigeDeptStatus();
-  const { activeTenant } = useTenantContext();
+  const { metrics: m, attention, loading: dashLoading, isError: dashboardError, refetch } =
+    usePracticeDashboard(30, activeTenantId);
+  const { departments, loading: departmentsLoading, configured: departmentsConfigured } =
+    usePaigeDeptStatus(activeTenantId);
+  // The legacy queue hook refetches on tenant changes but may briefly retain its
+  // prior response. The row carries its server-owned tenant id, so fail closed at
+  // this composition boundary and never render a row from another account epoch.
+  const epochItems = useMemo(
+    () => activeTenantId ? items.filter((item) => item.tenant_id === activeTenantId) : [],
+    [activeTenantId, items],
+  );
 
   // Greeting first name from auth metadata (best effort, §15 — never a placeholder).
   const [authName, setAuthName] = useState<string | null>(null);
@@ -119,7 +131,7 @@ export function useCommandCenter(): CommandCenterData {
 
   const approvals = useMemo<CommandApproval[]>(
     () =>
-      items.map((r) => {
+      epochItems.map((r) => {
         const draft = (r.draft_content ?? {}) as Record<string, unknown>;
         const draftSubject = typeof draft.subject === "string" ? draft.subject : "";
         const draftBody =
@@ -141,7 +153,7 @@ export function useCommandCenter(): CommandCenterData {
           aging: humanizeAge(r.age_seconds),
         };
       }),
-    [items],
+    [epochItems],
   );
 
   const metrics = useMemo<CommandMetric[]>(() => {
@@ -166,7 +178,8 @@ export function useCommandCenter(): CommandCenterData {
     (at.tasks_due ?? 0) +
     (at.onboarding_in_progress ?? 0);
 
-  const loading = approvalsLoading || dashLoading;
+  const loading = approvalsLoading || dashLoading || departmentsLoading;
+  const isError = dashboardError || !!approvalsError;
   const empty =
     !loading &&
     (m?.active_clients ?? 0) === 0 &&
@@ -234,6 +247,7 @@ export function useCommandCenter(): CommandCenterData {
   );
 
   return {
+    accountEpoch: activeTenantId,
     approvals,
     metrics,
     attention,
@@ -241,9 +255,12 @@ export function useCommandCenter(): CommandCenterData {
     greeting,
     counts: { approvals: approvals.length },
     loading,
+    isError,
+    departmentsConfigured,
     empty,
     approve,
     decline,
     refresh,
   };
 }
+

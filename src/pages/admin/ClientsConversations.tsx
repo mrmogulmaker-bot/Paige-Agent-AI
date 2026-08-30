@@ -10,9 +10,9 @@
 //
 // §11/§25 premium on @/components/ui/page + @/components/ui/select (NO native select);
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useSearchParams, Link } from "react-router-dom";
+import { useLocation, useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
   PanelRight, Bell, Plus, PlugZap, Trash2,
@@ -60,6 +60,23 @@ import type {
   ConversationsCapabilities, ConversationsListModel, ConversationsComposerModel,
   ConversationsContactPanelModel, ShellThread, DraftTone,
 } from "./conversations/shell/conversationsAdapter";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import type { SoloCommsReadinessEvidence } from "./conversations/solo/soloConversationModel";
+import { useAgentPresence } from "@/components/ui/paige";
+import {
+  SoloClientContextPane,
+  SoloConversationOperatingBar,
+  SoloConversationsWorkspace,
+  type ConversationHandlingMode,
+} from "./conversations/solo/SoloConversationsWorkspace";
+import {
+  buildSoloConversationLinks,
+  canSendInSolo,
+  conversationNeedsAttention,
+  createAccountEpochGuard,
+  getSoloChannelTruth,
+  type AccountEpochToken,
+} from "./conversations/solo/soloConversationModel";
 
 // ── Connector (channel_connectors row — kept local, not in shared) ─────────────────
 interface Connector {
@@ -133,12 +150,14 @@ function MessageBubble({
   onEdit,
   onCancelScheduled,
   approving,
+  sendDisabled = false,
 }: {
   m: MessageRow;
   onApprove: (m: MessageRow) => void;
   onEdit: (m: MessageRow) => void;
   onCancelScheduled: (id: string) => void;
   approving: boolean;
+  sendDisabled?: boolean;
 }) {
   const isDraft = m.status === "draft";
   const body = readableMessageBody(m);
@@ -164,7 +183,7 @@ function MessageBubble({
               variant="gold"
               size="sm"
               onClick={() => onApprove(m)}
-              disabled={approving}
+              disabled={approving || sendDisabled}
               className="h-8"
             >
               {approving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
@@ -237,19 +256,39 @@ function MessageBubble({
   );
 }
 
+function SoloConversationOperatingBarWithPaige(
+  props: Omit<ComponentProps<typeof SoloConversationOperatingBar>, "onOpenPaige">,
+) {
+  const { expandRail } = useAgentPresence();
+  return <SoloConversationOperatingBar {...props} onOpenPaige={expandRail} />;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════
 export default function ClientsConversations() {
   const reduce = useReducedMotion();
+  const location = useLocation();
+  const { activeTenantId } = useTenantContext();
+  const soloRoute = /^\/solo\/([^/]+)\/clients\/conversations(?:\/|$)/.exec(location.pathname);
+  const isSolo = !!soloRoute;
+  const soloAccountAddress = soloRoute?.[1] ?? "";
+  const accountEpochRef = useRef(createAccountEpochGuard(activeTenantId));
   // The ONE shared Voice Device (§18) — the tenant places calls on their OWN provisioned number
   // via the tenant voice token path; the same Device the top-nav dialer uses.
   const voice = useVoiceDevice();
   const [rows, setRows] = useState<MessageRow[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messageLoadFailure, setMessageLoadFailure] = useState<string | null>(null);
+  const [threadLoadFailure, setThreadLoadFailure] = useState<string | null>(null);
+  const loadFailure = messageLoadFailure ?? threadLoadFailure;
+  const [connectorReadReported, setConnectorReadReported] = useState(true);
+  const [retrying, setRetrying] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   // A freshly composed thread may not have streamed into dbThreads yet — hold its key so the
   // keep-valid-selection guard doesn't clobber the pick to visibleThreads[0] in the gap.
   const pendingSelectRef = useRef<string | null>(null);
+  const contactSeekHandledRef = useRef<string | null>(null);
+  const suppReqRef = useRef(0);
 
   // #121 GHL-parity list UX now lives INSIDE the extracted ConversationsThreadList (§18):
   // density (+ its localStorage persistence), sort, multi-select, and the Gmail-style keyboard
@@ -266,6 +305,7 @@ export default function ClientsConversations() {
   const [searching, setSearching] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
+  const [handlingMode, setHandlingMode] = useState<ConversationHandlingMode>("human");
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
   // §43 — compose a NEW outbound thread (the surface is a tool, not just a viewer).
   const [composeOpen, setComposeOpen] = useState(false);
@@ -274,6 +314,7 @@ export default function ClientsConversations() {
   // Gate the ?contact deep-link on a real first threads pull, so an empty (not-yet-loaded)
   // dbThreads never gets read as "no thread exists" (which would wrongly open the composer).
   const [threadsReady, setThreadsReady] = useState(false);
+  const [accountHasThreads, setAccountHasThreads] = useState<boolean | null>(null);
 
   // Composer state (reply into the selected thread)
   const [composeChannel, setComposeChannel] = useState<ChannelType | "">("");
@@ -285,6 +326,9 @@ export default function ClientsConversations() {
   const bodyRef = useRef("");
   useEffect(() => { bodyRef.current = body; }, [body]);
   const [sending, setSending] = useState(false);
+  // Synchronous, epoch-scoped lock: repeated keyboard/click submits cannot enqueue the same
+  // reply before React paints `sending`, and an old account's completion cannot unlock a new one.
+  const sendInFlightRef = useRef<AccountEpochToken | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -320,12 +364,31 @@ export default function ClientsConversations() {
   // quick action can file a plan row (plan_set_reminder is keyed to the caller). Server-derived.
   const [userId, setUserId] = useState<string | null>(null);
 
+  // The parent also keys this page by the server-resolved tenant, but every asynchronous seam
+  // still carries an explicit epoch. A late response from account A can therefore never paint
+  // into account B even if it resolves during the remount/route transition gap.
+  useEffect(() => {
+    accountEpochRef.current.advance(activeTenantId);
+    tenantIdRef.current = null;
+    setRows([]); setConnectors([]); setLoading(true); setRetrying(false); setMessageLoadFailure(null); setThreadLoadFailure(null); setConnectorReadReported(true); setSelectedKey(null);
+    pendingSelectRef.current = null; contactSeekHandledRef.current = null;
+    setDbThreads([]); setView("active"); setLabelFilter(null); setSearch("");
+    setMatchedKeys(null); setSearching(false); setSuppressions([]);
+    setComposeOpen(false); setComposeContact(null); setThreadsReady(false); setAccountHasThreads(null);
+    setComposeChannel(""); setComposeConnectorId(""); setSubject(""); setBody("");
+    setScheduledFor(null); resetAttachments(); setSnippets([]); setSignatures([]); setTemplates([]);
+    setAppendSignature(true); setDragOver(false); setUndo(null);
+    setHandlingMode("human"); setUserId(null); setDrafting(false); setDraftReadingDoc(false);
+    setDraftFlags([]); setSending(false); sendInFlightRef.current = null; setApprovingId(null); setEditingDraftId(null); suppReqRef.current += 1;
+  }, [activeTenantId, resetAttachments]);
+
   // ── Deep-link: read ?filter=<view> once; unknown slug → keep default (never blank). ─
   const [searchParams] = useSearchParams();
   useEffect(() => {
     const v = searchParams.get("filter");
-    if (v && (INBOX_VIEWS as string[]).includes(v)) setView(v as InboxView);
-  }, [searchParams]);
+    if (v && (INBOX_VIEWS as string[]).includes(v) && (v !== "attention" || isSolo)) setView(v as InboxView);
+  }, [isSolo, searchParams]);
+  useEffect(() => { if (!isSolo && view === "attention") setView("active"); }, [isSolo, view]);
 
   // Command Center and other Paige-governed entry points can open the ONE
   // existing compose surface directly; no duplicate quick-email modal.
@@ -338,6 +401,8 @@ export default function ClientsConversations() {
 
   // ── message pull (500-row) + connectors + composer resources (R2: one reconciled load) ─
   const load = useCallback(async () => {
+    const epoch = accountEpochRef.current.capture();
+    if (epoch.account !== activeTenantId) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
     const [msgRes, connRes, snipRes, sigRes, tplRes, tidRes] = await Promise.all([
@@ -348,15 +413,26 @@ export default function ClientsConversations() {
       sb.from("email_templates").select("template_key, subject, body_markdown, body_html, category").eq("active", true).order("category"),
       sb.rpc("current_user_tenant_id"),
     ]);
-    if (msgRes.error) toast.error("Couldn't load conversations.");
-    setRows((msgRes.data as unknown as MessageRow[]) ?? []);
-    setConnectors((connRes.data as unknown as Connector[]) ?? []);
+    if (!accountEpochRef.current.accept(epoch)) return;
+    if (msgRes.error) {
+      toast.error("Couldn't load conversations.");
+      setMessageLoadFailure(msgRes.error.message || "Conversation messages are unavailable.");
+    } else {
+      setMessageLoadFailure(null);
+      setRows((msgRes.data as unknown as MessageRow[]) ?? []);
+    }
+    if (connRes.error) {
+      setConnectorReadReported(false);
+    } else {
+      setConnectorReadReported(true);
+      setConnectors((connRes.data as unknown as Connector[]) ?? []);
+    }
     setSnippets((snipRes.data as unknown as Snippet[]) ?? []);
     setSignatures((sigRes.data as unknown as Signature[]) ?? []);
     setTemplates((tplRes.data as unknown as EmailTemplate[]) ?? []);
     tenantIdRef.current = (tidRes.data as string | null) ?? null;
     setLoading(false);
-  }, []);
+  }, [activeTenantId]);
 
   // Server query filters by the underlying STATE; derived views ride on a base state.
   const baseFilter: ThreadFilter =
@@ -367,6 +443,8 @@ export default function ClientsConversations() {
 
   // ── threads pull (source of truth for order/state/labels) ──────────────────────────
   const loadThreads = useCallback(async () => {
+    const epoch = accountEpochRef.current.capture();
+    if (epoch.account !== activeTenantId) return;
     const nowIso = new Date().toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
@@ -377,10 +455,16 @@ export default function ClientsConversations() {
     else if (baseFilter === "archived") q = q.not("archived_at", "is", null);
     // "all" → no state predicate
     const { data, error } = await q;
-    if (error) toast.error("Couldn't load the inbox.");
-    setDbThreads((data as DbThread[]) ?? []);
+    if (!accountEpochRef.current.accept(epoch)) return;
+    if (error) {
+      toast.error("Couldn't load the inbox.");
+      setThreadLoadFailure(error.message || "The conversation queue is unavailable.");
+    } else {
+      setDbThreads((data as DbThread[]) ?? []);
+      setThreadLoadFailure(null);
+    }
     setThreadsReady(true); // gate the ?contact deep-link on a real first threads pull
-  }, [baseFilter]);
+  }, [activeTenantId, baseFilter]);
 
   // ── first-run existence probe (UNFILTERED, §9 RLS-scoped) ──────────────────────────
   // `loadThreads` filters by the current VIEW (active/archived/snoozed), so dbThreads being
@@ -389,17 +473,24 @@ export default function ClientsConversations() {
   // archived/snoozed threads lands on the default active view, sees zero, and gets the
   // onboarding surface in place of the whole inbox (incl. ThreadFilters), trapping those
   // existing conversations out of reach. null = not yet known (never flash onboarding early).
-  const [accountHasThreads, setAccountHasThreads] = useState<boolean | null>(null);
   const checkAccountHasThreads = useCallback(async () => {
+    const epoch = accountEpochRef.current.capture();
+    if (epoch.account !== activeTenantId) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count, error } = await (supabase as any).from("threads")
       .select("thread_key", { count: "exact", head: true });
-    if (!error) setAccountHasThreads((count ?? 0) > 0);
-  }, []);
+    if (accountEpochRef.current.accept(epoch) && !error) setAccountHasThreads((count ?? 0) > 0);
+  }, [activeTenantId]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadThreads(); }, [loadThreads]);
   useEffect(() => { void checkAccountHasThreads(); }, [checkAccountHasThreads]);
+  const retryConversations = useCallback(async () => {
+    const epoch = accountEpochRef.current.capture();
+    setRetrying(true);
+    await Promise.all([load(), loadThreads(), checkAccountHasThreads()]);
+    if (accountEpochRef.current.accept(epoch)) setRetrying(false);
+  }, [checkAccountHasThreads, load, loadThreads]);
 
   // ── Deep-link: ?contact=<id> — the Client-360 "Message {name}" action lands here (§18: the
   // Conversations hub is the ONE comms home now that the old ContactCommsPanel is retired).
@@ -408,7 +499,6 @@ export default function ClientsConversations() {
   // it via the same pendingSelectRef machinery a fresh compose uses; if none exists yet, open the
   // composer pre-addressed to the contact. Handled once per contact-id so realtime thread updates
   // don't re-fire it (mirrors the ?filter= pattern above). ─────────────────────────────────────
-  const contactSeekHandledRef = useRef<string | null>(null);
   useEffect(() => {
     const cid = searchParams.get("contact");
     if (!cid || !cid.trim()) return;
@@ -427,10 +517,12 @@ export default function ClientsConversations() {
     // falling back to a fresh compose. If any thread exists, switch to the "all" view (which surfaces
     // archived/snoozed) and hold the pick; only compose when the contact genuinely has no thread (§13).
     void (async () => {
+      const epoch = accountEpochRef.current.capture();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (supabase as any).from("threads")
         .select("thread_key").eq("contact_id", cid)
         .order("last_message_at", { ascending: false, nullsFirst: false }).limit(1);
+      if (!accountEpochRef.current.accept(epoch)) return;
       const key = (data as { thread_key: string }[] | null)?.[0]?.thread_key ?? null;
       if (key) {
         pendingSelectRef.current = key;
@@ -445,14 +537,17 @@ export default function ClientsConversations() {
 
   // ── realtime: messages + threads (§7 two-way, live unread/snooze/archive) ───────────
   useEffect(() => {
-    const chM = supabase.channel("comms_inbox")
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => { void load(); void loadThreads(); })
+    const epoch = accountEpochRef.current.capture();
+    const channelSuffix = `${epoch.account ?? "unresolved"}:${epoch.epoch}`;
+    const current = () => accountEpochRef.current.accept(epoch);
+    const chM = supabase.channel(`comms_inbox:${channelSuffix}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => { if (current()) { void load(); void loadThreads(); } })
       .subscribe();
-    const chT = supabase.channel("comms_threads")
-      .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => { void loadThreads(); void checkAccountHasThreads(); })
+    const chT = supabase.channel(`comms_threads:${channelSuffix}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => { if (current()) { void loadThreads(); void checkAccountHasThreads(); } })
       .subscribe();
     return () => { void supabase.removeChannel(chM); void supabase.removeChannel(chT); };
-  }, [load, loadThreads]);
+  }, [checkAccountHasThreads, load, loadThreads]);
 
   // ── full-text search over messages.search_tsv (websearch → no injection), 300ms ─────
   useEffect(() => {
@@ -460,10 +555,12 @@ export default function ClientsConversations() {
     if (!term) { setMatchedKeys(null); setSearching(false); return; }
     setSearching(true);
     const h = setTimeout(async () => {
+      const epoch = accountEpochRef.current.capture();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = supabase as any;
       const { data, error } = await sb.from("messages").select("thread_key")
         .textSearch("search_tsv", term, { type: "websearch", config: "english" }).limit(1000);
+      if (!accountEpochRef.current.accept(epoch)) return;
       if (error) toast.error("Search hit a snag — try again.");
       setMatchedKeys(new Set(((data as { thread_key: string }[]) ?? []).map((r) => r.thread_key)));
       setSearching(false);
@@ -492,14 +589,20 @@ export default function ClientsConversations() {
 
   // Resolve the operator's own auth id once (§9 server-derived) for the reminder quick action.
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
-  }, []);
+    const epoch = accountEpochRef.current.capture();
+    if (epoch.account !== activeTenantId) return;
+    supabase.auth.getUser().then(({ data }) => {
+      if (accountEpochRef.current.accept(epoch)) setUserId(data.user?.id ?? null);
+    });
+  }, [activeTenantId]);
 
   // ── derived view predicate (R3): drafts/awaiting-reply/waking-today/scheduled ───────
   const nowMs = Date.now();
   const viewPredicate = useCallback((t: DbThread): boolean => {
     const msgs = messagesByKey.get(t.thread_key) ?? [];
     switch (view) {
+      case "attention":
+        return conversationNeedsAttention(t, msgs, nowMs);
       case "drafts":
         return msgs.some((m) => m.status === "draft" && m.direction === "outbound");
       case "awaiting-reply":
@@ -528,16 +631,16 @@ export default function ClientsConversations() {
   const foldedPending = useMemo(() => {
     let n = 0;
     for (const t of dbThreads) {
-      if (t.archived_at) continue;
-      if (t.snoozed_until && new Date(t.snoozed_until).getTime() > nowMs) continue;
       const msgs = messagesByKey.get(t.thread_key) ?? [];
-      const isDraft = msgs.some((m) => m.status === "draft" && m.direction === "outbound");
-      const isAwaiting = t.last_direction === "outbound" && !!t.last_message_at
-        && (nowMs - new Date(t.last_message_at).getTime()) > 3 * 864e5;
-      if (isDraft || isAwaiting) n++;
+      if (isSolo ? conversationNeedsAttention(t, msgs, nowMs) : (
+        !t.archived_at
+        && (!t.snoozed_until || new Date(t.snoozed_until).getTime() <= nowMs)
+        && (msgs.some((m) => m.status === "draft" && m.direction === "outbound")
+          || (t.last_direction === "outbound" && !!t.last_message_at && nowMs - new Date(t.last_message_at).getTime() > 3 * 864e5))
+      )) n++;
     }
     return n;
-  }, [dbThreads, messagesByKey, nowMs]);
+  }, [dbThreads, isSolo, messagesByKey, nowMs]);
 
   // ── visible threads: state filter is server-side; search + label + view client-side. The FINAL sort
   // now lives INSIDE ConversationsThreadList (§18) over the normalized threads — the container
@@ -553,6 +656,32 @@ export default function ClientsConversations() {
     [dbThreads, matchedKeys, labelFilter, viewPredicate]);
 
   const activeConnectors = useMemo(() => connectors.filter((c) => c.active && c.status === "active"), [connectors]);
+  const sendableConnectors = useMemo(
+    () => activeConnectors.filter((c) => c.channel_type === "email" || c.channel_type === "sms"),
+    [activeConnectors],
+  );
+  const composerConnectors = isSolo ? sendableConnectors : activeConnectors;
+
+  // The channel disclosure reads the SAME canonical record Settings -> Connections
+  // renders, so the two surfaces cannot report different answers about whether
+  // this account can text. Solo only: the disclosure itself is Solo-only.
+  const [commsReadiness, setCommsReadiness] = useState<SoloCommsReadinessEvidence | null>(null);
+  useEffect(() => {
+    if (!isSolo || !activeTenantId) { setCommsReadiness(null); return; }
+    let cancelled = false;
+    void (async () => {
+      // RPC is deployed but not yet present in generated database types.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("tenant_comms_readiness");
+      if (cancelled) return;
+      // On any failure the disclosure keeps saying "Not reported" rather than
+      // inferring readiness from connector presence.
+      setCommsReadiness(error ? null : ((data as SoloCommsReadinessEvidence | null) ?? null));
+    })();
+    return () => { cancelled = true; };
+  }, [isSolo, activeTenantId]);
+
+  const soloChannelTruth = getSoloChannelTruth(connectors, connectorReadReported, commsReadiness);
 
   // keep a valid selection as threads stream in
   useEffect(() => {
@@ -571,6 +700,8 @@ export default function ClientsConversations() {
   }, [visibleThreads, selectedKey, dbThreads]);
 
   const selectedThread = useMemo(() => dbThreads.find((t) => t.thread_key === selectedKey) ?? null, [dbThreads, selectedKey]);
+  const soloLinks = buildSoloConversationLinks(soloAccountAddress, selectedThread?.contact_id ?? null);
+  const connectionsHref = isSolo ? soloLinks.connections : "/admin/integrations/email";
 
   // selected view = DbThread + its loaded messages (all fields the composer/approve need)
   const selected = useMemo((): SelectedView | null => {
@@ -600,15 +731,16 @@ export default function ClientsConversations() {
   // wouldn't refresh; and without the shared guard a slow toggle-read for contact A could clobber
   // a newer read for contact B, staling the pre-send opt-out guard. The shared counter closes both
   // races cleanly (§13). Server-side pre-send remains authoritative regardless.
-  const suppReqRef = useRef(0);
   const loadSuppressionsFor = useCallback(async (cid: string | null) => {
     const req = ++suppReqRef.current;
+    const epoch = accountEpochRef.current.capture();
+    if (epoch.account !== activeTenantId) return;
     if (!cid) { if (req === suppReqRef.current) setSuppressions([]); return; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
     const { data } = await sb.from("paige_suppressions").select("channel, reason").eq("contact_id", cid);
-    if (req === suppReqRef.current) setSuppressions((data as Suppression[]) ?? []);
-  }, []);
+    if (req === suppReqRef.current && accountEpochRef.current.accept(epoch)) setSuppressions((data as Suppression[]) ?? []);
+  }, [activeTenantId]);
   useEffect(() => { void loadSuppressionsFor(selectedThread?.contact_id ?? null); }, [selectedThread?.contact_id, loadSuppressionsFor]);
   const refreshSuppressions = useCallback(
     () => loadSuppressionsFor(selectedThread?.contact_id ?? null),
@@ -618,11 +750,11 @@ export default function ClientsConversations() {
   // Default the composer channel to the thread's channel when a connector supports it.
   useEffect(() => {
     if (!selected) return;
-    const threadConnector = activeConnectors.find(
+    const threadConnector = composerConnectors.find(
       (c) => c.id === selected.connectorId && c.channel_type === selected.channel,
     );
-    const fallbackConnector = activeConnectors.find((c) => c.channel_type === selected.channel)
-      ?? activeConnectors[0]
+    const fallbackConnector = composerConnectors.find((c) => c.channel_type === selected.channel)
+      ?? composerConnectors[0]
       ?? null;
     const chosenConnector = threadConnector ?? fallbackConnector;
     setComposeConnectorId(chosenConnector?.id ?? "");
@@ -630,7 +762,10 @@ export default function ClientsConversations() {
     setEditingDraftId(null);
     setSubject("");
     setBody("");
-  }, [selectedKey, selected, activeConnectors]);
+  }, [selectedKey, selected, composerConnectors]);
+  useEffect(() => {
+    if (isSolo && handlingMode === "draft" && composeChannel !== "email") setHandlingMode("human");
+  }, [composeChannel, handlingMode, isSolo]);
 
   // Scroll the thread to the newest message on change.
   useEffect(() => {
@@ -646,19 +781,23 @@ export default function ClientsConversations() {
   // Single callers ignore the return + get their toast — behavior unchanged.
   type MutOpts = { silent?: boolean };
   const snoozeThread = async (id: string, until: Date | string | null, opts?: MutOpts): Promise<boolean> => {
+    const epoch = accountEpochRef.current.capture();
     const iso = until == null ? null : typeof until === "string" ? until : until.toISOString();
     optimisticThread(id, { snoozed_until: iso });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ snoozed_until: iso }).eq("id", id);
+    if (!accountEpochRef.current.accept(epoch)) return false;
     if (error) { if (!opts?.silent) toast.error("Couldn't snooze that thread."); void loadThreads(); return false; }
     if (!opts?.silent) toast.success(iso ? "Snoozed." : "Back in your inbox.");
     return true;
   };
   const archiveThread = async (id: string, on: boolean, opts?: MutOpts): Promise<boolean> => {
+    const epoch = accountEpochRef.current.capture();
     const iso = on ? new Date().toISOString() : null;
     optimisticThread(id, { archived_at: iso });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ archived_at: iso }).eq("id", id);
+    if (!accountEpochRef.current.accept(epoch)) return false;
     if (error) { if (!opts?.silent) toast.error("Couldn't update that thread."); void loadThreads(); return false; }
     if (!opts?.silent) toast.success(on ? "Archived." : "Moved to inbox.");
     return true;
@@ -668,9 +807,11 @@ export default function ClientsConversations() {
   // §9: JWT caller → tenant is server-derived inside the DEFINER fn; we NEVER pass
   // _tenant_id from the client. Optimistic archive locally; on error/false, reload.
   const deleteConversation = async (id: string): Promise<boolean> => {
+    const epoch = accountEpochRef.current.capture();
     optimisticThread(id, { archived_at: new Date().toISOString() });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc("delete_conversation", { _thread_id: id });
+    if (!accountEpochRef.current.accept(epoch)) return false;
     if (error || data === false) { toast.error("Couldn't remove that conversation."); void loadThreads(); return false; }
     // Definitive delete: drop it from local state NOW so it leaves the inbox immediately and the
     // selection-validity effect can't reselect it — don't wait on Realtime convergence (which the
@@ -681,16 +822,20 @@ export default function ClientsConversations() {
     return true;
   };
   const markThreadRead = async (id: string, opts?: MutOpts): Promise<boolean> => {
+    const epoch = accountEpochRef.current.capture();
     optimisticThread(id, { unread_count: 0 });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ unread_count: 0 }).eq("id", id);
+    if (!accountEpochRef.current.accept(epoch)) return false;
     if (error) { void loadThreads(); return false; }
     return true;
   };
   const setThreadLabels = async (threadId: string, labels: Label[], opts?: MutOpts): Promise<boolean> => {
+    const epoch = accountEpochRef.current.capture();
     optimisticThread(threadId, { labels });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ labels }).eq("id", threadId);
+    if (!accountEpochRef.current.accept(epoch)) return false;
     if (error) { if (!opts?.silent) toast.error("Couldn't save labels."); void loadThreads(); return false; }
     return true;
   };
@@ -710,8 +855,10 @@ export default function ClientsConversations() {
 
   // Cancel a queued scheduled send (R3) — routed through the any handle (typed-RPC ratchet).
   const cancelScheduled = async (id: string) => {
+    const epoch = accountEpochRef.current.capture();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc("cancel_scheduled_message", { _id: id });
+    if (!accountEpochRef.current.accept(epoch)) return;
     if (error || data === false) { toast.error("Too late — Paige already sent it."); return; }
     toast.success("Canceled — back to your draft."); void load(); void loadThreads();
   };
@@ -719,11 +866,13 @@ export default function ClientsConversations() {
   // ── One-click approve: send the existing draft row via the single outbound seam ──
   const approveDraft = async (m: MessageRow) => {
     if (!selected) return;
+    if (isSolo && !canSendInSolo(handlingMode, m.channel_type)) { toast.error("This handling mode or channel cannot send. Hand back to Human reply and use a ready email or SMS identity."); return; }
     if (!selected.toAddress) {
       toast.error("No client address on this thread to send to.");
       return;
     }
     setApprovingId(m.id);
+    const epoch = accountEpochRef.current.capture();
     try {
       const { data, error } = await supabase.functions.invoke("send-message", {
         body: {
@@ -737,6 +886,7 @@ export default function ClientsConversations() {
           message_id: m.id, // patch THIS draft row → sent (idempotent)
         },
       });
+      if (!accountEpochRef.current.accept(epoch)) return;
       if (error) throw new Error(error.message);
       // §37: read `outcome` first so a gated/blocked approval reports the true reason.
       const res = data as { status?: string; outcome?: string; reason?: string } | null;
@@ -747,9 +897,10 @@ export default function ClientsConversations() {
       else { throw new Error(res?.reason ?? "send_failed"); }
       void load();
     } catch (e) {
+      if (!accountEpochRef.current.accept(epoch)) return;
       toast.error(e instanceof Error ? e.message : "Couldn't send the reply.");
     } finally {
-      setApprovingId(null);
+      if (accountEpochRef.current.accept(epoch)) setApprovingId(null);
     }
   };
 
@@ -811,9 +962,16 @@ export default function ClientsConversations() {
     setBody(resolveMergeVars(t.body_markdown || (t.body_html ? t.body_html.replace(/<[^>]+>/g, "") : ""), ctx));
   }, [templates, selected]);
 
+  const applySnippet = useCallback((id: string) => {
+    const snippet = snippets.find((item) => item.id === id);
+    if (!snippet) return;
+    const expanded = resolveMergeVars(snippet.body, mergeContext(selected, undefined, snippet));
+    setBody((current) => current ? `${current}${current.endsWith("\n") ? "" : "\n"}${expanded}` : expanded);
+  }, [selected, snippets]);
+
   // ── (b)+(c) ONE send body builder + ONE dispatch that reads outcome (§37) ────────
   const buildSendBody = useCallback((overrides: { scheduled_for?: string } = {}) => {
-    const conn = activeConnectors.find((c) => c.id === composeConnectorId && c.channel_type === composeChannel) ?? null;
+    const conn = composerConnectors.find((c) => c.id === composeConnectorId && c.channel_type === composeChannel) ?? null;
     if (!conn) throw new Error("Choose an active sending address.");
     const html = composeChannel === "email" ? bodyWithSignature(body.trim()) : body.trim();
     return {
@@ -828,7 +986,7 @@ export default function ClientsConversations() {
       attachments: attachments.length ? attachments : undefined,      // contract §2
       ...(overrides.scheduled_for ? { scheduled_for: overrides.scheduled_for } : {}),
     };
-  }, [composeChannel, composeConnectorId, activeConnectors, bodyWithSignature, body, selected, subject,
+  }, [composeChannel, composeConnectorId, composerConnectors, bodyWithSignature, body, selected, subject,
       editingDraftId, attachments]);
 
   const dispatchSend = useCallback(async (overrides: { scheduled_for?: string } = {}) => {
@@ -841,9 +999,11 @@ export default function ClientsConversations() {
   }, [buildSendBody]);
 
   const cancelUndo = useCallback(async (messageId: string) => {
+    const epoch = accountEpochRef.current.capture();
     // R4: cancel through the any handle so the typed-RPC ratchet doesn't break tsc.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc("cancel_scheduled_message", { _id: messageId });
+    if (!accountEpochRef.current.accept(epoch)) return;
     if (error || data === false) { toast.error("Too late — Paige already sent it."); return; }
     toast.success("Undone — back to your draft.");
     setUndo(null); void load();
@@ -860,6 +1020,7 @@ export default function ClientsConversations() {
       return;
     }
     setDrafting(true);
+    const epoch = accountEpochRef.current.capture();
     setDraftFlags([]);
     // #176 — the document(s) the coach wants Paige to consider are the attachments STAGED
     // into this composer (guaranteed comms-attachments object paths `${tenantId}/…`, so the
@@ -890,6 +1051,7 @@ export default function ClientsConversations() {
           context: { contact_id: selected.contactId ?? undefined },
         },
       });
+      if (!accountEpochRef.current.accept(epoch)) return;
       // §13/§36 honest error: a non-2xx (compliance_blocked 422, reviewer_unavailable/timeout 503)
       // returns FunctionsHttpError whose `.message` is the generic "non-2xx status code" — the REAL
       // reason (summary/error) is in `.context`. Surface that so the coach knows to revise, never a
@@ -931,29 +1093,40 @@ export default function ClientsConversations() {
         toast.success("Paige drafted a reply — review before you send.");
       }
     } catch (e) {
+      if (!accountEpochRef.current.accept(epoch)) return;
       toast.error(e instanceof Error ? e.message : "Paige couldn't draft that — try again.");
     } finally {
-      setDrafting(false);
-      setDraftReadingDoc(false);
+      if (accountEpochRef.current.accept(epoch)) {
+        setDrafting(false);
+        setDraftReadingDoc(false);
+      }
     }
   }, [selected, body, subject, attachments]);
 
   // ── Send a fresh reply (or an edited draft) into the selected thread ──────────────
   const send = async () => {
     if (!selected) return;
+    if (isSolo && !canSendInSolo(handlingMode, composeChannel)) { toast.error("This handling mode or channel cannot send. Hand back to Human reply and use a ready email or SMS identity."); return; }
+    if (isSolo && !selected.contactId) { toast.error("Associate this participant with a client before sending."); return; }
     if (!composeChannel) { toast.error("Connect a channel first — Paige needs a way to send."); return; }
     if (!selected.toAddress) { toast.error("No client address on this thread to send to."); return; }
     if (!body.trim()) { toast.error("Write a reply first."); return; }
     if (composeChannel === "email" && !subject.trim()) { toast.error("Add a subject for the email."); return; }
+    if (attachments.length > 10) { toast.error("Remove attachments until 10 or fewer remain."); return; }
     // R-HIGH3: truthful pre-send guard — never enqueue for a contact who opted out of this channel.
     const blocked = suppressions.find((s) => s.channel === composeChannel);
     if (blocked) { toast.error(`This contact opted out of ${CHANNEL_LABEL[composeChannel]} — Paige won't send.`); return; }
 
+    const activeSend = sendInFlightRef.current;
+    if (activeSend && accountEpochRef.current.accept(activeSend)) return;
+    const epoch = accountEpochRef.current.capture();
+    sendInFlightRef.current = epoch;
     setSending(true);
     try {
       // Default path = undo-send: queue 30s out so the toast's Undo can cancel before delivery.
       const iso = scheduledFor ?? new Date(Date.now() + UNDO_WINDOW_MS).toISOString();
       const r = await dispatchSend({ scheduled_for: iso });
+      if (!accountEpochRef.current.accept(epoch)) return;
 
       if (r.outcome === "queued_scheduled") {
         if (scheduledFor) {
@@ -963,7 +1136,12 @@ export default function ClientsConversations() {
           const id = r.messageId;
           setUndo({ messageId: id, expiresAt: Date.now() + UNDO_WINDOW_MS });
           toast("Sending…", {
-            action: { label: "Undo", onClick: () => void cancelUndo(id) },
+            action: {
+              label: "Undo",
+              onClick: () => {
+                if (accountEpochRef.current.accept(epoch)) void cancelUndo(id);
+              },
+            },
             duration: UNDO_WINDOW_MS,
           });
           resetComposer();
@@ -982,17 +1160,21 @@ export default function ClientsConversations() {
       }
       void load();
     } catch (e) {
+      if (!accountEpochRef.current.accept(epoch)) return;
       toast.error(e instanceof Error ? e.message : "Couldn't send.");
     } finally {
-      setSending(false);
+      if (sendInFlightRef.current?.account === epoch.account && sendInFlightRef.current?.epoch === epoch.epoch) {
+        sendInFlightRef.current = null;
+      }
+      if (accountEpochRef.current.accept(epoch)) setSending(false);
     }
   };
 
-  const noChannel = activeConnectors.length === 0;
+  const noChannel = composerConnectors.length === 0;
   // send-message only handles email|sms today, so "New conversation" needs a SENDABLE channel.
   // A whatsapp-only tenant HAS a connector (noChannel=false) but the compose modal would be a
   // dead-end — gate the CTA on a real sendable channel, not merely any channel (§13/§43).
-  const canCompose = activeConnectors.some((c) => c.channel_type === "email" || c.channel_type === "sms");
+  const canCompose = sendableConnectors.length > 0;
 
   // The GENUINE first-run zero-state (§36): the account has no threads at all AND nothing is
   // narrowing the view — no active search, no label filter, the default "active" view. Only then
@@ -1083,12 +1265,14 @@ export default function ClientsConversations() {
         selected={ctx.selected}
         selectionActive={ctx.selectionActive}
         onToggleSelect={ctx.onToggleSelect}
+        needsAttention={isSolo && conversationNeedsAttention(t.raw, messagesByKey.get(t.key) ?? [], Date.now())}
       />
     ),
     renderFilters: () => (
       <ThreadFilters
         view={view} onView={setView} activeUnread={activeUnread} foldedPending={foldedPending}
         catalog={labelCatalog} labelFilter={labelFilter} onLabelFilter={setLabelFilter}
+        soloAttention={isSolo}
       />
     ),
     // §43 — start a NEW outbound thread (gold on the act, §11). With no sendable channel this is
@@ -1097,7 +1281,7 @@ export default function ClientsConversations() {
     renderNewConversation: () =>
       !canCompose ? (
         <Button variant="gold" size="sm" className="w-full" asChild>
-          <Link to="/admin/integrations/email">
+          <Link to={connectionsHref}>
             <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
           </Link>
         </Button>
@@ -1115,8 +1299,12 @@ export default function ClientsConversations() {
         description={
           view === "active"
             ? !canCompose
-              ? "Connect an email or SMS channel and the moment a client reaches out, their thread lands here — with Paige's draft reply ready for your approval."
-              : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
+              ? isSolo
+                ? "Connect a ready email or SMS identity in Settings. Inbound capability and PAIGE drafting remain channel-specific until reported ready."
+                : "Connect an email or SMS channel and the moment a client reaches out, their thread lands here — with Paige's draft reply ready for your approval."
+              : isSolo
+                ? "Start a conversation with a ready email or SMS identity. PAIGE can prepare editable email drafts; you remain the sender."
+                : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
             : "When you snooze or archive a conversation, it shows up here."
         }
         action={
@@ -1131,7 +1319,7 @@ export default function ClientsConversations() {
               )
               : (
                 <Button variant="outline" size="sm" asChild>
-                  <Link to="/admin/integrations/email">Connect a channel</Link>
+                  <Link to={connectionsHref}>Connect a channel</Link>
                 </Button>
               )
             : undefined
@@ -1146,19 +1334,38 @@ export default function ClientsConversations() {
   // only the transient popover state. Templates stay EMAIL-only (empty list on SMS) to preserve
   // the shipped gating without widening the static capability flag (§37). Dictation feeds THROUGH
   // handleBodyChange (via bodyRef, no stale closure) so #trigger snippet expansion still runs.
+  const uploadComposerFiles = (files: FileList | File[]) => {
+    if (attachments.length + Array.from(files).length > 10) {
+      toast.error("Attach no more than 10 files to one message.");
+      return;
+    }
+    void uploadFiles(files);
+  };
+
   const composerModel: ConversationsComposerModel | null = selected ? {
-    capabilities,
+    capabilities: { ...capabilities, canSchedule: capabilities.canSchedule && !(isSolo && handlingMode === "governed") },
     value: body,
     onChange: handleBodyChange,
-    onSend: () => void send(),
+    onSend: send,
     sending,
-    disabled: drafting || uploading,
+    disabled: drafting || uploading || (isSolo && handlingMode === "governed"),
+    sendDisabled: isSolo && (
+      !canSendInSolo(handlingMode, composeChannel)
+      || !composeChannel
+      || !selected.contactId
+      || !selected.toAddress
+      || !body.trim()
+      || (composeChannel === "email" && !subject.trim())
+      || attachments.length > 10
+      || suppressions.some((suppression) => suppression.channel === composeChannel)
+    ),
+    sendOnEnter: isSolo,
     placeholder: `Reply to ${selected.name}…  (drop a file to attach)`,
     rows: 2,
     sendLabel: scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send",
     note: selected.toAddress ? `To ${selected.toAddress}` : "No address on this thread",
-    textareaClassName: "min-h-[4.5rem] focus:min-h-[6rem]",
-    identities: activeConnectors.map((c) => ({
+    textareaClassName: "h-24 min-h-24 max-h-24",
+    identities: composerConnectors.map((c) => ({
       id: c.id,
       label: c.display_name?.trim() || CHANNEL_LABEL[c.channel_type],
       sublabel: c.from_address,
@@ -1166,7 +1373,7 @@ export default function ClientsConversations() {
     })),
     identityId: composeConnectorId,
     onIdentityChange: (id) => {
-      const connector = activeConnectors.find((c) => c.id === id);
+      const connector = composerConnectors.find((c) => c.id === id);
       setComposeConnectorId(id);
       setComposeChannel(connector?.channel_type ?? "");
     },
@@ -1175,7 +1382,7 @@ export default function ClientsConversations() {
     onSubjectChange: setSubject,
     attachments,
     uploading,
-    onAttachFiles: (files) => void uploadFiles(files),
+    onAttachFiles: uploadComposerFiles,
     onRemoveAttachment: (a) => void removeAttachment(a),
     showDraftWithPaige: composeChannel === "email",
     onDraftWithPaige: ({ guide, tone }) => void draftWithPaige({ guide, tone }),
@@ -1185,18 +1392,21 @@ export default function ClientsConversations() {
     canDraft: !!selected.toAddress,
     templates: composeChannel === "email" ? templates : [],
     onApplyTemplate: applyTemplate,
+    snippets: isSolo ? snippets : [],
+    onApplySnippet: applySnippet,
+    showCombinedInsert: isSolo,
     signatureAvailable: hasSignature,
     appendSignature,
     onToggleSignature: () => setAppendSignature((s) => !s),
     scheduledFor,
-    onSchedule: setScheduledFor,
+    onSchedule: isSolo && handlingMode === "governed" ? undefined : setScheduledFor,
     showDictation: true,
     onDictate: (seg) => handleBodyChange(appendDictation(bodyRef.current, seg)),
     onDictateError: (msg) => toast.error(msg),
     editingDraft: !!editingDraftId,
     onCancelEdit: resetComposer,
     dragOver,
-    onDropFiles: (f) => void uploadFiles(f),
+    onDropFiles: uploadComposerFiles,
     onDragOverZone: () => setDragOver(true),
     onDragLeaveZone: () => setDragOver(false),
   } : null;
@@ -1237,6 +1447,14 @@ export default function ClientsConversations() {
       />
     ),
   } : null;
+  const soloClientContext = (
+    <SoloClientContextPane
+      contact={selectedThread?.clients ?? null}
+      labels={selectedThread?.labels ?? []}
+      recentMessages={selected?.messages ?? []}
+      links={soloLinks}
+    />
+  );
 
   // ── call capability for the open thread (Phase 4) — the tenant dials the contact's phone on the
   //    SAME shared Device (§18) via the tenant voice token path. §13: no fake dial — the button
@@ -1249,7 +1467,19 @@ export default function ClientsConversations() {
   // thread-header quick actions + the composer). Passed to the shell as the `activeThread` slot.
   const activeThread = (
     <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
-      {!selected ? (
+      {isSolo && loadFailure ? (
+        <div className="grid flex-1 place-items-center p-4" role="alert">
+          <EmptyState
+            icon={AlertTriangle}
+            tone="muted"
+            title={/permission|denied|rls|403/i.test(loadFailure) ? "Conversation access is limited" : "Conversations couldn't load"}
+            description={/permission|denied|rls|403/i.test(loadFailure)
+              ? "This account has not granted access to the conversation data requested. Existing account context stays in place."
+              : "The current account remains selected. Retry without switching accounts or clearing the workspace."}
+            action={<Button variant="outline" size="sm" disabled={retrying} onClick={() => void retryConversations()}>{retrying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}Retry</Button>}
+          />
+        </div>
+      ) : !selected ? (
         <div className="grid flex-1 place-items-center">
           <EmptyState
             icon={MessageCircle}
@@ -1347,15 +1577,15 @@ export default function ClientsConversations() {
               </AlertDialog>
             </div>
             {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
-            <Button
+            {!isSolo && <Button
               variant="ghost" size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:hidden"
               onClick={() => setContactDrawerOpen(true)}
               aria-label="Show contact details"
             >
               <PanelRight className="h-4 w-4" />
-            </Button>
-            {!railOpen && (
+            </Button>}
+            {!isSolo && !railOpen && (
               <Button
                 variant="ghost" size="icon"
                 className="hidden h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:inline-flex"
@@ -1365,6 +1595,19 @@ export default function ClientsConversations() {
               </Button>
             )}
           </div>
+
+          {isSolo && (
+            <SoloConversationOperatingBarWithPaige
+              mode={handlingMode}
+              onModeChange={setHandlingMode}
+              channels={soloChannelTruth}
+              activeChannel={composeChannel || selected.channel}
+              canDraftWithPaige={composeChannel === "email" && !!selected.toAddress && sendableConnectors.some((connector) => connector.id === composeConnectorId && connector.channel_type === "email")}
+              connectionsHref={connectionsHref}
+              selectedClientName={selected.name}
+              selectedThreadLabel={`${CHANNEL_LABEL[selected.channel]} · ${selected.toAddress || "recipient not reported"}`}
+            />
+          )}
 
           {/* Messages (chronological) */}
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -1377,6 +1620,7 @@ export default function ClientsConversations() {
                   onEdit={editDraft}
                   onCancelScheduled={cancelScheduled}
                   approving={approvingId === m.id}
+                  sendDisabled={isSolo && handlingMode === "governed"}
                 />
               ) : (
                 <motion.div
@@ -1391,6 +1635,7 @@ export default function ClientsConversations() {
                     onEdit={editDraft}
                     onCancelScheduled={cancelScheduled}
                     approving={approvingId === m.id}
+                    sendDisabled={isSolo && handlingMode === "governed"}
                   />
                 </motion.div>
               ),
@@ -1409,12 +1654,14 @@ export default function ClientsConversations() {
                 <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
-                    <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
+                    <span>{isSolo
+                      ? "Connect a ready email or SMS identity in Settings. Connection alone does not prove send permission, inbound capability, A2P, or operational health."
+                      : "Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live."}</span>
                   </p>
                   {/* Secondary connect CTA → outline, so it never becomes a SECOND gold
                       "Connect a channel" co-visible with the rail-top gold one (§11 gold budget). */}
                   <Button variant="outline" size="sm" asChild className="shrink-0 self-start sm:self-auto">
-                    <Link to="/admin/integrations/email">
+                    <Link to={connectionsHref}>
                       <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
                     </Link>
                   </Button>
@@ -1428,19 +1675,41 @@ export default function ClientsConversations() {
       )}
     </SectionCard>
   );
+  const composeEpoch = accountEpochRef.current.capture();
 
   return (
-    <PageShell width="full" fill className="lg:flex-1 lg:overflow-hidden">
+    <PageShell width="full" fill className={cn("lg:flex-1 lg:overflow-hidden", isSolo && "solo-conversations-page-shell")}>
       <h1 className="sr-only">Conversations</h1>
       {/* The three-column conversation shell (§18 one home) — pure layout: the §36 first-run
           swap, the railOpen 3↔2-col toggle, and the mobile contact Sheet. The container feeds it
           the rendered LEFT rail, the container-owned MIDDLE pane, and the RIGHT contact panel. */}
-      <ConversationsThreeColumnShell
+      {isSolo ? (
+        <SoloConversationsWorkspace
+          firstRun={
+            <EmptyState
+              icon={MessageCircle}
+              tone="brand"
+              title="No conversations yet"
+              description={canCompose
+                ? "Start with a ready email or SMS identity. PAIGE email drafts stay editable and never send without you."
+                : "Connect and verify an email or SMS identity in Settings. Readiness is reported separately for each channel."}
+              action={canCompose
+                ? <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}><Plus className="mr-1.5 h-4 w-4" />New conversation</Button>
+                : <Button variant="outline" size="sm" asChild><Link to={connectionsHref}>Open Connections</Link></Button>}
+            />
+          }
+          showFirstRun={isFirstRun && !loadFailure}
+          threadList={<ConversationsThreadList {...listModel} />}
+          activeThread={activeThread}
+          clientContext={soloClientContext}
+          hasSelection={!!selected}
+        />
+      ) : <ConversationsThreeColumnShell
         firstRun={
           <FirstRunOnboarding
             canCompose={canCompose}
             onCompose={() => setComposeOpen(true)}
-            connectHref="/admin/integrations/email"
+            connectHref={connectionsHref}
           />
         }
         showFirstRun={isFirstRun}
@@ -1453,18 +1722,19 @@ export default function ClientsConversations() {
         mobileSheetOpen={contactDrawerOpen}
         onMobileSheetOpenChange={setContactDrawerOpen}
         mobileSheetTitle={selected?.name}
-      />
+      />}
 
       {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
           thread key so it merges cleanly with any later inbound reply). */}
       <ComposeThreadDialog
         open={composeOpen}
         onOpenChange={(v) => { setComposeOpen(v); if (!v) setComposeContact(null); }}
-        activeConnectors={activeConnectors}
+        activeConnectors={composerConnectors}
         tenantId={tenantIdRef.current}
         initialContact={composeContact ?? undefined}
         emailTemplates={templates}
         onSent={(key) => {
+          if (!accountEpochRef.current.accept(composeEpoch)) return;
           // §36 proactive surfacing: drop any filter that would hide the just-created thread,
           // then reload. pendingSelectRef holds the pick until the new row streams in, so the
           // keep-valid-selection guard can't clobber it to visibleThreads[0] first (race fix).

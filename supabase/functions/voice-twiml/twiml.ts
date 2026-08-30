@@ -75,6 +75,39 @@ function nounStatusCallbackAttrs(statusCallbackUrl: string): string {
 }
 
 /**
+ * Decide the `statusCallback` URL a dial noun should carry — the ONE place that answers
+ * "may this response body carry the tenant's webhook secret?".
+ *
+ * Pure on purpose (§32): the answer is a security decision, and an inline expression inside
+ * `Deno.serve` cannot be exercised headless. `scripts/voice-twiml-callback-smoke.mjs` drives
+ * this function directly, including the negative control that fails against the pre-fix
+ * behaviour.
+ *
+ * The rule, in one line: a stamped URL discloses `inbound_webhook_secret` to whoever receives
+ * the TwiML, so it is emitted ONLY when the request that asked for it was cryptographically
+ * verified. `signatureVerified === false` ⇒ "" for every caller, tenant or operator, because
+ * an unsigned request proves nothing about who is asking and a bare URL would be refused by
+ * the (now fail-closed) callback endpoint anyway.
+ */
+export function resolveStatusCallbackUrl(input: {
+  /** Base callback URL; "" when unconfigured (⇒ no callback, unchanged behaviour). */
+  base: string;
+  /** Did we VERIFY an x-twilio-signature on the request that produced this TwiML? */
+  signatureVerified: boolean;
+  /** Receiving tenant, or null for an operator/master-account call. */
+  tenantId: string | null;
+  /** That tenant's `inbound_webhook_secret`, or null when it could not be resolved. */
+  tenantSecret: string | null;
+}): string {
+  const { base, signatureVerified, tenantId, tenantSecret } = input;
+  if (!base) return "";
+  // The gate. Never emit a credential-bearing URL to a request we did not authenticate.
+  if (!signatureVerified) return "";
+  if (!tenantId) return base; // operator/master call — authenticated downstream by signature
+  return tenantSecret ? `${base}?t=${encodeURIComponent(tenantSecret)}` : "";
+}
+
+/**
  * Direction of a Twilio Voice webhook hit. OUTBOUND = a browser Device placed a call
  * (Twilio sets From to the authenticated `client:<identity>`). INBOUND = an external
  * caller dialed the tenant's Twilio number (From is a PSTN number, not a client).

@@ -15,8 +15,14 @@
 -- is an opt-in tenant preset, never a default seeded for every tenant.
 --
 -- SCHEMA IS UNAFFECTED: the funding_offers / vendor_offers table DDL is carried
--- by the §2-clean schema twin migration 20250908112841 (reconstructed
--- schema-only, no seed rows). This stub creates and seeds nothing.
+-- by migration 20251009234919_3d7566f7-15b7-462f-90a3-b74b713298b6.sql, which
+-- creates both tables schema-only with no seed rows. This stub creates and
+-- seeds nothing.
+--   (Corrected 2026-08-30: this header previously named 20250908112841 as the
+--   DDL carrier. That migration is itself a no-op stub as of the fresh-replay
+--   repair — its CREATE TABLEs collided with the superseding migration above,
+--   which is the one that actually shaped prod. The tables still exist; only
+--   the migration that creates them on a fresh replay is different.)
 --
 -- LIVE STATE (verified on prod ref xygzykjyynhzqytbqnzu, 2026-07-22):
 -- funding_offers = 0 rows and vendor_offers = 0 rows — the historical seed was
@@ -32,6 +38,6 @@
 DO $$
 BEGIN
   -- §2 quarantine: funding_offers / vendor_offers seed rows intentionally
-  -- omitted (see header). Table DDL is created by migration 20250908112841.
+  -- omitted (see header). Table DDL is created by migration 20251009234919.
   NULL;
 END $$;

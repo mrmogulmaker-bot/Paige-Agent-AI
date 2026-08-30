@@ -1,6 +1,7 @@
 import {
   BarChart3,
-  CalendarDays,
+  Megaphone,
+  Store,
   Settings,
   Sparkles,
   Users,
@@ -8,7 +9,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-type TenantDestination = "command" | "clients" | "calendar" | "studio" | "insights" | "settings";
+type TenantDestination =
+  | "command"
+  | "clients"
+  | "campaigns"
+  | "marketplace"
+  | "analytics"
+  | "studio"
+  | "insights"
+  | "settings";
+type TenantBranch = TenantDestination | "calendar";
 
 export interface TenantShellDestination {
   id: TenantDestination;
@@ -35,13 +45,21 @@ export interface ResolvedTenantAccountContext {
 const TENANT_ROUTE_PATTERN = /^\/(agency|business|enterprise|solo)\/([^/]+)/;
 const AGENCY_ACTING_CHILD_ROUTE_PATTERN = /^\/agency\/([^/]+)\/sub\/(\d+)(?:\/|$)/;
 
-const TENANT_BRANCHES: Record<TenantDestination, { slug: string; aliases: string[] }> = {
+const TENANT_BRANCHES: Record<TenantBranch, { slug: string; aliases: string[] }> = {
   command: { slug: "command-center", aliases: ["paige", "trust-compass", "automations"] },
   clients: { slug: "clients", aliases: ["client-support", "billing"] },
   calendar: { slug: "calendar", aliases: [] },
+  campaigns: { slug: "growth", aliases: [] },
+  marketplace: { slug: "marketplace", aliases: [] },
+  analytics: { slug: "analytics", aliases: [] },
   studio: { slug: "growth", aliases: [] },
   insights: { slug: "analytics", aliases: [] },
   settings: { slug: "setup", aliases: ["marketplace", "business-vault", "integrations", "team"] },
+};
+
+const SOLO_SETTINGS_BRANCH = {
+  slug: "settings",
+  aliases: ["setup", "business-vault", "integrations", "team"],
 };
 
 /** Translate internal account_type values into the owner-locked tenant-facing taxonomy. */
@@ -80,8 +98,8 @@ export function resolveTenantAccountContext(
 }
 
 /**
- * The tenant platform's six global destinations. Existing pages remain mounted at
- * their canonical routes; aliases only answer the shell question "where am I?".
+ * The tenant platform's five global destinations. Calendar remains mounted at its
+ * canonical route, but its visible owner is the Clients or Relationships surface.
  */
 export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   { id: "command", label: "Command Center", href: "/admin", icon: Sparkles, aliases: ["/admin/playbook"] },
@@ -91,13 +109,6 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
     href: "/admin/clients-hub",
     icon: Users,
     aliases: ["/admin/contacts", "/admin/clients", "/admin/leads", "/admin/pipeline"],
-  },
-  {
-    id: "calendar",
-    label: "Calendar",
-    href: "/admin/calendar",
-    icon: CalendarDays,
-    aliases: ["/admin/bookings", "/admin/planning", "/admin/tasks"],
   },
   {
     id: "studio",
@@ -133,12 +144,34 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   },
 ];
 
+/** Solo's approved durable work homes. Existing route owners remain unchanged. */
+const SOLO_SHELL_DESTINATIONS: TenantShellDestination[] = [
+  { id: "command", label: "Command Center", href: "/admin", icon: Sparkles, aliases: ["/admin/playbook"] },
+  {
+    id: "clients",
+    label: "Clients",
+    href: "/admin/clients-hub",
+    icon: Users,
+    aliases: ["/admin/contacts", "/admin/clients", "/admin/leads", "/admin/pipeline"],
+  },
+  { id: "campaigns", label: "Campaigns", href: "/admin/growth", icon: Megaphone, aliases: [] },
+  { id: "marketplace", label: "Marketplace", href: "/admin/marketplace", icon: Store, aliases: [] },
+  { id: "analytics", label: "Analytics", href: "/admin/analytics", icon: BarChart3, aliases: [] },
+  {
+    id: "settings",
+    label: "Settings",
+    href: "/admin/setup",
+    icon: Settings,
+    aliases: ["/admin/settings", "/admin/team", "/admin/integrations"],
+  },
+];
+
 /**
  * Resolve only the address prefix owned by the current tenant route. Identity
  * and authorization remain server-derived in the route owner; this helper
  * preserves an already-confirmed acting-child address when building links.
  */
-function tenantRoutePrefixForPath(pathname: string): string | null {
+export function tenantRoutePrefixForPath(pathname: string): string | null {
   const actingChildMatch = pathname.match(AGENCY_ACTING_CHILD_ROUTE_PATTERN);
   if (actingChildMatch) {
     const [, parentAccount, childAccount] = actingChildMatch;
@@ -152,13 +185,33 @@ function tenantRoutePrefixForPath(pathname: string): string | null {
   return `/${routeRoot}/${account}`;
 }
 
-/** Keep the six shell homes inside the route tree that owns the active account. */
-export function tenantShellDestinationsForPath(pathname: string): TenantShellDestination[] {
+/** Build the canonical Calendar address without making Calendar a visible shell home. */
+export function tenantCalendarHrefForPath(pathname: string): string {
   const root = tenantRoutePrefixForPath(pathname);
-  if (!root) return TENANT_SHELL_DESTINATIONS;
+  return root ? `${root}/${TENANT_BRANCHES.calendar.slug}` : "/admin/calendar";
+}
 
-  return TENANT_SHELL_DESTINATIONS.map((destination) => {
-    const branch = TENANT_BRANCHES[destination.id];
+/** Keep visible shell homes inside the route tree that owns the active account. */
+export function tenantShellDestinationsForPath(
+  pathname: string,
+  accountType?: string | null,
+): TenantShellDestination[] {
+  const root = tenantRoutePrefixForPath(pathname);
+  const relationshipLabel = ["agency", "enterprise"].includes(accountType?.trim().toLowerCase() ?? "")
+    ? "Relationships"
+    : "Clients";
+  const isAuthenticatedSolo = root?.startsWith("/solo/")
+    && accountType?.trim().toLowerCase() === "standalone";
+  const registry = isAuthenticatedSolo ? SOLO_SHELL_DESTINATIONS : TENANT_SHELL_DESTINATIONS;
+  const destinations = registry.map((destination) =>
+    destination.id === "clients" ? { ...destination, label: relationshipLabel } : destination,
+  );
+  if (!root) return destinations;
+
+  return destinations.map((destination) => {
+    const branch = destination.id === "settings" && root.startsWith("/solo/")
+      ? SOLO_SETTINGS_BRANCH
+      : TENANT_BRANCHES[destination.id];
     return {
       ...destination,
       href: `${root}/${branch.slug}`,
@@ -172,8 +225,22 @@ function pathMatches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function resolveTenantShellDestination(pathname: string): TenantShellDestination {
-  const destinations = tenantShellDestinationsForPath(pathname);
+export function resolveTenantShellDestination(
+  pathname: string,
+  accountType?: string | null,
+): TenantShellDestination {
+  const destinations = tenantShellDestinationsForPath(pathname, accountType);
+  const clientsDestination = destinations.find(({ id }) => id === "clients") ?? destinations[0];
+  const tenantRoot = tenantRoutePrefixForPath(pathname);
+  const canonicalCalendarHref = tenantCalendarHrefForPath(pathname);
+  const isCalendarAddress = tenantRoot
+    ? pathMatches(pathname, canonicalCalendarHref)
+    : ["/admin/calendar", "/admin/bookings", "/admin/planning", "/admin/tasks"].some((href) =>
+        pathMatches(pathname, href),
+      );
+
+  if (isCalendarAddress) return clientsDestination;
+
   return (
     destinations.find(
       (destination) =>

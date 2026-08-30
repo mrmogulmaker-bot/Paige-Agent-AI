@@ -34,7 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   CalendarDays, CalendarRange, CalendarX2, ChevronLeft, ChevronRight, Clock,
-  Plus, Loader2, ListChecks, Settings2, Users, Cable,
+  Plus, Loader2, ListChecks, Users, Cable, AlertCircle, Settings,
 } from "lucide-react";
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
@@ -45,6 +45,7 @@ import { usePlanList, type PlanItem } from "@/hooks/usePlanList";
 import { itemDate, bucketOf, isClosed } from "@/lib/planning";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
 import { PlanItemRow } from "@/components/planning/PlanItemRow";
+import "@/components/tenant-calendar/tenant-canonical-calendar.css";
 
 interface IntakeQ { id: string; label: string; type: string; }
 interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; type?: string; intake_questions?: IntakeQ[]; }
@@ -107,15 +108,46 @@ function headerLabel(view: ViewMode, cursor: Date): string {
   return `${s.toLocaleDateString([], { month: "short", day: "numeric" })} – ${e.toLocaleDateString([], { month: sameMonth ? undefined : "short", day: "numeric", year: "numeric" })}`;
 }
 
-export default function CalendarAdmin() {
-  const { activeTenantId } = useTenantContext();
-  const [tab, setTab] = useState("calendar");
+export type TenantCalendarTab = "calendar" | "agenda" | "tasks" | "booking" | "availability" | "connections" | "settings";
+
+interface CalendarAdminProps {
+  /** Server-resolved tenant authority supplied by a tenant route owner. */
+  activeTenantId?: string | null;
+  activeTab?: TenantCalendarTab;
+  onTabChange?: (tab: TenantCalendarTab) => void;
+  connectionsHref?: string;
+  openPaige?: () => void;
+  tenantMode?: boolean;
+  /** Solo-only approved coordinator; defaults off so shared tiers remain unchanged. */
+  soloSettings?: boolean;
+}
+
+export default function CalendarAdmin({
+  activeTenantId: suppliedTenantId,
+  activeTab,
+  onTabChange,
+  connectionsHref = "/admin/setup/integrations",
+  openPaige,
+  tenantMode = false,
+  soloSettings = false,
+}: CalendarAdminProps = {}) {
+  const tenantContext = useTenantContext();
+  const activeTenantId = suppliedTenantId ?? tenantContext.activeTenantId;
+  const [localTab, setLocalTab] = useState<TenantCalendarTab>("calendar");
+  const tab = activeTab ?? localTab;
+  const setTab = (next: string) => {
+    const tenantTab = next as TenantCalendarTab;
+    if (onTabChange) onTabChange(tenantTab);
+    else setLocalTab(tenantTab);
+  };
   const [view, setView] = useState<ViewMode>("week");
   const [cursor, setCursor] = useState<Date>(new Date());
   const [calendars, setCalendars] = useState<CalMeta[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [calendarsError, setCalendarsError] = useState<string | null>(null);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [detail, setDetail] = useState<DisplayBooking | null>(null);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
@@ -127,6 +159,7 @@ export default function CalendarAdmin() {
   // grows within a session so narrowing to one host never empties the picker.
   const [hostDir, setHostDir] = useState<Map<string, string>>(new Map());
   const reqSeq = useRef(0);
+  const calendarReqSeq = useRef(0);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setCurrentUid(data.user?.id ?? null));
@@ -159,16 +192,37 @@ export default function CalendarAdmin() {
   ), [colorBy, colorFor]);
 
   const loadCalendars = useCallback(async () => {
-    const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id, type, intake_questions");
-    setCalendars((data as CalMeta[]) ?? []);
-  }, []);
+    const seq = ++calendarReqSeq.current;
+    setCalendars([]);
+    setCalendarsError(null);
+    if (!activeTenantId) return;
+    const { data, error } = await supabase
+      .from("calendars")
+      .select("id, title, color, accent, tenant_id, type, intake_questions")
+      .eq("tenant_id", activeTenantId);
+    if (seq !== calendarReqSeq.current) return;
+    if (error) {
+      setCalendarsError(error.message);
+      return;
+    }
+    setCalendars((data as CalMeta[] | null) ?? []);
+  }, [activeTenantId]);
 
   const loadBookings = useCallback(async () => {
     const seq = ++reqSeq.current; // guard against out-of-order responses
     setLoading(true);
+    setBookings([]);
+    setBookingsError(null);
+    if (!activeTenantId) { if (seq === reqSeq.current) setLoading(false); return; }
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id ?? null;
-    if (!uid) { if (seq === reqSeq.current) setLoading(false); return; }
+    if (!uid) {
+      if (seq === reqSeq.current) {
+        setBookingsError("Your session could not be confirmed.");
+        setLoading(false);
+      }
+      return;
+    }
     const [from, to] = rangeFor(view, cursor);
     // Server-side host filter: null = whole team (admins) or own host (fallback);
     // ["mine"] = just me; [id] = one teammate. list_team_bookings is overlap-aware
@@ -182,13 +236,19 @@ export default function CalendarAdmin() {
       _tenant_id: activeTenantId,
     });
     if (seq !== reqSeq.current) return; // a newer request superseded this one
-    if (error) { setLoading(false); toast.error(error.message); return; }
+    if (error) {
+      setBookingsError(error.message);
+      setLoading(false);
+      return;
+    }
     setBookings((data as BookingRow[] | null) ?? []);
     setLoading(false);
   }, [view, cursor, hostFilter, activeTenantId]);
 
   useEffect(() => { void loadCalendars(); }, [loadCalendars]);
-  useEffect(() => { if (tab === "calendar" || tab === "list") void loadBookings(); }, [loadBookings, tab]);
+  useEffect(() => {
+    if (tab === "calendar" || tab === "agenda") void loadBookings();
+  }, [loadBookings, tab]);
 
   // Grow the host roster from whatever loaded (never shrinks mid-session).
   useEffect(() => {
@@ -217,7 +277,7 @@ export default function CalendarAdmin() {
   useEffect(() => () => { if (refetchTimer.current) clearTimeout(refetchTimer.current); }, []);
   useRealtimeTable("internal_bookings", handleRealtime, {
     filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
-    enabled: tab === "calendar" || tab === "list",
+    enabled: Boolean(activeTenantId) && (tab === "calendar" || tab === "agenda"),
   });
 
   // class_seat rows (one per registrant) are folded into their class_session's
@@ -279,14 +339,22 @@ export default function CalendarAdmin() {
   // (§10), pulled for the visible date window by item date. They render as
   // dashed pills, distinct from bookings, and click through to the plan detail.
   const [planFrom, planTo] = useMemo(() => rangeFor(view, cursor), [view, cursor]);
-  const planEnabled = tab === "calendar" || tab === "list";
+  const planEnabled = Boolean(activeTenantId) && (tab === "calendar" || tab === "agenda" || tab === "tasks");
   // Widen the fetch window ±1 day: plan_list compares item date in the DB tz
   // (UTC) against these date bounds, but the grid renders in the viewer's local
   // zone. The extra day on each side prevents a positive-UTC-offset viewer from
   // dropping an in-window item; the grid only draws events on days it renders.
-  const { allItems: planItems, refresh: refreshPlans, userId: planUserId } = usePlanList({
+  const {
+    allItems: planItems,
+    refresh: refreshPlans,
+    userId: planUserId,
+    loading: plansLoading,
+    error: plansError,
+    forbidden: plansForbidden,
+  } = usePlanList({
     scope: "mine", byItemDate: true,
     from: ymd(addDays(planFrom, -1)), to: ymd(addDays(planTo, 1)), enabled: planEnabled,
+    tenantScopeKey: activeTenantId,
   });
   const [showTasks, setShowTasks] = useState(true);
   const [planDetail, setPlanDetail] = useState<PlanItem | null>(null);
@@ -348,39 +416,75 @@ export default function CalendarAdmin() {
     setHidden((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const statsLoading = loading && bookings.length === 0;
+  const requiredReadError = bookingsError || calendarsError;
 
   return (
-    <PageShell width="wide">
+    <PageShell
+      width="wide"
+      fill={tenantMode}
+      className={tenantMode ? "tcal-shell !space-y-0" : undefined}
+    >
       <PageHeader
         variant="plain"
-        eyebrow="Scheduling"
+        eyebrow="Time & commitments"
         title="Calendar"
-        description="Your team's live schedule — every booking, block, and task on one board, in sync the moment it changes."
+        description={tenantMode
+          ? "One canonical home for appointments, dated tasks, bookings, reminders, and protected time."
+          : "Your team's live schedule — every booking, block, and task on one board, in sync the moment it changes."}
         actions={
           <Button variant="gold" size="sm" onClick={() => setNewOpen(true)}>
             <Plus className="h-4 w-4 mr-1.5" /> New appointment
           </Button>
         }
+        className={tenantMode ? "tcal-header" : undefined}
       />
 
-      <StatRow>
-        <StatTile label="Today" value={stats.today} icon={CalendarDays} hint="scheduled" loading={statsLoading} />
-        <StatTile label="This week" value={stats.week} icon={CalendarRange} hint="in range" loading={statsLoading} />
-        <StatTile label="Upcoming" value={stats.upcoming} icon={Clock} hint="still to come" loading={statsLoading} />
-        <StatTile label="Cancelled / no-show" value={stats.off} icon={CalendarX2} intent={stats.off > 0 ? "negative" : "neutral"} loading={statsLoading} />
-      </StatRow>
+      {(tab === "calendar" || tab === "agenda") && (
+        <div className={tenantMode ? "tcal-summary" : undefined}>
+          <StatRow>
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="Today" value={stats.today} icon={CalendarDays} hint="scheduled" loading={statsLoading} />
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="This week" value={stats.week} icon={CalendarRange} hint="in range" loading={statsLoading} />
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="Upcoming" value={stats.upcoming} icon={Clock} hint="still to come" loading={statsLoading} />
+            <StatTile className={tenantMode ? "tcal-stat" : undefined} label="Cancelled / no-show" value={stats.off} icon={CalendarX2} intent={stats.off > 0 ? "negative" : "neutral"} loading={statsLoading} />
+          </StatRow>
+        </div>
+      )}
 
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> Calendar view</TabsTrigger>
-          <TabsTrigger value="list" className="gap-1.5"><ListChecks className="h-4 w-4" /> Appointment list</TabsTrigger>
-          <TabsTrigger value="settings" className="gap-1.5"><Settings2 className="h-4 w-4" /> Calendar settings</TabsTrigger>
+      <Tabs value={tab} onValueChange={setTab} className={tenantMode ? "tcal-tabs-root" : "space-y-4"}>
+        <TabsList className={tenantMode ? "tcal-tablist h-auto max-w-full justify-start overflow-x-auto" : "h-auto max-w-full justify-start overflow-x-auto"} aria-label="Calendar views">
+          <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> Calendar</TabsTrigger>
+          <TabsTrigger value="agenda" className="gap-1.5"><ListChecks className="h-4 w-4" /> Agenda</TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-1.5"><ListChecks className="h-4 w-4" /> Tasks</TabsTrigger>
+          <TabsTrigger value="booking" className="gap-1.5"><CalendarRange className="h-4 w-4" /> Booking pages</TabsTrigger>
+          <TabsTrigger value="availability" className="gap-1.5"><Clock className="h-4 w-4" /> Availability</TabsTrigger>
           <TabsTrigger value="connections" className="gap-1.5"><Cable className="h-4 w-4" /> Connections</TabsTrigger>
+          {soloSettings && <TabsTrigger value="settings" className="gap-1.5"><Settings className="h-4 w-4" /> Settings</TabsTrigger>}
         </TabsList>
 
         {/* CALENDAR VIEW */}
-        <TabsContent value="calendar" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <TabsContent value="calendar" className={tenantMode ? "tcal-calendar-panel" : "space-y-4"}>
+          <div className={tenantMode ? "tcal-truth-stack" : "contents"}>
+            <DataTruthNotice
+              label="LIVE"
+              detail="Bookings come from the tenant-scoped booking service. Dated tasks are a distinct plan overlay for the signed-in user."
+            />
+            {plansError && !requiredReadError && (
+              <DataTruthNotice
+                label={plansForbidden ? "UNAVAILABLE" : "PARTIAL"}
+                detail="Bookings remain live. The dated task overlay is unavailable for this view."
+              />
+            )}
+          </div>
+          {requiredReadError ? (
+            <CalendarReadState
+              title="Calendar couldn't load"
+              description="No events or counts are inferred from a failed required read."
+              onRetry={() => { void loadCalendars(); void loadBookings(); }}
+              className={tenantMode ? "tcal-read-state" : undefined}
+            />
+          ) : (
+          <>
+          <div className={tenantMode ? "tcal-toolbar" : "flex flex-wrap items-center justify-between gap-3"}>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => nav(0)}>Today</Button>
               <div className="flex items-center">
@@ -408,8 +512,8 @@ export default function CalendarAdmin() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
-            <div className="min-w-0 relative">
+          <div className={tenantMode ? "tcal-board" : "grid gap-4 lg:grid-cols-[1fr_240px]"}>
+            <div className={tenantMode ? "tcal-canvas" : "min-w-0 relative"}>
               {loading && (
                 <div className="absolute inset-0 z-20 rounded-lg bg-background/60 p-4 backdrop-blur-[1px]" aria-hidden>
                   <div className="space-y-2.5">
@@ -420,11 +524,11 @@ export default function CalendarAdmin() {
                   </div>
                 </div>
               )}
-              <CalendarGrid view={view} cursor={cursor} events={gridEvents} onEventClick={handleEventClick} />
+              <CalendarGrid view={view} cursor={cursor} events={gridEvents} onEventClick={handleEventClick} workWeek={tenantMode} />
             </div>
 
             {/* Filter rail — host filter · color mode · legend · calendar toggles */}
-            <SectionCard className="h-fit" padded={false}>
+            <SectionCard className={tenantMode ? "tcal-filters" : "h-fit"} padded={false}>
               <div className="space-y-4 p-4">
                 {/* Whose schedule to show — drives the server-side host filter. */}
                 <div className="space-y-1.5">
@@ -498,11 +602,34 @@ export default function CalendarAdmin() {
                 </div>
               </div>
             </SectionCard>
+            {tenantMode && (
+              <TenantCalendarInspector
+                booking={detail}
+                nextItem={planItems.find((item) => !isClosed(item)) ?? null}
+                loading={loading || plansLoading}
+                onOpenPlan={setPlanDetail}
+                openPaige={openPaige}
+              />
+            )}
           </div>
+          </>
+          )}
         </TabsContent>
 
-        {/* APPOINTMENT LIST */}
-        <TabsContent value="list" className="space-y-4">
+        {/* AGENDA — another view of the same booking + plan seams. */}
+        <TabsContent value="agenda" className="space-y-4">
+          <DataTruthNotice
+            label="LIVE"
+            detail="Appointments and dated tasks are read from their canonical booking and plan records; they are not copied into an agenda store."
+          />
+          {requiredReadError ? (
+            <CalendarReadState
+              title="Agenda couldn't load"
+              description="No agenda rows are inferred from a failed booking read."
+              onRetry={() => { void loadCalendars(); void loadBookings(); }}
+            />
+          ) : (
+          <>
           <AppointmentList
             bookings={visibleBookings}
             loading={loading}
@@ -511,40 +638,107 @@ export default function CalendarAdmin() {
             onSelect={setDetail}
             onNew={() => setNewOpen(true)}
           />
+          <PlanItemsList
+            items={planItems}
+            loading={plansLoading}
+            error={plansError}
+            forbidden={plansForbidden}
+            onChanged={() => void refreshPlans({ silent: true })}
+            heading="Dated tasks & reminders"
+          />
+          </>
+          )}
         </TabsContent>
 
-        {/* CALENDAR SETTINGS */}
-        <TabsContent value="settings" className="space-y-4">
-          <CalendarsPanel />
+        {/* TASKS — plan_items is the canonical task/reminder seam. */}
+        <TabsContent value="tasks" className="space-y-4">
+          <DataTruthNotice
+            label="LIVE"
+            detail="This view uses plan items. Older task experiences are not merged or presented as a second task store."
+          />
+          <PlanItemsList
+            items={planItems}
+            loading={plansLoading}
+            error={plansError}
+            forbidden={plansForbidden}
+            onChanged={() => void refreshPlans({ silent: true })}
+            heading="Tasks & reminders"
+          />
+        </TabsContent>
+
+        {/* BOOKING PAGES — the existing canonical calendar manager. */}
+        <TabsContent value="booking" className="space-y-4">
+          <DataTruthNotice
+            label="LIVE"
+            detail="Internal booking pages and rules use the existing Calendar configuration owner. External provider imports remain unavailable unless explicitly connected."
+          />
+          <CalendarsPanel activeTenantId={activeTenantId} />
+        </TabsContent>
+
+        {/* AVAILABILITY — a lens into the same manager, never another rules store. */}
+        <TabsContent value="availability" className="space-y-4">
+          <DataTruthNotice
+            label="PARTIAL"
+            detail="Stored Calendar availability rules are editable here. Provider free/busy coverage depends on the signed-in user's connected provider."
+          />
+          <CalendarsPanel activeTenantId={activeTenantId} />
         </TabsContent>
 
         {/* CONNECTIONS — signpost only. Calendar/meeting connect flows live in the
             ONE integrations home (Automation → Integrations, §6/§12), so we don't
             keep a rival management surface here — just a path to it, no dead end. */}
         <TabsContent value="connections" className="space-y-4">
+          <DataTruthNotice
+            label="UNAVAILABLE"
+            detail="This Calendar does not infer provider status. Connection management remains in the account's Settings and reports its own live state."
+          />
           <SectionCard
             icon={Cable}
-            title="Calendar connectors moved"
-            description="Google Calendar, Zoom, and Apple connect flows now live in one place with the rest of your integrations."
+            title="Manage Calendar connections in Settings"
+            description="Provider authorization stays in one integrations home. This link preserves the active account tree."
             className="border-primary/30"
           >
             <Button asChild variant="outline" size="sm">
-              <Link to="/admin/setup/integrations">
+              <Link to={connectionsHref}>
                 Go to Integrations <ChevronRight className="h-4 w-4 ml-1.5" />
               </Link>
             </Button>
           </SectionCard>
         </TabsContent>
+
+        {soloSettings && (
+          <TabsContent value="settings" className="space-y-4" data-calendar-settings>
+            <DataTruthNotice
+              label="PARTIAL"
+              detail="Scheduling calendars use the existing tenant-scoped manager. Richer lifecycle, payments, Service, and hostless Event types remain proposed or unavailable rather than being simulated."
+            />
+            <section className="grid gap-3 rounded-xl border bg-card p-4 md:grid-cols-3" aria-label="Calendar settings owners">
+              <button type="button" className="rounded-lg border p-3 text-left hover:bg-muted/40" onClick={() => setTab("availability")}>
+                <strong className="block text-sm">Availability</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">Reusable hours and date exceptions remain with Availability.</span>
+              </button>
+              <button type="button" className="rounded-lg border p-3 text-left hover:bg-muted/40" onClick={() => setTab("booking")}>
+                <strong className="block text-sm">Booking pages</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">Public page, form, branding, and URL remain with Booking pages.</span>
+              </button>
+              <button type="button" className="rounded-lg border p-3 text-left hover:bg-muted/40" onClick={() => setTab("connections")}>
+                <strong className="block text-sm">Connections</strong>
+                <span className="mt-1 block text-xs text-muted-foreground">Provider authorization and conflict calendars remain in Settings.</span>
+              </button>
+            </section>
+            <CalendarsPanel activeTenantId={activeTenantId} />
+          </TabsContent>
+        )}
       </Tabs>
 
-      <BookingDetailDialog
+      {!tenantMode && <BookingDetailDialog
         booking={detail}
         calendars={calendars}
         onOpenChange={(v) => !v && setDetail(null)}
         colorFor={colorFor}
         onCancelBooking={(id) => setBookingStatus(id, "cancelled")}
         onNoShow={(id) => setBookingStatus(id, "no_show")}
-      />
+      />}
 
       <NewAppointmentDialog
         open={newOpen}
@@ -672,6 +866,135 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
   );
 }
 
+function TenantCalendarInspector({ booking, nextItem, loading, onOpenPlan, openPaige }: {
+  booking: DisplayBooking | null;
+  nextItem: PlanItem | null;
+  loading: boolean;
+  onOpenPlan: (item: PlanItem) => void;
+  openPaige?: () => void;
+}) {
+  return (
+    <aside className="tcal-inspector" aria-label="Calendar inspector">
+      <p className="tcal-kicker">Needs you today</p>
+      {booking ? (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">{booking.title || booking.guest_name || "Appointment"}</h2>
+          <p className="text-sm text-muted-foreground">
+            {new Date(booking.start_at).toLocaleString([], {
+              weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+            })}
+          </p>
+          <Badge variant="secondary" className="capitalize">{booking.status.replace(/_/g, " ")}</Badge>
+          {booking.guest_name && <p className="text-sm">With {booking.guest_name}</p>}
+        </div>
+      ) : loading ? (
+        <div className="space-y-2" aria-label="Calendar inspector loading">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-14 w-full" />
+        </div>
+      ) : nextItem ? (
+        <button type="button" className="tcal-inspector-item" onClick={() => onOpenPlan(nextItem)}>
+          <span>{nextItem.item_type}</span>
+          <strong>{nextItem.title}</strong>
+          <small>{nextItem.due_at ? new Date(nextItem.due_at).toLocaleString() : "Reminder"}</small>
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <h2 className="text-base font-semibold">Nothing needs you now</h2>
+          <p className="text-sm text-muted-foreground">No open dated plan item was returned for this range.</p>
+        </div>
+      )}
+      {openPaige && (
+        <Button type="button" variant="outline" size="sm" className="mt-5 w-full" onClick={openPaige}>
+          Ask PAIGE in this Calendar
+        </Button>
+      )}
+      <p className="mt-3 text-[11px] leading-4 text-muted-foreground">
+        PAIGE uses the existing workspace. This inspector never starts a second chat surface.
+      </p>
+    </aside>
+  );
+}
+
+function DataTruthNotice({ label, detail }: { label: "LIVE" | "PARTIAL" | "UNAVAILABLE"; detail: string }) {
+  const variant = label === "LIVE" ? "default" : "secondary";
+  return (
+    <div className="flex flex-wrap items-start gap-2 rounded-lg border border-border/70 bg-card px-3 py-2 text-xs text-muted-foreground">
+      <Badge variant={variant} className="shrink-0 text-[10px] tracking-wide">{label}</Badge>
+      <span className="min-w-0 flex-1 leading-5">{detail}</span>
+    </div>
+  );
+}
+
+function CalendarReadState({ title, description, onRetry, className }: {
+  title: string;
+  description: string;
+  onRetry: () => void;
+  className?: string;
+}) {
+  return (
+    <SectionCard className={className}>
+      <EmptyState
+        icon={AlertCircle}
+        title={title}
+        description={description}
+        action={<Button type="button" variant="outline" size="sm" onClick={onRetry}>Retry</Button>}
+      />
+    </SectionCard>
+  );
+}
+
+function PlanItemsList({ items, loading, error, forbidden, onChanged, heading }: {
+  items: PlanItem[];
+  loading: boolean;
+  error: string | null;
+  forbidden: boolean;
+  onChanged: () => void;
+  heading: string;
+}) {
+  if (loading) {
+    return (
+      <SectionCard title={heading}>
+        <div className="space-y-3" aria-label={`${heading} loading`}>
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </SectionCard>
+    );
+  }
+  if (error) {
+    return (
+      <SectionCard title={heading}>
+        <EmptyState
+          icon={forbidden ? CalendarX2 : AlertCircle}
+          title={forbidden ? "Tasks are unavailable here" : "Tasks couldn't load"}
+          description={forbidden
+            ? "This identity cannot read plan items in the active account. No other account is substituted."
+            : "No task rows are inferred from a failed plan read."}
+        />
+      </SectionCard>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <SectionCard title={heading}>
+        <EmptyState
+          icon={ListChecks}
+          title="No dated tasks in this range"
+          description="The active account returned no dated plan items for the selected window."
+        />
+      </SectionCard>
+    );
+  }
+  return (
+    <SectionCard title={heading}>
+      <div className="space-y-2">
+        {items.map((item) => <PlanItemRow key={item.id} item={item} onChanged={onChanged} />)}
+      </div>
+    </SectionCard>
+  );
+}
+
 function AppointmentList({ bookings, loading, colorFor, colorBy, onSelect, onNew }: {
   bookings: DisplayBooking[];
   loading: boolean;
@@ -733,6 +1056,12 @@ function AppointmentList({ bookings, loading, colorFor, colorBy, onSelect, onNew
               const who = b.host_full_name ? `${b.host_full_name}` : null;
               return (
                 <div key={b.id} onClick={() => onSelect(b)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(b); }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${b.title || b.guest_name || "appointment"}`}
                   className="flex cursor-pointer items-center gap-3 rounded-md border border-border p-3 text-sm transition-colors hover:bg-muted/50">
                   <span className="h-8 w-1 flex-shrink-0 rounded-full" style={{ backgroundColor: stripe }} />
                   <div className="min-w-0 flex-1">
@@ -791,7 +1120,13 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id;
     if (!uid) { setSaving(false); toast.error("Session expired"); return; }
-    const cal = calendars.find((c) => c.id === calendarId);
+    if (!activeTenantId) { setSaving(false); toast.error("Calendar account scope is unavailable"); return; }
+    const cal = calendars.find((c) => c.id === calendarId && c.tenant_id === activeTenantId);
+    if (calendarId !== UNASSIGNED && !cal) {
+      setSaving(false);
+      toast.error("That calendar is not available in the active account");
+      return;
+    }
     const end = new Date(start.getTime() + Math.max(5, duration) * 60000);
     // Route through the RPC seam (§10) so the same create path is callable by
     // Paige, not trapped in this component. v2 enforces the overlap guard and
@@ -804,7 +1139,7 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
       _timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       _host_user_id: uid,
       _guest_name: guestName.trim() || null,
-      _tenant_id: cal?.tenant_id ?? activeTenantId,
+      _tenant_id: activeTenantId,
       _calendar_id: calendarId === UNASSIGNED ? null : calendarId,
       _status: blocked ? "blocked" : "scheduled",
       _source: "manual",

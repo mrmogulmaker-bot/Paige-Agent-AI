@@ -4,6 +4,7 @@ export class AudioRecorder {
   private audioContext: AudioContext | null = null;
   private processor: ScriptProcessorNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
+  private stopRequested = false;
 
   /**
    * @param onAudioData  Called per frame with resampled mono Float32 PCM.
@@ -17,8 +18,9 @@ export class AudioRecorder {
   ) {}
 
   async start() {
+    this.stopRequested = false;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: this.targetSampleRate,
           channelCount: 1,
@@ -27,6 +29,11 @@ export class AudioRecorder {
           autoGainControl: true
         }
       });
+      if (this.stopRequested) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      this.stream = stream;
 
       this.audioContext = new AudioContext({
         sampleRate: this.targetSampleRate,
@@ -38,6 +45,10 @@ export class AudioRecorder {
       // actually fires (lifted from the primeMicAndAudio unlock this replaces).
       if (this.audioContext.state === "suspended") {
         try { await this.audioContext.resume(); } catch { /* best-effort */ }
+      }
+      if (this.stopRequested || !this.stream || !this.audioContext) {
+        this.stop();
+        return;
       }
 
       this.source = this.audioContext.createMediaStreamSource(this.stream);
@@ -75,6 +86,7 @@ export class AudioRecorder {
   }
 
   stop() {
+    this.stopRequested = true;
     if (this.source) {
       this.source.disconnect();
       this.source = null;

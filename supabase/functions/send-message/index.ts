@@ -12,6 +12,7 @@
 // existing draft row when an approved draft (message_id) is being sent. Idempotent on
 // provider_message_id. The legacy paige_messages_audit write + paige_conversations
 // mirror + JWT gate + SMS path are all preserved unchanged (§37 additive-only).
+import { stampedWebhookUrls } from "../_shared/twilio-webhook-auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getOutboundAdapter,
@@ -62,6 +63,41 @@ interface SendBody {
   // comms-attachments bucket), and scheduled_for to queue-for-later / undo-send.
   attachments?: { url: string; mime?: string; name?: string; size?: number }[];
   scheduled_for?: string;
+}
+
+const MAX_COMMS_ATTACHMENTS = 10;
+const MAX_COMMS_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function normalizeRecipient(channel: SendBody["channel"], value: string | null | undefined): string {
+  if (!value) return "";
+  if (channel === "email") return value.trim().toLowerCase();
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10 ? `1${digits}` : digits;
+}
+
+function attachmentValidationError(
+  attachments: SendBody["attachments"],
+  tenantId: string | null,
+): string | null {
+  if (!attachments) return null;
+  if (!tenantId) return "attachment_tenant_unresolved";
+  if (!Array.isArray(attachments) || attachments.length > MAX_COMMS_ATTACHMENTS) return "invalid_attachments";
+  const prefix = `${tenantId}/`;
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== "object") return "invalid_attachment";
+    if (typeof attachment.url !== "string" || !attachment.url.startsWith(prefix) ||
+        attachment.url.length <= prefix.length || attachment.url.includes("..") ||
+        attachment.url.includes("\\") || /^https?:\/\//i.test(attachment.url)) {
+      return "attachment_not_tenant_owned";
+    }
+    if (attachment.name !== undefined && (typeof attachment.name !== "string" || attachment.name.length > 255)) return "invalid_attachment_name";
+    if (attachment.mime !== undefined && (typeof attachment.mime !== "string" || attachment.mime.length > 255)) return "invalid_attachment_mime";
+    if (attachment.size !== undefined &&
+        (!Number.isFinite(attachment.size) || attachment.size < 0 || attachment.size > MAX_COMMS_ATTACHMENT_BYTES)) {
+      return "invalid_attachment_size";
+    }
+  }
+  return null;
 }
 
 // -----------------------------------------------------------------------------
@@ -441,7 +477,8 @@ Deno.serve(async (req) => {
   // the channel_connectors row (from_address/from_name/reply_to) is the fallback;
   // the platform default sender is the last resort. This never forks §38.
   let tenantId: string | null = null;
-  let draftRow: { status?: string | null; connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null } | null = null;
+  let draftRow: { status?: string | null; connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null; meta?: Record<string, unknown> | null } | null = null;
+  let contactRow: { tenant_id?: string | null; email?: string | null; phone?: string | null } | null = null;
   let connectorRow:
     | {
         tenant_id?: string | null; from_address?: string | null; from_name?: string | null;
@@ -455,26 +492,109 @@ Deno.serve(async (req) => {
   let replyTo: string | null = null;
 
   if (body.message_id) {
-    const { data } = await admin
+    const { data, error: messageError } = await admin
       .from("messages")
-      .select("tenant_id, status, connector_id, contact_id, thread_key, channel_type")
+      .select("tenant_id, status, connector_id, contact_id, thread_key, channel_type, meta")
       .eq("id", body.message_id)
       .maybeSingle();
-    if (data) {
-      draftRow = data;
-      tenantId = data.tenant_id ?? null;
+    if (messageError) {
+      return new Response(JSON.stringify({ error: "message_lookup_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!data) {
+      return new Response(JSON.stringify({ error: "message_not_found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (isInternal && data.status !== "queued") {
+      return new Response(JSON.stringify({ error: "scheduled_message_not_releasable" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    draftRow = data;
+    tenantId = data.tenant_id ?? null;
+  }
+  const terminalizeScheduledRelease = async (failure: string): Promise<Response> => {
+    if (!isInternal || !body.message_id || !tenantId || draftRow?.status !== "queued") {
+      return new Response(JSON.stringify({ error: failure }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: terminalized, error: terminalError } = await admin.from("messages")
+      .update({ status: "failed", scheduled_for: null, error: failure })
+      .eq("id", body.message_id)
+      .eq("tenant_id", tenantId)
+      .eq("status", "queued")
+      .select("id")
+      .maybeSingle();
+    if (terminalError) {
+      return new Response(JSON.stringify({ error: "scheduled_release_terminalization_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      error: terminalized?.id ? failure : "scheduled_message_not_releasable",
+      status: "failed",
+      outcome: "failed",
+      reason: "The scheduled message needs review before it can be sent.",
+    }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  };
+  if (draftRow?.contact_id && body.contact_id && body.contact_id !== draftRow.contact_id) {
+    return new Response(JSON.stringify({ error: "contact_override_forbidden" }), {
+      status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (draftRow?.thread_key && body.thread_key && body.thread_key !== draftRow.thread_key) {
+    return new Response(JSON.stringify({ error: "thread_override_forbidden" }), {
+      status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const effectiveContactId = draftRow?.contact_id ?? body.contact_id ?? null;
+  const effectiveConnectorId = body.connector_id ?? draftRow?.connector_id ?? null;
+  const scheduledBinding = draftRow?.meta?.scheduled_binding as Record<string, unknown> | undefined;
+  if (isInternal && draftRow?.status === "queued") {
+    if (!scheduledBinding || (typeof scheduledBinding.contact_id !== "string" && typeof scheduledBinding.connector_id !== "string")) {
+      return await terminalizeScheduledRelease("scheduled_binding_unavailable");
+    }
+    if (typeof scheduledBinding?.contact_id === "string" && !effectiveContactId) {
+      return await terminalizeScheduledRelease("scheduled_contact_unavailable");
+    }
+    if (typeof scheduledBinding?.contact_id === "string" && effectiveContactId !== scheduledBinding.contact_id) {
+      return await terminalizeScheduledRelease("scheduled_contact_changed");
+    }
+    if (typeof scheduledBinding?.connector_id === "string" && !effectiveConnectorId) {
+      return await terminalizeScheduledRelease("scheduled_connector_unavailable");
+    }
+    if (typeof scheduledBinding?.connector_id === "string" && effectiveConnectorId !== scheduledBinding.connector_id) {
+      return await terminalizeScheduledRelease("scheduled_connector_changed");
     }
   }
-  const effectiveContactId = body.contact_id ?? draftRow?.contact_id ?? null;
-  const effectiveConnectorId = body.connector_id ?? draftRow?.connector_id ?? null;
 
-  if (!tenantId && effectiveContactId) {
-    const { data: contactRow } = await admin
+  if (effectiveContactId) {
+    const { data, error: contactError } = await admin
       .from("clients")
-      .select("tenant_id")
+      .select("tenant_id, email, phone")
       .eq("id", effectiveContactId)
       .maybeSingle();
-    tenantId = contactRow?.tenant_id ?? null;
+    if (contactError) {
+      return new Response(JSON.stringify({ error: "contact_lookup_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    contactRow = data ?? null;
+    if (!contactRow) {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_contact_unavailable");
+      return new Response(JSON.stringify({ error: "contact_not_found" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (tenantId && contactRow.tenant_id !== tenantId) {
+      return new Response(JSON.stringify({ error: "forbidden_cross_tenant_contact" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    tenantId = contactRow.tenant_id ?? null;
   }
   // §49 one-thread-per-contact: when both the contact and tenant are known, the canonical key is
   // per-CONTACT so every channel's messages coalesce into ONE thread. The `${channel}:${to}` /
@@ -484,7 +604,7 @@ Deno.serve(async (req) => {
   // line below that block if it is ever reordered.
   const perContactKey = effectiveContactId && tenantId ? `contact:${tenantId}:${effectiveContactId}` : null;
   if (effectiveConnectorId) {
-    const { data } = await admin
+    const { data, error: connectorError } = await admin
       .from("channel_connectors")
       // #141b: widened to carry provider + credentials_vault_ref + external_account_id so the
       // email path can route a Gmail connector through the Gmail seam (else Resend).
@@ -493,18 +613,26 @@ Deno.serve(async (req) => {
       .select("tenant_id, from_address, from_name, reply_to, channel_type, status, active, provider, credentials_vault_ref, external_account_id, config")
       .eq("id", effectiveConnectorId)
       .maybeSingle();
+    if (connectorError) {
+      return new Response(JSON.stringify({ error: "connector_lookup_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     connectorRow = data ?? null;
     if (!connectorRow) {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_connector_unavailable");
       return new Response(JSON.stringify({ error: "connector_not_found" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (connectorRow.active !== true || connectorRow.status !== "active") {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_connector_unavailable");
       return new Response(JSON.stringify({ error: "connector_not_active" }), {
         status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (connectorRow.channel_type !== body.channel) {
+      if (isInternal && draftRow?.status === "queued") return await terminalizeScheduledRelease("scheduled_connector_changed");
       return new Response(JSON.stringify({ error: "connector_channel_mismatch" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -559,6 +687,27 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (effectiveContactId) {
+    const canonicalRecipient = body.channel === "email" ? contactRow?.email : contactRow?.phone;
+    if (!canonicalRecipient || normalizeRecipient(body.channel, canonicalRecipient) !== normalizeRecipient(body.channel, body.to)) {
+      if (isInternal && body.message_id && tenantId) {
+        // A scheduled row keeps the exact recipient approved when it was queued. If the
+        // canonical People address changes before release, never retarget silently and never
+        // leave the row queued for endless retries: surface one terminal failure for review.
+        return await terminalizeScheduledRelease("recipient_contact_mismatch");
+      }
+      return new Response(JSON.stringify({ error: "recipient_contact_mismatch" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+  const attachmentError = attachmentValidationError(body.attachments, tenantId);
+  if (attachmentError) {
+    return new Response(JSON.stringify({ error: attachmentError }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   // ── §5 double-submit guard ───────────────────────────────────────────────────
   // Approving an already sent/queued draft (second tab, stale realtime, network retry)
   // must NOT re-fire the provider — each provider send mints a fresh provider_message_id
@@ -566,9 +715,19 @@ Deno.serve(async (req) => {
   // C-1.5: a `queued` row is only a double-submit for a NON-internal re-approve; the internal
   // drainer (isInternal) is RELEASING that queued row and must proceed to the pipeline+send.
   // A genuinely `sent` row always dedupes (no double-delivery), internal or not.
+  if (body.message_id && body.scheduled_for && !isInternal && draftRow?.status !== "draft") {
+    return new Response(JSON.stringify({
+      error: "scheduled_message_not_replaceable",
+      status: "failed",
+      outcome: "failed",
+      reason: "The canceled draft changed before it could be queued. Review it and send again.",
+      message_id: null,
+      scheduled_for: null,
+    }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
   if (body.message_id && draftRow &&
       (draftRow.status === "sent" ||
-       (draftRow.status === "queued" && !isInternal))) {
+       (draftRow.status === "queued" && !isInternal && !body.scheduled_for))) {
     return new Response(
       JSON.stringify({ status: "sent", message_id: body.message_id, deduped: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -590,16 +749,56 @@ Deno.serve(async (req) => {
       const whenMs = Date.parse(body.scheduled_for);
       if (Number.isFinite(whenMs) && whenMs > Date.now()) {
         const schedIso = new Date(whenMs).toISOString();
-        const schedMeta = { source: "send-message", pre_send: { step: "scheduled", outcome: "queued_scheduled" } };
+        const schedMeta = {
+          source: "send-message",
+          pre_send: { step: "scheduled", outcome: "queued_scheduled" },
+          scheduled_binding: { contact_id: effectiveContactId, connector_id: effectiveConnectorId },
+        };
         let schedRowId: string | null = null;
         try {
           if (body.message_id) {
-            const { data: patched } = await admin.from("messages").update({
-              status: "queued", scheduled_for: schedIso, meta: schedMeta, error: null,
-            }).eq("id", body.message_id).select("id").maybeSingle();
-            schedRowId = patched?.id ?? body.message_id;
+            // An Undo converts the queued row back to a draft. Requeueing that draft must
+            // atomically replace the complete delivery payload; changing only its timer would
+            // let the drainer release the canceled, pre-edit content. The guarded transition
+            // also makes concurrent/stale requeues lose instead of acknowledging a false queue.
+            const { data: patched, error: patchError } = await admin.from("messages").update({
+              thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
+              contact_id: effectiveContactId,
+              connector_id: effectiveConnectorId,
+              channel_type: body.channel,
+              direction: "outbound",
+              status: "queued",
+              scheduled_for: schedIso,
+              recipients: [{ address: body.to }],
+              subject: body.subject ?? null,
+              body_html: body.channel === "email" ? body.body : null,
+              body_text: body.channel === "email" ? null : body.body,
+              attachments: body.attachments ?? [],
+              provider_message_id: null,
+              sent_at: null,
+              meta: schedMeta,
+              error: null,
+            })
+              .eq("id", body.message_id)
+              .eq("tenant_id", tenantId)
+              .eq("status", "draft")
+              .is("scheduled_for", null)
+              .select("id")
+              .maybeSingle();
+            if (patchError) throw patchError;
+            if (!patched?.id) {
+              return new Response(JSON.stringify({
+                error: "scheduled_message_not_replaceable",
+                status: "failed",
+                outcome: "failed",
+                reason: "The canceled draft changed before it could be queued. Review it and send again.",
+                message_id: null,
+                scheduled_for: null,
+              }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            schedRowId = patched.id;
           } else if (effectiveContactId || effectiveConnectorId) {
-            const { data: inserted } = await admin.from("messages").insert({
+            const { data: inserted, error: insertError } = await admin.from("messages").insert({
               thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
               contact_id: effectiveContactId, connector_id: effectiveConnectorId,
               channel_type: body.channel, direction: "outbound",
@@ -610,10 +809,29 @@ Deno.serve(async (req) => {
               attachments: body.attachments ?? [],
               meta: schedMeta,
             }).select("id").maybeSingle();
+            if (insertError) throw insertError;
             schedRowId = inserted?.id ?? null;
           }
         } catch (e) {
-          console.warn("[send-message] scheduled row write skipped:", (e as Error)?.message);
+          console.warn("[send-message] scheduled row write failed:", (e as Error)?.message);
+          return new Response(JSON.stringify({
+            error: "scheduled_message_write_failed",
+            status: "failed",
+            outcome: "failed",
+            reason: "The message could not be queued. Review it and try again.",
+            message_id: null,
+            scheduled_for: null,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (!schedRowId) {
+          return new Response(JSON.stringify({
+            error: "scheduled_message_not_persisted",
+            status: "failed",
+            outcome: "failed",
+            reason: "The message could not be queued. Review it and try again.",
+            message_id: null,
+            scheduled_for: null,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         return new Response(JSON.stringify({
           audit_id: null, vendor_message_id: null,
@@ -663,6 +881,7 @@ Deno.serve(async (req) => {
       const preSendMeta = {
         source: "send-message",
         pre_send: { step: preSend.outcome, reason: preSend.reason },
+        scheduled_binding: scheduledBinding ?? { contact_id: effectiveContactId, connector_id: effectiveConnectorId },
       };
 
       // Terminal messages row. tenant_id is derived by set_message_tenant() from
@@ -672,13 +891,15 @@ Deno.serve(async (req) => {
       let preMessageRowId: string | null = null;
       try {
         if (body.message_id) {
-          const { data: patched } = await admin.from("messages").update({
+          const { data: patched, error: patchError } = await admin.from("messages").update({
             status: terminalStatus, scheduled_for: preSend.queueUntil,
             meta: preSendMeta, error: null,
           }).eq("id", body.message_id).select("id").maybeSingle();
-          preMessageRowId = patched?.id ?? body.message_id;
+          if (patchError) throw patchError;
+          if (!patched?.id) throw new Error("pre_send_message_not_persisted");
+          preMessageRowId = patched.id;
         } else if (effectiveContactId || effectiveConnectorId) {
-          const { data: inserted } = await admin.from("messages").insert({
+          const { data: inserted, error: insertError } = await admin.from("messages").insert({
             thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
             contact_id: effectiveContactId, connector_id: effectiveConnectorId,
             channel_type: body.channel, direction: "outbound",
@@ -688,10 +909,20 @@ Deno.serve(async (req) => {
             body_text: body.channel === "email" ? null : body.body,
             meta: preSendMeta,
           }).select("id").maybeSingle();
+          if (insertError) throw insertError;
+          if (!inserted?.id) throw new Error("pre_send_message_not_persisted");
           preMessageRowId = inserted?.id ?? null;
         }
       } catch (e) {
-        console.warn("[send-message] pre-send terminal row write skipped:", (e as Error)?.message);
+        console.warn("[send-message] pre-send terminal row write failed:", (e as Error)?.message);
+        return new Response(JSON.stringify({
+          error: "pre_send_state_write_failed",
+          status: "failed",
+          outcome: "failed",
+          reason: "The message state could not be saved. Review it and try again.",
+          message_id: null,
+          scheduled_for: null,
+        }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       // Legacy audit: a non-send is 'failed' in paige_messages_audit's enum (predates the
@@ -747,8 +978,9 @@ Deno.serve(async (req) => {
       }
       senderName = senderName || config?.default_from_name || "Paige Agent";
       // Last-resort fallback on the verified shared sending subdomain.
-      senderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
-      fromAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
+      const resolvedSenderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
+      senderEmail = resolvedSenderEmail;
+      fromAddress = senderName ? `${senderName} <${resolvedSenderEmail}>` : resolvedSenderEmail;
 
       // §32 — build the NormalizedMessage and send THROUGH the registry adapter.
       const adapter = getOutboundAdapter("email");
@@ -760,7 +992,7 @@ Deno.serve(async (req) => {
         status: "queued",
         contact_id: effectiveContactId,
         connector_id: effectiveConnectorId,
-        sender: { address: senderEmail, display_name: senderName ?? undefined },
+        sender: { address: resolvedSenderEmail, display_name: senderName ?? undefined },
         recipients: [{ address: body.to }],
         subject: body.subject ?? null,
         body_html: body.body,
@@ -801,7 +1033,7 @@ Deno.serve(async (req) => {
       }
 
       const ctx: OutboundSendContext = {
-        from: { address: senderEmail, display_name: senderName ?? undefined },
+        from: { address: resolvedSenderEmail, display_name: senderName ?? undefined },
         to: body.to,
         replyTo,
         providerApiKey: resendKey,
@@ -839,10 +1071,26 @@ Deno.serve(async (req) => {
       const adapter = getOutboundAdapter("sms");
       if (!adapter) throw new Error("no_sms_adapter_registered");
 
-      // Per-message DLR StatusCallback endpoint (honest-null if unset → number-level cb).
-      const statusCallbackUrl =
-        Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
-        (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : null);
+      // Per-message DLR StatusCallback endpoint.
+      //
+      // MUST carry the tenant's stamped secret. `twilio-status-callback` now fails
+      // CLOSED, and this per-message URL OVERRIDES the number-level one stamped at
+      // purchase — so an unstamped URL here means every delivery receipt for every
+      // tenant is refused with 401 and the row never leaves 'sent'.
+      const stampSecret = tenantId
+        ? ((await admin.from("tenant_twilio_subaccounts")
+              .select("inbound_webhook_secret").eq("tenant_id", tenantId).maybeSingle())
+            .data?.inbound_webhook_secret ?? null)
+        : null;
+      const statusCallbackUrl = stampSecret
+        ? (Deno.env.get("TWILIO_STATUS_CALLBACK_URL")
+            ? `${Deno.env.get("TWILIO_STATUS_CALLBACK_URL")}?t=${encodeURIComponent(stampSecret)}`
+            : supabaseUrl
+              ? stampedWebhookUrls(supabaseUrl, stampSecret).statusCallback
+              : null)
+        // No secret ⇒ emit NO callback rather than one that will be refused. The row
+        // stays at its send-time status, which is honest, instead of accruing 401s.
+        : null;
 
       const outMsg: NormalizedMessage = {
         thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `sms:${body.to}`,
@@ -985,6 +1233,10 @@ Deno.serve(async (req) => {
   if (status === "sent" && body.conversation_id) {
     await admin.from("paige_conversations").insert({
       channel: body.channel,
+      // The outbound mirror carried no tenant either (C-7). `tenantId` here is the
+      // server-derived one this send was already authorised against — never a
+      // value from the request body.
+      tenant_id: tenantId,
       contact_id: body.contact_id ?? null,
       direction: "outbound",
       subject: body.subject,
@@ -993,13 +1245,48 @@ Deno.serve(async (req) => {
       status: "replied",
       metadata: { audit_id: auditRow?.id, in_reply_to: body.conversation_id },
     });
-    await admin.from("paige_conversations")
-      .update({ status: "replied" })
-      .eq("id", body.conversation_id);
+    // §9 — scope the update to the send's OWN tenant.
+    //
+    // `admin` is service-role, so RLS does not apply here, and
+    // `body.conversation_id` arrives from the request and is validated nowhere.
+    // The caller gate above requires only a GLOBAL `admin`/`coach` app_role, and
+    // `user_roles` has no tenant column (§59) — so without this predicate a
+    // tenant-A coach who performs any successful send could pass tenant B's
+    // conversation id and flip that row. An unguessable UUID is not access
+    // control.
+    //
+    // Left unscoped when `tenantId` is null: that is the platform-owner path,
+    // which legitimately reaches across tenants. Adding `.eq("tenant_id", null)`
+    // there would match nothing and silently break the operator instead.
+    //
+    // OBSERVABLE, because a scoped update can now match ZERO rows where it used to
+    // match one — and a silent no-op is a regression that looks like success. The
+    // `.select("id")` makes the match count readable and a 0-row result is logged
+    // loudly rather than swallowed. It is NOT treated as a send failure: the
+    // message really did go out, and failing here would be a worse lie.
+    {
+      const convoUpdate = admin.from("paige_conversations")
+        .update({ status: "replied" })
+        .eq("id", body.conversation_id);
+      const { data: convoRows, error: convoErr } = await (
+        tenantId ? convoUpdate.eq("tenant_id", tenantId) : convoUpdate
+      ).select("id");
+      if (convoErr) {
+        console.error("[send-message] conversation status update failed:", convoErr.code, convoErr.message);
+      } else if (!convoRows?.length) {
+        console.error(
+          `[send-message] conversation ${body.conversation_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — status NOT advanced. The message was sent.`,
+        );
+      }
+    }
   }
 
   if (body.approval_id) {
-    await admin.from("paige_pending_approvals")
+    // Same §9 reasoning as the conversation update above, and a larger blast
+    // radius: this marks an approval APPROVED and stamps who reviewed it. An
+    // unvalidated id here let one tenant's caller approve another tenant's
+    // pending action.
+    const approvalUpdate = admin.from("paige_pending_approvals")
       .update({
         status: status === "sent" ? "approved" : "pending",
         reviewed_by_user_id: user?.id ?? null,
@@ -1008,6 +1295,30 @@ Deno.serve(async (req) => {
         sent_message_audit_id: auditRow?.id ?? null,
       })
       .eq("id", body.approval_id);
+    const { data: apprRows, error: apprErr } = await (
+      tenantId ? approvalUpdate.eq("tenant_id", tenantId) : approvalUpdate
+    ).select("id");
+    if (apprErr) {
+      console.error("[send-message] approval update failed:", apprErr.code, apprErr.message);
+    } else if (!apprRows?.length) {
+      // A 0-row match leaves the approval `pending` with `claimed_at` set, so every
+      // retry reports already-in-progress. Recoverable only if someone can see it —
+      // hence error level.
+      //
+      // The consequence DEPENDS ON WHETHER THE SEND HAPPENED, and this block is not
+      // gated on that: unlike the conversation update above, it runs for a failed
+      // send too (`status` initialises to "failed", and the update itself writes
+      // "pending" for exactly that case). An earlier version of this line asserted
+      // "the message was sent" unconditionally — stating as fact, in the one record
+      // a human would read while diagnosing, something that may not have happened.
+      // That is the same class of defect as a fabricated delivery status, and it
+      // was introduced by the very commit that added this logging.
+      console.error(
+        status === "sent"
+          ? `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — it stays pending though the message WAS sent. If this fires, the approval row's tenant does not match the send's.`
+          : `[send-message] approval ${body.approval_id} matched 0 rows for tenant ${tenantId ?? "(none)"} — the send did not succeed (status ${status}) and the approval could not be reset to pending. If this fires, the approval row's tenant does not match the send's.`,
+      );
+    }
   }
 
   // ── Paige Context Rail — COMMS emitter: file 'comms.outbound' after a message

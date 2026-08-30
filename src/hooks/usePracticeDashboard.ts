@@ -1,4 +1,4 @@
-import { useEffect, useId } from "react";
+import { useEffect, useId, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -38,17 +38,27 @@ export interface PracticeAttention {
 
 const POLL = { refetchInterval: 45_000, refetchOnWindowFocus: true } as const;
 
-export function usePracticeDashboard(windowDays = 30) {
+export function usePracticeDashboard(windowDays = 30, accountEpoch?: string | null) {
   const queryClient = useQueryClient();
   // Per-mount unique id for the realtime channel topic (matches the
   // usePendingApprovals / useSoloActions idiom, §18) — see the useEffect below.
   const instanceId = useId();
+  const enabled = accountEpoch !== null;
+  const metricsKey = useMemo(() => accountEpoch === undefined
+    ? ["practice-dashboard-metrics", windowDays]
+    : ["practice-dashboard-metrics", windowDays, accountEpoch], [accountEpoch, windowDays]);
+  const attentionKey = useMemo(() => accountEpoch === undefined
+    ? ["practice-attention-queue"]
+    : ["practice-attention-queue", accountEpoch], [accountEpoch]);
 
   const metrics = useQuery({
-    queryKey: ["practice-dashboard-metrics", windowDays],
+    queryKey: metricsKey,
+    enabled,
     queryFn: async (): Promise<PracticeMetrics> => {
       const { data, error } = await supabase.rpc(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC awaits generated type refresh
         "practice_dashboard_metrics" as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC awaits generated type refresh
         { p_window_days: windowDays } as any,
       );
       if (error) throw error;
@@ -58,8 +68,10 @@ export function usePracticeDashboard(windowDays = 30) {
   });
 
   const attention = useQuery({
-    queryKey: ["practice-attention-queue"],
+    queryKey: attentionKey,
+    enabled,
     queryFn: async (): Promise<PracticeAttention> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC awaits generated type refresh
       const { data, error } = await supabase.rpc("practice_attention_queue" as any);
       if (error) throw error;
       return (data ?? {}) as PracticeAttention;
@@ -77,6 +89,7 @@ export function usePracticeDashboard(windowDays = 30) {
   // callbacks after subscribe()", which crashed the whole Admin workspace. A
   // per-mount unique topic guarantees a fresh channel every time.
   useEffect(() => {
+    if (accountEpoch === null) return;
     const topic = `practice-attention-approvals:${instanceId}`;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     // Belt-and-suspenders (§32): a realtime failure must degrade quietly, never
@@ -88,7 +101,7 @@ export function usePracticeDashboard(windowDays = 30) {
           "postgres_changes",
           { event: "*", schema: "public", table: "paige_pending_approvals" },
           () => {
-            queryClient.invalidateQueries({ queryKey: ["practice-attention-queue"] });
+            queryClient.invalidateQueries({ queryKey: attentionKey });
           },
         )
         .subscribe();
@@ -98,12 +111,12 @@ export function usePracticeDashboard(windowDays = 30) {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [queryClient, instanceId]);
+  }, [queryClient, instanceId, accountEpoch, attentionKey]);
 
   return {
     metrics: metrics.data,
     attention: attention.data,
-    loading: metrics.isLoading || attention.isLoading,
+    loading: accountEpoch === null || metrics.isLoading || attention.isLoading,
     isError: metrics.isError || attention.isError,
     refetch: () => {
       metrics.refetch();

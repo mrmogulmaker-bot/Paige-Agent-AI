@@ -49,6 +49,7 @@ import {
   isOperatorClientCaller,
   parseClientCaller,
   parseOperatorClientCaller,
+  resolveStatusCallbackUrl,
   sanitizePhoneFilter,
   voiceThreadKey,
   CALL_UNAVAILABLE_MESSAGE,
@@ -73,8 +74,64 @@ async function buildCoPilotStreamXml(
   tenantId: string,
   callSid: string,
   counterpartyPhone: string,
-  precomputedContactId: string | null | undefined = undefined,
+  precomputedContactId: string | null | undefined,
+  /**
+   * Did we VERIFY a signature on the request asking for this fork? Checked FIRST — see
+   * below. REQUIRED, with no default, so a call site that forgets it fails to COMPILE.
+   * An earlier revision wrote that sentence and then defaulted it to `false` on the very
+   * next line, which made it optional: a forgetful caller would have compiled cleanly,
+   * silently lost the co-pilot, and logged "unsigned request" on a request that WAS
+   * signed. Fail-closed is the right runtime posture and is not a substitute for the
+   * compiler catching it.
+   */
+  requestAuthenticated: boolean,
 ): Promise<string> {
+  // §9 — THE SAME GATE AS THE statusCallback SECRET, FOR THE SAME REASON.
+  // The minted token travels in the SAME response body, from the SAME `verify_jwt = false`
+  // endpoint, keyed off the SAME attacker-supplied fields. `paige-stt` is also
+  // `verify_jwt = false` and this token is its ONLY gate — it derives the tenant from the
+  // verified payload. So handing one to an unauthenticated caller lets them open the media
+  // socket AS that tenant and drive the co-pilot.
+  //
+  // Inbound is the cheap path: the tenant resolves from the DIALED NUMBER, which is public.
+  // An anonymous POST naming a tenant's published phone number was enough. The token payload
+  // is base64url, not encrypted, so tenantId/callSid/contactId are readable in it too.
+  //
+  // This is the defect that was fixed for the callback secret and NOT carried the ninety
+  // lines down to here. Stated plainly so the next reader sees the rule rather than the
+  // instance: on this endpoint, nothing secret or capability-bearing leaves in a response to
+  // a request we did not authenticate.
+  //
+  // §58 — WHAT THIS GATE COSTS, NAMED RATHER THAN LEFT TO BE FOUND, and stated CONDITIONALLY
+  // because only one of its two premises is established.
+  //
+  // ESTABLISHED: `signatureVerified` is globally false in the documented production
+  // credential model (the master TWILIO_AUTH_TOKEN is deliberately absent), so this gate
+  // returns "" on every call under that posture.
+  //
+  // NOT ESTABLISHED: whether the fork is ACTIVATED on prod. It also requires
+  // VOICE_STT_STREAM_URL and VOICE_STREAM_SECRET, which this file documents as default-OFF
+  // and which no session here can read. So:
+  //   - if the fork IS activated, this is a real regression of a previously-shipped
+  //     capability (#140 B1) and everything downstream of it in paige-stt (#140 B3 — live
+  //     transcription, commitment capture, at-risk signal, the auto-drafted follow-up),
+  //     unreachable on every call, and it needs owner sign-off;
+  //   - if it is NOT activated, this gate costs nothing today and arms the protection
+  //     before the day it would have mattered.
+  // An earlier revision asserted the first case unconditionally without checking the second.
+  //
+  // Either way it is NOT a reason to weaken the gate: minting this token to an
+  // unauthenticated caller hands them tenant-scoped access to paige-stt, which is strictly
+  // worse than the feature being off. It lifts with per-subaccount signature validation,
+  // same as the statusCallback loss above.
+  if (!requestAuthenticated) {
+    if (Deno.env.get("VOICE_STT_STREAM_URL")) {
+      console.warn(
+        "[voice-twiml] unsigned request — NOT minting a co-pilot stream token (it would grant tenant-scoped access to paige-stt). The co-pilot and every downstream live-call signal are unavailable on this call until per-subaccount signature validation lands.",
+      );
+    }
+    return "";
+  }
   const streamUrl = Deno.env.get("VOICE_STT_STREAM_URL") ?? "";
   if (!streamUrl) return ""; // co-pilot not activated — default OFF, changes nothing
   const secret = Deno.env.get("VOICE_STREAM_SECRET") ?? "";
@@ -95,6 +152,14 @@ async function buildCoPilotStreamXml(
     // #168: reuse the contact the voice-row writer already resolved/auto-created (avoids a duplicate
     // lookup and links the co-pilot to the SAME, now-existing contact). Only fall back to a resolve-only
     // lookup when no value was threaded through (undefined) — an explicit null means "no contact", honored.
+    // NOTE (§13) — this fallback is currently UNREACHABLE, and the reason is a defect
+    // rather than tidy design. Both call sites pass `voiceLink.contactId`, typed
+    // `string | null`, never undefined. Worse, `writeVoiceMessageRow` returns null for
+    // TWO different things: "no contact exists" and "the conversation RPC errored / the
+    // writer threw". So on a transient RPC failure the co-pilot mints a CONTACTLESS token
+    // and loses client linkage — exactly the case this resolve-only fallback exists for,
+    // and it structurally cannot run. The remedy is distinguishing the two nulls at the
+    // writer, not deleting this branch. Left in place, and named, rather than removed.
     const contactId = precomputedContactId !== undefined
       ? precomputedContactId
       : await resolveContactByPhone(admin, tenantId, counterpartyPhone);
@@ -219,7 +284,7 @@ async function resolveTenantSeatIdentities(admin: Admin, tenantId: string): Prom
     .filter((u: string | null | undefined): u is string => typeof u === "string" && u.length > 0)
     .map((userId: string) => buildIdentity(tenantId, userId));
   // De-dupe defensively (a member could hold two of the three roles across rows).
-  return [...new Set(ids)];
+  return [...new Set<string>(ids as string[])];
 }
 
 /**
@@ -351,7 +416,7 @@ async function resolveOperatorSeatIdentities(admin: Admin): Promise<string[]> {
     .filter((u: string | null | undefined): u is string => typeof u === "string" && u.length > 0)
     .map((userId: string) => buildOperatorIdentity(userId));
   // De-dupe defensively (a user could hold both super_admin and platform_admin rows).
-  return [...new Set(ids)];
+  return [...new Set<string>(ids as string[])];
 }
 
 /**
@@ -506,6 +571,11 @@ Deno.serve(async (req) => {
   //    set (single-account/dev, or once subaccount tokens are wired) a bad signature is a
   //    hard 403 — never a silent accept.
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  // TRUE only when this request carried a signature we actually VERIFIED. Reaching past the
+  // block below with the token set means the HMAC matched (a mismatch returns 403), so this
+  // flag is the single honest answer to "do we know Twilio sent this?" — and it is the gate
+  // on emitting anything secret-bearing further down.
+  let signatureVerified = false;
   if (authToken) {
     const sig = req.headers.get("x-twilio-signature");
     const ok = await validateTwilioSignature(authToken, sig, req.url, rawBody);
@@ -513,6 +583,7 @@ Deno.serve(async (req) => {
       console.error("[voice-twiml] REJECTED: invalid x-twilio-signature", { hasSig: !!sig, url: req.url });
       return new Response("invalid_signature", { status: 403 });
     }
+    signatureVerified = true;
   } else {
     console.warn("[voice-twiml] TWILIO_AUTH_TOKEN not set — accepting unsigned (see §13 caveat in header)");
   }
@@ -531,9 +602,105 @@ Deno.serve(async (req) => {
   // twilio-status-callback can stamp the voice row's final status + duration. Mirrors send-message's
   // SMS-DLR URL derivation EXACTLY (env override → default). "" ⇒ the noun emits no statusCallback
   // (the row stays 'queued'; honest degrade, never a broken dial).
-  const statusCallbackUrl =
+  //
+  // `twilio-status-callback` now fails CLOSED, so a callback URL is only useful when it
+  // carries proof — either the master signature (operator/master-account calls) or the
+  // receiving tenant's stamped `?t=` secret.
+  //
+  // ── WHY THIS IS GATED ON `signatureVerified` (the defect this gate exists to prevent) ──
+  // The TwiML we return here is the HTTP RESPONSE BODY handed to whoever POSTed. A stamped
+  // URL therefore DISCLOSES `inbound_webhook_secret` to the caller. That is safe only when
+  // we know the caller is Twilio. This function is `verify_jwt = false`, and in the prod
+  // credential model TWILIO_AUTH_TOKEN is deliberately ABSENT — so without this gate an
+  // anonymous POST of `From=client:<any tenantId>.<any userId>` would have made us look up
+  // that tenant's secret and hand it back in `<Number statusCallback="…?t=SECRET">`. The
+  // holder of that long-lived secret can then forge inbound SMS, suppressions and consent
+  // events against the tenant — i.e. it would have handed away the very fail-closed posture
+  // the rest of this change establishes.
+  //
+  // An earlier revision of this block called `From` "the AUTHENTICATED client identity …
+  // never a raw parameter (§9)". That is true of Twilio's own request and FALSE of an
+  // unsigned one: with no signature to check, every field here is attacker-supplied. §9
+  // scope is only as non-forgeable as the authentication underneath it.
+  //
+  // So: emit a secret-bearing (or signature-authenticated) callback ONLY on a verified
+  // request. Unverified ⇒ NO callback at all. The honest cost is stated in §13 terms below.
+  const statusCallbackBase =
     Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
     (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : "");
+
+  // §13 — the honest degrade, named rather than silent. While voice webhooks cannot be
+  // authenticated we emit no completion callback, so the voice row keeps its non-terminal
+  // status (no duration/recording/transcript stamp). That is a REAL capability loss versus
+  // the fail-open predecessor, logged on every call so it shows up in the function logs
+  // rather than as missing data weeks later.
+  //
+  // WHAT LIFTS IT — and what does NOT. The remedy is per-subaccount signature validation.
+  // It is specifically NOT "set the master TWILIO_AUTH_TOKEN": tenant numbers live on
+  // SUBACCOUNTS, which Twilio signs with the SUBACCOUNT's token, and the check above has no
+  // shared-secret fallback and a hard 403 — so setting the master token would reject every
+  // legitimate tenant voice webhook and no tenant call would bridge at all.
+  //
+  // The SMS siblings do not have this problem, and the difference is the point:
+  // `_shared/twilio-webhook-auth.ts` deliberately does NOT return on a failed signature when
+  // a stamped secret is also offered, precisely so that setting the master token cannot turn
+  // every correctly-stamped tenant callback into a 401. It avoids the trap by falling through
+  // to the shared secret. This function has no such fallback, so for it the trap is real.
+  // (An earlier revision of this comment cited that module as issuing the warning, which
+  // misread a hypothetical it guards against as a standing caution. The conclusion was right;
+  // the attribution was not.)
+  //
+  // FORWARD NOTE for whoever implements per-subaccount validation: "the outbound tenant is
+  // non-forgeable" holds only if the validator BINDS the signing subaccount to the tenant
+  // claimed in `From`. Without that binding, a request signed with tenant A's subaccount token
+  // carrying `From=client:<tenantB>.<user>` would verify, and the outbound branch would then
+  // stamp tenant B's secret. That belongs in the follow-up's acceptance criteria.
+  //
+  // An earlier revision of this comment named the master token as a remedy; that was wrong
+  // and operationally dangerous, and is corrected here rather than left to be acted on.
+  if (statusCallbackBase && !signatureVerified) {
+    console.warn(
+      "[voice-twiml] unsigned request — emitting NO statusCallback (a stamped URL would disclose the tenant's webhook secret to an unauthenticated caller). Voice row will not receive a terminal status until per-subaccount signature validation lands.",
+    );
+  }
+
+  /**
+   * Resolve the callback URL for the tenant THIS BRANCH actually established.
+   *
+   * Computed per branch, not once up front. The previous revision derived one tenant from
+   * `From` and reused it everywhere — but `From` is a PSTN number on every INBOUND call, so
+   * `parseClientCaller` returned null and every inbound tenant call was treated as an
+   * operator/master call and got the bare, unstamped URL. That URL is refused 401 by the
+   * (now fail-closed) callback endpoint, because a tenant leg is signed by the subaccount
+   * and not the master token. It was masked only because `signatureVerified` is globally
+   * false today, and would have returned intact the moment signatures could be verified —
+   * i.e. exactly when the code claimed the capability would come back.
+   *
+   * The tenant is passed in by the branch that resolved it non-forgeably: the authenticated
+   * client identity outbound, the OWNER OF THE DIALED NUMBER inbound (§9). null = an
+   * operator/master call, which carries no tenant credential.
+   */
+  const callbackUrlFor = async (tenantId: string | null): Promise<string> => {
+    // Skip the credential read entirely on an unverified request — nothing downstream can
+    // use it, and not reading it is stronger than reading it and discarding it.
+    if (!statusCallbackBase || !signatureVerified) return "";
+    let tenantSecret: string | null = null;
+    if (tenantId) {
+      // §32 — LOG the fault. This previously destructured only `.data`, so a PGRST
+      // error (including PGRST116, which `.maybeSingle()` raises when a tenant somehow
+      // has more than one row) silently produced null → no statusCallback → a voice row
+      // that never gets its terminal status, indistinguishable from "no secret on file".
+      // Every sibling lookup in this file logs its error; this one did not.
+      const { data, error } = await admin.from("tenant_twilio_subaccounts")
+        .select("inbound_webhook_secret").eq("tenant_id", tenantId).limit(1).maybeSingle();
+      if (error) {
+        console.error("[voice-twiml] webhook-secret lookup FAILED — emitting no statusCallback:",
+          error.code, error.message, { tenantId });
+      }
+      tenantSecret = (data?.inbound_webhook_secret as string | undefined) ?? null;
+    }
+    return resolveStatusCallbackUrl({ base: statusCallbackBase, signatureVerified, tenantId, tenantSecret });
+  };
 
   try {
     if (direction === "outbound") {
@@ -568,7 +735,7 @@ Deno.serve(async (req) => {
         });
         console.log("[voice-twiml] operator outbound bridge");
         // No co-pilot stream on the operator scope (co-pilot is tenant STT, §9). streamXml = "".
-        return twiml(buildOutboundTwiml(opCallerId, to, "", statusCallbackUrl));
+        return twiml(buildOutboundTwiml(opCallerId, to, "", await callbackUrlFor(null)));
       }
 
       // §9: tenant is the AUTHENTICATED client identity Twilio populated From with.
@@ -597,9 +764,9 @@ Deno.serve(async (req) => {
         tenantId: caller.tenantId, callSid, direction: "outbound", counterpartyPhone: to, ownNumber: callerId,
       });
       // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> bridge.
-      const streamXml = await buildCoPilotStreamXml(admin, caller.tenantId, callSid, to, voiceLink.contactId);
+      const streamXml = await buildCoPilotStreamXml(admin, caller.tenantId, callSid, to, voiceLink.contactId, signatureVerified);
       console.log("[voice-twiml] outbound bridge", { tenantId: caller.tenantId, coPilot: streamXml.length > 0 });
-      return twiml(buildOutboundTwiml(callerId, to, streamXml, statusCallbackUrl));
+      return twiml(buildOutboundTwiml(callerId, to, streamXml, await callbackUrlFor(caller.tenantId)));
     }
 
     // ── INBOUND ──────────────────────────────────────────────────────────────────
@@ -629,7 +796,7 @@ Deno.serve(async (req) => {
         });
         console.log("[voice-twiml] operator inbound ring", { seats: opIdentities.length });
         // No co-pilot stream on the operator scope (co-pilot is tenant STT, §9). streamXml = "".
-        return twiml(buildInboundTwiml(opIdentities, "", statusCallbackUrl));
+        return twiml(buildInboundTwiml(opIdentities, "", await callbackUrlFor(null)));
       }
       console.warn("[voice-twiml] inbound: To number owned by no active tenant — honest degrade", { to });
       return twiml(buildSayHangupTwiml(UNKNOWN_NUMBER_MESSAGE));
@@ -648,9 +815,9 @@ Deno.serve(async (req) => {
       tenantId, callSid, direction: "inbound", counterpartyPhone: from, ownNumber: to,
     });
     // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> ring.
-    const streamXml = await buildCoPilotStreamXml(admin, tenantId, callSid, from, voiceLink.contactId);
+    const streamXml = await buildCoPilotStreamXml(admin, tenantId, callSid, from, voiceLink.contactId, signatureVerified);
     console.log("[voice-twiml] inbound ring", { tenantId, seats: identities.length, coPilot: streamXml.length > 0 });
-    return twiml(buildInboundTwiml(identities, streamXml, statusCallbackUrl));
+    return twiml(buildInboundTwiml(identities, streamXml, await callbackUrlFor(tenantId)));
   } catch (e) {
     // §32: never a silent 500 — a runtime fault still answers with a spoken, graceful hangup
     // so the caller/browser hears something, and we log the real cause loudly.

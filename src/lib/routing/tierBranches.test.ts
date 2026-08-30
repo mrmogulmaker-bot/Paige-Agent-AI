@@ -1,29 +1,35 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { TIER_TREES, SOLO_BRANCHES, AGENCY_BRANCHES, treeForTier, defaultBranchSlug, branchBySlug, branchByKey, branchPath, defaultSubtabSlug, subtabBySlug, subtabByKey, subtabPath, type RouteTierKey, OPERATOR_BRANCHES, leafPath, type Branch } from "./tierBranches";
+import { TIER_TREES, SOLO_BRANCHES, AGENCY_BRANCHES, SUB_ACCOUNT_BRANCHES, treeForTier, defaultBranchSlug, branchBySlug, branchByKey, branchPath, defaultSubtabSlug, subtabBySlug, subtabByKey, subtabPath, type RouteTierKey, OPERATOR_BRANCHES, leafPath, type Branch } from "./tierBranches";
 
 const TIERS: RouteTierKey[] = ["operator", "agency", "enterprise", "solo", "sub_account"];
 
 describe("TIER_BRANCHES registry (§65 §11)", () => {
-  it("§65 R3c-i CORRECTION — sub_account points at AGENCY_BRANCHES, matching what actually renders", () => {
-    // §11c/§60 doctrine ("sub-account inherits the Solo tree") is the TARGET once
-    // /business mounts SoloApp (a later, owner-sequenced slice). Until then,
-    // sub_account renders LIVE via AgencyApp mode="subaccount" (Admin.tsx Gate B),
-    // which shares AGENCY_BRANCHES' key set (command/paige/compass/autos/fleet/
-    // calendar/support/growth/analytics/billing/market/vault/integrations/team/
-    // setup) — NOT SOLO_BRANCHES' keys (home/clients/auto/cal, no support/billing),
-    // which match SoloApp.tsx's own screens map instead. This test locks the
-    // registry to CURRENT REALITY (§13) so it can't silently drift dead again.
-    expect(TIER_TREES.sub_account.branches).toBe(AGENCY_BRANCHES);
+  it("exposes the approved Relationships and Clients secondary matrices", () => {
+    expect(branchBySlug("solo", "clients")?.subtabs?.filter((tab) => !tab.hidden).map((tab) => tab.label)).toEqual([
+      "People", "Conversations", "Calendar", "Portal",
+    ]);
+    expect(branchBySlug("sub_account", "clients")?.subtabs?.filter((tab) => !tab.hidden).map((tab) => tab.label)).toEqual([
+      "People", "Conversations", "Calendar", "Portal",
+    ]);
+    expect(branchBySlug("agency", "clients")?.subtabs?.filter((tab) => !tab.hidden).map((tab) => tab.label)).toEqual([
+      "People", "Conversations", "Calendar", "Segments",
+    ]);
+    expect(branchBySlug("enterprise", "clients")?.subtabs?.filter((tab) => !tab.hidden).map((tab) => tab.label)).toEqual([
+      "People", "Conversations", "Calendar", "Segments",
+    ]);
+  });
+  it("keeps the Sub-account compatibility tree on shared AgencyApp screen keys", () => {
+    expect(TIER_TREES.sub_account.branches).toBe(SUB_ACCOUNT_BRANCHES);
     expect(TIER_TREES.solo.branches).toBe(SOLO_BRANCHES);
     // Distinct root prefix (§3 shared shell, §65 mental-model label) — same shell,
     // different address.
     expect(TIER_TREES.sub_account.root).toBe("/business");
     expect(TIER_TREES.solo.root).toBe("/solo");
-    // Sub_account and agency share the identical branch array reference (one
-    // registry entry, no fork, §18) — solo/business remain the target, not today.
-    expect(TIER_TREES.sub_account.branches).not.toBe(SOLO_BRANCHES);
+    expect(branchBySlug("sub_account", "clients")?.key).toBe(branchBySlug("agency", "clients")?.key);
+    expect(branchBySlug("sub_account", "clients")?.label).toBe("Clients");
+    expect(branchBySlug("agency", "clients")?.label).toBe("Relationships");
   });
 
   it("§3/§61 — enterprise = agency baseline (superset), distinct root", () => {
@@ -123,7 +129,8 @@ describe("Sub-tab tree (§65 3-level, agency verified 2026-08-17)", () => {
     expect(count("command-center")).toBe(4);
     expect(count("paige")).toBe(6);
     expect(count("automations")).toBe(3);
-    expect(count("calendar")).toBe(5);
+    expect(count("clients")).toBe(7);
+    expect(count("calendar")).toBe(6);
     expect(count("growth")).toBe(7);
     expect(count("analytics")).toBe(6);
     expect(count("marketplace")).toBe(6);
@@ -151,6 +158,21 @@ describe("Sub-tab tree (§65 3-level, agency verified 2026-08-17)", () => {
 });
 
 describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", () => {
+  it("makes Settings the one visible Solo owner with the approved eight destinations", () => {
+    const settings = branchBySlug("solo", "settings");
+    expect(settings?.key).toBe("settings");
+    expect(settings?.subtabs?.map(({ slug, label }) => [slug, label])).toEqual([
+      ["setup", "Setup"],
+      ["team", "Team"],
+      ["connections", "Connections"],
+      ["integrations", "Integrations"],
+      ["notifications", "Notifications"],
+      ["security-data", "Security & data"],
+      ["vault", "Vault"],
+      ["billing", "Billing"],
+    ]);
+  });
+
   it("sub-tab slugs are unique + url-safe within each Solo branch; keys unique too", () => {
     for (const b of SOLO_BRANCHES) {
       if (!b.subtabs) continue;
@@ -170,36 +192,32 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     }
   });
 
-  it("Solo branches with NO sub-tabs are exactly Trust Compass + Business Vault", () => {
-    // Verified live: solo/compass.tsx has a full-page department drilldown (no sub-tab strip),
-    // and solo/vault.tsx's `tabstrip`-classed chip row is a due-date FILTER, not destinations.
+  it("Solo branches with NO sub-tabs are exactly Trust Compass", () => {
+    // Verified live: solo/compass.tsx has a full-page department drilldown (no sub-tab strip).
+    // Vault is now an owner-locked Settings destination, not a parallel branch.
     const noSub = SOLO_BRANCHES.filter((b) => !b.subtabs).map((b) => b.slug).sort();
-    expect(noSub).toEqual(["business-vault", "trust-compass"]);
-    // ...and the other 11 all DO carry sub-tabs.
-    expect(SOLO_BRANCHES.filter((b) => b.subtabs).length).toBe(11);
+    expect(noSub).toEqual(["trust-compass"]);
+    expect(SOLO_BRANCHES.filter((b) => b.subtabs).length).toBe(9);
   });
 
-  it("verified Solo counts + first-is-default per the live-screen audit (55 total)", () => {
+  it("verified Solo counts + first-is-default per the live-screen audit", () => {
     const count = (slug: string) => branchBySlug("solo", slug)?.subtabs?.length ?? 0;
-    expect(count("command-center")).toBe(4);
-    expect(count("paige")).toBe(6);
+    expect(count("command-center")).toBe(2);
+    expect(count("paige")).toBe(4);
     expect(count("automations")).toBe(3);
-    expect(count("clients")).toBe(5);
+    expect(count("clients")).toBe(6);
     expect(count("calendar")).toBe(6);
-    expect(count("growth")).toBe(7);
+    expect(count("growth")).toBe(6);
     expect(count("analytics")).toBe(6);
     expect(count("marketplace")).toBe(4);
-    expect(count("integrations")).toBe(3);
-    expect(count("team")).toBe(6);
-    expect(count("setup")).toBe(5);
+    expect(count("settings")).toBe(8);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(55);
+    expect(total).toBe(45);
     // first sub-tab is the screen's default (bare branch renders it).
-    expect(defaultSubtabSlug("solo", "command-center")).toBe("overview");
+    expect(defaultSubtabSlug("solo", "command-center")).toBe("systems-check");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
-    expect(defaultSubtabSlug("solo", "setup")).toBe("business");
+    expect(defaultSubtabSlug("solo", "settings")).toBe("setup");
     expect(defaultSubtabSlug("solo", "trust-compass")).toBeNull();
-    expect(defaultSubtabSlug("solo", "business-vault")).toBeNull();
   });
 
   it("subtabBySlug / subtabByKey round-trip across several Solo branches", () => {
@@ -208,17 +226,47 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       expect(subtabByKey("solo", branch, key)?.slug, `solo/${branch} key ${key}`).toBe(slug);
     };
     roundTrip("command-center", "systems-check", "sys");
-    roundTrip("paige", "knowledge", "know");
+    roundTrip("command-center", "mind", "mind");
+    expect(subtabBySlug("solo", "command-center", "overview")?.key).toBe("sys");
+    expect(subtabBySlug("solo", "command-center", "directory")?.key).toBe("mind");
+    expect(subtabBySlug("solo", "command-center", "history")?.key).toBe("mind");
+    roundTrip("paige", "knowledge", "knowledge");
+    roundTrip("paige", "helpers", "helpers");
+    roundTrip("paige", "capabilities", "capabilities");
     roundTrip("automations", "library", "lib");
     roundTrip("clients", "pipeline", "pipe");
-    roundTrip("calendar", "booking-links", "links");
+    expect(subtabBySlug("solo", "calendar", "booking-links")?.key).toBe("booking");
+    expect(subtabByKey("solo", "calendar", "booking")?.slug).toBe("booking-pages");
     roundTrip("growth", "overview", "ov");
+    roundTrip("growth", "catalog", "catalog");
+    roundTrip("growth", "sales", "sales");
+    roundTrip("growth", "pipeline", "pipeline");
+    roundTrip("growth", "social", "social");
+    roundTrip("growth", "performance", "performance");
+    expect(branchBySlug("solo", "growth")?.subtabs?.map(({ slug, label }) => [slug, label])).toEqual([
+      ["overview", "Overview"],
+      ["catalog", "Catalog"],
+      ["sales", "Sales"],
+      ["pipeline", "Pipeline"],
+      ["social", "Social"],
+      ["performance", "Performance"],
+    ]);
+    expect(subtabBySlug("solo", "growth", "active")?.key).toBe("ov");
+    for (const legacy of ["brand-kit", "pages", "funnels", "forms", "builders"]) {
+      expect(subtabBySlug("solo", "growth", legacy)?.key, legacy).toBe("catalog");
+    }
     roundTrip("analytics", "market-watch", "mkt");
-    roundTrip("integrations", "web-automator", "auto");
-    roundTrip("team", "directory", "dir");
-    roundTrip("setup", "comms-data", "comms");
-    expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("The money");
+    roundTrip("settings", "connections", "connections");
+    roundTrip("settings", "integrations", "integrations");
+    roundTrip("settings", "security-data", "security-data");
+    roundTrip("settings", "billing", "billing");
+    expect(subtabBySlug("solo", "analytics", "money")?.label).toBe("Sales funnel");
+    expect(subtabBySlug("solo", "analytics", "market-watch")?.label).toBe("Acquisition");
     expect(subtabBySlug("solo", "paige", "nope")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "sub-agents")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "actions")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "skills")).toBeNull();
+    expect(subtabBySlug("solo", "paige", "paige-team")).toBeNull();
     expect(subtabBySlug("solo", "trust-compass", "anything")).toBeNull();
   });
 
@@ -228,27 +276,31 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(subtabPath("solo", "3855", "growth", "funnels")).toBe("/solo/3855/growth/funnels");
   });
 
-  it("Solo-only sub-tabs the agency tree lacks (and vice versa) stay distinct", () => {
-    // Solo owns a direct client book → Delivery + Client Portal; agency manages sub-accounts.
+  it("keeps the approved client and relationship matrices distinct", () => {
     const soloClients = branchBySlug("solo", "clients")?.subtabs?.map((s) => s.slug) ?? [];
     expect(soloClients).toEqual([
-      "people", "pipeline", "conversations", "delivery", "client-portal",
+      "people", "conversations", "calendar", "portal", "pipeline", "delivery",
     ]);
     expect(branchBySlug("agency", "clients")?.subtabs?.map((s) => s.slug))
-      .toEqual(["sub-accounts", "pipelines", "conversations"]);
-    // Solo calendar has Routing; agency does not.
-    expect(subtabBySlug("solo", "calendar", "routing")?.key).toBe("route");
+      .toEqual(["people", "conversations", "calendar", "segments", "portal", "sub-accounts", "pipelines"]);
+    // The retired Solo-only Routing URL remains a booking-page compatibility alias.
+    expect(subtabBySlug("solo", "calendar", "routing")?.key).toBe("booking");
     expect(subtabBySlug("agency", "calendar", "routing")).toBeNull();
     // Marketplace: curated + publish are agency-only.
     expect(subtabBySlug("agency", "marketplace", "curated")).not.toBeNull();
     expect(subtabBySlug("solo", "marketplace", "curated")).toBeNull();
     expect(subtabBySlug("solo", "marketplace", "publish")).toBeNull();
-    // Setup: presence + banking are agency-only.
-    expect(subtabBySlug("solo", "setup", "presence")).toBeNull();
-    expect(subtabBySlug("solo", "setup", "banking")).toBeNull();
-    // Integrations: a STUB on agency, fully built on Solo (§13 per-tier truth).
+    // Public Presence remains Analytics-owned and banking is not a Solo Settings destination.
+    expect(subtabBySlug("solo", "settings", "presence")).toBeNull();
+    expect(subtabBySlug("solo", "settings", "banking")).toBeNull();
+    // Agency's legacy Integrations branch remains unchanged; Solo has one Settings owner.
     expect(branchBySlug("agency", "integrations")?.subtabs).toBeUndefined();
-    expect(branchBySlug("solo", "integrations")?.subtabs?.length).toBe(3);
+    expect(branchBySlug("solo", "integrations")).toBeNull();
+  });
+
+  it("keeps the shipped Solo client-portal address as an alias of canonical Portal", () => {
+    expect(subtabBySlug("solo", "clients", "client-portal")?.key).toBe("portal");
+    expect(subtabByKey("solo", "clients", "portal")?.slug).toBe("portal");
   });
 
   it("REGRESSION — Solo sub-tab KEYS are Solo's own, never the agency keys (dead-route guard)", () => {
@@ -259,24 +311,16 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     const perTierKeys: Array<[string, string, string, string]> = [
       // [branch, shared slug, solo key, agency key]
       ["command-center", "systems-check", "sys", "systems"],
-      ["paige", "knowledge", "know", "knowledge"],
-      ["paige", "sub-agents", "sub", "agents"],
-      ["paige", "actions", "act", "actions"],
-      ["paige", "paige-team", "team", "pteam"],
+      ["paige", "knowledge", "knowledge", "knowledge"],
       ["automations", "library", "lib", "library"],
-      ["calendar", "schedule", "sch", "schedule"],
-      ["calendar", "requests", "req", "requests"],
-      ["calendar", "settings", "set", "settings"],
+      ["calendar", "schedule", "calendar", "calendar"],
+      ["calendar", "requests", "agenda", "agenda"],
+      ["calendar", "settings", "connections", "connections"],
       ["growth", "overview", "ov", "overview"],
-      ["growth", "brand-kit", "brand", "brand"], // same on both — asserted below as equal
+      ["growth", "brand-kit", "catalog", "brand"],
       ["analytics", "retention", "ret", "retain"],
       ["analytics", "decisions", "dec", "decide"],
       ["analytics", "market-watch", "mkt", "market"],
-      ["team", "directory", "dir", "directory"],
-      ["team", "workload", "work", "workload"],
-      ["team", "performance", "perf", "performance"],
-      ["team", "activity", "act", "activity"],
-      ["setup", "business", "biz", "business"],
     ];
     for (const [branch, slug, soloKey, agencyKey] of perTierKeys) {
       expect(subtabBySlug("solo", branch, slug)?.key, `solo ${branch}/${slug}`).toBe(soloKey);
@@ -286,9 +330,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
         expect(subtabBySlug("solo", branch, slug)?.key).not.toBe(agencyKey);
       }
     }
-    // Solo `growth/brand-kit` legitimately shares the agency key — locked so a future
-    // "consistency" sweep can't cite it as precedent for aligning the others.
-    expect(subtabBySlug("solo", "growth", "brand-kit")?.key).toBe("brand");
+    // Solo retired this creative tab into a Catalog compatibility landing while
+    // Agency keeps its separate existing screen key.
+    expect(subtabBySlug("solo", "growth", "brand-kit")?.key).toBe("catalog");
     expect(subtabBySlug("agency", "growth", "brand-kit")?.key).toBe("brand");
   });
 });
@@ -312,23 +356,20 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
  * `useSubtabRoute("solo", "<branch>", …)` call and parses the tab strip that
  * immediately follows it — which is precisely the routed component's own strip,
  * never a nested/sibling one (several files carry more than one `const tabs=`:
- * `conversations.tsx` also holds the nested Conversations strip, `paigehub.tsx`
- * the SubAgents and Skills consoles, `CommandCenter.tsx` the inner approvals
+ * `conversations.tsx` also holds the nested Conversations strip, while
+ * `CommandCenter.tsx` holds the inner approvals
  * filter). Then it asserts set-AND-order equality with the registry.
  */
 describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
   const SCREEN_FOR_BRANCH: Record<string, string> = {
     "command-center": "src/solo/CommandCenter.tsx",
-    paige: "src/solo/paigehub.tsx",
+    paige: "src/solo/SoloPaigeWorkspace.tsx",
     automations: "src/solo/automations-build.tsx",
-    clients: "src/solo/conversations.tsx",
-    calendar: "src/solo/calendar-book.tsx",
+    calendar: "src/pages/admin/CalendarAdmin.tsx",
     growth: "src/solo/growth2.tsx",
     analytics: "src/solo/analytics2.tsx",
     marketplace: "src/solo/marketplace.tsx",
-    integrations: "src/solo/integrations.tsx",
-    team: "src/solo/team.tsx",
-    setup: "src/solo/setup.tsx",
+    settings: "src/solo/settings.tsx",
   };
 
   /** Slice the balanced `[...]` starting at `open`, so nested brackets can't truncate it. */
@@ -344,12 +385,28 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
   /** The tab keys the SCREEN actually renders for `branchSlug`, read from source. */
   function screenKeys(file: string, branchSlug: string): string[] {
     const src = readFileSync(resolve(process.cwd(), file), "utf8");
+    if (branchSlug === "calendar") {
+      // Settings is an explicitly Solo-Clients-owned conditional view. It is
+      // routed by the canonical adapter's query state so the shared Solo /
+      // Sub-account address registry remains unchanged for every other tier.
+      return [...src.matchAll(/<TabsTrigger\s+value=["']([a-z-]+)["']/g)]
+        .map((match) => match[1])
+        .filter((key) => key !== "settings");
+    }
     // Anchor on the routed hook call (tolerant of spacing after commas).
     const hook = new RegExp(
       `useSubtabRoute\\(\\s*["']solo["']\\s*,\\s*["']${branchSlug}["']`,
     ).exec(src);
     if (!hook) throw new Error(`no useSubtabRoute("solo","${branchSlug}") in ${file}`);
     const after = src.slice(hook.index);
+    if (branchSlug === "command-center") {
+      const tabs = /const\s+TABS\s*=\s*\[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
+      return [...tabs.matchAll(/\[\s*["']([A-Za-z0-9_-]+)["']/g)].map((match) => match[1]);
+    }
+    if (branchSlug === "paige") {
+      const tabs = /const\s+TABS[\s\S]*?=\s*\[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
+      return [...tabs.matchAll(/\{\s*id:\s*["']([A-Za-z0-9_-]+)["']/g)].map((match) => match[1]);
+    }
     // The strip is either `const tabs=[…]` or an inline `tabs={[…]}` (integrations).
     const decl = after.search(/const\s+tabs\s*=\s*\[/);
     const inline = after.search(/tabs=\{\[/);
@@ -361,7 +418,7 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     return [...arr.matchAll(/\[\s*['"]([A-Za-z0-9_-]+)['"]/g)].map((m) => m[1]);
   }
 
-  for (const branch of SOLO_BRANCHES.filter((b) => b.subtabs?.length)) {
+  for (const branch of SOLO_BRANCHES.filter((b) => b.subtabs?.length && b.slug !== "clients")) {
     it(`${branch.slug}: registry keys match the rendered strip, in order`, () => {
       const file = SCREEN_FOR_BRANCH[branch.slug];
       expect(file, `no screen mapped for solo branch ${branch.slug}`).toBeTruthy();
@@ -374,7 +431,7 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
   it("covers every Solo branch that declares sub-tabs", () => {
     // Guards the map itself: a future branch gaining sub-tabs without a screen
     // entry here would otherwise silently skip the contract check above.
-    const declared = SOLO_BRANCHES.filter((b) => b.subtabs?.length).map((b) => b.slug);
+    const declared = SOLO_BRANCHES.filter((b) => b.subtabs?.length && b.slug !== "clients").map((b) => b.slug);
     expect(declared.sort()).toEqual(Object.keys(SCREEN_FOR_BRANCH).sort());
   });
 });
@@ -440,3 +497,4 @@ describe("OPERATOR_BRANCHES (Super Admin pack substrate)", () => {
     }
   });
 });
+

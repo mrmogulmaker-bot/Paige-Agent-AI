@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   TENANT_SHELL_DESTINATIONS,
@@ -8,16 +10,66 @@ import {
 } from "./tenantShellRoutes";
 
 describe("tenant Command Center shell routing", () => {
-  it("exposes the ruled six tenant destinations and never Fleet", () => {
+  it("removes PAIGE materialization transforms when reduced motion is active", () => {
+    const css = readFileSync(resolve("src/components/tenant-shell/tenant-command-center-shell.css"), "utf8");
+
+    expect(css).toMatch(/\[data-tenant-shell\]\[data-reduced-motion="true"\] \.tcs-paige\s*\{[^}]*animation:\s*none/);
+  });
+
+  it("exposes the ruled five tenant destinations and keeps Calendar under Clients or Relationships", () => {
     expect(TENANT_SHELL_DESTINATIONS.map(({ label }) => label)).toEqual([
       "Command Center",
       "Clients",
-      "Calendar",
       "Studio",
       "Insights",
       "Settings",
     ]);
+    expect(TENANT_SHELL_DESTINATIONS.map(({ id }) => id)).not.toContain("calendar");
     expect(TENANT_SHELL_DESTINATIONS.some(({ label }) => label === "Fleet")).toBe(false);
+  });
+
+  it("gives Solo the approved six durable work homes without a top-level Studio", () => {
+    const destinations = tenantShellDestinationsForPath("/solo/42/command-center", "standalone");
+
+    expect(destinations.map(({ label }) => label)).toEqual([
+      "Command Center",
+      "Clients",
+      "Campaigns",
+      "Marketplace",
+      "Analytics",
+      "Settings",
+    ]);
+    expect(destinations.map(({ id, href }) => [id, href])).toEqual([
+      ["command", "/solo/42/command-center"],
+      ["clients", "/solo/42/clients"],
+      ["campaigns", "/solo/42/growth"],
+      ["marketplace", "/solo/42/marketplace"],
+      ["analytics", "/solo/42/analytics"],
+      ["settings", "/solo/42/settings"],
+    ]);
+    expect(destinations.some(({ label }) => label === "Studio")).toBe(false);
+    expect(destinations.some(({ label }) => label === "Calendar")).toBe(false);
+  });
+
+  it("does not grant the Solo menu from a URL without authenticated Solo context", () => {
+    expect(tenantShellDestinationsForPath("/solo/42/command-center").map(({ label }) => label)).toEqual([
+      "Command Center",
+      "Clients",
+      "Studio",
+      "Insights",
+      "Settings",
+    ]);
+  });
+
+  it.each([
+    ["/agency/1924546/clients", "agency", "Relationships"],
+    ["/agency/7000001/clients", "enterprise", "Relationships"],
+    ["/solo/42/clients", "standalone", "Clients"],
+    ["/business/9082725/clients", "sub_account", "Clients"],
+    ["/agency/1924546/sub/9082725/clients", "sub_account", "Clients"],
+  ])("presents the approved relationship home at %s", (pathname, accountType, expected) => {
+    const destinations = tenantShellDestinationsForPath(pathname, accountType);
+    expect(destinations.find(({ id }) => id === "clients")?.label).toBe(expected);
   });
 
   it.each([
@@ -92,10 +144,12 @@ describe("tenant Command Center shell routing", () => {
     });
   });
 
-  it("keeps Delivery with Clients while Calendar owns tasks and scheduling routes", () => {
+  it("keeps Delivery and canonical Calendar addresses under Clients ownership", () => {
     expect(resolveTenantShellDestination("/admin/clients-hub/delivery").id).toBe("clients");
-    expect(resolveTenantShellDestination("/admin/planning").id).toBe("calendar");
-    expect(resolveTenantShellDestination("/admin/bookings").id).toBe("calendar");
+    expect(resolveTenantShellDestination("/admin/calendar").id).toBe("clients");
+    expect(resolveTenantShellDestination("/admin/planning").id).toBe("clients");
+    expect(resolveTenantShellDestination("/admin/bookings").id).toBe("clients");
+    expect(resolveTenantShellDestination("/admin/tasks").id).toBe("clients");
   });
 
   it("keeps the client relationship surfaces under Clients", () => {
@@ -115,36 +169,86 @@ describe("tenant Command Center shell routing", () => {
     ["/business/9082725/command-center", "/business/9082725"],
     ["/agency/1924546/command-center", "/agency/1924546"],
     ["/agency/1924546/sub/9082725/command-center", "/agency/1924546/sub/9082725"],
-    ["/solo/42/command-center", "/solo/42"],
     ["/enterprise/7/command-center", "/enterprise/7"],
-  ])("keeps all six destinations inside the current account tree: %s", (pathname, routePrefix) => {
+  ])("keeps all five visible destinations inside the current account tree: %s", (pathname, routePrefix) => {
     const destinations = tenantShellDestinationsForPath(pathname);
-    expect(destinations).toHaveLength(6);
+    expect(destinations).toHaveLength(5);
     expect(destinations.map(({ id, href }) => [id, href])).toEqual([
       ["command", `${routePrefix}/command-center`],
       ["clients", `${routePrefix}/clients`],
-      ["calendar", `${routePrefix}/calendar`],
       ["studio", `${routePrefix}/growth`],
       ["insights", `${routePrefix}/analytics`],
-      ["settings", `${routePrefix}/setup`],
+      ["settings", pathname.startsWith("/solo/") ? `${routePrefix}/settings` : `${routePrefix}/setup`],
     ]);
     expect(destinations.every(({ label }) => label !== "Fleet")).toBe(true);
   });
 
-  it.each([
-    ["command", "command-center"],
-    ["clients", "clients"],
-    ["calendar", "calendar"],
-    ["studio", "growth"],
-    ["insights", "analytics"],
-    ["settings", "setup"],
-  ])("keeps acting-child %s navigation active inside the actor-namespaced tree", (destination, slug) => {
-    expect(resolveTenantShellDestination(`/agency/1924546/sub/9082725/${slug}`).id).toBe(destination);
+  it("keeps existing Solo capability addresses while presenting the approved labels", () => {
+    expect(resolveTenantShellDestination("/solo/42/growth", "standalone")).toMatchObject({
+      id: "campaigns",
+      label: "Campaigns",
+      href: "/solo/42/growth",
+    });
+    expect(resolveTenantShellDestination("/solo/42/marketplace", "standalone")).toMatchObject({
+      id: "marketplace",
+      label: "Marketplace",
+      href: "/solo/42/marketplace",
+    });
+    expect(resolveTenantShellDestination("/solo/42/analytics", "standalone")).toMatchObject({
+      id: "analytics",
+      label: "Analytics",
+      href: "/solo/42/analytics",
+    });
   });
 
-  it("folds legacy tenant branches into one of the six capability homes", () => {
+  it.each([
+    ["agency", "command", "command-center"],
+    ["agency", "clients", "clients"],
+    ["agency", "studio", "growth"],
+    ["agency", "insights", "analytics"],
+    ["agency", "settings", "setup"],
+  ])("keeps %s acting-child %s navigation active inside the actor-namespaced tree", (root, destination, slug) => {
+    expect(resolveTenantShellDestination(`/${root}/1924546/sub/9082725/${slug}`).id).toBe(destination);
+  });
+
+  it.each([
+    ["/solo/42/calendar/agenda", "standalone", "Clients"],
+    ["/business/9082725/calendar/availability", "sub_account", "Clients"],
+    ["/agency/1924546/calendar/tasks", "agency", "Relationships"],
+    ["/agency/1924546/sub/9082725/calendar/connections", "sub_account", "Clients"],
+    ["/enterprise/7/calendar/booking-pages", "enterprise", "Relationships"],
+  ])("keeps direct Calendar address %s visible through its relationship owner", (pathname, accountType, label) => {
+    const destination = resolveTenantShellDestination(pathname, accountType);
+    expect(destination.id).toBe("clients");
+    expect(destination.label).toBe(label);
+  });
+
+  it("folds legacy tenant branches into one of the five visible capability homes", () => {
     expect(resolveTenantShellDestination("/business/9082725/paige").id).toBe("command");
     expect(resolveTenantShellDestination("/business/9082725/client-support").id).toBe("clients");
     expect(resolveTenantShellDestination("/business/9082725/business-vault").id).toBe("settings");
+  });
+
+  it("uses the canonical Solo Settings address without changing another tenant tier", () => {
+    expect(
+      tenantShellDestinationsForPath("/solo/42/settings", "standalone")
+        .find(({ id }) => id === "settings")?.href,
+    ).toBe("/solo/42/settings");
+    expect(
+      tenantShellDestinationsForPath("/business/9082725/setup", "sub_account")
+        .find(({ id }) => id === "settings")?.href,
+    ).toBe("/business/9082725/setup");
+  });
+
+  it.each([
+    "/solo/42/settings/setup",
+    "/solo/42/settings/team",
+    "/solo/42/settings/connections",
+    "/solo/42/setup",
+    "/solo/42/team",
+    "/solo/42/integrations",
+    "/solo/42/business-vault",
+  ])("keeps %s inside the single Solo Settings owner", (pathname) => {
+    expect(resolveTenantShellDestination(pathname, "standalone").id).toBe("settings");
   });
 });

@@ -1,26 +1,28 @@
 // @ts-nocheck
 import React from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Bell, Blocks, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
 import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
-import { PaigeHub } from "./paigehub";
+import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 import { TrustCompass } from "./compass";
 import { AutomationsHub } from "./automations-build";
+import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
+import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import { ClientsHub } from "./conversations";
 import { GrowthHub } from "./growth2";
-import { CalendarHub } from "./calendar-book";
+import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
 import { Analytics2 } from "./analytics2";
 import { Marketplace } from "./marketplace";
-import { VaultView } from "./vault";
-import { Integrations } from "./integrations";
-import { TeamHub } from "./team";
-import { Setup } from "./setup";
+import { SoloSettings } from "./settings";
+import { SOLO_SETTINGS_DESTINATIONS } from "./settings-contract";
 import { VibeStudio } from "./vibe";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
 import { resolveTenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
@@ -30,8 +32,12 @@ import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
 import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
 import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
 
-const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
+const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
+const LEGACY_SETTINGS={setup:'setup',team:'team',integrations:'integrations','business-vault':'vault'};
+const SETTINGS_ICONS={setup:Building2,team:Users,connections:Link2,integrations:Blocks,notifications:Bell,'security-data':ShieldCheck,vault:FileLock2,billing:CircleDollarSign};
+
+const SoloClientsRoute=({openPaige})=>{const[tab]=useSubtabRoute("solo","clients","people");return isLegacyRelationshipOwner("solo",tab)?<ClientsHub openPaige={openPaige}/>:<TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={openPaige}/>};
 
 const Rail=({route,go,collapsed,setCollapsed,homeCount})=>{const w=collapsed?70:238;
 const Item=([k,label,Icn])=>{const on=route===k;
@@ -122,13 +128,16 @@ const SoloAppContent=()=>{
 // there is no sub-prefix parsing here — this is the simpler leg.
 const urlParams = useParams();
 const navigate = useNavigate();
+const location = useLocation();
 const { expandRail } = useAgentPresence();
 const { resolvedTheme } = useTheme();
 const urlAccount = urlParams.account || null;
 const urlDriven = !!urlAccount;
 const urlBranchSlug = urlDriven ? ((urlParams["*"] || "").split("/")[0] || defaultBranchSlug("solo")) : null;
 const[stateRoute,setStateRoute]=React.useState('home');
-const route = urlDriven ? (branchBySlug("solo", urlBranchSlug)?.key ?? "home") : stateRoute;
+const[paigeDockedTab,setPaigeDockedTab]=React.useState('chat');
+const legacySettingsDestination=LEGACY_SETTINGS[urlBranchSlug]||null;
+const route = urlDriven ? (legacySettingsDestination?'settings':branchBySlug("solo", urlBranchSlug)?.key ?? "home") : stateRoute;
 // Real approvals count for the rail's Command Center badge (§13 — hidden when 0).
 // Own instance (unique realtime topic via the hook's useId); scope:'all' matches
 // the Command Center's own read so the badge and the queue agree.
@@ -148,7 +157,9 @@ const go = (k) => {
 // own account to their own, and canonicalize a bare /solo/{n} -> its default branch.
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
-const { activeTenant } = useTenantContext();
+const { activeTenant, activeTenantId } = useTenantContext();
+const paigeTabEpochRef=React.useRef(activeTenantId);
+React.useLayoutEffect(()=>{if(paigeTabEpochRef.current===activeTenantId)return;paigeTabEpochRef.current=activeTenantId;setPaigeDockedTab('chat')},[activeTenantId]);
 const urlSplat = urlParams["*"] || "";
 React.useEffect(() => {
   if (!urlDriven) return;
@@ -160,27 +171,70 @@ React.useEffect(() => {
   }
   if (!urlSplat) {
     navigate(branchPath("solo", urlAccount, defaultBranchSlug("solo")), { replace: true });
+    return;
   }
-}, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, navigate]);
+  if (legacySettingsDestination) {
+    navigate(`/solo/${urlAccount}/settings/${legacySettingsDestination}${location.search}`, { replace: true });
+  }
+}, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, legacySettingsDestination, location.search, navigate]);
 const[studio,setStudio]=React.useState(false);
-React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
+const studioReturnFocus=React.useRef(null);
+const studioReturnOwner=React.useRef(null);
+const studioFocusPending=React.useRef(false);
+React.useEffect(()=>{const h=(event)=>{
+  const target=event instanceof CustomEvent?event.detail?.returnFocus:null;
+  const owner=target instanceof HTMLElement?target.closest('[data-tenant-shell]'):null;
+  if(!(target instanceof HTMLButtonElement)||target.disabled||!target.hasAttribute('data-solo-vibe-studio-launcher')||!owner)return;
+  studioReturnFocus.current=target;
+  studioReturnOwner.current=owner;
+  studioFocusPending.current=false;
+  setStudio(true);
+};window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
+const closeStudio=React.useCallback(()=>{studioFocusPending.current=true;setStudio(false)},[]);
+React.useLayoutEffect(()=>{
+  if(studio||!studioFocusPending.current)return;
+  studioFocusPending.current=false;
+  const target=studioReturnFocus.current;
+  const owner=studioReturnOwner.current;
+  studioReturnFocus.current=null;
+  studioReturnOwner.current=null;
+  if(route!=='growth'||!(target instanceof HTMLButtonElement)||!target.isConnected||target.disabled)return;
+  if(!owner?.isConnected||target.closest('[data-tenant-shell]')!==owner||target.closest('[hidden],[aria-hidden="true"],[inert]'))return;
+  target.focus({preventScroll:true});
+},[route,studio]);
+React.useEffect(()=>{if(route==='growth')return;setStudio(false);studioFocusPending.current=false;studioReturnFocus.current=null;studioReturnOwner.current=null},[route]);
 const theme=resolvedTheme==='light'?'light':'dark';
 // Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
 // and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>expandRail();
-const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
+const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home'||route==='analytics'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
+const accountEpochKey=activeTenantId??'resolving';
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings/>};
+const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
+const contextualNavigation=route==='settings'&&urlDriven?{
+  label:'Settings',
+  backHref:branchPath('solo',urlAccount,'command-center'),
+  backLabel:'Back to PAIGE',
+  activeId:settingsActive,
+  items:SOLO_SETTINGS_DESTINATIONS.map(item=>({id:item.key,label:item.label,href:`/solo/${urlAccount}/settings/${item.key}${location.search}`,icon:SETTINGS_ICONS[item.key]})),
+}:undefined;
 return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
 userRole="admin"
+contextualNavigation={contextualNavigation}
+soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey} full={route==='paige'} dockedTab={paigeDockedTab} onDockedTabChange={setPaigeDockedTab}/>}
+paigeFull={route==='paige'}
+paigeFullHref={urlDriven?`${branchPath('solo',urlAccount,'paige')}/${paigeDockedTab}`:undefined}
+paigeReturnHref={urlDriven?branchPath('solo',urlAccount,'command-center'):undefined}
+brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activeTenant.account_number),'command-center'):undefined}
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
-<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{screens[route]}</main>
-{studio&&<VibeStudio onBack={()=>setStudio(false)}/>}</div></div>
+<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
+{studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
 </TenantCommandCenterShell>};
 
 const SoloApp=()=> (

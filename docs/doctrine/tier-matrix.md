@@ -9,6 +9,13 @@
 
 ## §56 PRE-BUILD GATE — check this matrix FIRST, before the first line of code
 
+**Solo Conversations placement (owner-approved 2026-08-28).** This presentation is for the Solo
+Clients workspace only. It does not change the tier feature map, Sub-account/Agency/Enterprise/God
+surfaces, provider authority, or server access. The visible canvas begins below the shared Clients
+subtabs; Conversations consumes People-owned relationship identity and Settings-owned readiness but
+does not duplicate either editor. Every unsupported channel remains visibly PARTIAL, UNAVAILABLE, or
+PROPOSED rather than being promoted from connector presence.
+
 **Owner-ruled 2026-08-10 (CLAUDE.md §56).** This matrix is not only a *post-build* §51
 verification reference — it is the **pre-build** design gate. Before building or placing ANY
 feature/tile/route/RPC/edge fn/migration/surface/copy, answer, out loud, TWO questions against
@@ -846,6 +853,38 @@ longer exist as a branch: Systems check, Directory and History are the three Fle
 Alert rules moved to Settings · Alerts; Team pulse moved to Analytics · Platform health. What each
 surface READS is unchanged — the shell around them moved, the reads did not. See the console table
 at the top of this ledger for where each one now answers.
+
+### `/admin/conversations/settings` — Communications › A2P registration (`A2PTab`)
+
+**Shipped by PR #665 (this commit), §66 paid ON TIME.** The surface already existed; what changed is
+that preparing a registration now **persists**. Before this, `comms-a2p-draft` performed two reads and
+no write, so the prepared draft died with the HTTP response.
+
+**The gate.** `Admin.tsx:534` mounts `conversations/settings` with **no `RoleGate`** — it inherits
+whatever guards `/admin`. The authority that actually decides is server-side, in
+`tenant_a2p_registration_save_draft`: `is_platform_owner() OR has_any_role(uid,{admin,coach})`, with
+the tenant derived from `current_user_tenant_id()` and never from the request body (§9). A
+service-role caller (Paige headless, §10) is the only caller that may name a tenant.
+
+| | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Read the registration | ✓ (all tenants, RLS) | ✓ own | ✓ own | ✓ own | ✓ own | 403 | 403 |
+| Prepare / save a draft | ✓ | ✓ admin·coach | ✓ admin·coach | ✓ admin·coach | ✓ admin·coach | 403 | 403 |
+| Submit to a carrier | — | — | — | — | — | — | — |
+
+**Submission is `—` for every tier, and that is the shipped state, not an omission.** There is no
+carrier integration: `comms-a2p-submit` persists the reviewed copy and returns an explicit
+*prepared, not submitted* refusal. `submitted_at` is never set by any shipped path. A row therefore
+means **prepared**, and the surface says so — the banner and pills key on `submitted_at` rather than
+on "a row exists", which is what let an earlier revision of this very PR render "Submitted for
+review" over a registration nobody had filed.
+
+**A tenant-tier dependency worth recording:** preparing requires
+`tenant_legal_profile.legal_business_name`, which lives behind `/admin/setup/legal` — an
+**`AdminOnly`** route. So a **coach** can reach the A2P surface and be blocked by a record only an
+**admin** can create. That is the shipped behaviour, not a bug: the surface names the requirement and
+tells a non-admin who to ask, rather than offering a link that denies them. On production today
+**0 of 13 tenants** carry that record, so this is the first-use path for every tenant.
 
 ## Known ambiguities and hazards (log, don't hide — §13)
 

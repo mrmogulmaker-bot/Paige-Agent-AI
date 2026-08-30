@@ -1,0 +1,516 @@
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const harness = vi.hoisted(() => ({ knowledge: vi.fn(), systems: vi.fn(), command: vi.fn() }));
+const approvalHook = vi.hoisted(() => {
+  const pending: Array<{ tenant: string | null; resolve: (value: { data: unknown[]; error: null }) => void }> = [];
+  const state = { tenant: "tenant-a" as string | null };
+  const from = vi.fn(() => {
+    let tenant: string | null = null;
+    const builder: Record<string, unknown> = {};
+    builder.select = () => builder;
+    builder.eq = (field: string, value: string) => { if (field === "tenant_id") tenant = value; return builder; };
+    builder.order = () => builder;
+    builder.limit = () => builder;
+    builder.then = (resolve: (value: { data: unknown[]; error: null }) => void) => { pending.push({ tenant, resolve }); };
+    return builder;
+  });
+  return { pending, state, from };
+});
+vi.mock("./data/useSoloKnowledge", () => ({ useSoloKnowledge: () => harness.knowledge() }));
+vi.mock("@/hooks/useSystemsCheck", () => ({ useSystemsCheck: () => harness.systems() }));
+vi.mock("./data/useCommandCenter", () => ({ useCommandCenter: () => harness.command() }));
+vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => ({ activeTenantId: approvalHook.state.tenant }) }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    from: approvalHook.from,
+    auth: { getUser: vi.fn(async () => ({ data: { user: null } })) },
+    channel: vi.fn(() => ({ on() { return this; }, subscribe() { return this; } })),
+    removeChannel: vi.fn(),
+  },
+}));
+
+import { SoloMindWorkspace } from "./SoloMindWorkspace";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const refreshKnowledge = vi.fn();
+const refreshSystems = vi.fn();
+const refreshCommand = vi.fn();
+const openPaige = vi.fn();
+
+const knowledge = {
+  loading: false, error: null, documentsIndexed: 2, empty: false, refresh: refreshKnowledge,
+  recentlyLearned: [],
+  docs: [
+    { id: "doc-1", title: "Reseller agreement", summary: "Clause 7", domain: "Legal", tags: ["margin"], source: "Drive", chunkCount: 4, createdAt: "2026-08-27T12:00:00Z", when: "1d ago", color: "#8A72F5" },
+    { id: "doc-2", title: "Brand voice", summary: null, domain: "Brand", tags: [], source: null, chunkCount: 2, createdAt: "2026-08-26T12:00:00Z", when: "2d ago", color: "#8A72F5" },
+  ],
+};
+
+const finding = {
+  id: "finding-1", run_id: "run-1", check_id: "domain", status: "fail", severity_at_finding: "high",
+  evidence: { state: "stale" }, paige_interpretation: "Evidence needs attention.", paige_drafted_fix: null,
+  department_id: "operations", resolved_at: null, resolution: null, resolution_action_id: null,
+  created_at: "2026-08-27T13:00:00Z", check_name: "Domain health", domain: "systems", priority: 1,
+};
+
+const systems = {
+  run: { id: "run-1", started_at: "2026-08-27T12:59:00Z", completed_at: "2026-08-27T13:00:00Z", check_count: 1, pass_count: 0, fail_count: 1 },
+  findings: [finding], loading: false, isError: false, scanPending: false, refresh: refreshSystems,
+};
+
+const command = {
+  accountEpoch: "tenant-a", approvals: [{ id: "approval-1", dept: "Finance", title: "Approve reminder", preview: "Review only", type: "Email draft", urgency: "today", aging: "2h" }],
+  metrics: [], attention: {}, departments: [], greeting: { name: "Toni", dateLabel: "Today", summary: "1 draft waiting." }, counts: { approvals: 1 },
+  loading: false, isError: false, departmentsConfigured: true, empty: false, approve: vi.fn(), decline: vi.fn(), refresh: refreshCommand,
+};
+
+let host: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  harness.knowledge.mockReturnValue(knowledge);
+  harness.systems.mockReturnValue(systems);
+  harness.command.mockReturnValue(command);
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function render() {
+  act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital", accountType: "standalone" }} openPaige={openPaige} />));
+}
+
+function button(name: string) {
+  return [...host.querySelectorAll("button")].find((item) => item.textContent?.includes(name)) as HTMLButtonElement | undefined;
+}
+
+describe("Solo Mind workspace", () => {
+  it("renders only grounded records with explicit truth boundaries", () => {
+    render();
+    const headings = host.querySelectorAll("h1");
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.id).toBe("mind-title");
+    expect(headings[0]?.textContent).toBe("Mind");
+    expect(host.querySelector(".mind-workspace")?.getAttribute("aria-labelledby")).toBe("mind-title");
+    expect(host.textContent).toContain("First Sterling Capital");
+    expect(host.textContent).toContain("Reseller agreement");
+    expect(host.textContent).toContain("Domain health");
+    expect(host.textContent).toContain("Approve reminder");
+    expect(host.textContent).toContain("LIVE SOURCE");
+    expect(host.textContent).toContain("PARTIAL");
+    expect(host.textContent).toContain("UNAVAILABLE");
+    expect(host.textContent).not.toMatch(/70,880|48,120|12,406/);
+    expect(host.textContent).not.toContain("chain-of-thought");
+  });
+
+  it("renders a truthful presentation orbit with equivalent native record controls", () => {
+    render();
+    const canvas = host.querySelector("canvas");
+    expect(canvas?.getAttribute("aria-roledescription")).toBe("interactive 3D topology viewer");
+    expect(canvas?.getAttribute("tabindex")).toBe("0");
+    expect(canvas?.getAttribute("aria-label")).toContain("A slow presentation orbit shows depth");
+    expect(canvas?.getAttribute("aria-label")).toContain("does not represent tenant activity");
+    expect(host.querySelectorAll("[data-mind-record]")).toHaveLength(4);
+    expect(host.textContent).toContain("An optional presentation orbit can show 3D depth; activity particles remain source-gated");
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    expect(button("Pause orbit")).toBeTruthy();
+    expect(host.textContent).not.toContain("Replay event");
+  });
+
+  it("pauses and resumes the presentation orbit without claiming tenant activity", () => {
+    render();
+    act(() => button("Pause orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
+    expect(button("Resume orbit")).toBeTruthy();
+    act(() => button("Resume orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+  });
+
+  it("locks the presentation orbit while record evidence has focus", () => {
+    render();
+    act(() => button("Reseller agreement")?.click());
+    expect(host.textContent).toContain("FOCUS LOCK · STATIC");
+    expect(button("Orbit paused for focus")?.disabled).toBe(true);
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Close Mind record details"]')?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+  });
+
+  it("paints immediately in reduced motion and lets the owner explicitly start and pause the orbit", () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const context = {
+      setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 24 })), globalAlpha: 1, fillStyle: "", strokeStyle: "",
+      lineWidth: 1, font: "", textBaseline: "middle",
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    render();
+    const firstPaints = context.clearRect.mock.calls.length;
+    expect(firstPaints).toBeGreaterThan(0);
+    const postLayoutPaint = frames.entries().next().value as [number, FrameRequestCallback] | undefined;
+    expect(postLayoutPaint).toBeTruthy();
+    frames.delete(postLayoutPaint![0]);
+    act(() => postLayoutPaint![1](16));
+    expect(context.clearRect.mock.calls.length).toBeGreaterThan(firstPaints);
+    expect(frames.size).toBe(0);
+    act(() => button("Skills")?.click());
+    expect(frames.size).toBe(0);
+    act(() => button("All records")?.click());
+    expect(host.textContent).toContain("REDUCED MOTION · STATIC");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("visible and static for reduced motion");
+    expect(button("Start orbit")?.disabled).toBe(false);
+    act(() => button("Start orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · USER STARTED · NOT ACTIVITY");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("user-started presentation orbit");
+    expect(button("Pause orbit")).toBeTruthy();
+    act(() => button("Pause orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("presentation orbit is paused");
+    expect(button("Resume orbit")).toBeTruthy();
+    act(() => button("Reseller agreement")?.click());
+    expect(host.textContent).toContain("FOCUS LOCK · STATIC");
+    expect(button("Orbit paused for focus")?.disabled).toBe(true);
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("static while record detail has focus");
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Close Mind record details"]')?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
+  });
+
+  it("stops a running orbit when reduced motion is enabled and requires explicit restart", () => {
+    let reduced = false;
+    let motionListener: (() => void) | undefined;
+    const removeMotionListener = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({
+      get matches() { return reduced; },
+      addEventListener: vi.fn((_type: string, listener: () => void) => { motionListener = listener; }),
+      removeEventListener: removeMotionListener,
+    })));
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+
+    render();
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    const initialFrames = [...frames.values()];
+    frames.clear();
+    act(() => initialFrames.forEach((callback) => callback(16)));
+    expect(frames.size).toBeGreaterThan(0);
+
+    reduced = true;
+    act(() => motionListener?.());
+    expect(host.textContent).toContain("REDUCED MOTION · STATIC");
+    expect(frames.size).toBe(0);
+    expect(button("Start orbit")?.disabled).toBe(false);
+
+    act(() => button("Start orbit")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · USER STARTED · NOT ACTIVITY");
+    expect(frames.size).toBeGreaterThan(0);
+    act(() => root.unmount());
+    expect(frames.size).toBe(0);
+    expect(removeMotionListener).toHaveBeenCalledWith("change", expect.any(Function));
+    root = createRoot(host);
+  });
+
+  it("owns first paint and resize observation when the canvas appears after loading", () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const context = {
+      setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 24 })), globalAlpha: 1, fillStyle: "", strokeStyle: "",
+      lineWidth: 1, font: "", textBaseline: "middle",
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    let resizeCallback: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { resizeCallback = callback; }
+      observe = observe;
+      disconnect = disconnect;
+      unobserve = vi.fn();
+    });
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+
+    harness.knowledge.mockReturnValue({ ...knowledge, loading: true, docs: [] });
+    render();
+    expect(host.querySelector("canvas")).toBeNull();
+    expect(observe).not.toHaveBeenCalled();
+
+    harness.knowledge.mockReturnValue(knowledge);
+    act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
+    const canvas = host.querySelector("canvas");
+    expect(canvas).toBeTruthy();
+    expect(observe).toHaveBeenCalledWith(canvas);
+    expect(frames.size).toBe(1);
+    const firstPaint = frames.entries().next().value as [number, FrameRequestCallback];
+    const drawsBeforeFrame = context.clearRect.mock.calls.length;
+    frames.delete(firstPaint[0]);
+    act(() => firstPaint[1](16));
+    expect(context.clearRect.mock.calls.length).toBeGreaterThan(drawsBeforeFrame);
+    const drawsBeforeResize = context.clearRect.mock.calls.length;
+    act(() => resizeCallback?.([], {} as ResizeObserver));
+    expect(context.clearRect.mock.calls.length).toBeGreaterThan(drawsBeforeResize);
+
+    harness.knowledge.mockReturnValue({ ...knowledge, loading: true, docs: [] });
+    act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(cancelFrame).toHaveBeenCalledWith(firstPaint[0]);
+  });
+
+  it("preserves orbit pose through a long gesture and resumes after the post-gesture hold", () => {
+    const context = {
+      setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(),
+      moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 24 })), globalAlpha: 1, fillStyle: "", strokeStyle: "",
+      lineWidth: 1, font: "", textBaseline: "middle",
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const addMotionListener = vi.fn();
+    const removeMotionListener = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: addMotionListener, removeEventListener: removeMotionListener })));
+
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const runFrame = (time: number) => {
+      const queued = frames.entries().next().value as [number, FrameRequestCallback] | undefined;
+      expect(queued).toBeTruthy();
+      frames.delete(queued![0]);
+      act(() => queued![1](time));
+    };
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+
+    render();
+    const canvas = host.querySelector("canvas")!;
+    runFrame(1000);
+    runFrame(1034);
+    const movingDraws = context.clearRect.mock.calls.length;
+
+    canvas.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 20, clientY: 20 }));
+    runFrame(5000);
+    expect(context.clearRect).toHaveBeenCalledTimes(movingDraws);
+
+    now = 5000;
+    canvas.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 9999, clientY: 9999 }));
+    runFrame(6399);
+    expect(context.clearRect).toHaveBeenCalledTimes(movingDraws);
+    runFrame(6400);
+    expect(context.clearRect.mock.calls.length).toBeGreaterThan(movingDraws);
+
+    act(() => root.unmount());
+    expect(cancelFrame).toHaveBeenCalled();
+    expect(removeMotionListener).toHaveBeenCalledWith("change", expect.any(Function));
+    expect(requestFrame).toHaveBeenCalled();
+    root = createRoot(host);
+  });
+
+  it("treats initial hydration as a baseline and animates only a later grounded addition", () => {
+    harness.knowledge.mockReturnValue({ ...knowledge, loading: true, docs: [] });
+    render();
+    expect(host.textContent).toContain("Resolving this account's Mind");
+    act(() => root.unmount());
+    root = createRoot(host);
+    harness.knowledge.mockReturnValue(knowledge);
+    act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+
+    const added = { ...knowledge, docs: [...knowledge.docs, { ...knowledge.docs[0], id: "doc-3", title: "New grounded note" }] };
+    harness.knowledge.mockReturnValue(added);
+    act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
+    expect(host.textContent).toContain("LIVE SOURCE · KNOWLEDGE");
+    expect(host.textContent).toContain("New grounded note was newly observed");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("Grounded source-change motion is active for New grounded note");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("presentation orbit is suspended");
+    act(() => button("Pause")?.click());
+    expect(host.textContent).toContain("PAUSED · KNOWLEDGE");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("Grounded source-change motion is paused for New grounded note");
+    act(() => button("Resume")?.click());
+    expect(host.textContent).toContain("LIVE SOURCE · KNOWLEDGE");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("Grounded source-change motion is active for New grounded note");
+  });
+
+  it("refreshes reads without claiming a scan or manufacturing activity", () => {
+    render();
+    act(() => button("Refresh records")?.click());
+    expect(refreshKnowledge).toHaveBeenCalledTimes(1);
+    expect(refreshSystems).toHaveBeenCalledTimes(1);
+    expect(refreshCommand).toHaveBeenCalledTimes(1);
+    expect(host.textContent).not.toContain("Rescan");
+  });
+
+  it("moves focus into the inspector, contains expanded focus, and restores focus on Escape", async () => {
+    render();
+    const trigger = button("Reseller agreement")!;
+    act(() => trigger.focus());
+    act(() => trigger.click());
+    expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Mind record details");
+    await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Close Mind record details");
+    expect(host.textContent).toContain("Drive");
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Expand record drawer"]')?.click());
+    expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-modal")).toBe("true");
+    expect(host.querySelector(".mind-scroll-owner")?.hasAttribute("inert")).toBe(true);
+    const first = host.querySelector<HTMLButtonElement>('button[aria-label="Restore record drawer"]')!;
+    const last = [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].at(-1)!;
+    act(() => last.focus());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" })));
+    expect(document.activeElement).toBe(first);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("opens only the existing PAIGE workspace and makes the partial boundary explicit", () => {
+    render();
+    act(() => button("Open PAIGE")?.click());
+    expect(openPaige).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain("No Mind context was attached or prepared");
+  });
+
+  it("hands focus to the durable PAIGE command when opening from record detail", async () => {
+    const commandButton = document.createElement("button");
+    commandButton.setAttribute("data-tenant-paige-command", "");
+    document.body.appendChild(commandButton);
+    render();
+    act(() => button("Reseller agreement")?.click());
+    await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+    act(() => button("Open PAIGE · PARTIAL")?.click());
+    await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+    expect(openPaige).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(commandButton);
+    commandButton.remove();
+  });
+
+  it("interrupts causal motion when filtering would hide the active category", () => {
+    render();
+    harness.knowledge.mockReturnValue({ ...knowledge, docs: [...knowledge.docs, { ...knowledge.docs[0], id: "doc-new", title: "New source" }] });
+    act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
+    expect(host.textContent).toContain("LIVE SOURCE · KNOWLEDGE");
+    act(() => button("Skills")?.click());
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    expect(host.textContent).toContain("Source-change motion interrupted. Skills filter selected.");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("A slow presentation orbit shows depth");
+  });
+
+  it("renders honest loading, empty, partial and failure states", () => {
+    harness.knowledge.mockReturnValue({ ...knowledge, loading: true, docs: [] });
+    render();
+    expect(host.textContent).toContain("Resolving this account's Mind");
+    act(() => root.unmount());
+    root = createRoot(host);
+    harness.knowledge.mockReturnValue({ ...knowledge, loading: false, error: "Denied", docs: [] });
+    harness.systems.mockReturnValue({ ...systems, isError: true, findings: [], run: null });
+    act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital", accountType: "standalone" }} openPaige={openPaige} />));
+    expect(host.textContent).toContain("Mind has partial coverage");
+    expect(host.textContent).toContain("No missing source is treated as empty");
+  });
+
+  it("contains responsive, reduced-motion, forced-colors and shell safe-area contracts", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/solo/solo-mind-workspace.css"), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "src/solo/SoloMindWorkspace.tsx"), "utf8");
+    expect(source.match(/<h1\b/g)).toHaveLength(1);
+    expect(source).toContain('<section className="mind-workspace" aria-labelledby="mind-title">');
+    expect(source).toContain('<h1 id="mind-title">Mind</h1>');
+    expect(source).toContain('className="mind-eyebrow"');
+    expect(source).toContain("Your durable business records, decisions, knowledge, and source provenance");
+    expect(css).toContain(".mind-heading h1{font-size:clamp(18px,1.35vw,22px)");
+    expect(css).toContain(".mind-heading p{margin:0;max-width:720px;color:var(--pg-muted);font-size:10px;line-height:1.35}");
+    expect(css).toContain(".mind-eyebrow{color:var(--mind-knowledge)!important;font-size:8px!important");
+    expect(css).toContain(".mind-heading h1{font-size:20px}");
+    expect(css).toContain("height:calc(100% - 100px)");
+    expect(css).toContain("height:calc(100% - 150px)");
+    expect(css).toContain("height:calc(100% - 128px)");
+    expect(css).not.toContain("font-size:clamp(26px,2.4vw,35px)");
+    expect(css).not.toContain(".mind-heading h1{font-size:28px}");
+    expect(css).toContain("container:solo-mind / inline-size");
+    expect(css).toContain("@container solo-mind (max-width:780px)");
+    expect(css).toContain('@media(min-width:761px) and (max-width:1080px)');
+    expect(css).toContain('[data-tenant-shell][data-paige="open"] #tenant-shell-main .mind-workspace');
+    expect(css).toContain('[data-pg="light"] .mind-workspace');
+    expect(css).toContain("--mind-texture-alpha:.58");
+    expect(css).toContain("--mind-edge:rgba(54,47,67,.48)");
+    expect(css).toContain("grid-template-columns:repeat(6,minmax(0,1fr))");
+    expect(css).toContain("@container solo-mind (max-width:900px)");
+    expect(css).toContain("overflow-x:hidden");
+    expect(source).toContain("getComputedStyle(canvas)");
+    expect(source).toContain('getPropertyValue(`--mind-${item.key}`)');
+    expect(source).toContain("context.fillText(label");
+    expect(source).toContain("!dragRef.current && now >= presentation.resumeAt");
+    expect(source).toContain("onPointerCancel");
+    expect(source).toContain("onLostPointerCapture");
+    expect(css).toContain("@media(prefers-reduced-motion:reduce)");
+    expect(css).toContain("@media(forced-colors:active)");
+  });
+
+  it("masks prior-account approvals synchronously and rejects their late response", async () => {
+    const snapshots: Array<{ tenant: string | null; ids: string; loading: boolean }> = [];
+    function Probe() {
+      const state = usePendingApprovals();
+      snapshots.push({ tenant: approvalHook.state.tenant, ids: state.items.map((item) => item.id).join(","), loading: state.loading });
+      return <><output data-approval-ids>{state.items.map((item) => item.id).join(",")}</output><output data-approval-loading>{String(state.loading)}</output><button type="button" onClick={state.refresh}>Refresh approvals</button></>;
+    }
+    approvalHook.pending.splice(0);
+    approvalHook.state.tenant = "tenant-a";
+    const approvalHost = document.createElement("div");
+    document.body.appendChild(approvalHost);
+    const approvalRoot = createRoot(approvalHost);
+    await act(async () => { approvalRoot.render(<Probe />); await Promise.resolve(); });
+    const firstA = approvalHook.pending.shift()!;
+    expect(firstA.tenant).toBe("tenant-a");
+    await act(async () => firstA.resolve({ data: [{ id: "approval-a" }], error: null }));
+    expect(approvalHost.querySelector("[data-approval-ids]")?.textContent).toBe("approval-a");
+    await act(async () => approvalHost.querySelector<HTMLButtonElement>("button")?.click());
+    const lateA = approvalHook.pending.shift()!;
+
+    approvalHook.state.tenant = "tenant-b";
+    await act(async () => approvalRoot.render(<Probe />));
+    expect(snapshots.filter((item) => item.tenant === "tenant-b").every((item) => item.ids === "")).toBe(true);
+    expect(approvalHost.querySelector("[data-approval-ids]")?.textContent).toBe("");
+    expect(approvalHost.querySelector("[data-approval-loading]")?.textContent).toBe("true");
+    await act(async () => lateA.resolve({ data: [{ id: "late-approval-a" }], error: null }));
+    expect(approvalHost.querySelector("[data-approval-ids]")?.textContent).toBe("");
+    await act(async () => approvalRoot.unmount());
+    approvalHost.remove();
+    approvalHook.state.tenant = "tenant-a";
+  });
+});
+
