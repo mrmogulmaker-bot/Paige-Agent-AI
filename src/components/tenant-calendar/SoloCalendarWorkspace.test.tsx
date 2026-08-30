@@ -7,13 +7,16 @@ import { findConflicts } from "./useSoloCalendar";
 const setStatus = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
 const createBooking = vi.fn(async () => ({ ok: true }) as { ok: boolean; message?: string });
 const refresh = vi.fn();
+const retry = vi.fn(async () => {});
 
 const state: {
   bookings: SoloBooking[];
   calendars: SoloCalendarMeta[];
   phase: "loading" | "ready" | "error";
   error: string | null;
-} = { bookings: [], calendars: [], phase: "ready", error: null };
+  stale: boolean;
+  lastSyncedAt: Date | null;
+} = { bookings: [], calendars: [], phase: "ready", error: null, stale: false, lastSyncedAt: null };
 
 // Only the DATA BOUNDARY is faked. The component's rendering, drawer, keyboard
 // handling and focus restoration are the real shipped code; the hook's own
@@ -22,13 +25,22 @@ vi.mock("./useSoloCalendar", async () => {
   const actual = await vi.importActual<typeof import("./useSoloCalendar")>("./useSoloCalendar");
   return {
     ...actual,
-    useSoloCalendar: () => ({
-      bookings: state.bookings,
+    useSoloCalendar: () => {
+      // Mirrors the real hook exactly: the class fold runs BEFORE the grid and
+      // the conflict detector see anything, so these tests exercise the shipped
+      // folding logic rather than a convenient stand-in for it.
+      const folded = actual.foldClassSeats(state.bookings);
+      return {
+      bookings: folded.visible,
       calendars: state.calendars,
-      conflicts: actual.findConflicts(state.bookings),
+      seatsBySession: folded.seatsBySession,
+      conflicts: actual.findConflicts(folded.visible),
       phase: state.phase,
       error: state.error,
       calendarsError: null,
+      stale: state.stale,
+      lastSyncedAt: state.lastSyncedAt,
+      retry,
       refresh,
       setStatus,
       createBooking,
@@ -36,7 +48,8 @@ vi.mock("./useSoloCalendar", async () => {
         const c = state.calendars.find((x) => x.id === b.calendar_id);
         return c?.color || c?.accent || actual.DEFAULT_CALENDAR_COLOR;
       },
-    }),
+      };
+    },
   };
 });
 
@@ -60,7 +73,7 @@ function booking(over: Partial<SoloBooking> & { id: string; start_at: string; en
     title: "Discovery call", status: "scheduled", source: "manual",
     guest_name: null, guest_email: null, guest_phone: null, calendar_id: null,
     location_type: null, location_value: null, notes: null,
-    booking_kind: "appointment", capacity: null,
+    booking_kind: "appointment", capacity: null, class_session_id: null,
     intake_answers: null, appointment_type: null,
     host_user_id: "host-a", host_full_name: null, timezone: null,
     ...over,
@@ -107,6 +120,9 @@ beforeEach(() => {
   state.calendars = [];
   state.phase = "ready";
   state.error = null;
+  state.stale = false;
+  state.lastSyncedAt = null;
+  retry.mockClear();
   setStatus.mockClear();
   setStatus.mockResolvedValue({ ok: true });
   createBooking.mockClear();
@@ -450,5 +466,173 @@ describe("Solo Calendar — calendar settings stay Calendar-owned", () => {
     openConfig();
     expect(container.querySelector('a[href="/solo/1/integrations"]')).toBeTruthy();
     expect(text()).toMatch(/Email and SMS · to guest and host/i);
+  });
+});
+
+describe("Solo Calendar — a class is one appointment, not one per attendee", () => {
+  /** The shape `list_team_bookings` really returns for a group booking: the
+   *  session marker plus one `class_seat` per attendee, all on the same host at
+   *  the same hour. */
+  function groupBooking(seats: { id: string; name: string; email?: string; status?: string }[]) {
+    return [
+      booking({
+        id: "class-1", title: "Group coaching", booking_kind: "class_session",
+        capacity: 8, start_at: todayAt(10), end_at: todayAt(11),
+      }),
+      ...seats.map((s) =>
+        booking({
+          id: s.id, title: "Group coaching", booking_kind: "class_seat",
+          class_session_id: "class-1", guest_name: s.name, guest_email: s.email ?? null,
+          status: s.status ?? "scheduled", start_at: todayAt(10), end_at: todayAt(11),
+        }),
+      ),
+    ];
+  }
+
+  it("draws the class once, however many people are booked into it", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One" },
+      { id: "seat-2", name: "Attendee Two" },
+      { id: "seat-3", name: "Attendee Three" },
+    ]);
+    mount();
+    expect(container.querySelectorAll("button.sc-ev")).toHaveLength(1);
+  });
+
+  it("does not accuse the host of double-booking themselves with their own class", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One" },
+      { id: "seat-2", name: "Attendee Two" },
+    ]);
+    mount();
+    expect(container.querySelectorAll(".sc-ev--conflict")).toHaveLength(0);
+    expect(text()).toMatch(/No overlapping appointments in this range/i);
+  });
+
+  it("lists the real attendees in the class detail", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One", email: "one@example.com" },
+      { id: "seat-2", name: "Attendee Two", email: "two@example.com" },
+    ]);
+    mount();
+    click(chip(/Group coaching/));
+    const d = dialog();
+    expect(d?.textContent).toMatch(/Who is booked/);
+    expect(d?.textContent).toMatch(/Attendee One/);
+    expect(d?.textContent).toMatch(/one@example\.com/);
+    expect(d?.textContent).toMatch(/Attendee Two/);
+    expect(d?.textContent).toMatch(/2 of 8 booked/);
+  });
+
+  it("keeps a cancelled attendee on the record without counting them as booked", () => {
+    state.bookings = groupBooking([
+      { id: "seat-1", name: "Attendee One" },
+      { id: "seat-2", name: "Attendee Two", status: "cancelled" },
+    ]);
+    mount();
+    click(chip(/Group coaching/));
+    expect(dialog()?.textContent).toMatch(/1 of 8 booked/);
+    expect(dialog()?.textContent).toMatch(/Attendee Two/);
+  });
+
+  it("says a class is empty rather than showing an authoritative-looking count", () => {
+    state.bookings = [
+      booking({
+        id: "class-1", title: "Group coaching", booking_kind: "class_session",
+        capacity: 8, start_at: todayAt(10), end_at: todayAt(11),
+      }),
+    ];
+    mount();
+    click(chip(/Group coaching/));
+    expect(dialog()?.textContent).toMatch(/No attendee is booked into this session yet/i);
+  });
+
+  it("still flags a real clash between the class and a separate appointment", () => {
+    state.bookings = [
+      ...groupBooking([{ id: "seat-1", name: "Attendee One" }]),
+      booking({ id: "solo", title: "Discovery call", start_at: todayAt(10, 30), end_at: todayAt(11, 30) }),
+    ];
+    mount();
+    expect(container.querySelectorAll(".sc-ev--conflict")).toHaveLength(2);
+  });
+});
+
+describe("Solo Calendar — an honest freshness state when a refresh fails", () => {
+  /**
+   * Console-only was the defect: the rows stayed on screen and nothing told the
+   * owner they might no longer be true. Keeping the rows is right; letting them
+   * read as current is not.
+   */
+  const staleRow = () => booking({ id: "b1", start_at: todayAt(10), end_at: todayAt(11) });
+
+  it("says nothing at all while refreshes are succeeding", () => {
+    state.bookings = [staleRow()];
+    state.lastSyncedAt = new Date();
+    mount();
+    expect(text()).not.toMatch(/may be out of date/i);
+    expect(buttonByText(/^Retry$/)).toBeNull();
+  });
+
+  it("says the calendar may be out of date, and keeps the appointments on screen", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    expect(text()).toMatch(/Calendar may be out of date/i);
+    expect(text()).toMatch(/could not refresh the latest booking changes/i);
+    // The rows are still there — the notice replaces nothing.
+    expect(chip(/Discovery call/)).toBeTruthy();
+  });
+
+  it("announces the state politely rather than trapping or interrupting", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    const live = container.querySelector('[role="status"]');
+    expect(live, "the freshness state must be announced to assistive tech").toBeTruthy();
+    expect(live?.getAttribute("aria-live")).toBe("polite");
+    expect(live?.textContent).toMatch(/Calendar may be out of date/i);
+  });
+
+  it("offers a real Retry that drives the real refresh", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    const btn = buttonByText(/^Retry$/);
+    expect(btn, "a stale calendar must offer a way back").toBeTruthy();
+    click(btn);
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("names a last-updated time only when a real one exists", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    state.lastSyncedAt = null;
+    mount();
+    // No successful refresh has ever landed — inventing "just now" would be the lie.
+    expect(text()).toMatch(/Calendar may be out of date/i);
+    expect(text()).not.toMatch(/Last updated/i);
+
+    act(() => root.unmount());
+    container.remove();
+
+    state.lastSyncedAt = new Date();
+    mount();
+    expect(text()).toMatch(/Last updated/i);
+  });
+
+  it("drops the notice once the calendar is fresh again", () => {
+    state.bookings = [staleRow()];
+    state.stale = true;
+    mount();
+    expect(text()).toMatch(/Calendar may be out of date/i);
+
+    act(() => root.unmount());
+    container.remove();
+
+    state.stale = false;
+    state.lastSyncedAt = new Date();
+    mount();
+    expect(text()).not.toMatch(/may be out of date/i);
+    expect(buttonByText(/^Retry$/)).toBeNull();
   });
 });

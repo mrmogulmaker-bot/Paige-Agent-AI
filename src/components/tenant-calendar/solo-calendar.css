@@ -87,6 +87,11 @@
 
 /* ---- truth notice ---- */
 
+/* One grid row for the truth strips, however many are showing — see the note at
+   the wrapper in SoloCalendarWorkspace: a fourth child of .sc-root steals the
+   flexible row from .sc-board. */
+.sc-truths { min-width: 0; }
+
 .sc-truth {
   display: flex;
   align-items: center;
@@ -181,6 +186,14 @@
 .sc-swatch--off { background: transparent; }
 
 .sc-note { padding: 2px 6px 0; color: var(--pg-faint); font-size: 10px; line-height: 1.45; }
+
+/* The freshness state sits in the same strip the LIVE line uses, so a stale
+   calendar reads as one more row of chrome rather than a new region: same height,
+   same padding, same border — the grid below does not move. The PARTIAL tag already
+   carries the caution tone from `--pg-warning`; nothing here is gold (gold is the
+   act, §11) and nothing is destructive-red, since the person's own data is intact. */
+.sc-truth--stale { color: var(--pg-ink-2); }
+.sc-stale-retry { margin-left: auto; flex: none; }
 
 /* ---- canvas ---- */
 

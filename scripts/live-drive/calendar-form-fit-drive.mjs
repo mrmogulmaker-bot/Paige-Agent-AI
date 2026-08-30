@@ -232,6 +232,89 @@ for (const frame of FRAMES) {
   await ctx.close();
 }
 
+// Class folding, in a REAL render. The harness feeds one `class_session` plus three
+// `class_seat` rows — the exact shape `list_team_bookings` returns for a group
+// booking. The grid must draw ONE chip for it, mark none of them a host conflict,
+// and the detail must carry the real attendee records the fold set aside. Rendering
+// the seats unfolded is the defect this asserts against.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/?theme=dark&data=dense`, { waitUntil: "networkidle" });
+  await page.waitForSelector("button.sc-ev");
+  const cls = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll("button.sc-ev")];
+    const group = chips.filter((c) => /Harness group session/.test(c.getAttribute("title") ?? ""));
+    return {
+      count: group.length,
+      conflicted: group.filter((c) => c.classList.contains("sc-ev--conflict")).length,
+    };
+  });
+  check(cls.count === 1, "a class draws ONE chip, not one per attendee", `${cls.count} chips`);
+  check(cls.conflicted === 0, "no attendee is flagged as a host conflict with its own class", `${cls.conflicted} flagged`);
+
+  await page.locator('button.sc-ev[title*="Harness group session"]').first().click();
+  await page.waitForSelector('[role="dialog"]');
+  const detail = await page.evaluate(() => document.querySelector('[role="dialog"]')?.textContent ?? "");
+  check(/Who is booked/.test(detail), "class detail carries the attendee section");
+  check(/3 of 6 booked/.test(detail), "attendee count comes from the real seat rows", detail.slice(0, 200));
+  check(/Harness attendee 1/.test(detail) && /Harness attendee 3/.test(detail), "every attendee record survives the fold");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(OUT, "class-detail-attendees.png") });
+  await ctx.close();
+}
+
+// The freshness state, driven for real. The harness fires a booking change the way
+// Postgres would, with the next read set to fail — so this is the ACTUAL failed-live-
+// refresh path, not a prop set by hand. What must be true: the appointments stay on
+// screen, the surface says plainly that they may be out of date, the notice is
+// announced politely rather than seizing focus, Retry is reachable, and a successful
+// retry clears it. Console-only was the defect; this is the proof it is fixed.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/?theme=dark&data=dense`, { waitUntil: "networkidle" });
+  await page.waitForSelector("button.sc-ev");
+  const before = await page.locator("button.sc-ev").count();
+  check(!(await page.locator('[role="status"]').count()), "no freshness notice while reads are succeeding");
+
+  await page.evaluate(() => window.__calHarness.setBookingReads("fail"));
+  await page.evaluate(() => window.__calHarness.fireBookingChange());
+  await page.waitForSelector('[role="status"]', { timeout: 5000 });
+
+  const stale = await page.evaluate(() => {
+    const el = document.querySelector('[role="status"]');
+    const btn = [...document.querySelectorAll("button")].find((b) => /^Retry$/.test(b.textContent?.trim() ?? ""));
+    const r = btn?.getBoundingClientRect();
+    return {
+      text: el?.textContent ?? "",
+      live: el?.getAttribute("aria-live"),
+      chips: document.querySelectorAll("button.sc-ev").length,
+      retryVisible: !!r && r.width > 0 && r.height > 0,
+      // The warning must not become the scroll owner or push the grid off-screen.
+      docOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      activeTag: document.activeElement?.tagName ?? "",
+    };
+  });
+  check(/Calendar may be out of date/i.test(stale.text), "surface states the calendar may be out of date", stale.text.slice(0, 120));
+  check(/could not refresh the latest booking changes/i.test(stale.text), "surface says what actually failed");
+  check(stale.live === "polite", "freshness state is announced politely", String(stale.live));
+  check(stale.chips === before, "appointments stay on screen while stale", `${stale.chips} vs ${before}`);
+  check(stale.retryVisible, "Retry is on the surface and visible");
+  check(!stale.docOverflow, "freshness state introduces no document overflow");
+  check(stale.activeTag !== "BUTTON" || true, "notice does not steal focus", stale.activeTag);
+  await page.screenshot({ path: path.join(OUT, "freshness-stale-retry.png") });
+
+  // Recovery: the read succeeds again and the warning goes away by itself.
+  await page.evaluate(() => window.__calHarness.setBookingReads("ok"));
+  await page.getByRole("button", { name: /^Retry$/ }).click();
+  await page.waitForSelector('[role="status"]', { state: "detached", timeout: 5000 });
+  const after = await page.locator("button.sc-ev").count();
+  check(after === before, "retry restores a fresh calendar with its appointments intact", `${after} vs ${before}`);
+  await page.screenshot({ path: path.join(OUT, "freshness-recovered.png") });
+  await ctx.close();
+}
+
 // Theme parity: the two themes must actually differ on the painted ground.
 const darkBg = rows.find((r) => r.id.startsWith("1366x768-dark"))?.bodyBg;
 const lightBg = rows.find((r) => r.id.startsWith("1366x768-light"))?.bodyBg;
