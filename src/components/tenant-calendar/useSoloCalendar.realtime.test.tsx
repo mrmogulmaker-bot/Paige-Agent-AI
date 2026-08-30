@@ -44,12 +44,16 @@ vi.mock("@/integrations/supabase/client", () => ({
 /** The shared realtime hook is the seam under test's DEPENDENCY, not its subject:
  *  captured here so the subscription's table, tenant filter and enabled flag can
  *  be asserted, and so the change handler can be fired the way Postgres would. */
-let sub: { table: string; handler: () => void; opts?: { filter?: string; enabled?: boolean } } | null = null;
+let sub: {
+  table: string;
+  handler: () => void;
+  opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void };
+} | null = null;
 vi.mock("@/hooks/useRealtimeTable", () => ({
   useRealtimeTable: (
     table: string,
     onChange: () => void,
-    opts?: { filter?: string; enabled?: boolean },
+    opts?: { filter?: string; enabled?: boolean; onStatus?: (s: string) => void },
   ) => { sub = { table, handler: onChange, opts }; },
 }));
 
@@ -280,6 +284,143 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
     await act(async () => { root.render(<Probe tenantId="tenant-1" />); });
     await act(async () => { void seen!.refresh(); });
     await settle([row("z")]);
+    expect(seen!.stale).toBe(false);
+  });
+
+  // ---- Codex P1: a channel that stops delivering must not read as LIVE ----
+
+  it("marks the calendar stale when the realtime channel fails to subscribe", async () => {
+    await mount();
+    await settle([row("a")]);
+    expect(seen!.stale).toBe(false);
+
+    // Nothing else fires: no change event, so no read, so nothing would error.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    expect(seen!.stale).toBe(true);
+    // The rows the person is reading stay exactly where they are.
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a"]);
+  });
+
+  it("marks the calendar stale when the channel times out or closes", async () => {
+    for (const status of ["TIMED_OUT", "CLOSED"]) {
+      await mount();
+      await settle([row("a")]);
+      act(() => sub!.opts!.onStatus!(status));
+      expect(seen!.stale).toBe(true);
+    }
+  });
+
+  it("does not fire an extra read on the FIRST successful subscribe", async () => {
+    await mount();
+    await settle([row("a")]);
+    const readsAfterLoad = rpc.mock.calls.length;
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await tick(500);
+
+    expect(rpc.mock.calls.length).toBe(readsAfterLoad);
+  });
+
+  it("catches up once when the channel RECOVERS, and clears the stale state", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settle([row("a"), row("b")]);
+
+    expect(seen!.stale).toBe(false);
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
+  });
+
+  // ---- Codex P2: a refresh must not supersede an in-flight load ----
+
+  it("does not let a queued refresh discard an in-flight load", async () => {
+    await mount();
+    await settle([row("a")]);
+
+    // A range change starts a fresh load...
+    let resolveLoad: (v: unknown) => void = () => {};
+    rpc.mockImplementationOnce(() => new Promise((r) => { resolveLoad = r; }));
+    await act(async () => { void seen!.refresh(); });
+
+    // ...and a booking changes elsewhere while that load is still in flight.
+    act(() => sub!.handler());
+    await tick(400);
+
+    // The load now returns. Its rows must land, not be dropped as superseded.
+    await act(async () => {
+      resolveLoad({ data: [row("loaded")], error: null });
+      await Promise.resolve();
+    });
+
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["loaded"]);
+    expect(seen!.phase).toBe("ready");
+  });
+
+  it("runs the deferred refresh after the load settles", async () => {
+    await mount();
+    await settle([row("a")]);
+
+    let resolveLoad: (v: unknown) => void = () => {};
+    rpc.mockImplementationOnce(() => new Promise((r) => { resolveLoad = r; }));
+    await act(async () => { void seen!.refresh(); });
+    act(() => sub!.handler());
+    await tick(400);
+
+    await act(async () => {
+      resolveLoad({ data: [row("loaded")], error: null });
+      await Promise.resolve();
+    });
+    // The deferred refresh fires on the microtask after the load settles.
+    await settle([row("fresher")]);
+
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["fresher"]);
+    expect(seen!.phase).toBe("ready");
+  });
+
+  // ---- Codex P1 on this PR: channel health must LATCH until resubscription ----
+
+  it("a successful Retry does NOT clear a channel that is still down", async () => {
+    await mount();
+    await settle([row("a")]);
+
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    // The read itself is fine — the SUBSCRIPTION is what is broken. A point-in-time
+    // success must not be reported as "live" while future changes cannot arrive.
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a"), row("b")]);
+
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("a range load does not clear a channel that is still down either", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { void seen!.refresh(); });
+    await settle([row("z")]);
+
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("only resubscription clears it", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a")]);
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settle([row("a")]);
     expect(seen!.stale).toBe(false);
   });
 });

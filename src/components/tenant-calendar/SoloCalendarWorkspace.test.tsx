@@ -636,3 +636,89 @@ describe("Solo Calendar — an honest freshness state when a refresh fails", () 
     expect(buttonByText(/^Retry$/)).toBeNull();
   });
 });
+
+describe("Solo Calendar — an open drawer follows the live rows", () => {
+  /** Re-render with new rows the way a successful live refresh would. */
+  function refreshWith(rows: SoloBooking[]) {
+    state.bookings = rows;
+    act(() => {
+      root.render(
+        <SoloCalendarWorkspace activeTenantId="tenant-1" connectionsHref="/solo/1/integrations" />,
+      );
+    });
+  }
+
+  it("follows a booking that MOVED, instead of reporting the old time", () => {
+    state.bookings = [booking({
+      id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11),
+    })];
+    mount();
+    click(chip(/Discovery call/)!);
+    expect(dialog()?.textContent).toContain("10:00");
+
+    refreshWith([booking({
+      id: "b1", title: "Discovery call", start_at: todayAt(15), end_at: todayAt(16),
+    })]);
+
+    const d = dialog();
+    expect(d).toBeTruthy();
+    expect(d?.textContent).toContain("3:00");
+    expect(d?.textContent).not.toContain("10:00");
+  });
+
+  it("follows a status change, so a cancelled appointment does not still read scheduled", () => {
+    state.bookings = [booking({ id: "b1", title: "Discovery call", status: "scheduled", start_at: todayAt(10), end_at: todayAt(11) })];
+    mount();
+    click(chip(/Discovery call/)!);
+    expect(dialog()?.textContent).toContain("scheduled");
+
+    refreshWith([booking({ id: "b1", title: "Discovery call", status: "cancelled", start_at: todayAt(10), end_at: todayAt(11) })]);
+    expect(dialog()?.textContent).toContain("cancelled");
+  });
+
+  it("keeps focus inside the surface when the drawer closes because its booking vanished", () => {
+    // The drawer restores focus to the element that opened it — but that element
+    // is the chip, and when the booking is deleted the chip is gone too. Without
+    // a fallback, focus is restored NOWHERE and a keyboard user is dropped onto
+    // document.body with the panel gone from under them.
+    state.bookings = [booking({ id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11) })];
+    mount();
+    const opener = chip(/Discovery call/)!;
+    opener.focus();
+    click(opener);
+    expect(dialog()).toBeTruthy();
+
+    refreshWith([]);
+
+    expect(dialog()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(container.contains(document.activeElement)).toBe(true);
+  });
+
+  it("closes the drawer when the booking is GONE, rather than leaving actions on a row that no longer exists", () => {
+    state.bookings = [booking({ id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11) })];
+    mount();
+    click(chip(/Discovery call/)!);
+    expect(dialog()).toBeTruthy();
+
+    refreshWith([]);
+    expect(dialog()).toBeNull();
+  });
+
+  it("leaves an untouched drawer open across a refresh that changed nothing about it", () => {
+    state.bookings = [
+      booking({ id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11) }),
+      booking({ id: "b2", title: "Strategy session", start_at: todayAt(13), end_at: todayAt(14) }),
+    ];
+    mount();
+    click(chip(/Discovery call/)!);
+    expect(dialog()).toBeTruthy();
+
+    // A different appointment changed; this one did not.
+    refreshWith([
+      booking({ id: "b1", title: "Discovery call", start_at: todayAt(10), end_at: todayAt(11) }),
+      booking({ id: "b2", title: "Strategy session", start_at: todayAt(16), end_at: todayAt(17) }),
+    ]);
+    expect(dialog()?.textContent).toContain("Discovery call");
+  });
+});
