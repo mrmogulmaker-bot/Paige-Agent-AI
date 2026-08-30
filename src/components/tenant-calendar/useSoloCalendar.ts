@@ -428,6 +428,16 @@ export function useSoloCalendar(
   const [nonce, setNonce] = useState(0);
   const [lastSyncedMs, setLastSyncedMs] = useState<number | null>(null);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  /**
+   * Channel health, tracked SEPARATELY from read freshness.
+   *
+   * These are two different truths and one boolean cannot carry both. A read can
+   * succeed at this instant while the subscription is dead — and then a
+   * successful Retry would clear a "stale" flag that also stood for "the channel
+   * is down", putting the surface back to LIVE over a calendar that still cannot
+   * receive changes. Only resubscription clears this one.
+   */
+  const [channelDown, setChannelDown] = useState(false);
   const bookingSeq = useRef(0);
   /** Load/refresh ordering. A load owns the surface's phase; a refresh is quiet
    *  and must wait its turn rather than cutting in front of one. */
@@ -537,6 +547,8 @@ export function useSoloCalendar(
       bookingSeq.current++;
       loadInFlight.current = false;
       pendingRefresh.current = false;
+      channelWasDown.current = false;
+      setChannelDown(false);
       setPhase("loading");
       setBookings([]);
       setError(null);
@@ -594,6 +606,7 @@ export function useSoloCalendar(
     if (status === "SUBSCRIBED") {
       if (channelWasDown.current) {
         channelWasDown.current = false;
+        setChannelDown(false);
         // Catch up once on reconnect: anything that changed while the channel
         // was down was never delivered. Fires on the transition only — this is
         // not a poll.
@@ -604,7 +617,7 @@ export function useSoloCalendar(
     if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
       channelWasDown.current = true;
       console.error("[solo-calendar] realtime channel not delivering:", status);
-      setRefreshFailed(true);
+      setChannelDown(true);
     }
   }, []);
 
@@ -690,7 +703,9 @@ export function useSoloCalendar(
 
   return {
     bookings, calendars, seatsBySession, conflicts, phase, error, calendarsError,
-    stale: refreshFailed, lastSyncedAt, retry,
+    // Either truth makes the schedule unreliable: the last read failed, or the
+    // change stream is not delivering. Both must clear before this says LIVE.
+    stale: refreshFailed || channelDown, lastSyncedAt, retry,
     refresh, setStatus, createBooking, colorForBooking,
   };
 }

@@ -380,4 +380,47 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
     expect(seen!.bookings.map((b) => b.id)).toEqual(["fresher"]);
     expect(seen!.phase).toBe("ready");
   });
+
+  // ---- Codex P1 on this PR: channel health must LATCH until resubscription ----
+
+  it("a successful Retry does NOT clear a channel that is still down", async () => {
+    await mount();
+    await settle([row("a")]);
+
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    // The read itself is fine — the SUBSCRIPTION is what is broken. A point-in-time
+    // success must not be reported as "live" while future changes cannot arrive.
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a"), row("b")]);
+
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("a range load does not clear a channel that is still down either", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { void seen!.refresh(); });
+    await settle([row("z")]);
+
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("only resubscription clears it", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    await act(async () => { void seen!.retry(); });
+    await settle([row("a")]);
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    await settle([row("a")]);
+    expect(seen!.stale).toBe(false);
+  });
 });
