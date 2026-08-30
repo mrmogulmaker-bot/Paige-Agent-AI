@@ -4,6 +4,22 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Analytics2 } from "./analytics2";
+import type { AnalyticsEvidenceBundle } from "./data/useAnalyticsEvidence";
+
+const evidenceHarness = vi.hoisted(() => ({
+  value: {
+    bundle: undefined as AnalyticsEvidenceBundle | undefined,
+    evidenceReference: undefined as string | undefined,
+    loading: false,
+    isError: false,
+    error: null as unknown,
+    retry: vi.fn(),
+  },
+}));
+
+vi.mock("./data/useAnalyticsEvidence", () => ({
+  useAnalyticsEvidence: () => evidenceHarness.value,
+}));
 
 let host: HTMLDivElement;
 let root: Root;
@@ -11,6 +27,14 @@ const openPaige = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  evidenceHarness.value = {
+    bundle: undefined,
+    evidenceReference: undefined,
+    loading: false,
+    isError: false,
+    error: null,
+    retry: vi.fn(),
+  };
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     callback(0);
@@ -28,7 +52,7 @@ afterEach(() => {
 });
 
 function render(accountName = "Verified Solo Account", accountType: string | null = "standalone") {
-  act(() => root.render(<div data-pg="dark" data-tenant-shell><MemoryRouter><Analytics2 accountContext={{ accountName, accountType }} openPaige={openPaige} /></MemoryRouter></div>));
+  act(() => root.render(<div data-pg="dark" data-tenant-shell><MemoryRouter><Analytics2 accountContext={{ accountName, accountType }} accountEpoch="11111111-1111-4111-8111-111111111111" openPaige={openPaige} /></MemoryRouter></div>));
 }
 
 function button(name: string) {
@@ -76,6 +100,60 @@ describe("Solo Analytics operating workspace", () => {
     expect(host.textContent).not.toContain("fixture records");
   });
 
+  it("renders only server-issued stage counts and evidence metadata for a proved funnel", () => {
+    const bundle: AnalyticsEvidenceBundle = {
+      metric: {
+        id: "sales_funnel.created_deals_by_current_stage",
+        label: "Created deals by current stage",
+        definition: "Deal records created in the exact range, grouped by current stage in the unique default pipeline.",
+        formula: "COUNT(deals.id) grouped by current tenant-owned stage",
+        version: "1.0.0",
+      },
+      range: { key: "last_30_days", start: "2026-08-01T00:00:00.000Z", end: "2026-08-31T00:00:00.000Z" },
+      source_references: [
+        { source: "public.deals", boundary: "active tenant and exact half-open range" },
+        { source: "public.pipelines", boundary: "unique active-tenant default pipeline" },
+        { source: "public.pipeline_stages", boundary: "tenant stages in that pipeline" },
+      ],
+      contributing_record_count: 3,
+      coverage: { state: "partial", candidate_count: 4, contributing_count: 3, excluded_count: 1 },
+      exclusions: [{ reason: "outside default pipeline", count: 1 }],
+      freshness: { queried_at: "2026-08-30T19:00:00.000Z", source_updated_through: "2026-08-29T10:00:00.000Z" },
+      truth_state: "PARTIAL",
+      account_epoch_ref: `ae_v1_${"a".repeat(64)}`,
+      source_revision_ref: `sr_v1_${"b".repeat(64)}`,
+      reference_expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      values: {
+        kind: "sales_funnel_stages",
+        pipeline_label: "Primary pipeline",
+        stages: [
+          { stage_key: "qualified", label: "Qualified", stage_type: "open", order: 1, count: 2 },
+          { stage_key: "won", label: "Won", stage_type: "won", order: 2, count: 1 },
+        ],
+      },
+      caveats: ["Current stage is observed at query time; no conversion is implied."],
+    };
+    evidenceHarness.value = {
+      bundle,
+      evidenceReference: `aneb_v1_${"c".repeat(64)}`,
+      loading: false,
+      isError: false,
+      error: null,
+      retry: vi.fn(),
+    };
+    render();
+    act(() => button("Sales funnel")?.click());
+    expect(host.querySelectorAll(".anr-cylinder-stage--proved")).toHaveLength(2);
+    expect(host.textContent).toContain("Qualified");
+    expect(host.textContent).toContain("2 deal records");
+    expect(host.textContent).toContain("PARTIAL");
+    expect(host.textContent).toContain("3 of 4 candidate records contribute");
+    expect(host.textContent).toContain("Exact server-issued boundary");
+    expect(host.textContent).not.toContain("aneb_v1_");
+    expect(host.textContent).not.toMatch(/\$[\d,.]+/);
+    expect(host.textContent).not.toMatch(/\b\d+(?:\.\d+)?%\b/);
+  });
+
   it("keeps truth, range, source, and freshness attached to the active visual", () => {
     render();
     const strip = host.querySelector(".anr-evidence-strip");
@@ -106,6 +184,37 @@ describe("Solo Analytics operating workspace", () => {
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+    expect((host.querySelector("[data-tenant-shell]") as HTMLElement).inert).toBe(false);
+    expect(host.querySelector("[data-tenant-shell]")?.hasAttribute("aria-hidden")).toBe(false);
+  });
+
+  it("traps focus in both directions and cleans up after backdrop and Close exits", () => {
+    render();
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Open evidence"]')!;
+    act(() => trigger.click());
+    let dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const first = dialog.querySelector<HTMLButtonElement>('[aria-label="Close evidence"]')!;
+    const last = dialog.querySelector<HTMLButtonElement>("footer .anr-secondary")!;
+
+    act(() => last.focus());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" })));
+    expect(document.activeElement).toBe(first);
+    act(() => first.focus());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true })));
+    expect(document.activeElement).toBe(last);
+
+    const layer = dialog.parentElement!;
+    act(() => layer.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect((host.querySelector("[data-tenant-shell]") as HTMLElement).inert).toBe(false);
+
+    act(() => trigger.click());
+    dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    act(() => dialog.querySelector<HTMLButtonElement>("footer .anr-secondary")!.click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(host.querySelector("[data-tenant-shell]")?.hasAttribute("aria-hidden")).toBe(false);
   });
 
   it("uses the one existing PAIGE launcher and keeps unsupported analysis disabled", () => {

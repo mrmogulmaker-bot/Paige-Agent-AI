@@ -40,7 +40,8 @@
     "smoke:comms-tenant-scope": "node scripts/comms-tenant-scope-smoke.mjs",
     "lint:conversation-tenant": "node scripts/comms-conversation-tenant-lint.mjs",
     "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",
-    "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs"
+    "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs",
+    "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
