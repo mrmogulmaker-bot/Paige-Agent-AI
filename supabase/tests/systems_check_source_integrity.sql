@@ -39,7 +39,7 @@ SELECT ok(
   'approval seam is SECURITY DEFINER'
 );
 SELECT ok(
-  (SELECT proconfig @> ARRAY['search_path=']
+  (SELECT proconfig @> ARRAY['search_path=""']
      FROM pg_proc WHERE oid = 'public.approve_systems_check_finding(text,bigint,uuid)'::regprocedure),
   'approval seam uses an empty search path'
 );
