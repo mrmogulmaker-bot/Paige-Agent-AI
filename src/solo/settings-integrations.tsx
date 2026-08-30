@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Blocks, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Blocks, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -118,11 +119,13 @@ function BridgeCard({
   kind,
   provider,
   value,
+  action,
 }: {
   name: string;
   kind: string;
   provider: ProviderIdentity;
   value: SafeConnectionStatus | null;
+  action?: { href: string; label: string } | null;
 }) {
   const state = statusPresentation(value);
   const evidence = value?.last_sync_at || value?.last_probed_at;
@@ -143,23 +146,53 @@ function BridgeCard({
         <strong>{evidence ? "Recorded by the provider bridge" : "Not reported"}</strong>
       </div>
       {typeof value?.workflow_count === "number" && <p className="ss-note">{value.workflow_count} workflow {value.workflow_count === 1 ? "record" : "records"} reported. This is not a run or success claim.</p>}
-      <div className="ss-integration-footer"><Truth value={state.truth} /><span>No credentials or provider payloads shown</span></div>
+      <div className="ss-integration-actions">
+        {action ? <Link className="ss-integration-cta" to={action.href}>{action.label}<ArrowUpRight aria-hidden /></Link> : <span className="ss-integration-handoff">Setup handoff unavailable</span>}
+        <span>No credentials or provider payloads shown</span>
+      </div>
+      <div className="ss-integration-footer"><Truth value={state.truth} /><span>{action ? "Opens a separate established owner" : "No safe Solo configuration handoff is available yet."}</span></div>
     </div>
   </article>;
 }
 
 const RECOVERED_SURFACES = [
-  { name: "QuickBooks", truth: "PARTIAL" as SettingsTruth, owner: "Integrations", note: "OAuth and financial sync seams exist, but no canonical active-Solo-tenant readiness projection is proven." },
-  { name: "Stripe Connect", truth: "PARTIAL" as SettingsTruth, owner: "Marketplace / Storefront", note: "Tenant payout-account records exist. They are not Paige subscription or Billing evidence." },
-  { name: "DocuSign", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Legacy admin and signature seams need a tenant-safe governed contract." },
-  { name: "Apollo", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → Clients", note: "Legacy enrichment configuration is platform-global and cannot establish this workspace’s connection." },
-  { name: "Plaid", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → financial owner", note: "Bank-link scaffolding does not prove tenant-safe readiness." },
-  { name: "Webhooks & direct API", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
+  { id: "quickbooks", name: "QuickBooks", category: "Financial tools", truth: "PARTIAL" as SettingsTruth, owner: "Integrations", note: "OAuth and financial sync seams exist, but no canonical active-Solo-tenant readiness projection is proven." },
+  { id: "stripe", name: "Stripe Connect", category: "Commerce", truth: "PARTIAL" as SettingsTruth, owner: "Marketplace / Storefront", note: "Tenant payout-account records exist. They are not Paige subscription or Billing evidence.", route: "marketplace" as const, action: "Browse Marketplace" },
+  { id: "docusign", name: "DocuSign", category: "Documents", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Legacy admin and signature seams need a tenant-safe governed contract." },
+  { id: "apollo", name: "Apollo", category: "Client data", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → Clients", note: "Legacy enrichment configuration is platform-global and cannot establish this workspace’s connection." },
+  { id: "plaid", name: "Plaid", category: "Financial tools", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → financial owner", note: "Bank-link scaffolding does not prove tenant-safe readiness." },
+  { id: "api", name: "Webhooks & direct API", category: "Developer tools", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
 ] as const;
+
+function useSoloDestination(slug: "automations" | "marketplace") {
+  const { pathname } = useLocation();
+  // This preserves route context only. Tenant authority still comes exclusively from
+  // useTenantContext and the server-resolved RPCs above; the URL never scopes a read.
+  const match = pathname.match(/^(\/solo\/[^/]+)(?:\/|$)/);
+  return match ? `${match[1]}/${slug}` : null;
+}
 
 export function SoloIntegrationsView() {
   const status = useIntegrationStatus();
   const mcpProvider: ProviderIdentity = isZapierMcpHost(status.mcp?.server_url_host) ? "zapier" : "mcp";
+  const automationsHref = useSoloDestination("automations");
+  const marketplaceHref = useSoloDestination("marketplace");
+  const catalogueRef = useRef<HTMLDivElement>(null);
+  const [catalogueScrollable, setCatalogueScrollable] = useState(false);
+
+  useEffect(() => {
+    const catalogue = catalogueRef.current;
+    if (!catalogue) return;
+    const measure = () => setCatalogueScrollable(catalogue.scrollHeight > catalogue.clientHeight + 1);
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(catalogue);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [status.loading, status.error, status.n8n, status.mcp]);
 
   return <div className="ss-integrations">
     <section className="ss-integrations-intro" aria-labelledby="ss-integrations-title">
@@ -168,24 +201,42 @@ export function SoloIntegrationsView() {
       <Truth value="PARTIAL" />
     </section>
 
-    {status.loading ? <div className="ss-state" role="status"><RefreshCw className="ss-spin" />Clearing and resolving this account…</div>
-      : status.error ? <div className="ss-state" role="alert"><TriangleAlert /><span><strong>Couldn’t read integration status</strong>No connection state is being claimed for this account.</span><button type="button" onClick={status.retry}>Retry</button></div>
-      : <div className="ss-integration-grid">
-        <BridgeCard name="n8n" kind="Workflow bridge" provider="n8n" value={status.n8n} />
-        <BridgeCard name={mcpProvider === "zapier" ? "Zapier MCP" : "MCP bridge"} kind="External tool bridge" provider={mcpProvider} value={status.mcp} />
-      </div>}
-
-    <section className="ss-recovered" aria-labelledby="ss-recovered-title">
-      <div className="ss-recovered-heading">
-        <div><span>Version One evidence</span><h2 id="ss-recovered-title">Recovered, not connected</h2></div>
-        <p>No tenant connection is claimed</p>
+    <section className="ss-catalogue" aria-labelledby="ss-catalogue-title">
+      <div className="ss-catalogue-heading">
+        <div><span>Browse by provider</span><h2 id="ss-catalogue-title">Integration catalogue</h2></div>
+        <div className="ss-catalogue-heading-meta">
+          <p>Provider color identifies the tool—not readiness or permission.</p>
+          <span className="ss-catalogue-scroll-hint" id="ss-catalogue-scroll-hint"><ChevronsDown aria-hidden />{catalogueScrollable ? "Scroll to browse" : "All integrations visible"}</span>
+        </div>
       </div>
-      <div className="ss-recovered-grid">
-        {RECOVERED_SURFACES.map((surface) => <article key={surface.name} className="ss-recovered-item">
-          <div><strong>{surface.name}</strong><span>{surface.owner}</span></div>
-          <Truth value={surface.truth} />
-          <p>{surface.note}</p>
-        </article>)}
+      <div ref={catalogueRef} className="ss-catalogue-scroll" role="region" aria-label="Integration catalogue" aria-describedby="ss-catalogue-scroll-hint" data-scrollable={catalogueScrollable ? "true" : "false"} tabIndex={0}>
+        {status.loading ? <div className="ss-state" role="status"><RefreshCw className="ss-spin" />Clearing and resolving this account…</div>
+          : status.error ? <div className="ss-state" role="alert"><TriangleAlert /><span><strong>Couldn’t read integration status</strong>No connection state is being claimed for this account.</span><button type="button" onClick={status.retry}>Retry</button></div>
+          : <div className="ss-integration-grid">
+            <BridgeCard name="n8n" kind="Automation" provider="n8n" value={status.n8n} action={automationsHref ? { href: automationsHref, label: "Open Automations" } : null} />
+            <BridgeCard name={mcpProvider === "zapier" ? "Zapier MCP" : "MCP bridge"} kind="External tool bridge" provider={mcpProvider} value={status.mcp} />
+          </div>}
+
+        <section className="ss-recovered" aria-labelledby="ss-recovered-title">
+          <div className="ss-recovered-heading">
+            <div><span>Version One evidence</span><h2 id="ss-recovered-title">Recovered, not connected</h2></div>
+            <p>No tenant connection is claimed</p>
+          </div>
+          <div className="ss-recovered-grid">
+            {RECOVERED_SURFACES.map((surface) => {
+              const href = "route" in surface && surface.route === "marketplace" ? marketplaceHref : null;
+              return <article key={surface.name} className="ss-recovered-item" data-provider={surface.id}>
+                <span className="ss-recovered-mark" aria-hidden>{surface.name.slice(0, 2)}</span>
+                <div className="ss-recovered-title"><span>{surface.category}</span><strong>{surface.name}</strong><small>{surface.owner}</small></div>
+                <Truth value={surface.truth} />
+                <p>{surface.note}</p>
+                <div className="ss-recovered-action">
+                  {href && "action" in surface ? <Link className="ss-integration-cta" to={href}>{surface.action}<ArrowUpRight aria-hidden /></Link> : <span className="ss-integration-handoff">Setup handoff unavailable</span>}
+                </div>
+              </article>;
+            })}
+          </div>
+        </section>
       </div>
     </section>
 
