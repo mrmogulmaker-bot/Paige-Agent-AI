@@ -228,8 +228,29 @@ function areaState(key: AreaKey, { d, avail, hosts, hostsError, readiness }: Sum
       if (inverted) return { value: "hours end before they start", tone: "bad" };
       return { value: `${days} ${days === 1 ? "day" : "days"} · ${minutesLabel(d.min_notice_min)} notice` };
     }
-    case "dates":
-      return { value: d.date_overrides.length ? `${d.date_overrides.length} ${d.date_overrides.length === 1 ? "date" : "dates"} set` : "none" };
+    case "dates": {
+      if (!d.date_overrides.length) return { value: "none" };
+      // Counting the overrides is not the same as counting the ones that will
+      // survive. `buildCalendarPatch` drops any non-blocked date whose windows
+      // are all missing or inverted, which silently restores the ordinary weekly
+      // hours for that date — the same quiet loss of availability this surface
+      // was repaired to stop. So the closed plate reports what will actually be
+      // kept, and warns while the difference is still fixable.
+      const kept = d.date_overrides.filter(
+        (o) => o.blocked || o.windows.some((w) => w.start && w.end && w.end > w.start),
+      ).length;
+      const dropped = d.date_overrides.length - kept;
+      const label = (n: number) => `${n} ${n === 1 ? "date" : "dates"}`;
+      if (dropped > 0) {
+        return {
+          value: kept
+            ? `${label(kept)} set · ${label(dropped)} will not save`
+            : `${label(dropped)} will not save`,
+          tone: "warn",
+        };
+      }
+      return { value: `${label(kept)} set` };
+    }
     case "rules":
       return { value: `${d.duration_min} min · ${d.buffer_before_min}/${d.buffer_after_min} buffer` };
     case "menu": {
@@ -337,6 +358,9 @@ function NewPreset({ onCreate, disabled }: { onCreate: (title: string) => Promis
 
 export function CalendarsView() {
   const conn = useCalendarConnections();
+  /** The account on screen right now, readable from inside an older closure. */
+  const liveTenantId = useRef(conn.tenantId);
+  liveTenantId.current = conn.tenantId;
   const params = useParams();
   const location = useLocation();
   const account = params.account ?? "";
@@ -423,7 +447,15 @@ export function CalendarsView() {
   }, []);
 
   const create = useCallback(async (title: string) => {
+    // The account this create belongs to. The hook already refuses to reload a
+    // departed account, but that guard is inside the hook — this caller writes
+    // its OWN state, and publishing a title, a notice and a selected id here
+    // would show the new account a success for a calendar absent from its list
+    // and select an id belonging to the old one. Fixing the hook was not enough;
+    // every writer of account-scoped state needs the same question asked.
+    const startedUnder = liveTenantId.current;
     const r = await conn.createCalendar(title);
+    if (liveTenantId.current !== startedUnder) return false;
     if (!r.ok) { setNotice({ tone: "bad", text: r.message }); return false; }
     // Select what was just made and open its Details, so naming it lands you
     // straight in the thing you now have to configure.
@@ -541,7 +573,11 @@ export function CalendarsView() {
         </Notice>
       )}
 
-      {draft && selected && summaryInput && (
+      {/* Not while the last read FAILED. `load` keeps the previous rows for the
+          same account so a refresh does not blank the page, which is right — but
+          an editor mounted over an unverified snapshot lets a save overwrite
+          whatever changed since. The error notice and its retry stand alone. */}
+      {draft && selected && summaryInput && !conn.error && (
         <>
           <SelectedPreset
             row={selected} draft={draft} hosts={hosts} hostsError={conn.hostsError}

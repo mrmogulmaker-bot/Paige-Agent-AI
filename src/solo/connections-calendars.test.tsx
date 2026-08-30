@@ -388,6 +388,41 @@ describe("what the surface must not silently destroy or misreport", () => {
     expect(text()).toMatch(/No host is registered/i);
   });
 
+  it("warns that a date override will not save, while it can still be fixed", () => {
+    // buildCalendarPatch drops a non-blocked date whose windows are all missing
+    // or inverted, silently restoring the ordinary weekly hours for that date.
+    // Counting the overrides instead of the survivors hid that until after save.
+    mount({ calendars: [calendar({
+      date_overrides: [
+        { date: "2026-09-01", blocked: false, windows: [{ start: "09:00", end: "12:00" }] },
+        { date: "2026-09-02", blocked: false, windows: [{ start: "14:00", end: "10:00" }] },
+      ],
+    })] });
+    expect(text()).toMatch(/1 date set · 1 date will not save/i);
+    const plate = [...container.querySelectorAll(".cc-area-v")].find((v) => /will not save/i.test(v.textContent ?? ""));
+    expect(plate?.getAttribute("data-tone")).toBe("warn");
+  });
+
+  it("does not warn when every date override will survive the save", () => {
+    mount({ calendars: [calendar({
+      date_overrides: [
+        { date: "2026-09-01", blocked: false, windows: [{ start: "09:00", end: "12:00" }] },
+        { date: "2026-09-03", blocked: true, windows: [] },
+      ],
+    })] });
+    expect(text()).toMatch(/2 dates set/i);
+    expect(text()).not.toMatch(/will not save/i);
+  });
+
+  it("does not offer an editor over a snapshot the last read failed to confirm", () => {
+    // load() keeps the same account's rows so a refresh does not blank the page.
+    // Mounting the editor on top of them after a FAILED read would let a save
+    // overwrite whatever changed since the last successful one.
+    mount({ error: "Network error", calendars: [calendar()] });
+    expect(text()).toMatch(/Couldn’t load your calendars/i);
+    expect(container.querySelector(".cc-selected")).toBeNull();
+  });
+
   it("does not invent a fault where the stored value is a legitimate default", () => {
     // An empty availability_json means "the default weekday hours", not "closed".
     // Reporting it as no open hours would send someone to fix a working calendar.
