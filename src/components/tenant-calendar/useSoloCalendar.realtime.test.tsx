@@ -465,18 +465,14 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
     await settleError("network");
     expect(seen!.stale).toBe(true);
 
-    // A bare read still does not clear it. The catch-up failed, so the outage
-    // gap is UNCLOSED — rows fetched now are current, but nothing has proven the
-    // subscription is delivering again.
+    // The channel is live — SUBSCRIBED arrived and nothing has contradicted it —
+    // so the next read that LANDS closes the gap the failed one left open. That
+    // is the reachable recovery: the person presses Retry and gets a live
+    // calendar back, without needing the subscription torn down and rebuilt.
     await act(async () => { void seen!.retry(); });
     await settle([row("a"), row("b")]);
-    expect(seen!.stale).toBe(true);
-
-    // Only the rebuilt subscription reporting in, AND its catch-up landing,
-    // closes the gap.
-    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
-    await settle([row("a"), row("b")]);
     expect(seen!.stale).toBe(false);
+    expect(seen!.bookings.map((b) => b.id)).toEqual(["a", "b"]);
   });
 
   // ---- Retry must be a REACHABLE recovery, not a read that changes nothing ----
@@ -506,5 +502,55 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
     await settle([row("a")]);
 
     expect(sub!.opts!.resubscribeKey).toBe(keyBefore);
+  });
+  // ---- Codex on THIS PR: the catch-up must be bound to channel health ----
+
+  it("does not clear the latch when the channel dies again during the catch-up read", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    // The replacement channel dies while the catch-up RPC is still in flight.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    await settle([row("a"), row("b")]);
+
+    // The read succeeded, but the subscription it was supposed to vindicate is
+    // dead again. Reporting LIVE here is the exact false confidence this whole
+    // surface exists to prevent.
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("clears the latch when a catch-up deferred behind a load finally lands", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    // A range change starts a LOAD; the channel recovers while it is in flight,
+    // so the catch-up refresh is deferred behind it rather than running now.
+    await act(async () => { seen!.refresh(); });
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+
+    await settle([row("a"), row("b")]);   // the load lands
+    await act(async () => { await Promise.resolve(); });
+    if (pending.length) await settle([row("a"), row("b")]);  // the deferred refresh lands
+
+    // The gap IS closed — the rows on screen came back over a live channel.
+    // Losing that because the catch-up was queued rather than run would strand a
+    // healthy calendar on PARTIAL until the next resubscription.
+    expect(seen!.stale).toBe(false);
+  });
+
+  it("a read that lands while the channel is still down never clears the latch", async () => {
+    await mount();
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+
+    await act(async () => { seen!.refresh(); });
+    await settle([row("z")]);
+
+    expect(seen!.stale).toBe(true);
   });
 });
