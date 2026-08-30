@@ -66,6 +66,7 @@ rm -rf "$BASE"; mkdir -p "$BASE/data" "$BASE/sock"
 cp -r "$REPO/supabase/migrations" "$BASE/migrations"
 cp "$REPO/scripts/proofs/clean-replay-supabase-shim.sql" "$BASE/00-shim.sql"
 cp "$REPO/scripts/proofs/c7-clean-replay-cases.sql"      "$BASE/c7-cases.sql"
+cp "$REPO/scripts/proofs/a2p-draft-durability-cases.sql" "$BASE/a2p-cases.sql"
 chown -R "$USER_NAME:$USER_NAME" "$BASE"
 
 su "$USER_NAME" -c "$PGBIN/initdb -D $BASE/data -U postgres --auth=trust" >/dev/null 2>&1
@@ -114,6 +115,19 @@ echo "$cases_out" | grep -vE "WARNING|CONTEXT|enqueue"
 # would have matched inside a FAILING run's own body and scored it green. No
 # current label does, so this was never live — but for the one mechanism whose
 # entire job is telling PASS from FAIL, the safe order costs nothing.
+# The A2P draft-durability cases run against the SAME fresh replay, so the seam is
+# proved on a schema built from nothing rather than on prod's accumulated state.
+a2p_out=$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -f $BASE/a2p-cases.sql" 2>&1)
+echo "$a2p_out" | grep -vE "WARNING|CONTEXT|enqueue"
+if echo "$a2p_out" | grep -q "A2P DRAFT PROOF: ALL ASSERTIONS PASSED"; then
+  a2p_rc=0
+elif echo "$a2p_out" | grep -q "ASSERTION(S) FAILED"; then
+  a2p_rc=1
+else
+  echo "!! a2p-cases produced neither sentinel — treating as FAILURE" >&2
+  a2p_rc=1
+fi
+
 if echo "$cases_out" | grep -q "ASSERTION(S) FAILED"; then
   cases_rc=1
 elif echo "$cases_out" | grep -q "ALL ASSERTIONS PASSED"; then
@@ -152,6 +166,13 @@ if [ "$actual_failures" != "$expected_sorted" ]; then
   comm -13 <(printf '%s\n' "$expected_sorted") <(printf '%s\n' "$actual_failures") >&2
   echo "--- no longer failing (fix the expected list) ---" >&2
   comm -23 <(printf '%s\n' "$expected_sorted") <(printf '%s\n' "$actual_failures") >&2
+  cases_rc=1
+fi
+if [ "$a2p_rc" -ne 0 ]; then cases_rc=1; fi
+
+# D2 is the one fix a single-session DO block structurally cannot pin — see the
+# script's header. It runs last because it commits fixtures and cleans them up.
+if ! bash "$REPO/scripts/proofs/a2p-concurrency-proof.sh" "$BASE" "$PGBIN" "$USER_NAME"; then
   cases_rc=1
 fi
 exit "$cases_rc"

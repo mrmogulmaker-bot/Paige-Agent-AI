@@ -2419,6 +2419,56 @@ super_admin), §57 (the read is the source of truth; surfaces derive the clamp, 
 re-compute it), §32 (a registered check is not a running one), §13 (the clamp reports its reason),
 §58 (the floor and the rung both survive; only the permanence is removed).
 
+## 69. Flow-by-Flow is MANDATORY on every software task — read it, don't invoke it and improvise.
+
+> **OWNER-RULED 2026-08-30.** Ratified in-session and binding immediately.
+
+**Directive (owner: Antonio, 2026-08-30):** every software task in this repo — application, feature,
+screen, bug, refactor, UI or backend improvement, security review, automation, prototype, or micro
+change — is executed through the installed **`flow-by-flow`** skill and its routed references. This is
+a delivery requirement, not process language.
+
+- **Read before acting.** Open `flow-by-flow/SKILL.md` completely, then `references/orchestration.md`
+  completely. For Standard/Deep/release/security/permissions/persistence/integration/migration or major
+  UI work, also read `references/delivery.md` completely, plus every reference the skill routes to for
+  the work at hand (`audit.md` for existing product, `build.md` for implementation, `review.md` for
+  independent review, `verification.md` for the proof gates). **Saying "using Flow-by-Flow" without
+  performing its inspection, flow mapping, proof and approval gates does not satisfy this section.**
+- **State the frame before editing.** Selected mode, depth, affected actor-goal flows, current
+  main/head/tree, exact file/contract ownership and the collision result, the proposed changed-file
+  boundary, the states covered, the Regression impact map, the failing-first plan, and the applicable
+  gates. This is the pre-edit packet, and it is returned BEFORE the first edit.
+- **Flow coverage — not file completion — is the definition of done.** A green build, a rendered
+  screenshot, or a seeded fixture is not proof that the actor can reach their goal. Prove first-use and
+  the central action, not only the populated happy path.
+- **The two owner gates bind.** Gate 1 is approval of appearance and intended function, via a
+  `flow-prototype` surface for any major UI/UX change — no post-hoc approval, and an unanswered
+  question is not approval. Gate 2 is explicit authorization immediately before ready-state, merge,
+  deployment, or any other irreversible production action. Between them, continue autonomously through
+  ordinary implementation, tests, review, fixes, draft PR and verification.
+- **Stop only at a material boundary:** ownership deadlock, missing authority or credential, spending,
+  legal acceptance, a destructive real-data action, a material product decision, unbounded scope, or a
+  confirmed defect needing an owner choice. Consolidate into ONE decision gate.
+- **Report evidence separately and truthfully** — automated tests, static/lint/type/build proof,
+  structural or rendered proof, authenticated runtime proof, and `UNVERIFIED` with its reason. Preview
+  success is not authenticated production proof.
+
+**Installation.** The skill ships as two folders that must both be present and on the same version
+(`flow-by-flow` and its required sibling `flow-prototype`) — that pairing is Gate 5 in the skill's own
+`references/verification.md`, and `flow-by-flow` cannot complete its mandatory approval step without
+`flow-prototype`. Install to `~/.claude/skills/` (personal) or `.claude/skills/` (repo). **A session
+that cannot find the skill says so plainly and does not silently improvise its own process** — that
+admission is itself required by §13.
+
+**The test, every time:** *"Did I read the skill and its routed references and return the pre-edit
+packet — or did I name the skill and then work the way I was going to work anyway?"* If the latter,
+the section was not followed.
+
+**Cross-references:** §1/§14 (never solo substantive work — the skill's specialist routing is how that
+is staffed), §5/§39 (independent review, ordered specification-compliance first then adversarial),
+§13 (honest, separated evidence), §32 (a green build is not a working runtime), §28/§58 (approved work
+is frozen; shipped capability is never silently removed).
+
 ## 66. The tier matrix updates in the SAME commit as the ship — not later.
 
 **Directive (owner: Antonio, 2026-08-19).** §0 binds master-doc updates in the same PR as the ship.

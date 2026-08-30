@@ -40,9 +40,24 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
 - `tenant_a2p_registrations` (`20260726210000:126-152`) — full status columns, tenant-derived,
   RLS to tenant admin/coach.
 - `comms-a2p-draft` / `comms-a2p-submit` — both **deployed**. The draft does a real model call.
+- **UPDATED 2026-08-30 (PR #665): the draft now PERSISTS.** Until then `comms-a2p-draft` did two
+  reads and no write, so the prepared draft died with the response. It now saves through
+  `tenant_a2p_registration_save_draft` (`20261004010000`) — SECURITY DEFINER, caller scope enforced
+  in-body (§59), tenant from `current_user_tenant_id()` and never the body, stable refusal hints.
+  `comms-a2p-submit` no longer calls a carrier stub at all: it persists the reviewed copy through the
+  same seam and returns an explicit *prepared, not submitted* refusal, so
+  `_shared/twilio.ts::createBrand`/`createCampaign` now have **zero callers**.
+- **Preparing requires `tenant_legal_profile.legal_business_name`** (carriers register a legal
+  entity). On prod today **0 of 13 tenants** have that record, so refusal — not success — is the
+  first-use path for every tenant; the surface routes an admin to Setup › Legal › Templates and tells
+  a coach who to ask, since that route is `AdminOnly` while the A2P surface is not gated.
 - **`A2PTab.tsx` (24 KB) is complete** and mounted only at
   `/admin/clients-hub/conversations/settings?panel=a2p` — behind the Solo redirect (below).
 - Solo Connections shows the state read-only and says "prepared, not submitted", which is correct.
+- **`submitted_at` is the only honest discriminator.** No shipped path sets it. A2PTab's banner and
+  pills key on it rather than on "a row exists with no SID" — that older test matched exactly what a
+  durable draft save writes, and would have rendered "Submitted for review" over a registration
+  nobody had filed.
 
 ### Numbers — search and purchase work, and are unreachable from Solo
 - `tenant_phone_numbers` (`20260726210000:73-101`, extended `20260727140000`) — status, source,

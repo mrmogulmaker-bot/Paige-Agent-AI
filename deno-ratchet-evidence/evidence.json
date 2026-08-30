@@ -1,0 +1,10 @@
+{
+  "baseRef": null,
+  "headRef": "HEAD",
+  "baseSha": null,
+  "headSha": null,
+  "runnerCheckout": null,
+  "changedFiles": [],
+  "functions": [],
+  "aborted": "--base <ref> is required"
+}

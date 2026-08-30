@@ -549,3 +549,54 @@ is not a rail.
 
 New follow-ups: **C-5** rail summary hygiene · **C-6** per-capability Trust Compass enforcement for
 the six voice grants (blocked on C-2, the clamp itself).
+
+---
+
+## 2026-08-30 — PR #665: the prepared A2P registration draft became durable
+
+**The defect.** `comms-a2p-draft` generated a registration draft and returned it in the HTTP
+response, performing two reads and **no write** across 309 lines. "Prepare a registration" is the
+one write the Communications surface exists to support, and nothing persisted it. Authorization was
+already sound; durability was the whole gap.
+
+**No new storage.** `tenant_a2p_registrations` already owned every campaign field a draft holds and
+already carried `UNIQUE (tenant_id)`; legal identity is READ from `tenant_legal_profile` and never
+copied; provenance goes to `paige_audit_log` carrying **shape only** (a sample count and two
+booleans — never draft text, a sample message, a provider payload, a prompt or a credential). No new
+table, column, or parallel registration / approval / autonomy / Rail / outcome store.
+
+**The Rail is deliberately unused.** `record_rail_event` is contact-keyed and hard-requires a
+`p_contact_id` resolving to a client in the caller's tenant. An A2P registration is tenant-level with
+no contact, so filing it there would mean inventing a synthetic contact or a new kind on a client
+feed. Recorded so nobody re-derives it.
+
+**Prepared is not submitted, and `submitted_at` is the discriminator.** No shipped path sets it —
+`comms-a2p-submit` persists reviewed copy and returns an explicit *prepared, not submitted* refusal;
+its carrier stub calls were removed, so `_shared/twilio.ts`'s `createBrand`/`createCampaign` now have
+**zero callers** (left in place: removing them touches a shared file and would widen the redeploy to
+every function importing it).
+
+### Four lessons this PR paid for, worth more than the feature
+
+1. **A green proof can be measuring something other than what it names.** The negative cases all
+   passed an empty sample array, so validation refused them *before* the guard under test ran. Later,
+   case 7 ran as `anon` — which holds no EXECUTE grant — so the refusal came from the grant and never
+   entered the function (§59 inverted). Both looked like passing authorization tests. Neither was.
+2. **A structural pin on function TEXT is defeatable.** An independent review kept the literal the
+   pin matched, added a redirect one line later, and scored 13/13 while running a full cross-tenant
+   IDOR. Boundaries are now **measured** — every trace a foreign caller could leave, plus the
+   **return value**, because a read-only escape writes nothing and is otherwise invisible.
+3. **Fixing the backend while leaving the surface lying is a regression, not a partial fix.** The
+   durable save wrote exactly the shape A2PTab's banner keyed on, turning "Submitted for review —
+   you'll be notified the moment it's approved" from unreachable into the normal result of clicking
+   Draft with Paige. Making a system honest includes whatever renders it.
+4. **A migration version collision is invisible to every gate.** #666 landed a migration sharing this
+   one's `20261004000000` prefix. `schema_migrations` is keyed on the version, so `db push` would have
+   **skipped** this migration on prod while CI, the `db-live` tag and every badge stayed green — and
+   the edge functions, which do deploy, would have called a function that was never created. The clean
+   replay cannot catch it either: it iterates FILES and dedupes only the recorded row. **Check the
+   version namespace on every re-ground.** Renamed to `20261004010000`.
+
+**Also recorded:** Supabase preview pushes only NEW migration files, so a migration edited in place
+leaves the preview branch holding the pre-fix version while its badge stays green. Measured directly,
+not inferred. The from-nothing local replay is the authoritative migration proof.

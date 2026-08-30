@@ -495,6 +495,15 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
 - **Backend:** `public.messages` (jsonb substrate) + `public.threads` (aggregate) + `send-message` edge fn; `usePaigeThreads.ts` hook.
 - **Operator (God) SMS:** `paige-operator-sms-send` edge fn (from PR #408) — see the Fleet Comms 500 gap in Section 5.
 - Doctrine: §7 intelligent portal · §36 draft-first/one-click · §49 unified inline-single-conversation.
+- **A2P registration — PREPARED is shipped; SUBMITTED is not (PR #665, 2026-08-30).** Preparing a
+  carrier registration now DURABLY SAVES: `comms-a2p-draft` previously did two reads and no write, so
+  the prepared draft died with the HTTP response. It persists through
+  `tenant_a2p_registration_save_draft` (migration `20261004010000`) into the existing
+  `tenant_a2p_registrations` — no new table, column, or parallel store. **Carrier submission does not
+  exist:** `comms-a2p-submit` performs no provider call and returns an explicit *prepared, not
+  submitted* refusal, and no shipped path sets `submitted_at`. Do not read a `pending` row as a
+  filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production
+  tenants** currently have, so refusal is the first-use path for every tenant today.
 
 ### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
 
@@ -1027,6 +1036,36 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
+  banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for
+  review — you'll be notified the moment it's approved."** That was survivable only while nothing
+  wrote the row. The same PR made the draft save durable, writing exactly that shape
+  (`status='pending'`, no SIDs), so the false claim went from unreachable to the **normal result of
+  clicking "Draft with Paige"** — on a compliance surface, over a registration nobody had filed, with
+  no mechanism that could ever notify anyone. Corrected to key on `submitted_at`, which no shipped
+  path sets. **The general lesson: making a backend honest is incomplete until whatever RENDERS it is
+  re-checked against the new reality.** A copy string that was true under the old behaviour is not
+  automatically true under the new one.
+
+- **2026-08-30 — a migration version collision would have skipped a migration on prod, silently
+  (PR #665).** #666 landed `20261004000000_analytics_evidence_bundle.sql`, sharing a version prefix
+  with #665's migration — the only duplicate across 836 files. `supabase_migrations.schema_migrations`
+  is keyed on the VERSION, and `db push` applies only versions it lacks, so the second migration would
+  never have run on production while CI, the `db-live` tag and every badge stayed green — and the edge
+  functions, which do deploy, would have called a function that was never created. The clean replay
+  cannot catch this: it iterates FILES and dedupes only the recorded row, so both run locally.
+  **Check the migration version namespace on every re-ground**; renamed to `20261004010000`.
+
+- **2026-08-30 — "all assertions passed" said nothing about the fix it was written for (PR #665).**
+  Three separate times a green proof measured something other than what it named: negative cases
+  passed an empty sample array so validation refused them before the guard under test ran; the
+  anonymous-caller case ran as `anon`, which holds no EXECUTE grant, so the grant refused it and the
+  in-body check was never reached (§59 inverted); and reverting the entire owner-locked D2 concurrency
+  mechanism left every assertion green. Also: a structural pin on function TEXT was defeated by a
+  rewrite that kept the matched literal and added a redirect one line later, scoring 13/13 while
+  running a full cross-tenant IDOR. **Boundaries are measured, never described** — every trace a
+  foreign caller could leave, plus the RETURN VALUE, since a read-only escape writes nothing.
 
 - **2026-08-28 — a Clients subtab must not grow a second Clients header.** Solo Conversations owns
   only the canvas below the shared `People · Conversations · Calendar · Portal` strip. A route-local
