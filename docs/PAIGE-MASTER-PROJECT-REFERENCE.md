@@ -1372,3 +1372,22 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   unresolved and remounts by tenant epoch so prior-account state and late responses cannot paint the
   next account.
 
+### Solo Systems Check Operating Signal — owner-approved build in draft review (2026-08-29)
+
+- **Status: DRAFT PR ONLY; not shipped, merged, deployed, or production-accepted.** The owner approved
+  the Operating Signal prototype and authorized implementation through a green draft PR and preview;
+  the separate final go-live gate remains required.
+- The Solo Systems Check is a compact business-awareness surface over the existing tenant-scoped
+  `systems_check_snapshot` rail. Persisted findings are grouped into confirmed, needs-attention, and
+  unavailable reads; missing or partial evidence never becomes inferred health. Refresh motion is
+  finite, interruptible, and labeled as a read with no manufactured per-category progress; reduced
+  motion preserves the same text and state.
+- Finding detail follows the grounded chain **signal → evidence/provenance → impact → recommended next
+  step → owner decision → durable outcome**. Missing interpretation, decision, or resolution records
+  are stated as missing. The one existing PAIGE workspace is the only executive-rundown/action seam;
+  opening it does not attach context, prefill a message, send, prepare, or start work.
+- **Explicitly deferred/unavailable in this slice:** emerging trend analysis, market/competitor pulse,
+  capacity watchpoints, owner-configurable watchpoints, and any separate phone/A2P readiness logic.
+  A future communications read may consume only the canonical server-resolved `can_send_sms` result
+  when that narrow contract exists. Systems Check does not own Settings, Calendar, Conversations,
+  Mind, the shared shell, provider configuration, or new backend logic.

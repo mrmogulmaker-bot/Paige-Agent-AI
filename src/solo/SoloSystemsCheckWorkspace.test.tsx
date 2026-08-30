@@ -78,6 +78,106 @@ function button(name: string) {
 }
 
 describe("Solo Systems Check workspace", () => {
+  it("renders the approved compact, data-first Operating Signal from persisted findings", () => {
+    render();
+
+    const heading = host.querySelector("h1");
+    expect(heading?.textContent).toBe("Systems Check");
+    expect(host.querySelector('[data-operating-signal="true"]')).not.toBeNull();
+    expect(host.querySelector('svg[role="img"][aria-labelledby="operating-signal-title operating-signal-description"]')).not.toBeNull();
+    expect(host.textContent).toContain("Evidence moving through the business");
+    expect(host.textContent).toContain("1 confirmed");
+    expect(host.textContent).toContain("1 needs attention");
+    expect(host.textContent).toContain("0 unavailable");
+    expect(host.textContent).toContain("Emerging signals are unavailable from this persisted run");
+    expect(host.textContent).toContain("Open PAIGE for the fuller rundown");
+
+    const css = readFileSync(resolve(process.cwd(), "src/solo/solo-systems-check-workspace.css"), "utf8");
+    expect(css).toContain(".sc-heading h1{font:700 19px/1.2");
+    expect(css).toContain("@media(prefers-reduced-motion:reduce)");
+    expect(css).toContain(".sc-signal-stage[data-state=\"scanning\"]");
+  });
+
+  it("filters the evidence trail by truthful result state", () => {
+    render();
+
+    act(() => button("Needs attention")?.click());
+    expect(host.querySelector(".sc-findings")?.textContent).toContain("Payment connection needs attention");
+    expect(host.querySelector(".sc-findings")?.textContent).not.toContain("Client records are available");
+
+    act(() => button("Confirmed")?.click());
+    expect(host.querySelector(".sc-findings")?.textContent).toContain("Client records are available");
+    expect(host.querySelector(".sc-findings")?.textContent).not.toContain("Payment connection needs attention");
+  });
+
+  it("treats resolved failed and unavailable findings as history, not active work", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        resolved_at: "2026-08-27T18:00:00Z",
+        resolution: "Payment connection restored.",
+        resolution_action_id: "action-1",
+      }, {
+        ...finding,
+        id: "finding-3",
+        check_id: "archived_read_error",
+        check_name: "Resolved system read",
+        status: "error",
+        resolved_at: "2026-08-27T18:10:00Z",
+        resolution: "Read restored.",
+      }],
+      run: { ...baseSystems.run, check_count: 2, pass_count: 0, fail_count: 1 },
+    });
+    render();
+    expect(host.textContent).toContain("0 needs attention");
+    expect(host.textContent).toContain("0 unavailable");
+    expect(host.textContent).toContain("No active findings need attention");
+    expect(host.textContent).not.toContain("Next signal to inspect");
+    expect(host.querySelector(".sc-findings")?.textContent).toContain("Resolved");
+
+    act(() => button("Payment connection needs attention")?.click());
+    expect(host.textContent).toContain("Payment connection restored.");
+    expect(host.textContent).toContain("Action action-1");
+    expect(host.textContent).toContain("No additional work is being recommended from this resolved record.");
+    expect(button("Put PAIGE to work")).toBeUndefined();
+  });
+
+  it("keeps unresolved attention ahead of unavailable evidence after resolved history is excluded", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        resolved_at: "2026-08-27T18:00:00Z",
+        resolution: "Completed.",
+      }, {
+        ...finding,
+        id: "finding-open-unavailable",
+        check_id: "open_unavailable",
+        check_name: "Open unavailable read",
+        status: "error",
+      }, {
+        ...finding,
+        id: "finding-open-attention",
+        check_id: "open_attention",
+        check_name: "Open attention item",
+      }],
+      run: { ...baseSystems.run, check_count: 3, pass_count: 0, fail_count: 2 },
+    });
+    render();
+    expect(host.querySelector(".sc-next-signal strong")?.textContent).toBe("Open attention item");
+  });
+
+  it("animates only the honest read state and does not manufacture category progress", () => {
+    harness.systems.mockReturnValue({ ...baseSystems, scanPending: true });
+    render();
+
+    expect(host.querySelector('.sc-signal-stage[data-state="scanning"]')).not.toBeNull();
+    expect(host.textContent).toContain("Reading available systems");
+    expect(host.textContent).toContain("no category progress is reported");
+    expect(host.textContent).not.toMatch(/\d+%/);
+  });
+
   it("combines only grounded operating signals and refreshes existing reads without claiming a rescan", () => {
     render();
     expect(host.textContent).toContain("Systems Check");
@@ -97,21 +197,23 @@ describe("Solo Systems Check workspace", () => {
     expect(refreshSystems).toHaveBeenCalledTimes(1);
   });
 
-  it("filters by grounded domains and contains finding detail in a restorable drawer/full-panel flow", () => {
+  it("contains finding detail in a restorable drawer/full-panel flow", () => {
     render();
     const trigger = button("Payment connection needs attention")!;
     act(() => trigger.focus());
     act(() => trigger.click());
     expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Finding details");
     expect(host.textContent).toContain("Stripe");
+    expect(host.textContent).toContain("Evidence and provenance");
+    expect(host.textContent).toContain("Persisted finding finding-1 from Systems Check run run-1");
+    expect(host.textContent).toContain("Recommended next step");
+    expect(host.textContent).toContain("No owner decision is recorded");
+    expect(host.textContent).toContain("No durable outcome is recorded on the tenant rail");
     act(() => button("Expand")?.click());
     expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Expanded finding details");
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
     expect(host.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
-
-    act(() => button("Payments")?.click());
-    expect(host.textContent).not.toContain("Client records are available");
   });
 
   it("keeps Ask First explicitly PARTIAL and only opens the existing PAIGE workspace", () => {
@@ -133,8 +235,17 @@ describe("Solo Systems Check workspace", () => {
     harness.systems.mockReturnValue({ ...baseSystems, run: null, findings: [], isError: true });
     render();
     expect(host.textContent).toContain("Systems Check is unavailable");
+    expect(host.textContent).toContain("Emerging signals are unavailable because the current evidence read failed.");
+    expect(host.textContent).not.toContain("from this persisted run");
     act(() => button("Retry current data")?.click());
     expect(refreshSystems).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses no-run wording when no persisted Systems Check exists", () => {
+    harness.systems.mockReturnValue({ ...baseSystems, run: null, findings: [] });
+    render();
+    expect(host.textContent).toContain("Emerging signals are unavailable until a persisted Systems Check run exists.");
+    expect(host.textContent).not.toContain("from this persisted run");
   });
 
   it.each([0, 2])("never infers all-clear from an empty persisted run with check_count=%s", (checkCount) => {
@@ -144,9 +255,67 @@ describe("Solo Systems Check workspace", () => {
       findings: [],
     });
     render();
-    expect(host.textContent).toContain("Coverage is incomplete");
+    expect(host.textContent).toContain("The picture is incomplete");
     expect(host.textContent).toContain("Overall health cannot be inferred");
     expect(host.textContent).not.toContain("All available checks are clear");
+  });
+
+  it("never infers clear coverage from an unfinished persisted run", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      run: { ...baseSystems.run, completed_at: null },
+    });
+    render();
+    expect(host.textContent).toContain("The picture is incomplete");
+    expect(host.textContent).toContain("Overall health cannot be inferred");
+    expect(host.textContent).not.toContain("Available checks are clear");
+  });
+
+  it("shows owner-facing remediation content instead of an internal drafting brief", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        paige_drafted_fix: {
+          brief: "Internal instruction that must not be presented.",
+          content: "Reconnect the approved payment provider, then refresh this evidence.",
+          model: "internal-model-name",
+        },
+      }],
+      run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
+    });
+    render();
+    act(() => button("Payment connection needs attention")?.click());
+    expect(host.textContent).toContain("Reconnect the approved payment provider, then refresh this evidence.");
+    expect(host.textContent).not.toContain("Internal instruction that must not be presented.");
+    expect(host.textContent).not.toContain("internal-model-name");
+  });
+
+  it("projects only presentation-safe evidence fields and never dumps arbitrary payloads", () => {
+    harness.systems.mockReturnValue({
+      ...baseSystems,
+      findings: [{
+        ...finding,
+        evidence: {
+          provider: "Stripe",
+          state: "disconnected",
+          authorization: "Bearer owner-secret",
+          api_key: "sk_live_secret",
+          token_details: { access_token: "nested-secret" },
+          error_message: "raw internal runner exception",
+        },
+      }],
+      run: { ...baseSystems.run, check_count: 1, pass_count: 0, fail_count: 1 },
+    });
+    render();
+    act(() => button("Payment connection needs attention")?.click());
+    expect(host.textContent).toContain("Provider");
+    expect(host.textContent).toContain("Stripe");
+    expect(host.textContent).toContain("Additional evidence is retained but not displayed here.");
+    expect(host.textContent).not.toContain("owner-secret");
+    expect(host.textContent).not.toContain("sk_live_secret");
+    expect(host.textContent).not.toContain("nested-secret");
+    expect(host.textContent).not.toContain("raw internal runner exception");
   });
 
   it("labels failed operating reads unavailable instead of claiming the owner is caught up", () => {
