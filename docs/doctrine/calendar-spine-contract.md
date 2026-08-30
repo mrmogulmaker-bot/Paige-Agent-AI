@@ -84,8 +84,9 @@ path. **No silent reschedules, cancellations, reminders, or provider actions.**
 **State: NOT WIRED — and the tables the clause implies do not exist.** A search of every
 migration finds **no `autonomy_lanes` and no `capability_lanes`**. The autonomy vocabulary that
 does exist is the action bus's `paige_action_kinds.default_autonomy_lane`, constrained to
-`('auto','confirm','off')` (migration `20260711024632`) — the §16 tiers. Trust Compass backend
-wiring is tracked as task #165.
+`('auto','confirm','off')` (migration `20260711024632`) — the §16 tiers. That column is **a
+stored default, which is not enforcement**: it describes an intended lane, and nothing in the
+Calendar write path consults it. Trust Compass backend wiring is tracked as task #165.
 
 Consequence to hold onto: **this clause has no enforcement substrate today.** Calendar writes
 currently go through `admin_set_booking_status` / `create_internal_booking`, which enforce
@@ -131,18 +132,63 @@ workspace · Mineral / Obsidian · the required responsive frames (1536×770, 13
 900×1000 with PAIGE folded and open) · contained scroll ownership · focus and Escape · reduced
 motion.
 
-## What this contract needs before any of it is built
+## The gates — INDEPENDENT, not a chain
 
-Ordered by dependency, not priority. None is authorized by this document.
+> **Owner correction, 2026-08-30.** An earlier draft of this section presented these as one
+> linear prerequisite chain (`#244 → #245 → #165 → contact_id`). **That was wrong and is
+> withdrawn.** The four gaps are real and separately evidenced; the ordering between them was
+> not evidenced, and asserting it would have blocked work that has no actual dependency — and
+> named #245 a universal predecessor on no evidence at all. They are independent gates. Each is
+> opened by its own proof, in whatever order the work warrants. None is authorized by this
+> document.
 
-1. **Task #244** — a tenant-safe read seam for `booking_notifications_sent`. Blocks the rail's
-   outcome entry (§2) and the Brain's delivery-result recall (§6).
-2. **Task #245** — the shared-shell contract for an opaque, server-resolved Calendar context
-   reference on the PAIGE handoff (§4).
-3. **Task #165** — Trust Compass backend. Blocks every write clause in §5; no Paige-initiated
-   Calendar write should ship before the clamp runs.
-4. **Adopt `contact_id`** on the Calendar's booking type (§3) — the smallest of the four, and
-   the only one needing no backend change.
+**Calendar read / People gate.**
+Adopt the **existing** `contact_id` reference in the Calendar projection. No new identity layer.
+Depends on nothing else here: the reference is already returned by `list_team_bookings` and only
+needs carrying through the row type.
+
+**Delivery / Brain gate.**
+Task #244, **or its successor**, must provide a **tenant-safe delivery-outcome projection**
+before Calendar or Brain claims it can recall delivery outcomes. Until that projection exists,
+neither surface may state a delivery outcome — the record is real but unreadable, and asserting
+it would be inference from data the surface cannot see.
+
+**Calendar write / Trust gate.**
+Task #165, **or its successor**, must provide an **actually enforced** Trust Compass clamp before
+any Paige-initiated move, cancellation, reminder change, availability change, or other Calendar
+write ships.
+
+> **A stored default autonomy value is NOT enforcement.**
+> `paige_action_kinds.default_autonomy_lane` is a column holding `'auto' | 'confirm' | 'off'`.
+> It is **data describing an intent**, not a gate that runs. A clamp is enforcement only when a
+> write path actually calls it, it can actually refuse, and the refusal is observable. Reading a
+> default and proceeding is indistinguishable from having no clamp at all (§68 — a safety loop
+> that does not run is the failure, not the guard).
+
+**PAIGE context gate.**
+Task #245 belongs **only where its real opaque-context / action-resolver contract proves
+necessary**. It is **not** asserted as a universal predecessor, and this document does not have
+the evidence to make it one. A capability that needs a server-resolved context reference is
+gated on it; a capability that does not, is not. Establish the need per capability, from
+evidence, rather than inheriting it from this list.
+
+**Brain gate.**
+Brain may consume **only the proven Rails above**, with scope and provenance intact. It does not
+open a gate of its own; it is downstream of whichever rails have actually been proven.
+
+## North Star
+
+Full **Solo autonomy for Paige** remains the destination. The gates are not a brake on that —
+they are how it is reached honestly. **Each capability earns its autonomy separately**, and
+earns it by demonstrating four things for itself:
+
+1. a real **read authority** — the data is genuinely readable under tenant scope, not assumed;
+2. an **enforced action policy** — a clamp that runs, can refuse, and is observable when it does;
+3. a **durable outcome** — what actually happened, recorded with provenance;
+4. a **recovery path** — what to do when it did not happen as intended.
+
+A capability holding all four earns autonomy whether or not any other capability has. A
+capability missing any one of them does not, however complete its neighbours are.
 
 ## Cross-references
 
