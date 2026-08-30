@@ -101,7 +101,7 @@ type ActorCtx = {
   client_id: string | null;
   scopes: string[];
 };
-// @ts-types="https://esm.sh/@types/node@22.15.15/async_hooks.d.ts"
+import type {} from "https://esm.sh/@types/node@22.15.15/index.d.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 const actorStore = new AsyncLocalStorage<ActorCtx>();
 function currentActor(): ActorCtx {
