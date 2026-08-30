@@ -812,31 +812,45 @@ export function SoloSettings() {
   const params = useParams();
   const account = params.account ?? "";
   const entry = useMemo(() => resolveSoloSettingsEntry(location.search, account), [location.search, account]);
-  // An explicit `segment` wins over the entry origin: it is set by a surface
-  // that knew exactly where it was (the OAuth return address), while the origin
-  // only says which feature sent you here.
-  const segment = useMemo(
-    () => requestedSegment(location.search) ?? (entry?.origin === "calendar" ? ("calendars" as const) : undefined),
-    [location.search, entry?.origin],
-  );
-  // CONSUMED, not kept. `segment` is a one-shot instruction from the OAuth
-  // callback — "put them back where they were" — and the segment buttons are
-  // local state that never writes to the address. Leaving it there made the URL
-  // outlast the intent: switch to Communications, refresh, and the stale
-  // parameter puts you back on Calendars, a place you had already left. Cleared
-  // after the first render, which is when the child has taken its initial value;
-  // `replace` so it does not become a history entry of its own.
+  // BOTH ways in are one-shot, and neither can be expressed by deleting a
+  // parameter alone.
+  //
+  // `segment` comes from the OAuth return address and CAN be removed once read.
+  // `origin=calendar` cannot: the "Return to Calendar" banner needs it for as
+  // long as the page is open. But an origin that stays in the address keeps
+  // deriving its segment on every mount, so removing the `segment` parameter
+  // alone left the same staleness for exactly the journey the origin serves —
+  // switch to Communications, refresh, and Calendar's link picks Calendars
+  // again, a place you had already left.
+  //
+  // So the decision is marked spent in history state rather than in the query.
+  // It survives a reload, which is what makes a refresh stop re-deciding, and it
+  // leaves the return address intact for the banner.
   //
   // The fuller answer — the address always naming the segment, both directions —
   // is the §65 route-taxonomy work, not a hotfix.
+  const segmentSpent = Boolean((location.state as { segmentSpent?: boolean } | null)?.segmentSpent);
+  const segment = useMemo(
+    () => (segmentSpent
+      ? undefined
+      // An explicit `segment` wins over the entry origin: it is set by a surface
+      // that knew exactly where it was, while the origin only says which feature
+      // sent you here.
+      : requestedSegment(location.search) ?? (entry?.origin === "calendar" ? ("calendars" as const) : undefined)),
+    [segmentSpent, location.search, entry?.origin],
+  );
   const navigate = useNavigate();
   useEffect(() => {
-    if (!requestedSegment(location.search)) return;
+    // Nothing to spend, or already spent.
+    if (!segment || segmentSpent) return;
     const next = new URLSearchParams(location.search);
     next.delete("segment");
     const query = next.toString();
-    navigate(`${location.pathname}${query ? `?${query}` : ""}`, { replace: true });
-  }, [location.pathname, location.search, navigate]);
+    navigate(`${location.pathname}${query ? `?${query}` : ""}`, {
+      replace: true,
+      state: { ...(location.state as object | null), segmentSpent: true },
+    });
+  }, [segment, segmentSpent, location.pathname, location.search, location.state, navigate]);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const scrollOwner = rootRef.current?.closest<HTMLElement>("#tenant-shell-main");
