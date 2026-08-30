@@ -593,4 +593,40 @@ describe("Solo Calendar — the surface says so when it could not refresh", () =
     // The outage happened underneath this read, so it proves nothing about it.
     expect(seen!.stale).toBe(true);
   });
+  it("carries no outage debt across an account change", async () => {
+    // The reset branch clears the owed gap and the health flag but deliberately
+    // does NOT reset the epoch: it only ever needs to be COMPARABLE, and leaving
+    // it monotonic is what guarantees a read issued for the previous account can
+    // never match an epoch belonging to the next one.
+    await mount("tenant-1");
+    await settle([row("a")]);
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+
+    await act(async () => { root.render(<Probe tenantId={null} />); });
+    expect(seen!.stale).toBe(false);
+
+    await act(async () => { root.render(<Probe tenantId="tenant-2" />); });
+    await settle([row("b")]);
+
+    // A fresh account starts clean: the previous account's outage is not its
+    // problem, and nothing is owed that a later read could wrongly "close".
+    expect(seen!.stale).toBe(false);
+
+    // And the new subscription still reports honestly on its own terms.
+    act(() => sub!.opts!.onStatus!("CHANNEL_ERROR"));
+    expect(seen!.stale).toBe(true);
+  });
+
+  it("an initial load before any SUBSCRIBED neither clears nor claims anything", async () => {
+    // Nothing is owed on a fresh mount, so the -1 sentinel a pre-subscription
+    // read carries has nothing to act on. It must not throw, and it must not
+    // leave the surface asserting a freshness it never established.
+    await mount();
+    await settle([row("a")]);
+    expect(seen!.stale).toBe(false);
+
+    act(() => sub!.opts!.onStatus!("SUBSCRIBED"));
+    expect(seen!.stale).toBe(false);
+  });
 });
