@@ -155,6 +155,9 @@ export interface CommsReadiness {
     state: "no_activity" | "awaiting_receipts" | "delivering" | "mixed" | "failing";
     sent_30d: number; delivered_30d: number; failed_30d: number;
     last_inbound_at: string | null;
+    /** The resolver's own guard, nested here because that is where it is emitted.
+     *  Read so this surface and Conversations cannot give different answers. */
+    inbound_reporting?: "available" | "unavailable";
   };
   // Connections owns billing setup, so it comes from the SAME canonical record
   // rather than a second read. Carries no provider identifier — the resolver
@@ -375,11 +378,20 @@ export function textingSenderStep(r: CommsReadiness): Step {
  * nothing records an inbound text against this account, so "replies received"
  * and "no replies received" would both be claims the data cannot support.
  */
+/** The states `tenant_comms_readiness()` can actually emit. Anything else is unknown, not bad. */
+const DELIVERY_STATES = new Set(["no_activity", "awaiting_receipts", "delivering", "mixed", "failing"]);
+
 export function deliveryStep(r: CommsReadiness): Step {
   const d = r.delivery;
   return { n: "Delivery", s: "Whether texts actually arrived",
-    truth: d.state === "no_activity" ? "UNAVAILABLE" : d.state === "delivering" ? "LIVE" : "PARTIAL",
-    tone: d.state === "delivering" ? "ok" : d.state === "no_activity" ? "neutral" : "warn",
+    // An unrecognised state must be unrecognised in EVERY field. Fixing only
+    // `state` produced a row reading "Not reported" in a WARN tone over a detail
+    // describing what was counted — three fields disagreeing about whether
+    // anything is known. `known` is the single decision they all read.
+    truth: !DELIVERY_STATES.has(d.state) ? "PARTIAL"
+      : d.state === "no_activity" ? "UNAVAILABLE" : d.state === "delivering" ? "LIVE" : "PARTIAL",
+    tone: !DELIVERY_STATES.has(d.state) ? "neutral"
+      : d.state === "delivering" ? "ok" : d.state === "no_activity" ? "neutral" : "warn",
     // Every state is NAMED. The final arm used to be a catch-all reading
     // "N of M did not arrive", so a sixth resolver state would have rendered as a
     // delivery failure nobody observed — which is exactly how the Conversations
@@ -399,12 +411,21 @@ export function deliveryStep(r: CommsReadiness): Step {
     // silently stopped disclosing it (§58). Appending it here means every
     // rendering of this step carries it, and no future re-arrangement of the
     // surface can drop it without deleting the step.
-    detail: (d.state === "no_activity"
+    detail: (!DELIVERY_STATES.has(d.state)
+      ? "This account's delivery state is not one we can report on."
+      : d.state === "no_activity"
       ? "Nothing has been sent in the last 30 days, so there is nothing to report."
       : d.state === "awaiting_receipts"
       ? "Sent, but no delivery confirmations have come back yet."
       : "Counted from delivery receipts on what was sent in the last 30 days.")
-      + " Whether replies are arriving is not reported — nothing on this account records them." };
+      // Conditional on the resolver's OWN guard rather than hardcoded, so the two
+      // consumers of this record cannot drift: Conversations already reads
+      // `delivery.inbound_reporting`, and if that ever becomes "available" this
+      // surface would otherwise still say replies are unreported while the other
+      // said they were received (§57 — one record, one answer).
+      + (d.inbound_reporting === "available"
+        ? ""
+        : " Whether replies are arriving is not reported — nothing on this account records them.") };
 }
 
 export function billingRow(r: CommsReadiness): Step {
@@ -488,7 +509,9 @@ function ConnectionsView() {
     ["health", "Health"],
   ] as const;
 
-  /** The ruled fallback for EVERY not-ready path, including an RPC error. */
+  /** The ruled fallback for a not-ready path where the read SUCCEEDED and there
+   *  is simply nothing to report. A failed read goes through `readFailureNotice`
+   *  instead — this used to serve both, and the comment outlived that. */
   const notReady = (body: string) => <div className="ss-next">
     <strong>Texting is not ready yet</strong><p>{body}</p>
   </div>;
@@ -631,7 +654,14 @@ function ConnectionsView() {
         <div className="ss-grid">
           <Card title="Business texting readiness" icon={Webhook}
             truth={r ? (r.can_send_sms ? "LIVE" : "PARTIAL") : "PARTIAL"}
-            actions={r && !readFailed ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
+            // `r` alone is the correct guard, and `&& !readFailed` was removed as
+            // dead: `useCommsReadiness` sets `value: error ? null : row`, so a
+            // record and an error can never coexist. A previous commit message
+            // claimed this pill "was populated from a record that had not been
+            // read" — it was not, and the added conjunct could not have changed
+            // anything. Left simple rather than defensively redundant, because a
+            // guard that cannot fire reads as a repair that never happened.
+            actions={r ? (r.can_send_sms ? <Status tone="ok">Ready to text</Status> : <Status tone="warn">Texting is not ready yet</Status>) : undefined}>
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
               {/* "Texting is not ready yet" is a definite claim about the account,
                   and it used to head the FAILED-READ block — one line above a

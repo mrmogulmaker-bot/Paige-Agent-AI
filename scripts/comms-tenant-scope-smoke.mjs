@@ -61,7 +61,12 @@ function makeAdmin(rows) {
     let verb = "select";
     let payload = null;
     const q = {
-      select: () => { verb = "select"; return q; },
+      // A chained `.select(...)` after a write must NOT re-tag it as a read.
+      // `insert(...).select("id").single()` is a real write, and recording it as
+      // a select made `wrote()` false for it while `reads()` counted it — so any
+      // future write assertion built this way would have silently miscategorised,
+      // which is the family of trap this whole suite exists to catch.
+      select: () => { if (verb === "select") verb = "select"; return q; },
       // The PAYLOAD is captured, not just the verb. A compliance write carries
       // its tenant in the ROW, never in a filter, so a recorder that keeps only
       // filters cannot see the one value that makes the write correct.
@@ -239,6 +244,15 @@ console.log("comms tenant-scope smoke\n");
     check("a master-signature callback is accepted (the signature path really works)", res.status === 200);
     check("...and DOES reach the operator store, so the §53 refusal above is not vacuous",
       a.touched("operator_messages"));
+    // The voice applier writes to whichever store matched — including the
+    // PLATFORM-TIER one. Without its `.eq("id", row.id)` this is an unfiltered
+    // UPDATE across every row of that table: status, meta, duration, recording
+    // URL and transcript rewritten platform-wide. The SMS applier's equivalent
+    // key was asserted three lines away in this file; this one was not.
+    const opUpdates = a.queries.filter((q) => q.table === "operator_messages" && q.verb === "update");
+    check("...and its voice update really ran (non-vacuity)", opUpdates.length > 0);
+    check("...keyed on the row the lookup returned, never an unfiltered UPDATE",
+      opUpdates.every((w) => w.filters.id === "op-1"));
     check("...and its tenant lookup carried NO tenant filter, as a signature is account-bound",
       a.reads("messages").every((r) => r.filters.tenant_id === undefined));
   }

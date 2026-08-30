@@ -324,6 +324,23 @@ describe("readiness steps are one shared source", () => {
     expect(delivering.state).toBe("4 of 5 delivered");
   });
 
+  it("stops disclosing that replies are unreported IF the resolver ever reports them", () => {
+    // Settings hardcoded the disclosure while Conversations reads
+    // `delivery.inbound_reporting`. Today both say "not reported" and agree; the
+    // moment the resolver emits "available", Conversations would say replies were
+    // received and this surface would still deny it — one record, two answers.
+    const reporting = deliveryStep({ ...BASE,
+      delivery: { ...BASE.delivery, state: "delivering", sent_30d: 5, delivered_30d: 5,
+        failed_30d: 0, inbound_reporting: "available" } });
+    expect(reporting.detail).not.toContain("Whether replies are arriving");
+
+    // Non-vacuity: while it IS unreportable — which is the state today — the
+    // disclosure is still carried.
+    const unreported = deliveryStep({ ...BASE,
+      delivery: { ...BASE.delivery, state: "delivering", sent_30d: 5, delivered_30d: 5, failed_30d: 0 } });
+    expect(unreported.detail).toContain("Whether replies are arriving is not reported");
+  });
+
   it("does not report a failure for a state it does not recognise", () => {
     // The final arm used to be a catch-all reading "N of M did not arrive", so a
     // sixth resolver state would render as a delivery failure nobody observed —
@@ -334,6 +351,12 @@ describe("readiness steps are one shared source", () => {
         sent_30d: 5, delivered_30d: 0, failed_30d: 0, last_inbound_at: null } });
     expect(unknown.state).toBe("Not reported");
     expect(unknown.state).not.toContain("did not arrive");
+    // EVERY field must agree that nothing is known. Fixing only `state` left a
+    // warn-toned row reading "Not reported" over a detail describing what was
+    // counted — three fields disagreeing about whether anything was reported.
+    expect(unknown.tone).toBe("neutral");
+    expect(unknown.truth).toBe("PARTIAL");
+    expect(unknown.detail).not.toContain("Counted from delivery receipts");
 
     // Non-vacuity: a state that IS a failure still says so.
     const failing = deliveryStep({ ...BASE,
