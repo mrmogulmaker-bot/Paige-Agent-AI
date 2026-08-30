@@ -2,6 +2,7 @@
 // Routes by provider: n8n (webhook), langgraph (API), direct_edge_function (invoke), cron_only (rejected).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
+import { canonicalDirectFunctionName, isMarketplaceDirectFunctionBlocked } from "../_shared/marketplace-authority-containment.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,15 +115,22 @@ Deno.serve(async (req) => {
   if (registry.provider === "langgraph" && !registry.langgraph_graph_id) {
     return jsonRes({ error: "langgraph_graph_id_missing" }, 409);
   }
-  if (registry.provider === "direct_edge_function" && !registry.direct_function_name) {
-    return jsonRes({ error: "direct_function_name_missing" }, 409);
+  let directFunctionName: string | null = null;
+  if (registry.provider === "direct_edge_function") {
+    if (!registry.direct_function_name) {
+      return jsonRes({ error: "direct_function_name_missing" }, 409);
+    }
+    directFunctionName = canonicalDirectFunctionName(registry.direct_function_name);
+    if (!directFunctionName || isMarketplaceDirectFunctionBlocked(directFunctionName)) {
+      return jsonRes({ error: "direct_function_not_allowed" }, 409);
+    }
   }
   // Requirement 14 — re-entrancy bound. A registry row naming a workflow entry
   // point as its direct target would recurse without limit; nothing in the run
   // record carries a depth counter, so refuse structurally.
   if (
     registry.provider === "direct_edge_function" &&
-    ["trigger-workflow", "dispatch-queued-workflow-runs"].includes(String(registry.direct_function_name))
+    ["trigger-workflow", "dispatch-queued-workflow-runs"].includes(String(directFunctionName))
   ) {
     return jsonRes({ error: "re_entrant_target_refused" }, 409);
   }
@@ -197,7 +205,7 @@ Deno.serve(async (req) => {
       }
     } else if (registry.provider === "direct_edge_function") {
       // Forward to the target edge function with the user's auth.
-      const targetUrl = `${supabaseUrl}/functions/v1/${registry.direct_function_name}`;
+      const targetUrl = `${supabaseUrl}/functions/v1/${directFunctionName}`;
       const res = await fetch(targetUrl, {
         method: "POST",
         headers: {

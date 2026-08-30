@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { contactHintsFromPayload, emitAutomationRail } from "./railAutomation.ts";
 import { platformOperatorTenantId } from "./platform-operator-tenant.ts";
+import { canonicalDirectFunctionName, isMarketplaceDirectFunctionBlocked } from "./marketplace-authority-containment.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -278,7 +279,13 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
         await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
         return { status: "failed", error: errText };
       }
-      const url = `${SUPABASE_URL}/functions/v1/${opts.directFunctionName}`;
+      const directFunctionName = canonicalDirectFunctionName(opts.directFunctionName);
+      if (!directFunctionName || isMarketplaceDirectFunctionBlocked(directFunctionName)) {
+        const errText = "direct_function_not_allowed";
+        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+        return { status: "failed", error: errText };
+      }
+      const url = `${SUPABASE_URL}/functions/v1/${directFunctionName}`;
       const res = await fetch(url, {
         method: "POST",
         headers: {
