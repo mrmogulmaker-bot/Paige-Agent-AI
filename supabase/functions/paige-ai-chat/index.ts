@@ -1659,8 +1659,44 @@ JSON:`;
     // INVERTED, deliberately: a tool result is EVIDENCE unless it is a write receipt. Classifying
     // the evidence-bearing tools instead would be an allowlist, and an allowlist is what has been
     // one round behind at every stage of this change — the safe error has to be "protected".
-    // `MUTATING_TOOLS` is the receipt set and is already maintained for the autonomy gate, so a
-    // new READ tool defaults to protected without anyone remembering to add it anywhere.
+    //
+    // §13 — WHY THIS SET IS WRITTEN OUT HERE INSTEAD OF REUSING `MUTATING_TOOLS`. The first
+    // version did reuse it, on the reasoning that it is already maintained and a new READ tool
+    // would default to protected. That was wrong, and the reason is worth keeping: `MUTATING_TOOLS`
+    // answers "does this write, so must the autonomy gate govern it?", NOT "is this result free of
+    // evidence?" Those are different questions with different answers. `draft_marketing_content`
+    // writes AND is in that set — and `content-draft` reads the tenant's name and brand voice out
+    // of storage and returns generated copy grounded in them. An otherwise-ordinary turn calling
+    // it therefore stayed unprotected, the resolver short-circuited, and a reply written in the
+    // previous workspace's voice streamed into the new one.
+    //
+    // So: a receipt is a tool whose result is an id, a boolean, a count, or an echo of the
+    // model's OWN arguments — nothing read back from tenant storage and nothing generated from
+    // tenant branding. Every entry below meets that bar. Anything not listed protects, which is
+    // where the generators (`draft_marketing_content`, `growth_funnel_build`) and the
+    // arbitrary-output runners (`n8n_run_workflow`, `zapier_run_action`, the n8n authoring calls)
+    // deliberately land. When in doubt about a new tool, leave it OUT.
+    const TOOL_RESULT_IS_RECEIPT = new Set<string>([
+      // CRM writes — the result echoes the model's own arguments plus a row id.
+      "crm_create_contact", "crm_update_contact", "crm_delete_contact", "update_business_profile",
+      "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
+      "crm_create_task", "crm_log_activity",
+      "pipeline_create", "pipeline_add_stage", "deal_create", "deal_move_stage",
+      "member_grant_role", "member_revoke_role", "calendar_book_meeting", "program_enroll",
+      // Action bus, plans, marketplace, authoring — ids and acknowledgements.
+      "action_file", "action_advance",
+      "plan_set_reminder", "plan_create", "plan_add_milestone",
+      "plan_assign_task", "plan_update_item", "plan_remove_item",
+      "marketplace_install", "marketplace_uninstall",
+      "forge_subagent", "save_to_knowledge_base", "author_event_kind",
+      "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
+      // Studio persistence. The artifact's own text came from the model's arguments on this
+      // turn, so the result is an id and a title the model itself wrote — not tenant evidence.
+      // (The FRAMES these produce are still buffered on a protected turn; that is a separate
+      // question from whether they MAKE a turn protected.)
+      "content_save", "document_generate", "generate_image",
+      "growth_page_save", "growth_page_publish",
+    ]);
     const markLateRetrievalProtected = (executed: any[], receipts: Set<string>) => {
       if (lateRetrievalProtected) return;
       const evidence = executed.find((tc) => !receipts.has(tc?.function?.name ?? ""));
@@ -8332,7 +8368,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // BEFORE the results reach the model, not after. Everything content-bearing is
             // emitted below this loop, so switching here is genuinely "before any protected
             // content can emit" rather than merely usually so.
-            markLateRetrievalProtected(executed, MUTATING_TOOLS);
+            markLateRetrievalProtected(executed, TOOL_RESULT_IS_RECEIPT);
             convo.push(...toolResults);
             if (overCap || overTime || lastRound) { forcedTermination = true; break; }
             if (!(await revalidateTenantKnowledgeScope())) {

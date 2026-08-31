@@ -145,6 +145,20 @@ function anthropicStream(kind = "text") {
         { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
         { type: "message_stop" },
       ]
+    // `draft_marketing_content` — a tool that WRITES (so the autonomy gate governs it, and it sits
+    // in `MUTATING_TOOLS`) but whose result is GENERATED COPY grounded in the tenant's name and
+    // brand voice, read out of storage by `content-draft`. Reusing `MUTATING_TOOLS` as the
+    // receipt set therefore left an otherwise-ordinary turn unprotected while its closing reply
+    // was written in the previous workspace's voice. Nothing else in this harness drives a tool
+    // that is a write and a generator at once.
+    : kind === "draft-content"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "draft_marketing_content" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ channel: "email", brief: "launch note", confirm: true }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
     : kind === "action-file"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
@@ -2351,6 +2365,52 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.q a failed final check leaves no failing sync_status in the transcript",
     syncFrames(throwAtGate.responseText).length === 0,
     syncFrames(throwAtGate.responseText).join("").slice(0, 300),
+  );
+
+  // 21.r — A TOOL CAN BE A WRITE AND A GENERATOR AT ONCE, and the receipt set has to know the
+  // difference. The late-retrieval seam originally borrowed `MUTATING_TOOLS`, which answers "does
+  // this write, so must the autonomy gate govern it?" — NOT "is this result free of evidence?"
+  // `draft_marketing_content` is in that set and returns copy generated from the tenant's name
+  // and brand voice, so an otherwise-ordinary turn calling it stayed unprotected and its reply
+  // streamed in whatever workspace was active by the end.
+  const draftOpts = {
+    kbRejects: true,
+    provider: ["draft-content", "private-text"],
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+    },
+    tableExtras: { user_roles: () => [{ role: "admin" }] },
+  };
+  const draftClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...draftOpts,
+  });
+  assert(
+    "21.r CONTROL — a content-generating write tool turn still delivers its reply",
+    draftClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    draftClean.responseText.slice(0, 250),
+  );
+  assert(
+    "21.r CONTROL — and it carried no protected evidence at entry (Knowledge was refused)",
+    !draftClean.telemetry && !!draftClean.logged.find((l) => /KB_FORBIDDEN|REFUSED/.test(l.msg)),
+    JSON.stringify({ tel: !!draftClean.telemetry }),
+  );
+  const draftTotal = personaCallsOf(draftClean);
+  assert(
+    "21.r a content generator is not a receipt — it switches the turn onto the guarded path",
+    draftTotal > 1,
+    `persona calls: ${draftTotal} — 1 means it was classified as a write receipt`,
+  );
+  const draftAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(draftTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...draftOpts,
+  });
+  assert(
+    "21.r ...so a failed final check withholds the reply it grounded",
+    !draftAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    draftAtGate.responseText.slice(0, 300),
   );
 }
 
