@@ -448,6 +448,7 @@ async function runExecutor(
         const { data: firstStage } = await admin
           .from("pipeline_stages")
           .select("id").eq("pipeline_id", pipelineId).eq("stage_type", "open")
+          .is("archived_at", null)
           .order("order_index", { ascending: true }).limit(1).maybeSingle();
         resolvedStageId = firstStage?.id ?? null;
         if (!resolvedStageId) return { status: "error", result: {}, error: "no_open_stage" };
