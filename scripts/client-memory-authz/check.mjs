@@ -51,6 +51,8 @@ let embedCount = 0;
  * driving the exact same path it drove before, while making the stream itself drivable.
  */
 let modelStub = false;
+/** What `runDocumentReadCheck` should answer. Set per scenario to reach the credit-report branch. */
+let readCheckReply = { can_read_document: false, document_kind: "other", first_five_account_names: [] };
 /** Every request body sent to the model this turn — the real prompt/model EGRESS surface. */
 let modelEgress = [];
 const sseModelReply = (text) =>
@@ -78,8 +80,20 @@ globalThis.fetch = async (url, init) => {
       try { return JSON.parse(String(init?.body ?? "{}")).stream === true; } catch { return false; }
     })();
     if (wantsStream) return sseModelReply("ok");
+    // Answer the document READ-CHECK with the JSON it expects, so `isCreditReportPdf` can be
+    // true and the credit-report upload branch is reachable at all. Match on the outbound body:
+    // `gatewayCompat` reshapes the request to Anthropic-native before it reaches fetch, so the
+    // caller's `response_format` is gone by here and cannot be used to identify the call. The
+    // reply must be Anthropic-shaped too — the gateway converts it back to `choices[0].message`.
+    const isReadCheck = String(init?.body ?? "").includes("verify that you can literally read the PDF");
+    const text = isReadCheck ? JSON.stringify(readCheckReply) : "ok";
     return new Response(
-      JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } }),
+      JSON.stringify({
+        id: "msg_test", type: "message", role: "assistant", model: "test",
+        content: [{ type: "text", text }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -110,11 +124,14 @@ async function drive({
   document = undefined,
   stream = false,
   clientContext = undefined,
+  readCheck = { can_read_document: false, document_kind: "other", first_five_account_names: [] },
+  extraBody = undefined,
 }) {
   const logged = [];
   embedCount = 0;
   modelEgress = [];
   modelStub = stream;
+  readCheckReply = readCheck;
   const origError = console.error, origWarn = console.warn;
   console.error = (...a) => logged.push({ level: "error", msg: a.join(" ") });
   console.warn = (...a) => logged.push({ level: "warn", msg: a.join(" ") });
@@ -174,6 +191,7 @@ async function drive({
         ...(clientId !== undefined ? { clientId } : {}),
         ...(document !== undefined ? { document } : {}),
         ...(clientContext !== undefined ? { clientContext } : {}),
+        ...(extraBody ?? {}),
       }),
     }));
     status = res.status;
@@ -445,9 +463,11 @@ console.log("\nthe DOCUMENT-upload path is bound to the same decision");
   // a wrong target is a cross-tenant WRITE, not merely a wrong read.
   const doc = { fileName: "statement.pdf", base64: "JVBERi0xLjQK", mimeType: "application/pdf" };
   const ownDoc = await drive({ clientId: OWN, document: doc, text: "here is my statement" });
-  assert("8.1 an authorized document turn still reaches the upload path",
-    ownDoc.status !== 400 && ownDoc.status !== "throw:undefined",
-    `status: ${ownDoc.status}`);
+  // NOT `status !== 400`: these scenarios resolve 500 without a model stub, so that assertion
+  // passed without proving anything about the upload path. The recorded upload is the evidence.
+  assert("8.1 an authorized document turn actually reaches the upload path",
+    ownDoc.rec.uploads.length > 0,
+    JSON.stringify({ status: ownDoc.status, uploads: ownDoc.rec.uploads }));
 
   const foreignDoc = await drive({ clientId: FOREIGN, document: doc, text: "here is my statement" });
   assert("8.2 a refused document turn never reads clients with the raw body id outside the guard",
@@ -468,6 +488,93 @@ console.log("\nthe DOCUMENT-upload path is bound to the same decision");
       reads: foreignDoc.rec.from.filter((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(FOREIGN)).map((f) => f.table),
       writes: foreignDoc.rec.inserts.filter((i) => JSON.stringify(i.row ?? {}).includes(FOREIGN)).map((i) => i.table),
     }));
+}
+
+console.log("\nthe SESSION-SUMMARY branch is bound to the same decision");
+{
+  // Three service-role `client_memory` inserts live behind `generateSessionSummary`. No scenario
+  // drove it, so reverting all three to the raw body id left the suite fully green — while the
+  // real effect is cross-tenant STORED PROMPT INJECTION: a `session_summary` / `user_preference`
+  // row written into another tenant's client, which this handler later lifts into the prompt of
+  // whoever legitimately opens that client next.
+  const sessionBody = {
+    generateSessionSummary: true,
+    sessionMessages: [
+      { role: "user", content: "keep my updates short" },
+      { role: "assistant", content: "understood" },
+    ],
+  };
+  const ownSum = await drive({ clientId: OWN, stream: true, extraBody: sessionBody });
+  assert("9.0 the summary branch DOES write on an authorized turn (guards this section)",
+    ownSum.rec.inserts.some((i) => i.table === "client_memory"),
+    JSON.stringify(ownSum.rec.inserts.map((i) => i.table)));
+  assert("9.1 an authorized summary is filed against the AUTHORIZED client",
+    ownSum.rec.inserts.filter((i) => i.table === "client_memory")
+      .some((i) => JSON.stringify(i.row ?? {}).includes(OWN)),
+    JSON.stringify(ownSum.rec.inserts.filter((i) => i.table === "client_memory").map((i) => i.row)));
+
+  const refusedSum = await drive({ clientId: FOREIGN, stream: true, extraBody: sessionBody });
+  assert("9.2 a REFUSED summary turn writes nothing carrying the refused id",
+    !JSON.stringify(refusedSum.rec.inserts ?? []).includes(FOREIGN),
+    JSON.stringify(refusedSum.rec.inserts ?? []));
+  assert("9.3 …it is filed against the CALLER instead, with no client_id",
+    refusedSum.rec.inserts.filter((i) => i.table === "client_memory")
+      .every((i) => (i.row?.client_user_id ?? null) === USER && !i.row?.client_id),
+    JSON.stringify(refusedSum.rec.inserts.filter((i) => i.table === "client_memory").map((i) => i.row)));
+}
+
+console.log("\nthe CREDIT-REPORT upload branch is bound to the same decision");
+{
+  // The highest-severity write in this change: a service-role storage upload plus a
+  // `credit_report_uploads` row, both keyed on the target id, both RLS-exempt. It sits behind
+  // `isCreditReportPdf`, which requires a model read-check — so with no model stub it was ALWAYS
+  // false and this branch was unreachable, leaving a raw-body-id revert here fully green.
+  const creditDoc = { fileName: "report.pdf", base64: "JVBERi0xLjQK", mimeType: "application/pdf" };
+  const readsAsCreditReport = {
+    can_read_document: true,
+    document_kind: "credit_report",
+    first_five_account_names: ["ACCOUNT ONE"],
+  };
+
+  const ownCredit = await drive({ clientId: OWN, stream: true, document: creditDoc, readCheck: readsAsCreditReport });
+  assert("10.0 the credit-report branch IS reached (guards this section)",
+    ownCredit.rec.uploads.some((u) => u.bucket === "credit-report-uploads")
+      || ownCredit.rec.inserts.some((i) => i.table === "credit_report_uploads"),
+    JSON.stringify({ uploads: ownCredit.rec.uploads, inserts: ownCredit.rec.inserts.map((i) => i.table) }));
+  assert("10.1 an authorized credit report is stored against the AUTHORIZED client",
+    ownCredit.rec.uploads.filter((u) => u.bucket === "credit-report-uploads").every((u) => u.path.startsWith(`${OWN}/`))
+      && ownCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").every((i) => i.row?.user_id === OWN),
+    JSON.stringify({
+      uploads: ownCredit.rec.uploads.filter((u) => u.bucket === "credit-report-uploads").map((u) => u.path),
+      rows: ownCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").map((i) => i.row?.user_id),
+    }));
+
+  const refusedCredit = await drive({ clientId: FOREIGN, stream: true, document: creditDoc, readCheck: readsAsCreditReport });
+  assert("10.2 a REFUSED credit report never lands under the named client",
+    !refusedCredit.rec.uploads.some((u) => u.path.includes(FOREIGN))
+      && !refusedCredit.rec.inserts.some((i) => JSON.stringify(i.row ?? {}).includes(FOREIGN)),
+    JSON.stringify({
+      uploads: refusedCredit.rec.uploads.map((u) => u.path),
+      rows: refusedCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").map((i) => i.row?.user_id),
+    }));
+  assert("10.3 …it lands under the CALLER's own id instead",
+    refusedCredit.rec.uploads.length > 0 && refusedCredit.rec.uploads.every((u) => u.path.startsWith(`${USER}/`)),
+    JSON.stringify(refusedCredit.rec.uploads.map((u) => u.path)));
+}
+
+console.log("\nthe refusal is announced on BOTH response paths, not just the agentic one");
+{
+  // The document path builds a SECOND ReadableStream (the agentic one is gated on
+  // `!attachedDocument`), so a frame emitted there does not reach a doc-attached turn — the
+  // half where the caller is actively filing a document against the client they named.
+  const doc = { fileName: "statement.pdf", base64: "JVBERi0xLjQK", mimeType: "application/pdf" };
+  const refusedDoc = await drive({ clientId: FOREIGN, stream: true, document: doc });
+  assert("11.1 a refused DOCUMENT turn also announces the refusal",
+    refusedDoc.bodyText.includes("client_scope") && refusedDoc.bodyText.includes("refused"),
+    refusedDoc.bodyText.slice(0, 300));
+  assert("11.2 …and still never carries the rejected identifier",
+    !refusedDoc.bodyText.includes(FOREIGN),
+    "the refused id appeared in the document-path response");
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

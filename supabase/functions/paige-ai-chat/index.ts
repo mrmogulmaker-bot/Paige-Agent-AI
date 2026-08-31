@@ -7773,17 +7773,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const finalStream = new ReadableStream({
         async start(controller) {
          // §13/§36 — a client was named but could NOT be authorized, so this turn ran with no
-         // client scope at all. Without a signal the surface keeps saying "Focused on <name>"
-         // while Paige silently has no memory, no rail and no client file — a silent wrong
-         // behaviour the owner would have to catch live. Announce it, WITHOUT the rejected id or
-         // any client field (the reason is a fixed category string, same as the server log).
-         // Consumers ignore frames they don't know (each parser is an `if (parsed.X)` chain
-         // falling through to `choices[0].delta.content`), so this is additive for all of them.
+         // client scope at all: no memory, no rail, no client file. Publish that fact on the wire
+         // WITHOUT the rejected id or any client field (a fixed category string, same as the
+         // server log). Additive for every consumer: each parser is an `if (parsed.X)` chain
+         // falling through to `choices[0].delta.content`, so an unknown frame is a no-op.
+         //
+         // HONEST SCOPE (§13): this makes the refusal OBSERVABLE, it does not yet make it VISIBLE.
+         // No surface reads `client_scope` today, so a focus indicator still shows the named
+         // client on a refused turn. Presenting it is a frontend decision and is NOT this
+         // function's to make (§00) — the seam is here for that surface to consume.
          if (clientScopeDenied) {
            controller.enqueue(enc.encode(`data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`));
          }
-         // #12 — flush any PRE-FLIGHT compaction frames FIRST, so the compacting card renders
+         // #12 — flush the PRE-FLIGHT compaction frames next, so the compacting card renders
          // before Paige's reasoning/answer streams. Empty (no-op) on every turn that didn't fold.
+         // (The refusal frame above precedes them; no parser depends on frame order.)
          for (const f of compactionLeadFrames) controller.enqueue(enc.encode(f));
          // The whole live loop + final answer runs here. Because the gateway calls
          // now execute inside the stream, a mid-flight throw must degrade to a clean
@@ -8013,6 +8017,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // reply. Empty (no-op) on every turn that didn't fold. A persisted Studio thread reaching this
       // path (a doc-attached turn) still shows its compaction card.
       start(controller) {
+        // The DOCUMENT path is a SECOND, independent stream (the agentic stream below is gated
+        // on `!attachedDocument`), so the refusal frame emitted there does not reach here. This
+        // is the higher-stakes half of the surface — the caller believes they are attaching a
+        // file to a focused client, and on a refusal it is written under their OWN id instead —
+        // so it is the last place that should stay silent. Same fixed reason category, never the
+        // rejected identifier.
+        if (clientScopeDenied) {
+          controller.enqueue(new TextEncoder().encode(
+            `data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`,
+          ));
+        }
         for (const f of compactionLeadFrames) controller.enqueue(new TextEncoder().encode(f));
       },
       async pull(controller) {
