@@ -1006,6 +1006,40 @@ surfaces keep their existing behaviour. Only the chat caller stops writing witho
 **Gating.** No new tier flag. Document upload is not tier-gated today and this slice does not
 introduce a gate; the proposal follows the document wherever the document is already allowed.
 
+### PAIGE Chat — the autonomy gate, `/solo/{account}/paige/chat` and every other chat surface
+
+**§66, same commit as the ship.** Every mutating tool Paige can call is gated: at `auto` she acts,
+at `confirm` she proposes and waits, at `off` it is refused. What changed is how a person's YES
+reaches the gate — and this row exists because the first attempt silently removed the capability on
+five of six surfaces without any ledger row noticing.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Mutating tool gated before it runs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Operator can see/flip every gated tool (48/48) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Approval by token (works with no confirm UI) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Approval by fingerprint echo (needs a confirm card) | — | — | — | ✓ | ✓ | — | 403 |
+| `update_client_data` completable by a client seat | n/a | n/a | n/a | n/a | n/a | ✓ | 403 |
+| One approval executes exactly once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+
+**The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
+confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
+`PaigeChat`, `useOperatorChat` and `StudioChat` send no echo and never have. That is why the echo
+cannot be the ONLY way to approve: a rule five of six callers cannot obey is not a rule, it is an
+outage. The token path works on all six, so no tier loses the capability; the echo remains as
+stronger evidence where a surface can supply it — a human demonstrably clicked.
+
+**§58 — the row this table would have caught.** `update_client_data` is the single tool a
+client-portal seat may call. Putting it behind an echo-only gate, on a surface with no confirm
+affordance, removed the Client tier's only write outright. Filling this row honestly at the time
+would have surfaced that before it shipped; it took an independent reviewer instead. Proven
+released by case C8 of the migration's §32 proof — a seat with no thread and no focused client can
+claim its approval.
+
+**Gating.** No new tier flag. Autonomy is resolved per tenant per tool by `resolve_tool_autonomy`,
+clamped by the Trust Compass ceiling (`20261021000000`); the token changes only how consent is
+carried, never who may act.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |
