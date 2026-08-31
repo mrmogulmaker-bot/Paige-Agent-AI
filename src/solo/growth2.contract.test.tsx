@@ -7,6 +7,8 @@ const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), 
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
 const pipelineSettings = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineSettings.tsx"), "utf8");
 const pipelineAdmin = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineAdmin.tsx"), "utf8");
+const contactDeals = readFileSync(resolve(process.cwd(), "src/components/admin/contacts/ContactDealsSection.tsx"), "utf8");
+const stageAutomationRules = readFileSync(resolve(process.cwd(), "src/pages/admin/StageAutomationRules.tsx"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
 const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
 const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
@@ -18,6 +20,7 @@ const visibilityMigration = readFileSync(resolve(process.cwd(), "supabase/migrat
 const directArchiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831213000_solo_pipeline_direct_archive_guard.sql"), "utf8");
 const reorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831214500_solo_pipeline_reorder_serialization.sql"), "utf8");
 const defaultCreatorMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831220000_solo_pipeline_default_creator_lock.sql"), "utf8");
+const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831221500_solo_pipeline_default_setter_lock.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
@@ -151,6 +154,11 @@ describe("Solo Campaigns approved contract", () => {
     expect(pipelineAdmin).toContain('.eq("pipeline_id", pid).is("archived_at", null).order("order_index")');
     expect(defaultCreatorMigration).toContain("create or replace function public.create_pipeline_with_stages");
     expect(defaultCreatorMigration).toContain("if _is_default then\n    perform pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0));");
+    expect(pipelineSettings).toContain('rpc("set_default_pipeline" as never');
+    expect(pipelineSettings).not.toContain("update({ is_default:");
+    expect(defaultSetterMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0))");
+    expect(contactDeals).toContain('from("pipeline_stages").select("*").is("archived_at", null)');
+    expect(stageAutomationRules).toContain('.eq("pipeline_id", pid).is("archived_at", null)');
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
