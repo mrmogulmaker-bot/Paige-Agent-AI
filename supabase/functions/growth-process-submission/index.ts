@@ -463,7 +463,8 @@ async function runExecutor(
       let dealId: string;
       if (existingDeal?.id) {
         if (existingDeal.stage_id !== resolvedStageId) {
-          await admin.from("deals").update({ stage_id: resolvedStageId }).eq("id", existingDeal.id);
+          const { error: moveErr } = await admin.from("deals").update({ stage_id: resolvedStageId }).eq("id", existingDeal.id);
+          if (moveErr) return { status: "error", result: {}, error: `deal_stage_update_failed: ${moveErr.message}` };
         }
         dealId = existingDeal.id;
       } else {
@@ -478,7 +479,8 @@ async function runExecutor(
         if (dealErr || !newDeal) return { status: "error", result: {}, error: `deal_insert_failed: ${dealErr?.message ?? "no id"}` };
         dealId = newDeal.id;
       }
-      await admin.from("growth_form_submissions").update({ deal_id: dealId }).eq("id", submissionId);
+      const { error: linkErr } = await admin.from("growth_form_submissions").update({ deal_id: dealId }).eq("id", submissionId);
+      if (linkErr) return { status: "error", result: {}, error: `submission_deal_link_failed: ${linkErr.message}` };
       return { status: "done", result: { deal_id: dealId, stage_id: resolvedStageId } };
     }
 
@@ -606,3 +608,4 @@ async function runExecutor(
       return { status: "error", result: {}, error: `unknown_executor:${p.executor}` };
   }
 }
+
