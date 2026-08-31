@@ -45,25 +45,27 @@
  * they SHOULD have been in that workspace; `tenant_members` owns that.
  */
 /**
- * The narrow slice of a Supabase client this needs: one filtered read and one
- * RPC. Declared structurally rather than imported from the esm.sh URL type,
- * because this module is exercised by a test under `src/`, and the app's
- * tsconfig cannot resolve a Deno URL import. Naming the two calls it makes is
- * also a more honest contract than `SupabaseClient` — nothing else is used.
+ * The two calls this makes, and nothing else.
+ *
+ * Declared structurally rather than imported from the esm.sh `SupabaseClient`
+ * type, because this module is also exercised by a test under `src/` and the
+ * app's tsconfig cannot resolve a Deno URL import.
+ *
+ * The method shapes are deliberately loose. An earlier version spelled out the
+ * `.select().eq().eq().eq().maybeSingle()` chain exactly, which read better and
+ * did not COMPILE: against a real `SupabaseClient` it produced TS2345 (not
+ * assignable) plus TS2589 (type instantiation excessively deep) in every caller
+ * — ten new diagnostics across four edge functions. A precise-looking type that
+ * rejects the only client anyone passes is worse than a loose one that documents
+ * the surface honestly in prose.
  */
 interface TenantLookupClient {
-  from(table: string): {
-    select(columns: string): {
-      eq(column: string, value: unknown): {
-        eq(column: string, value: unknown): {
-          eq(column: string, value: unknown): {
-            maybeSingle(): Promise<{ data: { tenant_id?: string } | null; error: { message: string } | null }>;
-          };
-        };
-      };
-    };
-  };
-  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>;
+  /** A filtered read; the builder chain is the provider's, not ours to restate. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above: restating the builder chain breaks assignability
+  from(table: string): any;
+  /** One RPC, awaited directly. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the provider's rpc is generic over its own function registry
+  rpc(fn: string, args?: any): PromiseLike<{ data: unknown; error: { message: string } | null }>;
 }
 
 export interface ResolvedTenant {

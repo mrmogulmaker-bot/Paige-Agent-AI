@@ -70,9 +70,20 @@ function client(opts: {
       // get_user_primary_tenant RETURNS TABLE, so supabase-js yields an array.
       return { data: opts.primary ? [{ tenant_id: opts.primary }] : [], error: null };
     },
-    // deno-lint-ignore no-explicit-any
-  } as any;
+  };
 }
+
+/**
+ * Call the real function with the double.
+ *
+ * The cast lives HERE, at the boundary, rather than on the double itself: the
+ * double also carries a `calls` recorder that the client contract has no reason
+ * to know about, and casting the whole object hid that recorder from the tests
+ * that read it. One narrow cast at the seam keeps the double's own shape honest.
+ */
+type Client = Parameters<typeof resolveTenantForUser>[0];
+const resolve = (c: ReturnType<typeof client>, userId: string, preferred?: string | null) =>
+  resolveTenantForUser(c as unknown as Client, userId, preferred);
 
 function check(name: string, fn: () => Promise<void>) {
   it(name, fn);
@@ -82,7 +93,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
   // 1. The plain case the old code could never satisfy.
   check("resolves the primary tenant when no preference is given", async () => {
     const c = client({ primary: PRIMARY });
-    const r = await resolveTenantForUser(c, USER);
+    const r = await resolve(c, USER);
     assert.equal(r.tenantId, PRIMARY);
     assert.equal(r.source, "primary");
     assert.equal(r.error, null);
@@ -95,7 +106,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
       primary: PRIMARY,
       memberships: [{ tenant_id: OTHER, user_id: USER, status: "active" }],
     });
-    const r = await resolveTenantForUser(c, USER, OTHER);
+    const r = await resolve(c, USER, OTHER);
     assert.equal(r.tenantId, OTHER, "preference must win over the primary ranking");
     assert.equal(r.source, "preferred");
     // The membership probe must be scoped by all three, or it is not a check.
@@ -105,7 +116,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
   // 3. THE SECURITY ROW. A preference the user does not belong to must never win.
   check("REFUSES a workspace preference the user is not a member of", async () => {
     const c = client({ primary: PRIMARY, memberships: [] });
-    const r = await resolveTenantForUser(c, USER, OTHER);
+    const r = await resolve(c, USER, OTHER);
     assert.notEqual(r.tenantId, OTHER, "a non-member preference would be a cross-tenant write");
     assert.equal(r.tenantId, PRIMARY, "and it degrades to the real primary rather than dead-ending");
     assert.equal(r.source, "primary");
@@ -117,7 +128,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
       primary: PRIMARY,
       memberships: [{ tenant_id: OTHER, user_id: USER, status: "invited" }],
     });
-    const r = await resolveTenantForUser(c, USER, OTHER);
+    const r = await resolve(c, USER, OTHER);
     assert.equal(r.tenantId, PRIMARY);
     assert.equal(r.source, "primary");
   });
@@ -126,7 +137,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
   //    swallow is exactly what hid the original defect.
   check("surfaces a membership-read failure instead of swallowing it", async () => {
     const c = client({ primary: PRIMARY, membershipError: "boom" });
-    const r = await resolveTenantForUser(c, USER, OTHER);
+    const r = await resolve(c, USER, OTHER);
     assert.equal(r.tenantId, PRIMARY, "it still resolves usefully");
     assert.match(String(r.error), /membership_check_failed: boom/, "and it says what went wrong");
   });
@@ -134,7 +145,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
   // 6. A user in no tenant resolves to null WITH no error — an honest absence, not
   //    a failure. The caller turns this into its own 400/redirect.
   check("returns a clean null for a user who belongs to no tenant", async () => {
-    const r = await resolveTenantForUser(client({ primary: null }), USER);
+    const r = await resolve(client({ primary: null }), USER);
     assert.equal(r.tenantId, null);
     assert.equal(r.source, "none");
     assert.equal(r.error, null);
@@ -142,7 +153,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
 
   // 7. An RPC failure is reported as a failure, distinct from case 6.
   check("distinguishes an RPC failure from an honest absence", async () => {
-    const r = await resolveTenantForUser(client({ rpcError: "denied" }), USER);
+    const r = await resolve(client({ rpcError: "denied" }), USER);
     assert.equal(r.tenantId, null);
     assert.match(String(r.error), /primary_tenant_failed: denied/);
   });
@@ -150,7 +161,7 @@ describe("resolveTenantForUser — which tenant a connect flow attaches to", () 
   // 8. No user id is refused before any query runs.
   check("refuses an empty user id without querying", async () => {
     const c = client({ primary: PRIMARY });
-    const r = await resolveTenantForUser(c, "");
+    const r = await resolve(c, "");
     assert.equal(r.tenantId, null);
     assert.equal(r.error, "missing_user_id");
     assert.deepEqual(c.calls.rpc, [], "it must not reach the database at all");
