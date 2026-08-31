@@ -10,6 +10,7 @@ const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migration
 const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
 const taskGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831195500_solo_pipeline_task_tenant_guard.sql"), "utf8");
 const concurrencyMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831203500_solo_pipeline_concurrency_guards.sql"), "utf8");
+const invariantMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831205000_solo_pipeline_invariant_guards.sql"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -113,6 +114,11 @@ describe("Solo Campaigns approved contract", () => {
     expect(taskGuardMigration).toContain("trg_validate_task_deal_tenant_link");
     expect(concurrencyMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0))");
     expect(concurrencyMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline::text,0))");
+    expect(invariantMigration).toContain("target.executor in ('contact_upsert','pipeline_attach','client_rail_event','notify_team') then 'auto'");
+    expect(invariantMigration).toContain("s.archived_at is null");
+    expect(invariantMigration).toContain("DEAL_STAGE_INVALID_OR_ARCHIVED");
+    expect(invariantMigration).toContain("trg_serialize_pipeline_stage_insert");
+    expect(invariantMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||new.pipeline_id::text,0))");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
