@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * connections-calendars-usable-drive — prove a HUMAN can finish the job (§70).
+ * connections-calendars-usable-drive — STRUCTURAL-HARNESS proof, not owner proof (§70.1).
  *
  * WHY THIS EXISTS, AND WHY IT IS NOT THE OTHER DRIVE. `connections-calendars-drive`
  * measures GEOMETRY: does the page scroll once, does anything own a scrollbar, do
@@ -15,7 +15,9 @@
  * silently discarded its patch fails here instead of passing quietly.
  *
  * WHAT IT PROVES: the shipped component, the shipped hook and the shipped CSS
- * carry a real person through each flow against a faithful in-memory store.
+ * drive their own contract correctly against a faithful in-memory store. That is
+ * STRUCTURAL-HARNESS evidence — a class BELOW authenticated runtime, and it must
+ * never be reported as the owner being able to use the feature (§70.1).
  * WHAT IT DOES NOT PROVE (§13/§32.c): production RLS, Postgres constraints, or any
  * provider. The rows are synthetic; the authenticated drive of the DEPLOYED
  * surface remains owed to a session that holds credentials.
@@ -474,11 +476,17 @@ async function main() {
   const failed = results.filter((r) => !r.ok);
   console.log("");
   if (failed.length) {
-    console.log(`✗ usable-drive: ${failed.length} of ${results.length} human flow(s) FAIL`);
+    console.log(`✗ usable-drive: ${failed.length} of ${results.length} harness check(s) FAIL`);
     for (const f of failed) console.log(`   · ${f.flow} — ${f.detail}`);
     process.exit(1);
   }
-  console.log(`✓ usable-drive: all ${results.length} human flows complete. Evidence in ${ART}`);
+  console.log(`✓ usable-drive: all ${results.length} STRUCTURAL-HARNESS checks pass. Evidence in ${ART}`);
+  console.log(
+    "  NOT owner proof (§70.1): this is the shipped component, hook and CSS against an in-memory\n" +
+    "  double. It says nothing about real-tenant RLS, real persistence, rendered account switching\n" +
+    "  or any provider handshake. Those stay UNVERIFIED until an authenticated drive runs:\n" +
+    "    node scripts/live-drive/connections-calendars-authed-drive.mjs",
+  );
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
