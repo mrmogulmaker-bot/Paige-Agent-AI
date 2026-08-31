@@ -38,6 +38,7 @@ export type CampaignSubmission = {
 };
 
 export type SoloCampaignsState = {
+  tenantId: string | null;
   phase: "resolving" | "loading" | "ready" | "error" | "unavailable";
   campaigns: CampaignRecord[];
   artifacts: CampaignArtifact[];
@@ -100,6 +101,7 @@ export function useSoloCampaigns(): SoloCampaignsState {
   const { activeTenantId, activeTenant, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
   const [state, setState] = useState<Omit<SoloCampaignsState, "retry" | "pipelineAction">>({
+    tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
     ...empty,
   });
@@ -146,15 +148,15 @@ export function useSoloCampaigns(): SoloCampaignsState {
   useEffect(() => {
     let current = true;
     if (accountContextLoading) {
-      setState({ phase: "resolving", ...empty });
+      setState({ tenantId: activeTenantId ?? null, phase: "resolving", ...empty });
       return () => { current = false; };
     }
     if (!activeTenantId) {
-      setState({ phase: "unavailable", ...empty });
+      setState({ tenantId: null, phase: "unavailable", ...empty });
       return () => { current = false; };
     }
 
-    setState({ phase: "loading", ...empty });
+    setState({ tenantId: activeTenantId, phase: "loading", ...empty });
     void (async () => {
       try {
         const [pageResponse, funnelResponse, formResponse, submissionResponse, routingResponse, pipelineResponse] = await Promise.all([
@@ -251,10 +253,10 @@ export function useSoloCampaigns(): SoloCampaignsState {
             ...routingEvidence(row.id),
           })),
         ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-        setState({ phase: "ready", campaigns, artifacts, submissions, pipelineWorkspace });
+        setState({ tenantId: activeTenantId, phase: "ready", campaigns, artifacts, submissions, pipelineWorkspace });
       } catch (error) {
         console.error("[solo-campaigns] read failed", error);
-        if (current) setState({ phase: "error", ...empty });
+        if (current) setState({ tenantId: activeTenantId, phase: "error", ...empty });
       }
     })();
     return () => { current = false; };
