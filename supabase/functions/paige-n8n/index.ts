@@ -9,11 +9,20 @@
 //    A tenant can only ever reach ITS OWN connection — never another tenant's.
 //  • The n8n API key is decrypted server-side only, via the service-role-only
 //    get_tenant_n8n_secret RPC. It never touches the browser or Paige's context.
-//  • The tenant-supplied instance URL is SSRF-guarded (https-only + internal-host
-//    blocklist + manual-redirect re-validation) so it can't be pointed at an
-//    internal target or DNS-rebind.
+//  • The tenant-supplied instance URL goes through the SHARED guard
+//    (`_shared/ssrfGuard.ts` safeFetch): https only, NO credentials embedded in the
+//    URL, numeric validation of every resolved address, redirects refused rather
+//    than followed, and a bounded wall clock and response size on every call.
+//
+//    This function used to carry its own copy of that validator. The copy checked
+//    the hostname and nothing else, so `https://real.n8n.cloud@evil.example/` — which
+//    the setter accepted, and which READS as real.n8n.cloud in Settings — vetted as
+//    `evil.example`, passed, and received this workspace's `X-N8N-API-KEY`. Driven,
+//    the handler returned `{ok:true}` while the key left the process. The hostname
+//    check was not wrong; it was not the whole URL.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
+import { assertPublicHttpUrl, safeFetch, SsrfError } from "../_shared/ssrfGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,80 +72,45 @@ function validateWorkflow(body: any) {
   return { valid: errors.length === 0, errors, warnings, fireable, trigger: trigger ? { type: trigger.type, node: trigger.name } : null };
 }
 
-// SSRF guard. String matching alone is bypassable (IPv4-mapped IPv6, DNS →
-// internal, link-local), so we resolve the host and validate every resolved IP
-// NUMERICALLY against private/loopback/link-local/ULA/mapped ranges. IP literals
-// are validated directly. redirect:"manual" stops a 3xx from bouncing internal.
-function ipv4ToInt(ip: string): number | null {
-  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return null;
-  const o = m.slice(1).map(Number);
-  if (o.some((n) => n > 255)) return null;
-  return (((o[0] << 24) >>> 0) + (o[1] << 16) + (o[2] << 8) + o[3]) >>> 0;
-}
-function ipv4Private(ip: string): boolean {
-  const n = ipv4ToInt(ip);
-  if (n === null) return true; // unparseable → treat as unsafe
-  const inRange = (base: string, bits: number) => {
-    const b = ipv4ToInt(base)!;
-    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1)) >>> 0;
-    return (n & mask) >>> 0 === (b & mask) >>> 0;
-  };
-  return inRange("0.0.0.0", 8) || inRange("10.0.0.0", 8) || inRange("127.0.0.0", 8) ||
-    inRange("169.254.0.0", 16) || inRange("172.16.0.0", 12) || inRange("192.168.0.0", 16) ||
-    inRange("100.64.0.0", 10) || inRange("192.0.0.0", 24) || inRange("198.18.0.0", 15) ||
-    n === ipv4ToInt("255.255.255.255");
-}
-function ipUnsafe(rawIp: string): boolean {
-  const ip = rawIp.toLowerCase().replace(/^\[|\]$/g, "");
-  if (ipv4ToInt(ip) !== null) return ipv4Private(ip);
-  // IPv6 (canonical or literal). Handle embedded/mapped IPv4 explicitly.
-  if (ip === "::1" || ip === "::") return true;
-  if (/^fe[89ab]/.test(ip)) return true;            // fe80::/10 link-local
-  if (/^f[cd]/.test(ip)) return true;               // fc00::/7 ULA
-  if (/^(64:ff9b::|2002:)/.test(ip)) {              // NAT64 / 6to4 → extract v4 if dotted
-    const d = ip.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (d) return ipv4Private(d[1]);
-    return true;
-  }
-  const mappedDotted = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mappedDotted) return ipv4Private(mappedDotted[1]);
-  const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
-    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16);
-    return ipv4Private(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
-  }
-  return false; // a routable public IPv6
-}
-async function assertSafeUrl(raw: string): Promise<void> {
-  let u: URL;
-  try { u = new URL(raw); } catch { throw new Error("Invalid instance URL"); }
-  if (u.protocol !== "https:") throw new Error("Instance URL must be https://");
-  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("Instance URL host is not allowed");
-  // IP literal → validate directly; hostname → resolve A + AAAA and validate all.
-  if (ipv4ToInt(host) !== null || host.includes(":")) {
-    if (ipUnsafe(host)) throw new Error("Instance URL host is not allowed");
-    return;
-  }
-  const ips: string[] = [];
-  for (const kind of ["A", "AAAA"] as const) {
-    try { ips.push(...await Deno.resolveDns(host, kind)); } catch { /* no records of this kind */ }
-  }
-  if (ips.length === 0) throw new Error("Instance URL host could not be resolved");
-  for (const ip of ips) if (ipUnsafe(ip)) throw new Error("Instance URL resolves to a non-public address");
-}
+/**
+ * What a call site sees. Deliberately Response-shaped — `ok`, `status`, `text()`,
+ * `json()` — so the ten existing call sites read exactly as they did, and the change
+ * is the transport underneath rather than a rewrite of every branch.
+ */
+type N8nResult = {
+  ok: boolean;
+  status: number;
+  text: () => string;
+  // deno-lint-ignore no-explicit-any
+  json: () => any;
+  /** The body hit the read cap. The instance answered with more than we will hold. */
+  truncated: boolean;
+};
 
-// One n8n REST call, SSRF-validated, no auto-redirect (n8n API shouldn't 3xx;
-// following one blindly could bounce to an internal host).
-async function n8nFetch(baseUrl: string, apiKey: string, path: string, init: RequestInit = {}): Promise<Response> {
+/** Nothing an n8n instance can say is worth more of this function than these. */
+const N8N_TIMEOUT_MS = 15_000;
+const N8N_MAX_BYTES = 2_097_152; // 2 MiB — larger than any /api/v1 answer we consume.
+
+/**
+ * One n8n REST call through the shared guard.
+ *
+ * A 3xx now RAISES rather than arriving as a non-ok result. That is stricter than
+ * before and deliberately so: the n8n API has no reason to redirect, and refusing has
+ * no window between the check and the connect the way re-validating a hop would.
+ */
+async function n8nFetch(baseUrl: string, apiKey: string, path: string, init: RequestInit = {}): Promise<N8nResult> {
   const url = `${baseUrl.replace(/\/$/, "")}/api/v1${path}`;
-  await assertSafeUrl(url);
-  return await fetch(url, {
+  const res = await safeFetch(url, {
     ...init,
-    redirect: "manual",
     headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json", Accept: "application/json", ...(init.headers || {}) },
-  });
+  }, { timeoutMs: N8N_TIMEOUT_MS, maxBytes: N8N_MAX_BYTES });
+  return {
+    ok: res.status >= 200 && res.status < 300,
+    status: res.status,
+    text: () => res.body,
+    json: () => { try { return JSON.parse(res.body); } catch { return null; } },
+    truncated: res.truncated,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -172,10 +146,14 @@ Deno.serve(async (req) => {
   const baseUrl: string = secret.base_url;
   const apiKey: string = secret.api_key;
 
+  // Vet the stored address BEFORE anything is sent, so a bad one costs no outbound
+  // request at all — and, more to the point, never carries the API key anywhere.
   try {
-    await assertSafeUrl(`${baseUrl.replace(/\/$/, "")}/api/v1`);
+    await assertPublicHttpUrl(`${baseUrl.replace(/\/$/, "")}/api/v1`);
   } catch (e) {
-    return json({ error: "unsafe_instance_url", detail: e instanceof Error ? e.message : "blocked" }, 400);
+    // The stable reason only. It names the shape of the problem without echoing the
+    // address back, which for the credentials case would put the secret in the reply.
+    return json({ error: "unsafe_instance_url", detail: e instanceof SsrfError ? e.reason : "blocked" }, 400);
   }
 
   const markSync = (status: string, lastError: string | null, count: number | null) =>
@@ -253,15 +231,19 @@ Deno.serve(async (req) => {
         }
         if (!path) return json({ ok: false, error: "workflow_or_path_required", detail: "Provide a workflow_id (to resolve its webhook) or an explicit webhook_path." });
         const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${String(path).replace(/^\//, "")}`;
-        await assertSafeUrl(webhookUrl);
         const method = String(body.method || "POST").toUpperCase();
-        const hookRes = await fetch(webhookUrl, {
+        // Same guard as the REST path. The webhook is the more dangerous of the two —
+        // it is a workflow trigger, and its response was previously read in full before
+        // being sliced, so an enormous body was already spent by the time it was cut.
+        const hookRes = await safeFetch(webhookUrl, {
           method,
-          redirect: "manual",
           headers: { "Content-Type": "application/json" },
           body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body.payload ?? {}),
-        });
-        const respText = (await hookRes.text()).slice(0, 4000);
+        }, { timeoutMs: N8N_TIMEOUT_MS, maxBytes: N8N_MAX_BYTES });
+        // `safeFetch` reports a status, not a Response, and a 3xx never reaches here
+        // at all — it raises. So "accepted" is exactly 2xx.
+        const hookOk = hookRes.status >= 200 && hookRes.status < 300;
+        const respText = hookRes.body.slice(0, 4000);
         let parsed: any = null; try { parsed = JSON.parse(respText); } catch { /* non-JSON body */ }
         const o = parsed && typeof parsed === "object" ? parsed : {};
         // Any of these keys means the workflow reported a machine-readable send outcome.
@@ -283,7 +265,7 @@ Deno.serve(async (req) => {
         // webhook accepted it). Delivery/completion stays a separate concern (verified
         // via execution_get), so we file fired only, never a premature completed (§13).
         // Best-effort + non-blocking; skips unless a real client resolves from payload.
-        if (hookRes.ok) {
+        if (hookOk) {
           const hints = contactHintsFromPayload(body.payload ?? {});
           await emitAutomationRail(admin, {
             tenantId, contactId: hints.contactId, email: hints.email, phone: hints.phone,
@@ -295,7 +277,7 @@ Deno.serve(async (req) => {
           action: "run",
           workflow_id: body.workflow_id ?? null,
           webhook_path: String(path),
-          fired: hookRes.ok,                 // LAYER 1 — webhook accepted the request
+          fired: hookOk,                     // LAYER 1 — webhook accepted the request
           http_status: hookRes.status,
           verified: hasOutcome,              // did the workflow return a machine-readable outcome?
           delivered,                          // LAYER 2 — true | false | null(unknown). The headline field.
@@ -309,7 +291,7 @@ Deno.serve(async (req) => {
             tagsAdded: tags, name: o.name ?? null, errors: errs,
           } : null,
           raw_response: respText,             // log/debug only — never quoted to the operator as proof
-          note: !hookRes.ok
+          note: !hookOk
             ? "The webhook returned a non-2xx — the workflow may be inactive, or the path/payload didn't match. Nothing was sent."
             : hasOutcome
               ? (delivered
@@ -446,6 +428,17 @@ Deno.serve(async (req) => {
         return json({ error: "unknown_action", detail: `Unknown n8n action: ${action}` }, 400);
     }
   } catch (e) {
+    // A guard refusal is not an instance failure and is not reported as one: the
+    // difference between "your n8n is down" and "that address was refused" is the
+    // difference between waiting and fixing.
+    if (e instanceof SsrfError) {
+      await markSync("error", e.reason, null);
+      const refusedByAddress = e.reason !== "request_timed_out" && e.reason !== "request_failed";
+      return json({
+        error: refusedByAddress ? "unsafe_instance_url" : "n8n_request_failed",
+        detail: e.reason,
+      }, refusedByAddress ? 400 : 502);
+    }
     const msg = e instanceof Error ? e.message : "n8n_request_failed";
     await markSync("error", msg.slice(0, 300), null);
     return json({ error: "n8n_request_failed", detail: msg }, 502);

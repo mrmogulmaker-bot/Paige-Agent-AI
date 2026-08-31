@@ -354,6 +354,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:mcp-oauth
 
+      - name: Smoke — paige-n8n outbound (no key to a userinfo host, bounded time and size)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:n8n-ssrf
+
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant

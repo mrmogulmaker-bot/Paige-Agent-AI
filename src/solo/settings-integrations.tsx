@@ -82,15 +82,6 @@ const CATALOGUE_FILTERS: ReadonlyArray<{ id: CatalogueCategory; label: string }>
   { id: "developer", label: "Developer" },
 ];
 
-function isZapierMcpHost(host: string | null | undefined) {
-  if (!host) return false;
-  try {
-    return new URL(host).hostname.toLowerCase() === "mcp.zapier.com";
-  } catch {
-    return false;
-  }
-}
-
 function statusPresentation(value: SafeConnectionStatus | null) {
   if (!value?.configured || value.status === "unconfigured") {
     return { truth: "UNAVAILABLE" as SettingsTruth, account: "Not connected", tone: "neutral" };
@@ -98,7 +89,10 @@ function statusPresentation(value: SafeConnectionStatus | null) {
   if (value.enabled === false) return { truth: "PARTIAL" as SettingsTruth, account: "Turned off", tone: "warn" };
   if (value.status === "error") return { truth: "PARTIAL" as SettingsTruth, account: "Needs attention", tone: "bad" };
   if (value.status === "connected") return { truth: "LIVE" as SettingsTruth, account: "Connected", tone: "ok" };
-  return { truth: "PARTIAL" as SettingsTruth, account: "Status not reported", tone: "neutral" };
+  // Anything else means it exists but has not been proven to work — for a granted
+  // connection, that the consent completed but the check has not. It is never rendered
+  // as connected, and never as a status code the reader has to interpret.
+  return { truth: "PARTIAL" as SettingsTruth, account: "Setup not finished", tone: "neutral" };
 }
 
 function useIntegrationStatus() {
@@ -167,7 +161,10 @@ const PROVIDERS: ReadonlyArray<ProviderRow> = [
   // Connectable through an authorization grant rather than a pasted credential, so the
   // panel offers consent instead of a form. The card's label is CD's to set; this row
   // only changes whether the connection can be made.
-  { id: "mcp", name: "MCP bridge", kind: "External tool bridge", filter: "developer", connectable: true,
+  // The Zapier slot. It can only ever hold Zapier: the setter writes that provider and
+  // that endpoint, and the registry's CHECK refuses a Zapier row that is not OAuth. So
+  // the card is named for what it is rather than for the protocol underneath it.
+  { id: "mcp", name: "Zapier", kind: "Apps and actions", filter: "developer", connectable: true,
     note: "" },
   { id: "quickbooks", name: "QuickBooks", kind: "Financial tools", filter: "financial", connectable: false,
     note: "The sync seams exist, but nothing yet proves a connection belongs to this workspace, so no setup is offered." },
@@ -183,9 +180,9 @@ const PROVIDERS: ReadonlyArray<ProviderRow> = [
     note: "Platform webhook and key records are not the same thing as a connection for this workspace." },
 ];
 
-function providerMark(id: ProviderIdentity, zapier: boolean) {
+function providerMark(id: ProviderIdentity) {
   if (id === "n8n") return "n8n";
-  if (id === "mcp") return zapier ? "zap" : "MCP";
+  if (id === "mcp") return "zap";
   return id.slice(0, 2).toUpperCase();
 }
 
@@ -373,8 +370,12 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
   return <>
     {m.configured && <dl className="ig-facts">
       <div><dt>State</dt><dd>{mcpStateWords(m.status)}</dd></div>
-      {m.serverUrlHost && <div><dt>Server</dt><dd className="ig-mono">{m.serverUrlHost}</dd></div>}
-      <div><dt>Access</dt><dd>Granted by Zapier. No key is stored here.</dd></div>
+      {/* The address is deliberately not shown here. For Zapier it is always the same
+          endpoint, so it tells an owner nothing they need — and any label for it either
+          reads as a claim that the connection is live ("Connected to …") or is a
+          technical detail this card exists to keep off the screen. The state row above
+          is the one honest answer, and it is the probe's, not the grant's. */}
+      <div><dt>Access</dt><dd>Granted by you on Zapier. No key is stored here.</dd></div>
     </dl>}
 
     {!m.configured && <p className="ig-lede">
@@ -462,7 +463,7 @@ function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: bo
     </dl>}
 
     {!m.configured && !editing && <p className="ig-lede">
-      If your n8n instance exposes an MCP server, connect it here so Paige can see the tools it offers.
+      If your n8n instance publishes its own tools, connect that here so Paige can see what it offers.
       You provide the address and a credential; the credential is stored encrypted and is never shown again.
     </p>}
 
@@ -551,7 +552,7 @@ function McpForm({
     }}
   >
     <label className="ig-field">
-      <span>MCP server address</span>
+      <span>Tools address</span>
       <input
         type="url" inputMode="url" autoComplete="off" spellCheck={false}
         placeholder="https://your-instance.app.n8n.cloud/mcp/…"
@@ -559,7 +560,7 @@ function McpForm({
       />
       <small>
         {existing && m.serverUrlHost
-          ? `Currently ${m.serverUrlHost}. The full address is never shown back, because an n8n MCP path is itself a secret — enter it again to change it.`
+          ? `Currently ${m.serverUrlHost}. The full address is never shown back, because the rest of it is itself a secret — enter it again to change it.`
           : "Has to start with https://"}
       </small>
     </label>
@@ -687,7 +688,7 @@ function N8nForm({
 
 /* ── The contextual panel ─────────────────────────────────────────────────── */
 
-function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; zapier: boolean; onClose: () => void; onChanged: () => void }) {
+function ProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose: () => void; onChanged: () => void }) {
   // A drawer can hold more than one connection, so unsaved input is tracked per
   // section. Closing is guarded if EITHER has something unsaved — a single shared
   // flag would let one section clear the other's guard and silently discard input.
@@ -738,7 +739,7 @@ function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; 
   return <div className="ig-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
     <aside className="ig-panel" ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="ig-panel-title">
       <header>
-        <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id, zapier)}</span>
+        <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span>
         <div><h2 id="ig-panel-title">{row.name}</h2><span>{row.kind}</span></div>
         <button ref={closeRef} type="button" className="ig-close" onClick={requestClose} aria-label={`Close ${row.name}`}><X aria-hidden size={16} /></button>
       </header>
@@ -766,7 +767,7 @@ function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; 
                 <N8nPanelBody onDirtyChange={setApiDirty} onChanged={onChanged} />
               </section>
               <section className="ig-section" aria-labelledby="ig-sec-mcp">
-                <h3 id="ig-sec-mcp">Tool bridge (MCP)</h3>
+                <h3 id="ig-sec-mcp">Direct tool access</h3>
                 <N8nMcpSection onDirtyChange={setMcpDirty} onChanged={onChanged} />
               </section>
             </>
@@ -803,12 +804,11 @@ function useIntegrationsLeaf(): [IntegrationsLeaf, (next: IntegrationsLeaf) => v
 export function SoloIntegrationsView() {
   const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
-  const zapier = isZapierMcpHost(status.mcp.zapier?.server_url_host);
   const [category, setCategory] = useState<CatalogueCategory>("all");
   const [open, setOpen] = useState<ProviderRow | null>(null);
 
-  // n8n's card reports its shipped API-key connection; the MCP bridge card reports
-  // the tenant's Zapier MCP endpoint. Both are provider-scoped reads now.
+  // n8n's card reports its shipped API-key connection; the Zapier card reports the
+  // tenant's Zapier connection. Both are provider-scoped reads.
   const liveStatus = (id: ProviderIdentity) => id === "n8n" ? status.n8n : id === "mcp" ? (status.mcp.zapier ?? null) : null;
   const rows = PROVIDERS.filter((row) => category === "all" || row.filter === category);
 
@@ -845,12 +845,11 @@ export function SoloIntegrationsView() {
         : <ul className="ig-grid">
             {rows.map((row) => {
               const live = statusPresentation(liveStatus(row.id));
-              const name = row.id === "mcp" && zapier ? "Zapier MCP" : row.name;
               return <li key={row.id}>
                 <button type="button" className="ig-card" data-provider={row.id} data-owner="integrations"
                   onClick={() => setOpen(row)} aria-haspopup="dialog">
-                  <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id, zapier)}</span>
-                  <span className="ig-card-title"><strong>{name}</strong><small>{row.kind}</small></span>
+                  <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id)}</span>
+                  <span className="ig-card-title"><strong>{row.name}</strong><small>{row.kind}</small></span>
                   <span className="ig-card-state" data-tone={row.connectable || live.truth !== "UNAVAILABLE" ? live.tone : "neutral"}>
                     <i aria-hidden />{row.connectable ? live.account : "Not available"}
                   </span>
@@ -860,7 +859,7 @@ export function SoloIntegrationsView() {
           </ul>}
     </>}
 
-    {open && <ProviderPanel row={open} zapier={zapier} onClose={() => setOpen(null)} onChanged={status.retry} />}
+    {open && <ProviderPanel row={open} onClose={() => setOpen(null)} onChanged={status.retry} />}
   </div>;
 }
 

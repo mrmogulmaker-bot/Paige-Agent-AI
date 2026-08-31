@@ -24,10 +24,11 @@ const HOME = "supabase/functions/_shared/ssrfGuard.ts";
  * that survives review.
  */
 const GRANDFATHERED = {
-  "supabase/functions/paige-n8n/index.ts":
-    "n8n REST API path. Consolidating it would add the bounded wall clock and bounded " +
-    "response size it currently lacks; deferred because it is a live path and the MCP " +
-    "slice that introduced the shared client does not otherwise touch it.",
+  // paige-n8n is NO LONGER here. Its fork was removed and the path moved to safeFetch
+  // after the deferral proved wrong: the copy checked the hostname only, so a stored
+  // `https://real.n8n.cloud@evil.example/` passed and the workspace's n8n API key was
+  // sent to evil.example while the handler returned {ok:true}. An entry in this list is
+  // a debt with a live consequence, not a note.
   "supabase/functions/_shared/ssrf-guard.ts":
     "An older, weaker guard (it permits http://) with one caller, studio-visual-critique. " +
     "Superseded by ssrfGuard.ts; its caller should move and the file should go.",
