@@ -94,7 +94,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "connection_disabled", detail: "This workspace's Zapier/MCP connection is turned off. Re-enable it in Settings → Integrations → Zapier." });
   }
   const serverUrl: string = secret.server_url;
-  let token: string = secret.auth_token;
 
   // An access token that has lapsed is refreshed here rather than surfacing as a failed
   // action. Rotation is stored immediately: a server that issues a new refresh token has
@@ -143,7 +142,15 @@ Deno.serve(async (req) => {
           detail: "This workspace's Zapier authorization could not be renewed. Reconnect it in Settings → Integrations → Zapier.",
         });
       }
-      token = rotated.accessToken;
+      // Written back onto `secret`, which is the ONE thing the auth is derived from.
+      // A local copy alongside it is what broke this: the rotation updated the copy and
+      // `authFromSecret(secret)` kept reading the expired field, so the first call after
+      // every expiry went out with the dead token and failed even though the refresh and
+      // the database write had both succeeded. Two representations of one fact is the same
+      // defect as the guard-and-mapping split this function was just consolidated to
+      // remove; the fix is the same one -- keep a single representation.
+      secret.auth_token = rotated.accessToken;
+      secret.expires_at = rotated.expiresAt;
     } catch {
       // A grant that can no longer be refreshed has been withdrawn or has expired. Saying
       // so is the honest answer; retrying with the dead token would fail less clearly.

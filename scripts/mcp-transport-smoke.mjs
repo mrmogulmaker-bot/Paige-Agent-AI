@@ -350,6 +350,18 @@ const bearer = { kind: "bearer", token: "super-secret-token-1234" };
   check("header auth without a header name falls back rather than sending a nameless header",
     mcp.authFromSecret({ server_url: url, auth_kind: "header", auth_token: "t" })?.kind === "bearer");
   check("nothing at all is refused", mcp.authFromSecret(null) === null);
+
+  // The auth follows the SECRET, so whatever last wrote to the secret is what goes on the
+  // wire. This is the contract an OAuth refresh depends on: rotation writes the new access
+  // token onto `secret`, and the auth derived afterwards must carry it. It broke because a
+  // local `token` copy was rotated while the auth was derived from the untouched field, so
+  // the first call after every expiry went out with the dead token.
+  const rotating = { server_url: url, auth_kind: "oauth", auth_token: "expired" };
+  check("before rotation the auth carries the stored token",
+    mcp.authFromSecret(rotating)?.token === "expired");
+  rotating.auth_token = "rotated";
+  check("after rotation writes to the secret, the auth carries the NEW token",
+    mcp.authFromSecret(rotating)?.token === "rotated");
 }
 
 // A provider that allocates a session and then answers initialize with a JSON-RPC error.
