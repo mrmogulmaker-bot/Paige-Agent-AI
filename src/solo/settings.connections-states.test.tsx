@@ -99,6 +99,80 @@ async function mountConnections() {
   return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
 
+/**
+ * THE FOLDS, AS ELEMENTS — because textContent cannot see them.
+ *
+ * Every assertion in these suites reads `host.textContent`, and textContent is
+ * indifferent to whether a <details> is open. An independent review measured the
+ * consequence: replacing the whole fold header with `open={false}` and a hardcoded
+ * `<span class="ss-fold-rest">All good</span>` left all 52 tests passing. That
+ * mutation renders four collapsed headers, paints every area with the "fine" tone,
+ * and tells a tenant whose read FAILED that everything is "All good" — the exact
+ * confident-negative class the suite above exists to prevent, one element higher
+ * up the page and completely unguarded.
+ *
+ * So these read the DOM: the tone attribute, the at-rest line, and the open state.
+ */
+function folds(host: HTMLElement) {
+  return Array.from(host.querySelectorAll<HTMLDetailsElement>("details.ss-fold")).map((d) => ({
+    tone: d.getAttribute("data-tone"),
+    rest: (d.querySelector(".ss-fold-rest")?.textContent ?? "").trim(),
+    title: (d.querySelector(".ss-fold-title h3")?.textContent ?? "").trim(),
+    open: d.open,
+    labelled: d.parentElement?.getAttribute("aria-labelledby") ?? null,
+  }));
+}
+
+describe("The Communications folds report the record, not a mood", () => {
+  beforeEach(() => { rpcState.readiness = { data: null, error: null }; });
+
+  it("says every area is UNREAD when the read failed — no fold claims a state", async () => {
+    rpcState.readiness = { data: null, error: { message: "COMMS_READINESS_FORBIDDEN" } };
+    const { host, cleanup } = await mountConnections();
+    const f = folds(host);
+    expect(f.length).toBe(4);
+    for (const area of f) {
+      // Never the "everything is fine" tone, and never a confident value.
+      expect(area.tone).not.toBe("ok");
+      expect(area.rest).not.toBe("");
+      expect(area.rest.length).toBeLessThan(40);
+      // The heading is still a labelled region — folding must not drop the landmark.
+      expect(area.labelled).toBeTruthy();
+    }
+    // At least the areas that come from the failed read say so in words.
+    expect(f.filter((a) => a.rest === "Couldn’t be read").length).toBeGreaterThanOrEqual(3);
+    await cleanup();
+  });
+
+  it("reports each area from the record when the read SUCCEEDS (non-vacuity)", async () => {
+    rpcState.readiness = { data: READY, error: null };
+    const { host, cleanup } = await mountConnections();
+    const f = folds(host);
+    expect(f.length).toBe(4);
+    // The tones must actually differ across areas — a scale that paints every
+    // fold the same colour carries no information and would pass a same-tone check.
+    expect(new Set(f.map((a) => a.tone)).size).toBeGreaterThan(1);
+    // And no area may still be claiming it could not be read.
+    expect(f.some((a) => a.rest === "Couldn’t be read")).toBe(false);
+    // Each at-rest line is derived from the record, not a mood: READY has a number
+    // assigned, no registration, no sending identity, and 4 of 5 delivered — and
+    // that is exactly what the four collapsed lines say.
+    expect(f.map((a) => a.rest)).toEqual(["Assigned", "Not registered", "Not configured", "4 of 5 delivered"]);
+    await cleanup();
+  });
+
+  it("keeps the tone vocabulary closed — nothing invents a fifth state", async () => {
+    for (const fixture of [{ data: READY, error: null }, { data: null, error: { message: "COMMS_READINESS_FORBIDDEN" } }]) {
+      rpcState.readiness = fixture as typeof rpcState.readiness;
+      const { host, cleanup } = await mountConnections();
+      for (const area of folds(host)) {
+        expect(["ok", "warn", "bad", "neutral"]).toContain(area.tone);
+      }
+      await cleanup();
+    }
+  });
+});
+
 describe("Connections renders its real states", () => {
   beforeEach(() => { rpcState.readiness = { data: null, error: null }; });
 

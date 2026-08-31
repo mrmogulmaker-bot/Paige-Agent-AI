@@ -140,3 +140,51 @@ export function readDnsRecords(raw: unknown): DnsRecord[] {
   }
   return out;
 }
+
+
+/**
+ * May this caller change sending domains? Mirrors `manage-tenant-domain`.
+ *
+ * NOT the same gate as preparing a registration, and the difference matters.
+ * `comms-a2p-draft` allows `is_platform_owner() OR admin OR coach`;
+ * `manage-tenant-domain` allows `is_platform_owner() OR admin` and EXCLUDES
+ * coach (index.ts:56-58). A coach who can legitimately prepare a registration
+ * cannot manage a domain — so reusing the prepare permission here would have
+ * shown them an enabled "Remove", let them read "this deletes it from your email
+ * provider … it cannot be undone", let them confirm, and only then told them they
+ * never had permission. On the one genuinely destructive control on this surface.
+ *
+ * The three states are the same as prepare's and for the same reason: while the
+ * answer is unknown we claim nothing rather than flashing a denial at an admin.
+ * `errored` is its own denial because "we could not determine this" is true and
+ * "you lack access" might not be — an operator whose RPC call failed is not
+ * someone without permission.
+ */
+export type DomainPermission =
+  | { state: "pending" }
+  | { state: "allowed" }
+  | { state: "denied"; reason: string; recovery: string };
+
+export function domainPermission(input: {
+  loading: boolean;
+  isAdmin: boolean;
+  isPlatformOwner: boolean | null;
+  ownerCheckFailed?: boolean;
+}): DomainPermission {
+  if (input.loading || (!input.isAdmin && input.isPlatformOwner === null && !input.ownerCheckFailed)) {
+    return { state: "pending" };
+  }
+  if (input.isAdmin || input.isPlatformOwner === true) return { state: "allowed" };
+  if (input.ownerCheckFailed) {
+    return {
+      state: "denied",
+      reason: "We couldn’t confirm what you’re allowed to change here, so these controls stay off.",
+      recovery: "Reload the page. If it keeps happening, an admin on this account can make the change.",
+    };
+  }
+  return {
+    state: "denied",
+    reason: "You can see these, but not change them. Managing a sending domain needs admin access on this account.",
+    recovery: "An admin on this account can change it, or grant you access.",
+  };
+}

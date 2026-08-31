@@ -16,7 +16,33 @@
   --pg-success: var(--pg-positive);
   --pg-danger: var(--pg-negative);
   --pg-accent: var(--pg-violet);
+  /* Dark ink ON a gold fill. Same value and same job as the Solo sibling surface
+     already ships (connections-calendars.css:442) — reused rather than re-picked. */
+  --pg-gold-ink: #1d1608;
 }
+
+/*
+ * THE SAME DEFECT, A SECOND TIME — and the header above had already named it.
+ *
+ * The fold treatment and the consequence-coloured actions were first written
+ * against --success / --warning / --destructive / --accent / --accent-foreground /
+ * --card / --background / --ring. Those are real tokens, but in this codebase they
+ * are BARE HSL TRIPLETS (index.css says so in its own header: "All colors MUST be
+ * HSL"), valid only inside hsl(). Used raw they are invalid at computed-value time
+ * and the whole declaration is dropped.
+ *
+ * MEASURED in Chromium against the real stylesheets, before this repair: every
+ * ok/warn/bad fold had border-width 0, no ground and a transparent spine; the
+ * at-rest line rendered in plain ink for all three; .ss-act-danger ("Remove" —
+ * deletes the domain at the provider, cannot be undone) was BYTE-IDENTICAL to
+ * .ss-act-go; .ss-act-primary had no gold and no fill; and the drawer had no
+ * background at all. The only fold that rendered was `neutral`, because
+ * --pg-violet is a hex — i.e. the one meaning "we could not read this" was the
+ * one area that looked designed.
+ *
+ * Everything below therefore consumes the --pg-* palette, which is hex in both
+ * themes. Nothing on this surface may reach for a raw triplet again.
+ */
 
 .solo-settings { container-type: inline-size; min-height: 100%; padding: clamp(18px, 2.2vw, 30px); color: var(--pg-ink); background: var(--pg-canvas); overflow-x: clip; }
 .ss-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; max-width: 1180px; margin: 0 auto 18px; }
@@ -224,7 +250,7 @@
   border: 1px solid var(--act-line, var(--pg-line-strong, rgba(128,128,128,.32)));
   background: var(--act-bg, var(--pg-raised, transparent));
   color: var(--act-ink, inherit);
-  font: 600 11.5px/1 inherit;
+  font-size: 11.5px; line-height: 1; font-weight: 600;
   transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 .ss-act:hover:not(:disabled) {
@@ -234,32 +260,41 @@
   box-shadow: 0 2px 8px -3px color-mix(in srgb, var(--act-glow, var(--pg-violet, #9b8de0)) 60%, transparent);
 }
 .ss-act:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
-.ss-act:focus-visible { outline: 2px solid var(--act-glow, var(--ring)); outline-offset: 2px; }
+/* NO :focus-visible RULE HERE, DELIBERATELY. index.css:327 already ships the
+   console-wide ring ([data-pg] :focus-visible, gold, offset 3px). The rule that
+   stood here set `outline: 2px solid var(--act-glow, var(--ring))` — both of
+   which are HSL triplets, so the declaration was invalid, `outline` fell to its
+   initial `none`, and because this file is unlayered it OVERRODE the layered base
+   ring. Measured: a plain <button> kept `solid 2px rgb(255,240,207)`; every
+   .ss-act read `none 0px`. Every control on this surface was unreachable by
+   keyboard sight (WCAG 2.4.7), and a working platform-wide signal was removed.
+   The lesson is not "use the right token" — it is that a surface-local focus rule
+   can only ever subtract here, so this surface does not write one. */
 
 .ss-act-primary {
-  --act-bg: var(--accent, #d4a752); --act-line: var(--pg-gold-deep, #c7a978);
-  --act-ink: var(--accent-foreground, #20180a); --act-glow: var(--accent, #d4a752);
-  --act-bg-h: color-mix(in srgb, var(--accent, #d4a752) 82%, #fff);
+  --act-bg: var(--pg-gold-fill); --act-line: var(--pg-gold-deep);
+  --act-ink: var(--pg-gold-ink); --act-glow: var(--pg-gold-fill);
+  --act-bg-h: color-mix(in srgb, var(--pg-gold-fill) 82%, var(--pg-gold-core));
   --act-line-h: var(--pg-gold-deep, #c7a978);
   font-weight: 700;
 }
 .ss-act-go {
-  --act-ink: var(--success); --act-glow: var(--success);
-  --act-line: color-mix(in srgb, var(--success) 45%, var(--pg-line));
-  --act-bg-h: color-mix(in srgb, var(--success) 14%, var(--pg-raised));
-  --act-line-h: var(--success);
+  --act-ink: var(--pg-success); --act-glow: var(--pg-success);
+  --act-line: color-mix(in srgb, var(--pg-success) 45%, var(--pg-line));
+  --act-bg-h: color-mix(in srgb, var(--pg-success) 14%, var(--pg-raised));
+  --act-line-h: var(--pg-success);
 }
 .ss-act-danger {
-  --act-ink: var(--destructive); --act-glow: var(--destructive);
-  --act-line: color-mix(in srgb, var(--destructive) 45%, var(--pg-line));
-  --act-bg-h: color-mix(in srgb, var(--destructive) 14%, var(--pg-raised));
-  --act-line-h: var(--destructive);
+  --act-ink: var(--pg-danger); --act-glow: var(--pg-danger);
+  --act-line: color-mix(in srgb, var(--pg-danger) 45%, var(--pg-line));
+  --act-bg-h: color-mix(in srgb, var(--pg-danger) 14%, var(--pg-raised));
+  --act-line-h: var(--pg-danger);
 }
 .ss-act:disabled { opacity: .5; cursor: not-allowed; --act-ink: var(--pg-faint); }
 /* Gold is spent on the act, and only there (§11). */
 .ss-act-primary:not(:disabled) {
-  background: var(--accent, #d4a752); border-color: var(--accent, #d4a752);
-  color: var(--accent-foreground, #20180a); font-weight: 700;
+  background: var(--pg-gold-fill); border-color: var(--pg-gold-fill);
+  color: var(--pg-gold-ink); font-weight: 700;
 }
 
 .ss-blocked { display: flex; flex-direction: column; gap: 6px; flex: 1 1 260px; min-width: 0; }
@@ -269,7 +304,7 @@
 .ss-drawer {
   position: fixed; z-index: 71; inset: 0 0 0 auto; width: min(440px, 100%);
   overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 4px;
-  background: var(--card, #17151c); color: inherit;
+  background: var(--pg-raised); color: var(--pg-ink);
   border-left: 1px solid var(--ss-line, rgba(128,128,128,.32));
   box-shadow: 0 16px 44px -12px rgba(0,0,0,.55);
 }
@@ -282,7 +317,7 @@
 .ss-drawer textarea {
   width: 100%; min-height: 92px; resize: vertical; padding: 9px 11px;
   border: 1px solid var(--ss-line, rgba(128,128,128,.32)); border-radius: 9px;
-  background: var(--background, transparent); color: inherit; font: 400 12.5px/1.5 inherit;
+  background: var(--pg-workspace); color: var(--pg-ink); font: 400 12.5px/1.5 inherit;
 }
 .ss-drawer textarea:disabled { opacity: .6; }
 .ss-drawer-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -302,10 +337,10 @@
 .ss-domain-form input {
   width: 100%; padding: 8px 11px; border-radius: 9px;
   border: 1px solid var(--ss-line, rgba(128,128,128,.32));
-  background: var(--background, transparent); color: inherit; font: 400 12.5px/1.5 inherit;
+  background: var(--pg-workspace); color: var(--pg-ink); font: 400 12.5px/1.5 inherit;
 }
 .ss-domain-form input:disabled { opacity: .6; }
-.ss-invalid { color: var(--destructive, #c0503f); }
+.ss-invalid { color: var(--pg-danger); }
 
 /* The records a person has to retype into a registrar — so they stay legible
    and copyable rather than wrapping into an unreadable block. */
@@ -330,9 +365,14 @@
    own `tone` — the same value the ladder row uses — so a fold cannot disagree
    with the row inside it. It is deliberately NOT the §13 truth taxonomy: LIVE /
    PARTIAL / UNAVAILABLE / PROPOSED remain the `.ss-truth` pill's job alone, and
-   nothing here may be read as one of them. `neutral` is violet precisely because
-   violet is absent from both the truth palette and the semantic status palette —
-   an unread or unreadable area must look like "not known", not like "unavailable".
+   nothing here may be read as one of them. `neutral` is the MUTED ink, not violet:
+   an earlier revision of this comment claimed violet was "absent from the truth
+   palette", and it is not — .ss-truth[data-truth="PROPOSED"] is --pg-accent, which
+   this surface aliases to --pg-violet (settings.css:16-19, :42). Measured identical:
+   both rendered rgb(155,141,224). An area we could not READ would have worn the
+   exact hue of "designed but not built" — a decorative colour impersonating a truth
+   verdict, which is the one thing this scale may never do. Muted carries "not
+   known" and belongs to no truth value.
    No provider, brand or ornamental colour enters this scale. */
 .ss-fold {
   position: relative; margin: 0; border-radius: 10px; overflow: hidden;
@@ -340,6 +380,7 @@
   background: var(--fold-bg, var(--pg-surface));
   transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
+.ss-fold-region + .ss-fold-region { margin-top: 6px; }
 .ss-fold + .ss-fold { margin-top: 6px; }
 .ss-fold::before {
   content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
@@ -348,24 +389,24 @@
 /* One token drives the spine, the hairline, the ground tint and the summary
    value, so an area reads at a glance before it is opened. */
 .ss-fold[data-tone="ok"] {
-  --spine: var(--success); --fold-ink: var(--success);
-  --fold-line: color-mix(in srgb, var(--success) 32%, var(--pg-line));
-  --fold-bg: color-mix(in srgb, var(--success) 6%, var(--pg-surface));
+  --spine: var(--pg-success); --fold-ink: var(--pg-success);
+  --fold-line: color-mix(in srgb, var(--pg-success) 32%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--pg-success) 6%, var(--pg-surface));
 }
 .ss-fold[data-tone="warn"] {
-  --spine: var(--warning); --fold-ink: var(--warning);
-  --fold-line: color-mix(in srgb, var(--warning) 32%, var(--pg-line));
-  --fold-bg: color-mix(in srgb, var(--warning) 7%, var(--pg-surface));
+  --spine: var(--pg-warning); --fold-ink: var(--pg-warning);
+  --fold-line: color-mix(in srgb, var(--pg-warning) 32%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--pg-warning) 7%, var(--pg-surface));
 }
 .ss-fold[data-tone="bad"] {
-  --spine: var(--destructive); --fold-ink: var(--destructive);
-  --fold-line: color-mix(in srgb, var(--destructive) 34%, var(--pg-line));
-  --fold-bg: color-mix(in srgb, var(--destructive) 7%, var(--pg-surface));
+  --spine: var(--pg-danger); --fold-ink: var(--pg-danger);
+  --fold-line: color-mix(in srgb, var(--pg-danger) 34%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--pg-danger) 7%, var(--pg-surface));
 }
 .ss-fold[data-tone="neutral"] {
-  --spine: var(--pg-violet, #9b8de0); --fold-ink: var(--pg-violet, #9b8de0);
-  --fold-line: color-mix(in srgb, var(--pg-violet, #9b8de0) 26%, var(--pg-line));
-  --fold-bg: color-mix(in srgb, var(--pg-violet, #9b8de0) 5%, var(--pg-surface));
+  --spine: var(--pg-muted); --fold-ink: var(--pg-muted);
+  --fold-line: color-mix(in srgb, var(--pg-muted) 26%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--pg-muted) 5%, var(--pg-surface));
 }
 .ss-fold:hover { border-color: color-mix(in srgb, var(--spine) 55%, var(--pg-line)); transform: translateY(-1px); }
 /* Open drops the tint: the ground must not compete with the content it reveals. */
@@ -378,7 +419,6 @@
 }
 .ss-fold-summary::-webkit-details-marker { display: none; }
 .ss-fold-summary:hover { background: color-mix(in srgb, var(--spine) 10%, transparent); }
-.ss-fold-summary:focus-visible { outline: 2px solid var(--spine); outline-offset: -2px; }
 .ss-fold-summary:active { background: color-mix(in srgb, var(--spine) 16%, transparent); }
 
 .ss-fold-title { display: flex; flex-direction: column; gap: 0; flex: 0 1 auto; min-width: 0; }

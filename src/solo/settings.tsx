@@ -40,7 +40,7 @@ import {
 import { CalendarsView } from "./connections-calendars";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BLOCKED_ACTIONS, preparePermission, refusalFor, type PreparePermission, type Refusal } from "./a2pPrepare";
-import { domainOutcomeFor, isSendableDomain, type DomainOutcome } from "./domainActions";
+import { domainOutcomeFor, domainPermission, isSendableDomain, type DomainOutcome, type DomainPermission } from "./domainActions";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -69,9 +69,14 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   return <div className="ss-field"><span>{label}</span><strong>{value?.trim() || "Not provided"}</strong></div>;
 }
 
-function ReadState({ loading, error, retry, children }: { loading: boolean; error: string | null; retry: () => void; children: ReactNode }) {
+function ReadState({ loading, error, retry, children, errorBody }: { loading: boolean; error: string | null; retry: () => void; children: ReactNode; errorBody?: (error: string) => string }) {
   if (loading) return <div className="ss-state" role="status"><RefreshCw className="ss-spin"/>Clearing and resolving this account…</div>;
-  if (error) return <div className="ss-state" role="alert"><TriangleAlert/><span><strong>Couldn’t load this account</strong>{error}</span><button onClick={retry}>Retry</button></div>;
+  // `errorBody` lets a card that owns a failure vocabulary route its READ error
+  // through the same words as its WRITE errors. Without it the domains card —
+  // which built `domainOutcomeFor` precisely so a provider payload never reaches
+  // a tenant — still printed `Edge Function returned a non-2xx status code`
+  // verbatim on the read path.
+  if (error) return <div className="ss-state" role="alert"><TriangleAlert/><span><strong>Couldn’t load this account</strong>{errorBody ? errorBody(error) : error}</span><button onClick={retry}>Retry</button></div>;
   return <>{children}</>;
 }
 
@@ -506,7 +511,11 @@ function Fold({
   atRest: string; tone: "ok" | "warn" | "bad" | "neutral";
   defaultOpen?: boolean; children: ReactNode;
 }) {
-  return <details className="ss-fold" data-tone={tone} open={defaultOpen}>
+  // The <section aria-labelledby> is kept from the Subsection this replaces.
+  // <details> exposes the heading but not the grouping, so folding the four areas
+  // would otherwise have quietly dropped a landmark that was already shipped.
+  return <section className="ss-fold-region" aria-labelledby={id}>
+    <details className="ss-fold" data-tone={tone} open={defaultOpen}>
     <summary className="ss-fold-summary">
       <span className="ss-fold-title">
         <h3 id={id}>{title}</h3>
@@ -516,7 +525,8 @@ function Fold({
       <span className="ss-fold-chevron" aria-hidden>&rsaquo;</span>
     </summary>
     <div className="ss-fold-body">{children}</div>
-  </details>;
+    </details>
+  </section>;
 }
 
 /** Retained for the Health view, which is a single area and needs no fold. */
@@ -633,12 +643,26 @@ function PrepareRegistrationDrawer({
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); attemptClose(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      attemptClose();
+    };
     document.addEventListener("keydown", onKey);
+    // Remember who had focus so closing can give it back. A dialog that drops
+    // focus to <body> leaves a keyboard user at the top of the document.
+    const restoreTo = document.activeElement as HTMLElement | null;
     dialogRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (restoreTo && document.contains(restoreTo)) restoreTo.focus();
+    };
+    // `confirming` IS in the deps, and its absence was a real defect: the handler
+    // closed over `confirming === false` forever, so attemptClose re-entered the
+    // "show the prompt" branch on every press and Escape could never close the
+    // drawer once anything had been typed. Measured at four presses.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, dirty, busy]);
+  }, [open, dirty, busy, confirming]);
 
   if (!open) return null;
 
@@ -648,9 +672,27 @@ function PrepareRegistrationDrawer({
     onClose(dirty);
   }
 
+  // aria-modal says the rest of the page is inert; without a Tab cycle it is not,
+  // and a keyboard user walks straight out of the dialog into the page behind it.
+  function trapTab(e: React.KeyboardEvent) {
+    if (e.key !== "Tab") return;
+    const root = dialogRef.current;
+    if (!root) return;
+    const focusable = Array.from(root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    ));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === root)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+  }
+
   return <>
     <div className="ss-scrim" onClick={attemptClose} aria-hidden />
     <div ref={dialogRef} className="ss-drawer" role="dialog" aria-modal="true"
+         onKeyDown={trapTab}
          aria-labelledby="ss-prep-title" tabIndex={-1}>
       <h3 id="ss-prep-title">Prepare messaging registration</h3>
       <p className="ss-note">
@@ -713,18 +755,64 @@ function BlockedAction({ which }: { which: keyof typeof BLOCKED_ACTIONS }) {
  * `is_platform_owner() OR admin OR coach`, and mirroring only half of an OR is
  * how a surface tells someone they lack access they actually have.
  */
-function usePreparePermission(): PreparePermission {
-  const roles = useUserRoles();
-  const [owner, setOwner] = useState<boolean | null>(null);
+/**
+ * Is the caller a platform operator? One home, two consumers.
+ *
+ * It reports only on the CALLER (`is_platform_owner()` takes no argument and
+ * reads `auth.uid()`), so it discloses nothing about anyone else — no §9 surface.
+ *
+ * Two things this deliberately does that the first version did not. It
+ * re-subscribes to auth changes, because `useUserRoles` does and a stale operator
+ * flag beside fresh roles is a disagreement waiting to happen on a session
+ * change. And it distinguishes "the check said no" from "the check FAILED": the
+ * old rejection arm set `false`, so an operator whose RPC errored was told
+ * "you can see this, but not change it" — fail-closed, which is right, with a
+ * false reason, which is not.
+ */
+function usePlatformOwner(): { owner: boolean | null; failed: boolean } {
+  const [state, setState] = useState<{ owner: boolean | null; failed: boolean }>({ owner: null, failed: false });
   useEffect(() => {
     let active = true;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    void (supabase as any).rpc("is_platform_owner").then(({ data }: { data: unknown }) => {
-      if (active) setOwner(data === true);
-    }, () => { if (active) setOwner(false); });
-    return () => { active = false; };
+    const ask = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void (supabase as any).rpc("is_platform_owner").then(({ data }: { data: unknown }) => {
+        if (active) setState({ owner: data === true, failed: false });
+      }, () => { if (active) setState({ owner: null, failed: true }); });
+    };
+    ask();
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      // Not inside the callback: a query there can deadlock session hydration.
+      window.setTimeout(ask, 0);
+    });
+    return () => { active = false; sub.subscription.unsubscribe(); };
   }, []);
-  return preparePermission({ loading: roles.loading, isStaff: roles.isStaff, isPlatformOwner: owner });
+  return state;
+}
+
+function usePreparePermission(): PreparePermission {
+  const roles = useUserRoles();
+  const { owner, failed } = usePlatformOwner();
+  // A failed operator check must not hold the surface at `pending` forever, so it
+  // resolves to the roles answer alone — which for a tenant admin or coach is
+  // still `allowed`, and for anyone else is a denial they would have got anyway.
+  return preparePermission({
+    loading: roles.loading,
+    isStaff: roles.isStaff,
+    isPlatformOwner: failed ? false : owner,
+  });
+}
+
+/**
+ * The DOMAIN gate is not the prepare gate — see `domainPermission`. A coach
+ * passes the prepare gate and fails this one, and the destructive control on
+ * this card is the one place that difference is expensive.
+ */
+function useDomainPermission(): DomainPermission {
+  const roles = useUserRoles();
+  const { owner, failed } = usePlatformOwner();
+  return domainPermission({
+    loading: roles.loading, isAdmin: roles.isAdmin, isPlatformOwner: owner, ownerCheckFailed: failed,
+  });
 }
 
 /**
@@ -747,12 +835,13 @@ function usePreparePermission(): PreparePermission {
  * well as here, and it cannot be undone from this surface.
  */
 function SendingDomainsPanel({
-  domains, loading, error, retry, manageDomain, presentation,
+  domains, loading, error, retry, manageDomain, presentation, permission,
 }: {
   domains: ReturnType<typeof useSoloComms>["domains"];
   loading: boolean; error: string | null; retry: () => void;
   manageDomain: ReturnType<typeof useSoloComms>["manageDomain"];
   presentation: ReturnType<typeof getCustomDomainPresentation>;
+  permission: DomainPermission;
 }) {
   const [adding, setAdding] = useState(false);
   const [domain, setDomain] = useState("");
@@ -764,6 +853,10 @@ function SendingDomainsPanel({
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const invalid = domain.trim() !== "" && !isSendableDomain(domain);
+  // Writes are off unless the server would allow them. `pending` is off too: an
+  // enabled control that is about to be taken away is worse than a brief wait.
+  const mayWrite = permission.state === "allowed";
+  const [ackId, setAckId] = useState<string | null>(null);
 
   const run = async (
     key: string,
@@ -771,20 +864,35 @@ function SendingDomainsPanel({
     payload: Parameters<typeof manageDomain>[1],
     onDone?: () => void,
   ) => {
-    setBusy(key); setOutcome(null);
+    setBusy(key); setOutcome(null); setAckId(null);
     const res = await manageDomain(verb, payload);
     setBusy(null);
     if (!res.ok) { setOutcome(domainOutcomeFor(res.error)); return; }
     onDone?.();
   };
 
-  return <Card title="Custom sending domains" icon={Globe2} truth={domains.length ? "LIVE" : "PARTIAL"}
+  /* The pill reports the CAPABILITY, exactly as it did before this card gained
+     its write controls. A revision of this line derived it from `domains.length`
+     and dropped the `capabilityTruth` qualifier, so a tenant whose only domain was
+     unverified — who cannot send one email from it — read a bare LIVE two elements
+     to the left of a warn chip and a row saying `pending`. A count is not a state,
+     and the two sibling cards in this same fold still carry the qualifier. */
+  return <Card title="Custom sending domains" icon={Globe2} truth={presentation.capability} capabilityTruth
     actions={<Status tone={presentation.tone}>{presentation.accountLabel}</Status>}>
     {/* Kept from the read-only card this replaces. Dropping it while adding the
         write controls would have removed a shipped signal in a change nominally
         about adding one (§58). */}
     <OrthogonalConnectionState {...presentation}/>
-    <ReadState loading={loading} error={error} retry={retry}>
+    <ReadState loading={loading} error={error} retry={retry}
+      errorBody={(e) => {
+        const known = domainOutcomeFor(e);
+        // An unrecognised read error keeps its shape out of the tenant's way; a
+        // recognised one (an expired session, a workspace that did not resolve)
+        // says the true cause. Either way nothing was written, and it says so.
+        return known.code === "unknown"
+          ? "We couldn’t read your sending domains just now. Nothing on this account was changed."
+          : `${known.title}. Nothing on this account was changed.`;
+      }}>
       {domains.length ? <div className="ss-list">{domains.map((d) => <div key={d.id} className="ss-domain-row">
         <span>
           <strong>{d.domain}</strong>
@@ -792,17 +900,29 @@ function SendingDomainsPanel({
         </span>
         <Status tone={d.status === "verified" ? "ok" : d.status === "failed" ? "bad" : "warn"}>{d.status}</Status>
         <div className="ss-domain-acts">
-          {d.status !== "verified" && <button type="button" className="ss-act ss-act-go" disabled={busy !== null}
-            onClick={() => void run(d.id, "refresh", { id: d.id })}>
+          {d.status !== "verified" && <button type="button" className="ss-act ss-act-go"
+            disabled={busy !== null || !mayWrite}
+            onClick={() => void run(d.id, "refresh", { id: d.id }, () => setAckId(d.id))}>
             {busy === d.id ? "Checking…" : "Check verification"}</button>}
-          {!d.isDefault && <button type="button" className="ss-act ss-act-go" disabled={busy !== null}
+          {!d.isDefault && <button type="button" className="ss-act ss-act-go" disabled={busy !== null || !mayWrite}
             onClick={() => void run(d.id, "set_default", { id: d.id })}>Make default</button>}
           {d.dnsRecords.length > 0 && <button type="button" className="ss-act"
+            aria-expanded={expanded === d.id}
             onClick={() => setExpanded(expanded === d.id ? null : d.id)}>
             {expanded === d.id ? "Hide DNS records" : "Show DNS records"}</button>}
-          <button type="button" className="ss-act ss-act-danger" disabled={busy !== null}
+          <button type="button" className="ss-act ss-act-danger" disabled={busy !== null || !mayWrite}
             onClick={() => setConfirmRemove(d.id)}>Remove</button>
         </div>
+
+        {/* MINOR, and the one verb whose entire purpose is answering this: a check
+            that finds nothing changed used to return the label from "Checking…" to
+            "Check verification" and render nothing, so "checked, still pending" and
+            "the click did nothing" looked identical. This states the re-read. */}
+        {ackId === d.id && busy === null && <p className="ss-note">
+          Checked just now — still {d.status}. {d.dnsRecords.length > 0
+            ? "The records below still have to be published and found before it can send."
+            : "It cannot send until it verifies."}
+        </p>}
 
         {expanded === d.id && <div className="ss-dns">
           <p className="ss-note">Publish these at whoever manages this domain&rsquo;s DNS, then check verification.
@@ -814,7 +934,7 @@ function SendingDomainsPanel({
           </table></div>
         </div>}
 
-        {confirmRemove === d.id && <div className="ss-next" role="status">
+        {confirmRemove === d.id && <div className="ss-next" role="group" aria-label={`Confirm removing ${d.domain}`}>
           <strong>Remove {d.domain}?</strong>
           <p>This deletes it from your email provider as well as from this account, and it cannot be undone here.
             Anything currently sending from it will stop.</p>
@@ -849,7 +969,7 @@ function SendingDomainsPanel({
         until those are published and verified.</p>
       <div className="ss-drawer-acts">
         <button type="button" className="ss-act ss-act-primary"
-          disabled={busy !== null || !isSendableDomain(domain)}
+          disabled={busy !== null || !mayWrite || !isSendableDomain(domain)}
           onClick={() => void run("add", "add", {
             domain: domain.trim().toLowerCase(),
             from_name: fromName.trim() || undefined,
@@ -861,9 +981,18 @@ function SendingDomainsPanel({
       </div>
     </div>
     : <div className="ss-actions-row">
-        <button type="button" className="ss-act ss-act-primary" onClick={() => { setAdding(true); setOutcome(null); }}>
+        <button type="button" className="ss-act ss-act-primary" disabled={!mayWrite}
+          onClick={() => { setAdding(true); setOutcome(null); }}>
           Add a sending domain</button>
       </div>}
+
+    {/* Disabled WITH THE REASON, never hidden — the same rule the blocked A2P
+        actions follow. Someone who cannot see the ceiling cannot tell "this needs
+        access I don't have" from "this product cannot do it". */}
+    {permission.state === "denied" && <div className="ss-next">
+      <p className="ss-note">{permission.reason}</p>
+      <p className="ss-note">{permission.recovery}</p>
+    </div>}
   </Card>;
 }
 
@@ -871,6 +1000,7 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
   const { activeTenantId } = useTenantContext();
   const comms = useSoloComms();
   const identity = useManagedIdentity();
+  const domainPerm = useDomainPermission();
   // The owner-locked Connections shape, from #660: Communications owns whether a
   // message can send, Calendars owns scheduling configuration, Health reports
   // readiness, and Available stays the provider catalogue.
@@ -901,7 +1031,14 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
   useEffect(() => { setPrepare({ open: false, busy: false, refusal: null, hint: "" }); }, [activeTenantId]);
 
   const savePrepared = useCallback(async (hint: string) => {
-    setPrepare((p) => ({ ...p, busy: true, refusal: null, hint }));
+    // The attempted hint is DELIBERATELY not written back into `prepare.hint`.
+    // It used to be, and that quietly defeated the drawer's own discard guard:
+    // the value flowed back down as `initialHint`, the drawer's reset effect
+    // re-ran, `dirty` became false, and Cancel then destroyed the text with no
+    // prompt — on the refusal path, which is exactly where a tenant has typed the
+    // most and is likeliest to back out. The drawer stays mounted through a
+    // refusal and holds its own text; nothing here needs a copy of it.
+    setPrepare((p) => ({ ...p, busy: true, refusal: null }));
     // No tenant_id: the server derives it for a JWT caller and IGNORES a body
     // value, so sending one would suggest an authority this call does not have.
     const { data, error } = await supabase.functions.invoke("comms-a2p-draft", {
@@ -1098,8 +1235,19 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
             <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Persisted status" value={identityStatus}/></div> : <p>No managed sending identity is configured for this account.</p>}</ReadState>
             <p className="ss-note">This is a managed outbound identity. It is not called a mailbox because inbound mailbox behavior is not proven.</p>
           </Card>
-          <SendingDomainsPanel domains={comms.domains} loading={comms.loading} error={comms.error}
-            retry={comms.refresh} manageDomain={comms.manageDomain} presentation={domainPresentation}/>
+          {/* `key` is load-bearing, not cosmetic. This panel holds a refusal, a
+              half-typed domain, an open remove-confirm and an expanded DNS block
+              in local state, and it had NO tenant dependency — measured: a
+              `forbidden` refusal raised under account A stayed on screen under
+              account B's heading, with A's domain still in B's Add form, one
+              click from registering it against B. The write itself was never
+              cross-tenant (the function pins the tenant server-side), but the
+              words were about the wrong business. `ConnectionsView` resets
+              `prepare` on the same key for the same reason. */}
+          <SendingDomainsPanel key={activeTenantId ?? "no-tenant"}
+            domains={comms.domains} loading={comms.loading} error={comms.error}
+            retry={comms.refresh} manageDomain={comms.manageDomain}
+            presentation={domainPresentation} permission={domainPerm}/>
           <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
             <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
             <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>

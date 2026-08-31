@@ -22,6 +22,9 @@ import { domainOutcomeFor, isSendableDomain, readDnsRecords } from "./domainActi
 
 const state = vi.hoisted(() => ({
   calls: [] as { verb: string; body: Record<string, unknown> }[],
+  /** Who is asking. The domain gate is admin-or-operator and EXCLUDES coach. */
+  roles: { isAdmin: true, isCoach: false } as { isAdmin: boolean; isCoach: boolean },
+  platformOwner: true as boolean,
   /** Keyed by verb so one test can fail exactly one of them. */
   results: {} as Record<string, { data?: unknown; error?: unknown }>,
   domains: [] as Record<string, unknown>[],
@@ -30,7 +33,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) => {
-      if (fn === "is_platform_owner") return { data: true, error: null };
+      if (fn === "is_platform_owner") return { data: state.platformOwner, error: null };
       if (fn === "is_current_user_tenant_admin") return { data: true, error: null };
       return { data: null, error: null };
     }),
@@ -64,8 +67,12 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 vi.mock("@/hooks/useUserRoles", () => ({
-  useUserRoles: () => ({ loading: false, userId: "u1", roles: ["admin"], isAdmin: true,
-    isCoach: false, isClient: false, isBroker: false, isStaff: true }),
+  useUserRoles: () => ({
+    loading: false, userId: "u1",
+    roles: [state.roles.isAdmin ? "admin" : null, state.roles.isCoach ? "coach" : null].filter(Boolean) as string[],
+    isAdmin: state.roles.isAdmin, isCoach: state.roles.isCoach, isClient: false, isBroker: false,
+    isStaff: state.roles.isAdmin || state.roles.isCoach,
+  }),
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenantId: "tenant-a", loading: false, activeTenant: { account_number: "1971670" } }),
@@ -100,7 +107,10 @@ const type = async (el: HTMLInputElement, v: string) => {
   });
 };
 
-beforeEach(() => { state.calls = []; state.results = {}; state.domains = []; });
+beforeEach(() => {
+  state.calls = []; state.results = {}; state.domains = [];
+  state.roles = { isAdmin: true, isCoach: false }; state.platformOwner = true;
+});
 
 const VERIFIED = { id: "d1", domain: "acme.com", from_email_local: "no-reply", from_name: "Acme",
   status: "verified", is_default: true, dns_records: [] };
@@ -285,5 +295,60 @@ describe("The domain vocabulary itself", () => {
       "nonsense",
     ])).toEqual([{ type: "TXT", name: "a", value: "v" }, { type: "MX", name: "b", value: "w" }]);
     expect(readDnsRecords(null)).toEqual([]);
+  });
+});
+
+
+describe("The write controls mirror the server's gate, which is NOT the prepare gate", () => {
+  /**
+   * `comms-a2p-draft` allows platform-owner OR admin OR coach.
+   * `manage-tenant-domain` allows platform-owner OR admin, and EXCLUDES coach
+   * (index.ts:56-58). A coach therefore legitimately prepares a registration and
+   * legitimately cannot touch a domain — and this card had NO permission prop at
+   * all, so it offered them an enabled "Remove", the sentence "it cannot be
+   * undone here", a confirm step, and only then a refusal from the server. On the
+   * one genuinely destructive control on the surface.
+   */
+  it("disables every domain write for a coach, and says why", async () => {
+    state.roles = { isAdmin: false, isCoach: true };
+    state.platformOwner = false;
+    state.domains = [VERIFIED, PENDING];
+    const { host, cleanup } = await mount();
+
+    for (const label of ["Remove", "Make default", "Check verification", "Add a sending domain"]) {
+      const b = btn(host, label);
+      expect(b, `${label} should be present`).toBeTruthy();
+      expect(b!.disabled, `${label} should be disabled for a coach`).toBe(true);
+    }
+    // Disabled WITH a stated reason, not hidden — a ceiling you cannot see is
+    // indistinguishable from a capability that does not exist.
+    expect(host.textContent).toContain("needs admin access on this account");
+    await cleanup();
+  });
+
+  it("leaves them enabled for an admin (non-vacuity for the case above)", async () => {
+    state.roles = { isAdmin: true, isCoach: false };
+    state.platformOwner = false;
+    state.domains = [VERIFIED, PENDING];
+    const { host, cleanup } = await mount();
+    for (const label of ["Remove", "Make default", "Check verification", "Add a sending domain"]) {
+      expect(btn(host, label)!.disabled, `${label} should be enabled for an admin`).toBe(false);
+    }
+    expect(host.textContent).not.toContain("needs admin access on this account");
+    await cleanup();
+  });
+
+  it("does not claim LIVE for an account whose only domain is unverified", async () => {
+    // The pill is the CAPABILITY, not a row count. A revision derived it from
+    // `domains.length`, so one pending domain — from which not a single email can
+    // be sent — read LIVE, two elements from a warn chip saying `pending`.
+    state.domains = [PENDING];
+    const { host, cleanup } = await mount();
+    const card = Array.from(host.querySelectorAll("section, article, div"))
+      .find((el) => el.querySelector("h2")?.textContent === "Custom sending domains");
+    const pill = card?.querySelector(".ss-truth");
+    expect(pill).toBeTruthy();
+    expect(pill!.textContent).not.toBe("LIVE");
+    await cleanup();
   });
 });

@@ -341,3 +341,13 @@ jobs:
       - name: Smoke — voice-twiml handler (nothing secret leaves on an unsigned request)
         if: ${{ !cancelled() }}
         run: npm run smoke:voice-twiml-handler
+
+      # A bare HSL triplet consumed outside hsl() drops the WHOLE declaration, and
+      # nothing else in this pipeline can see it — not tsc, not eslint, not jsdom,
+      # which asserts on textContent. It has now shipped twice in one file: once as
+      # four undefined --pg aliases, then again as an entire fold-and-consequence
+      # colour system that measured with no borders, no grounds, a destructive
+      # button identical to a safe one, and no keyboard focus ring anywhere.
+      - name: Lint — HSL colour tokens consumed outside hsl()
+        if: ${{ !cancelled() }}
+        run: npm run lint:hsl-tokens

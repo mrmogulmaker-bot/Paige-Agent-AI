@@ -39,6 +39,12 @@ vi.mock("@/integrations/supabase/client", () => ({
       if (fn === "is_platform_owner") return { data: state.platformOwner, error: null };
       return { data: null, error: null };
     }),
+    // `usePlatformOwner` re-asks on an auth change, the way useUserRoles does, so
+    // the operator flag cannot go stale beside fresh roles. The double has to
+    // carry it or the hook throws on mount.
+    auth: {
+      onAuthStateChange: (_cb: unknown) => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    },
     functions: {
       invoke: vi.fn(async (name: string, opts: { body?: unknown }) => {
         state.invocations.push({ name, body: opts?.body });
@@ -102,7 +108,19 @@ async function mount() {
       </MemoryRouter>,
     );
   });
-  return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
+  // `rerender` renders the SAME root again. The account-switch test needs it:
+  // unmounting and mounting fresh proves nothing, because a fresh mount has no
+  // dialog and no text no matter what the component does with `activeTenantId`.
+  const rerender = async () => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/1971670/settings/connections"]}>
+          <Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes>
+        </MemoryRouter>,
+      );
+    });
+  };
+  return { host, rerender, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
 
 const btn = (host: HTMLElement, label: string) =>
@@ -326,23 +344,50 @@ describe("Abandonment and account switching", () => {
   });
 
   it("never carries a draft, a refusal, or an open dialog into another account", async () => {
-    const { host, cleanup } = await mount();
+    /**
+     * NON-VACUITY, and this test had none. It used to unmount and mount FRESH,
+     * then assert the fresh mount had no dialog — which is true of any component
+     * ever written. Measured: deleting the reset effect it claims to pin
+     * (`useEffect(..., [activeTenantId])` in ConnectionsView) left it passing,
+     * 18/18. It now re-renders the SAME root, which is the only way the effect
+     * is exercised at all, and fails with that effect removed.
+     */
+    const { host, rerender, cleanup } = await mount();
     await click(btn(host, "Prepare registration")!);
     await type(host.querySelector('[role="dialog"] textarea') as HTMLTextAreaElement, "tenant A's words");
     expect(host.querySelector('[role="dialog"]')).toBeTruthy();
 
-    // The account changes under the surface.
+    // The account changes under the LIVE surface.
     state.tenantId = "tenant-b";
     state.readiness = { data: READINESS({ tenant_id: "tenant-b" }), error: null };
-    await act(async () => {
-      host.querySelector("button")?.dispatchEvent(new Event("x"));   // no-op; force a re-render below
-    });
-    await cleanup();
+    await rerender();
 
-    const second = await mount();
-    expect(second.host.querySelector('[role="dialog"]')).toBeNull();
-    expect(second.host.textContent).not.toContain("tenant A's words");
-    await second.cleanup();
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.textContent).not.toContain("tenant A's words");
+    await cleanup();
+  });
+
+  it("still asks before discarding when the save was REFUSED — the path with the most typing behind it", async () => {
+    /**
+     * The guard held before a save and silently vanished after a refused one:
+     * the attempted hint was written back into the parent's state, returned as
+     * `initialHint`, and the drawer's own reset effect then made `dirty` false.
+     * Cancel destroyed the text with no prompt. Measured, exactly here.
+     */
+    state.invokeResult = { data: null, error: { message: "Edge Function returned a non-2xx status code" } };
+    const { host, cleanup } = await mount();
+    await click(btn(host, "Prepare registration")!);
+    await type(host.querySelector('[role="dialog"] textarea') as HTMLTextAreaElement, "a long brief I do not want to lose");
+    await click(btn(host, "Save draft")!);
+
+    // The refusal kept the text — that part already worked.
+    expect((host.querySelector('[role="dialog"] textarea') as HTMLTextAreaElement).value)
+      .toContain("a long brief I do not want to lose");
+
+    await click(btn(host, "Cancel")!);
+    expect(host.querySelector('[role="dialog"]')).toBeTruthy();
+    expect(host.textContent).toContain("Discard");
+    await cleanup();
   });
 });
 
