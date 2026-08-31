@@ -910,6 +910,17 @@ group("tool dispatch re-asserts scope for every tool, not once per round");
   for (let n = 2; n <= 10; n++) {
     if (stepIds((await runTools(n)).responseText).length === 2) { firstComplete = n; break; }
   }
+  // WHAT 16.0 DOES NOT PROVE, stated precisely (§13). It measures how many refusal boundaries
+  // precede completion, not that each check runs BEFORE its tool. A check moved from the top of
+  // the loop body to the bottom — after the handler has already run — would still leave three
+  // boundaries, and this group alone would not notice.
+  //
+  // That mutation IS caught, but by the rest of the suite rather than by this group: applied at
+  // this head it fails 10 assertions, including grp18b's shape total (the per-executed-tool check
+  // changes the call count) and 18.1/18.2/18.4. Verified by running it, not assumed. Tool
+  // dispatch itself remains unobservable here — no tool in the catalogue leaves a recordable side
+  // effect on this path — so a direct ordering assertion is not available, and this note is the
+  // honest statement of the gap rather than a claim that one exists.
   assert(
     "16.0 the round first completes at the boundary a PER-TOOL guard implies",
     firstComplete === 5,
