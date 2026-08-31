@@ -44,7 +44,15 @@ class QueryBuilder {
   // Every filter/shape method records itself and chains. Recording the SHAPE (not just
   // the table) is what lets a check prove an unordered LIMIT 1 pick is gone.
   select(...a) { this._filters.push(["select", a[0]]); return this; }
-  insert(row) { this._op = "insert"; this._live().recorder.inserts.push({ table: this._table, row }); return this; }
+  insert(row) {
+    this._op = "insert";
+    this._live().recorder.inserts.push({ table: this._table, row });
+    // LIVE hook, called synchronously as the write happens. A scenario that mirrors inserts only
+    // AFTER the drive returns cannot model a row being written and then read back WITHIN the same
+    // request — which is precisely the case a self-approval check has to exercise.
+    this._live().scenario.onInsert?.(this._table, row);
+    return this;
+  }
   update(row) { this._op = "update"; this._live().recorder.inserts.push({ table: this._table, row, update: true }); return this; }
   upsert(row) { this._op = "upsert"; this._live().recorder.inserts.push({ table: this._table, row, upsert: true }); return this; }
   delete() { this._op = "delete"; return this; }

@@ -55,6 +55,9 @@ let modelStub = false;
 let readCheckReply = { can_read_document: false, document_kind: "other", first_five_account_names: [] };
 /** When set, the FIRST streamed round emits a tool call instead of an answer. */
 let toolCallOnce = false;
+/** When set, the model stub replays any confirm_token it is handed — a self-approving model. */
+let selfApprove = false;
+let selfApproveReplays = 0;
 let toolCallSpec = { name: "update_client_data", args: {} };
 /** Every request body sent to the model this turn — the real prompt/model EGRESS surface. */
 let modelEgress = [];
@@ -106,6 +109,15 @@ globalThis.fetch = async (url, init) => {
       try { return JSON.parse(String(init?.body ?? "{}")).stream === true; } catch { return false; }
     })();
     if (wantsStream) {
+      // A MODEL THAT TRIES TO APPROVE ITSELF. It reads the `confirm_token` out of the tool result
+      // it was just handed — which is exactly what an LLM sees in its own context — and re-emits
+      // the same call carrying it. No human, no request-body echo, one round later. This is not a
+      // contrived stub: it is the cheapest thing a competent model does when a tool result says
+      // "call this again with confirm_token".
+      if (selfApprove) {
+        const tok = String(init?.body ?? "").replace(/\\"/g, '"').match(/"confirm_token":"([0-9a-f]{16})"/);
+        if (tok) { selfApproveReplays += 1; return sseToolCallReply(toolCallSpec.name, { confirm_token: tok[1] }); }
+      }
       if (toolCallOnce) { toolCallOnce = false; return sseToolCallReply(toolCallSpec.name, toolCallSpec.args); }
       return sseModelReply("ok");
     }
@@ -165,6 +177,10 @@ async function drive({
   tablesExtra = {},
   /** Inject a postgrest error for a specific table, to drive the "the write was REJECTED" path. */
   tableErrorsExtra = {},
+  /** Drive a model that replays the confirm_token it was handed, with NO human and no body echo. */
+  selfApproving = false,
+  /** Called synchronously on every insert, so a scenario can model read-your-own-write. */
+  onInsert = undefined,
 }) {
   const logged = [];
   embedCount = 0;
@@ -174,11 +190,14 @@ async function drive({
   readCheckReply = readCheck;
   toolCallOnce = !!toolCall;
   if (toolCall) toolCallSpec = toolCall;
+  selfApprove = selfApproving;
+  selfApproveReplays = 0;
   const origError = console.error, origWarn = console.warn;
   console.error = (...a) => logged.push({ level: "error", msg: a.join(" ") });
   console.warn = (...a) => logged.push({ level: "warn", msg: a.join(" ") });
 
   const rec = fake.setScenario({
+    onInsert,
     authUser: { id: USER, email: "owner@example.test" },
     rpcs: {
       check_rate_limit: { data: true, error: null },
@@ -243,11 +262,12 @@ async function drive({
   } catch (e) { status = "throw:" + (e?.message ?? e); }
   modelStub = false;
   toolCallOnce = false;
+  selfApprove = false;
 
   console.error = origError; console.warn = origWarn;
   const memoryReads = rec.from.filter((f) => f.table === "client_memory" && f.op === "select");
   const memoryRpc = rec.rpc.filter((r) => r.name === "match_paige_memory");
-  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress], outboundCalls: [...outboundCalls] };
+  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress], outboundCalls: [...outboundCalls], selfApproveReplays };
 }
 
 console.log("\nauthorized paths still work (no regression)");
@@ -1251,6 +1271,136 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
   assert("17.5 an already-settled document cannot be re-offered",
     !/"extraction_proposal"/.test(settled.bodyText ?? ""),
     (settled.bodyText ?? "").slice(0, 200));
+}
+
+// ── 18. THE MODEL CANNOT APPROVE ITSELF ──────────────────────────────────────────────────────
+//
+// THE PROPERTY, AND HOW IT WAS LOST. Before the token existed, the re-entry test read
+// `approvedConfirmations`, which comes only from the validated REQUEST BODY. A model cannot write
+// the request body, so self-approval was impossible by construction — not by instruction.
+//
+// Handing the model a `confirm_token` in the tool result destroyed that. The tool loop pushes tool
+// results back into `convo` and issues another round with `tool_choice:"auto"`, so the token the
+// gate mints to make approval EXPRESSIBLE lands in the model's own context one round before any
+// human sees anything. The only thing left standing between a proposal and a write was a `note`
+// string asking the model not to. That is not a gate.
+//
+// It was found by an independent adversarial review driving the real handler, not by any test
+// here — the whole of section 13 passed throughout, because every check there supplies the token
+// the way a SURFACE would and never asks whether the MODEL could have supplied it.
+//
+// The restored property: a token cannot be redeemed in the request that issued it. A different
+// request means a new user message — a human typed something. That is the thing the model cannot
+// manufacture, and it is what "approved" has to rest on.
+{
+  const CONFIRM = { rpcOverrides: {
+    resolve_tool_autonomy: { data: "confirm", error: null },
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+  } };
+  const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  /** The store, faithful on the one axis that matters: a row remembers which request minted it. */
+  function store() {
+    const rows = [];
+    return {
+      rows,
+      table: (filters) => {
+        const eq = (c) => filters.find((f) => f[0] === "eq" && f[1] === c)?.[2];
+        const neq = (c) => filters.find((f) => f[0] === "neq" && f[1] === c)?.[2];
+        const fp = eq("fingerprint");
+        if (fp === undefined) return [];
+        const notFrom = neq("issued_in_request");
+        // Faithful to postgrest: `.not(col,"is",null)` drops NULL rows, and `neq` against a NULL
+        // column value is NULL (i.e. not a match) rather than true.
+        const excludesNull = filters.some((f) => f[0] === "not" && f[1] === "issued_in_request");
+        const hit = rows.find((r) => r.fingerprint === fp && !r.consumed
+          && (!excludesNull || r.issued_in_request != null)
+          && (notFrom === undefined || (r.issued_in_request != null && r.issued_in_request !== notFrom)));
+        if (!hit) return [];
+        hit.consumed = true;
+        return [{ args: hit.args }];
+      },
+    };
+  }
+
+  const st = store();
+  const selfApproved = await drive({
+    stream: true, selfApproving: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "buy a house" } } },
+    clientId: OWN,
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st.table },
+    // Mirrored LIVE, as the handler writes it. Mirroring after the drive would leave the store
+    // empty at claim time, and 18.1 would pass because the fixture forgot the row rather than
+    // because the gate held — which is exactly how it passed on first write.
+    onInsert: (t, row) => { if (t === "paige_pending_confirmations") st.rows.push({ ...row, consumed: false }); },
+  });
+
+  assert("18.0 the model DID replay the token it was handed (guards this section)",
+    selfApproved.selfApproveReplays > 0,
+    "the stub never saw a confirm_token — this section proves nothing without that");
+
+  // THE ASSERTION. No request-body echo was sent; no human exists in this drive.
+  const wrote = selfApproved.outboundCalls.filter((c) => c.url.includes("paige-write-back"));
+  assert("18.1 a model replaying its own token performs NO write",
+    wrote.length === 0,
+    JSON.stringify(wrote.map((c) => c.body)));
+
+  // And the same for the tool that grants autonomy itself — the one thing §67 says she must never
+  // be able to do for herself. Kills: any future path that lets a self-minted token through.
+  const st2 = store();
+  const selfGranted = await drive({
+    stream: true, selfApproving: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "automation_set_grant", args: { automation_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", lane: "auto" } },
+    ...CONFIRM,
+    tablesExtra: {
+      paige_pending_confirmations: st2.table,
+      paige_automations: () => [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "P", granted_lane: "confirm", state: "draft" }],
+    },
+    onInsert: (t, row) => { if (t === "paige_pending_confirmations") st2.rows.push({ ...row, consumed: false }); },
+  });
+  assert("18.2 …and cannot raise its own autonomy grant",
+    !selfGranted.rec.inserts.some((i) => i.table === "paige_automations" && i.update),
+    JSON.stringify(selfGranted.rec.inserts.filter((i) => i.table === "paige_automations")));
+
+  // THE OTHER HALF: a token that arrives from a LATER request still works. Without this, "nothing
+  // is redeemable" would pass 18.1 and 18.2 and leave the outage the token existed to fix.
+  const st3 = store();
+  st3.rows.push({
+    user_id: USER, tool_name: "update_client_data", fingerprint: "abcdef0123456789",
+    args: { client_id: OWN, updates: { goal: "buy a house" } },
+    issued_in_request: "a-previous-request", consumed: false,
+  });
+  const laterTurn = await drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD },
+    toolCall: { name: "update_client_data", args: { confirm_token: "abcdef0123456789" } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st3.table },
+  });
+  // A row with NO nonce cannot be a wildcard. `neq` against NULL is NULL, which drops the row from
+  // an ordinary filter — but relying on that quietly would leave the intent unexpressed, and
+  // mutation-testing showed the guard was otherwise untested. A legacy row is unredeemable, and
+  // that is the safe direction: it asks again rather than acting on an unattributable approval.
+  const st4 = store();
+  st4.rows.push({
+    user_id: USER, tool_name: "update_client_data", fingerprint: "beefbeefbeefbeef",
+    args: { client_id: OWN, updates: { goal: "legacy" } },
+    issued_in_request: null, consumed: false,
+  });
+  const legacy = await drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD },
+    toolCall: { name: "update_client_data", args: { confirm_token: "beefbeefbeefbeef" } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st4.table },
+  });
+  assert("18.4 a proposal with no request stamped on it is NOT redeemable",
+    !legacy.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+    JSON.stringify(legacy.outboundCalls.map((c) => c.url)));
+
+  assert("18.3 a token from an EARLIER request still redeems, so approval still works",
+    laterTurn.outboundCalls.some((c) => c.url.includes("paige-write-back")
+      && c.body.includes("buy a house")),
+    JSON.stringify(laterTurn.outboundCalls.map((c) => c.url)));
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

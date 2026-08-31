@@ -4376,7 +4376,7 @@ DEFAULT PATTERN = an ORCHESTRATOR "BRAIN". When you create an automation with n8
 ADD SUB-AGENTS INTELLIGENTLY — one brain by default (give it tools, not more brains). Add a specialist sub-agent ("@n8n/n8n-nodes-langchain.agentTool") only when the work genuinely splits: a distinct expertise/persona is needed, two audiences at once (a Client-Experience agent for the client + an Owner-Ops agent for the coach — the action bus §8), more than ~6-8 tools on one agent, a stage needs its own memory/loop, or a long-horizon 90-day workflow (orchestrator decides "who's due today", a content sub-agent personalizes each touch). Tell the operator plainly: "one brain that can act, unless the work splits into different jobs or two audiences — then I give the brain a specialist teammate." Keep every generated automation coaching-generic (never funding/credit content in a default).
 
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
-1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words, ask them to confirm, and ONLY after they explicitly say yes call the SAME tool again with confirm:true. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
+1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words and ask them to confirm. ONLY after they have actually replied and said yes, call the SAME tool again passing ONLY the confirm_token you were given — you do not repeat the other arguments, because the exact call they approved is already saved. NEVER pass a confirm_token in the same reply that you were given it: you have not heard from them yet, and the platform will refuse it. If they ask for a change, call the tool again with the full new arguments and NO token, so they get a fresh summary to approve. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
 2. CONFIRM THE RESULT — AND NEVER FAKE ONE. Only say you did something ("Done — created…", "reminder set", "task assigned", "added to your calendar") when a TOOL you called THIS turn actually returned success. A claim of completion with no tool call behind it is a lie, and it is the worst thing you can do here — it destroys trust. You DO have real tools for reminders, planning, tasks, and booking (plan_set_reminder, plan_create/plan_assign_task/plan_add_milestone, crm_create_task, calendar_book_meeting) — USE them, then confirm off the tool's success. If there is genuinely no tool for what they asked, DO NOT pretend — say plainly "I can't do that one from here yet" and offer what you genuinely can do, or file it on the action bus so it's tracked. "It'll show up in your reminders / Task Manager / calendar" is only true if a tool actually put it there — never say it otherwise. Once an action really commits, confirm plainly in one line; never leave them guessing. For anything that SENDS (SMS/email/outbound), this is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire. The test before every "done": "Did a tool call this turn return success for exactly this? If not, I do not claim it happened."
 3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
@@ -4854,7 +4854,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   accent_color: { type: "string", description: "Accent brand color as a hex value." },
                   from_name: { type: "string", description: "The name outbound email should come from (sending identity)." },
                   support_email: { type: "string", description: "Support / reply-to email address." },
-                  confirm: { type: "boolean", description: "Set true ONLY after the operator has approved the change. Leave unset on the first (proposal) call." }
+                  confirm: { type: "boolean", description: "DEPRECATED and ignored — approval is carried by confirm_token, which the gate returns when it proposes. Setting this does nothing." }
                 },
                 required: []
               }
@@ -4945,7 +4945,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 type: "object",
                 properties: {
                   contact_id: { type: "string", description: "clients.id UUID." },
-                  confirm: { type: "boolean", description: "Set true ONLY after the operator has explicitly confirmed the deletion." }
+                  confirm: { type: "boolean", description: "DEPRECATED and ignored — approval is carried by confirm_token, which the gate returns when it proposes. Setting this does nothing." }
                 },
                 required: ["contact_id"]
               }
@@ -4968,7 +4968,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   guest_email: { type: "string" },
                   notes: { type: "string" },
                   location: { type: "string", description: "e.g. 'Zoom', 'Phone', or an address." },
-                  confirm: { type: "boolean", description: "Set true ONLY after the operator confirmed the details." }
+                  confirm: { type: "boolean", description: "DEPRECATED and ignored — approval is carried by confirm_token, which the gate returns when it proposes. Setting this does nothing." }
                 },
                 required: ["title", "start_at", "end_at"]
               }
@@ -6068,6 +6068,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
     /** Persist a proposed call. Returns false if it could not be recorded — never throws, because
      *  a failure here must degrade to "ask again", never to "run it anyway". */
+    // THE ONE THING THE MODEL CANNOT MANUFACTURE: a different request. It cannot start an HTTP
+    // call; only a person sending another message does that. So this nonce is what "approved"
+    // actually rests on — see 20261026000000 for the hole that made it necessary.
+    const requestNonce = crypto.randomUUID();
+
     const recordConfirmation = async (
       fp: string, tool: string, args: Record<string, unknown>, summary: string,
     ): Promise<boolean> => {
@@ -6079,6 +6084,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           scoped_client_id: scopedClientId ?? null,
           tool_name: tool,
           fingerprint: fp,
+          issued_in_request: requestNonce,
           // `confirm` and `confirm_token` are stripped: they are the handshake, not the action, and
           // storing them would mean re-executing the approval flag alongside the work.
           args: Object.fromEntries(
@@ -6087,6 +6093,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           summary,
         });
         if (error) {
+          // 23505 is the live-proposal unique index doing its job: this exact call is ALREADY
+          // proposed and still waiting. That is a success for the caller's purpose — there is a
+          // redeemable row and a token to hand back — so it must not be reported as a failure,
+          // which would tell the person the action could not even be set up.
+          if (error.code === "23505") return true;
           console.error("[paige] confirm proposal NOT recorded", JSON.stringify({ tool, code: error.code ?? null, message: error.message ?? null }));
           return false;
         }
@@ -6117,7 +6128,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           .eq("fingerprint", fp)
           .eq("tool_name", tool)
           .is("consumed_at", null)
-          .gt("expires_at", new Date().toISOString());
+          .gt("expires_at", new Date().toISOString())
+          // THE GATE. A token minted by THIS request is not redeemable by it, so a model replaying
+          // the token out of its own tool-result one round later claims nothing. A person sending
+          // another message is what makes it redeemable — and that is the part the model cannot do.
+          .neq("issued_in_request", requestNonce)
+          // REDUNDANT, AND KEPT ON PURPOSE — stated honestly because the first version of this
+          // comment claimed it was load-bearing and mutation-testing proved it is not. Postgres
+          // three-valued logic already drops a NULL-nonce row from the `neq` above (`NULL <> x`
+          // is NULL, not true), so removing this line changes nothing. It stays because "a
+          // proposal with no request stamped on it is not redeemable" is a rule worth being
+          // visible rather than an emergent property of SQL that the next reader has to derive.
+          .not("issued_in_request", "is", null);
         q = personaCtx?.tenant_id ? q.eq("tenant_id", personaCtx.tenant_id) : q.is("tenant_id", null);
         q = payloadThreadId ? q.eq("thread_id", payloadThreadId) : q.is("thread_id", null);
         q = scopedClientId ? q.eq("scoped_client_id", scopedClientId) : q.is("scoped_client_id", null);
@@ -6711,7 +6733,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 confirm_token: issued ? fp : null,
                 confirm_summary: summary,
                 note: changed
-                  ? "Do NOT retry with that token. It is spent, expired, or belongs to a different version of this action — what you are about to run is NOT what the operator approved. Read the NEW confirm_summary back to them and ask again."
+                  ? "Do NOT retry with that token in this reply. Either you were given it moments ago and have not actually heard back from the operator yet — in which case you cannot approve on their behalf, so STOP and ask them — or it is spent, expired, or belongs to a different version of this action. Read the NEW confirm_summary back to them and wait for their answer."
                   : (issued
                     ? "Do NOT retry yet. This needs the operator's approval. Read confirm_summary back in plain language — and name the SPECIFIC client, contact or program you're acting on by the name you just used, never 'the client'. If they approve it AS-IS, call this same tool again passing ONLY confirm_token (you do NOT need to repeat any other argument — the exact call they approved is already saved, and repeating it is how approvals used to drift). If they ask for ANY change, call it again with the full new arguments and NO confirm_token, so they get a fresh summary to approve."
                     : "Do NOT retry. This needs the operator's approval and the approval could not be recorded, so there is nothing for them to approve yet. Tell them plainly that the action could not be set up right now and don't pretend it is pending."),

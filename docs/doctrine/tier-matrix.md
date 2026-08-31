@@ -1040,6 +1040,21 @@ claim its approval.
 clamped by the Trust Compass ceiling (`20261021000000`); the token changes only how consent is
 carried, never who may act.
 
+**A TOKEN CANNOT BE REDEEMED BY THE TURN THAT MINTED IT — the correction to the row above.** The
+first version of the token gate returned `confirm_token` in the TOOL RESULT, which the agentic loop
+pushes straight back into the model's own context before any human sees anything. The model could
+re-emit the call carrying it and execute, one round after proposing — with no operator involved, on
+all 48 gated tools including role grants, deletes and `automation_set_grant` itself. The property
+that had been holding was structural: `approvedConfirmations` comes only from the request body, and
+a model cannot write a request body. Handing it the token destroyed that.
+
+The floor is now that a proposal records the request that minted it and the claim excludes it. A
+model cannot start an HTTP request; only a person sending another message can. Approval therefore
+still works on every surface — including the five with no confirm card — but never within the turn
+that proposed it. The request-body echo remains accepted as stronger evidence where a surface can
+supply it. See `20261026000000`, and checks 18.0–18.4 in the authz harness, which drive a genuinely
+self-approving model rather than describing one.
+
 **THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
 earlier commit message said two tools "both default to confirm now"; that is true inside the chat
 function and NOT over MCP. `paige-mcp` performs zero autonomy resolution for ANY tool — this is a
