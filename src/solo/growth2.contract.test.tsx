@@ -7,6 +7,7 @@ const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), 
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
 const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
+const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -100,6 +101,9 @@ describe("Solo Campaigns approved contract", () => {
     expect(migration).toContain("PIPELINE_STAGE_OCCUPIED");
     expect(migration).toContain("public.is_tenant_admin(_tenant)");
     expect(migration).toContain("revoke all on function public.get_pipeline_workspace(uuid) from public,anon");
+    expect(dealGuardMigration).toContain("c.id=d.contact_client_id and c.tenant_id=_tenant");
+    expect(dealGuardMigration).toContain("DEAL_CLIENT_TENANT_MISMATCH");
+    expect(dealGuardMigration).toContain("deals_enforce_tenant_links");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
