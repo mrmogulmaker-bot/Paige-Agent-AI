@@ -276,6 +276,78 @@ async function flowBufferAndRules(page) {
     `30m → chip=${moved.pressed} stored=${moved.stored} · 15m → chip=${back.pressed} stored=${back.stored}`);
 }
 
+/**
+ * 3b · The hours a calendar is open can be changed, and they hold.
+ *
+ * The assignment names "supported availability" alongside the buffer, and it was
+ * the one editable thing on this surface no flow here touched. A weekly pattern
+ * that silently refuses an edit is the same class of failure as a save that lies,
+ * and it costs the tenant bookings rather than a field.
+ */
+async function flowAvailability(page) {
+  await open(page);
+  const area = await openArea(page, "Schedule & availability");
+  const opens = area.locator('input[aria-label="Mon opens"]').first();
+  if (!(await opens.count())) {
+    return record("3b · opening hours can be changed", false, "Monday has no editable opening time");
+  }
+  const before = await opens.inputValue();
+  const wanted = before === "08:00" ? "10:00" : "08:00";
+  await opens.fill(wanted);
+  await save(page);
+
+  await open(page);
+  const after = await openArea(page, "Schedule & availability");
+  const held = await after.locator('input[aria-label="Mon opens"]').first().inputValue();
+  const stored = await page.evaluate(() => {
+    try {
+      const st = new URLSearchParams(location.search).get("data") || "dense";
+      const db = JSON.parse(sessionStorage.getItem(`paige-harness-store:${st}`) || "{}");
+      const row = (db.calendars || [])[0];
+      return (row?.availability_json || []).find((w) => w.day === 1)?.start ?? "<no monday>";
+    } catch (e) { return String(e).slice(0, 40); }
+  });
+  record("3b · opening hours can be changed", held === wanted && stored === wanted,
+    `monday ${before} → asked ${wanted} · field=${held} stored=${stored}`);
+}
+
+/**
+ * 7c · An edit can be abandoned, and abandoning it restores what was there.
+ *
+ * "Safely abandon or retry" is in the assignment, and Discard is the half a
+ * person reaches for when they change their mind mid-edit. A Discard that leaves
+ * the typed value on screen — or writes it anyway — is worse than none.
+ */
+async function flowDiscard(page) {
+  await open(page);
+  const details = await openArea(page, "Details");
+  const title = details.locator(".cc-area-b input.cc-in").first();
+  const before = await title.inputValue();
+  await title.fill(`Harness abandoned ${Date.now() % 100000}`);
+  await page.waitForTimeout(150);
+
+  const discard = page.locator(".cc-bar button", { hasText: /Discard/i }).first();
+  if (!(await discard.count())) return record("7c · an edit can be abandoned", false, "no way to discard an edit");
+  await discard.click();
+  await page.waitForTimeout(400);
+
+  const restored = await openArea(page, "Details")
+    .then((a) => a.locator(".cc-area-b input.cc-in").first().inputValue());
+  const barGone = (await page.locator(".cc-bar").count()) === 0;
+
+  // And nothing was written: the store still holds what it held before.
+  await open(page);
+  const stored = await page.evaluate(() => {
+    try {
+      const st = new URLSearchParams(location.search).get("data") || "dense";
+      const db = JSON.parse(sessionStorage.getItem(`paige-harness-store:${st}`) || "{}");
+      return (db.calendars || [])[0]?.title ?? "<no row>";
+    } catch (e) { return String(e).slice(0, 40); }
+  });
+  record("7c · an edit can be abandoned", restored === before && barGone && stored === before,
+    `field back to "${restored}" (was "${before}") saveBarGone=${barGone} stored="${stored}"`);
+}
+
 /** 4b · Notifications / follow-ups are editable, not a read-only summary. */
 async function flowNotifications(page) {
   await open(page);
@@ -379,10 +451,12 @@ async function main() {
     await flowFirstPreset(page);
     await flowEditPersists(page);
     await flowRoundRobin(page);
+    await flowAvailability(page);
     await flowBufferAndRules(page);
     await flowNotifications(page);
     await flowProviders(page);
     await flowPermissions(page);
+    await flowDiscard(page);
     await flowFailureRetry(page);
     await flowShapeAtFrames(page);
   } finally {
