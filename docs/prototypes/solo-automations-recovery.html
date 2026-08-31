@@ -125,7 +125,7 @@ body {
 
 .rv-stage { display: grid; place-items: start center; padding: 22px 18px 30px; overflow-x: auto; }
 .rv-frame {
-  position: relative; flex: none; overflow: hidden;
+  position: relative; flex: none; overflow: hidden; container-type: inline-size;
   border: 1px solid var(--rv-edge-2); border-radius: 12px;
   box-shadow: 0 18px 44px -20px rgba(15,20,28,.32); transform-origin: top center;
 }
@@ -313,12 +313,12 @@ body {
 
 /* ── Intended workspace ─────────────────────────────────────────────────── */
 .pg-flowbar {
-  display: flex; align-items: stretch; gap: 0; padding: 0; overflow-x: auto;
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; padding: 0; overflow: hidden;
   border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
   background: var(--pg-raised); box-shadow: var(--pg-lift-1);
 }
 .pg-step {
-  position: relative; flex: 1 1 0; min-width: 128px; display: flex; flex-direction: column; gap: 5px;
+  position: relative; flex: 1 1 172px; min-width: 0; display: flex; flex-direction: column; gap: 5px;
   padding: 11px 14px; border: 0; border-left: 1px solid var(--pg-line-soft);
   background: transparent; cursor: pointer; text-align: left; transition: background .14s;
 }
@@ -335,12 +335,13 @@ body {
 }
 .pg-step[aria-current="step"] .pg-step-n b { border-color: var(--pg-gold-fill); color: var(--pg-gold-core); }
 .pg-step-n span { font-size: 12.6px; font-weight: 600; color: var(--pg-ink); }
-.pg-step small { font-size: 10.4px; letter-spacing: .06em; text-transform: uppercase; font-family: var(--pg-font-data); }
+.pg-step small { font-size: 10.4px; letter-spacing: .06em; text-transform: uppercase; font-family: var(--pg-font-data); overflow-wrap: anywhere; line-height: 1.45; }
 .pg-step small[data-c="real"] { color: var(--pg-positive); }
 .pg-step small[data-c="gap"] { color: var(--pg-warning); }
 
 .pg-two { display: grid; grid-template-columns: minmax(0, 290px) minmax(0, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 1180px) { .pg-two { grid-template-columns: 1fr; } }
+@container (max-width: 1180px) { .pg-two { grid-template-columns: 1fr; } }
+@container (max-width: 1180px) { .pg-grid { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); } }
 
 .pg-rulelist { display: flex; flex-direction: column; }
 .pg-rule {
@@ -405,6 +406,25 @@ body {
 .pg-gapcard p { margin: 4px 0 0; font-size: 12.1px; color: var(--pg-ink-2); line-height: 1.55; max-width: 76ch; }
 .pg-gapcard p code { font: 400 11px/1 var(--pg-font-data); color: var(--pg-muted); }
 .pg-gapcard .pg-have { margin-top: 6px; font-size: 11.4px; color: var(--pg-faint); }
+
+/* Governed path — Human → Read → Brain → Trust Compass → Action Bus → Rail */
+.pg-chain { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; padding: 13px 15px 15px; }
+.pg-link { position: relative; flex: 1 1 132px; min-width: 118px; display: flex; flex-direction: column; gap: 5px; padding: 0 14px 0 0; }
+.pg-link::after {
+  content: "→"; position: absolute; right: 2px; top: 12px;
+  color: var(--pg-faint); font-size: 12px; line-height: 1;
+}
+.pg-link:last-child { padding-right: 0; }
+.pg-link:last-child::after { content: none; }
+.pg-link b { font-size: 12.4px; font-weight: 600; color: var(--pg-ink); }
+.pg-link span {
+  font: 500 9.2px/1.3 var(--pg-font-data); letter-spacing: .07em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.pg-link span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pg-link[data-s="real"] span { color: var(--pg-positive); }
+.pg-link[data-s="gap"] span { color: var(--pg-warning); }
+.pg-link small { font-size: 11.2px; color: var(--pg-muted); line-height: 1.45; }
 
 .pg-filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .pg-filters button {
@@ -751,6 +771,17 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
 
             <section class="pg-plate">
               <div class="pg-plate-hd">
+                <div class="pg-hd-copy"><h2>How a rule is governed</h2><p>An automation is never its own authority. It runs through the chain that already governs everything else.</p></div>
+                <span class="pg-contract" data-c="real">No parallel authority</span>
+              </div>
+              <div class="pg-chain" id="chain"></div>
+              <div style="padding:0 15px 14px">
+                <p class="pg-hint">Nothing in this redesign introduces a second autonomy model, a private rail, or a bypass. A rule declares what it wants to do; the clamp above decides whether it may, and the bus and rail record what actually happened. The one link not yet reading live for a Solo owner is named as such rather than drawn as working.</p>
+              </div>
+            </section>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
                 <div class="pg-hd-copy"><h2>The minimum missing contract</h2><p>Everything else this flow needs already ships. These four are what stand between a Solo owner and a working automation.</p></div>
               </div>
               <div>
@@ -931,6 +962,16 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
     ["pass","Clear to send","sent"]
   ];
 
+  /* The governed path. Each link's state was checked against the code, not assumed. */
+  var CHAIN = [
+    ["Human", "real", "You author the rule and set how far it may go."],
+    ["Read", "real", "Deals, contacts and stage changes are live reads today."],
+    ["Brain", "real", "The model router ships; it is not yet wired to this path."],
+    ["Trust Compass", "gap", "The Solo compass surface reads no live data yet."],
+    ["Action Bus", "real", "paige_actions — 13 filed rows in this workspace."],
+    ["Rail", "real", "Run telemetry emitters ship and fire after a real run."]
+  ];
+
   var S = { screen:"intended", theme:"light", vp:"1536x770", cat:"all", step:0, intent:"nurture", tone:"warm", mode:"draft_for_review" };
   var shell = document.getElementById("shell"), frame = document.getElementById("frame");
   var navlist = document.getElementById("navlist"), substrip = document.getElementById("substrip");
@@ -973,6 +1014,12 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
     var picked = MODES.filter(function (m) { return m[0] === S.mode; })[0];
     document.getElementById("modeHint").innerHTML =
       esc(picked[2]) + ' Real column <code>send_mode</code>.';
+
+    document.getElementById("chain").innerHTML = CHAIN.map(function (c) {
+      return '<div class="pg-link" data-s="' + c[1] + '"><b>' + esc(c[0]) + "</b>" +
+        "<span>" + (c[1] === "real" ? "Live" : "Not yet") + "</span>" +
+        "<small>" + esc(c[2]) + "</small></div>";
+    }).join("");
 
     document.getElementById("outcomeList").innerHTML = OUTCOMES.map(function (o) {
       return '<div class="pg-outcome-row" data-o="' + o[0] + '"><i></i><strong>' + esc(o[1]) +
