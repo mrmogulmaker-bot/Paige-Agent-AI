@@ -117,7 +117,7 @@ function anthropicStream(kind = "text") {
     // ARGUMENTS, which the loop turns into a `paige_confirm` card. `crm_create_contact` is used
     // deliberately: `document_generate`'s summary is a fixed sentence, so a card built from it
     // would carry no model text and the assertion below would pass for the wrong reason.
-    : kind === "doc-confirm"
+    : kind === "confirm-card"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
         { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "crm_create_contact" } },
@@ -128,6 +128,31 @@ function anthropicStream(kind = "text") {
     // `ask_choices` inside a Studio session. This branch is special: the chips frame IS the whole
     // assistant turn (it sets `finalChunks = []` and breaks), so if it streams unbuffered a
     // protected turn publishes its entire answer before the final check ever runs.
+    // `action_file` with a department the model INVENTED. `describeStep` title-cases
+    // `args.to_department` straight into an action step's LABEL, and action steps are the one
+    // channel that streams live on a protected turn — on the stated grounds that their label
+    // comes from a fixed vocabulary. It did not. Nothing else in this harness drives a tool
+    // whose step text is built from model arguments.
+    // `propose_action`, which queues an approval and emits an `approval_queued` frame whose
+    // `summary` is the model's own argument. That frame was listed in the commit message as
+    // "moved behind the close decision" and as mutation-proven; reverting it left the suite
+    // fully green, because nothing here produced one. This fixture is what makes the claim real.
+    : kind === "propose-action"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "propose_action" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ action_type: "email", summary: "CHILD-PRIVATE-MARKER follow-up", contact_id: "11111111-1111-4111-8111-111111111111", subject: "s", body: "b", to: "x@example.test" }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
+    : kind === "action-file"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "action_file" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ to_department: "LEAKEDMODELWORD", action_kind: "owner.followup", summary: "x" }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
     : kind === "ask-choices"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
@@ -256,8 +281,9 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {} }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false }) {
   const logged = [];
+  syncThrows = throwOnSync;
   resetEmbeds();
   const origWarn = console.warn;
   const origError = console.error;
@@ -275,7 +301,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
         const state = personaStates[Math.min(personaCall++, personaStates.length - 1)];
         if (state && typeof state === "object" && "error" in state) return state;
         return {
-          data: [{ tenant_id: state ?? null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }],
+          data: [{ tenant_id: state ?? null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: fundingEnabled, brand: null }],
           error: null,
         };
       },
@@ -326,6 +352,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
   } finally {
     console.warn = origWarn;
     console.error = origError;
+    syncThrows = false;
   }
 
   const kbCall = rec.rpc.find((r) => r.name === "match_tenant_knowledge");
@@ -1311,13 +1338,19 @@ group("once refused, every later revalidation stays refused");
 // replaces the previous position — a documented "closing window" residual on the chat path and
 // an inconsistent hold on the document path — with one explicit rule.
 //
-// PROTECTED CONTENT, and therefore what must never survive a failed final check:
-//   · the reply's own `choices[].delta.content` tokens
-//   · `paige_step` frames of kind "thought" — `summarizeThought(model output)`, i.e. model prose
-//     generated FROM a prompt containing Knowledge. They read as progress but they are derived
-//     content, and they streamed live before this rule.
-// Neutral progress that MAY still stream on a protected turn: action steps (fixed-vocabulary
-// labels and counts, never source text, titles or snippets), phase frames, compaction frames.
+// PROTECTED CONTENT, and therefore what must never survive a failed final check: the reply's own
+// `choices[].delta.content` tokens; `paige_step` frames of kind "thought" (`summarizeThought`
+// of model output — prose generated FROM a Knowledge-bearing prompt, which reads as progress but
+// is derived content); the approval, confirm, artifact and choice-chip frames, each of which
+// carries model-authored text; `sync_status`, which carries the bureau scores read out of the
+// uploaded PDF; and the `[DONE]` sentinel, which must not overtake the buffer it terminates.
+//
+// Neutral progress that MAY still stream on a protected turn: action steps, phase frames,
+// compaction frames, and the fixed client-scope refusal category. That list is NOT taken on
+// trust — `nonNeutralFrames` below enforces the shape of each rather than the presence of its
+// key, because keying on the name alone meant a leak only had to reuse a neutral key. Three
+// mutations that put the whole tenant-Knowledge block on the wire under `paige_phase`,
+// `client_scope` and an action step's `detail` all passed 223/223 before that was fixed.
 //
 // HOW THIS IS PROVEN, and why not by timing. Whether a frame was enqueued before or after the
 // gate is not observable from outside: the handler can fill the stream's queue before the test
@@ -1335,13 +1368,41 @@ group("once refused, every later revalidation stays refused");
 //
 // Neutral, and only these: an action step (fixed-vocabulary label, count detail), a phase
 // marker, the fixed client-scope refusal category, and the refusal sentence itself.
+// EVERY MARKER ANY FIXTURE PLANTS IN PROTECTED EVIDENCE. A frame is non-neutral if it carries
+// one, whatever key it arrives under. The first version of this classifier keyed purely on the
+// frame's TOP-LEVEL NAME, so a leak simply had to reuse a neutral key: putting the whole
+// tenant-Knowledge block inside a `paige_phase` frame, inside a `client_scope` frame, or inside
+// an action step's `detail` all streamed the evidence live on a protected turn with 223/223
+// green. "Protected by default" was the claim; "neutral by default if you reuse a key" was the
+// behaviour.
+const PROTECTED_MARKERS = /CHILD-PRIVATE-MARKER|PRIVATE-KB-SOURCE-MARKER|PRIVATE-RAG-SOURCE-MARKER|PRIVATE-SESSION-DOC-MARKER/;
 const nonNeutralFrames = (text) => text.split("\n").filter((l) => {
-  if (!l.startsWith("data: ") || l.includes("[DONE]")) return false;
+  if (!l.startsWith("data: ")) return false;
+  const raw = l.slice(6);
+  if (raw.trim() === "[DONE]") return false;
   let p;
-  try { p = JSON.parse(l.slice(6)); } catch { return true; }
-  if (p?.paige_step) return p.paige_step.kind === "thought";
-  if (p?.paige_phase || p?.client_scope) return false;
-  if (/workspace changed/.test(l)) return false;
+  try { p = JSON.parse(raw); } catch { return true; }
+  // A frame smuggling a second key alongside a neutral one is not neutral.
+  const keys = Object.keys(p);
+  if (keys.length !== 1) return true;
+  // Nothing neutral may contain evidence, whatever key it wears. This is the check that does the
+  // real work; the shape checks below are what stop a neutral frame growing a free-text field
+  // that a future fixture's marker would not happen to land in.
+  if (PROTECTED_MARKERS.test(raw)) return true;
+  const [k] = keys;
+  const v = p[k];
+  if (k === "paige_step") {
+    // Thoughts are model prose and are protected. An ACTION step is neutral only while its
+    // detail stays short — the code's claim is "a fixed vocabulary label and a count", and a
+    // long detail means that claim has stopped being true.
+    if (v?.kind === "thought") return true;
+    return typeof v?.detail === "string" && v.detail.length > 40;
+  }
+  if (k === "paige_phase") return typeof v !== "string" || v.length > 24;
+  if (k === "paige_compacting") return Object.keys(v ?? {}).some((x) => x !== "state" && x !== "pct");
+  if (k === "client_scope") return typeof v?.reason !== "string" || v.reason.length > 64;
+  // The refusal sentence itself, and nothing else wearing `choices`.
+  if (k === "choices") return !/workspace changed/.test(raw);
   return true;
 });
 const personaCallsOf = (r) => r.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
@@ -1762,7 +1823,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   const confirmFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("paige_confirm"));
   const confirmOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
-    provider: ["doc-confirm", "private-text"],
+    provider: ["confirm-card", "private-text"],
     // The DEFAULT lane. `auto` would run the tool and produce an artifact instead of a card.
     rpcExtras: { get_actor_access: { data: { tier: "tenant" }, error: null } },
     tableExtras: { user_roles: () => [{ role: "admin" }] },
@@ -1931,6 +1992,365 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.h ...and no non-neutral frame survives",
     nonNeutralFrames(studioAtGate.responseText).length === 0,
     JSON.stringify(nonNeutralFrames(studioAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.i — AN ACTION STEP'S LABEL IS NOT AUTOMATICALLY NEUTRAL. The whole justification for
+  // streaming action steps live while a protected answer is checked is that their label comes
+  // from a closed vocabulary and their detail is a count. `describeStep`'s `action_file` case
+  // title-cased `args.to_department` — a model-authored string — straight into the label, so the
+  // one sanctioned live channel was carrying model text on a protected turn. This case is what
+  // makes the "fixed vocabulary" sentence a checked property rather than an intention.
+  const stepFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("paige_step"));
+  const actionFileOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["action-file", "private-text"],
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+    },
+    tableExtras: { user_roles: () => [{ role: "admin" }] },
+  };
+  const actionFile = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...actionFileOpts,
+  });
+  assert(
+    "21.i CONTROL — the shape really does emit an action step for the filed action",
+    stepFrames(actionFile.responseText).some((l) => /"kind":"action"/.test(l)),
+    actionFile.responseText.slice(0, 400),
+  );
+  assert(
+    "21.i a live action step never carries the model's own words in its label",
+    // NOT one of the PROTECTED_MARKERS: `describeStep` splits the department on [_-] before
+    // title-casing it, so a hyphenated marker is shredded and the assertion would pass against
+    // the unfixed code. A single unbroken token is what actually survives that transform.
+    !stepFrames(actionFile.responseText).join("").includes("LEAKEDMODELWORD"),
+    stepFrames(actionFile.responseText).join("").slice(0, 300),
+  );
+
+  // 21.j — A LATE TOOL RETRIEVAL SWITCHES THE TURN, which the ruling requires in those words and
+  // which nothing was checking. This turn starts with NO protected evidence at all — Knowledge
+  // refused, no document, no session docs, non-funding tenant — so at entry it is an ordinary
+  // live-streaming turn. Then it runs a READ tool, whose result enters the model's context and
+  // grounds the closing reply. If that does not flip the turn onto the buffered path, the answer
+  // streams live and the guard never asks the resolver.
+  //
+  // The `tool` fixture, NOT `two-tools`, and the difference is load-bearing. `two-tools` narrates,
+  // and on a late-retrieval turn round one's thought line is emitted BEFORE that round's tools
+  // run — so it streams live. That is correct: round one's narration is written from the entry
+  // prompt, which by definition carries no protected evidence on a turn that only becomes
+  // protected later. But it means the reply marker and the narration marker are the same string,
+  // and "the marker is absent" would stop meaning "the reply was withheld". A silent fixture
+  // leaves the reply as the only source of it.
+  const lateOpts = {
+    kbRejects: true,
+    provider: ["tool", "private-text"],
+    rpcExtras: { get_actor_access: { data: { tier: "tenant" }, error: null } },
+  };
+  const lateClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...lateOpts,
+  });
+  assert(
+    "21.j CONTROL — a tool-only turn still delivers its reply",
+    lateClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    lateClean.responseText.slice(0, 250),
+  );
+  assert(
+    "21.j CONTROL — and it carried NO protected evidence at entry (Knowledge was refused)",
+    !lateClean.telemetry && !!lateClean.logged.find((l) => /KB_FORBIDDEN|REFUSED/.test(l.msg)),
+    JSON.stringify({ tel: !!lateClean.telemetry }),
+  );
+  const lateTotal = personaCallsOf(lateClean);
+  assert(
+    "21.j the late tool retrieval switched the turn onto the guarded path (>1 persona call)",
+    lateTotal > 1,
+    `persona calls: ${lateTotal} — 1 means the guard short-circuited, i.e. the switch never happened`,
+  );
+  const lateAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(lateTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...lateOpts,
+  });
+  assert(
+    "21.j ...so a failed final check withholds the reply it grounded",
+    !lateAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    lateAtGate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.j ...and no non-neutral frame survives",
+    nonNeutralFrames(lateAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(lateAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.k — THE SENTINEL MUST NOT OVERTAKE THE BUFFER IT TERMINATES. On the couldn't-finish
+  // branch the fallback text goes through `emitContent` and was therefore held, while `[DONE]`
+  // went straight to the wire — so on a protected turn the sentinel arrived FIRST and the
+  // released reply landed behind it. Four of the seven SSE consumers `break` on `[DONE]`, so
+  // they dropped the reply, while it was still persisted to the thread: the transcript and the
+  // wire disagreeing, which is the property this whole rule exists to establish.
+  const wireOrder = (text) => {
+    const lines = text.split("\n").filter((l) => l.startsWith("data: "));
+    return {
+      done: lines.findIndex((l) => l.slice(6).trim() === "[DONE]"),
+      content: lines.findIndex((l) => /couldn't finish that/.test(l)),
+    };
+  };
+  // "fail" twice drives the loop to forced termination AND makes the closing call fail, which is
+  // the only route to the fallback branch.
+  const fallbackOpts = { chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["two-tools", "fail", "fail"] };
+  const fallback = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...fallbackOpts,
+  });
+  const fbOrder = wireOrder(fallback.responseText);
+  assert(
+    "21.k CONTROL — the fixture really does reach the couldn't-finish fallback",
+    fbOrder.content !== -1,
+    fallback.responseText.slice(-300),
+  );
+  assert(
+    "21.k on a protected turn the released reply reaches the wire BEFORE [DONE]",
+    fbOrder.done === -1 || fbOrder.content < fbOrder.done,
+    `content at ${fbOrder.content}, [DONE] at ${fbOrder.done}`,
+  );
+
+  // 21.l — `client_memory`, and it is the strongest of the sources the enumerations missed
+  // because it is DURABLE ACROSS SESSIONS. The `report_upload` row persists the very extraction
+  // this handler buffers `sync_status` for — the bureau scores and item counts read out of the
+  // uploaded PDF — and it is interpolated into the prompt of every later turn. Buffering the
+  // frame while streaming the persisted extraction of it on every turn afterwards is not a rule,
+  // it is a coincidence of which surface happened to be audited.
+  const memoryOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    tableExtras: {
+      client_memory: () => [{
+        memory_type: "report_upload",
+        content: "Credit report analyzed (consumer). Scores: EQ 712, EX 705, TU 698. PRIVATE-MEMORY-MARKER",
+        created_at: new Date().toISOString(),
+      }],
+    },
+  };
+  const memClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...memoryOpts,
+  });
+  assert(
+    "21.l CONTROL — a memory-bearing turn still delivers its reply",
+    memClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    memClean.responseText.slice(0, 250),
+  );
+  assert(
+    "21.l CONTROL — the memory really did reach the model's prompt",
+    memClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-MEMORY-MARKER")),
+    JSON.stringify(memClean.providerCalls).slice(0, 200),
+  );
+  const memTotal = personaCallsOf(memClean);
+  assert(
+    "21.l CONTROL — and the turn is treated as protected (the guard asks the resolver)",
+    memTotal >= 2,
+    `persona calls: ${memTotal}`,
+  );
+  const memAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(memTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...memoryOpts,
+  });
+  assert(
+    "21.l a failed final check withholds a reply grounded in persisted memory",
+    !memAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    memAtGate.responseText.slice(0, 300),
+  );
+
+  // 21.m — THE FUNDING TENANT'S CLIENT FILE. Under `fundingEnabled`, `buildUserContext` reads the
+  // uploaded PDF's file name, the three bureau scores and every active negative item with
+  // creditor and amount, and puts them in the prompt. That made EVERY ordinary chat turn on a
+  // funding tenant document-derived and unbuffered. The gate matters in both directions, so the
+  // NON-funding control below proves the fix did not simply buffer the whole platform.
+  const fundingRows = {
+    credit_report_uploads: () => [{ id: "u1", file_name: "PRIVATE-PDF-MARKER.pdf", analysis_status: "completed", created_at: "2026-01-01T00:00:00Z", last_analyzed_at: "2026-01-01T00:00:00Z", bureau_detected: "experian", error_message: null }],
+    profiles: () => [{ active_tenant_id: CHILD, full_name: "Test", estimated_fico_ex: 705, estimated_fico_eq: 712, estimated_fico_tu: 698 }],
+  };
+  const fundingOpts = { kbRejects: true, provider: ["private-text"], fundingEnabled: true, tableExtras: fundingRows };
+  const fundClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...fundingOpts,
+  });
+  assert(
+    "21.m CONTROL — the uploaded PDF's name really did reach the funding tenant's prompt",
+    fundClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-PDF-MARKER")),
+    JSON.stringify(fundClean.providerCalls).slice(0, 200),
+  );
+  const fundTotal = personaCallsOf(fundClean);
+  assert(
+    "21.m CONTROL — and that turn is treated as protected",
+    fundTotal >= 2,
+    `persona calls: ${fundTotal}`,
+  );
+  const fundAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(fundTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...fundingOpts,
+  });
+  assert(
+    "21.m a failed final check withholds the funding tenant's reply",
+    !fundAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    fundAtGate.responseText.slice(0, 300),
+  );
+  // THE OTHER DIRECTION. A non-funding tenant's client file carries profile, subscription, tasks
+  // and document-TYPE counts — tenant data, but not document-derived evidence — so it must NOT
+  // latch. Without this, "latch on userContext unconditionally" would pass 21.m and quietly
+  // buffer every turn on the platform.
+  const nonFunding = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    kbRejects: true, provider: ["private-text"], tableExtras: fundingRows,
+  });
+  assert(
+    "21.m a NON-funding tenant's client file does not latch — ordinary chat still streams",
+    personaCallsOf(nonFunding) === 1,
+    `persona calls: ${personaCallsOf(nonFunding)}`,
+  );
+
+  // 21.n — THE APPROVAL CARD. `approval_queued[].summary` is the model's own argument describing
+  // what it proposes to do, written from the Knowledge-bearing prompt. The commit that moved it
+  // behind the close decision also claimed every moved frame was mutation-proven individually;
+  // reverting THIS one left the suite green, because no fixture produced an approval. That is the
+  // seventh check on this branch to have passed for a reason other than the one it named, and it
+  // is the reason this case exists.
+  const approvalFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("approval_queued"));
+  const approvalOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["propose-action", "private-text"],
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+    },
+    tableExtras: {
+      user_roles: () => [{ role: "admin" }],
+      // The insert's `.select("id").single()` reads back through the scenario table, so without
+      // this the queue insert returns no id and the tool bails before pushing the approval.
+      paige_pending_approvals: () => [{ id: "22222222-2222-4222-8222-222222222222" }],
+    },
+  };
+  const approvalClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...approvalOpts,
+  });
+  assert(
+    "21.n CONTROL — the shape really does emit an approval frame when the turn completes",
+    approvalFrames(approvalClean.responseText).length > 0,
+    approvalClean.responseText.slice(0, 500),
+  );
+  assert(
+    "21.n CONTROL — and that frame carries the model's own summary",
+    approvalFrames(approvalClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
+    approvalFrames(approvalClean.responseText).join("").slice(0, 300),
+  );
+  const approvalTotal = personaCallsOf(approvalClean);
+  const approvalAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(approvalTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...approvalOpts,
+  });
+  assert(
+    "21.n a failed final check leaves no approval frame in the transcript",
+    approvalFrames(approvalAtGate.responseText).length === 0,
+    approvalFrames(approvalAtGate.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.n ...and no non-neutral frame survives",
+    nonNeutralFrames(approvalAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(approvalAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.o — A ROW *AND* AN ERROR. The `!error` half of the resolver predicate was never load-
+  // bearing: every scenario drove the error case as `{ data: null, error }`, where `!!row` is
+  // already false. Supabase can return a row alongside an error on a partial result, and that
+  // shape sailed through — `20.unresolved` passed on the strength of `!!row` alone while
+  // crediting `!error` in its comment.
+  const rowAndError = { data: [{ tenant_id: CHILD }], error: { message: "partial result", code: "57014" } };
+  const partial = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, rowAndError],
+    memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["private-text"],
+  });
+  assert(
+    "21.o a resolver that returns a row AND an error is not a resolution",
+    !partial.responseText.includes("CHILD-PRIVATE-MARKER"),
+    partial.responseText.slice(0, 300),
+  );
+
+  // 21.p — STUDIO REFERENCE IMAGES. An image dropped into the Studio chat is fetched and
+  // base64-inlined into the last user message. The SAME image arriving as `document` is
+  // protected; arriving as `attachments` it was not — the §58 asymmetry this rule already
+  // removed once, reproduced on the adjacent path.
+  const attachOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    bodyExtras: {
+      attachments: [{ url: "https://example.test/ref.png", name: "ref.png", mimeType: "image/png", kind: "image" }],
+    },
+  };
+  const attachClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...attachOpts,
+  });
+  const attachTotal = personaCallsOf(attachClean);
+  assert(
+    "21.p CONTROL — an attachment-bearing turn is treated as protected",
+    attachTotal >= 2,
+    `persona calls: ${attachTotal}`,
+  );
+  const attachAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(attachTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...attachOpts,
+  });
+  assert(
+    "21.p a failed final check withholds the reply on an attachment turn",
+    !attachAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    attachAtGate.responseText.slice(0, 300),
+  );
+
+  // 21.q — A FAILING SYNC. 21.g drives only a CLEAN sync, so the failure-shaped `sync_status` —
+  // an error from a pipeline that was mid-way through reading the customer's credit report, which
+  // the ruling names as a "hidden error" that must not surface while a protected answer is being
+  // checked — had no case of its own.
+  //
+  // §13 — WHAT THIS DOES NOT COVER, because the first version of this comment claimed it did.
+  // The transport throw is caught by `runStructuredExtractionAndSync`'s own catch-all, which
+  // RETURNS `{ success: false, step: "pipeline" }` rather than rethrowing. So this drives the
+  // SUCCESS emit line carrying a failure result, not the caller's `catch` block. That block
+  // appears unreachable: every throw inside the helper is already caught there, and reverting
+  // its frame to a direct enqueue leaves this suite green. It is routed through the buffer
+  // anyway so the shape is right if it ever becomes reachable — but nothing here proves it, and
+  // saying otherwise would be the same over-claim as calling the `extraction_proposal` routing
+  // tested.
+  const syncThrowOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: pdfFixture },
+    provider: ["read-check", "private-text", "json-extraction"],
+    throwOnSync: true,
+  };
+  const throwClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...syncThrowOpts,
+  });
+  assert(
+    "21.q CONTROL — a failing sync really does emit a failure-shaped sync_status frame",
+    syncFrames(throwClean.responseText).some((l) => /"success":false/.test(l)),
+    syncFrames(throwClean.responseText).join("").slice(0, 300) || throwClean.responseText.slice(-300),
+  );
+  const throwTotal = personaCallsOf(throwClean);
+  const throwAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(throwTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...syncThrowOpts,
+  });
+  assert(
+    "21.q a failed final check leaves no failing sync_status in the transcript",
+    syncFrames(throwAtGate.responseText).length === 0,
+    syncFrames(throwAtGate.responseText).join("").slice(0, 300),
   );
 }
 

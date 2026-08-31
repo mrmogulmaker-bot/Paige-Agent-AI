@@ -126,6 +126,47 @@ The decisive ones:
   allowlist of the unsafe ones. Enumerating what to withhold is exactly how these five got out;
   written this way a frame added later is protected by default and has to be argued onto the
   neutral list.
+- **21 (continued)** — a second independent adversarial read of the pushed diff found the
+  enumeration was STILL one round behind, in both directions. Nine of its mutations survived the
+  suite green; six were undisclosed. What those became:
+  - **21.i** an action step's LABEL is not automatically neutral. `describeStep`'s `action_file`
+    case title-cased `args.to_department` — a model-authored string — into the label, and action
+    steps are the one channel that streams live on a protected turn, justified precisely by "the
+    label comes from a fixed vocabulary". It is a closed vocabulary now. Note the marker in that
+    fixture is one unbroken token: `describeStep` splits the department on `[_-]`, so a hyphenated
+    marker is shredded and the assertion would have passed against the unfixed code.
+  - **21.j** a late TOOL retrieval switches the turn. The ruling names this in those words and
+    nothing was checking it — and the `const` latch, whose whole justification was that no late
+    retrieval exists, cannot see a tool returning evidence into `convo`. `markLateRetrievalProtected`
+    covers that, inverted: a tool result is evidence UNLESS it is a write receipt.
+  - **21.k** the `[DONE]` sentinel must not overtake the buffer it terminates. On the
+    couldn't-finish branch the fallback text was buffered while `[DONE]` went direct, so on a
+    protected turn the sentinel arrived first — and four of the seven SSE consumers `break` on it,
+    dropping a reply that was still being persisted to the thread.
+  - **21.l** `client_memory`, the strongest of the missed sources because it is DURABLE ACROSS
+    SESSIONS: the `report_upload` row persists the same bureau scores this handler buffers
+    `sync_status` for, into every later turn's prompt.
+  - **21.m** the funding tenant's client file — the uploaded PDF's name, the three scores and every
+    negative item. Two directions: it must latch on a funding tenant, and it must NOT on any other,
+    or the fix buffers the whole platform and breaks live streaming for ordinary chat.
+  - **21.n** `approval_queued`. Listed in a commit message as moved AND as mutation-proven;
+    reverting it left the suite green because no fixture produced an approval. The seventh check on
+    this branch to pass for a reason other than the one it named.
+  - **21.o** a resolver returning a row AND an error. Every earlier scenario drove the error case as
+    `{ data: null, error }`, where `!!row` is already false — so the `!error` half of the predicate
+    was never load-bearing while a comment credited it.
+  - **21.p** Studio reference images. The same image as `document` was protected; as `attachments`
+    it was not — the §58 asymmetry, reproduced on the adjacent path.
+  - **21.q** a failing sync. Honestly scoped: it drives the success emit carrying a failure result,
+    NOT the caller's `catch`, which appears unreachable because the helper's own catch-all returns
+    rather than rethrows.
+
+  **`nonNeutralFrames` was rewritten**, because the first version was a denylist of KEYS, not of
+  frames: any frame containing a neutral key was neutral whatever else was in it. Putting the whole
+  tenant-Knowledge block inside a `paige_phase` frame, a `client_scope` frame, or an action step's
+  `detail` each streamed the evidence live on a protected turn with 223/223 green. It now checks
+  single-key shape, bounded field lengths, and scans every frame for the fixtures' protected markers
+  regardless of the key it wears.
 
 ## A trap worth naming
 

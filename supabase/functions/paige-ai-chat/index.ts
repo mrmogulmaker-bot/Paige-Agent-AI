@@ -83,7 +83,20 @@ function describeStep(
       const toClient = dep === "client_experience" || /^client\./.test(args?.action_kind ?? "");
       if (toClient) return { label: "Filing this to Client Experience", group: "client", detail: "hand-off" };
       // §16: name the actual destination desk (Marketing, Sales, Finance, …), not always "Owner Ops".
-      const prettyDept = dep
+      // §16's TEN DEPARTMENTS, and nothing else. `dep` is `args.to_department` — the model's own
+      // tool argument. The tool schema declares an enum, but nothing validates it before this
+      // runs, and this function parses `tc.function.arguments` directly. So an action step —
+      // the ONE channel that streams live on a protected turn, on the stated grounds that its
+      // "label comes from a fixed vocabulary" — was title-casing model-authored words onto the
+      // wire ahead of the final check. The vocabulary is fixed here now, so that sentence is
+      // true rather than intended; an unrecognised department falls back exactly as an absent
+      // one does.
+      const DEPARTMENTS = new Set([
+        "executive", "marketing", "sales", "fulfillment", "client_success", "product",
+        "curriculum", "technology", "automation", "finance", "people", "talent",
+        "legal", "compliance", "operations", "pmo", "owner_ops", "client_experience",
+      ]);
+      const prettyDept = dep && DEPARTMENTS.has(dep)
         ? dep.split(/[_-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
         : "Owner Ops";
       return { label: `Filing this to ${prettyDept}`, group: "owner", detail: "hand-off" };
@@ -1571,22 +1584,93 @@ JSON:`;
     //      summaries were produced under the workspace that was active when the document was
     //      read, which is exactly the authority that may since have changed.
     //
-    // §13 — WHY THIS IS A `const`, and what the previous revision claimed that was not true.
-    // That revision carried a `markTurnProtected()` setter and a comment saying late retrievals
-    // switch the turn onto the buffered path. NOTHING CALLED IT. An independent read of the
-    // pushed diff found it dead, and deleting it left the suite fully green — so the safety
-    // property was resting on a function that never ran. The property does hold, but for a
-    // different and checkable reason: there are exactly two Knowledge retrieval sites in this
-    // handler (`match_rag_documents` and `match_tenant_knowledge`, both ABOVE this line), the
-    // document sources are read from the request body above them, and protected content is
-    // emitted only from the reply stage far below. The latch is therefore settled before
-    // anything can emit, and a mutable setter bought nothing but the appearance of one.
+    // §13 — WHY THIS IS A `const`, and two claims the previous revisions made that were false.
     //
-    // Sealing it as `const` is what keeps that honest. A retrieval added BELOW this point can
-    // no longer quietly assume "the latch will pick it up" — it will not compile until whoever
-    // adds it moves the decision or buffers deliberately, which is the conversation that needs
-    // to happen at that moment rather than after a leak.
-    const turnCarriesProtectedContent = !!tenantKbContext || !!ragContext || !!attachedDocument || !!sessionDocContext;
+    // The first: a `markTurnProtected()` setter with a comment saying late retrievals switch the
+    // turn onto the buffered path. NOTHING CALLED IT, and deleting it left the suite fully green
+    // — the safety property was resting on a function that never ran. The second, which replaced
+    // it, was worse for being precise: "there are exactly two Knowledge retrieval sites in this
+    // handler." There are at least six sources below, four of which that count silently
+    // excluded, and each was found only because someone went and looked rather than trusting the
+    // sentence. A count is a claim; do not write one here again without re-deriving it.
+    //
+    // WHAT IS ACTUALLY TRUE, and what the enumeration is for: every source that reaches the
+    // model — the system prompt or the message array — is read ABOVE this line, and protected
+    // content is emitted only from the reply stage far below. So the latch is settled before
+    // anything can emit. That is a positional property, checkable by reading, not a count.
+    //
+    // Sealing it as `const` keeps the enumeration honest for a new PROMPT BLOCK: one added below
+    // will not compile until whoever adds it moves the decision deliberately. It does NOT cover
+    // the likelier case — a TOOL in the agentic loop returning tenant or document content into
+    // `convo` and grounding the closing reply. That path never touches this variable, so the
+    // ruling's "a late retrieval must switch the turn into the protected path" is enforced for
+    // it by `markLateRetrievalProtected` below, at the one point tool output enters the model's
+    // context — not by this const, which cannot see it.
+    const turnCarriesProtectedContentAtEntry =
+      // 1. Tenant Knowledge chunks.
+      !!tenantKbContext ||
+      // 2. `rag_documents` — titles and body text; document-derived.
+      !!ragContext ||
+      // 3. The attached document itself, whether or not anything matched it (the §58 case).
+      !!attachedDocument ||
+      // 4. Filenames and summaries of documents read EARLIER in this session, interpolated so
+      //    follow-ups can be answered from them. Carries no attachment of its own.
+      !!sessionDocContext ||
+      // 5. `client_memory`. The strongest case of the four that were missed, because it is
+      //    DURABLE ACROSS SESSIONS: the `report_upload` row persists the very extraction this
+      //    handler buffers `sync_status` for — "Scores: EQ 712, EX 705, TU 698. Found 4 negative
+      //    items…" — plus session summaries and 400-character verbatim slices of prior chat.
+      //    Buffering the frame while streaming the persisted extraction of it on every later
+      //    turn is not a rule, it is a coincidence of which surface was audited.
+      !!memoryBlock ||
+      // 6. The client file, but ONLY on a funding tenant — and the gate is the point, not a
+      //    hedge. Every document-derived line in `buildUserContext` sits inside its
+      //    `if (fundingEnabled)` branch: the uploaded PDF's file name, the three bureau scores,
+      //    and each active negative item with creditor and amount. On a funding tenant that made
+      //    EVERY ordinary chat turn document-derived and unbuffered. What a NON-funding tenant
+      //    gets is the caller's own profile, subscription, tasks, businesses and document-TYPE
+      //    counts — tenant data, but not document-derived evidence — so latching on it
+      //    unconditionally would buffer essentially every turn on the platform and break the
+      //    other half of the ruling, which preserves live streaming for ordinary chat.
+      (fundingEnabled && !!userContext) ||
+      // 7. `knowledge_base` full-text hits, which only reach the funding core. Platform-global
+      //    rather than tenant-private, so this is the weakest of the eight — but `tenantKbContext`
+      //    already protects its own `source_tier === "global"` chunks, and holding one while
+      //    streaming the other is an inconsistency with no principle behind it.
+      (fundingEnabled && !!relevantKnowledge) ||
+      // 8. Studio reference images the customer dropped, base64-inlined into the last user
+      //    message further below. The SAME image arriving as `attachedDocument` is protected by
+      //    (3); arriving as an attachment it was not. That is the §58 asymmetry this rule
+      //    already removed once, reproduced on an adjacent path.
+      !!(turnAttachments && turnAttachments.length);
+
+    // THE LATE-RETRIEVAL HALF, which the `const` above cannot cover and which the ruling names
+    // explicitly: "a late Knowledge/tool retrieval must switch the turn into the protected
+    // buffered path before any protected content can emit."
+    //
+    // A previous revision shipped a setter for this with NO CALL SITES, and the claim it was
+    // backing was therefore false. This one has exactly one call site, at the single point where
+    // tool output enters the model's context, and a test that fails if it is removed. If you are
+    // reading this and it again has no callers, the property is again unbacked — do not leave it.
+    let lateRetrievalProtected = false;
+    // Read through this, never off the entry value, so a tool round that lands mid-turn is seen
+    // by the emitter and the revalidation guard alike.
+    const turnCarriesProtectedContent = () => turnCarriesProtectedContentAtEntry || lateRetrievalProtected;
+    // INVERTED, deliberately: a tool result is EVIDENCE unless it is a write receipt. Classifying
+    // the evidence-bearing tools instead would be an allowlist, and an allowlist is what has been
+    // one round behind at every stage of this change — the safe error has to be "protected".
+    // `MUTATING_TOOLS` is the receipt set and is already maintained for the autonomy gate, so a
+    // new READ tool defaults to protected without anyone remembering to add it anywhere.
+    const markLateRetrievalProtected = (executed: any[], receipts: Set<string>) => {
+      if (lateRetrievalProtected) return;
+      const evidence = executed.find((tc) => !receipts.has(tc?.function?.name ?? ""));
+      if (!evidence) return;
+      lateRetrievalProtected = true;
+      console.log(
+        "[paige] turn switched to the protected buffered path by a late tool retrieval",
+        JSON.stringify({ tool: evidence?.function?.name ?? null }),
+      );
+    };
 
     // Reuse the same JWT-backed authoritative resolver that selected the Knowledge
     // tenant. This is deliberately not a second authority store or a browser epoch:
@@ -1637,7 +1721,7 @@ JSON:`;
       if (tenantKnowledgeScopeRevoked) return false;
       // An ordinary turn carries no protected evidence, so there is nothing to re-check and it
       // pays no RPC — this is what keeps live streaming free of added latency.
-      if (!turnCarriesProtectedContent) return true;
+      if (!turnCarriesProtectedContent()) return true;
       try {
         const { data, error } = await supabaseClient.rpc("get_paige_persona_context");
         const row = Array.isArray(data) ? data[0] : data;
@@ -8097,7 +8181,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // most likely to take.
       const heldContent: Uint8Array[] = [];
       const emitContent = (controller: ReadableStreamDefaultController, chunk: Uint8Array) => {
-        if (turnCarriesProtectedContent) heldContent.push(chunk);
+        if (turnCarriesProtectedContent()) heldContent.push(chunk);
         else controller.enqueue(chunk);
       };
       const releaseContent = (controller: ReadableStreamDefaultController) => {
@@ -8245,6 +8329,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               } catch { /* a cosmetic-trace throw must never break the agentic loop */ }
             }
             convo.push({ role: "assistant", content: content || null, tool_calls: executed });
+            // BEFORE the results reach the model, not after. Everything content-bearing is
+            // emitted below this loop, so switching here is genuinely "before any protected
+            // content can emit" rather than merely usually so.
+            markLateRetrievalProtected(executed, MUTATING_TOOLS);
             convo.push(...toolResults);
             if (overCap || overTime || lastRound) { forcedTermination = true; break; }
             if (!(await revalidateTenantKnowledgeScope())) {
@@ -8354,7 +8442,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const fallback = "I gathered what I could but couldn't finish that — mind trying again?";
             finalAssistantText = fallback;
             emitContent(controller, enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: fallback } }] })}\n\n`));
-            controller.enqueue(enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
+            // THE SENTINEL GOES THROUGH THE BUFFER TOO, and this line is why. It used to be a
+            // direct `controller.enqueue`, so on a protected turn `[DONE]` reached the wire while
+            // the fallback text and every thought line were still held — and `releaseContent`
+            // then flushed them AFTER it. Four of the seven SSE consumers (`PaigeChat`,
+            // `PaigeAIChat`, `StudioChat`, `useSoloChat`) `break` out of their read loop on
+            // `[DONE]`, so they dropped the reply entirely; meanwhile `finalAssistantText` was
+            // still persisted to the thread. A reload then showed text the live turn never did —
+            // the exact "the transcript and the wire cannot disagree" property this rule exists
+            // to establish, broken on the one branch nothing was driving.
+            //
+            // Buffered, it releases in order behind the content. The refusal path below emits its
+            // own `[DONE]` after discarding, so a withheld turn still terminates cleanly.
+            emitContent(controller, enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
           }
 
           // ── THE FINAL CHECK, and the only place protected content is released ────────────
@@ -8365,10 +8465,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // frames and the choice chips are all sitting in `heldContent`. This is where they are
           // either let go or dropped, and it is the last thing before the durable writes.
           //
-          // What is NOT held, and why: action steps (closed-vocabulary label, count detail),
-          // phase markers, and the fixed `client_scope` refusal category. Those name an activity
-          // without quoting the evidence, which is what lets the user see progress while a
-          // protected answer is still being checked.
+          // What is NOT held, and why. This list is exhaustive on purpose — the previous version
+          // named three things and omitted three, which is the same omission this comment exists
+          // to correct, one revision later:
+          //   · action steps — closed-vocabulary label, count detail. The label is only closed
+          //     because `describeStep`'s `action_file` case now validates the model's department
+          //     against §16's ten before title-casing it; it did not, and was streaming model
+          //     text live under exactly this justification.
+          //   · phase markers (`paige_phase`) and compaction frames (`{state, pct}`).
+          //   · the fixed `client_scope` refusal category — one of six constant strings.
+          //   · the `client_scope_refused` `sync_status`, a fixed category with no payload.
+          // Each names an activity without quoting the evidence, which is what lets the user see
+          // progress while a protected answer is still being checked. The `[DONE]` sentinel is
+          // NOT on this list any more: it is buffered, because arriving ahead of the released
+          // reply made four of the seven SSE consumers drop the reply entirely.
           //
           // On an ordinary turn `heldContent` is empty — the reply already streamed live — so
           // the release is a no-op and behaviour is byte-identical to before this rule.
@@ -8462,7 +8572,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     //   2. Keying on the KB meant a document turn whose Knowledge lookup MISSED streamed live,
     //      while the same document with a match was held. Document-derived content is protected
     //      on its own; every document turn holds now, whatever the KB returned.
-    const holdProtectedContent = turnCarriesProtectedContent;
+    const holdProtectedContent = turnCarriesProtectedContent();
     // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
     // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
     // the first delta, so this is a lightweight confirmation, not a dependency.
@@ -8531,9 +8641,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               "[paige] client scope REFUSED — credit extraction and sync SKIPPED",
               JSON.stringify({ reason: clientScopeRefusal }),
             );
-            controller.enqueue(new TextEncoder().encode(
-              `data: ${JSON.stringify({ sync_status: { success: false, skipped: "client_scope_refused" } })}\n\n`,
-            ));
+            // Through the same buffer as every other close-out frame. The payload is a fixed
+            // category with no content in it, so this changes nothing observable — but it sat
+            // seventeen lines under a comment stating that the close-out frames take the buffer,
+            // and a rule with a visible exception beside it is the one people copy.
+            emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: false, skipped: "client_scope_refused" } })}\n\n`);
           } else if (isCreditReportPdf && attachedDocument?.base64) {
             try {
               const syncResult = await runStructuredExtractionAndSync(
