@@ -130,6 +130,23 @@ globalThis.fetch = async (url, init) => {
   if (href === "https://api.anthropic.com/v1/messages") {
     providerCalls.push(JSON.parse(String(init?.body ?? "{}")));
     const next = providerPlan.shift() ?? "text";
+    // An extraction that parses but FAILS validation, so the `logSyncFailure` path is reached
+    // with the full `structured` payload — the write 14b.1/14b.2 are about.
+    if (next === "json-extraction-invalid") {
+      const extracted = JSON.stringify({
+        is_credit_report: false,
+        extraction_verified: false,
+        report_type: "consumer",
+        scores: {},
+        negative_items: [],
+        positive_accounts: [],
+        hard_inquiries: [],
+      });
+      return new Response(JSON.stringify({ content: [{ type: "text", text: extracted }], model: "test", usage: { input_tokens: 1, output_tokens: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (next === "json-extraction") {
       const extracted = JSON.stringify({
         is_credit_report: true,
@@ -563,8 +580,8 @@ group("active-account changes during the agent loop stop later provider calls");
 // ── 14 · Document post-processing revalidates before provider and sync ──────────
 group("document post-processing fails closed at provider and sync boundaries");
 {
-  async function driveDocumentPostProcess(scopeStates) {
-    resetProvider(["json-extraction"]);
+  async function driveDocumentPostProcess(scopeStates, { uploadId = null, plan = ["json-extraction"] } = {}) {
+    resetProvider(plan);
     let scopeCall = 0;
     const writes = [];
     const service = {
@@ -587,7 +604,7 @@ group("document post-processing fails closed at provider and sync boundaries");
       "service-role-key",
       service,
       null,
-      null,
+      uploadId,
       async () => scopeStates[Math.min(scopeCall++, scopeStates.length - 1)],
     );
     return { result, writes, providerCalls: [...providerCalls], syncCalls: [...syncCalls] };
@@ -610,6 +627,58 @@ group("document post-processing fails closed at provider and sync boundaries");
     assert(`14 ${label}: no post-processing write`, r.writes.length === 0, JSON.stringify(r.writes));
     assert(`14 ${label}: reports active-account cancellation`, r.result?.step === "active_account_changed", JSON.stringify(r.result));
   }
+
+  // ── 14b · EVERY durable write inside the helper re-asserts scope, not once per stage ──
+  //
+  // The stage checks above authorise a whole stage, and a stage is not instantaneous: two
+  // awaited provider round-trips and a service-role sync happen between them. A single check
+  // at the top of a stage authorises writes that begin seconds later, after the account has
+  // changed. These writes are not counters — `logSyncFailure` persists the FULL extracted
+  // credit report into `audit_logs`, and the post-sync stage writes `client_memory` and then
+  // stamps the whole report into `credit_report_uploads.analysis_result`.
+  const wrote = (r, table) => r.writes.some((w) => w.table === table);
+
+  // (a) The validation-failure log. Scope holds through extraction, then goes while the response
+  //     body drains — the failure path would otherwise persist `structured` under the old scope.
+  const failPlan = ["json-extraction-invalid"];
+  const validFail = await driveDocumentPostProcess([true], { plan: failPlan });
+  assert(
+    "14b.1 CONTROL — a validation failure under valid scope DOES write its audit log",
+    wrote(validFail, "audit_logs"),
+    JSON.stringify(validFail.writes.map((w) => w.table)),
+  );
+  const staleFail = await driveDocumentPostProcess([true, true, false], { plan: failPlan });
+  assert(
+    "14b.2 a validation failure after a switch writes NO audit log",
+    !wrote(staleFail, "audit_logs"),
+    JSON.stringify(staleFail.writes),
+  );
+  assert(
+    "14b.3 ...and reports the cancellation, not the validation error",
+    staleFail.result?.step === "active_account_changed",
+    JSON.stringify(staleFail.result),
+  );
+
+  // (b) The two post-sync writes. Scope holds through the memory insert and goes while it is in
+  //     flight, so the uploads stamp must be refused on its OWN assertion rather than riding on
+  //     the one the insert passed.
+  const validPost = await driveDocumentPostProcess([true], { uploadId: "upload-1" });
+  assert(
+    "14b.4 CONTROL — valid scope writes BOTH post-sync rows",
+    wrote(validPost, "client_memory") && wrote(validPost, "credit_report_uploads"),
+    JSON.stringify(validPost.writes.map((w) => w.table)),
+  );
+  const stalePost = await driveDocumentPostProcess([true, true, true, true, true, false], { uploadId: "upload-1" });
+  assert(
+    "14b.5 the memory row is written but the report stamp is refused on its own check",
+    wrote(stalePost, "client_memory") && !wrote(stalePost, "credit_report_uploads"),
+    JSON.stringify(stalePost.writes.map((w) => w.table)),
+  );
+  assert(
+    "14b.6 ...and reports the cancellation",
+    stalePost.result?.step === "active_account_changed",
+    JSON.stringify(stalePost.result),
+  );
 }
 
 group("attached-document turns DO carry tenant Knowledge, and its guard actually fires");
@@ -1021,14 +1090,24 @@ group("once refused, every later revalidation stays refused");
   // while a switch landing at 7 leaked the reply AND wrote `kb_query_telemetry`. A boundary no
   // check can distinguish from its neighbours is one a future edit deletes as redundant.
   //
-  // AND WHY 8 IS IN IT. A valid credit-report turn makes exactly nine persona calls (indices
-  // 0..8); the last is the flush boundary's own resolver call. Stopping at 7 left that call —
-  // the one added in response to review — completely unexercised: reverting it to a bare read
-  // of the sticky flag kept the suite at 118/0. This is the recurring trap in this file, and it
-  // has now caught me twice: the guard you just wrote is the one your mutation list forgets.
-  // (n=9 and beyond are NOT switch cases at all — the sequence runs out before the account
-  // changes — so 8 is genuinely the last boundary there is to pin.)
-  for (const n of [2, 3, 4, 5, 6, 7, 8]) {
+  // THE UPPER BOUND IS DERIVED, NOT WRITTEN DOWN, and that is the point. It was hardcoded twice
+  // and rotted twice: a valid credit-report turn made nine persona calls, so the ninth — the
+  // flush boundary's own resolver — sat outside a loop that stopped at 7; and when per-write
+  // guards were later added inside the sync helper the count became ten, silently pushing the
+  // last boundary outside a loop that had just been corrected to 8. Both times the suite stayed
+  // green while a real boundary went unexercised. Counting the calls the control run actually
+  // makes means adding or moving a guard re-aims these timings automatically instead of quietly
+  // aiming them at nothing.
+  //
+  // Indices run 0..TOTAL-1, so TOTAL-1 is the last boundary there is; n >= TOTAL is not a switch
+  // case at all, because the persona sequence runs out before the account ever changes.
+  const TOTAL = stable.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
+  assert(
+    "19.0 the control run makes enough persona calls for these timings to mean anything",
+    TOTAL >= 9,
+    `total persona calls: ${TOTAL} — if this collapsed, the loop below is empty and proves nothing`,
+  );
+  for (let n = 2; n <= TOTAL - 1; n++) {
     const r = await creditTurn(Array(n).fill(CHILD).concat([AGENCY]), [CHILD, AGENCY]);
     assert(
       `19 switch at persona call ${n}: the prior workspace's reply is never flushed`,
