@@ -8768,38 +8768,38 @@ export async function runStructuredExtractionAndSync(
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
+  const scopeIsCurrent = async () => !revalidateKnowledgeScope || await revalidateKnowledgeScope();
+  const scopeChanged = () => ({ success: false, error: "Active workspace changed", step: "active_account_changed" });
+
+  // EVERY DURABLE WRITE IN THIS HELPER GOES THROUGH ONE OF THE TWO WRAPPERS BELOW, and the
+  // assertion sits AT the write rather than once per stage. That is the same rule the tool
+  // loop follows, for the same reason: a stage is not instantaneous. Two awaited provider
+  // round-trips and a service-role sync happen between the stage checks, and a single check
+  // at the top of a stage authorises every write that follows it — including ones that begin
+  // seconds later, after the account has changed.
+  //
+  // The writes this guards are not counters. `logSyncFailure` persists the FULL extracted
+  // credit report (`structured`) or the sync payload into `audit_logs`; the post-sync stage
+  // writes a `client_memory` row and then stamps the entire report into
+  // `credit_report_uploads.analysis_result`. Under a stale scope those land against the
+  // previous workspace's subject.
+  const writeIfScopeCurrent = async (label: string, write: () => Promise<unknown>): Promise<boolean> => {
+    if (!(await scopeIsCurrent())) {
+      console.error("[paige] active account changed — durable write skipped", JSON.stringify({ write: label }));
+      return false;
+    }
+    await write();
+    return true;
+  };
+  // A failure path still has to report the failure, but it must not persist another
+  // workspace's report to do so. When scope has gone, the honest result is the cancellation,
+  // not the original error — the turn did not fail, it was stopped.
+  const failAfterLogging = async (message: string, payload: unknown, result: any) => {
+    const logged = await writeIfScopeCurrent("sync_failure_log", () => logSyncFailure(supabase, callerUserId, message, payload));
+    return logged ? result : scopeChanged();
+  };
+
   try {
-    const scopeIsCurrent = async () => !revalidateKnowledgeScope || await revalidateKnowledgeScope();
-    const scopeChanged = () => ({ success: false, error: "Active workspace changed", step: "active_account_changed" });
-
-    // EVERY DURABLE WRITE IN THIS HELPER GOES THROUGH ONE OF THE TWO WRAPPERS BELOW, and the
-    // assertion sits AT the write rather than once per stage. That is the same rule the tool
-    // loop follows, for the same reason: a stage is not instantaneous. Two awaited provider
-    // round-trips and a service-role sync happen between the stage checks, and a single check
-    // at the top of a stage authorises every write that follows it — including ones that begin
-    // seconds later, after the account has changed.
-    //
-    // The writes this guards are not counters. `logSyncFailure` persists the FULL extracted
-    // credit report (`structured`) or the sync payload into `audit_logs`; the post-sync stage
-    // writes a `client_memory` row and then stamps the entire report into
-    // `credit_report_uploads.analysis_result`. Under a stale scope those land against the
-    // previous workspace's subject.
-    const writeIfScopeCurrent = async (label: string, write: () => Promise<unknown>): Promise<boolean> => {
-      if (!(await scopeIsCurrent())) {
-        console.error("[paige] active account changed — durable write skipped", JSON.stringify({ write: label }));
-        return false;
-      }
-      await write();
-      return true;
-    };
-    // A failure path still has to report the failure, but it must not persist another
-    // workspace's report to do so. When scope has gone, the honest result is the cancellation,
-    // not the original error — the turn did not fail, it was stopped.
-    const failAfterLogging = async (message: string, payload: unknown, result: any) => {
-      const logged = await writeIfScopeCurrent("sync_failure_log", () => logSyncFailure(supabase, callerUserId, message, payload));
-      return logged ? result : scopeChanged();
-    };
-
     // Step 1: Extract structured JSON from the analysis via a second AI call
     if (!(await scopeIsCurrent())) return scopeChanged();
     const extractionResponse = await gatewayCompat("anthropic", {
@@ -8986,13 +8986,18 @@ export async function runStructuredExtractionAndSync(
       return { success: false, error: "Active workspace changed", step: "active_account_changed" };
     }
     console.error("Structured extraction and sync pipeline failed:", err);
-    await logSyncFailure(supabase, callerUserId, err instanceof Error ? err.message : "Unknown pipeline error", null);
+    // The catch block has TWO durable writes, and its single revalidation above authorised both.
+    // The failure log is an awaited insert, so the account can change while it is in flight and
+    // the upload update then mutates the previous workspace's row under stale scope. Each write
+    // carries its own assertion, exactly as the success path does.
+    await writeIfScopeCurrent("pipeline_failure_log", () => logSyncFailure(supabase, callerUserId, err instanceof Error ? err.message : "Unknown pipeline error", null));
     // Mark upload record as failed if we created one
     if (uploadRecordId) {
-      await supabase.from("credit_report_uploads").update({
+      const marked = await writeIfScopeCurrent("credit_report_uploads_failed", () => supabase.from("credit_report_uploads").update({
         analysis_status: "failed",
         error_message: err instanceof Error ? err.message : "Pipeline error",
-      }).eq("id", uploadRecordId);
+      }).eq("id", uploadRecordId));
+      if (!marked) return scopeChanged();
     }
     return { success: false, error: err instanceof Error ? err.message : "Unknown error", step: "pipeline" };
   }

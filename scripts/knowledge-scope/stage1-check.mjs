@@ -71,6 +71,7 @@ let embedCount = 0;
 let providerPlan = [];
 let providerCalls = [];
 let syncCalls = [];
+let syncThrows = false;
 function embedCalls() { return embedCount; }
 function resetEmbeds() { embedCount = 0; }
 function resetProvider(plan = []) { providerPlan = [...plan]; providerCalls = []; syncCalls = []; }
@@ -185,6 +186,12 @@ globalThis.fetch = async (url, init) => {
     return anthropicStream(next);
   }
   if (href.endsWith("/functions/v1/sync-credit-report-data")) {
+    // Throwing HERE is what reaches the helper's catch block. Throwing from the provider does
+    // NOT: `gatewayCompat` catches its own transport errors and returns a non-ok response, so
+    // the helper takes the extraction-failure branch instead and the catch is never entered.
+    // The control assertion below is what caught that — the first version of this scenario
+    // "passed" a throw that never went where it claimed.
+    if (syncThrows) throw new Error("simulated sync transport failure");
     syncCalls.push(JSON.parse(String(init?.body ?? "{}")));
     return new Response(JSON.stringify({ results: {} }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
@@ -605,8 +612,9 @@ group("active-account changes during the agent loop stop later provider calls");
 // ── 14 · Document post-processing revalidates before provider and sync ──────────
 group("document post-processing fails closed at provider and sync boundaries");
 {
-  async function driveDocumentPostProcess(scopeStates, { uploadId = null, plan = ["json-extraction"] } = {}) {
+  async function driveDocumentPostProcess(scopeStates, { uploadId = null, plan = ["json-extraction"], throwOnSync = false } = {}) {
     resetProvider(plan);
+    syncThrows = throwOnSync;
     let scopeCall = 0;
     const writes = [];
     const service = {
@@ -632,6 +640,7 @@ group("document post-processing fails closed at provider and sync boundaries");
       uploadId,
       async () => scopeStates[Math.min(scopeCall++, scopeStates.length - 1)],
     );
+    syncThrows = false;
     return { result, writes, providerCalls: [...providerCalls], syncCalls: [...syncCalls] };
   }
 
@@ -703,6 +712,33 @@ group("document post-processing fails closed at provider and sync boundaries");
     "14b.6 ...and reports the cancellation",
     stalePost.result?.step === "active_account_changed",
     JSON.stringify(stalePost.result),
+  );
+
+  // (c) The CATCH block. Its two writes are off the success path, so nothing above reaches them.
+  //     Scope-call order once a provider call throws: pre-extraction, the catch's own
+  //     revalidation, the failure log, the failed-upload stamp.
+  const throwOpts = { uploadId: "upload-1", throwOnSync: true };
+  const validThrow = await driveDocumentPostProcess([true], throwOpts);
+  assert(
+    "14b.7 CONTROL — a pipeline exception under valid scope writes BOTH its rows",
+    wrote(validThrow, "audit_logs") && wrote(validThrow, "credit_report_uploads"),
+    JSON.stringify(validThrow.writes.map((w) => w.table)),
+  );
+  // Scope-call order once the sync fetch throws: pre-extraction, post-extraction, pre-sync, the
+  // catch's own revalidation, the failure log, the failed-upload stamp. Derived by driving it,
+  // not assumed — see the control above for why assuming was wrong the first time.
+  const catchCalls = 6;
+  const staleStamp = await driveDocumentPostProcess(Array(catchCalls - 1).fill(true).concat([false]), throwOpts);
+  assert(
+    "14b.8 a switch between the two catch writes logs the failure but refuses the upload stamp",
+    wrote(staleStamp, "audit_logs") && !wrote(staleStamp, "credit_report_uploads"),
+    JSON.stringify(staleStamp.writes.map((w) => w.table)),
+  );
+  const staleLog = await driveDocumentPostProcess(Array(catchCalls - 2).fill(true).concat([false]), throwOpts);
+  assert(
+    "14b.9 a switch before the catch's failure log writes neither row",
+    !wrote(staleLog, "audit_logs") && !wrote(staleLog, "credit_report_uploads"),
+    JSON.stringify(staleLog.writes.map((w) => w.table)),
   );
 }
 
@@ -857,7 +893,30 @@ group("tool dispatch re-asserts scope for every tool, not once per round");
     JSON.stringify(stepIds(stable.responseText)),
   );
 
-  const beforeFirst = await runTools(3);
+  // THE BOUNDARY IS FOUND, NOT WRITTEN DOWN. External review made the sharper version of the
+  // point the shape assertions only half-cover: those catch a check being ADDED or REMOVED (the
+  // total moves), but not one being MOVED (total unchanged, every index shifts by one). If that
+  // happened, `runTools(4)` would land BEFORE the first tool instead of between the two, and
+  // 16.4-16.6 would still see zero narrated tools, one provider call and no telemetry — passing
+  // for the wrong reason with the per-tool guard gone.
+  //
+  // No tool in this harness leaves a recordable side effect (`plan_list` and `list_event_kinds`
+  // both return an error result before reaching their RPC, and a mid-batch abort suppresses the
+  // step trace), so "tool 1 ran" is not directly observable. What IS observable is the TRANSITION:
+  // the smallest n at which the round completes. A per-tool guard puts three refusal boundaries
+  // before completion (post-round, tool-1, tool-2); a per-batch guard puts two. So the transition
+  // point itself distinguishes them, and it is derived rather than assumed.
+  let firstComplete = null;
+  for (let n = 2; n <= 10; n++) {
+    if (stepIds((await runTools(n)).responseText).length === 2) { firstComplete = n; break; }
+  }
+  assert(
+    "16.0 the round first completes at the boundary a PER-TOOL guard implies",
+    firstComplete === 5,
+    `first complete at n=${firstComplete}; 5 means three refusal boundaries precede completion (post-round, tool-1, tool-2). 4 means only two — the per-tool guard is gone. Any other value means a boundary moved: re-derive this group's timings, do not bump the number.`,
+  );
+
+  const beforeFirst = await runTools(firstComplete - 2);
   assert(
     "16.2 a switch before the first tool dispatches neither",
     stepIds(beforeFirst.responseText).length === 0,
@@ -869,7 +928,7 @@ group("tool dispatch re-asserts scope for every tool, not once per round");
     `provider calls: ${beforeFirst.providerCalls.length}`,
   );
 
-  const betweenTools = await runTools(4);
+  const betweenTools = await runTools(firstComplete - 1);
   assert(
     "16.4 a switch BETWEEN the two tools aborts the round (per-tool guard, not per-batch)",
     stepIds(betweenTools.responseText).length === 0,
