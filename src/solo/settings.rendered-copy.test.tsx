@@ -113,9 +113,18 @@ describe("Solo Settings rendered customer copy", () => {
 
   it("renders Integrations as its own truthful Settings destination", () => {
     const text = renderedText(renderDestination("integrations"));
-    expect(text).toContain("External tools and bridges");
-    expect(text).toContain("Marketplace handoff");
-    expect(text).toContain("Communications setup stays in Connections");
+    expect(text).toContain("Integration catalogue");
+    expect(text).toContain("Connections Phone, sending identity, delivery, and calendars");
+    expect(text).toContain("Integrations External data, workflow, and service bridges");
+    expect(text).toContain("Marketplace Governed Paige capability lifecycle");
+    expect(text).toContain("Stripe Connect Integrations · commerce account");
+    expect(text).toContain("QuickBooks Integrations · financial data bridge");
+    expect(text).toContain("DocuSign Integrations · document service bridge");
+    expect(text).toContain("Apollo Integrations · client data bridge");
+    expect(text).toContain("Plaid Integrations · financial data bridge");
+    expect(text).toContain("Webhooks &amp; direct API Integrations · developer bridge");
+    expect(text).not.toContain("External tools and bridges");
+    expect(text).not.toContain("Marketplace / Storefront");
     expect(text).not.toContain("Business phone");
     expect(text).not.toContain("A2P");
   });
