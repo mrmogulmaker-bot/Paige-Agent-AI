@@ -56,9 +56,13 @@
 # fifth session means adding a row; it cannot mean forgetting a capture.
 #
 # THE RAN-MARK IS THE MECHANISM, AND EXIT STATUS ALONE IS NOT ENOUGH.
-# Measured on a real cluster: B's HEALTHY run exits 1, because the guard it exists
-# to prove raises. So does a dead B whose RPC is missing. An rc-based gate would
-# either fire on every green run or catch nothing. Each session therefore declares
+# Measured on a real cluster: B's HEALTHY run exits NON-ZERO, because the guard it
+# exists to prove raises — 3 under the ON_ERROR_STOP the sessions now run with,
+# and 1 before it, which is why an earlier revision of this comment said 1 and was
+# left saying it after the exit code changed underneath it. A dead B whose RPC is
+# missing exits 3 as well. Either way an rc-based gate would fire on every green
+# run or catch nothing; the number is not the point, and stating a stale one is
+# how a comment stops being evidence. Each session therefore declares
 # a mark that is true ONLY if it did its own work — a string its own output must
 # contain, or a value it must have left in the row — and that mark is what
 # distinguishes "did not run" from "ran and the guard fired".
@@ -66,7 +70,7 @@
 # The ordering skew is a THIRD outcome, distinct from both: both sessions ran, and
 # they raced the other way round. It is named as that rather than as either.
 #
-# MUTATION-TESTED, on a real cluster, TEN runs. Not "reviewed and believed":
+# MUTATION-TESTED, on a real cluster, TWELVE runs. Not "reviewed and believed":
 #
 #   baseline, nothing mutated ............ PASSED
 #   A's UPDATE broken .................... INCONCLUSIVE, names A
@@ -75,7 +79,9 @@
 #   T2's RPC name broken ................. INCONCLUSIVE, names T2
 #   D2's verification READ broken ........ INCONCLUSIVE, names the READ
 #   D3's verification READ broken ........ INCONCLUSIVE, names the READ
+#   the D2 FIXTURE broken ................ INCONCLUSIVE, names the fixture
 #   a second alternate on T2's mark ...... PASSED (the extension point is safe)
+#   a read whose function RAISEs NOTICE .. PASSED (a notice is not a failure)
 #   pg_advisory_xact_lock deleted ........ D3 FAILED, "a real finding"
 #   a2p_registration_is_immutable := false  D2 FAILED, "a real guard/lock finding"
 #
@@ -83,8 +89,10 @@
 # guards it exists to pin are removed for real, all four sessions run clean, and it
 # names the defect rather than a dead session.
 #
-# FOUR OF THOSE ROWS EXIST BECAUSE A DRAFT OF THIS FILE FAILED THEM, and each
-# failure was the same shape as the four it was written to end:
+# SIX OF THOSE ROWS EXIST BECAUSE A DRAFT OF THIS FILE FAILED THEM. Every failure
+# was the same shape as the four this file was written to end — a healthy thing
+# reported as dead, or a dead thing reported as a finding — and every one was found
+# by RUNNING the matrix, never by reading the code:
 #
 #   · B's mark was REGISTRATION_IMMUTABLE, which is ALSO B's assertion, so
 #     deleting the guard produced a healthy B that printed no such string and was
@@ -96,11 +104,16 @@
 #   · The first repair for that was `final=$(read_or_die …)`. `exit` inside a
 #     command substitution ends the SUBSHELL: the run would have carried on with
 #     an empty value and printed the finding anyway. It sets a global instead.
-#   · Feeding the SQL by `-f` (to kill a second shell expansion) made psql
+#   · Feeding session SQL by `-f` (to kill a second shell expansion) made psql
 #     continue past an error, so A's post-COMMIT token printed for a transaction
-#     that had rolled back. ON_ERROR_STOP is why that row passes now.
-#
-# Every one of those was caught by RUNNING the matrix, not by reading it.
+#     that had rolled back. ON_ERROR_STOP is why that row passes.
+#   · Then the READS were moved onto the same `-f` lane and ON_ERROR_STOP was not
+#     carried with them — psql exits 0 there — which silently UN-DID the read
+#     repair two bullets up. The matrix caught it on the next run.
+#   · `read_into` folded stderr into the returned VALUE, so a read whose function
+#     merely RAISEd a NOTICE returned "NOTICE: …\nvalue", failed an equality mark,
+#     and reported a perfectly healthy session as dead. stdout and stderr are kept
+#     apart now.
 # =============================================================================
 set -uo pipefail
 BASE="${1:?usage: a2p-concurrency-proof.sh <cluster-base> <pgbin> <unix-user>}"
@@ -110,33 +123,58 @@ LAUNCH_GAP=1          # the gap between a pair's two launches. THIS is what deci
                       # which session reaches the lock first — HOLD_SECONDS governs
                       # only how long the winner then holds it.
 
-# 0755, because the sessions run as $USER_NAME and read their SQL from here.
-# mktemp -d gives 0700 owned by root, which every session would fail to read —
-# and it would fail as "could not open file", i.e. as a dead session, which the
-# ran-marks would correctly report but which is a self-inflicted INCONCLUSIVE.
-TMPD="$(mktemp -d)"; chmod 755 "$TMPD"; trap 'rm -rf "$TMPD"' EXIT
-psql_as() { su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A $*"; }
+# 0711, because everything here runs as $USER_NAME and reads its SQL from this
+# directory. mktemp -d gives 0700 owned by root, which every psql call would fail
+# to open — and it would fail as "could not open file", i.e. as a dead session,
+# which the ran-marks would correctly report but which is self-inflicted.
+# 711 is traverse-only; the files themselves are 644 and the directory stays
+# root-owned. An earlier revision used 755 and had no reason to.
+TMPD="$(mktemp -d)"; chmod 711 "$TMPD"; trap 'rm -rf "$TMPD"' EXIT
+
+# ── THE ONE psql LANE. Every call in this file goes through it. ──────────────
+#
+# SQL IS WRITTEN TO A FILE AND FED WITH `-f`. It is never interpolated into the
+# string handed to `su -c`, because `sh` re-parses that string — two rounds of
+# expansion. Measured through the old path, all rc=0 and all silent:
+#
+#     select $$dollar-quoted$$      →  ERROR: trailing junk … "4067dollar"  (the PID)
+#     select 'X`echo PWNED`Y'       →  XPWNEDY
+#     select 'tag=$NOT_A_VAR;'      →  tag=;
+#
+# A previous revision fixed this for the four SESSIONS and left the reads, the
+# fixtures and the cleanups on the old path — while its comment said the hop was
+# removed "entirely". A review measured all three corruptions still reachable, on
+# `mark_query`, which is the very extension point this file advertises. So the
+# lane is now singular: one function, one hop, and the SQL below is written with
+# ordinary escaping because only bash ever parses it.
+#
+# stdout and stderr are kept SEPARATE. Folding them together is not cosmetic: it
+# put a server NOTICE into the returned VALUE, and `mark_query` compares by
+# equality — so a healthy session whose function happened to RAISE NOTICE was
+# reported as a dead session. Measured, rc=0, mark failed. That is this file's own
+# defect class one layer further out again: a read that MANUFACTURES a failure
+# rather than hiding one.
+PSQL_OUT=""; PSQL_ERR=""; PSQL_RC=0
+psql_file() {   # <tag> <sql> [extra psql flags…]
+  local tag="$1" sql="$2"; shift 2
+  printf '%s\n' "$sql" > "$TMPD/$tag.sql"; chmod 644 "$TMPD/$tag.sql"
+  PSQL_OUT="$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A $* -f $TMPD/$tag.sql" 2>"$TMPD/$tag.err")"
+  PSQL_RC=$?
+  PSQL_ERR="$(cat "$TMPD/$tag.err")"
+  return $PSQL_RC
+}
 
 # ── the session matrix ───────────────────────────────────────────────────────
 declare -A S_PID S_RC S_OUT S_MARK_KIND S_MARK_WANT S_MARK_GOT S_MARK_OK S_LABEL
+S_ORDER=()   # registration order, so any failure can report what has run so far
 
 # start_session <name> <label> <bg|fg> <sql>
 #   Captures stdout+stderr for EVERY session, backgrounded or not. The previous
 #   revisions sent background sessions to /dev/null, which is precisely how a dead
 #   one became invisible.
-# THE SQL GOES IN ON STDIN, NOT THROUGH A SECOND SHELL.
-#
-# It used to be interpolated into the string handed to `su -c`, which `sh` then
-# re-parses — two rounds of expansion. Measured: `select $$dollar-quoted$$` came
-# back as `select 31451dollar-quoted31451`, the PID substituted into the SQL. The
-# four sessions here are `$`-free after bash's own pass so nothing was wrong, but
-# this file's whole thesis is that adding a session is JUST ADDING A ROW, and a
-# future row using dollar-quoting, a backtick or a backslash would corrupt in
-# silence rather than error. Writing to a file and feeding `-f` removes the second
-# hop entirely — and it lets the SQL below be written plainly, with no \\\" ladder.
 start_session() {
   local n="$1" label="$2" mode="$3" sql="$4"
-  S_LABEL[$n]="$label"
+  S_LABEL[$n]="$label"; S_ORDER+=("$n")
   printf '%s\n' "$sql" > "$TMPD/$n.sql"
   chmod 644 "$TMPD/$n.sql"
   # ON_ERROR_STOP IS LOAD-BEARING, and the mutation matrix proved it. `-f` feeds
@@ -205,20 +243,34 @@ mark_query()  { local n="$1" q="$2"; shift 2; S_MARK_KIND[$n]=query; S_MARK_WANT
 # draft of this repair WAS `final=$(read_or_die …)`, and `exit` inside a command
 # substitution ends the SUBSHELL, not the script: a failed read would have set
 # `final` to empty and the run would have carried on to print the very
-# guard-finding this exists to stop. Measured before it shipped. psql exits 1 on a
-# bad column with or without ON_ERROR_STOP, so rc is the discriminator here.
+# guard-finding this exists to stop. Measured before it shipped. psql exits
+# non-zero on a bad column either way, so rc is the discriminator here.
+#
+# READ_VAL COMES FROM STDOUT ALONE. See psql_file: a NOTICE folded into the value
+# turns a healthy session into a reported-dead one.
 READ_VAL=""
-read_into() {   # <label> <sql>  → sets READ_VAL, or exits 1 as INCONCLUSIVE
-  local label="$1" sql="$2" out rc
-  out="$(psql_as -c "\"$sql\"" 2>&1)"; rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "  !! INCONCLUSIVE — the verification read '$label' failed (rc=$rc)."
+READ_SEQ=0
+read_into() {   # <label> <sql>  → sets READ_VAL, or exits as INCONCLUSIVE
+  local label="$1" sql="$2"
+  READ_SEQ=$((READ_SEQ + 1))
+  # ON_ERROR_STOP, for the SECOND time in this file and for the same reason: under
+  # `-f` psql continues past an error and EXITS 0. Moving the reads onto the `-f`
+  # lane without it silently un-did round nine's repair — a broken column produced
+  # rc=0 with empty stdout, the assertion consumed the empty value, and the run
+  # printed "this is a real guard/lock finding" again. Caught by re-running the
+  # matrix, which is the only reason this comment is not a bug.
+  psql_file "read-$READ_SEQ" "$sql" -v ON_ERROR_STOP=1
+  if [ "$PSQL_RC" -ne 0 ]; then
+    echo "  !! INCONCLUSIVE — the verification read '$label' failed (rc=$PSQL_RC)."
     echo "     This is the READ, not the guard. Every assertion that consumes it"
     echo "     would otherwise read exactly like the defect under test."
-    printf '%s\n' "$out" | sed 's/^/       /' | head -10
+    printf '%s\n' "${PSQL_ERR:-(no stderr)}" | sed 's/^/       /' | head -10
+    # The sessions still get their line. A read failing after they all ran is a
+    # different fact from a session dying, and the marks are how a reader tells.
+    report_started
     exit 1
   fi
-  READ_VAL="$(printf '%s' "$out" | tr -d ' ')"
+  READ_VAL="$(printf '%s' "$PSQL_OUT" | tr -d ' ')"
 }
 
 # Every registered session must prove it ran BEFORE any outcome is judged.
@@ -238,6 +290,16 @@ require_ran() {
   done
 }
 
+# Every session registered SO FAR, in registration order. A failure anywhere can
+# call this without knowing which sessions exist yet.
+report_started() {
+  local n
+  for n in "${S_ORDER[@]}"; do
+    [ -n "${S_RC[$n]+x}" ] || continue
+    printf "    %-34s rc=%-3s mark=%s\n" "session ${S_LABEL[$n]} ran" "${S_RC[$n]}" "${S_MARK_GOT[$n]:-(not yet marked)}"
+  done
+}
+
 report_session() {   # one uniform status line per session
   local n
   for n in "$@"; do
@@ -249,7 +311,14 @@ TEN="ee000000-0000-4000-8000-0000000000e1"
 USR="ee000000-0000-4000-8000-0000000000e2"
 
 # ── committed fixture: both sessions must see the same rows ──────────────────
-psql_as -v ON_ERROR_STOP=1 -c "\"
+fixture_or_die() {   # <tag> <sql> — a fixture that fails says WHY, not just that
+  psql_file "$1" "$2" -v ON_ERROR_STOP=1 && return 0
+  echo "  !! INCONCLUSIVE — the $1 fixture failed (rc=$PSQL_RC). Nothing below ran."
+  printf '%s\n' "${PSQL_ERR:-(no stderr)}" | sed 's/^/       /' | head -10
+  exit 1
+}
+
+fixture_or_die fixture-d2 "
   insert into auth.users (id, aud, role, email)
     values ('$USR','authenticated','authenticated','a2p-conc@t') on conflict do nothing;
   insert into public.tenants (id, slug, name, account_number_prefix, account_number)
@@ -260,10 +329,10 @@ psql_as -v ON_ERROR_STOP=1 -c "\"
   insert into public.tenant_legal_profile (tenant_id, legal_business_name)
     values ('$TEN','Concurrency Fixture LLC') on conflict do nothing;
   insert into public.tenant_a2p_registrations (tenant_id, use_case, campaign_description, sample_messages, status)
-    values ('$TEN','before','Before the approver ran.','[\\\"a\\\",\\\"b\\\"]'::jsonb,'pending')
+    values ('$TEN','before','Before the approver ran.','[\"a\",\"b\"]'::jsonb,'pending')
     on conflict (tenant_id) do update set status='pending', use_case='before',
       approved_at=null, submitted_at=null, brand_sid=null, campaign_sid=null;
-\"" >/dev/null 2>&1 || { echo "!! concurrency fixture failed"; exit 1; }
+"
 
 # ── D2: A takes the row lock, holds it, approves, commits ────────────────────
 start_session A "A (approver)" bg "
@@ -290,13 +359,17 @@ B_END=$(date +%s%N)
 reap_session A
 B_MS=$(( (B_END - B_START) / 1000000 ))
 
-# A's mark is a token it prints AFTER its own COMMIT. psql sends this -c string as
-# one message, so an error anywhere in it aborts the rest — the token appears if
-# and only if the lock, the update and the commit all succeeded. It is deliberately
-# NOT a read of brand_sid: that column is also in the assertion below.
+# A's mark is a token it prints AFTER its own COMMIT, and ON_ERROR_STOP is what
+# makes that trustworthy: under `-f` psql would otherwise CONTINUE past the failed
+# UPDATE, the COMMIT would roll the transaction back, and the token would print for
+# a session that did nothing. (A previous revision of this comment credited the old
+# single `-c` string, which aborts for free — but this file stopped using `-c` for
+# sessions in the same commit that wrote the sentence.) It is deliberately NOT a
+# read of brand_sid: that column is also in the assertion below.
 #
-# B's mark is an ALTERNATION, and that is the point. B exits 1 when healthy (the
-# guard raises), so rc can never be its discriminator — a missing RPC exits 1 too.
+# B's mark is an ALTERNATION, and that is the point. B exits non-zero when healthy
+# (the guard raises; 3 under ON_ERROR_STOP), so rc can never be its discriminator —
+# a missing RPC exits 3 too.
 # But "raised the guard" alone cannot be the mark either, because the guard being
 # GONE is the defect under test. Either outcome proves B reached the RPC; a B that
 # never got there produces neither.
@@ -308,12 +381,16 @@ refused=f; case "${S_OUT[B]}" in *REGISTRATION_IMMUTABLE*) refused=t;; esac
 read_into "D2 final row" "select status||'/'||coalesce(use_case,'')||'/'||coalesce(brand_sid,'') from public.tenant_a2p_registrations where tenant_id='$TEN'"
 final="$READ_VAL"
 
-psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN';
-             delete from public.tenant_legal_profile where tenant_id='$TEN';
-             delete from public.user_roles where user_id='$USR';
-             delete from public.tenant_members where tenant_id='$TEN';
-             delete from public.tenants where id='$TEN';
-             delete from auth.users where id='$USR';\"" >/dev/null 2>&1
+# Cleanup is best-effort by design: both fixtures are idempotent (`on conflict do
+# update` resets the row), so a leftover from an aborted run is corrected by the
+# next one rather than poisoning it. Measured.
+psql_file cleanup-d2 "
+  delete from public.tenant_a2p_registrations where tenant_id='$TEN';
+  delete from public.tenant_legal_profile where tenant_id='$TEN';
+  delete from public.user_roles where user_id='$USR';
+  delete from public.tenant_members where tenant_id='$TEN';
+  delete from public.tenants where id='$TEN';
+  delete from auth.users where id='$USR';" >/dev/null || true
 
 echo
 echo "  D2 CONCURRENCY (two real sessions)"
@@ -355,7 +432,7 @@ require_ran A B
 TEN2="ff000000-0000-4000-8000-0000000000f1"
 USR2="ff000000-0000-4000-8000-0000000000f2"
 
-psql_as -v ON_ERROR_STOP=1 -c "\"
+fixture_or_die fixture-d3 "
   insert into auth.users (id, aud, role, email)
     values ('$USR2','authenticated','authenticated','a2p-race@t') on conflict do nothing;
   insert into public.tenants (id, slug, name, account_number_prefix, account_number)
@@ -366,7 +443,7 @@ psql_as -v ON_ERROR_STOP=1 -c "\"
   insert into public.tenant_legal_profile (tenant_id, legal_business_name)
     values ('$TEN2','Race Fixture LLC') on conflict do nothing;
   delete from public.tenant_a2p_registrations where tenant_id = '$TEN2';
-\"" >/dev/null 2>&1 || { echo "!! race fixture failed"; exit 1; }
+"
 
 # T1: the FIRST save, carrying every optional field, holding its transaction open.
 start_session T1 "T1 (first writer)" bg "
@@ -401,12 +478,13 @@ race="$READ_VAL"
 mark_output T1 '"prepared"'
 mark_query  T2 "select use_case||'/'||(sample_messages #>> '{0}') from public.tenant_a2p_registrations where tenant_id='$TEN2'" "racetwo/c"
 
-psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2';
-             delete from public.tenant_legal_profile where tenant_id='$TEN2';
-             delete from public.user_roles where user_id='$USR2';
-             delete from public.tenant_members where tenant_id='$TEN2';
-             delete from public.tenants where id='$TEN2';
-             delete from auth.users where id='$USR2';\"" >/dev/null 2>&1
+psql_file cleanup-d3 "
+  delete from public.tenant_a2p_registrations where tenant_id='$TEN2';
+  delete from public.tenant_legal_profile where tenant_id='$TEN2';
+  delete from public.user_roles where user_id='$USR2';
+  delete from public.tenant_members where tenant_id='$TEN2';
+  delete from public.tenants where id='$TEN2';
+  delete from auth.users where id='$USR2';" >/dev/null || true
 
 echo
 echo "  D3 FIRST-SAVE RACE (two real sessions, no pre-existing row)"
