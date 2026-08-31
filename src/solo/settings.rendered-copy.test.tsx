@@ -101,16 +101,19 @@ describe("Solo Settings rendered customer copy", () => {
 
   it("renders Integrations as its own truthful Settings destination", () => {
     const text = renderedText(renderDestination("integrations"));
-    expect(text).toContain("Integration catalogue");
-    expect(text).toContain("Connections Phone, sending identity, delivery, and calendars");
-    expect(text).toContain("Integrations External data, workflow, and service bridges");
-    expect(text).toContain("Marketplace Governed Paige capability lifecycle");
-    expect(text).toContain("Stripe Connect Integrations · commerce account");
-    expect(text).toContain("QuickBooks Integrations · financial data bridge");
-    expect(text).toContain("DocuSign Integrations · document service bridge");
-    expect(text).toContain("Apollo Integrations · client data bridge");
-    expect(text).toContain("Plaid Integrations · financial data bridge");
-    expect(text).toContain("Webhooks &amp; direct API Integrations · developer bridge");
+    // A static render shows the surface before its tenant-scoped read resolves,
+    // so the copy proven here is the chrome and the honest waiting state. The
+    // provider cards themselves are proven in the rendered-flow tests, which
+    // drive the real read (settings-integrations.test.tsx).
+    expect(text).toContain("Integrations");
+    expect(text).toContain("Automations");
+    expect(text).toMatch(/Resolving this account/);
+    // The removed chrome must not come back: no oversized catalogue masthead,
+    // no ownership table, no scroll cue.
+    expect(text).not.toContain("Integration catalogue");
+    expect(text).not.toContain("Browse by provider");
+    expect(text).not.toContain("Scroll to browse");
+    expect(text).not.toContain("Marketplace Governed Paige capability lifecycle");
     expect(text).not.toContain("External tools and bridges");
     expect(text).not.toContain("Marketplace / Storefront");
     expect(text).not.toContain("Business phone");

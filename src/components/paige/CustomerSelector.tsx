@@ -57,9 +57,25 @@ export function CustomerSelector({ onSelect, onRequestCreate }: Props) {
     const id = ++reqId.current;
     setLoading(true);
     const handle = setTimeout(async () => {
+      // §58 — narrow the picker toward what the server will actually accept. `paige-ai-chat`
+      // authorizes a focused client by TENANT EQUALITY and excludes `tenant_id IS NULL`, and the
+      // `clients` `tenant_isolation` policy admits NULL-tenant rows to ANY authenticated user
+      // with no NOT NULL constraint on the column, so such a row would be pickable here and
+      // silently unusable in chat. Zero exist in production today; this stops them drifting.
+      //
+      // HONEST LIMIT (§13): this closes the NULL-tenant case ONLY. The assignment policies
+      // (`clients_coaches_assigned`, `clients_cs_rep_assigned_full`, `clients_sales_rep_assigned_full`)
+      // grant visibility with NO tenant predicate, so a row in ANOTHER tenant can still be
+      // offered here and still be refused by the guard. Closing that needs the caller's tenant,
+      // which this component does not currently hold — tracked, not silently fixed.
+      //
+      // §37 — this component is also the contact picker in the Conversations compose dialog
+      // (`src/pages/admin/conversations/ComposeThreadDialog.tsx`), so the filter narrows that
+      // surface too. Intended: an unowned client row is not a valid conversation target either.
       let q = supabase
         .from("clients")
         .select("id, first_name, last_name, entity_name, email, lifecycle_stage")
+        .not("tenant_id", "is", null)
         .order("created_at", { ascending: false })
         .limit(50);
 

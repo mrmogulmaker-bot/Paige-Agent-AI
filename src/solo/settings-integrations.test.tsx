@@ -1,8 +1,19 @@
+/**
+ * Settings → Integrations.
+ *
+ * Two things are proven here. First the standing truth boundary: this surface
+ * only ever calls server-resolved, tenant-scoped status RPCs, never passes a
+ * tenant argument, never renders a payload, and never links anywhere. Second
+ * the n8n connection flow end to end, through the rendered UI: connect from
+ * empty, manage, reconnect, disconnect, reload, permission, invalid input,
+ * retry, dirty abandonment, and tenant isolation.
+ */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloIntegrationsView } from "./settings-integrations";
+import { n8nWriteMessage } from "./data/useN8nConnection";
 
 const context = vi.hoisted(() => ({ tenantId: "tenant-a", loading: false }));
 const rpc = vi.hoisted(() => vi.fn());
@@ -12,7 +23,21 @@ const rpc = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenantId: context.tenantId, loading: context.loading }),
 }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc } }));
+// `from` is stubbed as well as `rpc` because one test navigates to the
+// Automations leaf, which mounts `useSoloAutomations` and reads real tables.
+// Without it that hook throws asynchronously AFTER the test has passed, which
+// vitest reports as an unhandled rejection and a non-zero exit while every
+// test still shows green — a failure mode that is invisible unless the exit
+// code is checked.
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    rpc,
+    // Defined inline: `vi.mock` is hoisted above any top-level const.
+    from: () => ({
+      select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }),
+    }),
+  },
+}));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -20,216 +45,408 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-describe("Solo Settings Integrations truth boundary", () => {
-  beforeEach(() => {
-    context.tenantId = "tenant-a";
-    context.loading = false;
-    rpc.mockReset();
+/** Default world: n8n unconfigured, MCP unconfigured, caller is a tenant admin. */
+function world(over: {
+  n8n?: Record<string, unknown> | null;
+  mcp?: Record<string, unknown> | null;
+  admin?: boolean;
+  writeError?: { message: string } | null;
+} = {}) {
+  rpc.mockImplementation((name: string) => {
+    if (name === "get_tenant_n8n_connection") return Promise.resolve({ data: over.n8n ?? { configured: false, status: "unconfigured" }, error: null });
+    if (name === "get_tenant_mcp_connection") return Promise.resolve({ data: over.mcp ?? { configured: false, status: "unconfigured" }, error: null });
+    if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: over.admin !== false, error: null });
+    if (name === "set_tenant_n8n_connection" || name === "clear_tenant_n8n_connection") {
+      return Promise.resolve({ data: null, error: over.writeError ?? null });
+    }
+    return Promise.resolve({ data: null, error: null });
   });
+}
 
-  it("calls only server-resolved safe status RPCs without tenant arguments", async () => {
-    rpc.mockImplementation((name: string) => Promise.resolve({
-      data: name === "get_tenant_n8n_connection"
-        ? { configured: true, status: "connected", label: "Workflow bridge", workflow_count: 3, last_sync_at: "2026-08-30T12:00:00Z", secret: "must-not-survive", raw_payload: "must-not-survive" }
-        : { configured: false, status: "unconfigured" },
-      error: null,
-    }));
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+async function render() {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<MemoryRouter initialEntries={["/solo/1971670/settings/integrations"]}><SoloIntegrationsView /></MemoryRouter>));
+  await act(async () => { await Promise.resolve(); });
+  return { host, root };
+}
+
+const buttons = (host: HTMLElement) => Array.from(host.querySelectorAll("button"));
+const byText = (host: HTMLElement, text: string) => buttons(host).find((b) => b.textContent?.includes(text));
+const click = async (el: Element | undefined) => { await act(async () => { el?.dispatchEvent(new MouseEvent("click", { bubbles: true })); }); };
+const openCard = async (host: HTMLElement, provider: string) => {
+  await click(host.querySelector(`.ig-card[data-provider="${provider}"]`) ?? undefined);
+};
+const type = async (input: Element | null | undefined, value: string) => {
+  const field = input as HTMLInputElement;
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+const fields = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLInputElement>(".ig-field input"));
+const submit = async (host: HTMLElement) => {
+  await act(async () => { host.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+  await act(async () => { await Promise.resolve(); });
+};
+
+beforeEach(() => {
+  context.tenantId = "tenant-a";
+  context.loading = false;
+  rpc.mockReset();
+  document.body.innerHTML = "";
+});
+
+describe("Truth boundary", () => {
+  it("calls only server-resolved safe status RPCs, with no tenant argument, and renders no payload", async () => {
+    world({ n8n: { configured: true, status: "connected", label: "Workflow bridge", workflow_count: 3, secret: "must-not-survive", raw_payload: "must-not-survive", last_error: "must-not-survive" } });
+    const { host } = await render();
     expect(rpc).toHaveBeenCalledWith("get_tenant_n8n_connection");
     expect(rpc).toHaveBeenCalledWith("get_tenant_mcp_connection");
-    expect(rpc.mock.calls.every((call) => call.length === 1)).toBe(true);
-    expect(host.textContent).toContain("Workflow bridge");
+    // No status read may carry a tenant argument: the seam derives it.
+    for (const call of rpc.mock.calls.filter((c) => String(c[0]).startsWith("get_"))) {
+      expect(call.length).toBe(1);
+    }
     expect(host.textContent).toContain("Connected");
-    expect(host.textContent).toContain("Not configured");
     expect(host.textContent).not.toContain("must-not-survive");
-    expect(host.textContent).toContain("Marketplace owns governed Paige capabilities");
-    expect(host.querySelector('a[href*="marketplace"]')).toBeNull();
-    await act(async () => root.unmount());
+  });
+
+  it("links nowhere at all — not to Automations, Command Center, Marketplace or a provider", async () => {
+    world({ n8n: { configured: true, status: "connected" } });
+    const { host } = await render();
+    // The owner's rule, enforced structurally: an integration card operates its
+    // own integration and never navigates.
+    expect(host.querySelectorAll("a").length).toBe(0);
+    await openCard(host, "n8n");
+    expect(host.querySelectorAll("a").length).toBe(0);
+    const labels = buttons(host).map((b) => b.textContent ?? "");
+    expect(labels.some((l) => /open automations|command center|marketplace|systems check|mind/i.test(l))).toBe(false);
+  });
+
+  it("fails closed with a retry surface and claims no connection state", async () => {
+    rpc.mockImplementation((name: string) => Promise.resolve({
+      data: null,
+      error: name.startsWith("get_") ? { message: "read failed" } : null,
+    }));
+    const { host } = await render();
+    expect(host.textContent).toMatch(/could not be read/i);
+    expect(host.textContent).not.toMatch(/connected/i);
+    expect(host.querySelector(".ig-grid")).toBeNull();
+    expect(byText(host, "Try again")).toBeTruthy();
   });
 
   it("clears the previous account immediately and rejects its late response", async () => {
-    const firstN8n = deferred<{ data: unknown; error: null }>();
-    const firstMcp = deferred<{ data: unknown; error: null }>();
-    rpc.mockImplementationOnce(() => firstN8n.promise).mockImplementationOnce(() => firstMcp.promise);
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+    const first = deferred<{ data: unknown; error: null }>();
+    rpc.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => first.promise);
+    const { host, root } = await render();
 
     context.tenantId = "tenant-b";
-    rpc.mockImplementation((name: string) => Promise.resolve({
-      data: name === "get_tenant_n8n_connection"
-        ? { configured: true, status: "connected", label: "Tenant B bridge", workflow_count: 1 }
-        : { configured: false, status: "unconfigured" },
-      error: null,
-    }));
+    world({ n8n: { configured: true, status: "connected", label: "Tenant B bridge" } });
     await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-    expect(host.textContent).toContain("Tenant B bridge");
-
-    firstN8n.resolve({ data: { configured: true, status: "connected", label: "Late Tenant A bridge" }, error: null });
-    firstMcp.resolve({ data: { configured: true, status: "connected", label: "Late Tenant A MCP" }, error: null });
     await act(async () => { await Promise.resolve(); });
-    expect(host.textContent).not.toContain("Late Tenant A");
-    expect(host.textContent).toContain("Tenant B bridge");
-    await act(async () => root.unmount());
-  });
 
-  it("fails closed with a retry surface and no provider actions", async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: "internal provider detail" } });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-    expect(host.textContent).toContain("Couldn’t read integration status");
-    expect(host.textContent).not.toContain("internal provider detail");
-    expect(Array.from(host.querySelectorAll(".ss-state button")).map((node) => node.textContent)).toEqual(["Retry"]);
-    expect(host.querySelector(".ss-state a")).toBeNull();
-    await act(async () => root.unmount());
+    first.resolve({ data: { configured: true, status: "connected", label: "Late tenant A bridge" }, error: null });
+    await act(async () => { await Promise.resolve(); });
+    expect(host.textContent).not.toContain("Late tenant A bridge");
   });
 
   it("uses Zapier identity only when the safe MCP host proves Zapier", async () => {
-    rpc.mockImplementation((name: string) => Promise.resolve({
-      data: name === "get_tenant_n8n_connection"
-        ? { configured: false, status: "unconfigured" }
-        : { configured: true, status: "connected", server_url_host: "https://mcp.zapier.com", label: "Automation bridge" },
-      error: null,
-    }));
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-    const zapierCard = host.querySelector('[data-provider="zapier"]');
-    expect(zapierCard?.textContent).toContain("Zapier MCP");
-    expect(zapierCard?.querySelector('[data-provider-mark="zapier"]')?.textContent).toBe("zapier");
-    expect(zapierCard?.querySelector('[data-truth="LIVE"]')).not.toBeNull();
-    await act(async () => root.unmount());
+    world({ mcp: { configured: true, status: "connected", server_url_host: "https://mcp.zapier.com/x" } });
+    const { host } = await render();
+    expect(host.textContent).toContain("Zapier MCP");
   });
 
-  it("keeps unknown MCP servers neutral and separate from Zapier branding", async () => {
-    rpc.mockImplementation((name: string) => Promise.resolve({
-      data: name === "get_tenant_n8n_connection"
-        ? { configured: false, status: "unconfigured" }
-        : { configured: true, status: "connected", server_url_host: "https://tools.example.test", label: "Private tools" },
-      error: null,
-    }));
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-    expect(host.querySelector('[data-provider="zapier"]')).toBeNull();
-    const mcpCard = host.querySelector('[data-provider="mcp"]');
-    expect(mcpCard?.textContent).toContain("Private tools");
-    expect(mcpCard?.querySelector('[data-provider-mark="mcp"]')?.textContent).toBe("MCP");
-    await act(async () => root.unmount());
+  it("keeps an unknown MCP server neutral rather than branding it", async () => {
+    world({ mcp: { configured: true, status: "connected", server_url_host: "https://mcp.example.dev/x" } });
+    const { host } = await render();
+    expect(host.textContent).toContain("MCP bridge");
+    expect(host.textContent).not.toContain("Zapier");
   });
 
-  it("labels recovered Version One surfaces as evidence, never tenant connection state", async () => {
-    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-    const recovered = host.querySelector('[aria-labelledby="ss-recovered-title"]');
-    expect(recovered?.textContent).toContain("Recovered, not connected");
-    expect(recovered?.textContent).toContain("QuickBooks");
-    expect(recovered?.textContent).toContain("Webhooks & direct API");
-    expect(recovered?.textContent).toContain("No tenant connection is claimed");
-    expect(recovered?.querySelector('[data-truth="LIVE"]')).toBeNull();
-    expect(recovered?.querySelector("button")).toBeNull();
-    expect(Array.from(recovered?.querySelectorAll("a") ?? []).map((link) => link.textContent?.trim())).toEqual([]);
-    await act(async () => root.unmount());
+  it("filters the catalogue with accessible pressed controls", async () => {
+    world();
+    const { host } = await render();
+    const all = host.querySelectorAll(".ig-card").length;
+    expect(all).toBeGreaterThan(1);
+    await click(byText(host, "Documents"));
+    expect(host.querySelectorAll(".ig-card").length).toBeLessThan(all);
+    expect(host.querySelector('.ig-bar button[aria-pressed="true"]')?.textContent).toBe("Documents");
   });
 
-  it("removes the redundant hero and states the three product owners compactly", async () => {
-    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-
-    expect(host.querySelector(".ss-integrations-intro")).toBeNull();
-    expect(host.textContent).not.toContain("External tools and bridges");
-    const boundary = host.querySelector('[aria-label="Product ownership"]');
-    expect(boundary?.textContent).toContain("ConnectionsPhone, sending identity, delivery, and calendars");
-    expect(boundary?.textContent).toContain("IntegrationsExternal data, workflow, and service bridges");
-    expect(boundary?.textContent).toContain("MarketplaceGoverned Paige capability lifecycle");
-    await act(async () => root.unmount());
-  });
-
-  it("filters the catalogue with accessible category controls", async () => {
-    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-
-    const filters = host.querySelector('[role="group"][aria-label="Filter integration catalogue"]');
-    const all = filters?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
-    expect(all?.textContent).toBe("All");
-    const documents = Array.from(filters?.querySelectorAll("button") ?? []).find((button) => button.textContent === "Documents");
-    await act(async () => documents?.click());
-    expect(documents?.getAttribute("aria-pressed")).toBe("true");
-    expect(host.querySelector('[data-provider="docusign"]')).not.toBeNull();
-    expect(host.querySelector('[data-provider="quickbooks"]')).toBeNull();
-    expect(host.querySelector('[data-provider="n8n"]')).toBeNull();
-    await act(async () => root.unmount());
-  });
-
-  it("admits only proven Solo destinations and never links Stripe Connect to Marketplace", async () => {
-    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter initialEntries={["/solo/1971670/settings/integrations"]}><SoloIntegrationsView /></MemoryRouter>));
-
-    const destinations = Array.from(host.querySelectorAll("a")).map((link) => ({
-      text: link.textContent?.trim(),
-      href: link.getAttribute("href"),
-    }));
-    expect(destinations).toEqual([
-      { text: "Open Automations", href: "/solo/1971670/automations" },
-    ]);
-    const stripe = host.querySelector('[data-provider="stripe"]');
-    expect(stripe?.textContent).toContain("Integrations · commerce account");
-    expect(stripe?.textContent).not.toContain("Marketplace / Storefront");
-    expect(stripe?.querySelector("a")).toBeNull();
-    const owners = Object.fromEntries(Array.from(host.querySelectorAll<HTMLElement>("[data-provider]"), (card) => [card.dataset.provider, card.dataset.owner]));
-    expect(owners).toMatchObject({ n8n: "integrations", mcp: "integrations", quickbooks: "integrations", stripe: "integrations", docusign: "integrations", apollo: "integrations", plaid: "integrations", api: "integrations" });
-    expect(host.textContent).toContain("Integrations · client data bridge");
-    expect(host.textContent).toContain("Integrations · financial data bridge");
-    expect(host.innerHTML).not.toContain("/admin/integrations");
-    expect(host.innerHTML).not.toContain("/mcp/authorize");
-    expect(host.textContent).toContain("No safe Solo configuration handoff is available yet.");
-    await act(async () => root.unmount());
-  });
-
-  it("renders the catalogue as a labelled keyboard-scrollable browse region", async () => {
-    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-
-    const catalogue = host.querySelector('[role="region"][aria-label="Integration catalogue"]');
-    expect(catalogue).not.toBeNull();
-    expect(catalogue?.getAttribute("tabindex")).toBe("0");
-    expect(catalogue?.querySelectorAll("article")).toHaveLength(8);
-    expect(catalogue?.textContent).toContain("Automation");
-    expect(catalogue?.textContent).toContain("Financial tools");
-    expect(catalogue?.textContent).toContain("Setup handoff unavailable");
-    await act(async () => root.unmount());
-  });
-
-  it("exposes a visible browsing cue only when the catalogue overflows", async () => {
-    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
-    const host = document.createElement("div");
-    const root = createRoot(host);
-    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
-
-    const catalogue = host.querySelector<HTMLElement>('[aria-label="Integration catalogue"]');
-    expect(catalogue?.getAttribute("aria-describedby")).toBe("ss-catalogue-scroll-hint");
-    expect(host.querySelector(".ss-catalogue-scroll-hint")?.textContent).toContain("All integrations visible");
-
-    Object.defineProperty(catalogue, "clientHeight", { configurable: true, value: 420 });
-    Object.defineProperty(catalogue, "scrollHeight", { configurable: true, value: 780 });
-    await act(async () => window.dispatchEvent(new Event("resize")));
-
-    expect(catalogue?.dataset.scrollable).toBe("true");
-    expect(host.querySelector(".ss-catalogue-scroll-hint")?.textContent).toContain("Scroll to browse");
-    await act(async () => root.unmount());
+  it("offers no setup for a provider with no tenant-safe contract, and says so plainly", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "stripe");
+    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/not claimed|not offered here yet/i);
+    expect(host.querySelector(".ig-form")).toBeNull();
+    // Opening a card that owns no n8n seam must not read the n8n connection.
+    const n8nAdminReads = rpc.mock.calls.filter((c) => c[0] === "is_current_user_tenant_admin");
+    expect(n8nAdminReads.length).toBe(0);
   });
 });
 
+describe("n8n connection flow", () => {
+  it("connects from empty and never keeps the key after submitting", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "n8n");
+    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/never shown again/i);
+
+    const [url, key, label] = fields(host);
+    await type(url, "https://mine.app.n8n.cloud");
+    await type(key, "n8n_api_SUPERSECRET");
+    await type(label, "My instance");
+    await submit(host);
+
+    const call = rpc.mock.calls.find((c) => c[0] === "set_tenant_n8n_connection");
+    expect(call?.[1]).toEqual({ _base_url: "https://mine.app.n8n.cloud", _api_key: "n8n_api_SUPERSECRET", _label: "My instance" });
+    // The write carries no tenant argument: the seam derives and enforces it.
+    expect(Object.keys(call?.[1] ?? {})).not.toContain("_tenant_id");
+    // The key must be gone from the document the moment it is submitted.
+    expect(host.innerHTML).not.toContain("SUPERSECRET");
+    expect(fields(host).some((f) => f.value.includes("SUPERSECRET"))).toBe(false);
+  });
+
+  it("blocks submission until both the address and a key are present", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "n8n");
+    const connect = byText(host, "Connect n8n");
+    expect((connect as HTMLButtonElement).disabled).toBe(true);
+    await type(fields(host)[0], "https://mine.app.n8n.cloud");
+    expect((byText(host, "Connect n8n") as HTMLButtonElement).disabled).toBe(true);
+    await type(fields(host)[1], "k");
+    expect((byText(host, "Connect n8n") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows an existing connection by its last four only, never the key", async () => {
+    world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a", workflow_count: 7 } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    const panel = host.querySelector('[role="dialog"]')?.textContent ?? "";
+    expect(panel).toContain("ops.app.n8n.cloud");
+    expect(panel).toContain("••••••••9f2a");
+    expect(panel).toContain("Ops");
+    expect(byText(host, "Manage")).toBeTruthy();
+    expect(byText(host, "Disconnect")).toBeTruthy();
+  });
+
+  it("reconnects a broken connection with the address prefilled and the key required again", async () => {
+    world({ n8n: { configured: true, status: "error", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    expect(byText(host, "Reconnect")).toBeTruthy();
+    await click(byText(host, "Reconnect"));
+    const [url, key] = fields(host);
+    expect(url.value).toBe("https://ops.app.n8n.cloud");
+    expect(key.value).toBe("");
+    expect((byText(host, "Save changes") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disconnects only after an explicit confirmation", async () => {
+    world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Disconnect"));
+    expect(rpc.mock.calls.some((c) => c[0] === "clear_tenant_n8n_connection")).toBe(false);
+    await click(byText(host, "Disconnect it"));
+    expect(rpc.mock.calls.some((c) => c[0] === "clear_tenant_n8n_connection")).toBe(true);
+  });
+
+  it("re-reads the connection after a write so the panel reflects what persisted", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "n8n");
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_connection").length;
+    await type(fields(host)[0], "https://mine.app.n8n.cloud");
+    await type(fields(host)[1], "key");
+    await submit(host);
+    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_n8n_connection").length;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("denies a non-admin the controls and says who can change it", async () => {
+    world({ admin: false, n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
+    expect(host.querySelector(".ig-form")).toBeNull();
+    expect(byText(host, "Disconnect")).toBeFalsy();
+    expect(byText(host, "Manage")).toBeFalsy();
+  });
+
+  it("denies a non-admin the connect form on an unconfigured workspace", async () => {
+    // The case where only the permission gate stands between a reader and the
+    // form: with nothing configured, the form is what would otherwise render.
+    world({ admin: false, n8n: { configured: false, status: "unconfigured" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    expect(host.querySelector(".ig-form")).toBeNull();
+    expect(fields(host).length).toBe(0);
+    expect(byText(host, "Connect n8n")).toBeFalsy();
+    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
+  });
+
+  it("reports a rejected write in the product's own words, never the database's", async () => {
+    world({ writeError: { message: 'N8N_INSECURE_URL: instance URL must be https:// (SQLSTATE 22023) column "base_url_ct"' } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await type(fields(host)[0], "http://mine.example");
+    await type(fields(host)[1], "key");
+    await submit(host);
+    const panel = host.querySelector('[role="dialog"]')?.textContent ?? "";
+    expect(panel).toMatch(/has to start with https/i);
+    expect(panel).not.toMatch(/SQLSTATE|column "|N8N_INSECURE_URL/);
+  });
+
+  it("lets the owner retry after a failure, and clears the key on the failed attempt too", async () => {
+    world({ writeError: { message: "N8N_FORBIDDEN: admin required" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await type(fields(host)[0], "https://mine.app.n8n.cloud");
+    await type(fields(host)[1], "FAILEDSECRET");
+    await submit(host);
+    expect(host.querySelector('[role="dialog"]')?.textContent).toMatch(/only a workspace admin/i);
+    // A failed save must not leave the secret sitting in the field.
+    expect(host.innerHTML).not.toContain("FAILEDSECRET");
+
+    world();
+    await type(fields(host)[1], "goodkey");
+    await submit(host);
+    expect(rpc.mock.calls.some((c) => c[0] === "set_tenant_n8n_connection" && (c[1] as Record<string, unknown>)?._api_key === "goodkey")).toBe(true);
+  });
+
+  it("asks before discarding half-entered connection details", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await type(fields(host)[0], "https://half-typed.example");
+    await click(host.querySelector(".ig-close") ?? undefined);
+    // Still open, with an explicit choice.
+    expect(host.querySelector('[role="dialog"]')).toBeTruthy();
+    expect(host.textContent).toMatch(/unsaved details/i);
+    await click(byText(host, "Keep editing"));
+    expect(host.querySelector(".ig-form")).toBeTruthy();
+    await click(host.querySelector(".ig-close") ?? undefined);
+    await click(byText(host, "Discard them"));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("closes without a prompt when nothing was typed", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+describe("Review findings", () => {
+  it("keeps the Automations tab reachable from an unknown legacy leaf", async () => {
+    world();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/integrations/something-retired"]}>
+        <SoloIntegrationsView />
+      </MemoryRouter>,
+    ));
+    await act(async () => { await Promise.resolve(); });
+    // Falls back to the catalogue...
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Integrations");
+    // ...and the other tab still opens, rather than navigating to
+    // `…/something-retired/automations`, which reads as the catalogue again.
+    await click(byText(host, "Automations"));
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Automations");
+    expect(host.querySelector(".ig-grid")).toBeNull();
+  });
+
+  it("refreshes the card grid after a connection is made", async () => {
+    world();
+    const { host } = await render();
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
+
+    await openCard(host, "n8n");
+    await type(fields(host)[0], "https://mine.app.n8n.cloud");
+    await type(fields(host)[1], "key");
+    // The catalogue read must run again on success, or the card behind the
+    // panel keeps claiming the old state.
+    world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connection").length;
+    await submit(host);
+    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connection").length;
+    expect(after).toBeGreaterThan(before);
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Connected");
+  });
+
+  it("refreshes the card grid after a disconnection", async () => {
+    world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Disconnect"));
+    world();
+    await click(byText(host, "Disconnect it"));
+    await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
+  });
+
+  it("does not offer to remove a name the seam cannot clear", async () => {
+    world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Manage"));
+    await type(fields(host)[2], "");
+    expect(host.querySelector(".ig-form")?.textContent).toMatch(/changed here but not removed/i);
+
+    // The load-bearing part: an emptied name is not a pending change, so
+    // closing does not claim there are unsaved details. (Asserting the Save
+    // button here would be vacuous — it is disabled anyway while the key is
+    // blank, so it passes with or without the fix.)
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.textContent).not.toMatch(/unsaved details/i);
+  });
+
+  it("still treats a genuine name change as a pending change", async () => {
+    world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Manage"));
+    await type(fields(host)[2], "Ops renamed");
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.textContent).toMatch(/unsaved details/i);
+  });
+
+  it("returns focus to the card that opened the panel", async () => {
+    world();
+    const { host } = await render();
+    const card = host.querySelector<HTMLButtonElement>('.ig-card[data-provider="stripe"]');
+    card?.focus();
+    await click(card ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeTruthy();
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(card);
+  });
+});
+
+describe("Write-error language", () => {
+  it("maps every modelled rejection without leaking its code", () => {
+    const cases: Array<[string, RegExp]> = [
+      ["N8N_FORBIDDEN: admin required", /workspace admin/i],
+      ["N8N_INSECURE_URL: must be https", /https/i],
+      ["N8N_NO_URL: required", /address/i],
+      ["N8N_NO_KEY: required", /api key/i],
+      ["N8N_NO_TENANT", /workspace could not be identified/i],
+      ['duplicate key value violates unique constraint "uniq_x"', /did not save/i],
+    ];
+    for (const [raw, expected] of cases) {
+      const message = n8nWriteMessage(raw);
+      expect(message).toMatch(expected);
+      expect(message).not.toMatch(/N8N_|SQLSTATE|constraint|violates|column "/);
+    }
+  });
+});

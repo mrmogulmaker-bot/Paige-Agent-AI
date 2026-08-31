@@ -1,0 +1,1317 @@
+<title>Automations Inside Integrations</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   FLOW PROTOTYPE — Automations as a sub-tab of Settings → Integrations
+   Throwaway · read-only · zero production mutation.
+
+   OWNER RULING (2026-08-31): "This is where my menus should be located and NOT
+   changed to what you desire. Make sure they stay like this and you find a sub
+   tab to put in Integrations for Automations or something."
+
+   So: the rail is UNTOUCHED. Six slots in the main rail, the eight-item Settings
+   contextual rail exactly as shipped. The only new structure is a sub-tab strip
+   inside Integrations, copying the pattern Command Center already uses
+   (Systems Check | Mind).
+
+   PALETTE PROVENANCE: every --pg-* / --k-* value is lifted VERBATIM from
+   src/index.css L243–L313 (the shipped Mineral/Obsidian set). No colour here is
+   authored. The review harness uses its own --rv-* slate, deliberately outside
+   the pack palette, so developer chrome can never read as product surface.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --rv-bg: #eceef1; --rv-panel: #f7f8fa; --rv-edge: #ccd2da; --rv-edge-2: #aab4c0;
+  --rv-ink: #1b2027; --rv-ink-2: #48525f; --rv-faint: #6d7885;
+  --rv-live: #1f6f4a; --rv-mock: #8a5a12; --rv-dead: #9a3b30; --rv-focus: #2f6fd0;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --rv-bg: #14171c; --rv-panel: #1b1f26; --rv-edge: #2e353f; --rv-edge-2: #434c58;
+    --rv-ink: #eef1f5; --rv-ink-2: #b3bcc7; --rv-faint: #8b95a2;
+    --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287; --rv-focus: #7aa9ee;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --rv-bg: #14171c; --rv-panel: #1b1f26; --rv-edge: #2e353f; --rv-edge-2: #434c58;
+  --rv-ink: #eef1f5; --rv-ink-2: #b3bcc7; --rv-faint: #8b95a2;
+  --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287; --rv-focus: #7aa9ee;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0; background: var(--rv-bg); color: var(--rv-ink);
+  font: 400 14px/1.55 "Schibsted Grotesk", "Segoe UI Variable Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── PRODUCT TOKENS — verbatim from src/index.css ─────────────────────────── */
+[data-pg] {
+  --pg-font-display: "Schibsted Grotesk", "Segoe UI Variable Display", system-ui, sans-serif;
+  --pg-font-ui: "Schibsted Grotesk", "Segoe UI Variable Text", system-ui, sans-serif;
+  --pg-font-data: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+[data-pg="light"] {
+  color-scheme: light;
+  --pg-env:#e8e5df; --pg-nav:#f4f1eb; --pg-canvas:#fbf9f5; --pg-spine:#f1eee8;
+  --pg-workspace:#f7f4ee; --pg-surface:#f5f2ec; --pg-raised:#fffdf8; --pg-artifact:#fffdf8;
+  --pg-line-soft:rgba(45,40,50,.105); --pg-line:rgba(45,40,50,.185);
+  --pg-line-strong:rgba(45,40,50,.28); --pg-line-authority:rgba(155,120,60,.44);
+  --pg-ink:#201e23; --pg-ink-2:#3d3941; --pg-muted:#67616b; --pg-faint:#6a646e;
+  --pg-gold-core:#6f5636; --pg-gold:#8b7049; --pg-gold-deep:#7a5c2e;
+  --pg-gold-fill:#c9a96a; --pg-gold-bloom:rgba(201,169,106,.30);
+  --pg-graphite:#b9b2a6; --pg-lift:rgba(45,40,50,.03);
+  --pg-violet:#655a96; --pg-positive:#327458; --pg-warning:#986322; --pg-negative:#a5483d;
+  --pg-e1:inset 0 1px rgba(255,255,255,.7);
+  --pg-e4:0 24px 60px rgba(45,40,50,.16);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 1px rgba(45,40,50,.055), 0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(45,40,50,.07), 0 14px 30px -12px rgba(45,40,50,.17);
+  --pg-inset:inset 0 1px 2px rgba(45,40,50,.1), inset 0 -1px 0 rgba(255,255,255,.85);
+  --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
+  --k-automation:#4d6f92; --k-integration:#3f7a5f; --k-skill:#9a7638; --k-agent:#6f5eb0;
+}
+[data-pg="dark"] {
+  color-scheme: dark;
+  --pg-env:#08070b; --pg-nav:#0d0b11; --pg-canvas:#100e14; --pg-spine:#121017;
+  --pg-workspace:#16131a; --pg-surface:#19161e; --pg-raised:#211d27; --pg-artifact:#e9e4da;
+  --pg-line-soft:rgba(244,237,222,.115); --pg-line:rgba(244,237,222,.195);
+  --pg-line-strong:rgba(244,237,222,.30); --pg-line-authority:rgba(234,213,170,.40);
+  --pg-ink:#f6f2ea; --pg-ink-2:#d6d0c9; --pg-muted:#aca69d; --pg-faint:#969089;
+  --pg-gold-core:#fff0cf; --pg-gold:#ead5aa; --pg-gold-deep:#c7a978;
+  --pg-gold-fill:#d4a752; --pg-gold-bloom:rgba(240,200,106,.28);
+  --pg-graphite:#2a2730; --pg-lift:rgba(255,255,255,.018);
+  --pg-violet:#9b8de0; --pg-positive:#8fd1ae; --pg-warning:#edc17f; --pg-negative:#eda093;
+  --pg-e1:inset 0 1px rgba(255,255,255,.025);
+  --pg-e4:0 28px 70px rgba(0,0,0,.42);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055), 0 1px 1px rgba(0,0,0,.3), 0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.32), 0 16px 34px -12px rgba(0,0,0,.52);
+  --pg-inset:inset 0 1px 2px rgba(0,0,0,.42), inset 0 -1px 0 rgba(255,255,255,.035);
+  --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
+  --k-automation:#8fa9c4; --k-integration:#8fb9a4; --k-skill:#c7a978; --k-agent:#a99ad6;
+}
+
+/* ══ REVIEW HARNESS ═══════════════════════════════════════════════════════ */
+.rv-bar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
+  padding: 11px 18px; background: var(--rv-panel); border-bottom: 1px solid var(--rv-edge);
+}
+.rv-brand { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
+.rv-brand strong { font: 600 14px/1.2 "Schibsted Grotesk", system-ui, sans-serif; letter-spacing: -.01em; }
+.rv-brand span { font: 500 10px/1.2 "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--rv-faint); }
+.rv-grp { display: flex; align-items: center; gap: 7px; }
+.rv-grp > label { font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
+.rv-seg { display: flex; background: var(--rv-bg); border: 1px solid var(--rv-edge); border-radius: 8px; padding: 2px; gap: 2px; }
+.rv-seg button {
+  border: 0; background: transparent; color: var(--rv-ink-2); cursor: pointer;
+  font: 500 11.5px/1 "Schibsted Grotesk", system-ui, sans-serif;
+  padding: 6px 10px; border-radius: 6px; transition: background .14s, color .14s;
+}
+.rv-seg button:hover { background: var(--rv-panel); color: var(--rv-ink); }
+.rv-seg button[aria-pressed="true"] { background: var(--rv-ink); color: var(--rv-panel); }
+.rv-bar :focus-visible, .rv-drawer :focus-visible { outline: 2px solid var(--rv-focus); outline-offset: 2px; }
+
+.rv-note {
+  padding: 10px 18px; background: var(--rv-panel); border-bottom: 1px solid var(--rv-edge);
+  font-size: 12.4px; color: var(--rv-ink-2); display: flex; gap: 10px; align-items: baseline;
+}
+.rv-note b { color: var(--rv-ink); font-weight: 600; }
+
+.rv-stage { display: grid; place-items: start center; padding: 22px 18px 30px; overflow-x: auto; }
+.rv-frame {
+  position: relative; flex: none; overflow: hidden; container-type: inline-size;
+  border: 1px solid var(--rv-edge-2); border-radius: 12px;
+  box-shadow: 0 18px 44px -20px rgba(15,20,28,.32); transform-origin: top center;
+}
+.rv-vp-tag {
+  position: absolute; z-index: 3; right: 8px; bottom: 8px; padding: 3px 8px; border-radius: 6px;
+  background: rgba(20,24,30,.82); color: #f2f5f8;
+  font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .06em; pointer-events: none;
+}
+
+.t-chip {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor;
+  font: 500 10px/1.35 "JetBrains Mono", monospace; letter-spacing: .07em; text-transform: uppercase;
+}
+.t-chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.t-chip[data-t="real"] { color: var(--rv-live); }
+.t-chip[data-t="mock"] { color: var(--rv-mock); }
+.t-chip[data-t="none"] { color: var(--rv-dead); }
+
+/* ══ PRODUCT SHELL ════════════════════════════════════════════════════════ */
+.pg-shell {
+  display: grid; grid-template-columns: auto 1fr; height: 100%;
+  background: var(--pg-env); color: var(--pg-ink);
+  font-family: var(--pg-font-ui); font-size: 14px; line-height: 1.55;
+}
+.pg-shell :is(h1,h2,h3,h4) { font-family: var(--pg-font-display); margin: 0; }
+.pg-shell :focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 3px; }
+.pg-shell button { font: inherit; }
+
+.pg-rail {
+  width: 214px; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--pg-nav); border-right: 1px solid var(--pg-line-strong); box-shadow: var(--pg-e1);
+}
+.pg-brand { display: flex; align-items: center; gap: 10px; padding: 13px 12px; border-bottom: 1px solid var(--pg-line-soft); }
+.pg-mark {
+  width: 32px; height: 32px; flex: none; display: grid; place-items: center;
+  border-radius: var(--pg-r-plate); background: var(--pg-artifact);
+  border: 1px solid color-mix(in srgb, var(--pg-gold-deep) 28%, var(--pg-line-strong));
+  color: var(--pg-gold-deep);
+}
+.pg-brand strong { font: 700 13px/1 var(--pg-font-display); letter-spacing: .18em; }
+.pg-brand span { display: block; margin-top: 4px; font: 500 11px/1 var(--pg-font-data); letter-spacing: .1em; color: var(--pg-muted); }
+.pg-navlist { display: flex; flex-direction: column; gap: 2px; padding: 9px 8px; overflow-y: auto; overflow-x: hidden; }
+.pg-navlabel { margin: 10px 11px 5px; font: 700 11px/1 var(--pg-font-ui); letter-spacing: .14em; text-transform: uppercase; color: var(--pg-faint); }
+.pg-nav-a {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  min-height: 34px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); background: transparent; cursor: pointer; text-align: left;
+  font-size: 12.8px; transition: background .14s, color .14s, border-color .14s;
+}
+.pg-nav-a:hover { color: var(--pg-ink); background: var(--pg-lift); border-color: var(--pg-line-soft); }
+.pg-nav-a:active { box-shadow: var(--pg-inset); }
+.pg-nav-a.is-active { color: var(--pg-ink); background: var(--pg-surface); border-color: var(--pg-line); box-shadow: var(--pg-inset); }
+.pg-nav-a.is-active i { position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: var(--pg-r-pill); background: var(--pg-gold-fill); }
+.pg-nav-a svg { flex: none; }
+.pg-rail-foot { margin-top: auto; padding: 9px 10px; border-top: 1px solid var(--pg-line-soft); }
+.pg-seal { display: flex; align-items: center; gap: 9px; padding: 7px 4px; }
+.pg-seal > span {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center;
+  border-radius: var(--pg-r-seal); background: var(--pg-graphite); color: var(--pg-gold-core);
+  box-shadow: var(--pg-rim); font: 700 10.5px/1 var(--pg-font-ui);
+}
+.pg-seal strong { display: block; font-size: 12.2px; font-weight: 600; }
+.pg-seal small { display: block; font-size: 11px; color: var(--pg-muted); }
+
+.pg-canvas { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--pg-canvas); }
+.pg-spine {
+  flex: none; display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 18px;
+  background: var(--pg-spine); border-bottom: 1px solid var(--pg-line-soft); box-shadow: var(--pg-e1);
+}
+.pg-context { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pg-context span { font: 500 11px/1.2 var(--pg-font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-muted); }
+.pg-context strong { font: 600 14px/1.25 var(--pg-font-display); }
+.pg-cmd {
+  flex: 0 1 380px; margin-inline: auto; display: flex; align-items: center; gap: 8px;
+  min-height: 32px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-pill);
+  color: var(--pg-faint); font-size: 12.3px; cursor: default;
+}
+.pg-cmd kbd { margin-left: auto; font: 10px var(--pg-font-data); color: var(--pg-faint); }
+.pg-ibtn {
+  width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; margin-left: auto;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); background: var(--pg-surface); box-shadow: var(--pg-rim);
+  transition: color .14s, background .14s, border-color .14s;
+}
+.pg-ibtn:hover { color: var(--pg-ink); background: var(--pg-raised); border-color: var(--pg-line-strong); }
+
+/* SUB-TAB STRIP — the pattern Command Center already uses (Systems Check | Mind) */
+.pg-substrip {
+  flex: none; display: flex; align-items: stretch; gap: 4px; padding: 0 22px;
+  background: var(--pg-canvas); border-bottom: 1px solid var(--pg-line-soft);
+}
+.pg-subtab {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  padding: 11px 12px 10px; border: 0; background: transparent; cursor: pointer;
+  color: var(--pg-muted); font-size: 13px; transition: color .14s;
+}
+.pg-subtab:hover { color: var(--pg-ink); }
+.pg-subtab[aria-selected="true"] { color: var(--pg-ink); font-weight: 600; }
+.pg-subtab[aria-selected="true"]::after {
+  content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px;
+  border-radius: 2px 2px 0 0; background: var(--pg-gold-fill);
+}
+.pg-subtab svg { flex: none; }
+.pg-subtab-count {
+  font: 500 9.6px/1 var(--pg-font-data); letter-spacing: .06em;
+  padding: 3px 6px; border-radius: 5px; color: var(--pg-faint);
+  border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
+}
+
+.pg-main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.pg-page { max-width: 1180px; margin: 0 auto; padding: 20px 26px 44px; display: flex; flex-direction: column; gap: 16px; }
+
+.pg-head { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.pg-head-copy { min-width: 0; flex: 1 1 340px; }
+.pg-head span.pg-eyebrow { display: block; margin-bottom: 5px; }
+.pg-head h1 { font-size: 20px; font-weight: 600; letter-spacing: -.015em; text-wrap: balance; }
+.pg-head p { margin: 5px 0 0; font-size: 12.9px; color: var(--pg-muted); max-width: 70ch; }
+
+.pg-plate { border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate); background: var(--pg-raised); box-shadow: var(--pg-lift-1); }
+.pg-plate-hd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 15px; border-bottom: 1px solid var(--pg-line-soft); }
+.pg-plate-hd h2 { font-size: 13.6px; font-weight: 600; }
+.pg-plate-hd p { margin: 2px 0 0; font-size: 11.8px; color: var(--pg-muted); }
+.pg-plate-hd .pg-hd-copy { min-width: 0; margin-right: auto; }
+.pg-eyebrow { font: 500 11px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; color: var(--pg-faint); }
+
+.pg-truth {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 4px 9px; border-radius: var(--pg-r-pill);
+  border: 1px solid var(--pg-line); background: var(--pg-surface);
+  font: 500 9.8px/1.3 var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--pg-muted);
+}
+.pg-truth::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pg-truth[data-v="live"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 40%, var(--pg-line)); }
+.pg-truth[data-v="held"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 40%, var(--pg-line)); }
+
+.pg-lanes { display: flex; flex-direction: column; }
+.pg-lane {
+  display: grid; grid-template-columns: 3px 1fr auto; gap: 0 14px; align-items: start;
+  width: 100%; padding: 14px 15px; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-top: 1px solid var(--pg-line-soft); transition: background .14s;
+}
+.pg-lanes .pg-lane:first-child { border-top: 0; }
+.pg-lane:hover { background: var(--pg-surface); }
+.pg-lane:active { background: var(--pg-lift); box-shadow: var(--pg-inset); }
+.pg-lane-stripe { align-self: stretch; border-radius: 2px; background: var(--pg-line-strong); }
+.pg-lane[data-state="authorable"] .pg-lane-stripe { background: var(--k-automation); }
+.pg-lane[data-state="live"] .pg-lane-stripe { background: var(--pg-positive); }
+.pg-lane-body { min-width: 0; }
+.pg-lane-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.pg-lane-title strong { font-size: 13.2px; font-weight: 600; letter-spacing: -.008em; }
+.pg-kind {
+  font: 500 9.6px/1 var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase;
+  padding: 4px 7px; border-radius: 6px;
+  color: var(--k-automation); background: color-mix(in srgb, var(--k-automation) 14%, transparent);
+}
+.pg-lane-why { margin: 6px 0 0; font-size: 12.3px; color: var(--pg-ink-2); line-height: 1.55; max-width: 74ch; }
+.pg-lane-src { margin: 7px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.pg-lane-src code {
+  font: 400 10.6px/1.5 var(--pg-font-data); color: var(--pg-muted);
+  padding: 2px 6px; border: 1px solid var(--pg-line-soft); border-radius: 5px; background: var(--pg-surface);
+}
+.pg-lane-end { display: flex; align-items: center; gap: 5px; flex: none; padding-top: 2px; font: 500 11.4px/1 var(--pg-font-ui); color: var(--pg-muted); }
+.pg-lane:hover .pg-lane-end { color: var(--pg-gold-core); }
+
+.pg-absence { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.pg-absence h3 { font-size: 14px; font-weight: 600; }
+.pg-absence p { margin: 0; font-size: 12.6px; color: var(--pg-ink-2); line-height: 1.6; max-width: 74ch; }
+.pg-draft-flag {
+  margin-top: 3px; padding: 8px 10px; border-radius: var(--pg-r-chip);
+  border: 1px dashed color-mix(in srgb, var(--pg-gold-deep) 45%, var(--pg-line));
+  font-size: 11.5px; color: var(--pg-muted); background: color-mix(in srgb, var(--pg-gold-bloom) 22%, transparent);
+}
+
+.pg-steps { list-style: none; margin: 0; padding: 4px 15px 15px; display: flex; flex-direction: column; counter-reset: s; }
+.pg-steps li { counter-increment: s; display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--pg-line-soft); }
+.pg-steps li:first-child { border-top: 0; }
+.pg-steps li::before {
+  content: counter(s); width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid var(--pg-line); color: var(--pg-muted); font: 500 10.5px/1 var(--pg-font-data);
+}
+.pg-steps strong { display: block; font-size: 12.7px; font-weight: 600; }
+.pg-steps span { display: block; margin-top: 3px; font-size: 12.1px; color: var(--pg-muted); line-height: 1.55; }
+.pg-steps code { font: 400 11px/1 var(--pg-font-data); }
+
+/* ── Intended workspace ─────────────────────────────────────────────────── */
+.pg-flowbar {
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; padding: 0; overflow: hidden;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
+  background: var(--pg-raised); box-shadow: var(--pg-lift-1);
+}
+.pg-step {
+  position: relative; flex: 1 1 172px; min-width: 0; display: flex; flex-direction: column; gap: 5px;
+  padding: 11px 14px; border: 0; border-left: 1px solid var(--pg-line-soft);
+  background: transparent; cursor: pointer; text-align: left; transition: background .14s;
+}
+.pg-step:first-child { border-left: 0; }
+.pg-step:hover { background: var(--pg-surface); }
+.pg-step[aria-current="step"] { background: var(--pg-surface); }
+.pg-step[aria-current="step"]::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--pg-gold-fill);
+}
+.pg-step-n { display: flex; align-items: center; gap: 7px; }
+.pg-step-n b {
+  width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%;
+  font: 500 11px/1 var(--pg-font-data); border: 1px solid var(--pg-line); color: var(--pg-muted);
+}
+.pg-step[aria-current="step"] .pg-step-n b { border-color: var(--pg-gold-fill); color: var(--pg-gold-core); }
+.pg-step-n span { font-size: 12.6px; font-weight: 600; color: var(--pg-ink); }
+.pg-step small { font-size: 10.4px; letter-spacing: .06em; text-transform: uppercase; font-family: var(--pg-font-data); overflow-wrap: anywhere; line-height: 1.45; }
+.pg-step small[data-c="real"] { color: var(--pg-positive); }
+.pg-step small[data-c="gap"] { color: var(--pg-warning); }
+
+.pg-two { display: grid; grid-template-columns: minmax(0, 290px) minmax(0, 1fr); gap: 14px; align-items: start; }
+@container (max-width: 1180px) { .pg-two { grid-template-columns: 1fr; } }
+@container (max-width: 1180px) { .pg-grid { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); } }
+
+.pg-rulelist { display: flex; flex-direction: column; }
+.pg-rule {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; width: 100%;
+  padding: 11px 13px; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-top: 1px solid var(--pg-line-soft); transition: background .14s;
+}
+.pg-rulelist .pg-rule:first-child { border-top: 0; }
+.pg-rule:hover { background: var(--pg-surface); }
+.pg-rule[aria-current="true"] { background: var(--pg-surface); box-shadow: inset 2px 0 0 var(--pg-gold-fill); }
+.pg-rule strong { font-size: 12.6px; font-weight: 600; }
+.pg-rule em { grid-column: 1 / -1; font-style: normal; font-size: 11.5px; color: var(--pg-muted); line-height: 1.5; }
+
+.pg-form { display: flex; flex-direction: column; gap: 0; }
+.pg-row { display: grid; grid-template-columns: 92px 1fr; gap: 12px; padding: 13px 15px; border-top: 1px solid var(--pg-line-soft); align-items: start; }
+.pg-form > .pg-row:first-child { border-top: 0; }
+.pg-row > .pg-eyebrow { padding-top: 7px; }
+.pg-row-body { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.pg-ctl {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 11px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  background: var(--pg-surface); color: var(--pg-ink-2); font-size: 12.4px; cursor: pointer;
+  transition: border-color .14s, background .14s, color .14s;
+}
+.pg-ctl:hover { border-color: var(--pg-line-strong); background: var(--pg-raised); color: var(--pg-ink); }
+.pg-ctl[aria-pressed="true"] { border-color: var(--pg-line-authority); background: var(--pg-raised); color: var(--pg-ink); box-shadow: var(--pg-lift-1); font-weight: 500; }
+.pg-ctl[data-missing="true"] { border-style: dashed; color: var(--pg-muted); cursor: not-allowed; }
+.pg-ctlrow { display: flex; gap: 7px; flex-wrap: wrap; }
+.pg-hint { font-size: 11.4px; color: var(--pg-faint); line-height: 1.5; }
+.pg-hint code { font: 400 10.6px/1 var(--pg-font-data); }
+
+.pg-contract {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font: 500 9.4px/1 var(--pg-font-data); letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 5px; border: 1px solid currentColor;
+}
+.pg-contract[data-c="real"] { color: var(--pg-positive); }
+.pg-contract[data-c="gap"] { color: var(--pg-warning); }
+
+.pg-outcome { display: flex; flex-direction: column; gap: 0; }
+.pg-outcome-row { display: grid; grid-template-columns: 15px 1fr auto; gap: 10px; align-items: baseline; padding: 9px 15px; border-top: 1px solid var(--pg-line-soft); }
+.pg-outcome .pg-outcome-row:first-child { border-top: 0; }
+.pg-outcome-row i { width: 7px; height: 7px; border-radius: 50%; background: var(--pg-line-strong); align-self: center; }
+.pg-outcome-row[data-o="pass"] i { background: var(--pg-positive); }
+.pg-outcome-row[data-o="stop"] i { background: var(--pg-negative); }
+.pg-outcome-row[data-o="queue"] i { background: var(--pg-warning); }
+.pg-outcome-row strong { font-size: 12.3px; font-weight: 500; color: var(--pg-ink-2); }
+.pg-outcome-row code { font: 400 10.6px/1 var(--pg-font-data); color: var(--pg-faint); }
+
+.pg-gapcard {
+  display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 13px 15px;
+  border-top: 1px solid var(--pg-line-soft);
+}
+.pg-gapcard:first-of-type { border-top: 0; }
+.pg-gapcard > b {
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--pg-warning) 50%, var(--pg-line));
+  color: var(--pg-warning); font: 500 10.5px/1 var(--pg-font-data);
+}
+.pg-gapcard div { min-width: 0; }
+.pg-gapcard strong { display: block; font-size: 12.7px; font-weight: 600; }
+.pg-gapcard p { margin: 4px 0 0; font-size: 12.1px; color: var(--pg-ink-2); line-height: 1.55; max-width: 76ch; }
+.pg-gapcard p code { font: 400 11px/1 var(--pg-font-data); color: var(--pg-muted); }
+.pg-gapcard .pg-have { margin-top: 6px; font-size: 11.4px; color: var(--pg-faint); }
+
+/* Governed path — Human → Read → Brain → Trust Compass → Action Bus → Rail */
+.pg-chain { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; padding: 13px 15px 15px; }
+.pg-link { position: relative; flex: 1 1 132px; min-width: 118px; display: flex; flex-direction: column; gap: 5px; padding: 0 14px 0 0; }
+.pg-link::after {
+  content: "→"; position: absolute; right: 2px; top: 12px;
+  color: var(--pg-faint); font-size: 12px; line-height: 1;
+}
+.pg-link:last-child { padding-right: 0; }
+.pg-link:last-child::after { content: none; }
+.pg-link b { font-size: 12.4px; font-weight: 600; color: var(--pg-ink); }
+.pg-link span {
+  font: 500 9.2px/1.3 var(--pg-font-data); letter-spacing: .07em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.pg-link span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pg-link[data-s="real"] span { color: var(--pg-positive); }
+.pg-link[data-s="gap"] span { color: var(--pg-warning); }
+.pg-link small { font-size: 11.2px; color: var(--pg-muted); line-height: 1.45; }
+
+.pg-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.pg-filters button {
+  padding: 5px 11px; border-radius: var(--pg-r-pill); cursor: pointer;
+  border: 1px solid var(--pg-line); background: var(--pg-surface); color: var(--pg-muted);
+  font-size: 11.7px; transition: color .14s, background .14s, border-color .14s;
+}
+.pg-filters button:hover { color: var(--pg-ink); border-color: var(--pg-line-strong); }
+.pg-filters button[aria-pressed="true"] { color: var(--pg-ink); background: var(--pg-raised); border-color: var(--pg-line-authority); box-shadow: var(--pg-lift-1); }
+
+.pg-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); padding: 13px 15px 15px; }
+.pg-prov {
+  display: flex; flex-direction: column; gap: 10px; padding: 13px; text-align: left; cursor: pointer;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
+  background: var(--pg-surface); box-shadow: var(--pg-lift-1);
+  transition: transform .16s cubic-bezier(.32,.72,0,1), box-shadow .16s, border-color .16s, background .16s;
+}
+.pg-prov:hover { transform: translateY(-2px); box-shadow: var(--pg-lift-2); border-color: var(--pg-line-strong); background: var(--pg-raised); }
+.pg-prov:active { transform: translateY(0); box-shadow: var(--pg-inset); }
+.pg-prov-hd { display: flex; align-items: center; gap: 10px; }
+.pg-prov-mark {
+  width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--pg-r-chip);
+  font: 600 10px/1 var(--pg-font-data);
+  color: var(--k-integration); background: color-mix(in srgb, var(--k-integration) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--k-integration) 30%, transparent);
+}
+.pg-prov[data-cat="automation"] .pg-prov-mark { color: var(--k-automation); background: color-mix(in srgb, var(--k-automation) 15%, transparent); border-color: color-mix(in srgb, var(--k-automation) 30%, transparent); }
+.pg-prov[data-cat="developer"] .pg-prov-mark { color: var(--k-agent); background: color-mix(in srgb, var(--k-agent) 15%, transparent); border-color: color-mix(in srgb, var(--k-agent) 30%, transparent); }
+.pg-prov[data-cat="financial"] .pg-prov-mark { color: var(--k-skill); background: color-mix(in srgb, var(--k-skill) 15%, transparent); border-color: color-mix(in srgb, var(--k-skill) 30%, transparent); }
+.pg-prov-hd div { min-width: 0; margin-right: auto; }
+.pg-prov-hd strong { display: block; font-size: 13px; font-weight: 600; }
+.pg-prov-hd small { display: block; margin-top: 1px; font-size: 11.2px; color: var(--pg-muted); }
+.pg-prov-state { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0; }
+.pg-prov-state dt { font: 500 11px/1 var(--pg-font-ui); letter-spacing: .11em; text-transform: uppercase; color: var(--pg-faint); }
+.pg-prov-state dd { margin: 4px 0 0; font-size: 12px; color: var(--pg-ink-2); }
+.pg-prov-foot { display: flex; align-items: center; gap: 8px; padding-top: 9px; border-top: 1px solid var(--pg-line-soft); }
+.pg-prov-foot span { font-size: 11.2px; color: var(--pg-faint); margin-left: auto; }
+
+.pg-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(10,8,14,.42); opacity: 0; pointer-events: none; transition: opacity .2s; }
+.pg-shell[data-panel="open"] .pg-scrim { opacity: 1; pointer-events: auto; }
+.pg-slide {
+  position: absolute; z-index: 41; top: 0; right: 0; bottom: 0; width: min(468px, 82%);
+  display: flex; flex-direction: column; background: var(--pg-workspace);
+  border-left: 1px solid var(--pg-line-strong); box-shadow: var(--pg-e4);
+  transform: translateX(100%); transition: transform .26s cubic-bezier(.32,.72,0,1);
+}
+.pg-shell[data-panel="open"] .pg-slide { transform: translateX(0); }
+.pg-slide-hd { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px; border-bottom: 1px solid var(--pg-line-soft); }
+.pg-slide-hd div { min-width: 0; margin-right: auto; }
+.pg-slide-hd h2 { font-size: 15px; font-weight: 600; }
+.pg-slide-hd p { margin: 3px 0 0; font-size: 11.8px; color: var(--pg-muted); }
+.pg-slide-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.pg-field { display: flex; flex-direction: column; gap: 6px; }
+.pg-field p { margin: 0; font-size: 12.4px; color: var(--pg-ink-2); line-height: 1.6; }
+.pg-evidence {
+  padding: 11px 12px; border-radius: var(--pg-r-chip);
+  border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
+  font: 400 11.2px/1.65 var(--pg-font-data); color: var(--pg-muted); white-space: pre-wrap; word-break: break-word;
+}
+.pg-slide-foot { flex: none; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--pg-line-soft); background: var(--pg-spine); }
+.pg-btn {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 13px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); cursor: pointer;
+  background: var(--pg-surface); color: var(--pg-ink-2); font-size: 12.3px;
+}
+.pg-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.rv-drawer { border-top: 1px solid var(--rv-edge); background: var(--rv-panel); }
+.rv-drawer-in { max-width: 1180px; margin: 0 auto; padding: 20px 18px 26px; }
+.rv-drawer h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.rv-drawer > .rv-drawer-in > p { margin: 0 0 16px; font-size: 12.8px; color: var(--rv-ink-2); max-width: 78ch; }
+.rv-tablewrap { overflow-x: auto; border: 1px solid var(--rv-edge); border-radius: 10px; background: var(--rv-bg); }
+table.rv-matrix { width: 100%; border-collapse: collapse; font-size: 12.3px; min-width: 720px; }
+table.rv-matrix th, table.rv-matrix td { padding: 10px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--rv-edge); }
+table.rv-matrix thead th { border-top: 0; font: 500 9.6px/1.3 "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--rv-faint); white-space: nowrap; }
+table.rv-matrix tbody th { font-weight: 600; color: var(--rv-ink); white-space: nowrap; }
+table.rv-matrix td { color: var(--rv-ink-2); }
+table.rv-matrix code { font: 400 11px/1.5 "JetBrains Mono", monospace; color: var(--rv-faint); }
+
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+body[data-motion="reduced"] * { transition-duration: .001ms !important; animation-duration: .001ms !important; }
+</style>
+
+<style>
+/* ── Revision: owner-language surfaces ─────────────────────────────────────
+   Raw table names, enum names and internal architecture labels are removed
+   from the canvas. They survive only inside fold-outs and the details sheet,
+   where someone who wants the provenance can ask for it. Type sizes are
+   raised so the 900-wide frame stays comfortable.
+   ------------------------------------------------------------------------ */
+.pg-page { gap: 14px; }
+.pg-head p { font-size: 13.4px; color: var(--pg-ink-2); }
+.pg-hint { font-size: 12.2px; }
+.pg-plate-hd p { font-size: 12.4px; }
+
+/* Compact status card — replaces the explanatory slab */
+.pg-status { display: flex; flex-direction: column; gap: 12px; padding: 15px 16px; }
+.pg-status-top { display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; }
+.pg-status-top h2 { font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; }
+.pg-status p { margin: 0; font-size: 13.2px; line-height: 1.6; color: var(--pg-ink-2); max-width: 70ch; }
+.pg-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 1px; }
+.pg-action {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); cursor: pointer;
+  background: var(--pg-surface); color: var(--pg-ink); font-size: 13px; font-weight: 500;
+  transition: background .14s, border-color .14s, transform .12s;
+}
+.pg-action:hover { background: var(--pg-raised); border-color: var(--pg-line-strong); }
+.pg-action:active { transform: translateY(1px); box-shadow: var(--pg-inset); }
+.pg-action[data-primary] { border-color: var(--pg-line-authority); box-shadow: var(--pg-lift-1); background: var(--pg-raised); }
+.pg-action[data-primary]:hover {
+  border-color: var(--pg-gold-fill);
+  background: color-mix(in srgb, var(--pg-gold-bloom) 34%, var(--pg-raised));
+  box-shadow: var(--pg-lift-2);
+}
+.pg-action:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.pg-action .pg-badge {
+  min-width: 21px; height: 20px; padding: 0 6px; border-radius: var(--pg-r-pill);
+  display: inline-grid; place-items: center; background: var(--pg-graphite); color: var(--pg-gold-core);
+  font: 600 11.5px/1 var(--pg-font-data);
+}
+
+/* Capability cards with progressive disclosure */
+.pg-caps { display: flex; flex-direction: column; }
+.pg-cap { border-top: 1px solid var(--pg-line-soft); padding: 0; }
+.pg-caps > .pg-cap:first-child { border-top: 0; }
+.pg-cap-head { display: grid; grid-template-columns: 3px 1fr auto; gap: 0 14px; align-items: start; padding: 14px 16px; }
+.pg-cap-bar { align-self: stretch; border-radius: 2px; background: var(--pg-line-strong); }
+.pg-cap[data-s="ready"] .pg-cap-bar { background: var(--k-automation); }
+.pg-cap[data-s="live"] .pg-cap-bar { background: var(--pg-positive); }
+.pg-cap-copy { min-width: 0; }
+.pg-cap-copy h3 { font-size: 13.8px; font-weight: 600; letter-spacing: -.006em; }
+.pg-cap-copy p { margin: 5px 0 0; font-size: 12.9px; line-height: 1.55; color: var(--pg-ink-2); max-width: 72ch; }
+.pg-state {
+  display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
+  padding: 5px 10px; border-radius: var(--pg-r-pill); border: 1px solid var(--pg-line);
+  background: var(--pg-surface); color: var(--pg-muted); font-size: 11.6px; font-weight: 500;
+}
+.pg-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pg-state[data-s="ready"] { color: var(--k-automation); border-color: color-mix(in srgb, var(--k-automation) 40%, var(--pg-line)); }
+.pg-state[data-s="live"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 40%, var(--pg-line)); }
+
+/* Fold-out — native details, keyboard-operable, no motion dependency */
+.pg-fold { margin: 0 16px 14px 33px; }
+.pg-fold > summary {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; list-style: none;
+  padding: 5px 9px; margin-left: -9px; border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); font-size: 12.2px; transition: color .14s, background .14s;
+}
+.pg-fold > summary::-webkit-details-marker { display: none; }
+.pg-fold > summary:hover { color: var(--pg-ink); background: var(--pg-surface); }
+.pg-fold > summary:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 2px; }
+.pg-fold > summary::before {
+  content: ""; width: 0; height: 0; flex: none;
+  border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform .18s ease;
+}
+.pg-fold[open] > summary::before { transform: rotate(90deg); }
+.pg-fold-body {
+  margin-top: 8px; padding: 12px 14px; border-radius: var(--pg-r-chip);
+  border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
+}
+.pg-fold-body p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.6; color: var(--pg-ink-2); max-width: 72ch; }
+.pg-fold-body p:last-child { margin-bottom: 0; }
+.pg-fold-body dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; }
+.pg-fold-body dt { font: 500 11px/1.5 var(--pg-font-data); color: var(--pg-faint); white-space: nowrap; }
+.pg-fold-body dd { margin: 0; font-size: 12.3px; color: var(--pg-ink-2); }
+
+/* Owner-language governed chain */
+.pg-chain { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; padding: 14px 16px 16px; }
+.pg-link { position: relative; flex: 1 1 158px; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 0 16px 10px 0; }
+.pg-link::after { content: "→"; position: absolute; right: 3px; top: 2px; color: var(--pg-faint); font-size: 13px; line-height: 1; }
+.pg-link:last-child { padding-right: 0; }
+.pg-link:last-child::after { content: none; }
+.pg-link b { font-size: 12.9px; font-weight: 600; color: var(--pg-ink); }
+.pg-link small { font-size: 12px; color: var(--pg-muted); line-height: 1.5; }
+.pg-link[data-s="gap"] b::after {
+  content: "not yet"; margin-left: 7px; padding: 2px 6px; border-radius: 4px;
+  font: 500 11px/1.4 var(--pg-font-data); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--pg-warning); border: 1px solid color-mix(in srgb, var(--pg-warning) 45%, transparent);
+}
+
+/* Outcome preview in owner language */
+.pg-outcome-row { grid-template-columns: 15px 1fr; padding: 10px 16px; }
+.pg-outcome-row strong { font-size: 12.9px; font-weight: 500; }
+
+.pg-step small { font-size: 11.4px; text-transform: none; letter-spacing: 0; font-family: var(--pg-font-ui); color: var(--pg-muted); }
+.pg-step[aria-current="step"] small { color: var(--pg-ink-2); }
+.pg-step-n span { font-size: 13px; }
+.pg-lane-why, .pg-rule em { font-size: 12.7px; }
+.pg-row > .pg-eyebrow { font-size: 11px; }
+.pg-ctl { font-size: 12.8px; min-height: 34px; }
+.pg-cap-head:focus-within { background: var(--pg-surface); }
+</style>
+
+<div class="rv-bar" role="group" aria-label="Prototype review controls">
+  <div class="rv-brand">
+    <strong>Automations inside Integrations</strong>
+    <span>Review prototype · not production chrome</span>
+  </div>
+  <div class="rv-grp">
+    <label id="lbl-screen">Review view</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-screen">
+      <button type="button" data-screen="cmd" aria-pressed="false">Command Center</button>
+      <button type="button" data-screen="catalogue" aria-pressed="false">Integrations · Catalogue</button>
+      <button type="button" data-screen="auto" aria-pressed="true">Automations · today</button>
+      <button type="button" data-screen="intended" aria-pressed="false">Automations · intended</button>
+    </div>
+  </div>
+  <div class="rv-grp">
+    <label id="lbl-theme">Theme</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-theme">
+      <button type="button" data-pgtheme="light" aria-pressed="true">Mineral</button>
+      <button type="button" data-pgtheme="dark" aria-pressed="false">Obsidian</button>
+    </div>
+  </div>
+  <div class="rv-grp">
+    <label id="lbl-vp">Viewport</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-vp">
+      <button type="button" data-vp="1536x770" aria-pressed="true">1536×770</button>
+      <button type="button" data-vp="1366x768" aria-pressed="false">1366×768</button>
+      <button type="button" data-vp="1024x768" aria-pressed="false">1024×768</button>
+      <button type="button" data-vp="900x1000" aria-pressed="false">900×1000</button>
+    </div>
+  </div>
+  <div class="rv-grp">
+    <label id="lbl-motion">Motion</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-motion">
+      <button type="button" data-motion="full" aria-pressed="true">Full</button>
+      <button type="button" data-motion="reduced" aria-pressed="false">Reduced</button>
+    </div>
+  </div>
+</div>
+
+<div class="rv-note">
+  <b>These four views are a review aid, not a product control.</b>
+  <span>In the product a person sees one Automations surface showing one truthful state — there is no today/intended switch. “Today” is what that surface shows now; “intended” is the same surface once the missing piece exists. Nothing inside the frame writes anything, and nothing claims a capability that has no contract behind it.</span>
+</div>
+
+<div class="rv-stage">
+  <div class="rv-frame" id="frame">
+    <span class="rv-vp-tag" id="vpTag">1536 × 770</span>
+    <div class="pg-shell" data-pg="light" id="shell" data-panel="closed">
+
+      <nav class="pg-rail" aria-label="Workspace">
+        <div class="pg-brand">
+          <span class="pg-mark" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 19 12 4l7 15"/><path d="M8.5 13.5h7"/></svg>
+          </span>
+          <div><strong>PAIGE</strong><span>SOLO</span></div>
+        </div>
+        <div class="pg-navlist" id="navlist"></div>
+        <div class="pg-rail-foot">
+          <div class="pg-seal">
+            <span aria-hidden="true">FS</span>
+            <div><strong>First Sterling Capital</strong><small>Owner workspace</small></div>
+          </div>
+        </div>
+      </nav>
+
+      <div class="pg-canvas">
+        <header class="pg-spine">
+          <div class="pg-context">
+            <span id="ctxKicker">FIRST STERLING CAPITAL</span>
+            <strong id="ctxTitle">Settings</strong>
+          </div>
+          <div class="pg-cmd" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            Direct PAIGE, or press ⌘K <kbd>⌘K</kbd>
+          </div>
+          <button class="pg-ibtn" type="button" aria-label="Notifications">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          </button>
+        </header>
+
+        <div class="pg-substrip" id="substrip" role="tablist" aria-label="Section"></div>
+
+        <main class="pg-main" id="mainScroll" tabindex="-1">
+
+          <div class="pg-page" id="screen-cmd" hidden>
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <h1>Systems Check</h1>
+                <p>Shown only to confirm the main menu is untouched by this change. Nothing on this surface moves.</p>
+              </div>
+            </div>
+            <section class="pg-plate">
+              <div class="pg-status">
+                <div class="pg-status-top"><h2>Command Center keeps everything it has</h2></div>
+                <p>Its two tabs, its evidence graph and its decision queue are unchanged. Automations never appears here.</p>
+              </div>
+            </section>
+          </div>
+
+          <div class="pg-page" id="screen-catalogue" hidden>
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <span class="pg-eyebrow">Solo settings</span>
+                <h1>Integrations</h1>
+                <p>The outside tools your business uses, and what Paige is allowed to do with them.</p>
+              </div>
+            </div>
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy">
+                  <h2>Your tools</h2>
+                  <p>Colour identifies the tool, never whether it is ready or permitted.</p>
+                </div>
+                <div class="pg-filters" role="group" aria-label="Filter tools" id="catFilters">
+                  <button type="button" data-cat="all" aria-pressed="true">All</button>
+                  <button type="button" data-cat="automation" aria-pressed="false">Automation</button>
+                  <button type="button" data-cat="financial" aria-pressed="false">Money</button>
+                  <button type="button" data-cat="documents" aria-pressed="false">Documents</button>
+                  <button type="button" data-cat="client-data" aria-pressed="false">Client data</button>
+                  <button type="button" data-cat="developer" aria-pressed="false">Developer</button>
+                </div>
+              </div>
+              <div class="pg-grid" id="provGrid"></div>
+            </section>
+          </div>
+
+          <!-- ░░ TODAY — one truthful state, owner language ░░ -->
+          <div class="pg-page" id="screen-auto">
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <span class="pg-eyebrow">Solo settings · Integrations</span>
+                <h1>Automations</h1>
+                <p>Things Paige does on her own, so you do not have to remember them.</p>
+              </div>
+            </div>
+
+            <section class="pg-plate">
+              <div class="pg-status">
+                <div class="pg-status-top">
+                  <h2>Nothing is running yet</h2>
+                  <span class="pg-state">Nothing set up</span>
+                </div>
+                <p>Paige has not been given anything to run for you, and nothing has run here before. The kind you can set up follows a client through your pipeline — so a pipeline is the first thing she needs.</p>
+                <div class="pg-actions">
+                  <button class="pg-action" type="button" data-primary id="actPipeline">
+                    Set up your pipeline
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 12h13"/><path d="m12 6 6 6-6 6"/></svg>
+                  </button>
+                  <button class="pg-action" type="button" id="actFlagged">
+                    See what she has flagged
+                    <span class="pg-badge">13</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy">
+                  <h2>What she can run for you</h2>
+                  <p>Four kinds. Open one to see where it stands.</p>
+                </div>
+              </div>
+              <div class="pg-caps" id="caps"></div>
+            </section>
+          </div>
+
+          <!-- ░░ INTENDED — the same surface once the missing piece exists ░░ -->
+          <div class="pg-page" id="screen-intended" hidden>
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <span class="pg-eyebrow">Solo settings · Integrations</span>
+                <h1>Automations</h1>
+                <p>Tell Paige what should happen on its own, see what it would do before it runs, and keep the last word.</p>
+              </div>
+            </div>
+
+            <nav class="pg-flowbar" aria-label="How an automation gets made" id="flowbar"></nav>
+
+            <div class="pg-two">
+              <section class="pg-plate">
+                <div class="pg-plate-hd">
+                  <div class="pg-hd-copy"><h2>Yours</h2><p>Nothing set up yet.</p></div>
+                </div>
+                <div style="padding:16px">
+                  <p style="margin:0;font-size:12.9px;line-height:1.6;color:var(--pg-ink-2)">
+                    When you make one it appears here, with whether it is on and when it last ran.
+                  </p>
+                </div>
+                <div style="padding:0 16px 16px">
+                  <button class="pg-action" type="button" id="newRule" style="width:100%;justify-content:center" data-primary>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    New automation
+                  </button>
+                </div>
+              </section>
+
+              <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+                <section class="pg-plate">
+                  <div class="pg-plate-hd">
+                    <div class="pg-hd-copy"><h2>New automation</h2><p>Nothing is saved from this prototype.</p></div>
+                  </div>
+                  <div class="pg-form">
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">When</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow">
+                          <button class="pg-ctl" type="button" data-missing="true" disabled>a client reaches a stage…</button>
+                          <span class="pg-state">Needs your pipeline first</span>
+                        </div>
+                        <p class="pg-hint">You pick the moment — a client moving from one stage of your pipeline to the next. Set the pipeline up and these fill in.</p>
+                      </div>
+                    </div>
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">Then</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow" id="intentRow" role="group" aria-label="Kind of message"></div>
+                        <p class="pg-hint" id="intentHint"></p>
+                      </div>
+                    </div>
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">Voice</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow" id="toneRow" role="group" aria-label="Tone"></div>
+                        <p class="pg-hint">How it should sound. She writes it in your voice either way.</p>
+                      </div>
+                    </div>
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">Before it goes</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow" id="modeRow" role="group" aria-label="Approval"></div>
+                        <p class="pg-hint" id="modeHint"></p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="pg-slide-foot" style="border-top:1px solid var(--pg-line-soft)">
+                    <button class="pg-action" type="button" disabled>Save</button>
+                    <button class="pg-action" type="button" id="sandboxBtn">See what it would do</button>
+                  </div>
+                </section>
+
+                <section class="pg-plate">
+                  <div class="pg-plate-hd">
+                    <div class="pg-hd-copy"><h2>Before it ever runs</h2><p>Try it against one client. Nothing is sent.</p></div>
+                  </div>
+                  <div class="pg-outcome" id="outcomeList"></div>
+                  <details class="pg-fold" style="margin-top:10px">
+                    <summary>Why she might hold or stop</summary>
+                    <div class="pg-fold-body">
+                      <p>Every message passes the same checks, in the same order, whether you sent it or she did: whether this client asked not to be contacted, whether the address has opted out, whether they agreed to this kind of message, whether you have paused automatic sending, and whether it is a reasonable hour to text.</p>
+                      <p>If any check is unclear, she stops rather than guesses.</p>
+                    </div>
+                  </details>
+                </section>
+              </div>
+            </div>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy"><h2>How this stays yours</h2><p>An automation never gets its own permission. It runs inside the limits you already set.</p></div>
+              </div>
+              <div class="pg-chain" id="chain"></div>
+              <details class="pg-fold" style="margin:0 16px 16px">
+                <summary>What sits behind each step</summary>
+                <div class="pg-fold-body">
+                  <dl id="chainDetail"></dl>
+                </div>
+              </details>
+            </section>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy"><h2>What is still missing</h2><p>The rest of this already works. These are the pieces that do not.</p></div>
+              </div>
+              <div class="pg-caps" id="gaps"></div>
+            </section>
+          </div>
+
+        </main>
+      </div>
+
+      <div class="pg-scrim" id="scrim"></div>
+      <aside class="pg-slide" id="slide" role="dialog" aria-modal="true" aria-labelledby="slideTitle" tabindex="-1" aria-hidden="true">
+        <div class="pg-slide-hd">
+          <div><h2 id="slideTitle">—</h2><p id="slideSub">—</p></div>
+          <button class="pg-ibtn" type="button" id="slideClose" aria-label="Close">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <div class="pg-slide-body" id="slideBody"></div>
+        <div class="pg-slide-foot" id="slideFoot"></div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<div class="rv-drawer">
+  <div class="rv-drawer-in">
+    <h2>Flow matrix — real, unavailable, mocked</h2>
+    <p>Reviewer reference, not part of the product surface. “Real” means a live contract this workspace can genuinely use; “unavailable” means it exists but cannot complete, and the surface says so plainly; “mocked” means the prototype supplies it for review only.</p>
+    <div class="rv-tablewrap">
+      <table class="rv-matrix">
+        <thead><tr><th scope="col">Element</th><th scope="col">Class</th><th scope="col">Reason</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Main rail (6 slots)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Not touched. No slot added, renamed or reordered.</td></tr>
+          <tr><th scope="row">Settings rail (8 items)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Exactly as shipped.</td></tr>
+          <tr><th scope="row">Automations sub-tab</th><td><span class="t-chip" data-t="mock">New</span></td><td>The one added structure, copying the strip Command Center already renders.</td></tr>
+          <tr><th scope="row">“Set up your pipeline”</th><td><span class="t-chip" data-t="real">Real</span></td><td>A workspace admin can genuinely create pipelines and stages; policy verified. It is the prerequisite for the one automation kind that is authorable.</td></tr>
+          <tr><th scope="row">“See what she has flagged (13)”</th><td><span class="t-chip" data-t="real">Real</span></td><td>13 filed items read live from this workspace, all from its systems check. Reachable today.</td></tr>
+          <tr><th scope="row">Stage follow-ups</th><td><span class="t-chip" data-t="none">Blocked</span></td><td>Real write contract and a working trigger, but no delivery route anywhere and this workspace has no pipeline.</td></tr>
+          <tr><th scope="row">Ready-made automations</th><td><span class="t-chip" data-t="none">Blocked</span></td><td>All catalogue entries are platform-scoped, which the trigger restricts to operator authority.</td></tr>
+          <tr><th scope="row">Form follow-ups</th><td><span class="t-chip" data-t="none">Blocked</span></td><td>Readable and scoped, but policy forbids every direct write from this surface.</td></tr>
+          <tr><th scope="row">Counts, runs, rates, repairs, health</th><td><span class="t-chip" data-t="none">Absent</span></td><td>Deliberately not shown. No run has ever happened, so any figure would be invented.</td></tr>
+          <tr><th scope="row">Message-check outcomes</th><td><span class="t-chip" data-t="real">Real vocabulary</span></td><td>The six results the shipped pre-send checks already return, restated in plain language.</td></tr>
+          <tr><th scope="row">“Save”, “See what it would do”</th><td><span class="t-chip" data-t="mock">Inert</span></td><td>Disabled or explanatory. No prototype control writes anything.</td></tr>
+          <tr><th scope="row">Copy on the canvas</th><td><span class="t-chip" data-t="mock">Draft</span></td><td>Wording is a design decision and sits with Claude Design; drafted here so the flow can be judged.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var ICONS = {
+    home:'<path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 13h6v6h-6z"/>',
+    users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 11a3 3 0 1 0-1.6-5.5"/>',
+    mega:'<path d="M4 10v4h3l6 4V6L7 10z"/><path d="M17.5 9.5a4 4 0 0 1 0 5"/>',
+    store:'<path d="M4 8h16l-1 3a3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 12v8h14v-8"/>',
+    chart:'<path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/>',
+    gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+    bolt:'<path d="M12 2 5 13h6l-1 9 8-12h-6z"/>',
+    link:'<path d="M10 13a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7L11.4 6"/><path d="M14 11a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7L12.6 18"/>',
+    back:'<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
+    build:'<path d="M4 20h16"/><path d="M6 20V9l6-5 6 5v11"/>',
+    bell:'<path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    shield:'<path d="M12 3 5 6v5c0 5 3.5 8.5 7 10 3.5-1.5 7-5 7-10V6z"/>',
+    vault:'<rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="3.4"/>',
+    coin:'<circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10h5M9.5 14h5"/>',
+    pulse:'<path d="M3 12h4l2.5-6 4 12L16 12h5"/>',
+    mind:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/>'
+  };
+  function ico(k, s) {
+    return '<svg width="' + (s || 15) + '" height="' + (s || 15) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + "</svg>";
+  }
+
+  var MAIN_RAIL = [["Command Center","home"],["Clients","users"],["Campaigns","mega"],["Marketplace","store"],["Analytics","chart"],["Settings","gear"]];
+  var SETTINGS_RAIL = [["Setup","build"],["Team","users"],["Connections","link"],["Integrations","gear"],["Notifications","bell"],["Security & data","shield"],["Vault","vault"],["Billing","coin"]];
+
+  /* Owner language on the surface. Provenance lives in the fold-out only. */
+  var CAPS = [
+    { id:"stage", s:"ready", title:"Follow up when a client moves forward",
+      state:"Ready to build",
+      body:"When a client reaches a new stage with you, Paige writes the next message and either shows it to you or sends it. This is the one you can set up yourself — it needs your pipeline first.",
+      detail:[
+        ["What works","You can create, change and switch these off yourself, and the moment a client moves is already detected reliably."],
+        ["What does not","There is no route for the message to actually leave yet, so one would be recorded as held rather than sent."],
+        ["In this workspace","No pipeline and no clients in one, so there is nothing to attach it to."]
+      ]},
+    { id:"catalogue", s:"", title:"Ready-made automations",
+      state:"Not yours to run",
+      body:"A set of prepared jobs exists, but they belong to the platform team rather than to your workspace, so none of them can be started from here.",
+      detail:[
+        ["Why","Every prepared job is owned at the platform level, and starting one is restricted to that team."],
+        ["Also","Most are not connected to anything that could carry them out."],
+        ["What would change it","Either versions that belong to your workspace, or permission for an owner to start a platform one."]
+      ]},
+    { id:"form", s:"", title:"Follow up when someone fills in a form",
+      state:"Set up with the form",
+      body:"These are attached to a form when you build it, not created here. You have none yet.",
+      detail:[
+        ["Where they live","With the form itself, in your campaign builder."],
+        ["Why not here","This surface can read them but is not allowed to create or change them, deliberately."]
+      ]},
+    { id:"flagged", s:"live", title:"Things Paige has flagged",
+      state:"13 waiting",
+      body:"Thirteen items she has raised from your systems check and filed for you. These are the only automatic records in your workspace so far — she raised them, you have not acted on them.",
+      detail:[
+        ["Where they came from","Your systems check, not a rule you set up."],
+        ["Where to see them","Command Center, on the systems check tab."],
+        ["Status","All thirteen are filed and waiting."]
+      ]}
+  ];
+
+  var FLOW = [
+    ["Describe it","Say what should happen, in your own words."],
+    ["Check it","See what it would do to a real client, before it runs."],
+    ["Approve it","Decide whether she shows you first or sends on her own."],
+    ["Watch it","See every time it runs, and what came of it."]
+  ];
+
+  var INTENTS = [
+    ["transactional","Something they are expecting","A receipt, a confirmation, a next step they already agreed to."],
+    ["notification","A heads-up","Letting them know something happened."],
+    ["nurture","Keeping in touch","Staying useful between pieces of work."],
+    ["marketing","An offer","Promoting something. Needs their agreement to marketing.'"]
+  ];
+  var TONES = ["warm","professional","consultative","welcoming","encouraging","celebratory"];
+  var MODES = [
+    ["draft_for_review","Show me first","She writes it and puts it in front of you. Nothing leaves until you say so."],
+    ["auto_send","Let her send it","It goes without you. The checks below still run, and can still stop it."]
+  ];
+  var OUTCOMES = [
+    ["pass","She would send it"],
+    ["queue","She would wait — you have paused automatic sending"],
+    ["queue","She would wait — too late in the day to text"],
+    ["stop","She would stop — this client asked not to be contacted"],
+    ["stop","She would stop — this address has opted out"],
+    ["stop","She would stop — they have not agreed to this kind of message"]
+  ];
+  var CHAIN = [
+    ["You decide","", "You set what she may do without asking."],
+    ["She reads your work","", "Your clients, their stage, what has already happened."],
+    ["She works out the move","", "What to say and when."],
+    ["Your limits apply","gap","Nothing may go further than you allowed."],
+    ["She files it","", "The action is recorded, not fired off quietly."],
+    ["You see what happened","", "Every run appears in your workspace."]
+  ];
+  var CHAIN_DETAIL = [
+    ["You decide","You set how far she may go without asking. A single automation can be more cautious than that, never bolder."],
+    ["She reads your work","Only your own clients and their stage with you — nothing from anyone else's workspace."],
+    ["She works out the move","What to say, and whether now is the right moment."],
+    ["Your limits apply","Your setting is checked before anything happens. The page where you see and change it does not show live numbers yet."],
+    ["She files it","It joins the same queue your flagged items sit in, so nothing happens quietly."],
+    ["You see what happened","Written down only after it really ran — never in advance."]
+  ];
+  var GAPS = [
+    { id:"g1", s:"", title:"Something has to carry the message out", state:"The blocker",
+      body:"A rule can be written and the moment can be detected, but nothing yet takes that and actually produces the message. Until it does, an automation can exist and still never do anything.",
+      detail:[["Already built","The safety checks, the sending itself, the approval queue and the activity record."],["Missing","The one step that joins them together."]]},
+    { id:"g2", s:"", title:"You need a pipeline before you can build one", state:"Prerequisite",
+      body:"Automations attach to a client moving through your stages, so a workspace without a pipeline has nothing to attach one to.",
+      detail:[["Already built","Pipelines, stages, and your permission to create both."],["Missing","Nothing — this is a setup step, and it is the safe next action offered above."]]},
+    { id:"g3", s:"", title:"There is no way to try one safely yet", state:"Missing",
+      body:"You cannot currently ask “what would this do?” and get an answer without something happening.",
+      detail:[["Already built","The checks themselves, and the exact set of answers they give."],["Missing","A way to run them for one client without sending."]]},
+    { id:"g4", s:"", title:"Run history is split in two", state:"Missing",
+      body:"Two kinds of automatic work are recorded separately, so there is no single list of everything that ran.",
+      detail:[["Already built","Both records, each with honest outcomes including why something was skipped."],["Missing","One view across both."]]}
+  ];
+
+  var PROVIDERS = [
+    { id:"n8n", mark:"n8n", name:"n8n", kind:"Automation", cat:"automation", config:"Not connected", health:"Nothing to measure", cap:"none",
+      body:"Nothing is connected for this workspace. No keys or account details are shown here, or held here.", handoff:"Open Automations" },
+    { id:"mcp", mark:"MCP", name:"Tool bridge", kind:"Connects other tools", cat:"developer", config:"Not connected", health:"Nothing to measure", cap:"none",
+      body:"Nothing is connected for this workspace, and there is no safe way to set it up from here yet.", handoff:null },
+    { id:"quickbooks", mark:"QB", name:"QuickBooks", kind:"Accounting", cat:"financial", config:"Not set up", health:"Nothing to measure", cap:"partial",
+      body:"Groundwork exists, but nothing proves this workspace is connected. No connection is being claimed.", handoff:null },
+    { id:"stripe", mark:"St", name:"Stripe", kind:"Payments", cat:"financial", config:"Not set up", health:"Nothing to measure", cap:"partial",
+      body:"Payout records exist. They do not show this workspace is connected or entitled to anything.", handoff:null },
+    { id:"docusign", mark:"Ds", name:"DocuSign", kind:"Signatures", cat:"documents", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Groundwork exists but has no safe way to reach your workspace yet.", handoff:null },
+    { id:"apollo", mark:"Ap", name:"Apollo", kind:"Client data", cat:"client-data", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Set up across the whole platform rather than per workspace, so nothing can be claimed for yours.", handoff:null },
+    { id:"plaid", mark:"Pl", name:"Plaid", kind:"Bank links", cat:"financial", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Groundwork exists but does not show your workspace is ready.", handoff:null },
+    { id:"api", mark:"API", name:"Direct connections", kind:"For developers", cat:"developer", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Platform-level records are not a connection for your workspace.", handoff:null }
+  ];
+
+  var S = { screen:"auto", theme:"light", vp:"1536x770", cat:"all", step:0, intent:"nurture", tone:"warm", mode:"draft_for_review" };
+  var shell = document.getElementById("shell"), frame = document.getElementById("frame");
+  var navlist = document.getElementById("navlist"), substrip = document.getElementById("substrip");
+  var provGrid = document.getElementById("provGrid"), slide = document.getElementById("slide"), lastFocus = null;
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+  function isAuto() { return S.screen === "auto" || S.screen === "intended"; }
+  function inSettings() { return S.screen === "catalogue" || isAuto(); }
+
+  function navBtn(label, icon, active) {
+    return '<button type="button" class="pg-nav-a' + (active ? " is-active" : "") + '"' +
+      (active ? ' aria-current="page"' : "") + ">" + (active ? "<i></i>" : "") +
+      ico(icon) + "<span>" + esc(label) + "</span></button>";
+  }
+  function renderRail() {
+    var h = "";
+    if (inSettings()) {
+      h += navBtn("Back to PAIGE", "back", false);
+      h += '<div class="pg-navlabel">Settings</div>';
+      SETTINGS_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Integrations"); });
+    } else {
+      MAIN_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Command Center"); });
+    }
+    navlist.innerHTML = h;
+  }
+  function renderSubstrip() {
+    var autoKey = S.screen === "intended" ? "intended" : "auto";
+    var tabs = inSettings() ? [["catalogue","Your tools","link"],[autoKey,"Automations","bolt"]]
+                            : [["cmd","Systems Check","pulse"],["cmdmind","Mind","mind"]];
+    substrip.innerHTML = tabs.map(function (t) {
+      return '<button type="button" role="tab" class="pg-subtab" data-sub="' + t[0] + '" aria-selected="' +
+        (t[0] === S.screen ? "true" : "false") + '">' + ico(t[2], 14) + "<span>" + esc(t[1]) + "</span></button>";
+    }).join("");
+  }
+
+  function capCard(c, idx) {
+    return '<div class="pg-cap" data-s="' + c.s + '">' +
+      '<div class="pg-cap-head"><span class="pg-cap-bar" aria-hidden="true"></span>' +
+      '<div class="pg-cap-copy"><h3>' + esc(c.title) + "</h3><p>" + esc(c.body) + "</p></div>" +
+      '<span class="pg-state" data-s="' + c.s + '">' + esc(c.state) + "</span></div>" +
+      '<details class="pg-fold"><summary>Details</summary><div class="pg-fold-body"><dl>' +
+      c.detail.map(function (d) { return "<dt>" + esc(d[0]) + "</dt><dd>" + esc(d[1]) + "</dd>"; }).join("") +
+      "</dl></div></details></div>";
+  }
+  function renderToday() {
+    document.getElementById("caps").innerHTML = CAPS.map(capCard).join("");
+  }
+
+  function renderIntended() {
+    document.getElementById("flowbar").innerHTML = FLOW.map(function (f, i) {
+      return '<button type="button" class="pg-step" data-step="' + i + '"' + (i === S.step ? ' aria-current="step"' : "") + ">" +
+        '<span class="pg-step-n"><b>' + (i + 1) + "</b><span>" + esc(f[0]) + "</span></span><small>" + esc(f[1]) + "</small></button>";
+    }).join("");
+
+    document.getElementById("intentRow").innerHTML = INTENTS.map(function (t) {
+      return '<button type="button" class="pg-ctl" data-intent="' + t[0] + '" aria-pressed="' +
+        (S.intent === t[0] ? "true" : "false") + '">' + esc(t[1]) + "</button>";
+    }).join("");
+    var pi = INTENTS.filter(function (t) { return t[0] === S.intent; })[0];
+    document.getElementById("intentHint").textContent = pi[2];
+
+    document.getElementById("toneRow").innerHTML = TONES.map(function (t) {
+      return '<button type="button" class="pg-ctl" data-tone="' + t + '" aria-pressed="' +
+        (S.tone === t ? "true" : "false") + '">' + esc(t) + "</button>";
+    }).join("");
+
+    document.getElementById("modeRow").innerHTML = MODES.map(function (m) {
+      return '<button type="button" class="pg-ctl" data-mode="' + m[0] + '" aria-pressed="' +
+        (S.mode === m[0] ? "true" : "false") + '">' + esc(m[1]) + "</button>";
+    }).join("");
+    document.getElementById("modeHint").textContent = MODES.filter(function (m) { return m[0] === S.mode; })[0][2];
+
+    document.getElementById("outcomeList").innerHTML = OUTCOMES.map(function (o) {
+      return '<div class="pg-outcome-row" data-o="' + o[0] + '"><i></i><strong>' + esc(o[1]) + "</strong></div>";
+    }).join("");
+
+    document.getElementById("chain").innerHTML = CHAIN.map(function (c) {
+      return '<div class="pg-link"' + (c[1] ? ' data-s="gap"' : "") + "><b>" + esc(c[0]) + "</b><small>" + esc(c[2]) + "</small></div>";
+    }).join("");
+    document.getElementById("chainDetail").innerHTML = CHAIN_DETAIL.map(function (d) {
+      return "<dt>" + esc(d[0]) + "</dt><dd>" + esc(d[1]) + "</dd>";
+    }).join("");
+
+    document.getElementById("gaps").innerHTML = GAPS.map(capCard).join("");
+  }
+
+  function capLabel(c) { return c === "partial" ? "Partly set up" : "Not connected"; }
+  function renderProviders() {
+    var rows = PROVIDERS.filter(function (p) { return S.cat === "all" || p.cat === S.cat; });
+    provGrid.innerHTML = rows.length ? rows.map(function (p) {
+      return '<button type="button" class="pg-prov" data-prov="' + p.id + '" data-cat="' + p.cat + '">' +
+        '<span class="pg-prov-hd"><span class="pg-prov-mark" aria-hidden="true">' + esc(p.mark) + "</span>" +
+        "<div><strong>" + esc(p.name) + "</strong><small>" + esc(p.kind) + "</small></div>" +
+        '<span class="pg-state"' + (p.cap === "partial" ? ' data-s="ready"' : "") + ">" + esc(capLabel(p.cap)) + "</span></span>" +
+        '<dl class="pg-prov-state"><div><dt>In your workspace</dt><dd>' + esc(p.config) + "</dd></div>" +
+        "<div><dt>Working?</dt><dd>" + esc(p.health) + "</dd></div></dl>" +
+        '<span class="pg-prov-foot">' + (p.handoff ? '<span class="pg-btn" style="pointer-events:none">' + esc(p.handoff) + "</span>" : "") +
+        "<span>Nothing claimed</span></span></button>";
+    }).join("") : '<p style="font-size:12.6px;color:var(--pg-muted);margin:0">Nothing in this group.</p>';
+  }
+
+  function openSlide(title, sub, body, foot, trigger) {
+    lastFocus = trigger || document.activeElement;
+    document.getElementById("slideTitle").textContent = title;
+    document.getElementById("slideSub").textContent = sub;
+    document.getElementById("slideBody").innerHTML = body;
+    document.getElementById("slideFoot").innerHTML = foot;
+    shell.setAttribute("data-panel", "open");
+    slide.setAttribute("aria-hidden", "false");
+    slide.focus();
+  }
+  function closeSlide() {
+    shell.setAttribute("data-panel", "closed");
+    slide.setAttribute("aria-hidden", "true");
+    if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  var VP = { "1536x770":[1536,770], "1366x768":[1366,768], "1024x768":[1024,768], "900x1000":[900,1000] };
+  function applyViewport() {
+    var d = VP[S.vp];
+    frame.style.width = d[0] + "px"; frame.style.height = d[1] + "px";
+    document.getElementById("vpTag").textContent = d[0] + " × " + d[1];
+    var avail = Math.max(320, document.querySelector(".rv-stage").clientWidth - 36);
+    var scale = Math.min(1, avail / d[0]);
+    frame.style.transform = scale < 1 ? "scale(" + scale + ")" : "";
+    frame.style.marginBottom = scale < 1 ? -(d[1] * (1 - scale)) + "px" : "";
+  }
+
+  function applyAll() {
+    shell.setAttribute("data-pg", S.theme);
+    document.documentElement.setAttribute("data-theme", S.theme);
+    document.getElementById("screen-cmd").hidden = S.screen !== "cmd";
+    document.getElementById("screen-catalogue").hidden = S.screen !== "catalogue";
+    document.getElementById("screen-auto").hidden = S.screen !== "auto";
+    document.getElementById("screen-intended").hidden = S.screen !== "intended";
+    document.getElementById("ctxTitle").textContent = inSettings() ? "Settings" : "Command Center";
+    renderRail(); renderSubstrip(); renderToday(); renderIntended(); renderProviders();
+    applyViewport(); closeSlide();
+    document.getElementById("mainScroll").scrollTop = 0;
+  }
+
+  function segGroup(attr, onPick) {
+    document.querySelectorAll(".rv-seg button[data-" + attr + "]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        b.closest(".rv-seg").querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", "true");
+        onPick(b.getAttribute("data-" + attr));
+      });
+    });
+  }
+  segGroup("screen", function (v) { S.screen = v; applyAll(); });
+  segGroup("pgtheme", function (v) { S.theme = v; applyAll(); });
+  segGroup("vp", function (v) { S.vp = v; applyAll(); });
+  segGroup("motion", function (v) { document.body.setAttribute("data-motion", v); });
+
+  substrip.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sub]"); if (!b) return;
+    var k = b.getAttribute("data-sub"); if (k === "cmdmind") return;
+    S.screen = k;
+    document.querySelectorAll(".rv-seg button[data-screen]").forEach(function (x) {
+      x.setAttribute("aria-pressed", x.getAttribute("data-screen") === k ? "true" : "false");
+    });
+    applyAll();
+  });
+
+  document.getElementById("catFilters").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-cat]"); if (!b) return;
+    this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+    b.setAttribute("aria-pressed", "true");
+    S.cat = b.getAttribute("data-cat"); renderProviders();
+  });
+
+  document.getElementById("screen-intended").addEventListener("click", function (e) {
+    var step = e.target.closest("[data-step]");
+    if (step) { S.step = Number(step.getAttribute("data-step")); renderIntended(); return; }
+    var pick = e.target.closest("[data-intent],[data-tone],[data-mode]");
+    if (!pick || pick.disabled) return;
+    if (pick.hasAttribute("data-intent")) S.intent = pick.getAttribute("data-intent");
+    else if (pick.hasAttribute("data-tone")) S.tone = pick.getAttribute("data-tone");
+    else S.mode = pick.getAttribute("data-mode");
+    renderIntended();
+  });
+
+  document.getElementById("sandboxBtn").addEventListener("click", function () {
+    openSlide("See what it would do", "Not possible yet",
+      '<div class="pg-field"><p>You would pick one client, and Paige would tell you exactly what would happen to them — sent, held, or stopped and why — without anything actually being sent.</p></div>' +
+      '<div class="pg-field"><p>The checks that would decide this already run on every message today. What is missing is a way to ask them a question without also doing the thing.</p></div>',
+      '<button class="pg-action" type="button" disabled>Try it</button>', this);
+  });
+
+  document.getElementById("actPipeline").addEventListener("click", function () {
+    openSlide("Set up your pipeline", "This one you can do today",
+      '<div class="pg-field"><p>A pipeline is the set of stages a client moves through with you. Once it exists, Paige can watch for someone reaching a stage and act on it.</p></div>' +
+      '<div class="pg-field"><p>You can create it yourself — it lives with your campaigns. In the product this button takes you straight there.</p></div>',
+      '<button class="pg-action" type="button" data-primary disabled>Go to pipeline setup</button>', this);
+  });
+  document.getElementById("actFlagged").addEventListener("click", function () {
+    openSlide("Things Paige has flagged", "13 waiting",
+      '<div class="pg-field"><p>Thirteen items she raised from your systems check and filed for you. None came from a rule you set up — she noticed them herself.</p></div>' +
+      '<div class="pg-field"><p>They live on your Command Center, under the systems check tab. In the product this button takes you there.</p></div>',
+      '<button class="pg-action" type="button" data-primary disabled>Open systems check</button>', this);
+  });
+  document.getElementById("newRule").addEventListener("click", function () { S.step = 0; renderIntended(); });
+
+  provGrid.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-prov]"); if (!t) return;
+    var p = PROVIDERS.filter(function (x) { return x.id === t.getAttribute("data-prov"); })[0]; if (!p) return;
+    openSlide(p.name, p.kind,
+      '<div class="pg-field"><p>' + esc(p.body) + "</p></div>" +
+      '<div class="pg-field"><p><strong>In your workspace:</strong> ' + esc(p.config) + "<br><strong>Working?</strong> " + esc(p.health) + "</p></div>",
+      '<button class="pg-action" type="button" disabled>' + esc(p.handoff || "Nothing to set up here yet") + "</button>", t);
+  });
+
+  document.getElementById("slideClose").addEventListener("click", closeSlide);
+  document.getElementById("scrim").addEventListener("click", closeSlide);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && shell.getAttribute("data-panel") === "open") { e.preventDefault(); closeSlide(); }
+  });
+  slide.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab") return;
+    var f = slide.querySelectorAll("button:not([disabled]), [href], textarea, input, [tabindex]:not([tabindex='-1'])");
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  window.addEventListener("resize", applyViewport);
+
+  applyAll();
+})();
+</script>

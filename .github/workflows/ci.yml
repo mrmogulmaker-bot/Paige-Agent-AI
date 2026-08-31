@@ -330,6 +330,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:comms-tenant-scope
 
+      - name: Smoke — client-memory authorization (§9 cross-client fail-closed)
+        if: ${{ !cancelled() }}
+        run: npm run test:client-memory-authz
+
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant

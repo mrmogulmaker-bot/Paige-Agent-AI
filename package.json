@@ -42,6 +42,7 @@
     "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",
     "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs",
     "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs",
+    "test:client-memory-authz": "node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs",
     "test:knowledge-scope": "node --import ./scripts/knowledge-scope/register.mjs scripts/knowledge-scope/stage1-check.mjs"
   },
   "dependencies": {
