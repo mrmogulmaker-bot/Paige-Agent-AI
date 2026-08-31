@@ -1166,5 +1166,92 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
     wrapped >= 8, String(wrapped));
 }
 
+// ── 17. §70 — A PROPOSAL NOBODY CLICKED IS REACHABLE AGAIN ───────────────────────────────────
+//
+// The card is live-turn only; it is never rehydrated into a reloaded thread. So a person who read
+// Paige's findings, got distracted and came back had no way back to them at all — the row sat at
+// `awaiting_review` forever while every other surface correctly reported the upload as analysed.
+// Migration 20261019000000 even added a partial index for "what is still waiting on me", and
+// nothing ever ran that query.
+//
+// The load-bearing assertion is 17.2: it is not enough for the tool to succeed, the CARD has to
+// reach the wire. The emit sits in an else-if chain whose earlier branches are the document paths,
+// so "the third branch is reached on an ordinary turn" is a claim about control flow that has to be
+// driven, not read.
+{
+  const STRUCTURED = {
+    scores: { equifax: 712, experian: 705, transunion: 698 },
+    negative_items: [{ creditor: "A" }, { creditor: "B" }],
+    positive_accounts: [], hard_inquiries: [],
+  };
+  // Faithful to postgrest: a filter the code sends must NARROW here, or a check that the pending
+  // list excludes settled documents would pass whether or not the code filters at all.
+  const uploads = (rows) => ({
+    credit_report_uploads: (filters) => {
+      const eq = (col) => filters.find((f) => f[0] === "eq" && f[1] === col)?.[2];
+      const id = eq("id");
+      const state = eq("extraction_review_state");
+      return rows
+        .filter((r) => id === undefined || r.id === id)
+        .filter((r) => state === undefined || r.extraction_review_state === state);
+    },
+  });
+  const WAITING = {
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", user_id: USER, client_id: null,
+    file_name: "Experian-July.pdf", created_at: "2026-08-20T00:00:00Z",
+    last_analyzed_at: "2026-08-20T00:00:00Z",
+    analysis_result: STRUCTURED, extraction_review_state: "awaiting_review",
+  };
+
+  const SETTLED = { ...WAITING, id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    file_name: "Equifax-June.pdf", extraction_review_state: "applied" };
+
+  const listed = await drive({
+    stream: true,
+    toolCall: { name: "document_pending_reviews", args: {} },
+    rpcOverrides: { get_actor_access: { data: { tier: "tenant" }, error: null } },
+    tablesExtra: uploads([WAITING, SETTLED]),
+  });
+  const listWire = listed.modelEgress.map((b) => (typeof b === "string" ? b : JSON.stringify(b)))
+    .join("\n").replace(/\\"/g, '"');
+  assert("17.1 a document still waiting on a person is findable, by name",
+    /Experian-July\.pdf/.test(listWire), "the pending list never reached the model");
+  // Kills: dropping the state filter, which would offer to "go through" documents already settled.
+  assert("17.1b …and one already dealt with is NOT offered as waiting",
+    !/Equifax-June\.pdf/.test(listWire), "a settled document was listed as still waiting");
+
+  const resumed = await drive({
+    stream: true,
+    toolCall: { name: "document_resume_review", args: { upload_id: WAITING.id } },
+    rpcOverrides: { get_actor_access: { data: { tier: "tenant" }, error: null } },
+    tablesExtra: uploads([WAITING]),
+  });
+  // THE CARD ITSELF, on the wire the surface reads. Kills: setting the proposal on a variable the
+  // close-out never emits, and rebuilding a proposal with no fields.
+  assert("17.2 …and resuming it puts the CARD back on the wire",
+    /"extraction_proposal"/.test(resumed.bodyText ?? ""),
+    (resumed.bodyText ?? "").slice(0, 200));
+  assert("17.3 …carrying the findings, re-derived from the stored reading",
+    /credit_score_equifax/.test(resumed.bodyText ?? "") && /712/.test(resumed.bodyText ?? ""),
+    (resumed.bodyText ?? "").slice(0, 300));
+  // It re-SHOWS; it must not save. Kills: any write slipping into the resume path.
+  assert("17.4 …and resuming saves nothing",
+    !resumed.rec.inserts.some((i) => i.table !== "paige_llm_trace")
+      && !resumed.outboundCalls.some((c) => c.url.includes("paige-write-back") || c.url.includes("sync-credit-report-data")),
+    JSON.stringify({ inserts: resumed.rec.inserts.map((i) => i.table), out: resumed.outboundCalls.map((c) => c.url) }));
+
+  // A settled document is not re-offerable. Kills: dropping the state check, which would let a
+  // person be shown a card for something they had already declined.
+  const settled = await drive({
+    stream: true,
+    toolCall: { name: "document_resume_review", args: { upload_id: WAITING.id } },
+    rpcOverrides: { get_actor_access: { data: { tier: "tenant" }, error: null } },
+    tablesExtra: uploads([{ ...WAITING, extraction_review_state: "applied" }]),
+  });
+  assert("17.5 an already-settled document cannot be re-offered",
+    !/"extraction_proposal"/.test(settled.bodyText ?? ""),
+    (settled.bodyText ?? "").slice(0, 200));
+}
+
 console.log(`\n${checks - failures} passed, ${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

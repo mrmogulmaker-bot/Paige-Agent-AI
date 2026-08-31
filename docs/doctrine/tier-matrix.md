@@ -1056,6 +1056,38 @@ undo, repeated on a second surface. Closing it properly means giving MCP a way t
 its own §37 producer inventory. Until then the honest statement is the one above: two different
 boundaries, both real, governing different things.
 
+### PAIGE Chat — a proposal you did not act on is reachable again
+
+**§66, same commit as the ship.** The extraction card is live-turn only and is never rehydrated
+into a reloaded thread, so a person who read Paige's findings and got distracted had no route back
+to them: the row sat at `awaiting_review` forever while every other surface correctly reported the
+upload as analysed. Migration `20261019000000` added a partial index for exactly this question and
+nothing ever asked it.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| `document_pending_reviews` (what is still waiting on me) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| `document_resume_review` (put the card back) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| The resumed card actually renders | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+
+**Chat, not a new surface (§21).** This is something Paige can raise and act on in the
+conversation; it is not a tab, a queue screen, or an inbox. Both tools are READ-only — resuming
+re-shows what was already found and writes nothing, asserted by check 17.4.
+
+**The Client row is `—` for the same reason as the rest of the extraction seam:**
+`clientSeatToolAllowed` admits only `update_client_data`, so neither tool reaches dispatch from a
+portal seat.
+
+**Scope is RLS, not a tenant argument.** Both read `credit_report_uploads` as the caller, so a
+person sees only uploads they can already see. The proposal is re-derived from the stored reading
+via the same `buildCreditProposal` the apply function uses, never trusted from the request — what
+can be re-offered is exactly what could have been offered the first time.
+
+**§13 note on where the frame is emitted.** The agentic path does not pass through the close-out
+chain the document-UPLOAD path uses. The first implementation set the proposal on a variable
+nothing on that path read: the tool reported success, Paige said the choices were back on screen,
+and nothing appeared. Caught by driving it (check 17.2), not by reading it.
+
 ### PAIGE Chat — repeatable processes (§67 automations), every chat surface
 
 **§66, same commit as the ship.** A tenant can now describe work they do the same way every time

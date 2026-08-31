@@ -5916,6 +5916,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "document_pending_reviews",
+              description: "List documents you already read whose findings are still waiting on the operator to say what to keep. Use this when they ask about a document they uploaded before, when they ask what's outstanding, or when you want to remind them something is unfinished. Read-only.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "document_resume_review",
+              description: "Bring back the list of findings from a document you read earlier, so the operator can pick what to keep. Use it after document_pending_reviews when they say they want to deal with one. This only re-shows what you already found — it saves nothing by itself.",
+              parameters: {
+                type: "object",
+                properties: { upload_id: { type: "string", description: "Which document, from document_pending_reviews." } },
+                required: ["upload_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "automation_list",
               description: "List the repeatable processes ('automations') this workspace has set up, with how much of each one you're currently allowed to run on your own and why. Use this whenever the operator asks what runs automatically, why something isn't running, or before you offer to change one. Read-only.",
               parameters: { type: "object", properties: {}, required: [] }
@@ -7122,6 +7142,77 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               role: "tool",
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
+          }
+        } else if (tc.function.name === "document_pending_reviews") {
+          // §70 — THE PROPOSAL THAT NOBODY CLICKED WAS UNREACHABLE.
+          //
+          // The card is live-turn only: it is never rehydrated into a reloaded thread. So a person
+          // who read Paige's findings, got distracted and came back had no way to them at all — the
+          // row sat at `awaiting_review` forever while every other surface reported the upload as
+          // analysed, which it was. Migration 20261019000000 even added a partial index for "what
+          // is still waiting on me" and nothing ever ran that query. This is that query.
+          //
+          // Chat, not a new surface (§21): it is something Paige can tell you and act on, not a
+          // tab to find. RLS on `credit_report_uploads` is the scope — this reads as the caller.
+          try {
+            const { data, error } = await supabaseClient
+              .from("credit_report_uploads")
+              .select("id, file_name, created_at, last_analyzed_at")
+              .eq("extraction_review_state", "awaiting_review")
+              .order("created_at", { ascending: false }).limit(10);
+            if (error) throw error;
+            const rows = (data ?? []) as Array<Record<string, unknown>>;
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+              success: true,
+              waiting: rows.map((r) => ({ upload_id: r.id, file_name: r.file_name, read_on: r.last_analyzed_at ?? r.created_at })),
+              note: rows.length === 0
+                ? "Nothing is waiting on them. Don't invent one."
+                : "These were read but nothing from them has been saved. Mention them by file name and when you read them, and offer to go through one — call document_resume_review with its upload_id when they say yes.",
+            }) });
+          } catch (_e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't check what's waiting for review right now." }) });
+          }
+        } else if (tc.function.name === "document_resume_review") {
+          // Re-derives the proposal from the STORED reading, exactly as `paige-apply-extraction`
+          // does before a write. Never from the request, and never from anything the model supplies:
+          // what can be re-offered here has to be the same set that could have been offered the
+          // first time, or the card and the thing that honours it would disagree.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const { data: up, error } = await supabaseClient
+              .from("credit_report_uploads")
+              .select("id, user_id, client_id, file_name, analysis_result, extraction_review_state")
+              .eq("id", String(args.upload_id ?? "")).maybeSingle();
+            if (error) throw error;
+            if (!up) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "That document isn't in this workspace." }) });
+            } else if (up.extraction_review_state !== "awaiting_review") {
+              // Includes the already-applied and already-declined cases. Saying which would be
+              // guessing; saying it is settled is true either way.
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "That one has already been dealt with — nothing is waiting on them for it." }) });
+            } else {
+              const structured = up.analysis_result as Record<string, any> | null;
+              if (!structured || typeof structured !== "object") {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "I no longer have my reading of that document, so there's nothing to bring back. Say so plainly — don't offer to re-read it unless they ask." }) });
+              } else {
+                const payload = buildCreditSyncPayload(structured, String(up.user_id), (up.client_id as string | null) ?? null);
+                const rebuilt = buildCreditProposal(String(up.id), structured, payload);
+                if (rebuilt.fields.length === 0) {
+                  toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "There's nothing in that reading clear enough to be worth saving, so there's nothing to show them." }) });
+                } else {
+                  // The close-out emits this as an `extraction_proposal` frame — the same frame the
+                  // original document turn emits, so every surface that already renders the card
+                  // renders this one with no change (§18/§37).
+                  extractionProposal = rebuilt;
+                  toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                    success: true, file_name: up.file_name, fields: rebuilt.fields.length,
+                    note: "Their choices are back on screen. Tell them what you found, in their words, and let them pick — do NOT say anything has been saved. Nothing has.",
+                  }) });
+                }
+              }
+            }
+          } catch (_e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't bring that back right now." }) });
           }
         } else if (tc.function.name === "automation_triggers_list") {
           // §67 — WHAT CAN ACTUALLY START SOMETHING. Offered before drafting so Paige can only ever
@@ -9379,6 +9470,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // own frame — unlike the Studio path's single last-wins canvas frame above. chatArtifacts is
           // only populated when studioSessionId is null, so this and the studioLinked emit never both fire.
           for (const a of chatArtifacts) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_artifact: a })}\n\n`));
+          // A PROPOSAL RESUMED BY A TOOL LEAVES HERE, alongside the other frames a turn produces.
+          //
+          // The agentic path never passes through the close-out chain the document-UPLOAD path
+          // uses, so `document_resume_review` was setting `extractionProposal` on a variable
+          // nothing on this path ever read: the tool reported success, Paige told the person their
+          // choices were back on screen, and nothing appeared. Driven, not assumed — check 17.2
+          // asserts the frame reaches the wire, and it failed until this existed.
+          //
+          // BEFORE the reply, not after: on the success path the provider's own `[DONE]` is
+          // forwarded verbatim by the pump below, and four of the seven SSE consumers `break` on
+          // `[DONE]`, so a frame emitted afterwards is one nobody reads. Through `emitContent`, so
+          // a protected turn holds it and releases it with everything else rather than letting it
+          // cross ahead of the checks.
+          if (extractionProposal && extractionProposal.fields?.length > 0) {
+            emitContent(controller, enc.encode(`data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`));
+          }
           // #11 — mark the transition into the ANSWER: the loop's reasoning (paige_step "thought"
           // frames) is done and the reply text begins now. The client also derives "writing" from
           // the first delta.content, so this is a lightweight explicit confirmation, not a dependency.
