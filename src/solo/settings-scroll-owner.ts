@@ -35,4 +35,10 @@ export function settingsScrollOwner(root: HTMLElement | null): HTMLElement | nul
  * decides which wins. See `settings.css` for why the winning selector has to name
  * both classes.
  */
-export const SETTINGS_SCROLLBAR_SHOWN = "tcs-main--settings-scrollbar-shown";
+/**
+ * Re-exported from the shell's contract module so the class the surface APPLIES and
+ * the class the shell's focus guard LOOKS FOR are the same symbol, checked by the
+ * compiler. They used to be two identical string literals kept in step by a test
+ * that could not detect the ways they actually break.
+ */
+export { SETTINGS_SCROLL_OWNER_CLASS as SETTINGS_SCROLLBAR_SHOWN } from "@/components/tenant-shell/settings-scroll-contract";

@@ -75,11 +75,30 @@ const settle = async (page) => {
   return last;
 };
 
-/** Collapse the rail by dismissing the modal backdrop, which is what a human does. */
-const collapseRail = async (page) => {
-  const bd = await page.$(".tcs-paige-backdrop");
-  if (bd && await bd.isVisible()) { await bd.click(); await page.waitForTimeout(250); return true; }
-  return false;
+/**
+ * Fold PAIGE via the control a human actually uses — the icon button INSIDE the
+ * panel, which exists at every width.
+ *
+ * The previous version clicked `.tcs-paige-backdrop`, which is `display: none`
+ * globally and only enabled inside `@media (max-width: 1080px)`. So at 1536x770
+ * and 1366x768 it silently did nothing, the rail stayed EXPANDED, and the shell's
+ * restore effect returned early — meaning the row named "rail COLLAPSED" was
+ * identical to the expanded case at half the viewports and passed with or without
+ * the guard under test. An independent review measured that directly.
+ *
+ * Folding this way also arms the effect: `paigeFocusToken` is bumped by the fold
+ * handler, and the restore is a no-op without it. Returns whether the rail was
+ * actually folded, so a caller can assert rather than assume.
+ */
+const foldPaige = async (page) => {
+  const inPanel = await page.$('button.tcs-icon-button[aria-label="Fold PAIGE conversation"]');
+  if (inPanel && await inPanel.isVisible()) { await inPanel.click(); await page.waitForTimeout(300); }
+  else {
+    const backdrop = await page.$(".tcs-paige-backdrop");
+    if (backdrop && await backdrop.isVisible()) { await backdrop.click(); await page.waitForTimeout(300); }
+  }
+  return page.evaluate(() =>
+    document.querySelector("[data-tenant-shell]")?.getAttribute("data-paige") !== "open");
 };
 
 const navTo = async (page, label) => {
@@ -92,7 +111,8 @@ const navTo = async (page, label) => {
 
 async function run() {
   await assertHarnessServesWorkingTree(BASE, [
-    { file: "src/components/tenant-shell/TenantCommandCenterShell.tsx", markers: ["tcs-main--settings-scrollbar-shown"] },
+    { file: "src/components/tenant-shell/TenantCommandCenterShell.tsx", markers: ["holdsSettingsScrollFocus(document.activeElement)"] },
+    { file: "src/components/tenant-shell/settings-scroll-contract.ts", markers: ["holdsSettingsScrollFocus"] },
     { file: "src/solo/settings.tsx", markers: ["tcs-main--settings-scrollbar-hidden", "scrollOwner.contains(document.activeElement)"] },
     { file: "src/solo/solo-tokens.css", markers: ["main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden"] },
   ]);
@@ -107,11 +127,15 @@ async function run() {
       await page.goto(`${BASE}/?route=settings-setup&theme=${theme}`, { waitUntil: "networkidle" });
       await page.waitForSelector(".solo-settings", { timeout: 15000 });
       await page.waitForTimeout(1000);
-      const wasModal = await collapseRail(page);
+      const folded = await foldPaige(page);
       await navTo(page, "Connections");
       const collapsed = await owner(page);
+      // Asserted, not assumed: if the fold silently failed the shell's restore
+      // returns early and every row below it is vacuous.
+      record(tag, "rail actually folded, so the shell's restore is armed",
+             folded, "the fold control did not fold the rail — rows below are vacuous");
       record(tag, "rail COLLAPSED: focus lands on the Settings scroll owner",
-             collapsed.inOwner, `focus ${collapsed.focus}${wasModal ? " (rail collapsed via modal backdrop)" : ""}`);
+             collapsed.inOwner, `focus ${collapsed.focus}`);
       await page.keyboard.press("End");
       const reachedCollapsed = await settle(page);
       record(tag, "rail COLLAPSED: End scrolls immediately — no click, no Tab",
@@ -159,7 +183,7 @@ async function run() {
       await page.goto(`${BASE}/?route=settings-setup&theme=${theme}`, { waitUntil: "networkidle" });
       await page.waitForSelector(".solo-settings", { timeout: 15000 });
       await page.waitForTimeout(1000);
-      await collapseRail(page);
+      await foldPaige(page);
       const cmd = await page.$("[data-tenant-paige-command]");
       let cmdOk = false, cmdDetail = "no command field rendered";
       if (cmd) {
@@ -180,7 +204,7 @@ async function run() {
         await page.goto(`${BASE}/?route=${locked}&theme=${theme}`, { waitUntil: "networkidle" });
         await page.waitForSelector(HOST, { timeout: 15000 });
         await page.waitForTimeout(1000);
-        await collapseRail(page);
+        await foldPaige(page);
         const g = await page.evaluate((s) => {
           const h = document.querySelector(s);
           return { ov: getComputedStyle(h).overflowY, sh: h.scrollHeight, ch: h.clientHeight,
@@ -193,7 +217,24 @@ async function run() {
         await page.waitForTimeout(400);
         const moved = await page.evaluate((s) => document.querySelector(s).scrollTop, HOST);
         record(tag, `${locked}: End does not scroll it`, moved === 0, `scrollTop ${moved}`);
-        await page.close();
+
+        // THE OTHER HALF, which this drive previously claimed and never checked:
+        // a locked surface must still RECEIVE the command field. A guard that is
+        // too broad would silently stop that, and every row above would stay green.
+        // Navigating between two locked surfaces re-runs the shell restore.
+        const other = locked === "clients" ? "Campaigns" : "Clients";
+        const otherLink = await page.$(`a:has-text("${other}")`);
+        if (otherLink) {
+          await otherLink.click();
+          await page.waitForTimeout(900);
+          const cmdFocused = await page.evaluate(() =>
+            String(document.activeElement?.className || "").includes("tcs-command-field")
+            || document.activeElement?.hasAttribute("data-tenant-paige-command") === true);
+          const finalFocus = await page.evaluate(() =>
+            document.activeElement.tagName + "." + String(document.activeElement.className || "").slice(0, 30));
+          record(tag, `${locked} -> ${other}: the command field is still restored`,
+                 cmdFocused, `focus ${finalFocus}`);
+        }
       }
     }
   }

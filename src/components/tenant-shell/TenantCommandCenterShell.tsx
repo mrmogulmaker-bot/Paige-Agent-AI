@@ -21,6 +21,7 @@ import {
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { useAgentPresence } from "@/components/ui/paige";
+import { holdsSettingsScrollFocus } from "./settings-scroll-contract";
 import { CommandGlyph, CommandMark } from "@/operator/shell/CommandMark";
 import {
   resolveTenantShellDestination,
@@ -246,34 +247,10 @@ export function TenantCommandCenterShell({
   useEffect(() => {
     if (!paigeFocusToken || paigeFull || railExpanded) return;
     const restore = () => {
-      // ROUTE-CONDITIONAL: a destination that has deliberately taken focus for its
-      // own scroll owner keeps it.
-      //
-      // This restore fires on every `location.pathname` change while the rail is
-      // collapsed — twice, on a frame and again at 150ms — and it was overriding
-      // the focus Settings had just placed on the element that actually scrolls
-      // it. Measured focus sequence at 1024x768 before this guard:
-      //
-      //   A.<rail link>  ->  MAIN.tcs-main--settings-scroll…  ->  BUTTON.tcs-command-field
-      //
-      // The consequence was that after navigating to a Settings destination the
-      // page could not be scrolled by End, PageDown or Space until the human
-      // clicked or Tabbed back into it. The rail-EXPANDED case never had the
-      // problem, because this effect returns early above.
-      //
-      // The guard keys on the class `SoloSettings` puts on the owner it resolves,
-      // and on nothing else — so it can only ever skip for Settings. Every other
-      // route reaches this line with focus on the rail link, which does not carry
-      // the class, and the command field is restored exactly as before. Direct
-      // PAIGE-command interactions run through `focusPaigeCommand` above and never
-      // reach this code path at all.
-      //
-      // The literal is duplicated rather than imported because the shell is shared
-      // chrome and must not depend on a tier's module; `settings.scroll-policy.test.ts`
-      // asserts this string still equals `SETTINGS_SCROLLBAR_SHOWN`, so the two
-      // cannot drift apart silently.
-      const focused = document.activeElement;
-      if (focused instanceof HTMLElement && focused.classList.contains("tcs-main--settings-scrollbar-shown")) return;
+      // A destination that has deliberately taken focus for its own scroll owner
+      // keeps it. See `settings-scroll-contract.ts` for why this is a shared
+      // predicate rather than a class-name comparison, and why it uses `closest`.
+      if (holdsSettingsScrollFocus(document.activeElement)) return;
       document.querySelector<HTMLElement>("[data-tenant-paige-command]")?.focus({ preventScroll: true });
     };
     const frame = window.requestAnimationFrame(restore);

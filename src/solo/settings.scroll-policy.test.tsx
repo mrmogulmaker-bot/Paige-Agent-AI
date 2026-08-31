@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
+import { SETTINGS_SCROLL_OWNER_CLASS, holdsSettingsScrollFocus } from "@/components/tenant-shell/settings-scroll-contract";
 
 /**
  * THE TWO HALVES OF THE OWNER'S SCROLL POLICY, LOCKED (2026-08-31).
@@ -92,27 +93,55 @@ describe("locked surfaces keep their form-fitting policy", () => {
 describe("the shell hands Settings its focus back", () => {
   const shell = rules(read("src/components/tenant-shell/TenantCommandCenterShell.tsx"));
 
-  it("does not restore the command field over the Settings scroll owner", () => {
-    // The shell restores focus to the PAIGE command field on every pathname change
-    // while the rail is collapsed. Without this guard it overrode the focus
-    // Settings had just placed on its scroll owner, and End/PageDown/Space did
-    // nothing until the human clicked or Tabbed back into the page.
-    expect(shell).toMatch(/classList\.contains\("tcs-main--settings-scrollbar-shown"\)/);
+  // BEHAVIOURAL, not textual. The first version of these assertions compared the
+  // shell's class literal against the surface's and nothing else. An independent
+  // review executed them against an INVERTED guard, a guard moved AFTER the
+  // `focus()` call, and a guard moved into a function nobody called — all three
+  // stayed green. A string comparison cannot see any of that.
+  it("matches the owner itself", () => {
+    const el = document.createElement("main");
+    el.className = SETTINGS_SCROLLBAR_SHOWN;
+    expect(holdsSettingsScrollFocus(el)).toBe(true);
   });
 
-  it("keys that guard on the SAME class Settings actually applies", () => {
-    // The shell is shared chrome and must not import a tier's module, so the
-    // literal is duplicated. This is the only thing stopping the two drifting
-    // apart into a guard that silently never matches.
-    const literal = shell.match(/classList\.contains\("([^"]+)"\)/);
-    expect(literal, "the shell guard is gone").toBeTruthy();
-    expect(literal![1]).toBe(SETTINGS_SCROLLBAR_SHOWN);
+  it("matches a control INSIDE the owner — the case `classList` missed", () => {
+    // With focus one Tab into the content, a nav toggle or a resize across 1080px
+    // re-runs the restore. A `classList` check on the active element does not match
+    // a child, so the command field took focus and End left scrollTop at 0.
+    const el = document.createElement("main");
+    el.className = SETTINGS_SCROLLBAR_SHOWN;
+    const button = document.createElement("button");
+    el.appendChild(button);
+    expect(holdsSettingsScrollFocus(button)).toBe(true);
   });
 
-  it("leaves the command-field restore intact for every other route", () => {
-    // The guard must SKIP, never replace: non-Settings routes reach the restore
-    // with focus on the rail link and must still get the command field.
-    expect(shell).toMatch(/\[data-tenant-paige-command\][^;]*focus\(\{ preventScroll: true \}\)/);
+  it("does NOT match anything outside the owner", () => {
+    // The other direction matters as much: too broad a guard would stop every
+    // non-Settings route ever getting the command field back.
+    const outside = document.createElement("button");
+    outside.className = "tcs-command-field";
+    expect(holdsSettingsScrollFocus(outside)).toBe(false);
+    expect(holdsSettingsScrollFocus(null)).toBe(false);
+  });
+
+  it("is the SAME symbol the surface applies, not a copied literal", () => {
+    // Compiler-checked rather than string-compared. The two used to be duplicated
+    // literals kept in step by a test that could not detect the ways they break.
+    expect(SETTINGS_SCROLLBAR_SHOWN).toBe(SETTINGS_SCROLL_OWNER_CLASS);
+  });
+
+  it("is called by the shell BEFORE it focuses the command field, and not negated", () => {
+    // The residual textual check, narrowed to the two mutations a predicate test
+    // cannot see: order, and negation.
+    const restore = shell.slice(shell.indexOf("const restore = () => {"));
+    const body = restore.slice(0, restore.indexOf("};"));
+    const guardAt = body.indexOf("holdsSettingsScrollFocus(document.activeElement)");
+    const focusAt = body.indexOf("data-tenant-paige-command");
+    expect(guardAt, "the shell no longer calls the shared guard").toBeGreaterThan(-1);
+    expect(focusAt, "the shell no longer restores the command field").toBeGreaterThan(-1);
+    expect(guardAt, "the guard runs AFTER the focus call — it is dead code").toBeLessThan(focusAt);
+    expect(body.slice(guardAt - 4, guardAt)).not.toContain("!");
+    expect(body.slice(guardAt)).toMatch(/^holdsSettingsScrollFocus\(document\.activeElement\)\)\s*return;/);
   });
 });
 
