@@ -75,7 +75,19 @@ export function usePaigeMemory() {
     try {
       const __uid = await getEffectiveUserId();
       if (!__uid) return null;
-      const session = { user: { id: __uid } } as any;
+
+      // §13 — THIS SENT `Bearer undefined` ON EVERY CALL. The object it read the token from was
+      // `{ user: { id: __uid } }`, built locally two lines above; it has no `access_token`, so the
+      // template produced the literal string "undefined" and `paige-ai-chat` rejected every request
+      // with 401. The catch below logs and returns, so the failure was silent and the session
+      // summary this hook exists to write has never been written from this path.
+      //
+      // The real token comes from the session, which is also the only thing that makes the request
+      // attributable to a person at all. Absent session → return rather than send an unauthenticated
+      // request that cannot succeed.
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) return null;
 
       await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
@@ -83,7 +95,7 @@ export function usePaigeMemory() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             messages: [{ role: "user", content: "summarize" }],

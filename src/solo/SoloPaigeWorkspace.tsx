@@ -247,7 +247,14 @@ function CapabilitiesView() {
               <span>{skill.ro ? "Read only" : "Ask first"}</span>
             </div>
           ))}
-          <div className="spw-cap-row"><div><strong>Voice input</strong><small>Existing seam is not verified as production-ready for Solo.</small></div><TruthPill tone="partial">Partial</TruthPill><span>Not activated</span></div>
+          {/* §13 — THIS ROW CONTRADICTED THE SURFACE IT DESCRIBES. It read "Partial / Not
+              activated" while the hold-to-dictate mic sits live in the composer one tab away, in
+              this same workspace, wired to `paige-dictate`. A capability panel that tells a person
+              something is off while they can see it working is worse than no panel: it makes every
+              other row on it unreliable too.
+              The pill and copy are CD's (§00). What is asserted about whether the thing WORKS is
+              a fact, and the fact was wrong. */}
+          <div className="spw-cap-row"><div><strong>Voice input</strong><small>Hold the mic in the composer to dictate. Speech-to-text only — Paige does not speak back here.</small></div><TruthPill tone="live">Available</TruthPill><span>Active</span></div>
           <div className="spw-cap-row"><div><strong>Code or sandbox execution</strong><small>Contextual previews may be shown, but no execution substrate is available.</small></div><TruthPill tone="unavailable">Unavailable</TruthPill><span>Off</span></div>
         </section>
       </div>

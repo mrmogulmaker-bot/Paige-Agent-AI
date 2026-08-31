@@ -134,7 +134,7 @@ is red.
 | ~~S3~~ | ✅ **Shipped to the branch.** **Documents propose, never write** — the chat path stops auto-writing extracted fields; the proposal seam is built end to end (server emits → Solo renders → human reviews field by field → the approved write goes through the owning contract); prohibited sensitive categories excluded; uncertainty represented rather than guessed; **NOT** the dead `runGeneralDocumentExtraction` call — still undefined, still one of the 14 baseline `deno check` errors, still filed as its own item. Naming it as resolved here was wrong and is corrected rather than quietly dropped | 7 | R3 | largest |
 | **S4** | **A write is what the human approved** — the approval binds to the exact proposed call; `update_client_data` and `delegate_to_subagent` enter the gate; Trust Compass is consulted server-side; the two silent audit failures fixed; Rail coverage and `ref_id` so an event names its record | 5 | R3 | |
 | ~~S5~~ | ✅ **Shipped to the branch — and half of it was already done.** **The external boundary holds** — provider responses sanitized at the chat seam instead of spread verbatim; URL fetch becomes a consented, tier-gated act rather than an automatic egress | 6 | R2 | |
-| **S6** | **The workspace is honestly usable** — every advertised affordance either works or stops being advertised; thread management reaches the UI; retry covers HTTP failure; permission-denied has a state; sources and honest unknowns are presented | 1, 3 | R2 | |
+| ~~S6~~ | ✅ **The correctness half shipped; the design half is CD's and is listed below.** **The workspace is honestly usable** — every advertised affordance either works or stops being advertised; thread management reaches the UI; retry covers HTTP failure; permission-denied has a state; sources and honest unknowns are presented | 1, 3 | R2 | |
 
 **Deferred, named rather than silently dropped:** clause 8 (client-portal parity) is *foundation* work
 here — S2–S5 harden the shared backend the portal already uses; the portal's own build is a separate
@@ -190,6 +190,23 @@ and review parallelize freely; implementation does not.
    so it is not mistaken for covered: S4 hardens the chat gate, not the MCP one.
 
 ---
+
+## 4b. OWED TO CLAUDE DESIGN — found by CC, not decided by CC (§00)
+
+The audits surfaced gaps that are real but are **design decisions, not correctness ones**. CC has
+removed the false claims and left honest absences; what should be there instead is CD's call. Listed
+so they are tracked rather than quietly dropped.
+
+| Surface | What CC found and did | What is owed |
+|---|---|---|
+| Solo composer, guidance row | The row advertised three sigils (at-sign / slash / hash) that do nothing here — no chips are passed, so the slash menu cannot open, and there is no at-sign or hash handling at all. CC emptied the row and **kept the element**, because the three-level composer is CD's layout and deleting a level would be restyling their surface. | What that row should say or offer. It currently renders nothing. |
+| Thread rename · archive · delete | Fully implemented in `usePaigeThreads` and reachable from the default rail, but Solo's custom rail exposes none of them. CC did not add controls — a new affordance on a designed surface is CD's. | Whether Solo's rail should carry them, and how. |
+| Permission-denied in the transcript | There is no in-transcript state for a refused turn; a toast fires and the turn rolls back. CC made a transient server failure retryable (behaviour), but did not invent a state. | What a refused turn should look like in the transcript. |
+| Rail search | Title-only, client-side. Not a defect; a scope decision. | Whether it should search content. |
+
+**CC's line, restated:** the false claims are gone because a claim without a capability is a
+correctness defect (§70.1) and an honest absence is what CC owes. Deciding what replaces them is not
+CC's to make, and none of the above has been guessed at.
 
 ## 5. Proof standard
 

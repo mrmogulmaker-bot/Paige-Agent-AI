@@ -376,7 +376,11 @@ const PaigeAIChatInner = ({
   const acceptedEpochRef = useRef<string>(scopeEpoch);
   const dictationGenerationRef = useRef(0);
   const [cancelled, setCancelled] = useState(false);
-  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | null>(null);
+  // `server` joins `offline` and `timeout` because all three are the same thing to the person:
+  // the turn did not happen and trying again is worth doing. A 4xx is NOT in this set — a request
+  // the server refused on its merits will be refused identically on a retry, and offering one
+  // would be a button that cannot work (§70).
+  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | null>(null);
   const retryTurnRef = useRef<{ base: Message[]; rollback: Message[]; userText: string; doc?: AttachedDocument | null } | null>(null);
 
   // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
@@ -818,6 +822,15 @@ const PaigeAIChatInner = ({
         setMessages(rollback);
         setIsLoading(false);
         if (enableHistory) setStreamingThreadId(null);
+        // §70 — A TRANSIENT SERVER FAILURE LEFT NO WAY BACK. Retry existed only for the offline and
+        // timeout cases; a 5xx rolled the turn back with a toast and nothing else, so the person's
+        // message was gone and their only recourse was to type it again from memory. The turn is
+        // already captured in `retryTurnRef`, so the affordance costs nothing but was never offered.
+        //
+        // Deliberately 5xx ONLY. A 4xx — too large, malformed, refused on its merits — will be
+        // refused identically next time, and a Retry button that cannot succeed is exactly the kind
+        // of control §70 counts as not delivered.
+        if (response.status >= 500) setConnectionIssue("server");
         return;
       }
 
@@ -1522,7 +1535,7 @@ const PaigeAIChatInner = ({
             )}
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
+                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
                 <Button type="button" variant="outline" size="sm" disabled={!activeTenantId} onClick={() => {
                   const retry = retryTurnRef.current;
                   if (retry) void streamTurn(retry.base, retry.rollback, retry.userText, retry.doc);
@@ -1724,13 +1737,24 @@ const PaigeAIChatInner = ({
                   <div data-solo-composer-input className="min-w-0 px-3.5 pb-1 pt-3">
                     {composerTextarea}
                   </div>
+                  {/* §70/§13 — THREE ADVERTISED AFFORDANCES, NONE OF WHICH EXISTED HERE.
+                      This strip offered three sigils — at-sign for handing work to someone, slash
+                      for calling a skill, hash for remembering something. Solo passes no chips, so
+                      `filteredCommands` is always empty and the slash menu can never open; there is
+                      no at-sign or hash handling anywhere in this file. A person typing any of the
+                      three got nothing and no explanation. "UI that describes a capability without
+                      allowing its human flow" is the §70.1 definition of not delivered.
+
+                      THE ELEMENT STAYS, THE CLAIM GOES. The three-level composer — input, this
+                      row, actions — is a layout CD designed, and deleting a level would be me
+                      restyling their surface, which §00 forbids. So the row renders nothing rather
+                      than something false: an honest absence, which is what CC owes when a value
+                      has no capability behind it. What belongs here instead is CD's to decide, and
+                      it is filed as owed rather than filled in by me. */}
                   <div
                     data-solo-composer-guidance
-                    title="Guidance only — available actions depend on connected capabilities."
                     className="truncate px-3.5 pb-2 text-[10px] leading-4 text-muted-foreground"
-                  >
-                    @ hand it to someone · / call a skill · # remember
-                  </div>
+                  />
                   <div
                     data-solo-composer-actions
                     className="flex min-w-0 items-center gap-1.5 border-t border-border/70 px-2.5 py-2"
