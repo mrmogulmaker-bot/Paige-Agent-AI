@@ -523,6 +523,57 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // === ONE trace context for the whole turn (§34 observability, §9 attribution) ===
+    // Every `gatewayCompat` call in this handler writes a `paige_llm_trace` row fire-and-forget,
+    // carrying the prompt and the reply. Whatever protected evidence the prompt holds — Knowledge
+    // chunks, document text, `client_memory`, the client file, the operator briefing — lands in
+    // that row. The owner's rule names `logs` as a boundary protected content must not cross, so
+    // the row has to be ATTRIBUTED to the tenant whose evidence it carries; an untenanted row is a
+    // platform row (`llm-trace.ts` `cleanTenantId`: "NULL = platform/system row"), i.e. tenant
+    // evidence sitting outside tenant scope entirely.
+    //
+    // §13 — for eight of the nine call sites this was NOT happening. Only the initial streaming
+    // call (the one that says `{ tenant_id: personaCtx.tenant_id, … }` inline) passed a third
+    // argument; `claude.ts` resolves `trace ?? {}` for the rest, so the loop continuation, the
+    // closing call, the rolling-summary fold, the document read-check and the structured
+    // extraction all wrote `tenant_id: null` while carrying MORE evidence than the stamped one.
+    // A prior version of the comment at the close decision asserted the opposite as the reason
+    // the sink was safe to leave ungated. It was wrong on its premise, and the fix is the code,
+    // not a softer sentence.
+    //
+    // This object is MUTATED IN PLACE as identity resolves (persona at the persona block, working
+    // context at the profile read) and passed BY REFERENCE to every call site, so a site that runs
+    // after resolution gets the real tenant without re-deriving it (§18 one home).
+    //
+    // HONEST BOUND, stated rather than papered over: three call sites run BEFORE persona
+    // resolution and therefore still write platform rows — the three `generateSessionSummary`
+    // folds and the credit-report read-check. That is not an oversight and not a claim of
+    // attribution; those rows are untenanted because at that point in the turn no tenant has been
+    // resolved, and inventing one would be worse than recording none. Moving persona resolution
+    // above them is a real reordering across ~700 lines of turn setup and belongs to its own
+    // change, not to this one. `job_kind` distinguishes them so a reader can tell an untenanted
+    // pre-resolution row from an untenanted bug.
+    const traceCtx: {
+      tenant_id: string | null;
+      working_context_tenant_id: string | null;
+      agent_id: string;
+      job_kind: string;
+    } = {
+      tenant_id: null,
+      working_context_tenant_id: null,
+      agent_id: "paige-ai-chat",
+      job_kind: "chat",
+    };
+    /** A per-call view of the turn's trace context. Reads `traceCtx` AT CALL TIME (never a
+     *  snapshot taken at definition time, which would freeze the nulls above), so a site that runs
+     *  after resolution is attributed even though the helper was defined before it. */
+    const traceFor = (jobKind: string) => ({
+      tenant_id: traceCtx.tenant_id,
+      working_context_tenant_id: traceCtx.working_context_tenant_id,
+      agent_id: traceCtx.agent_id,
+      job_kind: jobKind,
+    });
+
     // Rate limit
     const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
       _user_id: user.id,
@@ -784,17 +835,17 @@ JSON:`;
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: summaryPrompt }] }),
-        }),
+        }, traceFor("session-summary")),
         gatewayCompat("anthropic", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
-        }),
+        }, traceFor("session-summary")),
         gatewayCompat("anthropic", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
-        }),
+        }, traceFor("session-summary")),
       ]);
 
       if (!summaryResponse.ok) {
@@ -943,7 +994,7 @@ JSON:`;
       // Only run the credit-report read-check on PDFs — images/docx can't be credit reports here.
       if (docKind === "pdf" && attachedDocument.base64) {
         try {
-          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64);
+          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, traceFor("document-read-check"));
           isCreditReportPdf = !!(documentReadCheck?.can_read_document
             && documentReadCheck?.document_kind === "credit_report"
             && (documentReadCheck?.first_five_account_names || []).length >= 1);
@@ -1291,6 +1342,10 @@ JSON:`;
     }
     const fundingEnabled = personaCtx.funding_enabled;
 
+    // Identity is now known — stamp the turn's trace context (see `traceCtx` at the top of the
+    // handler). Every `gatewayCompat` site BELOW this line writes an attributed row from here on.
+    traceCtx.tenant_id = personaCtx.tenant_id;
+
     // === L8 MEMORY FABRIC — Owner-Ops cross-session SEMANTIC memory (§7/§8/§26/§34) ===
     // STILL DEFERRED to slice 4b (cross-chat memory) — NOT wired here. Slice 4a.3 delivered the
     // per-thread continuity this slice owns without any embed path: PERSISTENCE (turns + rolling
@@ -1628,7 +1683,7 @@ JSON:`;
       //    other half of the ruling, which preserves live streaming for ordinary chat.
       (fundingEnabled && !!userContext) ||
       // 7. `knowledge_base` full-text hits, which only reach the funding core. Platform-global
-      //    rather than tenant-private, so this is the weakest of the eight — but `tenantKbContext`
+      //    rather than tenant-private, so this is the weakest source in this list — but `tenantKbContext`
       //    already protects its own `source_tier === "global"` chunks, and holding one while
       //    streaming the other is an inconsistency with no principle behind it.
       (fundingEnabled && !!relevantKnowledge) ||
@@ -1637,17 +1692,23 @@ JSON:`;
       //    (3); arriving as an attachment it was not. That is the §58 asymmetry this rule
       //    already removed once, reproduced on an adjacent path.
       !!(turnAttachments && turnAttachments.length) ||
-      // 10. Text fetched from a URL this turn, interpolated as `=== FETCHED URL CONTENT ===`.
+      // 9. Text fetched from a URL this turn, interpolated as `=== FETCHED URL CONTENT ===`.
       //    Fetched with the CALLER'S auth header, so a signed storage URL for a tenant document
       //    puts document-derived text straight into the prompt. Unambiguously "what she just
-      //    read" under the rule below, and missed by the ninth sweep because it is fetched
+      //    read" under the rule below, and missed by an earlier sweep because it is fetched
       //    rather than queried.
       !!fetchedUrlContent ||
-      // 9. The request-supplied client file, up to 50,000 characters, interpolated under
+      // 10. The request-supplied client file, up to 50,000 characters, interpolated under
       //    "=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===". On a funding tenant this is
       //    incidentally covered by (6) and `sanitizeClientContextForTier` strips the credit
       //    lines for everyone else — but a non-funding tenant's client-file block still reached
       //    the model unprotected, and "mostly covered by another source" is not a reason.
+      //
+      //    §13 — THE NUMBERING WAS 8, 10, 9 UNTIL THIS COMMIT. The tenth source was spliced in
+      //    above the ninth and kept its number, so the list read out of order for four commits
+      //    in a block whose own header records that it has carried four false claims about its
+      //    contents. Renumbered, not renumbered-and-recounted: the header's instruction not to
+      //    restate a total in prose still stands, and no total is restated here.
       !!clientContext;
 
     // THE LATE-RETRIEVAL HALF, which the `const` above cannot cover and which the ruling names
@@ -2054,6 +2115,7 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
         .maybeSingle();
       if (wcProfileError) throw wcProfileError;
       workingContextTenantId = (wcProfile?.active_tenant_id as string | null) ?? null;
+      traceCtx.working_context_tenant_id = workingContextTenantId;
 
       // Marketplace browse is stricter than general persona rendering: it may
       // label results only after exact active-account authorization.
@@ -3963,7 +4025,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
-        });
+        }, traceFor("thread-summary-fold"));
         if (!resp.ok) { emit?.({ state: "skipped" }); return "skipped"; }
         emit?.({ state: "progress", pct: 80 }); // summarizer returned
         const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
@@ -4021,6 +4083,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         // thread — so the main chat's identity is provably untouched by this branch.
         if (th?.studio_session_id) {
           studioSessionId = String(th.studio_session_id);
+          // Keep the turn's trace agent_id in step with the persona actually driving it, so a
+          // Studio turn's rows are not filed under the main chat agent (§34).
+          traceCtx.agent_id = "studio-design-agent";
           try {
             let q = supabaseClient
               .from("paige_subagents").select("name, system_prompt")
@@ -6064,7 +6129,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         stream: true,
         ...(paigeThinkingOn ? { paige_thinking: true } : {}),
       }),
-    }, { tenant_id: personaCtx.tenant_id, working_context_tenant_id: workingContextTenantId, agent_id: studioSessionId ? "studio-design-agent" : "paige-ai-chat", job_kind: "chat" });
+    // §18 — the ONE trace idiom, same as every other call site. This was the only stamped site
+    // and it built its context inline; leaving it that way would keep two spellings of the same
+    // thing alive next to each other, and the inline one would silently win here if `traceCtx`
+    // ever gained a field. `traceFor("chat")` is exactly equivalent to what stood here: the
+    // tenant and working context are the same values, and `traceCtx.agent_id` is set to
+    // "studio-design-agent" at the Studio-session branch above, which runs before this line.
+    }, traceFor("chat"));
 
     if (!response.ok) {
       const errorId = crypto.randomUUID();
@@ -8536,7 +8607,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
-            });
+            }, traceFor("chat-tool-loop"));
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
 
@@ -8553,7 +8624,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
-            });
+            }, traceFor("chat-close"));
           }
           // §13 — the wording matters here, and the previous wording was FALSE. Since the tool
           // dispatch guard became per-tool, a round can abort with earlier tools in the SAME
@@ -8573,26 +8644,59 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // end of the reply block below). Committing it here would record a retrieval as
           // having grounded a reply that the drain may still be cancelled out from under.
           //
-          // §13 — this used to say telemetry is "the ONE durable record this mechanism writes."
-          // It is not. A turn touches five durable sinks: `kb_query_telemetry`,
-          // `paige_chat_turns`, `analytics_events`, `record_rail_event` and `paige_llm_trace`.
-          // The first four are gated on the close decision. THE FIFTH IS NOT, and that is a
-          // deliberate judgement rather than an oversight, so it is written down here:
+          // §13 — THE ENUMERATION OF DURABLE SINKS, THIRD ATTEMPT. The first said telemetry was
+          // "the ONE durable record this mechanism writes." The second said there were five and
+          // "the first four are gated on the close decision." Both were wrong, and the second was
+          // wrong inside the correction written to fix the first. What follows is the list an
+          // independent reviewer produced by execution, not by reading, and every gate claim below
+          // names the line that enforces it so the next reader can check rather than trust.
           //
-          // `gatewayCompat` writes the prompt and the reply to `paige_llm_trace` before
-          // returning, fire-and-forget, stamped with `personaCtx.tenant_id` — so on a protected
-          // turn that row carries the Knowledge, the document text, the memory and the client
-          // file. It is NOT gated, and gating it would be wrong: the prompt was assembled under
-          // valid scope, the call genuinely happened, and the row is attributed to the tenant
-          // that was active WHEN IT WAS MADE. A later switch does not make that attribution
-          // false, and tenant A's evidence never lands in a row attributed to tenant B — there
-          // is no boundary crossed. Suppressing it on a switch would delete an honest record of
-          // an authorised call, which is the opposite of what §34's trace layer is for.
+          // GATED ON THE CLOSE DECISION (`scopeHeldAtClose`):
+          //   `kb_query_telemetry`   — deferred to the end of the reply block, below.
+          //   `paige_chat_turns`     — the assistant turn; the user turn is appended earlier.
+          //   `analytics_events`     — at THREE of its call sites in the close block only.
           //
-          // The ruling's "logs" clause is about UNAUTHORISED content. This content was
-          // authorised when it was written. If the owner reads that clause more broadly, the
-          // change is small and I will make it — but I am not going to quietly widen a
-          // security rule into an observability one and call it a fix.
+          // NOT GATED, each for its own reason, none of them "nobody noticed":
+          //   `record_rail_event`    — emitted inside the tool loop, as each tool RETURNS. That is
+          //     correct and must not be moved: the tool's effect is already durable by then, and
+          //     the refusal copy this branch streams says so in as many words ("Anything I'd
+          //     already finished is saved"). A Rail that omitted a write that actually happened
+          //     would be the dishonest option, not the safe one.
+          //   `analytics_events`     — at THREE further sites: `web_search_triggered` and
+          //     `deep_research_triggered` (the model's own query string), and the RAG retrieval
+          //     event, which records up to three `rag_documents` TITLES. That third one is
+          //     document-derived content in a durable sink at retrieval time. It is the caller's
+          //     own row (keyed on their user id) and never another tenant's, so it is not a
+          //     boundary crossing — but it is the weakest of these and is named rather than
+          //     folded into the "gated" column where the previous version of this comment put it.
+          //   `audit_logs`, `client_memory`, `credit_report_uploads.analysis_result` — written by
+          //     `runStructuredExtractionAndSync`, each behind that helper's OWN `writeIfScopeCurrent`
+          //     wrapper. A different gate, checked at each write, not this close decision.
+          //   `paige_chat_threads.title` / `.summary` — the rolling-summary fold.
+          //   `paige_llm_trace`      — see below.
+          //
+          // `gatewayCompat` writes the prompt and the reply to `paige_llm_trace` fire-and-forget
+          // on every call, so on a protected turn those rows carry the Knowledge, the document
+          // text, the memory and the client file. It is NOT gated on the close decision, and
+          // gating it would be wrong: the prompt was assembled under valid scope and the call
+          // genuinely happened. Suppressing it on a switch would delete an honest record of an
+          // authorised call, which is the opposite of what §34's trace layer is for.
+          //
+          // §13 — THE PREVIOUS VERSION OF THIS PARAGRAPH JUSTIFIED THAT ON A FALSE PREMISE. It
+          // said the row is "stamped with `personaCtx.tenant_id` … attributed to the tenant that
+          // was active WHEN IT WAS MADE." That was true of ONE of the nine `gatewayCompat` call
+          // sites in this file. The other eight passed no third argument, `claude.ts` resolved
+          // `trace ?? {}`, and `llm-trace.ts` coerced the absent id to null — so the calls
+          // carrying the MOST evidence (the tool loop, the closing call, the summary fold, the
+          // document read-check, the credit extraction) wrote PLATFORM rows owned by no tenant at
+          // all. The fix was the code, not a softer sentence: `traceCtx` at the top of this
+          // handler is now threaded through every site (see the comment there, including the
+          // three pre-persona sites that remain honestly untenanted and why).
+          //
+          // The ruling's "logs" clause is about content reaching the WRONG place. An attributed
+          // row is that tenant's own evidence in that tenant's own row. If the owner reads that
+          // clause more broadly, the change is small and I will make it — but I am not going to
+          // quietly widen a security rule into an observability one and call it a fix.
           // Approvals + confirm cards, then her actual reply.
           //
           // ALL THREE OF THESE ARE PROTECTED CONTENT, not neutral progress, so they go through
@@ -8897,6 +9001,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 scopedClientId || null,
                 paigeChatUploadId,
                 revalidateTenantKnowledgeScope,
+                traceFor("credit-report-extraction"),
               );
               if (!(await revalidateTenantKnowledgeScope())) {
                 pendingTenantKbTelemetry = null;
@@ -9193,7 +9298,7 @@ function structuredChatError(
   return { code: "chat_unavailable", reason: "Something went wrong on our side while answering.", recommendation: "Try again in a moment — if it keeps happening, let support know." };
 }
 
-async function runDocumentReadCheck(base64: string) {
+async function runDocumentReadCheck(base64: string, trace?: Record<string, unknown>) {
   const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
@@ -9213,7 +9318,7 @@ async function runDocumentReadCheck(base64: string) {
         },
       ],
     }),
-  });
+  }, trace);
 
   if (!response.ok) {
     const errorBody = await response.text();
@@ -9248,6 +9353,7 @@ export async function runStructuredExtractionAndSync(
   clientId: string | null = null,
   uploadRecordId: string | null = null,
   revalidateKnowledgeScope: (() => Promise<boolean>) | null = null,
+  trace?: Record<string, unknown>,
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
@@ -9304,7 +9410,7 @@ export async function runStructuredExtractionAndSync(
           },
         ],
       }),
-    });
+    }, trace);
 
     // Do not accept provider output, log a failure, or continue toward sync if
     // the active account changed while extraction was in flight.

@@ -183,9 +183,12 @@ The decisive ones:
     (CRM who-line, focused client, sender identity, activity rail); the §52 operator briefing
     needed its own case because it is gated on a tenant-less operator and `is_platform_operator`
     was stubbed nowhere — so it was unreachable in every check while two places claimed it was
-    covered. **21.ac** adds the tenth entry-time source, text fetched from a URL this turn. With all five wired,
-    deleting any four was green — "the turn is protected" is satisfied by any one firing. The
-    handler now logs every call rather than only the first so each site is provable alone.
+    covered. With all five wired, deleting any four was green — "the turn is protected" is
+    satisfied by any one firing. The handler now logs every call rather than only the first so
+    each site is provable alone.
+  - **21.ac** the tenth ENTRY-time source: text fetched from a URL this turn. (Listed separately
+    because it belongs to the entry latch, not to 21.w's below-the-latch set — a splice had it
+    reading as one of that group's five.)
   - **21.x** the revalidation resolver runs on the JWT client. This file's header claimed client
     identity was "proven, not assumed" — true of one call, and not of the one the whole gate
     rests on. Moving it to service-role was green; under service-role `auth.uid()` is NULL, the
@@ -232,3 +235,36 @@ reason other than the one it names.
    invented row. The handler's own try/catch then degrades exactly as it does in production.
 4. **Assert on recorded calls, not on log text**, except where the log *is* the contract
    (check 6, the KB refusal, where being visible is the requirement).
+
+---
+
+## Round 6 — what the fifth independent review changed
+
+100 mutations at `24ce4c96a` and `31f927dc0`. Every attack on the buffering machinery was caught;
+nothing here is a leak found in shipped behaviour. What it found was that some of the INSTRUMENT
+could not fail for the right reason, and that some of the prose asserted things the code did not do.
+
+- **`21.ad`'s control could not distinguish a refusal from a deleted choke point.** Replacing
+  `if (clientScopeDenied)` with `if (false)` removed the §9 early return entirely — full model
+  egress on an unauthorized-client turn, the private marker streamed, the safe refusal gone — and
+  the group stayed **335 passed, 0 failed**, because the emit that is normally dead becomes live
+  and supplies exactly the frame a presence-check looks for. The control now asserts the refusal
+  SENTENCE and `providerCalls.length === 0`. Re-driven: that mutation now fails **2** checks.
+- **The document path's close decision had no shape pin.** `const scopeHeldAtClose = true` shifted
+  every persona-call index; group 19 re-derives its own loop bound, so five checks silently
+  vanished and the suite reported **332 passed, 0 failed** — smaller, not redder. `19.0b` pins the
+  exact count. Re-driven: that mutation now fails **1** check.
+- **Group 19's name asserted a property nothing measured.** Every timing switched away and stayed
+  away, and the fake saturates its sequence, so a sticky guard and a forgetful one looked
+  identical. `19.7` adds the switch-back. It passes — but driving the same mutation against it and
+  against six agentic switch-back timings leaked nothing in any of seven, so the sticky flag is
+  **defence in depth and this suite still cannot tell whether it works.** The group is renamed to
+  what it measures rather than left claiming the flag is proven.
+- **Prose corrections.** The entry-source list ran 8, 10, 9 and carried a stale "weakest of the
+  eight" inside a block whose header forbids counting; `21.u`'s stated reason for a non-load-bearing
+  source ("the client file covers the same turn") is false when `buildUserContext` returns empty;
+  the refusal frame has four emit sites, not three, and eleven dominated branches, not half a dozen.
+- **`paige_llm_trace` attribution.** Eight of nine `gatewayCompat` sites passed no trace context, so
+  the calls carrying the most evidence wrote untenanted platform rows while a comment asserted they
+  were stamped. Fixed in the handler, not in the sentence. Three pre-persona sites remain honestly
+  untenanted and say so.

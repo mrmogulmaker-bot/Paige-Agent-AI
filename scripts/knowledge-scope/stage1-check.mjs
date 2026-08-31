@@ -1253,7 +1253,7 @@ group("every provider re-entry in the agent loop re-asserts scope on its own");
 
 
 // ── 19 · A refusal is STICKY — the guard must not erase its own evidence ──────────
-group("once refused, every later revalidation stays refused");
+group("a document turn withholds its reply at every scope boundary, including a switch-back");
 {
   // THE DEFECT THIS PINS (found by external review on 4f982d0e9, reproduced here before it was
   // fixed). `revalidateTenantKnowledgeScope` clears `tenantKbContext` and `tenantKbScopeTenantId`
@@ -1355,10 +1355,29 @@ group("once refused, every later revalidation stays refused");
   // Indices run 0..TOTAL-1, so TOTAL-1 is the last boundary there is; n >= TOTAL is not a switch
   // case at all, because the persona sequence runs out before the account ever changes.
   const TOTAL = stable.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
+  // §13 — WHY THIS IS AN EXACT EQUALITY AND NOT THE `>= 9` FLOOR IT USED TO BE. Deriving the
+  // bound re-aims the timings automatically when a guard MOVES, which is what it is for. It does
+  // NOT notice when a guard is DELETED: an independent reviewer replaced the document path's
+  // close decision with `const scopeHeldAtClose = true`, TOTAL fell by one, the floor still
+  // passed, the loop ran one fewer iteration, and the suite went from 337 checks to 332 —
+  // 0 failed. A suite that gets SMALLER under a mutation is worse than one that goes red,
+  // because the number at the bottom still looks like a pass.
+  //
+  // The agentic groups already had this pin (`assertShape`, "the documented index table still
+  // holds") and it is what caught the agentic twin of this mutation. The document path did not.
+  // Both halves are now stated: the derived bound keeps the timings aimed, the exact count
+  // catches a boundary being removed. If this fails, do NOT just bump the number — find which
+  // scope check was added or removed, and re-derive what the loop is now testing.
+  const DOC_TURN_PERSONA_CALLS = 10;
   assert(
     "19.0 the control run makes enough persona calls for these timings to mean anything",
     TOTAL >= 9,
     `total persona calls: ${TOTAL} — if this collapsed, the loop below is empty and proves nothing`,
+  );
+  assert(
+    `19.0b SHAPE — a credit-report turn still makes exactly ${DOC_TURN_PERSONA_CALLS} persona calls`,
+    TOTAL === DOC_TURN_PERSONA_CALLS,
+    `expected ${DOC_TURN_PERSONA_CALLS}, got ${TOTAL} — a scope boundary on the document path was added or REMOVED; the loop below is now testing a different set of timings than the one that was reviewed`,
   );
   for (let n = 2; n <= TOTAL - 1; n++) {
     const r = await creditTurn(Array(n).fill(CHILD).concat([AGENCY]), [CHILD, AGENCY]);
@@ -1389,6 +1408,50 @@ group("once refused, every later revalidation stays refused");
       JSON.stringify(analytics(r).map((i) => i.row?.event_name)),
     );
   }
+
+  // 19.7 — THE SWITCH-BACK, AND AN HONEST CORRECTION TO WHAT THIS GROUP'S NAME CLAIMS.
+  //
+  // The name says "once refused, every later revalidation stays refused." An independent
+  // reviewer showed nothing measured that: every timing above switches to AGENCY and LEAVES it
+  // there, and the fake saturates its persona sequence at the last value, so a guard that
+  // forgets its refusal and a guard that remembers it produce identical transcripts. Deleting
+  // the sticky flag (`tenantKnowledgeScopeRevoked` → `if (false) return false;`) left the suite
+  // fully green.
+  //
+  // The distinguishing case is an account that switches AWAY and BACK, which no case had. It is
+  // added below and it passes. §13 — WHAT IT DOES NOT PROVE: it does not restore the group's
+  // title. Driving that same mutation against this new case, and against six switch-back
+  // timings on the AGENTIC path, leaked nothing in any of the seven. So the sticky flag is
+  // NOT the guard holding this property — the per-path latches are (`tenant
+  // KnowledgeScopeInvalidated` on the agent loop, the extraction helper's own per-write
+  // wrapper and the single close decision on the document path). The flag is defence in depth,
+  // and this suite cannot currently tell whether it works.
+  //
+  // That is written down rather than smoothed over, because the failure mode is specific: a
+  // future reader sees a green group named "stays refused", assumes the flag is proven, and
+  // deletes it as redundant. It IS redundant today. It is redundant because three other things
+  // happen to hold, and none of them is that flag.
+  //
+  // What 19.7 DOES prove is the user-visible property, which had no test at all: an account
+  // that leaves and comes back mid-turn does not silently resume and flush the reply it was
+  // holding.
+  const returned = await creditTurn([CHILD, CHILD, AGENCY, CHILD], [CHILD, AGENCY]);
+  assert(
+    "19.7 a switch AWAY and BACK stays refused — the guard remembers, it does not re-derive",
+    !returned.responseText.includes("CHILD-PRIVATE-MARKER"),
+    returned.responseText.slice(0, 300),
+  );
+  assert(
+    "19.7b ...and reports the cancellation rather than silently resuming",
+    /active workspace changed|ACTIVE_ACCOUNT_CHANGED/.test(returned.responseText),
+    returned.responseText.slice(0, 300),
+  );
+  const returnedThread = await creditTurn([CHILD, CHILD, AGENCY, CHILD], [CHILD, AGENCY], { threadId: THREAD });
+  assert(
+    "19.7c ...and the reply it withheld is not persisted once the account comes back",
+    !persisted(returnedThread),
+    JSON.stringify(returnedThread.rec.rpc.map((c) => c.name)),
+  );
 }
 
 
@@ -2580,10 +2643,21 @@ group("safety-first streaming: the sources the first enumeration missed");
   );
 
   // 21.u — `knowledge_base` full-text hits, the one latch source that had NO fixture in either
-  // direction while a commit message claimed all of them were mutation-proven. It only reaches
-  // the funding core, so the funding client file protects the same turn — meaning this case can
-  // only prove the source is WIRED, not that it is independently load-bearing. Said plainly
-  // rather than counted as coverage it does not give.
+  // direction while a commit message claimed all of them were mutation-proven. Deleting this
+  // source from the latch leaves the suite green, so this case can only prove the source is
+  // WIRED, not that it is independently load-bearing. Said plainly rather than counted as
+  // coverage it does not give.
+  //
+  // §13 — THE REASON PREVIOUSLY GIVEN FOR THAT WAS NOT UNIVERSALLY TRUE, and an independent
+  // reviewer caught it. It said: "it only reaches the funding core, so the funding client file
+  // protects the same turn." Both halves of that hold only when the client file is non-empty.
+  // `buildUserContext` returns "" when it assembles no parts and "" on a thrown query
+  // (`_shared/client-context.ts`), so a funding caller with no profile, subscription, tasks,
+  // businesses or documents — or one transient query failure — has a truthy `relevantKnowledge`
+  // and an empty client file, and on that turn this source is the ONLY protector. The redundancy
+  // is real in the common case and absent in the empty-tenant and query-failure cases. It is
+  // therefore stated as "the suite cannot distinguish it", which is what is true, rather than
+  // as "another source covers it", which is what was written and is not.
   const kbaseOpts = {
     kbRejects: true,
     provider: ["private-text"],
@@ -2939,11 +3013,17 @@ group("safety-first streaming: the sources the first enumeration missed");
   // hidden a leaked id — the reason is checked only for type and a 64-char bound (a UUID is 36),
   // and the single-key check is top-level, so `{client_scope:{status,reason,id}}` is one key.
   //
-  // §13 — WHICH OF THE THREE EMITS THIS COVERS, because writing "the refusal frame" would imply
-  // all of them. It covers the EARLY-RETURN one. The other two, in the agentic and document
-  // streams, appear UNREACHABLE: `clientScopeDenied` is a `const`, and the branch that emits
-  // this frame returns unconditionally, so every later reference to it — those two emits and
-  // half a dozen defensive `if (clientScopeDenied)` branches — is dominated by that return.
+  // §13 — WHICH OF THE EMITS THIS COVERS, because writing "the refusal frame" would imply all of
+  // them. It covers the EARLY-RETURN one, on the refusal stream. There are FOUR sites in total,
+  // not the three a previous version of this note counted: the refusal stream, the summary-mode
+  // JSON response beside it, the agentic stream and the document stream. The miscount came from
+  // counting only the SSE emits and forgetting that summary mode returns JSON rather than a
+  // stream — in a note whose whole subject is not overstating what is covered.
+  //
+  // The other three appear UNREACHABLE: `clientScopeDenied` is a `const`, and the branch that
+  // emits this frame returns unconditionally, so every later reference to it — those three emits
+  // and the ELEVEN defensive `if (clientScopeDenied)` branches after it, not the "half a dozen"
+  // previously written — is dominated by that return.
   //
   // Evidence rather than reading: planting the rejected id into the agentic emit and into the
   // document emit each left the suite at 335/0, while planting it here failed 2 checks. A
@@ -2959,10 +3039,29 @@ group("safety-first streaming: the sources the first enumeration missed");
     tableExtras: { clients: () => [{ id: FOREIGN_CLIENT, tenant_id: AGENCY, linked_user_id: USER, first_name: "Foreign", last_name: "Person" }] },
   });
   const scopeFrames = denied.responseText.split("\n").filter((l) => l.startsWith("data: ") && l.includes("client_scope"));
+  // §13 — WHY THE CONTROL IS THREE ASSERTIONS AND NOT "a frame is present". An independent
+  // reviewer deleted the §9 choke point outright (`if (clientScopeDenied)` → `if (false)`) and
+  // this group stayed 335/0 — because the emit that is normally dead then becomes LIVE and
+  // supplies exactly the frame a presence-check looks for. The transcript under that mutation
+  // carried a full model round and the private marker on an unauthorized-client turn, and the
+  // control could not tell that from a correct refusal. Presence of the frame was never the
+  // property; the property is that the turn STOPS. So the control now asserts what stopping
+  // looks like from outside: the refusal SENTENCE reaches the caller, and NO provider call is
+  // made at all. Either one alone fails under that mutation.
   assert(
     "21.ad CONTROL — a foreign client id really does produce the refusal frame",
     scopeFrames.length > 0,
     denied.responseText.slice(0, 400),
+  );
+  assert(
+    "21.ad CONTROL — the refusal SENTENCE reaches the caller, not just a status frame",
+    denied.responseText.includes("I couldn't confirm that this client belongs to your workspace"),
+    denied.responseText.slice(0, 400),
+  );
+  assert(
+    "21.ad CONTROL — the turn ends BEFORE any model egress on an unauthorized client",
+    denied.providerCalls.length === 0,
+    `provider calls: ${denied.providerCalls.length}`,
   );
   assert(
     "21.ad the refusal frame never carries the rejected client id",
