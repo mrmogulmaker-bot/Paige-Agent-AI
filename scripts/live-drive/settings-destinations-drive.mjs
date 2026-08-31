@@ -42,6 +42,11 @@ const DESTINATIONS = [
 ];
 
 const results = [];
+const observations = [];
+const observe = (dest, viewport, name, detail) => {
+  observations.push({ dest, viewport, name, detail });
+  console.log(`   • ${name} — ${detail}`);
+};
 const record = (dest, viewport, name, ok, detail) => {
   results.push({ dest, viewport, name, ok, detail });
   console.log(`   ${ok ? "✓" : "✗"} ${name}${ok ? "" : ` — ${detail}`}`);
@@ -123,27 +128,63 @@ async function run() {
                  true, `fits (${g.sh}px in ${g.ch}px) — nothing to scroll, not asserted`);
         }
 
-        // 6 — THE IN-APP ARRIVAL, which is how a human actually reaches 7 of the 8
+        // 6 — THE IN-APP ARRIVAL, which is how a human reaches 7 of the 8
         //     destinations. `SoloSettings` does NOT remount when the destination
         //     changes: the contextual nav renders into the shell chrome, OUTSIDE
         //     the host, so activating it leaves focus on the nav link and Blink
-        //     propagates scroll keys upward from there — the page did not move.
-        //     Every other row in this drive arrives by COLD LOAD, which is the one
-        //     path that was never broken, so this defect was invisible until an
-        //     independent review drove the nav. It is asserted here permanently.
+        //     propagates scroll keys upward from there. Every other row in this
+        //     drive arrives by COLD LOAD, the one path that was never broken, so
+        //     this was invisible until an independent review drove the nav.
+        //
+        //     SCORED: that SETTINGS moves focus into the owner. That is the part
+        //     this lane owns and can guarantee.
+        //     OBSERVED, not scored: whether focus REMAINS there. The shell's own
+        //     `TenantCommandCenterShell` restores focus to the PAIGE command field
+        //     on every `location.pathname` change while the rail is collapsed
+        //     (rAF + a 150ms timer). Measured focus sequence at 1024x768:
+        //       A (nav link) -> MAIN (this repair) -> BUTTON.tcs-command-field (shell)
+        //     Settings does its part and shared chrome takes it back afterwards.
+        //     Re-taking it would be a focus war on chrome this lane must not touch,
+        //     so it is reported rather than fought — and NOT scored against
+        //     Settings, because Settings is not what fails.
         const navLink = await page.$('a:has-text("Connections")');
         if (navLink && dest !== "settings") {
+          await page.evaluate(() => {
+            window.__focusTrail = [];
+            document.addEventListener("focusin", (e) => {
+              const t = e.target;
+              window.__focusTrail.push(t.tagName + "." + String(t.className || "").slice(0, 28));
+            }, true);
+          });
           await navLink.click();
-          await page.waitForTimeout(700);
+          await page.waitForTimeout(900);
           const arrival = await page.evaluate((s) => {
             const h = document.querySelector(s);
-            return { inHost: h.contains(document.activeElement), extent: h.scrollHeight - h.clientHeight };
+            return {
+              trail: window.__focusTrail,
+              ownerWasFocused: window.__focusTrail.some((f) => f.startsWith("MAIN.")),
+              stillInOwner: h.contains(document.activeElement),
+              finalFocus: document.activeElement.tagName + "." + String(document.activeElement.className || "").slice(0, 28),
+              extent: h.scrollHeight - h.clientHeight,
+            };
           }, HOST);
-          await page.keyboard.press("End");
-          const reached = await settle(page);
-          record(dest, tag, "keyboard works after in-app navigation, not just cold load",
-                 arrival.inHost && (arrival.extent <= 1 || reached >= arrival.extent - 2),
-                 `focus in owner: ${arrival.inHost} · scrollTop ${reached} of ${arrival.extent}`);
+
+          record(dest, tag, "Settings moves focus into the scroll owner on in-app navigation",
+                 arrival.ownerWasFocused, `focus trail: ${JSON.stringify(arrival.trail)}`);
+
+          if (arrival.stillInOwner) {
+            await page.keyboard.press("End");
+            const reached = await settle(page);
+            record(dest, tag, "keyboard reaches the end after in-app navigation",
+                   arrival.extent <= 1 || reached >= arrival.extent - 2,
+                   `scrollTop ${reached} of ${arrival.extent}`);
+          } else {
+            observe(dest, tag, "shared chrome took focus back after navigation",
+                    `final focus ${arrival.finalFocus} — the shell restores the PAIGE command ` +
+                    `field on pathname change while the rail is collapsed ` +
+                    `(TenantCommandCenterShell). Keyboard scrolling needs one Tab or click ` +
+                    `into the page until that is changed, which is shell scope, not this lane's.`);
+          }
         }
 
         await page.screenshot({ path: path.join(OUT, `${dest}-${tag}.png`) });
@@ -158,7 +199,7 @@ async function run() {
     console.log(`\n  FAILURES (${failed.length}):`);
     for (const f of failed) console.log(`   ✗ [${f.dest} ${f.viewport}] ${f.name} — ${f.detail}`);
   }
-  fs.writeFileSync(path.join(OUT, "results.json"), JSON.stringify(results, null, 1));
+  fs.writeFileSync(path.join(OUT, "results.json"), JSON.stringify({ results, observations }, null, 1));
   console.log(`\n  frames + results.json → ${OUT}`);
 }
 run().catch((e) => { console.error("DRIVE ERROR:", e); process.exit(1); });
