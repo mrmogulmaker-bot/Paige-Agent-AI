@@ -23,6 +23,8 @@
 --     -f supabase/migrations/20261008000000_mcp_capability_pins.sql \
 --     -f supabase/migrations/20261011000000_mcp_evidence_no_raw_readback.sql \
 --     -f supabase/migrations/20261012000000_mcp_approvals_follow_the_endpoint.sql \
+--     -f supabase/migrations/20261013000000_mcp_oauth_scopes_is_an_array.sql \
+--     -f supabase/migrations/20261014000000_mcp_http_transport_only.sql \
 --     -f scripts/sql/mcp-oauth-proof.sql
 --
 -- The chain is the whole list, in order. An assertion added for a later migration will
@@ -83,6 +85,28 @@ BEGIN
   IF (SELECT status FROM public.tenant_mcp_connections WHERE tenant_id=t AND provider='zapier') <> 'pending_verification'
     THEN RAISE EXCEPTION 'A GRANTED TOKEN CLAIMED A PROVEN CONNECTION'; END IF;
   RAISE NOTICE 'ok: a granted token is stored as pending_verification, never connected';
+
+  -- The scopes come back as the LIST that was stored, not as a string that looks like one.
+  -- Declared `text`, the write still succeeded — Postgres I/O-casts an array into a text
+  -- column — so this passed while storing `{mcp:tools}` as characters. Nothing read the
+  -- column, so nothing disagreed.
+  IF (SELECT oauth_scopes FROM public.tenant_mcp_connections WHERE tenant_id=t AND provider='zapier')
+     IS DISTINCT FROM ARRAY['mcp:tools']
+    THEN RAISE EXCEPTION 'SCOPES WERE NOT STORED AS A LIST'; END IF;
+  IF (SELECT array_length(oauth_scopes, 1) FROM public.tenant_mcp_connections WHERE tenant_id=t AND provider='zapier') <> 1
+    THEN RAISE EXCEPTION 'SCOPES ARE NOT A REAL ARRAY'; END IF;
+  RAISE NOTICE 'ok: granted scopes are stored as a list, not as a stringified one';
+
+  -- A transport the client cannot speak is refused by the schema, not merely absent from
+  -- the form. Offered, accepted and then ignored is how someone ends up with a stored
+  -- choice that fails verification forever with nothing explaining why.
+  BEGIN
+    PERFORM public.set_tenant_n8n_mcp_connection('https://a.example/mcp','tok','sse','bearer',NULL,NULL,t);
+    RAISE EXCEPTION 'AN UNIMPLEMENTED TRANSPORT WAS ACCEPTED';
+  EXCEPTION WHEN check_violation OR raise_exception THEN
+    IF SQLERRM = 'AN UNIMPLEMENTED TRANSPORT WAS ACCEPTED' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'ok: a transport the client cannot speak is refused by the schema';
 
   PERFORM public.rotate_tenant_mcp_tokens(t,'zapier','at-2','rt-2',now()+interval '2 hours');
   IF public.platform_decrypt((SELECT refresh_token_ct FROM public.tenant_mcp_connections WHERE tenant_id=t AND provider='zapier')) <> 'rt-2'

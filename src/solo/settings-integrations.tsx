@@ -265,8 +265,17 @@ function N8nPanelBody({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boo
    here, and until then every call is refused. */
 
 function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
+  const { activeTenantId } = useTenantContext();
   const caps = useMcpCapabilities(provider);
   const [chosen, setChosen] = useState<string[] | null>(null);
+
+  // The unsaved draft belongs to the workspace it was made in. Resetting the hook's tool
+  // list was not enough: this state lives in the parent, so an admin who ticked boxes for
+  // one workspace, switched to another with the drawer open, and loaded ITS tools would
+  // find the draft still overriding what the second workspace has actually approved —
+  // matching names arriving pre-ticked and approvable on the strength of a decision made
+  // somewhere else.
+  useEffect(() => { setChosen(null); }, [activeTenantId]);
 
   // The list on screen is the source of the choice until it is saved; before that,
   // what is ticked is whatever the server said is approved.
@@ -459,7 +468,6 @@ function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: bo
       {m.label && <div><dt>Name</dt><dd>{m.label}</dd></div>}
       {m.serverUrlHost && <div><dt>Server</dt><dd className="ig-mono">{m.serverUrlHost}</dd></div>}
       <div><dt>Credential</dt><dd className="ig-mono">{m.last4 ? `••••••••${m.last4}` : "Stored"}</dd></div>
-      {m.transport && <div><dt>Transport</dt><dd>{m.transport === "sse" ? "Server-sent events" : "HTTP"}</dd></div>}
     </dl>}
 
     {!m.configured && !editing && <p className="ig-lede">
@@ -529,7 +537,6 @@ function McpForm({
   const [credential, setCredential] = useState("");
   const [authKind, setAuthKind] = useState<McpDraft["authKind"]>((m.authKind === "header" ? "header" : "bearer"));
   const [headerName, setHeaderName] = useState("");
-  const [transport, setTransport] = useState<McpDraft["transport"]>(m.transport === "sse" ? "sse" : "http");
   const [label, setLabel] = useState(m.label ?? "");
 
   // The stored address is never returned to a browser — only its host — so this field
@@ -547,7 +554,7 @@ function McpForm({
       if (!valid || m.saving) return;
       const submitted = credential;
       setCredential("");
-      const ok = await onCommit(() => m.connect({ serverUrl, credential: submitted, authKind, headerName, transport, label }));
+      const ok = await onCommit(() => m.connect({ serverUrl, credential: submitted, authKind, headerName, transport: "http", label }));
       if (ok) onDone();
     }}
   >
@@ -587,13 +594,6 @@ function McpForm({
         value={headerName} onChange={(event) => setHeaderName(event.target.value)} disabled={m.saving}
       />
     </label>}
-    <label className="ig-field">
-      <span>Transport</span>
-      <select value={transport} onChange={(event) => setTransport(event.target.value as McpDraft["transport"])} disabled={m.saving}>
-        <option value="http">HTTP</option>
-        <option value="sse">Server-sent events</option>
-      </select>
-    </label>
     <label className="ig-field">
       <span>Name <em>optional</em></span>
       <input
