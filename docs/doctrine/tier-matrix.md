@@ -942,7 +942,19 @@ the real `--pg` tokens at 1440/1024/720 in both themes and checks that the docum
 sideways, that no element inside the surface owns a scrollbar, that no control is clipped past the
 surface edge, that all ten areas collapse and expand, that a closed area still answers, and that the
 sub-navigation actually pins. It does NOT prove production behaviour: the rows are synthetic and the
-render is local. **The authenticated live drive of the DEPLOYED surface is owed to a session that
+render is local.
+
+**REACHABILITY is a separate proof from geometry, and it needs the REAL component tree.**
+`scripts/live-drive/calendar-settings-usable-drive.mjs` drives the surface inside the REAL merged
+`SoloApp` — not a reproduction of the shell — at 1536×770, 1366×768, 1024×768 and 900×1000 in both
+themes, with every area open, and asserts the final actionable control is reached by wheel, trackpad,
+touch, keyboard from the real arrival state, and sequential Tab, with the scrollbar unsuppressed in
+both the `scrollbar-width` and `::-webkit-scrollbar` lanes. It exists because a harness that
+REPRODUCES the chain can pass while the surface is unusable: two separate harnesses returned green on
+this surface while `.paige-solo main{overflow:hidden!important}` was beating `SoloApp`'s inline
+`overflow:auto` on its own screen host, leaving Settings with ZERO scroll owners. One omitted the
+screen host; the other omitted `solo-tokens.css`. Mounting the real `SoloApp` makes the chain shipped
+by construction rather than by claim. **The authenticated live drive of the DEPLOYED surface is owed to a session that
 holds credentials** — these headless sessions hold none (§32.c).
 
 **Write authority is `is_current_user_tenant_admin()`.** A caller without it reads the whole

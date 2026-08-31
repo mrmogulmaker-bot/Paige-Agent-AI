@@ -172,6 +172,22 @@ async function run() {
       await page.waitForSelector(".cc", { timeout: 15000 });
       await page.waitForTimeout(700);
 
+      // At <=1080px the shell makes the PAIGE panel modal and covers the content
+      // behind it with `.tcs-paige-backdrop` (`aria-label="Fold PAIGE conversation"`).
+      // That is deliberate shell behaviour, not a Calendars defect -- while it is
+      // up the page is MEANT to be inert, and a human clicks it to get back. So the
+      // drive does what the human does and records that it did, rather than
+      // measuring a page the shell is deliberately blocking and calling the surface
+      // unreachable.
+      const backdrop = await page.$(".tcs-paige-backdrop");
+      if (backdrop && await backdrop.isVisible()) {
+        await backdrop.click();
+        await page.waitForTimeout(250);
+        observe(tag, "shell PAIGE backdrop was covering the page",
+                "dismissed it first, as a human would — the shell makes PAIGE modal at " +
+                "<=1080px and blocks the content behind it by design");
+      }
+
       await page.screenshot({ path: path.join(OUT, `${tag}-01-initial.png`) });
       await openEveryArea(page);
 
