@@ -313,6 +313,25 @@ if (!BASELINE) {
       gone.stale.includes("retired_tool"));
   }
 
+  // A refusal must not be diagnosed as the wrong refusal. Three of the four denials mean
+  // the workspace DID approve the capability and the provider changed it underneath them;
+  // telling the operator they never approved it sends them to the wrong screen.
+  for (const [reason, mustSay, mustNotSay] of [
+    ["contract_changed", "approve it again", "has not approved"],
+    ["no_recorded_contract", "approve it again", "has not approved"],
+    ["no_longer_offered", "no longer offers", "has not approved"],
+    ["not_approved", "has not approved", "no longer offers"],
+  ]) {
+    const denied = outcome.projectOutcomeForModel({
+      provider: "zapier", capability: "gmail_send_email", status: "denied",
+      authorization: "not_approved", summary: "s", at: "t", evidence_ref: null,
+      denial_reason: reason,
+    });
+    check(`a ${reason} refusal is described as ${reason}, not as something else`,
+      String(denied.note).includes(mustSay) && !String(denied.note).includes(mustNotSay),
+      String(denied.note));
+  }
+
   // An unreachable provider answers with BOTH an error and an empty `actions`, so the
   // branch order decides which truth the model hears. "You have approved nothing" and
   // "the provider could not be reached" are different statements and only one is true.

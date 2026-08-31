@@ -13,9 +13,11 @@
  * the server can tell that the provider changed BETWEEN the person looking and the person
  * approving, and refuse rather than record consent to something nobody read.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { readFunctionErrorBody } from "@/lib/integrations/connectError";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { createSettingsRequestGate } from "../settings-contract";
 import type { McpProvider } from "./useMcpConnection";
 
 export type DiscoveredCapability = {
@@ -66,13 +68,33 @@ function describe(code: unknown, fallback: string): string {
 }
 
 export function useMcpCapabilities(provider: McpProvider) {
+  // Keyed to the active workspace, and gated, exactly like the connection hook beside it.
+  //
+  // Without this, switching workspaces while the panel stayed mounted left the FIRST
+  // workspace's discovered tools on screen, and a discovery already in flight for it
+  // would land afterwards and overwrite whatever the second one had. Two workspaces whose
+  // providers expose the same tool names and the same schema hashes would then let an
+  // Approve click apply a selection read for one of them to the other — a list of another
+  // workspace's provider-authored names, still on screen, still actionable.
+  const { activeTenantId } = useTenantContext();
+  const gate = useRef(createSettingsRequestGate());
   const [state, setState] = useState<CapabilitiesState>({ tools: null, loading: false, saving: false, error: null });
 
+  // A workspace change invalidates everything in flight and everything on screen. Done
+  // before the next read rather than after it, so there is no moment where one
+  // workspace's list is displayed under another's identity.
+  useEffect(() => {
+    gate.current.clear();
+    setState({ tools: null, loading: false, saving: false, error: null });
+  }, [activeTenantId]);
+
   const discover = useCallback(async () => {
+    const token = gate.current.begin();
     setState((prev) => ({ ...prev, loading: true, error: null }));
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
       body: { provider, action: "discover" },
     });
+    if (!gate.current.isCurrent(token)) return;
     // On a non-2xx `data` is null and the body is on the error — reading it from `data`
     // alone made every mapping below unreachable on exactly the responses it was written
     // for, so the user saw the fallback line no matter what actually went wrong.

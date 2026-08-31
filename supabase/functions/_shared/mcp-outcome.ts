@@ -50,6 +50,19 @@ export type McpOutcomeStatus =
  * counts and types we validated, and `evidence_ref` is a fresh identifier that encodes
  * nothing — not the tenant, not the capability, not the provider.
  */
+/**
+ * WHY a capability was refused. All four refusals are legitimate and only one of them
+ * means "you never approved this" — the others mean the approval no longer matches what
+ * the provider offers. Collapsing them into one sentence told an operator whose tool had
+ * simply been reshaped that they had never approved it, which sends them to the wrong
+ * screen to fix the wrong thing.
+ */
+export type McpDenialReason =
+  | "not_approved"
+  | "no_recorded_contract"
+  | "no_longer_offered"
+  | "contract_changed";
+
 export type McpOutcome = {
   provider: McpProvider;
   capability: string;
@@ -156,8 +169,13 @@ function outcomeOf(
   summary: string,
   evidenceRef: string | null,
   authorization: McpOutcome["authorization"] = "approved",
+  denialReason?: McpDenialReason,
 ): McpOutcome {
-  return { provider, capability, status, authorization, summary, at: new Date().toISOString(), evidence_ref: evidenceRef, untrusted: true };
+  return {
+    provider, capability, status, authorization, summary,
+    at: new Date().toISOString(), evidence_ref: evidenceRef, untrusted: true,
+    ...(denialReason ? { denial_reason: denialReason } : {}),
+  };
 }
 
 /**
@@ -193,7 +211,7 @@ export async function callApprovedCapability(opts: {
     return {
       outcome: outcomeOf(provider, capability, "denied",
         "This workspace has not approved that capability, so it was not run.",
-        null, "not_approved"),
+        null, "not_approved", "not_approved"),
       evidence: null,
     };
   }
@@ -203,7 +221,7 @@ export async function callApprovedCapability(opts: {
     return {
       outcome: outcomeOf(provider, capability, "denied",
         "That capability was approved without a recorded contract, so it cannot be verified. Approve it again.",
-        null, "not_approved"),
+        null, "not_approved", "no_recorded_contract"),
       evidence: null,
     };
   }
@@ -232,7 +250,7 @@ export async function callApprovedCapability(opts: {
     return {
       outcome: outcomeOf(provider, capability, "denied",
         "That capability is no longer offered by the provider, so it was not run.",
-        null, "not_approved"),
+        null, "not_approved", "no_longer_offered"),
       evidence: null,
     };
   }
@@ -240,7 +258,7 @@ export async function callApprovedCapability(opts: {
     return {
       outcome: outcomeOf(provider, capability, "denied",
         "That capability has changed since it was approved, so it was not run. Review and approve it again.",
-        null, "not_approved"),
+        null, "not_approved", "contract_changed"),
       evidence: null,
     };
   }
@@ -435,8 +453,18 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
     // Opaque, and useless without the tenant-scoped, admin-gated read.
     evidence_ref: str(d.evidence_ref, 64) ?? null,
     untrusted: true,
+    ...(status === "denied" && typeof d.denial_reason === "string"
+      ? { denial_reason: str(d.denial_reason, 32) }
+      : {}),
+    // The note must not contradict the summary beside it. Every refusal used to be
+    // reported as "never approved", including the ones that mean the opposite — the
+    // workspace DID approve it and the provider has since changed it underneath them.
     note: status === "denied"
-      ? "This workspace has not approved that capability. Do not retry it; tell the operator it is not approved."
+      ? (d.denial_reason === "contract_changed" || d.denial_reason === "no_recorded_contract"
+          ? "This capability was approved, but its contract no longer matches what was approved, so it did not run. Do not retry it; tell the operator to review and approve it again."
+          : d.denial_reason === "no_longer_offered"
+            ? "The provider no longer offers that capability, so it did not run. Do not retry it."
+            : "This workspace has not approved that capability. Do not retry it; tell the operator it is not approved.")
       : "The provider's own output is not shown here. Do not claim to know its contents.",
   };
 }
@@ -677,11 +705,17 @@ export function projectN8nForModel(raw: unknown): Record<string, unknown> {
     // carry the honest-reporting discipline about not claiming a send. They are re-derived
     // here rather than forwarded, so a provider-controlled value can never arrive wearing
     // them.
-    out.note = out.delivered === true
-      ? "The workflow confirmed the send in its response."
-      : out.delivered === false
-        ? `The workflow reported it did NOT send${out.error_count ? ` and raised ${out.error_count} error(s)` : ""}. Do not tell the operator it was delivered. The error text is not shown here; it is in the run record.`
-        : "Delivery is UNCONFIRMED. Say 'fired, delivery unconfirmed' and verify with n8n_execution_get before claiming a send.";
+    // Derived from `fired` as well as `delivered`. Reading only `delivered` meant a
+    // webhook the instance REJECTED — `fired: false` — still produced "fired, delivery
+    // unconfirmed", which is the one thing that must never be said about a request that
+    // was refused: it tells an operator a workflow started when nothing did.
+    out.note = out.fired === false
+      ? "The endpoint REJECTED the request, so the workflow did not start. Do not say it fired. Nothing was sent."
+      : out.delivered === true
+        ? "The workflow confirmed the send in its response."
+        : out.delivered === false
+          ? `The workflow reported it did NOT send${out.error_count ? ` and raised ${out.error_count} error(s)` : ""}. Do not tell the operator it was delivered. The error text is not shown here; it is in the run record.`
+          : "Delivery is UNCONFIRMED. Say 'fired, delivery unconfirmed' and verify with n8n_execution_get before claiming a send.";
     return out;
   }
 

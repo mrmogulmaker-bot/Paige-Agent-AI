@@ -441,7 +441,16 @@ async function probeAndRecord(
   }
 
   // Only this line, reached only after a real MCP exchange, writes `connected`.
-  await record(admin, tenantId, provider, "connected", null);
+  //
+  // And only if the write LANDS. The rule this function exists to enforce is that the
+  // persisted probe result is what establishes connection state — so returning
+  // `connected` when the row still says pending would break that rule from inside the
+  // function that states it. The surfaces read this return value: the callback would say
+  // Connected over a row that says otherwise, and the next read would silently disagree
+  // with what the person was just told.
+  if (!await record(admin, tenantId, provider, "connected", null)) {
+    return { status: "error", code: "mcp_protocol_error" };
+  }
   return { status: "connected", toolCount: result.toolCount };
 }
 
@@ -452,8 +461,8 @@ async function record(
   provider: string,
   status: "connected" | "error",
   lastError: string | null,
-): Promise<void> {
-  await admin.rpc("update_tenant_mcp_probe", {
+): Promise<boolean> {
+  const { error } = await admin.rpc("update_tenant_mcp_probe", {
     _tenant_id: tenantId,
     _provider: provider,
     _status: status,
@@ -465,6 +474,8 @@ async function record(
     // pinned cache belongs with the allowlist that will actually read it.
     _tools_cache: undefined,
   });
+  if (error) console.error("[tenant-mcp-connect] probe status not stored:", error.message);
+  return !error;
 }
 
 /**

@@ -303,6 +303,17 @@ check("a workflow that fails OUR validator says which check failed",
 check("...and that is the only failure whose detail crosses",
   BASELINE || !("validation_errors" in projectN8nForModel({ error: "n8n_500", detail: INJECTION })));
 
+// -- A rejected webhook is not a fired one ------------------------------------
+console.log("\n-- a rejected webhook --");
+routes.set("/webhook/hook-1", (req, res) => json(res, 502, { message: "no workflow listening" }));
+bytes = await egress({ action: "run", workflow_id: "wf-1" });
+const rejected = JSON.parse(bytes);
+check("a webhook the instance REJECTED is not reported as fired",
+  BASELINE || (rejected.fired === false && !/fired, delivery unconfirmed/.test(String(rejected.note))),
+  JSON.stringify({ fired: rejected.fired, note: rejected.note }));
+check("...and the note says plainly that nothing was sent",
+  BASELINE || /did not start|Nothing was sent/.test(String(rejected.note)), String(rejected.note));
+
 // -- Free text, everywhere it used to cross -----------------------------------
 console.log("\n-- provider-authored values --");
 routes.set("/api/v1/workflows", (req, res) => json(res, 200, {
