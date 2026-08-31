@@ -23,7 +23,21 @@ const rpc = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({ activeTenantId: context.tenantId, loading: context.loading }),
 }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc } }));
+// `from` is stubbed as well as `rpc` because one test navigates to the
+// Automations leaf, which mounts `useSoloAutomations` and reads real tables.
+// Without it that hook throws asynchronously AFTER the test has passed, which
+// vitest reports as an unhandled rejection and a non-zero exit while every
+// test still shows green — a failure mode that is invisible unless the exit
+// code is checked.
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    rpc,
+    // Defined inline: `vi.mock` is hoisted above any top-level const.
+    from: () => ({
+      select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }),
+    }),
+  },
+}));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
