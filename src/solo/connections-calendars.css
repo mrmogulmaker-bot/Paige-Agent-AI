@@ -23,6 +23,42 @@
  * prefers-reduced-motion twin at the end of this file.
  */
 
+/**
+ * THE SCROLLBAR STAYS VISIBLE ON THIS SURFACE.
+ *
+ * `SoloSettings` adds `tcs-main--settings-scrollbar-hidden` to the shell scroll
+ * owner for EVERY Settings destination. That class suppresses the scrollbar
+ * TWICE — `scrollbar-width: none` for Firefox and modern Chrome, and a collapsed
+ * `::-webkit-scrollbar` for Chrome and Safari. Undoing only one lane leaves the
+ * bar hidden in the other, so both are undone.
+ *
+ * Measured here with every area open: 5,836px of content in a 702px viewport —
+ * 5,134px below the fold — with no scrollbar at all. That is the P1 the owner
+ * reported on First Sterling: no signal that the page continues, and nothing to
+ * drag.
+ *
+ * Owner policy (2026-08-31): Settings surfaces are the AUTHORIZED vertical-scroll
+ * class and must not hide their scrollbar. Command Center, Clients, Campaigns and
+ * Analytics stay form-fitting and design-locked, and are untouched by this rule.
+ *
+ * WHY CSS AND NOT THE EFFECT THAT SETS `tabindex`. React runs CHILD effects
+ * before PARENT effects, so a `classList.remove` inside `CalendarsView` is
+ * undone microseconds later when `SoloSettings` adds it back — measured: the
+ * class was still on the element after mount. `:has(.cc)` is declarative, wins
+ * regardless of ordering, and applies only while THIS surface is inside the
+ * owner, so every other destination keeps its shipped behaviour byte for byte.
+ *
+ * The `::-webkit-scrollbar` lane is undone at ITS source, in `settings.css`,
+ * which exempts `:not(:has(.cc))` from the collapsing rule. That returns the
+ * PLATFORM scrollbar here rather than building a custom one out of dimensions
+ * invented in this file — style `::-webkit-scrollbar` at all and Chromium stops
+ * drawing its own, so a re-enable with no thumb rule renders a blank track.
+ */
+#tenant-shell-main.tcs-main--settings-scrollbar-hidden:has(.cc) {
+  scrollbar-width: auto;
+  -ms-overflow-style: auto;
+}
+
 .cc {
   --cc-ease: cubic-bezier(.32, .72, 0, 1);
   --cc-plate: 14px;

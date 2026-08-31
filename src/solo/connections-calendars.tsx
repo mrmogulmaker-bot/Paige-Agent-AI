@@ -438,6 +438,64 @@ function useAccountIdentity(account: string | undefined, tenantId: string | null
 type AccountIdentity = ReturnType<typeof useAccountIdentity>;
 
 export function CalendarsView() {
+  /**
+   * THE SETTINGS SCROLL OWNER, MADE USABLE BY A HUMAN — the P1 the owner
+   * reported on First Sterling: the deployed Calendar page could not be
+   * scrolled down to its content.
+   *
+   * Owner platform policy (2026-08-31): Settings surfaces — Connections,
+   * Calendars, Integrations — are the AUTHORIZED vertical-scroll class,
+   * marketplace-style pages a human browses. Command Center, Clients, Campaigns
+   * and Analytics are form-fitting and design-locked. So the repair is never to
+   * stop this page scrolling; it is to make the scroll one a human can see and
+   * drive. Measured on this surface at 1366×768 with every area open: 5,836px of
+   * content in a 702px viewport — 5,134px below the fold.
+   *
+   * TWO DEFECTS, BOTH MEASURED, BOTH FIXED HERE AND ONLY HERE.
+   *
+   * 1. THE SCROLLBAR WAS INVISIBLE — fixed in `connections-calendars.css`,
+   *    scoped by `:has(.cc)`. See the comment there for why it is CSS and not
+   *    this effect.
+   *
+   * 2. KEYBOARD SCROLLING DID NOTHING ON ARRIVAL. `.tcs-main` is
+   *    `overflow-y: auto` with no `tabindex`, so it cannot hold focus. On a
+   *    fresh load focus is on <body>, the shell is `height: 100dvh;
+   *    overflow: hidden`, and the document cannot scroll either. Measured:
+   *    Space, PageDown and End each left `scrollTop = 0`. It only began working
+   *    after the user pressed Tab, which is not a thing anyone should have to
+   *    discover. `tabindex="-1"` makes the region focusable WITHOUT adding a tab
+   *    stop — verified: the first Tab still lands on a real control — and focus
+   *    is taken only when nothing else holds it, so it never steals focus from a
+   *    control the user is already using.
+   *
+   * Both reach the shell through `closest("#tenant-shell-main")`, the same seam
+   * `SoloSettings` already uses for this element, rather than inventing a second
+   * mechanism (§18).
+   */
+  const scrollOwnerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const owner = scrollOwnerRef.current?.closest<HTMLElement>("#tenant-shell-main");
+    if (!owner) return;
+
+    // The hidden-scrollbar class is NOT fought over here. React runs child
+    // effects before parent effects, so removing it in this component is undone
+    // by `SoloSettings` adding it back — measured. `connections-calendars.css`
+    // overrides it declaratively with `:has(.cc)` instead, which cannot lose
+    // that race.
+    const hadTabIndex = owner.hasAttribute("tabindex");
+    if (!hadTabIndex) owner.setAttribute("tabindex", "-1");
+
+    // Only when nothing else is focused. Grabbing focus from a control a person
+    // is already typing in would be a worse bug than the one being fixed.
+    if (document.activeElement === document.body || document.activeElement === null) {
+      owner.focus({ preventScroll: true });
+    }
+
+    return () => {
+      if (!hadTabIndex) owner.removeAttribute("tabindex");
+    };
+  }, []);
+
   const conn = useCalendarConnections();
   /** The account on screen right now, readable from inside an older closure. */
   const params = useParams();
@@ -753,7 +811,7 @@ export function CalendarsView() {
   }, [location.pathname, location.search]);
 
   return (
-    <div className="cc">
+    <div className="cc" ref={scrollOwnerRef}>
       <ConnectedAccounts conn={conn} returnTo={returnHere} identity={identity} />
 
       <section className="cc-sec">
