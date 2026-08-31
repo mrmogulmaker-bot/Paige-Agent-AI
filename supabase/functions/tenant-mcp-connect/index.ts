@@ -30,6 +30,7 @@ import {
   discoverProtectedResource, exchangeCode, OAuthError, registerClient, revokeToken,
   statesMatch, type AuthorizationServer,
 } from "../_shared/mcp-oauth.ts";
+import { verifyApprovalPins } from "../_shared/mcp-outcome.ts";
 
 /** Providers that connect by a tenant-supplied credential. */
 const CONNECTABLE = new Set(["n8n"]);
@@ -214,15 +215,8 @@ Deno.serve(async (req) => {
     }
     const liveByName = new Map(live.map((t) => [t.name, t.schemaHash]));
 
-    const verified: Record<string, string> = {};
-    const stale: string[] = [];
-    for (const name of requested) {
-      const current = liveByName.get(name);
-      if (!current) { stale.push(name); continue; }
-      const seen = pins[name];
-      if (typeof seen === "string" && seen !== current) { stale.push(name); continue; }
-      verified[name] = current;
-    }
+    const { verified, stale } = verifyApprovalPins(requested, liveByName, pins);
+
     if (stale.length) {
       // Approving a moved target is worse than approving nothing: it records consent to
       // something nobody read.

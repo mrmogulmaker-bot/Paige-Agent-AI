@@ -300,6 +300,36 @@ export async function callApprovedCapability(opts: {
 }
 
 /**
+ * Which requested capabilities may be approved, given what the provider offers RIGHT NOW
+ * and what the person approving says they read.
+ *
+ * The rule, in one place because it is one rule: a capability is approvable only when the
+ * provider still offers it AND the pin the client read matches the provider's current
+ * contract. A MISSING pin is not a pass — it is the same failure as a mismatched one.
+ * Treating absence as "nothing to check" turns the whole mechanism off exactly when it is
+ * needed, and does it silently, because the approval then succeeds.
+ *
+ * Lives here rather than inline in the edge function so the rule is testable on its own
+ * and cannot drift from the drift-check that guards the run path.
+ */
+export function verifyApprovalPins(
+  requested: readonly string[],
+  live: ReadonlyMap<string, string>,
+  clientPins: Record<string, unknown>,
+): { verified: Record<string, string>; stale: string[] } {
+  const verified: Record<string, string> = {};
+  const stale: string[] = [];
+  for (const name of requested) {
+    const current = live.get(name);
+    if (!current) { stale.push(name); continue; }
+    const seen = clientPins[name];
+    if (typeof seen !== "string" || seen !== current) { stale.push(name); continue; }
+    verified[name] = current;
+  }
+  return { verified, stale };
+}
+
+/**
  * Discovery, reduced the same way. A tool's own name and description are provider-written
  * text, so what is offered back is the intersection with what the workspace has already
  * approved — never the provider's list, and never its prose.
@@ -345,6 +375,26 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
   const d = (raw ?? {}) as Record<string, unknown>;
   const str = (v: unknown, cap: number) => (typeof v === "string" ? v.slice(0, cap) : undefined);
 
+  // A connection-level answer the workspace needs to hear about, in our own words.
+  //
+  // FIRST, before the discovery branch below. `call-zapier-action` answers an unreachable
+  // provider with `{ error: "discovery_unavailable", actions: [] }` — both keys — so the
+  // discovery branch used to win and the model was told "these are the capabilities this
+  // workspace has approved" over an empty list. That is not a smaller truth, it is a
+  // different and false one: the workspace's approvals were never read. Paige would have
+  // told an operator they had approved nothing when in fact Zapier was simply down.
+  if (typeof d.error === "string" && !d.status) {
+    const known: Record<string, string> = {
+      not_connected: "This workspace has not connected a Zapier account yet.",
+      connection_disabled: "This workspace's Zapier connection is turned off.",
+      discovery_unavailable: "The connected Zapier account could not be reached just now.",
+      reauthorization_required: "This workspace's Zapier authorization has expired and needs reconnecting. Do not retry.",
+      unauthorized: "That action is not available to this caller.",
+      forbidden: "That action is not available to this caller.",
+    };
+    return { success: false, error: d.error, detail: known[d.error] ?? "That action could not be completed." };
+  }
+
   // Discovery: approved capability NAMES only. Provider descriptions do not cross.
   //
   // Each name is checked against an identifier grammar rather than merely being a string.
@@ -368,19 +418,6 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
       unapproved_count: typeof d.unapproved_count === "number" ? d.unapproved_count : 0,
       note: "These are the capabilities this workspace has approved. Anything else is not available.",
     };
-  }
-
-  // A connection-level answer the workspace needs to hear about, in our own words.
-  if (typeof d.error === "string" && !d.status) {
-    const known: Record<string, string> = {
-      not_connected: "This workspace has not connected a Zapier account yet.",
-      connection_disabled: "This workspace's Zapier connection is turned off.",
-      discovery_unavailable: "The connected Zapier account could not be reached just now.",
-      reauthorization_required: "This workspace's Zapier authorization has expired and needs reconnecting. Do not retry.",
-      unauthorized: "That action is not available to this caller.",
-      forbidden: "That action is not available to this caller.",
-    };
-    return { success: false, error: d.error, detail: known[d.error] ?? "That action could not be completed." };
   }
 
   // The outcome projection.

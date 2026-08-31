@@ -283,6 +283,45 @@ if (!BASELINE) {
   check("discovery forwards approved names only, never provider prose",
     JSON.stringify(discovery.actions) === '["a","b"]' && !JSON.stringify(discovery).includes("provider prose"));
 
+  // Approving is a statement that the person read the contract. The pin is the evidence.
+  {
+    const HASH_A = "a".repeat(64);
+    const HASH_B = "b".repeat(64);
+    const live = new Map([["send_email", HASH_A], ["list_labels", HASH_A]]);
+
+    const ok = outcome.verifyApprovalPins(["send_email"], live, { send_email: HASH_A });
+    check("a capability whose pin matches the live contract is approvable",
+      ok.stale.length === 0 && ok.verified.send_email === HASH_A);
+
+    const moved = outcome.verifyApprovalPins(["send_email"], live, { send_email: HASH_B });
+    check("a capability whose contract moved since it was read is refused",
+      moved.stale.includes("send_email") && !("send_email" in moved.verified));
+
+    // The finding: absence was treated as nothing-to-check, so the approval succeeded
+    // against whatever the provider happened to be offering at that instant.
+    const unpinned = outcome.verifyApprovalPins(["send_email"], live, {});
+    check("a capability with NO pin is refused, exactly like one whose pin mismatched",
+      unpinned.stale.includes("send_email") && !("send_email" in unpinned.verified),
+      JSON.stringify(unpinned));
+
+    const notAString = outcome.verifyApprovalPins(["send_email"], live, { send_email: 42 });
+    check("a pin that is not a string is refused rather than coerced",
+      notAString.stale.includes("send_email"));
+
+    const gone = outcome.verifyApprovalPins(["retired_tool"], live, { retired_tool: HASH_A });
+    check("a capability the provider no longer offers is refused",
+      gone.stale.includes("retired_tool"));
+  }
+
+  // An unreachable provider answers with BOTH an error and an empty `actions`, so the
+  // branch order decides which truth the model hears. "You have approved nothing" and
+  // "the provider could not be reached" are different statements and only one is true.
+  const unreachable = outcome.projectOutcomeForModel({ ok: false, error: "discovery_unavailable", actions: [], approved_count: 0 });
+  check("an unreachable provider is reported as unreachable, not as an empty approval list",
+    unreachable.success === false && unreachable.error === "discovery_unavailable"
+      && !JSON.stringify(unreachable).includes("this workspace has approved"),
+    JSON.stringify(unreachable));
+
   // The array cap bounds HOW MANY strings arrive and nothing about what one contains.
   // This is the last gate before the model, so a single element that is a paragraph, a
   // credential, or a forged turn must not pass on the strength of being under 200 items.
