@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpRight, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert, Workflow, Zap } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { SoloAutomationsView } from "./settings-automations";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -144,7 +145,10 @@ function BridgeCard({
     <header>
       <span className="ss-provider-mark" data-provider-mark={provider} aria-hidden>{mark}</span>
       <div className="ss-integration-title"><h2>{name}</h2><span>{value?.label?.trim() || kind}</span></div>
-      <Truth value="LIVE" capability />
+      {/* Was hardcoded to LIVE on every card regardless of state, so a card could
+          claim the capability was live while reporting "Not configured". Derived
+          from the same safe status the rest of the card reads. */}
+      <Truth value={state.truth} capability />
     </header>
     <div className="ss-card-body">
       <dl className="ss-integration-state">
@@ -174,6 +178,34 @@ const RECOVERED_SURFACES = [
   { id: "api", name: "Webhooks & direct API", category: "Developer tools", filter: "developer" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · developer bridge", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
 ] as const;
 
+type IntegrationsLeaf = "catalogue" | "automations";
+
+/**
+ * Third-level routing for `/solo/{n}/settings/integrations/{leaf}`, resolved HERE
+ * rather than in the shared `useSubtabRoute`. That hook reads two levels and is
+ * used by screens outside this surface, including Command Center's; leaving it
+ * untouched is what keeps this change confined to Integrations. An unknown or
+ * absent leaf resolves to the catalogue, so every previously shipped Integrations
+ * URL keeps working exactly as before.
+ */
+function useIntegrationsLeaf(): [IntegrationsLeaf, (leaf: IntegrationsLeaf) => void] {
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  const base = useMemo(() => {
+    const match = pathname.match(/^(\/solo\/[^/]+\/settings\/integrations)(?:\/|$)/);
+    return match ? match[1] : null;
+  }, [pathname]);
+  const leaf: IntegrationsLeaf = useMemo(() => {
+    const match = pathname.match(/^\/solo\/[^/]+\/settings\/integrations\/([^/?#]+)/);
+    return match?.[1] === "automations" ? "automations" : "catalogue";
+  }, [pathname]);
+  const setLeaf = useCallback((next: IntegrationsLeaf) => {
+    if (!base) return;
+    navigate(next === "catalogue" ? `${base}${search}` : `${base}/automations${search}`);
+  }, [base, navigate, search]);
+  return [leaf, setLeaf];
+}
+
 function useSoloDestination(slug: "automations") {
   const { pathname } = useLocation();
   // This preserves route context only. Tenant authority still comes exclusively from
@@ -183,6 +215,7 @@ function useSoloDestination(slug: "automations") {
 }
 
 export function SoloIntegrationsView() {
+  const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
   const mcpProvider: ProviderIdentity = isZapierMcpHost(status.mcp?.server_url_host) ? "zapier" : "mcp";
   const automationsHref = useSoloDestination("automations");
@@ -206,7 +239,22 @@ export function SoloIntegrationsView() {
     };
   }, [category, status.loading, status.error, status.n8n, status.mcp]);
 
+  const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [
+    { id: "catalogue", label: "Your tools", Icon: Workflow },
+    { id: "automations", label: "Automations", Icon: Zap },
+  ];
+
   return <div className="ss-integrations">
+    <div className="ss-subtabs" role="tablist" aria-label="Integrations sections">
+      {tabs.map(({ id, label, Icon }) => (
+        <button key={id} type="button" role="tab" className="ss-subtab" aria-selected={leaf === id}
+          onClick={() => setLeaf(id)}>
+          <Icon aria-hidden size={14} />{label}
+        </button>
+      ))}
+    </div>
+
+    {leaf === "automations" ? <SoloAutomationsView /> : <>
     <section className="ss-catalogue" aria-labelledby="ss-catalogue-title">
       <div className="ss-catalogue-heading">
         <div className="ss-catalogue-title"><span>Browse by provider</span><h2 id="ss-catalogue-title">Integration catalogue</h2></div>
@@ -261,6 +309,7 @@ export function SoloIntegrationsView() {
         <div className="ss-card-body"><p>Connection permissions, revocation, and PAIGE actions appear only when an authoritative tenant-safe contract supports them. Any future action must use the existing Action Bus and Trust Compass controls.</p><p className="ss-note">No raw payloads, credentials, messages, prompts, hidden reasoning, or silent execution are exposed here.</p></div>
       </section>
     </div>
+    </>}
   </div>;
 }
 
