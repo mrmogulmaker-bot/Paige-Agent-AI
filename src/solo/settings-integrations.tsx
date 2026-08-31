@@ -163,8 +163,11 @@ type ProviderRow = {
 const PROVIDERS: ReadonlyArray<ProviderRow> = [
   { id: "n8n", name: "n8n", kind: "Automation", filter: "automation", connectable: true,
     note: "" },
-  { id: "mcp", name: "MCP bridge", kind: "External tool bridge", filter: "developer", connectable: false,
-    note: "The bridge reports its own status, but there is no tenant-safe way to set it up from here yet. Its credential path is deliberately not reachable from a browser." },
+  // Connectable through an authorization grant rather than a pasted credential, so the
+  // panel offers consent instead of a form. The card's label is CD's to set; this row
+  // only changes whether the connection can be made.
+  { id: "mcp", name: "MCP bridge", kind: "External tool bridge", filter: "developer", connectable: true,
+    note: "" },
   { id: "quickbooks", name: "QuickBooks", kind: "Financial tools", filter: "financial", connectable: false,
     note: "The sync seams exist, but nothing yet proves a connection belongs to this workspace, so no setup is offered." },
   { id: "stripe", name: "Stripe Connect", kind: "Commerce", filter: "financial", connectable: false,
@@ -253,6 +256,92 @@ function N8nPanelBody({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boo
           </span> : <button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>
             <Link2Off aria-hidden size={14} />Disconnect
           </button>}
+        </div>}
+  </>;
+}
+
+/* ── Zapier: connected by consent, never by a pasted credential ────────────
+   Zapier runs an authorization server, so a workspace grants access instead of
+   handing over a key. There is no form here on purpose: nothing this surface
+   could collect would be a credential worth having, and asking for one would
+   invite somebody to paste a long-lived token that cannot be rotated. */
+
+function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
+  const m = useMcpConnection("zapier");
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+
+  const begin = useCallback(async () => {
+    setStarting(true);
+    setStartError(null);
+    const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
+      body: { provider: "zapier", action: "oauth_begin" },
+    });
+    const url = (data as { authorize_url?: string })?.authorize_url;
+    if (error || !url) {
+      setStarting(false);
+      setStartError("Zapier could not be reached to start the connection. Try again in a moment.");
+      return;
+    }
+    // A full navigation, not a popup: consent belongs in the address bar where the
+    // person can see whose sign-in page they are on.
+    window.location.assign(url);
+  }, []);
+
+  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking this workspace…</p>;
+
+  if (m.error) {
+    return <div className="ig-state" role="alert">
+      <TriangleAlert aria-hidden />
+      <span>The connection could not be read, so nothing is being claimed either way.</span>
+      <button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button>
+    </div>;
+  }
+
+  return <>
+    {m.configured && <dl className="ig-facts">
+      <div><dt>State</dt><dd>{mcpStateWords(m.status)}</dd></div>
+      {m.serverUrlHost && <div><dt>Server</dt><dd className="ig-mono">{m.serverUrlHost}</dd></div>}
+      <div><dt>Access</dt><dd>Granted by Zapier. No key is stored here.</dd></div>
+    </dl>}
+
+    {!m.configured && <p className="ig-lede">
+      Connect Zapier by approving it on Zapier's own sign-in page. Nothing is pasted here and no key is
+      kept: the access can be withdrawn from either side at any time.
+    </p>}
+
+    {/* Approving the connection and approving what Paige may RUN are separate acts, and
+        a workspace that has done only the first should know the second is still owed. */}
+    {m.configured && <p className="ig-note">
+      Connecting lets Paige see what is available. She runs nothing until you approve the specific
+      actions you want her to be able to take.
+    </p>}
+
+    {(startError || m.writeError) && <p className="ig-error" role="alert">
+      <TriangleAlert aria-hidden size={14} />{startError ?? m.writeError}
+    </p>}
+
+    {!m.canWrite
+      ? <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>
+      : <div className="ig-actions">
+          <button type="button" className="ig-btn" data-primary disabled={starting || m.saving} onClick={() => void begin()}>
+            <KeyRound aria-hidden size={14} />
+            {starting ? "Opening Zapier…" : m.configured ? "Reconnect" : "Connect Zapier"}
+          </button>
+          {m.configured && <button type="button" className="ig-btn" disabled={m.saving}
+            onClick={() => void m.verify().then(onChanged)}>
+            <RefreshCw aria-hidden size={14} />{m.saving ? "Checking…" : "Check it again"}
+          </button>}
+          {m.configured && (confirmingDisconnect ? <span className="ig-confirm">
+            <button type="button" className="ig-btn" data-danger disabled={m.saving}
+              onClick={() => { setConfirmingDisconnect(false); void m.disconnect().then(onChanged); }}>
+              Disconnect it
+            </button>
+            <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
+          </span> : <button type="button" className="ig-btn" disabled={m.saving} onClick={() => setConfirmingDisconnect(true)}>
+            <Link2Off aria-hidden size={14} />Disconnect
+          </button>)}
         </div>}
   </>;
 }
@@ -585,7 +674,9 @@ function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; 
           </div>
         </div>}
 
-        {row.connectable
+        {row.id === "mcp"
+          ? <ZapierPanelBody onChanged={onChanged} />
+          : row.connectable
           ? <>
               {/* Two connections, one provider. Each is independent: the REST API can
                   work while the tool bridge does not, and neither implies the other.

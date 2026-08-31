@@ -711,3 +711,131 @@ describe("n8n tool bridge (MCP)", () => {
     expect(host.querySelector(".ig-panel")).toBeTruthy();
   });
 });
+
+/**
+ * Zapier — connected by consent, never by a pasted credential.
+ *
+ * The property that matters most here is a NEGATIVE one: this panel must offer no way to
+ * type a secret. A field would invite somebody to paste a long-lived Zapier token, which
+ * is a permanent credential in our custody that nobody can rotate and the workspace
+ * cannot withdraw from their side. The schema refuses to store one; this proves the
+ * surface never asks.
+ */
+describe("Zapier (consent, not credentials)", () => {
+  const zapierSection = (host: HTMLElement) => {
+    const panel = host.querySelector<HTMLElement>(".ig-panel");
+    if (!panel) throw new Error("the Zapier panel is not open");
+    return panel;
+  };
+  const zapierButton = (host: HTMLElement, text: string) =>
+    Array.from(zapierSection(host).querySelectorAll("button")).find((b) => b.textContent?.includes(text));
+
+  let assigned: string[] = [];
+  beforeEach(() => {
+    assigned = [];
+    // jsdom refuses a real navigation, and the assertion is about WHERE we send the
+    // person rather than about navigating, so the call is captured.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, assign: (url: string) => assigned.push(url) },
+    });
+  });
+
+  it("offers no field in which a credential could be typed", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "mcp");
+    const panel = zapierSection(host);
+    expect(panel.querySelector("input")).toBeNull();
+    expect(panel.querySelector("form")).toBeNull();
+    expect(panel.textContent).toContain("Nothing is pasted here");
+    expect(zapierButton(host, "Connect Zapier")).toBeTruthy();
+  });
+
+  it("asks the server where to send the person, and never builds that address itself", async () => {
+    world();
+    invoke.mockResolvedValue({ data: { ok: true, authorize_url: "https://as.zapier.example/authorize?code_challenge=abc&state=xyz" }, error: null });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    await click(zapierButton(host, "Connect Zapier"));
+
+    const [, options] = invoke.mock.calls.at(-1)!;
+    expect(options.body).toEqual({ provider: "zapier", action: "oauth_begin" });
+    // Everything about the consent URL — the issuer, the client, the challenge — is
+    // discovered and composed server-side. The browser only follows.
+    expect(assigned).toEqual(["https://as.zapier.example/authorize?code_challenge=abc&state=xyz"]);
+  });
+
+  it("says so plainly when the connection cannot be started", async () => {
+    world();
+    invoke.mockResolvedValue({ data: { error: "oauth_begin_failed", code: "discovery_failed" }, error: null });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    await click(zapierButton(host, "Connect Zapier"));
+    expect(zapierSection(host).textContent).toContain("could not be reached");
+    // Nowhere to go is better than somewhere wrong.
+    expect(assigned).toEqual([]);
+  });
+
+  it("separates being connected from having approved anything", async () => {
+    // A granted connection lets Paige SEE what exists. It does not let her run any of it,
+    // and a workspace that thinks otherwise has been misled by this screen.
+    world({ mcp: { zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com", approved_capabilities: [] } } });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    const text = zapierSection(host).textContent ?? "";
+    expect(text).toContain("Connected");
+    expect(text).toContain("She runs nothing until you approve");
+  });
+
+  it("never renders a stored grant as connected before the probe says so", async () => {
+    world({ mcp: { zapier: { configured: true, enabled: true, status: "pending_verification", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com" } } });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    const text = zapierSection(host).textContent ?? "";
+    expect(text).toContain("Saved, not checked yet");
+    expect(text).not.toContain("Connected");
+  });
+
+  it("re-checks and disconnects without ever sending a credential", async () => {
+    world({ mcp: { zapier: { configured: true, enabled: true, status: "error", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com" } } });
+    const { host } = await render();
+    await openCard(host, "mcp");
+
+    await click(zapierButton(host, "Check it again"));
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "verify" });
+
+    await click(zapierButton(host, "Disconnect"));
+    await click(zapierButton(host, "Disconnect it"));
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "disconnect" });
+    // No token, no key, no client secret — this browser has never held one.
+    for (const [, options] of invoke.mock.calls) {
+      expect(Object.keys(options.body).join(",")).not.toMatch(/token|secret|key|verifier/i);
+    }
+  });
+
+  it("lets a non-admin see the state but not grant anything", async () => {
+    world({ admin: false, mcp: { zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "aaaa", transport: "http", server_url_host: "mcp.zapier.com" } } });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    const panel = zapierSection(host);
+    expect(panel.textContent).toContain("Connected");
+    expect(panel.textContent).toContain("Only a workspace admin");
+    expect(zapierButton(host, "Connect Zapier")).toBeUndefined();
+    expect(zapierButton(host, "Disconnect")).toBeUndefined();
+  });
+
+  it("keeps n8n's own connections out of Zapier's panel", async () => {
+    world({ mcp: {
+      n8n: { configured: true, enabled: true, status: "connected", auth_token_last4: "1111", transport: "sse", server_url_host: "acme.app.n8n.cloud" },
+      zapier: { configured: true, enabled: true, status: "error", auth_token_last4: "2222", transport: "http", server_url_host: "mcp.zapier.com" },
+    } });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    const text = zapierSection(host).textContent ?? "";
+    expect(text).toContain("Saved, not working");
+    expect(text).toContain("mcp.zapier.com");
+    expect(text).not.toContain("acme.app.n8n.cloud");
+    expect(text).not.toContain("1111");
+  });
+});
