@@ -160,6 +160,11 @@ async function drive({
    *  became autonomy-gated: proving the tool loop still reaches write-back requires driving a
    *  tenant that has deliberately set that tool to `auto`. */
   rpcOverrides = {},
+  /** Extra RLS-emulating tables merged over the defaults — needed for the confirm store, whose
+   *  rows a scenario has to author because they model a claim that mutates as it is read. */
+  tablesExtra = {},
+  /** Inject a postgrest error for a specific table, to drive the "the write was REJECTED" path. */
+  tableErrorsExtra = {},
 }) {
   const logged = [];
   embedCount = 0;
@@ -184,7 +189,7 @@ async function drive({
       match_paige_memory: { data: [{ source: "memory", memory_type: "user_preference", content: MEMORY_TEXT, similarity: 0.95 }], error: null },
       ...rpcOverrides,
     },
-    tableErrors: { ...(clientsError ? { clients: clientsError } : {}), ...(memoryReadError ? { client_memory: memoryReadError } : {}) },
+    tableErrors: { ...(clientsError ? { clients: clientsError } : {}), ...(memoryReadError ? { client_memory: memoryReadError } : {}), ...tableErrorsExtra },
     // What the SERVICE-ROLE client sees: everything, including the foreign client. This is the
     // hazard itself — if the authorization read is made with this client, a foreign id resolves.
     serviceTables: {
@@ -216,6 +221,7 @@ async function drive({
         if (isDedupe) return [];
         return [{ memory_type: "user_preference", content: MEMORY_TEXT, created_at: new Date().toISOString() }];
       },
+      ...tablesExtra,
     },
   });
 
@@ -757,6 +763,227 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
   assert("12.3 …and no outbound call carries the refused id",
     !refusedTool.outboundCalls.some((c) => c.body.includes(FOREIGN) || c.url.includes(FOREIGN)),
     JSON.stringify(refusedTool.outboundCalls.map((c) => c.url)));
+}
+
+// ── 13. THE CONFIRM GATE — AN APPROVAL MUST BE REACHABLE, AND MUST MEAN "THIS, ONCE" ─────────
+//
+// WHY THIS SECTION EXISTS. The first version of the gate required the calling SURFACE to echo a
+// fingerprint back. Independent review drove the shipped code and found that only one of the six
+// chat surfaces sends it, so every confirm-gated tool had become permanently un-executable on the
+// other five; that the client-portal seat lost `update_client_data`, its ONLY write; and that even
+// where the echo worked the model had to re-author the arguments byte-identically — a livelock for
+// any tool carrying model-written free text. Thirteen separate mutations to that code left every
+// suite green, which is the real finding: the mechanism had no coverage at all.
+//
+// So each check below names the exact mutation it kills. A check that cannot name one is decoration.
+{
+  const TOOL = "update_client_data";
+  const CONFIRM = { rpcOverrides: { resolve_tool_autonomy: { data: "confirm", error: null } } };
+  const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  /** Model the store: an INSERT records the proposal, and the claim UPDATE returns it exactly once
+   *  — and only when every scope filter matches, the way the real compare-and-set does. */
+  function store() {
+    const rows = [];
+    return {
+      rows,
+      table: (filters) => {
+        const f = (op, col) => filters.find((x) => x[0] === op && x[1] === col)?.[2];
+        // Only the claim reads this table, and it always arrives as an update.
+        const isClaim = filters.some((x) => x[0] === "eq" && x[1] === "fingerprint");
+        if (!isClaim) return [];
+        const fp = f("eq", "fingerprint");
+        const tool = f("eq", "tool_name");
+        // Faithful to postgrest: a filter the code STOPPED sending must stop narrowing here too.
+        // Requiring tool_name unconditionally would mask the very mutation 13.9 exists to catch.
+        const hit = rows.find((r) => r.fingerprint === fp
+          && (tool === undefined || r.tool_name === tool) && !r.consumed);
+        if (!hit) return [];
+        hit.consumed = true;              // single-use, exactly as `consumed_at` enforces
+        return [{ args: hit.args }];
+      },
+    };
+  }
+
+  /** The refusal Paige actually sent BACK to the model next round.
+   *
+   *  It travels as a JSON string nested inside the request body, so it arrives double-escaped;
+   *  unescape once before matching, or every assertion here passes vacuously by finding nothing. */
+  function refusalOf(egress) {
+    const all = egress
+      .map((b) => (typeof b === "string" ? b : JSON.stringify(b)))
+      .join("\n")
+      .replace(/\\"/g, '"');
+    if (!all.includes("needs_confirm")) return null;
+    const tok = all.match(/"confirm_token":"([0-9a-f]{16})"/);
+    return {
+      present: true,
+      confirm_token: tok ? tok[1] : (/"confirm_token":\s*null/.test(all) ? null : undefined),
+      note: (all.match(/"note":"([^"]{0,120})/) ?? [])[1] ?? "",
+    };
+  }
+
+  // ── 13.1 A gated call with no token PROPOSES rather than acting.
+  const st1 = store();
+  const proposed = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: TOOL, args: { client_id: OWN, updates: { goal: "buy a house" } } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st1.table },
+  });
+  assert("13.1 a confirm-gated call with no token performs NO write",
+    !proposed.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+    JSON.stringify(proposed.outboundCalls.map((c) => c.url)));
+
+  // ── 13.2 …and the proposal is PERSISTED, with the arguments that will actually run.
+  // Kills: deleting the `recordConfirmation` call, or storing a summary instead of the args.
+  const stored = proposed.rec.inserts.find((i) => i.table === "paige_pending_confirmations")?.row;
+  assert("13.2 the proposed call is persisted with its exact arguments",
+    !!stored && stored.tool_name === TOOL
+      && JSON.stringify(stored.args?.updates) === JSON.stringify({ goal: "buy a house" }),
+    JSON.stringify(stored ?? null));
+
+  // ── 13.3 …recorded against the PERSON and the scope it was shown in.
+  // Kills: dropping user_id/thread_id/scoped_client_id from the insert — each of which would let an
+  // approval issued in one place be redeemed in another.
+  assert("13.3 the proposal is bound to the person, the thread and the focused client",
+    !!stored && stored.user_id === USER && stored.thread_id === THREAD && stored.scoped_client_id === OWN,
+    JSON.stringify(stored ?? null));
+
+  // ── 13.4 …and it is written on the CALLER's client, so RLS is the boundary.
+  // Kills: swapping `supabaseClient` for the service-role client — under service role `auth.uid()`
+  // is NULL and the owning policy stops meaning anything.
+  const insertQ = proposed.rec.from.find(
+    (f) => f.table === "paige_pending_confirmations" && f.op === "insert");
+  assert("13.4 the proposal is written as the CALLER, never as service role",
+    !insertQ || insertQ.client !== "service",
+    JSON.stringify(insertQ ?? "no query recorded"));
+
+  // ── 13.5 THE HANDSHAKE IS OFFERED. Without a token in the refusal the model has no way to say
+  // yes, which is the outage this whole repair is about.
+  const refusal = refusalOf(proposed.modelEgress);
+  assert("13.5 the refusal hands back a token the model can redeem",
+    !!refusal && typeof refusal.confirm_token === "string" && /^[0-9a-f]{16}$/.test(refusal.confirm_token),
+    JSON.stringify(refusal ?? null));
+
+  // ── 13.6 THE ONE THAT MATTERS. Approval runs the STORED call, even though the model re-emits
+  // DIFFERENT arguments — which is what it will do for any tool carrying free text it cannot
+  // reproduce. Kills: removing `tc.function.arguments = JSON.stringify(approvedArgs)`, which would
+  // send the drifted arguments to write-back; and reverting to the echo-only gate, which would
+  // refuse this turn outright.
+  const st2 = store();
+  st2.rows.push({
+    user_id: USER, tool_name: TOOL, fingerprint: refusal?.confirm_token ?? "0".repeat(16),
+    args: { client_id: OWN, updates: { goal: "buy a house" } }, consumed: false,
+  });
+  const approved = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: TOOL, args: { confirm_token: refusal?.confirm_token, client_id: OWN, updates: { goal: "SOMETHING ELSE ENTIRELY" } } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st2.table },
+  });
+  const wrote = approved.outboundCalls.filter((c) => c.url.includes("paige-write-back"));
+  assert("13.6 approval executes the STORED call, not the one the model re-emitted",
+    wrote.length === 1 && wrote[0].body.includes("buy a house")
+      && !wrote[0].body.includes("SOMETHING ELSE ENTIRELY"),
+    JSON.stringify(wrote.map((c) => c.body)));
+
+  // ── 13.7 The claim is a COMPARE-AND-SET, so one approval cannot execute twice.
+  // Kills: dropping `.is("consumed_at", null)` — the review found one approval could otherwise run
+  // the same call for every round of the turn.
+  const claimQ = approved.rec.from.find(
+    (f) => f.table === "paige_pending_confirmations" && f.op === "update");
+  assert("13.7 the claim is a compare-and-set on consumed_at",
+    !!claimQ && claimQ.filters.some((x) => x[0] === "is" && x[1] === "consumed_at" && x[2] === null),
+    JSON.stringify(claimQ?.filters ?? "no claim recorded"));
+
+  // ── 13.8 …and it re-checks scope rather than trusting the token alone.
+  // Kills: dropping the tenant/thread/client predicates, which would let an approval survive an
+  // account switch or a change of focused client — the thing S2 exists to prevent.
+  const cf = (op, col) => claimQ?.filters.some((x) => x[0] === op && x[1] === col);
+  assert("13.8 the claim re-checks user, expiry, thread and focused client",
+    !!claimQ && cf("eq", "user_id") && cf("gt", "expires_at")
+      && (cf("eq", "thread_id") || cf("is", "thread_id"))
+      && (cf("eq", "scoped_client_id") || cf("is", "scoped_client_id")),
+    JSON.stringify(claimQ?.filters ?? "no claim recorded"));
+
+  // ── 13.9 A token issued for one tool cannot redeem another.
+  // Kills: dropping `.eq("tool_name", tool)` from the claim.
+  const st3 = store();
+  st3.rows.push({
+    user_id: USER, tool_name: "deal_create", fingerprint: "abcdef0123456789",
+    args: { amount: 1 }, consumed: false,
+  });
+  const wrongTool = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: TOOL, args: { confirm_token: "abcdef0123456789", client_id: OWN, updates: { goal: "x" } } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st3.table },
+  });
+  assert("13.9 a token issued for a different tool redeems nothing",
+    !wrongTool.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+    JSON.stringify(wrongTool.outboundCalls.map((c) => c.url)));
+
+  // ── 13.10 If the proposal cannot be RECORDED, the refusal says so and issues no token.
+  // Kills: returning `true` unconditionally from `recordConfirmation`, which would hand out a token
+  // that can never be redeemed — a livelock dressed as a pending approval.
+  const cannotRecord = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: TOOL, args: { client_id: OWN, updates: { goal: "y" } } },
+    ...CONFIRM,
+    tableErrorsExtra: { paige_pending_confirmations: { message: "denied", code: "42501" } },
+  });
+  const failedRefusal = refusalOf(cannotRecord.modelEgress);
+  assert("13.10 an unrecordable proposal issues NO token and does not claim to be pending",
+    !!failedRefusal && failedRefusal.confirm_token === null,
+    JSON.stringify(failedRefusal ?? null));
+}
+
+// ── 14. EVERY GATED TOOL CAN BE APPROVED AT ALL ──────────────────────────────────────────────
+//
+// Forty-five of the forty-eight gated tools never declared an approval parameter, so the model
+// could not signal consent even when it had been given. This reads the schema Paige ACTUALLY sends
+// the model — the egress, not the source — and requires the token on exactly the gated set.
+//
+// 14.0 exists because the first draft of this section passed while reading an EMPTY object: the
+// egress arrives as JSON strings, so `JSON.stringify(body).includes('"name"')` matched nothing and
+// every later filter ran over an empty list. A guard that proves the subject was found is the only
+// thing standing between "no violations" and "no evidence" — the two are indistinguishable without
+// it, and a mutation that deleted the whole injection left this green.
+{
+  const seen = await drive({ clientId: OWN, stream: true });
+  const wire = seen.modelEgress
+    .map((b) => (typeof b === "string" ? b : JSON.stringify(b)))
+    .join("\n")
+    .replace(/\\"/g, '"');
+  const declared = [...wire.matchAll(/"name":"([a-z0-9_]+)"/g)].map((m) => m[1]);
+
+  const src = await (await import("node:fs/promises")).readFile(
+    new URL("../../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
+  const at = src.indexOf("const MUTATING_TOOLS = new Set<string>([");
+  const gated = [...src.slice(src.indexOf("[", at), src.indexOf("]);", at)).matchAll(/"([a-z0-9_]+)"/g)]
+    .map((m) => m[1]);
+  const offered = gated.filter((t) => declared.includes(t));
+
+  assert("14.0 the tool schema was actually found on the wire (guards this section)",
+    gated.length >= 40 && offered.length >= 20,
+    JSON.stringify({ gated: gated.length, declared: declared.length, offeredGated: offered.length }));
+
+  /** The slice of the wire describing one tool: from its name to the next tool's name. */
+  const blockFor = (t) => {
+    const i = wire.indexOf(`"name":"${t}"`);
+    if (i < 0) return "";
+    const n = wire.indexOf('"name":"', i + 10);
+    return wire.slice(i, n < 0 ? undefined : n);
+  };
+
+  const missing = offered.filter((t) => !blockFor(t).includes("confirm_token"));
+  assert("14.1 every gated tool the model is offered declares confirm_token",
+    missing.length === 0, JSON.stringify(missing));
+
+  assert("14.2 …and a read-only tool does not (the token is not sprayed over everything)",
+    declared.includes("web_fetch") && !blockFor("web_fetch").includes("confirm_token"),
+    JSON.stringify({ sawWebFetch: declared.includes("web_fetch") }));
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

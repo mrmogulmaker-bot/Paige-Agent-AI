@@ -29,31 +29,16 @@ import fs from "node:fs";
  * membership churns — one tool quietly dropped from the catalogue and another added would net to
  * zero and pass. Listing them makes any swap visible.
  */
-const KNOWN_UNGOVERNED = [
-  "author_event_kind",
-  "deal_create",
-  "deal_move_stage",
-  "document_generate",
-  "forge_subagent",
-  "marketplace_install",
-  "marketplace_uninstall",
-  "n8n_activate_workflow",
-  "n8n_archive_workflow",
-  "n8n_create_workflow",
-  "n8n_deactivate_workflow",
-  "n8n_delete_workflow",
-  "n8n_run_workflow",
-  "n8n_update_workflow",
-  "plan_add_milestone",
-  "plan_assign_task",
-  "plan_create",
-  "plan_remove_item",
-  "plan_set_reminder",
-  "plan_update_item",
-  "save_to_knowledge_base",
-  "update_business_profile",
-  "zapier_run_action",
-];
+// THE BASELINE IS NOW EMPTY, AND THAT IS THE POINT.
+//
+// This list used to name 23 tools that the runtime gated but the catalogue never offered — the
+// operator could not see them and, more to the point, could not turn them off. Migration
+// 20261020000000 completed the catalogue, so the gap is CLOSED and the ratchet's job changes from
+// "hold it from growing" to "hold it AT zero".
+//
+// Do NOT re-populate this to get a new tool past the guard. A tool in MUTATING_TOOLS with no
+// catalogue row is governed invisibly; the fix is a migration that adds the row, not an entry here.
+const KNOWN_UNGOVERNED = [];
 
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
 

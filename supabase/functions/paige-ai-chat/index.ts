@@ -5959,6 +5959,85 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
     };
 
+    // ── THE PROPOSAL STORE ───────────────────────────────────────────────────
+    // Writing down the exact call a person is being asked to approve, so that saying yes does not
+    // require anyone — model or human — to restate it. See
+    // 20261023000000_confirmations_bind_the_approval_to_the_call.sql for why this is a table and
+    // not a boolean.
+    //
+    // Both helpers run on the CALLER's client, so RLS (`user_id = auth.uid()`) is the real
+    // boundary rather than a predicate this code is trusted to remember.
+
+    /** Persist a proposed call. Returns false if it could not be recorded — never throws, because
+     *  a failure here must degrade to "ask again", never to "run it anyway". */
+    const recordConfirmation = async (
+      fp: string, tool: string, args: Record<string, unknown>, summary: string,
+    ): Promise<boolean> => {
+      try {
+        const { error } = await supabaseClient.from("paige_pending_confirmations").insert({
+          user_id: user.id,
+          tenant_id: personaCtx?.tenant_id ?? null,
+          thread_id: payloadThreadId ?? null,
+          scoped_client_id: scopedClientId ?? null,
+          tool_name: tool,
+          fingerprint: fp,
+          // `confirm` and `confirm_token` are stripped: they are the handshake, not the action, and
+          // storing them would mean re-executing the approval flag alongside the work.
+          args: Object.fromEntries(
+            Object.entries(args).filter(([k]) => k !== "confirm" && k !== "confirm_token"),
+          ),
+          summary,
+        });
+        if (error) {
+          console.error("[paige] confirm proposal NOT recorded", JSON.stringify({ tool, code: error.code ?? null, message: error.message ?? null }));
+          return false;
+        }
+        return true;
+      } catch (e) {
+        console.error("[paige] confirm proposal threw", String(e));
+        return false;
+      }
+    };
+
+    /** Redeem a token: claim the proposal and return the arguments that were approved, or null.
+     *
+     *  The claim is a COMPARE-AND-SET on `consumed_at`, so one approval executes exactly once even
+     *  when the model emits the same tool_use twice in a single round — replay is prevented by the
+     *  write, not by a convention.
+     *
+     *  Scope is re-checked HERE rather than trusted: the tenant and the focused client must still
+     *  be the ones the summary was written under. `IS NOT DISTINCT FROM` and not `=`, because a
+     *  bare equality against NULL yields NULL, and the client portal legitimately has no thread and
+     *  no focused client — with `=` those seats could never redeem anything. */
+    const claimConfirmation = async (
+      fp: string, tool: string,
+    ): Promise<Record<string, unknown> | null> => {
+      try {
+        let q = supabaseClient.from("paige_pending_confirmations")
+          .update({ consumed_at: new Date().toISOString() })
+          .eq("user_id", user.id)
+          .eq("fingerprint", fp)
+          .eq("tool_name", tool)
+          .is("consumed_at", null)
+          .gt("expires_at", new Date().toISOString());
+        q = personaCtx?.tenant_id ? q.eq("tenant_id", personaCtx.tenant_id) : q.is("tenant_id", null);
+        q = payloadThreadId ? q.eq("thread_id", payloadThreadId) : q.is("thread_id", null);
+        q = scopedClientId ? q.eq("scoped_client_id", scopedClientId) : q.is("scoped_client_id", null);
+        const { data, error } = await q.select("args").maybeSingle();
+        if (error) {
+          console.error("[paige] confirm claim failed", JSON.stringify({ tool, code: error.code ?? null, message: error.message ?? null }));
+          return null;
+        }
+        const args = (data as { args?: unknown } | null)?.args;
+        return args && typeof args === "object" && !Array.isArray(args)
+          ? args as Record<string, unknown>
+          : null;
+      } catch (e) {
+        console.error("[paige] confirm claim threw", String(e));
+        return null;
+      }
+    };
+
     const MUTATING_TOOLS = new Set<string>([
       // Containment tombstones: these Marketplace mutations are deliberately not
       // registered or dispatched. Keeping them classified as mutating means a
@@ -5997,7 +6076,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // for anything without a row (`resolve_tool_autonomy`). A tenant that wants either on
       // autopilot sets it deliberately, which is the point.
       "update_client_data", "delegate_to_subagent",
-    ]);
+]);
+
+    // EVERY GATED TOOL LEARNS HOW TO BE APPROVED.
+    //
+    // Only three of the forty-eight tools the gate governs ever declared a `confirm` parameter, so
+    // for the other forty-five the model had no way to express "the operator said yes" even when
+    // they had. Declaring the token on exactly the gated set — derived from `MUTATING_TOOLS` rather
+    // than hand-listed, so a tool added to the gate can never miss it — makes approval a first-class
+    // part of the contract instead of an undocumented convention.
+    //
+    // Mutating `toolDefs` in place is safe: it is read at the two request sites below, both of which
+    // come after this point.
+    for (const t of toolDefs as Array<{ function?: { name?: string; parameters?: { properties?: Record<string, unknown> } } }>) {
+      const name = t?.function?.name;
+      if (!name || !MUTATING_TOOLS.has(name)) continue;
+      const props = t.function?.parameters?.properties;
+      if (!props) continue;
+      props.confirm_token = {
+        type: "string",
+        description:
+          "The confirm_token you were given when this action was proposed. Pass it ONLY after the operator has approved, and pass it ALONE — every other argument of the approved call is already saved and will be used, so you do not need to repeat them. If the operator asked for any change, omit this and send the full new arguments instead so they get a fresh summary to approve.",
+      };
+    }
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
     // raw internal tool_key (§11: no backend function names in visible copy).
@@ -6428,38 +6529,76 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             continue;
           }
           if (autoMode === "confirm") {
-            // THE APPROVAL IS BOUND TO THE CALL, NOT TO A BOOLEAN.
+            // THE APPROVAL IS BOUND TO THE CALL — AND THE MODEL NEVER RESTATES THE CALL.
             //
-            // `gateArgs.confirm !== true` was the entire re-entry test. A person read the summary,
-            // clicked Approve, the UI sent "Approved — run it.", and the model re-emitted the tool
-            // call from scratch — with nothing tying the arguments it emitted the second time to
-            // the ones the summary described. Different amount, different recipient, different
-            // client: all approved.
+            // `gateArgs.confirm !== true` was once the entire re-entry test. A person read the
+            // summary, clicked Approve, the UI sent "Approved — run it.", and the model re-emitted
+            // the tool call from scratch with nothing tying the arguments it emitted the second
+            // time to the ones the summary described. Different amount, different recipient,
+            // different client: all approved.
             //
-            // Now the refusal issues a fingerprint of the exact call, the surface that showed the
-            // card echoes it back, and this re-derives it from the arguments about to run. Both
-            // conditions, not either: `confirm:true` alone no longer opens the gate.
+            // The first repair fingerprinted the call and demanded the surface echo the
+            // fingerprint back. Review found that shipped a worse failure than it fixed. Five of
+            // the six chat surfaces never send the echo, so every gated tool became permanently
+            // un-executable on them; the client-portal seat lost `update_client_data`, its ONLY
+            // write; forty-five of the forty-eight gated tools never declared a `confirm`
+            // parameter at all; and where the echo did work the model still had to re-author the
+            // arguments byte-identically from a transcript that truncates them — a livelock for
+            // any tool carrying model-written free text, where the person clicks Approve and gets
+            // the same card back forever.
+            //
+            // So the call is no longer something the model restates. It is persisted server-side
+            // in `paige_pending_confirmations` under its fingerprint, and approval carries a
+            // TOKEN. What executes below is the STORED arguments — the exact ones whose summary
+            // the person read. The model cannot drift them because it never repeats them, and it
+            // does not need to reproduce a document to say yes to one.
+            //
+            // If the person AMENDS the request, the model emits fresh arguments with no token.
+            // That fingerprints differently, finds no proposal, and becomes a NEW card with a NEW
+            // summary — which is right: a changed action deserves a fresh look.
             const fp = await confirmFingerprint(tc.function.name, gateArgs);
-            const approvedHere = gateArgs.confirm === true && approvedConfirmations.has(fp);
-            if (!approvedHere) {
-              // §13 — WHY A MISMATCH IS REPORTED AS A PLAIN RE-ASK RATHER THAN AS TAMPERING. The
-              // overwhelmingly common cause is benign: the model re-emitted with a tweaked field
-              // because the person's approval message mentioned one. The right answer to that is
-              // to show the NEW summary and ask again — which is what happens, because the
-              // refusal below carries the fingerprint of what is actually being proposed now.
-              // Calling it an attack would be both wrong and unhelpful.
-              const changed = gateArgs.confirm === true && approvedConfirmations.size > 0;
+            const rawToken = typeof gateArgs.confirm_token === "string" ? gateArgs.confirm_token : null;
+            // A surface that renders a real confirm card (the Solo chat) echoes the fingerprint of
+            // what it actually displayed. That is STRONGER evidence than the model's own say-so —
+            // a human demonstrably clicked — so it is accepted as a token too. It is no longer
+            // REQUIRED, because five surfaces cannot send it and a rule only one caller can obey
+            // is not a rule, it is an outage.
+            const redeem = rawToken ?? (approvedConfirmations.has(fp) ? fp : null);
+            const approvedArgs = redeem && /^[0-9a-f]{16}$/.test(redeem)
+              ? await claimConfirmation(redeem, tc.function.name)
+              : null;
+
+            if (!approvedArgs) {
+              const summary = describeConfirm(tc.function.name, gateArgs);
+              // Persist BEFORE answering, so the token we hand back is one that can actually be
+              // redeemed. If this write fails the gate still refuses — it just refuses without an
+              // issued token, and the next attempt proposes again. Failing closed is the only
+              // acceptable direction here.
+              const issued = await recordConfirmation(fp, tc.function.name, gateArgs, summary);
+              // §13 — WHY A MISMATCH IS A PLAIN RE-ASK RATHER THAN AN ACCUSATION. The
+              // overwhelmingly common cause is benign: the person amended something in their
+              // approval and the model faithfully carried the change. The right answer is a new
+              // summary and a new ask, which is exactly what this is.
+              const changed = redeem !== null;
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
                 success: false,
                 needs_confirm: true,
                 confirm_fingerprint: fp,
-                confirm_summary: describeConfirm(tc.function.name, gateArgs),
+                confirm_token: issued ? fp : null,
+                confirm_summary: summary,
                 note: changed
-                  ? "Do NOT retry. What you're about to run is NOT what the operator approved — the details changed. Show them the new confirm_summary and ask again."
-                  : "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true.",
+                  ? "Do NOT retry with that token. It is spent, expired, or belongs to a different version of this action — what you are about to run is NOT what the operator approved. Read the NEW confirm_summary back to them and ask again."
+                  : (issued
+                    ? "Do NOT retry yet. This needs the operator's approval. Read confirm_summary back in plain language — and name the SPECIFIC client, contact or program you're acting on by the name you just used, never 'the client'. If they approve it AS-IS, call this same tool again passing ONLY confirm_token (you do NOT need to repeat any other argument — the exact call they approved is already saved, and repeating it is how approvals used to drift). If they ask for ANY change, call it again with the full new arguments and NO confirm_token, so they get a fresh summary to approve."
+                    : "Do NOT retry. This needs the operator's approval and the approval could not be recorded, so there is nothing for them to approve yet. Tell them plainly that the action could not be set up right now and don't pretend it is pending."),
               }) });
               continue;
             }
+
+            // THE APPROVED CALL, NOT THE RE-EMITTED ONE. Every execution branch below re-parses
+            // `tc.function.arguments`, so overwriting it here routes all forty-eight gated tools
+            // through one seam rather than forty-eight per-tool edits.
+            tc.function.arguments = JSON.stringify(approvedArgs);
           }
           // autoMode === 'auto', or the approval matched this exact call → fall through to execute.
         }
@@ -9640,6 +9779,15 @@ export async function runStructuredExtractionAndSync(
 
   const scopeIsCurrent = async () => !revalidateKnowledgeScope || await revalidateKnowledgeScope();
   const scopeChanged = () => ({ success: false, error: "Active workspace changed", step: "active_account_changed" });
+  // A REJECTED WRITE IS NOT A WORKSPACE SWITCH, AND MUST NOT SAY IT IS.
+  //
+  // Both outcomes stopped the turn, so both returned `scopeChanged()` — which told the person, and
+  // the logs, that they had changed account when in fact Postgres had refused the row. The next
+  // person to debug it is sent to the tenancy code to look for a bug that is in a constraint. That
+  // is the §13 failure this whole helper exists to end, committed by the helper itself.
+  const writeRejected = (label: string) => ({ success: false, error: "That could not be saved", step: "write_rejected", write: label });
+  const stoppedBy = (outcome: "scope_changed" | "rejected", label: string) =>
+    outcome === "scope_changed" ? scopeChanged() : writeRejected(label);
 
   // EVERY DURABLE WRITE IN THIS HELPER GOES THROUGH ONE OF THE TWO WRAPPERS BELOW, and the
   // assertion sits AT the write rather than once per stage. That is the same rule the tool
@@ -9653,10 +9801,12 @@ export async function runStructuredExtractionAndSync(
   // writes a `client_memory` row and then stamps the entire report into
   // `credit_report_uploads.analysis_result`. Under a stale scope those land against the
   // previous workspace's subject.
-  const writeIfScopeCurrent = async (label: string, write: () => Promise<unknown>): Promise<boolean> => {
+  const writeIfScopeCurrent = async (
+    label: string, write: () => Promise<unknown>,
+  ): Promise<"ok" | "scope_changed" | "rejected"> => {
     if (!(await scopeIsCurrent())) {
       console.error("[paige] active account changed — durable write skipped", JSON.stringify({ write: label }));
-      return false;
+      return "scope_changed";
     }
     // §32/§13 — THE RETURNED ERROR IS READ. It was not, and that is how a durable write that
     // NEVER LANDED reported success for an entire feature.
@@ -9674,16 +9824,16 @@ export async function runStructuredExtractionAndSync(
     const outcome = (await write()) as { error?: { message?: string; code?: string } } | null | undefined;
     if (outcome && typeof outcome === "object" && outcome.error) {
       console.error("[paige] durable write REJECTED", JSON.stringify({ write: label, code: outcome.error.code ?? null, message: outcome.error.message ?? null }));
-      return false;
+      return "rejected";
     }
-    return true;
+    return "ok";
   };
   // A failure path still has to report the failure, but it must not persist another
   // workspace's report to do so. When scope has gone, the honest result is the cancellation,
   // not the original error — the turn did not fail, it was stopped.
   const failAfterLogging = async (message: string, payload: unknown, result: any) => {
     const logged = await writeIfScopeCurrent("sync_failure_log", () => logSyncFailure(supabase, callerUserId, message, payload));
-    return logged ? result : scopeChanged();
+    return logged === "ok" ? result : stoppedBy(logged, "sync_failure_log");
   };
 
   try {
@@ -9793,7 +9943,8 @@ export async function runStructuredExtractionAndSync(
       content: memoryContent,
     };
     if (clientId) memoryInsert.client_id = clientId;
-    if (!(await writeIfScopeCurrent("client_memory", () => supabase.from("client_memory").insert(memoryInsert)))) return scopeChanged();
+    const remembered = await writeIfScopeCurrent("client_memory", () => supabase.from("client_memory").insert(memoryInsert));
+    if (remembered !== "ok") return stoppedBy(remembered, "client_memory");
 
     // Step 5: stamp the upload row. THIS IS THE DOCUMENT'S OWN RECORD, not a profile field, so it
     // is written without asking — the person uploaded this file and this row is what became of it.
@@ -9802,8 +9953,12 @@ export async function runStructuredExtractionAndSync(
     // if approval carried the VALUES, the browser would be deciding what gets written to a credit
     // profile, and the human would approve one thing while the server wrote whatever came back.
     //
-    // The status is `awaiting_review`, not `completed`. Nothing has been applied, and calling it
-    // completed would be the same lie the auto-write was.
+    // WHERE "NOTHING HAS BEEN APPLIED" IS ACTUALLY RECORDED: `extraction_review_state`, below —
+    // NOT `analysis_status`. The two answer different questions. The PARSE finished, so
+    // `analysis_status` is honestly `completed`; the REVIEW has not, so the review state is
+    // `awaiting_review` and no field has been written to anyone's profile. This comment used to
+    // claim the status itself was `awaiting_review`, three lines above code setting it to
+    // `completed` — see the note on that line for why the split is the correct shape.
     if (!uploadRecordId) {
       // No upload row means nothing for approval to reference, so a proposal here would render an
       // Approve button that cannot work. Say so instead (§13, §70 — never ship a control that
@@ -9830,7 +9985,7 @@ export async function runStructuredExtractionAndSync(
       last_analyzed_at: new Date().toISOString(),
       error_message: null,
     }).eq("id", uploadRecordId));
-    if (!stamped) return scopeChanged();
+    if (stamped !== "ok") return stoppedBy(stamped, "credit_report_uploads");
     console.log("[Paige] credit_report_uploads awaiting review:", uploadRecordId);
 
     return {
@@ -9857,15 +10012,26 @@ export async function runStructuredExtractionAndSync(
         analysis_status: "failed",
         error_message: err instanceof Error ? err.message : "Pipeline error",
       }).eq("id", uploadRecordId));
-      if (!marked) return scopeChanged();
+      if (marked !== "ok") return stoppedBy(marked, "credit_report_uploads_failed");
     }
     return { success: false, error: err instanceof Error ? err.message : "Unknown error", step: "pipeline" };
   }
 }
 
+/** RETURNS THE INSERT RESULT — it must not swallow, and it must not return `undefined`.
+ *
+ *  `writeIfScopeCurrent` decides "did this land?" by reading `.error` off what the write returns.
+ *  This function previously awaited the insert inside a try/catch and returned nothing, so the
+ *  helper saw `undefined`, found no `error` on it, and reported success. Two of the four writes
+ *  routed through the very helper that exists to catch silent failures were therefore still
+ *  silent — including the audit trail for sync failures, the one record whose whole purpose is to
+ *  say that something went wrong.
+ *
+ *  A thrown error is returned in postgrest's own shape rather than re-thrown, so the caller has
+ *  exactly one thing to check whichever way the write failed. */
 async function logSyncFailure(supabase: any, userId: string, errorMessage: string, payload: any) {
   try {
-    await supabase.from("audit_logs").insert({
+    return await supabase.from("audit_logs").insert({
       user_id: userId,
       entity: "credit_report",
       action: "sync_failed",
@@ -9878,5 +10044,6 @@ async function logSyncFailure(supabase: any, userId: string, errorMessage: strin
     });
   } catch (logErr) {
     console.error("Failed to log sync failure to audit_logs:", logErr);
+    return { error: { message: String(logErr), code: "throw" } };
   }
 }

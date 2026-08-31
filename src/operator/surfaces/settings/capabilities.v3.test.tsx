@@ -76,9 +76,24 @@ describe("what the surface says about the gap is the measured number", () => {
     "utf8",
   ).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, "");
 
-  it("states twenty-three in the shipped foot, and not CD's four", () => {
-    expect(surface).toContain("Twenty-three tools are gated at runtime but missing");
+  /**
+   * THE FOOT NO LONGER CLAIMS A GAP, BECAUSE THERE ISN'T ONE.
+   *
+   * CD's delivered sentence counted four; the true count when it was ported was 23, so it shipped
+   * with the true figure. Migration 20261020000000 then closed the gap to ZERO — and a sentence
+   * describing a gap that no longer exists is a false claim about the platform, rendered on the
+   * platform's own governance surface. So it is removed rather than restated with a new number.
+   *
+   * This asserts the absence in EVERY spelling the claim has ever had, because "it doesn't say 23"
+   * would pass the moment someone wrote "24". The live gap itself is asserted to be zero by the
+   * derivation test below — this one only guards the PROSE from re-acquiring a stale figure.
+   */
+  it("no longer claims a catalogue gap, in any of its historic spellings", () => {
     expect(surface).not.toContain("Four automation tools");
+    expect(surface).not.toMatch(/gated at runtime but missing/);
+    expect(surface).not.toMatch(/governed and invisible/);
+    // And it has not simply been emptied: CD's rules are still the body of it.
+    expect(surface).toContain("Modes are stored per tenant per tool");
   });
 
   it("still carries the two schema rules CD wrote, which are not figures but law", () => {
