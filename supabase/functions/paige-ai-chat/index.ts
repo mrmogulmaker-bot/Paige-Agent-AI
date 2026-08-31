@@ -752,8 +752,22 @@ JSON:`;
       const summaryData = await summaryResponse.json();
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
+      // §9 — a REFUSED turn must not file the named client's session into the CALLER's memory.
+      // Falling back to `user.id` here is not a safe degrade: these rows are durable and are
+      // injected into the caller's OWN future chats, so a refused turn would contaminate their
+      // context with a subject they were never authorized to read. The no-client path (no
+      // `clientId` sent at all) is unaffected — that is the caller legitimately summarising
+      // their own session, and `clientScopeDenied` is false there.
+      const skipScopedMemoryWrites = clientScopeDenied;
+      if (skipScopedMemoryWrites) {
+        console.error(
+          "[paige] client scope REFUSED — summary generated but NO memory written",
+          JSON.stringify({ reason: clientScopeRefusal }),
+        );
+      }
+
       // Insert session summary memory (with embedding)
-      if (summaryContent.trim()) {
+      if (!skipScopedMemoryWrites && summaryContent.trim()) {
         const summaryEmbedding = await embedText(summaryContent.trim());
         const memoryInsert: any = {
           client_user_id: scopedClientId || user.id,
@@ -768,7 +782,7 @@ JSON:`;
       }
 
       // Insert milestone memories if detected
-      if (milestoneResponse.ok) {
+      if (!skipScopedMemoryWrites && milestoneResponse.ok) {
         try {
           const milestoneData = await milestoneResponse.json();
           const milestoneRaw = milestoneData.choices?.[0]?.message?.content || "[]";
@@ -803,7 +817,7 @@ JSON:`;
       }
 
       // Insert extracted user preferences (auto-extraction at session end)
-      if (preferenceResponse.ok) {
+      if (!skipScopedMemoryWrites && preferenceResponse.ok) {
         try {
           const prefData = await preferenceResponse.json();
           const prefRaw = prefData.choices?.[0]?.message?.content || "[]";
@@ -8050,7 +8064,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             directSseBuf = "";
           }
           // Credit-report PDF path: run structured extraction + sync.
-          if (isCreditReportPdf && attachedDocument?.base64) {
+          // §9 — NOT on a refused turn. `runStructuredExtractionAndSync` builds its payload with
+          // `target_user_id: callerUserId` and `client_id: scopedClientId || null`, then calls
+          // `sync-credit-report-data` with the SERVICE-ROLE key. On a refusal that writes the
+          // NAMED client's report — scores, negative items, accounts — into the CALLER's own
+          // credit records, unscoped. Storing the file under the caller (above) is a safe
+          // degrade; synthesising another subject's credit profile into their file is not.
+          if (clientScopeDenied) {
+            console.error(
+              "[paige] client scope REFUSED — credit extraction and sync SKIPPED",
+              JSON.stringify({ reason: clientScopeRefusal }),
+            );
+            controller.enqueue(new TextEncoder().encode(
+              `data: ${JSON.stringify({ sync_status: { success: false, skipped: "client_scope_refused" } })}\n\n`,
+            ));
+          } else if (isCreditReportPdf && attachedDocument?.base64) {
             try {
               const syncResult = await runStructuredExtractionAndSync(
                 fullAssistantResponse,

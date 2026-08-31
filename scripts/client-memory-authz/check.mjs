@@ -538,11 +538,18 @@ console.log("\nthe SESSION-SUMMARY branch is bound to the same decision");
   assert("9.2 a REFUSED summary turn writes nothing carrying the refused id",
     !JSON.stringify(refusedSum.rec.inserts ?? []).includes(FOREIGN),
     JSON.stringify(refusedSum.rec.inserts ?? []));
-  assert("9.3 …it is filed against the CALLER instead, with no client_id",
-    refusedSum.rec.inserts.filter((i) => i.table === "client_memory").length > 0
-      && refusedSum.rec.inserts.filter((i) => i.table === "client_memory")
-        .every((i) => (i.row?.client_user_id ?? null) === USER && !i.row?.client_id),
+  // NOT "filed against the caller instead". An earlier draft asserted exactly that and so
+  // enshrined the defect: these rows are DURABLE and are injected into the caller's own future
+  // chats, so filing the named client's session under `user.id` contaminates the caller's
+  // context with a subject they were never authorized to read. Falling back is not a safe
+  // degrade for a WRITE of someone else's data — the only correct outcome is to write nothing.
+  assert("9.3 …and writes NO client_memory row at all — the caller is not a fallback subject",
+    refusedSum.rec.inserts.filter((i) => i.table === "client_memory").length === 0,
     JSON.stringify(refusedSum.rec.inserts.filter((i) => i.table === "client_memory").map((i) => i.row)));
+  assert("9.3b …while the NO-CLIENT path still writes the caller's own summary (9.3 is not over-broad)",
+    (await drive({ clientId: undefined, stream: true, extraBody: sessionBody }))
+      .rec.inserts.some((i) => i.table === "client_memory" && (i.row?.client_user_id ?? null) === USER),
+    "a legitimate self-summary was suppressed — the gate is too wide");
 }
 
 console.log("\nthe CREDIT-REPORT upload branch is bound to the same decision");
@@ -587,6 +594,13 @@ console.log("\nthe CREDIT-REPORT upload branch is bound to the same decision");
       uploads: refusedCredit.rec.uploads.map((u) => u.path),
       rows: refusedCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").map((i) => i.row?.user_id),
     }));
+  assert("10.4 a REFUSED credit report is NOT extracted and synced into the caller's records",
+    refusedCredit.bodyText.includes("client_scope_refused")
+      && !refusedCredit.modelEgress.some((b) => b.includes("Extract structured")),
+    refusedCredit.bodyText.slice(0, 300));
+  assert("10.5 …while an AUTHORIZED one still syncs (10.4 is not vacuous)",
+    ownCredit.bodyText.includes("sync_status") && !ownCredit.bodyText.includes("client_scope_refused"),
+    ownCredit.bodyText.slice(0, 300));
   assert("10.3 …it lands under the CALLER's own id instead",
     refusedCredit.rec.uploads.length > 0 && refusedCredit.rec.uploads.every((u) => u.path.startsWith(`${USER}/`)),
     JSON.stringify(refusedCredit.rec.uploads.map((u) => u.path)));
