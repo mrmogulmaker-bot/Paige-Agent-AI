@@ -6,7 +6,7 @@
  *
  * Earlier packets offered fold rendering, geometry snapshots and a green suite as
  * evidence this surface was usable. The owner disproved that class of claim on
- * First Sterling, in production: the deployed Calendar page could not be scrolled
+ * a live tenant, in production: the deployed Calendar page could not be scrolled
  * down to its content. None of those artifacts measures whether a human reaches
  * the last control, so none of them was proof.
  *
@@ -73,9 +73,26 @@ const record = (viewport, name, ok, detail) => {
   console.log(`   ${ok ? "✓" : "✗"} ${name}${ok ? "" : ` — ${detail}`}`);
 };
 
-const OWNER = "tenant-shell-main";
-const scrollTopOf = (page) => page.evaluate((id) => document.getElementById(id).scrollTop, OWNER);
-const reset = (page) => page.evaluate((id) => { document.getElementById(id).scrollTop = 0; }, OWNER);
+/**
+ * THE SCROLL OWNER IS RESOLVED, NEVER ASSUMED.
+ *
+ * `SoloSettings` resolves it as `closest("[data-solo-screen-host]")` and only
+ * falls back to `#tenant-shell-main` when the shell provides no screen host
+ * (bare mounts, tests). Post-#681 the screen host is `overflow: auto` and IS the
+ * owner, so a drive hardcoded to `#tenant-shell-main` measures an element that
+ * does not scroll in the app. This selector is the app's own rule, in the same
+ * order, so the drive can never drift from it.
+ */
+const scrollTopOf = (page) =>
+  page.evaluate((sel) => {
+    const o = document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main");
+    return o ? o.scrollTop : -1;
+  });
+const reset = (page) =>
+  page.evaluate(() => {
+    const o = document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main");
+    if (o) o.scrollTop = 0;
+  });
 
 // Wait until the owner's scrollTop stops moving. Chromium animates keyboard and
 // wheel scrolling, so a fixed short timeout reads a position the browser is
@@ -109,8 +126,8 @@ async function openEveryArea(page) {
 
 /** The last actionable control a human is meant to reach. */
 const markFinal = (page) =>
-  page.evaluate((id) => {
-    const owner = document.getElementById(id);
+  page.evaluate(() => {
+    const owner = document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main");
     document.querySelectorAll("[data-drive-final]").forEach((e) => e.removeAttribute("data-drive-final"));
     const controls = Array.from(
       document.querySelectorAll(".solo-settings button, .solo-settings a[href], .solo-settings input, .solo-settings select, .solo-settings textarea"),
@@ -128,12 +145,12 @@ const markFinal = (page) =>
     last.setAttribute("data-drive-final", "1");
     return { label: (last.textContent || last.getAttribute("aria-label") || last.tagName).trim().slice(0, 50),
              docY: Math.round(lastY), total: controls.length };
-  }, OWNER);
+  });
 
 const finalVisible = (page) =>
-  page.evaluate((id) => {
+  page.evaluate(() => {
     const el = document.querySelector('[data-drive-final="1"]');
-    const owner = document.getElementById(id);
+    const owner = document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main");
     if (!el || !owner) return { visible: false, reason: "missing" };
     const r = el.getBoundingClientRect(), o = owner.getBoundingClientRect();
     const withinY = r.top >= o.top - 1 && r.bottom <= o.bottom + 1;
@@ -142,7 +159,7 @@ const finalVisible = (page) =>
     return { visible: withinY && withinX, withinY, withinX,
              hittable: !!hit && (hit === el || el.contains(hit) || hit.contains(el)),
              top: Math.round(r.top), bottom: Math.round(r.bottom), ownerBottom: Math.round(o.bottom) };
-  }, OWNER);
+  });
 
 async function run() {
   const browser = await chromium.launch({ executablePath: EXE });
@@ -158,8 +175,8 @@ async function run() {
       await page.screenshot({ path: path.join(OUT, `${tag}-01-initial.png`) });
       await openEveryArea(page);
 
-      const geom = await page.evaluate((id) => {
-        const o = document.getElementById(id);
+      const geom = await page.evaluate(() => {
+        const o = document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main");
         // The scrollbar is measured through the two properties that actually
         // SUPPRESS it, not through the gutter. `probe` is an unstyled
         // `overflow-y: scroll` div created in this same page: if IT reports a
@@ -180,8 +197,8 @@ async function run() {
         return { scrollH: o.scrollHeight, clientH: o.clientHeight, scrollW: o.scrollWidth,
                  clientW: o.clientWidth, gutter: o.offsetWidth - o.clientWidth, probeGutter,
                  sbWidth: getComputedStyle(o).scrollbarWidth, cls: o.className,
-                 sbDisplay: sb.display, sbTrackW: parseFloat(sb.width) || 0 };
-      }, OWNER);
+                 sbDisplay: sb.display, sbTrackWRaw: sb.width };
+      });
       console.log(`   ${geom.scrollH}px content in ${geom.clientH}px viewport → ${geom.scrollH - geom.clientH}px below the fold`);
 
       const final = await markFinal(page);
@@ -209,11 +226,19 @@ async function run() {
       // and modern Chrome honour) and `::-webkit-scrollbar { width:0; display:none }`
       // (the legacy pseudo-element, still honoured by Chrome and Safari).
       // Undoing only one leaves the bar hidden in the other lane.
-      const sbShown = geom.sbWidth !== "none" && geom.sbDisplay !== "none" && geom.sbTrackW > 0;
+      // `auto` is the value a scroller with NO author `::-webkit-scrollbar` rule
+      // reports, and it means the platform draws its own bar -- so it is SHOWN.
+      // Treating it as a number (`parseFloat("auto") || 0`) failed a perfectly
+      // normal native scrollbar; this passed here only because the shell happens
+      // to set an explicit width. The row has to mean "not suppressed", not "an
+      // author rule sets a nonzero width".
+      const trackW = geom.sbTrackWRaw;
+      const trackShown = trackW === "auto" || parseFloat(trackW) > 0;
+      const sbShown = geom.sbWidth !== "none" && geom.sbDisplay !== "none" && trackShown;
       record(tag, "the scrollbar is not suppressed on this authorized scroll surface",
              sbShown,
              `scrollbar-width:${geom.sbWidth} · ::-webkit-scrollbar display:${geom.sbDisplay} ` +
-             `width:${geom.sbTrackW}px · ${geom.cls} · [gutter ${geom.gutter}px, but an unstyled ` +
+             `width:${trackW} · ${geom.cls} · [gutter ${geom.gutter}px, but an unstyled ` +
              `control scroller in this same browser reports ${geom.probeGutter}px, so gutter is ` +
              `${geom.probeGutter > 0 ? "meaningful here" : "NOT evidence here — overlay scrollbars"}]`);
 
@@ -290,10 +315,10 @@ async function run() {
       //      The click has to land inside the scroll owner to be a click on THIS
       //      page. An earlier revision used x=4, which is the shared Solo nav
       //      rail, not the Calendar canvas — see the observation below.
-      const ownerBox = await page.evaluate((id) => {
-        const r = document.getElementById(id).getBoundingClientRect();
+      const ownerBox = await page.evaluate(() => {
+        const r = (document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main")).getBoundingClientRect();
         return { l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width) };
-      }, OWNER);
+      });
       await reset(page);
       await page.mouse.click(ownerBox.l + 6, Math.round(vp.h / 2));
       await page.keyboard.press("PageDown");
@@ -354,10 +379,10 @@ async function run() {
       //      entirely. A miss here is evidence about the ENVIRONMENT, not about
       //      the surface — scoring it either way would be a fabricated verdict.
       await reset(page);
-      const edge = await page.evaluate((id) => {
-        const r = document.getElementById(id).getBoundingClientRect();
+      const edge = await page.evaluate(() => {
+        const r = (document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main")).getBoundingClientRect();
         return { x: Math.round(r.right - 4), top: Math.round(r.top + 12), bottom: Math.round(r.bottom - 12) };
-      }, OWNER);
+      });
       await page.mouse.move(edge.x, edge.top + 4);
       await page.waitForTimeout(120);           // overlay bars fade in on hover
       await page.mouse.down();

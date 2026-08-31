@@ -54,6 +54,7 @@ import {
 } from "@/lib/calendar/config";
 import { isStale as accountIsStale } from "@/lib/calendar/account-identity";
 import { useCalendarConnections, type CalendarHost, type Capability, type HostCandidate, type SendReadiness } from "./data/useCalendarConnections";
+import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
 import "./connections-calendars.css";
 
 /* ------------------------------------------------------------- primitives */
@@ -439,60 +440,70 @@ type AccountIdentity = ReturnType<typeof useAccountIdentity>;
 
 export function CalendarsView() {
   /**
-   * THE SETTINGS SCROLL OWNER, MADE USABLE BY A HUMAN — the P1 the owner
-   * reported on First Sterling: the deployed Calendar page could not be
-   * scrolled down to its content.
+   * THE SETTINGS SCROLL OWNER, MADE USABLE BY A HUMAN.
    *
-   * Owner platform policy (2026-08-31): Settings surfaces — Connections,
-   * Calendars, Integrations — are the AUTHORIZED vertical-scroll class,
-   * marketplace-style pages a human browses. Command Center, Clients, Campaigns
-   * and Analytics are form-fitting and design-locked. So the repair is never to
-   * stop this page scrolling; it is to make the scroll one a human can see and
-   * drive. Measured on this surface at 1366×768 with every area open: 5,836px of
-   * content in a 702px viewport — 5,134px below the fold.
+   * Owner platform policy (2026-08-31): Settings surfaces are the AUTHORIZED
+   * vertical-scroll class -- marketplace-style pages a human browses, where every
+   * option must be reachable. Command Center, Clients, Campaigns and Analytics
+   * stay form-fitting and design-locked. So the repair is never to stop this page
+   * scrolling; it is to make the scroll one a human can see and drive.
    *
-   * TWO DEFECTS, BOTH MEASURED, BOTH FIXED HERE AND ONLY HERE.
+   * THE OWNER IS RESOLVED, NEVER ASSUMED. `settingsScrollOwner` is the same
+   * function `SoloSettings` uses, so the element this dresses is always the
+   * element that scrolls. An earlier revision hardcoded `#tenant-shell-main` and
+   * restored a scrollbar on an element with no scroll extent while the real owner
+   * -- `SoloApp`'s screen host -- kept none.
    *
-   * 1. THE SCROLLBAR WAS INVISIBLE — fixed in `connections-calendars.css`,
-   *    scoped by `:has(.cc)`. See the comment there for why it is CSS and not
-   *    this effect.
+   * TWO DEFECTS, BOTH MEASURED ON THE REAL COMPONENT TREE.
    *
-   * 2. KEYBOARD SCROLLING DID NOTHING ON ARRIVAL. `.tcs-main` is
-   *    `overflow-y: auto` with no `tabindex`, so it cannot hold focus. On a
-   *    fresh load focus is on <body>, the shell is `height: 100dvh;
-   *    overflow: hidden`, and the document cannot scroll either. Measured:
-   *    Space, PageDown and End each left `scrollTop = 0`. It only began working
-   *    after the user pressed Tab, which is not a thing anyone should have to
-   *    discover. `tabindex="-1"` makes the region focusable WITHOUT adding a tab
-   *    stop — verified: the first Tab still lands on a real control — and focus
-   *    is taken only when nothing else holds it, so it never steals focus from a
-   *    control the user is already using.
+   * 1. THE SCROLLBAR WAS SUPPRESSED. `SoloSettings` adds
+   *    `tcs-main--settings-scrollbar-hidden` to the owner for every Settings
+   *    destination, which sets `scrollbar-width: none` AND collapses
+   *    `::-webkit-scrollbar` -- the standard property for Firefox and modern
+   *    Chrome, the pseudo-element for Chrome and Safari. Measured on the owner
+   *    with 2,456px of content in a 702px host: `scrollbar-width: none`,
+   *    `::-webkit-scrollbar` display none, width 0. No signal the page continues
+   *    and nothing to drag.
    *
-   * Both reach the shell through `closest("#tenant-shell-main")`, the same seam
-   * `SoloSettings` already uses for this element, rather than inventing a second
-   * mechanism (§18).
+   *    This adds a second class rather than removing that one, because React runs
+   *    CHILD effects before PARENT effects: a `classList.remove` here is undone
+   *    microseconds later when `SoloSettings` adds it back. Two classes and a
+   *    cascade cannot lose that race, and unlike a `:has()` override the result
+   *    does not depend on selector support -- in an engine without `:has()` the
+   *    whole rule would be dropped and, for the standard-property lane, would
+   *    leave the bar hidden exactly where it was reported missing.
+   *
+   * 2. KEYBOARD SCROLLING DID NOTHING ON ARRIVAL. The owner is `overflow-y: auto`
+   *    with no `tabindex`, so it cannot hold focus. On a fresh load focus is on
+   *    <body>, and Blink propagates scroll keys UPWARD from the focused node --
+   *    it never descends into a scrollable descendant -- so nothing moves.
+   *    Measured: End left `scrollTop` at 0. `tabindex="-1"` makes the region
+   *    focusable WITHOUT adding a tab stop, and focus is taken only when nothing
+   *    else holds it, so it never steals focus from a control already in use.
    */
-  const scrollOwnerRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const owner = scrollOwnerRef.current?.closest<HTMLElement>("#tenant-shell-main");
+    const owner = settingsScrollOwner(surfaceRef.current);
     if (!owner) return;
 
-    // The hidden-scrollbar class is NOT fought over here. React runs child
-    // effects before parent effects, so removing it in this component is undone
-    // by `SoloSettings` adding it back — measured. `connections-calendars.css`
-    // overrides it declaratively with `:has(.cc)` instead, which cannot lose
-    // that race.
+    owner.classList.add(SETTINGS_SCROLLBAR_SHOWN);
     const hadTabIndex = owner.hasAttribute("tabindex");
     if (!hadTabIndex) owner.setAttribute("tabindex", "-1");
-
-    // Only when nothing else is focused. Grabbing focus from a control a person
-    // is already typing in would be a worse bug than the one being fixed.
     if (document.activeElement === document.body || document.activeElement === null) {
       owner.focus({ preventScroll: true });
     }
 
     return () => {
-      if (!hadTabIndex) owner.removeAttribute("tabindex");
+      owner.classList.remove(SETTINGS_SCROLLBAR_SHOWN);
+      if (!hadTabIndex) {
+        // Blur BEFORE the attribute goes, not after: removing `tabindex` does not
+        // itself blur, and once the element is no longer focusable `blur()` is not
+        // reliably honoured. Reversed, an owner still holding focus keeps it on
+        // shared chrome after this surface is gone -- a residue the next
+        // destination inherits.
+        if (document.activeElement === owner) owner.blur();
+        owner.removeAttribute("tabindex");
+      }
     };
   }, []);
 
@@ -811,7 +822,7 @@ export function CalendarsView() {
   }, [location.pathname, location.search]);
 
   return (
-    <div className="cc" ref={scrollOwnerRef}>
+    <div className="cc" ref={surfaceRef}>
       <ConnectedAccounts conn={conn} returnTo={returnHere} identity={identity} />
 
       <section className="cc-sec">

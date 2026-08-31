@@ -37,6 +37,7 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
+import { settingsScrollOwner } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
 import "./settings.css";
 
@@ -858,8 +859,7 @@ export function SoloSettings() {
   // outer main while the inner host owns the scroll left the visible scrollbar
   // undressed, which is the contract `.tcs-main--settings-scrollbar-hidden` exists
   // to hold.
-  const scrollOwnerOf = (root: HTMLElement | null) =>
-    root?.closest<HTMLElement>("[data-solo-screen-host]") ?? root?.closest<HTMLElement>("#tenant-shell-main") ?? null;
+  const scrollOwnerOf = settingsScrollOwner;
   useEffect(() => {
     const scrollOwner = scrollOwnerOf(rootRef.current);
     scrollOwner?.classList.add("tcs-main--settings-scrollbar-hidden");

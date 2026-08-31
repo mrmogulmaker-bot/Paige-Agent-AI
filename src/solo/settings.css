@@ -91,16 +91,7 @@
 .ss-tags { display: flex; flex-wrap: wrap; gap: 7px; }.ss-tags span { padding: 6px 8px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); color: var(--pg-muted); background: var(--pg-lift); font-size: 10px; }
 .ss-return { display: flex; max-width: 1180px; align-items: center; justify-content: space-between; gap: 10px; margin: -4px auto 14px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--pg-accent) 30%, var(--pg-line)); border-radius: var(--pg-r-chip); color: var(--pg-muted); background: color-mix(in srgb, var(--pg-accent) 6%, var(--pg-surface)); font-size: 10px; }
 .tcs-main--settings-scrollbar-hidden { scrollbar-width: none; -ms-overflow-style: none; }
-/* `:not(:has(.cc))` exempts Settings > Connections > Calendars, and only it.
-   That surface renders 5,100-6,200px below the fold, so a human needs the
-   scrollbar to see the page continues and to drag it (owner P1, First
-   Sterling; owner policy 2026-08-31 makes Settings the authorized
-   vertical-scroll class). Exempting it here returns the PLATFORM scrollbar
-   rather than re-enabling this pseudo-element with invented dimensions,
-   which in Chromium would build a custom scrollbar with no thumb styling.
-   No other Settings destination contains `.cc`, so every one of them keeps
-   this rule and its shipped behaviour unchanged. */
-[data-tenant-shell] .tcs-main--settings-scrollbar-hidden:not(:has(.cc))::-webkit-scrollbar { width: 0; height: 0; display: none; }
+[data-tenant-shell] .tcs-main--settings-scrollbar-hidden::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .ss-phone-setup { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--pg-accent) 28%, var(--pg-line)); box-shadow: inset 3px 0 var(--pg-accent), var(--pg-e1), var(--pg-rim); }
 .ss-phone-heading { min-width: 0; flex: 1; }
 .ss-phone-setup .ss-phone-title { margin: 0 0 2px; font: 650 18px/1.1 var(--pg-font-display); letter-spacing: -.02em; }

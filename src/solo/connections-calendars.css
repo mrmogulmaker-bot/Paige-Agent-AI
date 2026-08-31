@@ -23,42 +23,6 @@
  * prefers-reduced-motion twin at the end of this file.
  */
 
-/**
- * THE SCROLLBAR STAYS VISIBLE ON THIS SURFACE.
- *
- * `SoloSettings` adds `tcs-main--settings-scrollbar-hidden` to the shell scroll
- * owner for EVERY Settings destination. That class suppresses the scrollbar
- * TWICE — `scrollbar-width: none` for Firefox and modern Chrome, and a collapsed
- * `::-webkit-scrollbar` for Chrome and Safari. Undoing only one lane leaves the
- * bar hidden in the other, so both are undone.
- *
- * Measured here with every area open: 5,836px of content in a 702px viewport —
- * 5,134px below the fold — with no scrollbar at all. That is the P1 the owner
- * reported on First Sterling: no signal that the page continues, and nothing to
- * drag.
- *
- * Owner policy (2026-08-31): Settings surfaces are the AUTHORIZED vertical-scroll
- * class and must not hide their scrollbar. Command Center, Clients, Campaigns and
- * Analytics stay form-fitting and design-locked, and are untouched by this rule.
- *
- * WHY CSS AND NOT THE EFFECT THAT SETS `tabindex`. React runs CHILD effects
- * before PARENT effects, so a `classList.remove` inside `CalendarsView` is
- * undone microseconds later when `SoloSettings` adds it back — measured: the
- * class was still on the element after mount. `:has(.cc)` is declarative, wins
- * regardless of ordering, and applies only while THIS surface is inside the
- * owner, so every other destination keeps its shipped behaviour byte for byte.
- *
- * The `::-webkit-scrollbar` lane is undone at ITS source, in `settings.css`,
- * which exempts `:not(:has(.cc))` from the collapsing rule. That returns the
- * PLATFORM scrollbar here rather than building a custom one out of dimensions
- * invented in this file — style `::-webkit-scrollbar` at all and Chromium stops
- * drawing its own, so a re-enable with no thumb rule renders a blank track.
- */
-#tenant-shell-main.tcs-main--settings-scrollbar-hidden:has(.cc) {
-  scrollbar-width: auto;
-  -ms-overflow-style: auto;
-}
-
 .cc {
   --cc-ease: cubic-bezier(.32, .72, 0, 1);
   --cc-plate: 14px;
@@ -547,3 +511,49 @@ textarea.cc-in { height: auto; min-height: 62px; padding: 8px 10px; line-height:
    toolbar, so the actions are quiet until you reach them. */
 .cc-host-act { display: flex; gap: 2px; margin-left: auto; }
 .cc-host-act button { padding-inline: 6px; }
+
+/**
+ * THE SCROLLBAR STAYS VISIBLE ON THIS SURFACE.
+ *
+ * `SoloSettings` adds `tcs-main--settings-scrollbar-hidden` to the Settings scroll
+ * owner for every destination, suppressing the bar in BOTH lanes: the standard
+ * `scrollbar-width` property that Firefox and modern Chrome honour, and the
+ * `::-webkit-scrollbar` pseudo-element that Chrome and Safari honour. Undoing one
+ * lane leaves the bar hidden in the other, so both are undone here.
+ *
+ * Owner policy (2026-08-31): Settings surfaces are the AUTHORIZED vertical-scroll
+ * class and must not hide their scrollbar. Command Center, Clients, Campaigns and
+ * Analytics stay form-fitting and design-locked, and are untouched by this rule.
+ *
+ * The class is ADDED by `CalendarsView` rather than the hidden one being removed:
+ * React runs child effects before parent effects, so a removal here is undone when
+ * `SoloSettings` re-adds it. Two classes and a cascade cannot lose that race.
+ *
+ * The pseudo-element restores the SHELL's own scrollbar geometry
+ * (`tenant-command-center-shell.css`), not dimensions invented here -- once
+ * `::-webkit-scrollbar` is styled at all Chromium stops drawing its own, so the
+ * thumb and track rules the shell already ships are what must apply.
+ */
+/* Both classes are on the element at once, so these select the COMBINATION. That
+   is not decoration: the hidden rules and a single-class override have the same
+   specificity, and `settings.tsx` imports `connections-calendars` before its own
+   stylesheet -- so `settings.css` loads LAST and wins on source order. Measured:
+   with a single-class override the owner still reported `scrollbar-width: none`
+   and `::-webkit-scrollbar` display none. Naming both classes outranks the
+   suppression outright, whichever file the bundler emits first. */
+[data-tenant-shell] .tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown {
+  scrollbar-width: auto;
+  -ms-overflow-style: auto;
+}
+[data-tenant-shell] .tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+/* The surface is also mounted without `SoloSettings` (unit tests, bare harnesses),
+   where the hidden class is never added. Nothing suppresses the bar there, so this
+   only has to not fight the platform default. */
+.tcs-main--settings-scrollbar-shown {
+  scrollbar-width: auto;
+  -ms-overflow-style: auto;
+}

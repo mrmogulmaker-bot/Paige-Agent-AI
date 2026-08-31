@@ -19,4 +19,13 @@ export function useTenantContext() {
     isPlatformStaff: false,
   };
 }
-export default { useTenantContext };
+/**
+ * The real module also exports a provider that `SoloApp`'s harness entry wraps
+ * the tree in. Nothing in the stub needs context — `useTenantContext` answers
+ * from the constant above — so this is a passthrough that keeps the import
+ * shape identical to the module it replaces.
+ */
+export function TenantProvider({ children }: { children?: unknown }) {
+  return children as never;
+}
+export default { useTenantContext, TenantProvider };

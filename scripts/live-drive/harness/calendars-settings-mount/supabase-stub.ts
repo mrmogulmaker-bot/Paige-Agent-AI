@@ -315,7 +315,25 @@ export const supabase = {
   },
   auth: {
     getUser: () => Promise.resolve({ data: { user: { id: "harness-user" } }, error: null }),
+    getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+    // The shell subscribes to auth changes on mount. It only ever needs a
+    // handle it can unsubscribe from; there is no session to change here.
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
   },
+  // Realtime, answered as "subscribed and silent". The shell and several hooks
+  // open channels on mount; a harness has no socket, and inventing events would
+  // put rows on screen that no read produced. Every method returns the channel
+  // so the fluent `.on().on().subscribe()` shape works unchanged.
+  channel: () => {
+    const ch: Record<string, unknown> = {};
+    ch.on = () => ch;
+    ch.subscribe = (cb?: (status: string) => void) => { cb?.("SUBSCRIBED"); return ch; };
+    ch.unsubscribe = () => Promise.resolve("ok");
+    ch.send = () => Promise.resolve("ok");
+    return ch;
+  },
+  removeChannel: () => Promise.resolve("ok"),
+  getChannels: () => [],
   functions: {
     // A harness never leaves for a provider. Reporting a failure is the honest
     // answer — nothing was started, so nothing may be claimed.
