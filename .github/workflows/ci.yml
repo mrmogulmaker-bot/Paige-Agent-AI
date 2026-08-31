@@ -377,7 +377,3 @@ jobs:
       - name: Smoke — voice-twiml handler (nothing secret leaves on an unsigned request)
         if: ${{ !cancelled() }}
         run: npm run smoke:voice-twiml-handler
-
-      - name: Smoke — tenant resolution for connect flows (§9 cross-tenant refusal)
-        if: ${{ !cancelled() }}
-        run: npm run smoke:tenant-for-user

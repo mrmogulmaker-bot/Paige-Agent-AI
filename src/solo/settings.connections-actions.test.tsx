@@ -79,10 +79,8 @@ function comms(over: Record<string, unknown> = {}) {
   return {
     loading: false, error: null, isSubAccount: false,
     domains: [], sending: { fromName: null, supportEmail: null, defaultSender: null },
-    business: { name: "", website: "https://example.com", phone: "+15550001111" },
     mailbox: { connected: false, address: null, displayName: null, provider: null, status: null },
     billing: null, canManage: true, refresh: vi.fn(),
-    saveBusiness: vi.fn(async () => ({ ok: true, error: null })),
     addDomain: vi.fn(async () => ({ ok: true, error: null })),
     refreshDomain: vi.fn(async () => ({ ok: true, error: null })),
     setDefaultDomain: vi.fn(async () => ({ ok: true, error: null })),
@@ -122,54 +120,29 @@ function setInput(placeholder: string, value: string) {
 
 beforeEach(() => { state.comms = comms(); state.readinessRetry = vi.fn(); document.body.innerHTML = ""; });
 
-describe("Business details are editable, not just graded", () => {
-  it("renders a field for the value the readiness step says is missing", async () => {
-    state.comms = comms();
+describe("Business details are graded here, but owned by Setup", () => {
+  it("still reports what carriers are missing", async () => {
     await mount();
-    // The grade and the remedy have to be on the same surface.
-    expect(text()).toContain("business name still missing");
-    expect(host.querySelector('input[placeholder="As registered"]')).toBeTruthy();
+    expect(text()).toContain("business name");
+    expect(text()).toContain("still missing");
   });
 
-  it("saves through the merging brand seam with trimmed values", async () => {
-    const save = vi.fn(async (_next: { name: string; website: string; phone: string }) => ({ ok: true, error: null }));
-    state.comms = comms({ saveBusiness: save });
-    await mount();
-    setInput("As registered", "  First Sterling Capital  ");
-    await act(async () => { findButton("Save business details").click(); });
-    expect(save).toHaveBeenCalledTimes(1);
-    // The panel hands over exactly what was typed; `useSoloComms.saveBusiness`
-    // owns the trim before it reaches `set_tenant_brand`. Asserting the raw
-    // value here keeps that boundary explicit — if the panel ever started
-    // trimming too, this row would say so rather than quietly agreeing.
-    expect(save.mock.calls[0][0]).toMatchObject({ name: "  First Sterling Capital  " });
-    expect(text()).toContain("Saved.");
-  });
-
-  it("reports a REJECTED save as a failure, with the real reason", async () => {
-    // The §13 row. A write the server refused must never read as success.
-    state.comms = comms({ saveBusiness: vi.fn(async () => ({ ok: false, error: "not authorized to manage brand" })) });
-    await mount();
-    setInput("As registered", "X");
-    await act(async () => { findButton("Save business details").click(); });
-    expect(text()).toContain("not authorized to manage brand");
-    expect(text()).not.toContain("Saved. Carrier registration");
-  });
-
-  it("will not submit an untouched form", async () => {
-    const save = vi.fn(async () => ({ ok: true, error: null }));
-    state.comms = comms({ saveBusiness: save });
-    await mount();
-    expect(findButton("Save business details").disabled).toBe(true);
-    setInput("As registered", "X");
-    expect(findButton("Save business details").disabled).toBe(false);
-  });
-
-  it("hides the editor from someone who may not write here", async () => {
-    state.comms = comms({ canManage: false });
+  it("does NOT duplicate the Setup editor on this surface", async () => {
+    // Owner ruling 2026-08-31: the legal name, address and phone live in Setup;
+    // Connections owns only what the platform hands the tenant — the sending
+    // domain and the address on it. An earlier revision of this branch put an
+    // editor here while `SuBusiness` on Setup already had one, which is the
+    // second-home duplication §18 exists to prevent.
     await mount();
     expect(host.querySelector('input[placeholder="As registered"]')).toBeNull();
-    expect(text()).toContain("Only a workspace admin can change your business details");
+    expect(() => findButton("Save business details")).toThrow();
+  });
+
+  it("points at the one place those fields are edited", async () => {
+    await mount();
+    expect(text()).toContain("live in Setup");
+    const link = [...host.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Setup"));
+    expect(link?.getAttribute("href")).toContain("/settings/setup");
   });
 });
 

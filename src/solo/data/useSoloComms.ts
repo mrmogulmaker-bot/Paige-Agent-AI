@@ -42,6 +42,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
+import { resolveFunctionError } from "@/lib/integrations/connectError";
 
 export interface SoloDomain {
   id: string;
@@ -68,19 +69,6 @@ export interface SoloBillingPlan {
   /** True when the caller may manage billing (tenant admin), fail-closed. */
   canManage: boolean;
   hasActiveSub: boolean;
-}
-
-/**
- * The carrier-facing business record, read from `tenants.brand`.
- *
- * These are the SAME three fields `tenant_comms_readiness()` grades for the
- * "Business details" step, read from the same jsonb, so the editor and the
- * readiness ladder can never disagree about whether a name is on file.
- */
-export interface SoloBusinessDetails {
-  name: string;
-  website: string;
-  phone: string;
 }
 
 /**
@@ -112,7 +100,6 @@ export interface SoloCommsData {
   isSubAccount: boolean;
   domains: SoloDomain[];
   sending: SoloSendingIdentity;
-  business: SoloBusinessDetails;
   /** Null while loading or unresolved; `connected:false` is a real answer. */
   mailbox: SoloMailbox | null;
   /** Null while loading, for a sub-account (parent-managed), or when unresolved. */
@@ -127,7 +114,6 @@ export interface SoloCommsData {
    * `can_manage_tenant_brand`, and `manage-tenant-domain` derives its tenant
    * from the verified session. None of them takes a client-supplied tenant id.
    */
-  saveBusiness: (next: SoloBusinessDetails) => Promise<SoloMutationResult>;
   addDomain: (input: { domain: string; fromEmailLocal: string; fromName: string }) => Promise<SoloMutationResult>;
   refreshDomain: (id: string) => Promise<SoloMutationResult>;
   setDefaultDomain: (id: string) => Promise<SoloMutationResult>;
@@ -153,6 +139,15 @@ interface CurrentSub {
   current_period_end?: string | null;
   cancel_at_period_end?: boolean | null;
 }
+
+/** Plain-English phrase per verb, for `resolveFunctionError`'s copy (§3 — no jargon). */
+const DOMAIN_ACTION: Record<string, string> = {
+  add: "add that sending domain",
+  refresh: "check that domain's DNS",
+  set_default: "make that domain the default sender",
+  remove: "remove that sending domain",
+  list: "read your sending domains",
+};
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v : null;
@@ -189,7 +184,6 @@ export function useSoloComms(): SoloCommsData {
     defaultSender: null,
   });
   const [billing, setBilling] = useState<SoloBillingPlan | null>(null);
-  const [business, setBusiness] = useState<SoloBusinessDetails>({ name: "", website: "", phone: "" });
   const [mailbox, setMailbox] = useState<SoloMailbox | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
@@ -197,21 +191,41 @@ export function useSoloComms(): SoloCommsData {
 
   const load = useCallback(async () => {
     const requestToken = requestGate.current.begin();
-    // Clear the previous account before the next account resolves. Nothing tenant-derived
-    // is allowed to remain visible during the switch.
-    setLoadedTenantId(null);
-    setDomains([]);
-    setSending({ fromName: null, supportEmail: null, defaultSender: null });
-    setBilling(null);
-    setBusiness({ name: "", website: "", phone: "" });
-    setMailbox(null);
-    setCanManage(false);
+    // Clear the previous account before the next account resolves — but ONLY when
+    // the account actually CHANGED. Nothing tenant-derived may remain visible
+    // across a switch (§9); blanking on a same-account REFRESH is a different
+    // thing entirely, and it was a real defect once this adapter gained writes.
+    //
+    // Every mutation calls `load()` to re-read the persisted answer. With an
+    // unconditional reset, that re-read momentarily set `canManage` false, and
+    // all three panels early-return a read-only notice on `!canManage` — so the
+    // editor flickered to "Only a workspace admin can change this" and UNMOUNTED
+    // the panel holding the "Saved." confirmation, at the exact moment it had
+    // something to say. Caught by driving the save in a browser; the unit suite
+    // mocks this adapter and cannot see it.
+    const switchingAccount = loadedTenantId !== null && loadedTenantId !== tenantId;
+    if (switchingAccount) {
+      setLoadedTenantId(null);
+      setDomains([]);
+      setSending({ fromName: null, supportEmail: null, defaultSender: null });
+      setBilling(null);
+      setMailbox(null);
+      setCanManage(false);
+    }
     setError(null);
     if (!tenantId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // `loading` means "there is nothing to show for this account yet" — NOT "a
+    // refresh is in flight". Every mutation re-reads, and the panels sit inside a
+    // `ReadState` keyed on this flag: setting it true on a same-account refresh
+    // swapped them for a loading state and UNMOUNTED the panel holding the
+    // result message, so a successful save or domain change reported nothing.
+    // The returned value still gates on `loadedTenantId === tenantId`, so stale
+    // data can never be shown across a switch (§9) — that guarantee does not
+    // depend on this flag.
+    if (loadedTenantId !== tenantId) setLoading(true);
     try {
       // Sending identity is meaningful on every tier; billing is skipped for a
       // sub-account (its plan is the parent agency's — §217/§38).
@@ -278,14 +292,6 @@ export function useSoloComms(): SoloCommsData {
           : null,
       });
 
-      // The same three keys `tenant_comms_readiness()` grades. `business_name`
-      // falls back to `name` there, so it does here too — otherwise the editor
-      // would show an empty box for a value the ladder already counts as present.
-      setBusiness({
-        name: str(brand.business_name) ?? str(brand.name) ?? "",
-        website: str(brand.website) ?? "",
-        phone: str(brand.business_phone) ?? "",
-      });
 
       // A failed connector read is NOT reported as "not connected" — that would
       // be a fabricated negative. It stays null, and the card says it could not
@@ -357,7 +363,7 @@ export function useSoloComms(): SoloCommsData {
     } finally {
       if (requestGate.current.isCurrent(requestToken)) setLoading(false);
     }
-  }, [tenantId, isSubAccount]);
+  }, [tenantId, isSubAccount, loadedTenantId]);
 
   useEffect(() => {
     const activeGate = requestGate.current;
@@ -380,29 +386,6 @@ export function useSoloComms(): SoloCommsData {
     error: e instanceof Error ? e.message : typeof e === "string" ? e : "That didn't save.",
   });
 
-  const saveBusiness = useCallback(
-    async (next: SoloBusinessDetails): Promise<SoloMutationResult> => {
-      if (!tenantId) return { ok: false, error: "No workspace is selected." };
-      try {
-        // A PATCH, not a replacement: `set_tenant_brand` merges, so logo, colour
-        // and the rest of the brand survive an edit made here.
-        const { error: rpcError } = await supabase.rpc("set_tenant_brand" as never, {
-          _tenant_id: tenantId,
-          _patch: {
-            business_name: next.name.trim() || null,
-            website: next.website.trim() || null,
-            business_phone: next.phone.trim() || null,
-          },
-        } as never);
-        if (rpcError) throw rpcError;
-        await load();
-        return { ok: true, error: null };
-      } catch (e) {
-        return asResult(e);
-      }
-    },
-    [tenantId, load],
-  );
 
   const domainVerb = useCallback(
     async (verb: string, payload: Record<string, unknown> = {}): Promise<SoloMutationResult> => {
@@ -410,12 +393,19 @@ export function useSoloComms(): SoloCommsData {
         const { data, error: fnError } = await supabase.functions.invoke("manage-tenant-domain", {
           body: { verb, ...payload },
         });
-        if (fnError) throw fnError;
-        // The edge function reports failure in a 200 body as well as by status,
-        // so both are checked — treating only the transport error as failure is
-        // how a rejected write gets reported as a success.
+        // BOTH shapes, and neither read raw. On a non-2xx, supabase-js sets
+        // `data = null` and `error.message` to "Edge Function returned a non-2xx
+        // status code" — the real code (`invalid_domain`, `forbidden`,
+        // `not_found`) is inside `error.context`. Reading `error.message` shows a
+        // person framework jargon for an ordinary typo, so this goes through the
+        // one home that already exists for exactly this (§18).
         const inner = asRecord(data).error;
-        if (inner) throw new Error(String(inner));
+        if (fnError || inner) {
+          const { message } = await resolveFunctionError({
+            error: fnError, data, action: DOMAIN_ACTION[verb] ?? "update your sending domain",
+          });
+          return { ok: false, error: message };
+        }
         await load();
         return { ok: true, error: null };
       } catch (e) {
@@ -450,11 +440,18 @@ export function useSoloComms(): SoloCommsData {
       const { data, error: fnError } = await supabase.functions.invoke("gmail-oauth-start", {
         body: { origin: window.location.origin },
       });
-      if (fnError) throw fnError;
       const rec = asRecord(data);
-      if (rec.error) throw new Error(String(rec.error));
       const url = str(rec.authorization_url);
-      if (!url) throw new Error("Google didn't return a sign-in link.");
+      if (fnError || rec.error || !url) {
+        // The likeliest real answer here is `gmail_oauth_not_configured` — the
+        // function's own header says so — and that is a "not switched on yet"
+        // note, not a failure scream. Left raw it read as "Edge Function returned
+        // a non-2xx status code".
+        const { message } = await resolveFunctionError({
+          error: fnError, data, action: "connect a Google account",
+        });
+        return { url: null, error: message };
+      }
       return { url, error: null };
     } catch (e) {
       return { url: null, error: asResult(e).error };
@@ -464,9 +461,21 @@ export function useSoloComms(): SoloCommsData {
   const disconnectGmail = useCallback(async (): Promise<SoloMutationResult> => {
     try {
       const { data, error: fnError } = await supabase.functions.invoke("gmail-disconnect", { body: {} });
-      if (fnError) throw fnError;
-      const inner = asRecord(data).error;
-      if (inner) throw new Error(String(inner));
+      const rec = asRecord(data);
+      if (fnError || rec.error) {
+        const { message } = await resolveFunctionError({
+          error: fnError, data, action: "disconnect the Google account",
+        });
+        return { ok: false, error: message };
+      }
+      // `gmail-disconnect` answers `{ ok: true, disconnected: false }` when it
+      // found no connector to revoke — a NO-OP, not a disconnection. Reporting
+      // that as "Disconnected." tells someone their account is detached while it
+      // is still active and still sending, which is the §13 failure this branch
+      // exists to remove, not to add.
+      if (rec.disconnected === false) {
+        return { ok: false, error: "Nothing was disconnected — no connected Google account was found on this workspace." };
+      }
       await load();
       return { ok: true, error: null };
     } catch (e) {
@@ -482,11 +491,9 @@ export function useSoloComms(): SoloCommsData {
       domains: loadedTenantId === tenantId ? domains : [],
       sending: loadedTenantId === tenantId ? sending : { fromName: null, supportEmail: null, defaultSender: null },
       billing: loadedTenantId === tenantId ? billing : null,
-      business: loadedTenantId === tenantId ? business : { name: "", website: "", phone: "" },
       mailbox: loadedTenantId === tenantId ? mailbox : null,
       canManage: loadedTenantId === tenantId ? canManage : false,
       refresh,
-      saveBusiness,
       addDomain,
       refreshDomain,
       setDefaultDomain,
@@ -496,7 +503,7 @@ export function useSoloComms(): SoloCommsData {
     }),
     [
       loading, tenantLoading, tenantId, loadedTenantId, error, isSubAccount, domains, sending,
-      billing, business, mailbox, canManage, refresh, saveBusiness, addDomain, refreshDomain,
+      billing, mailbox, canManage, refresh, addDomain, refreshDomain,
       setDefaultDomain, removeDomain, startGmailConnect, disconnectGmail,
     ],
   );

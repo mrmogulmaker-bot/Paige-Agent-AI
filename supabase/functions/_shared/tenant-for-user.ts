@@ -44,7 +44,27 @@
  * their workspace either way. This function does not, and cannot, decide whether
  * they SHOULD have been in that workspace; `tenant_members` owns that.
  */
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+/**
+ * The narrow slice of a Supabase client this needs: one filtered read and one
+ * RPC. Declared structurally rather than imported from the esm.sh URL type,
+ * because this module is exercised by a test under `src/`, and the app's
+ * tsconfig cannot resolve a Deno URL import. Naming the two calls it makes is
+ * also a more honest contract than `SupabaseClient` — nothing else is used.
+ */
+interface TenantLookupClient {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: unknown): {
+        eq(column: string, value: unknown): {
+          eq(column: string, value: unknown): {
+            maybeSingle(): Promise<{ data: { tenant_id?: string } | null; error: { message: string } | null }>;
+          };
+        };
+      };
+    };
+  };
+  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>;
+}
 
 export interface ResolvedTenant {
   tenantId: string | null;
@@ -64,7 +84,7 @@ export interface ResolvedTenant {
  *               honoured only after an active-membership check.
  */
 export async function resolveTenantForUser(
-  admin: SupabaseClient,
+  admin: TenantLookupClient,
   userId: string,
   preferredTenantId?: string | null,
 ): Promise<ResolvedTenant> {
@@ -95,7 +115,7 @@ export async function resolveTenantForUser(
   return await primaryTenant(admin, userId);
 }
 
-async function primaryTenant(admin: SupabaseClient, userId: string): Promise<ResolvedTenant> {
+async function primaryTenant(admin: TenantLookupClient, userId: string): Promise<ResolvedTenant> {
   const { data, error } = await admin.rpc("get_user_primary_tenant", { _user_id: userId });
   if (error) return { tenantId: null, source: "none", error: `primary_tenant_failed: ${error.message}` };
   // The function RETURNS TABLE, so supabase-js hands back an array.

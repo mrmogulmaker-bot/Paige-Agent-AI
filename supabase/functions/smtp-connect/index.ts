@@ -168,7 +168,15 @@ Deno.serve(async (req) => {
     // Was `profiles.tenant_id` keyed on `profiles.id`: a non-existent column read
     // with a surrogate key, so every caller got `no_tenant_for_user`. See
     // `_shared/tenant-for-user.ts` for the production measurement.
-    const resolved = await resolveTenantForUser(admin, user.id);
+    // This endpoint is called with the caller's own JWT, so the workspace they
+    // are standing in is one RPC away on the USER client — no signed state
+    // needed. Passing it matters for the same reason it matters in the OAuth
+    // callbacks: without it a multi-workspace person's SMTP server attaches to
+    // whichever tenant ranks first rather than the one they configured it in.
+    const { data: activeTenant } = await userSupa.rpc("current_user_tenant_id");
+    const resolved = await resolveTenantForUser(
+      admin, user.id, typeof activeTenant === "string" ? activeTenant : null,
+    );
     const tenantId = resolved.tenantId;
     if (!tenantId) {
       return new Response(JSON.stringify({ error: "no_tenant_for_user" }), {

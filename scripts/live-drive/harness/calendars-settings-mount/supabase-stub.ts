@@ -131,6 +131,11 @@ function seed(): Record<string, Row[]> {
     tenant_phone_numbers: s === "issues" ? [] : [{ id: "num-1", tenant_id: TENANT, is_primary: true }],
     tenant_a2p_registrations: s === "issues" ? [] : [{ tenant_id: TENANT }],
     tenants: [{ id: TENANT, brand: { business_phone: s === "issues" ? "" : "+1 555 0100" } }],
+    // The domain lifecycle and the Google sending account, both empty to start —
+    // an empty store is the state the owner actually reported, and the state a
+    // drive has to be able to act its way OUT of.
+    tenant_email_domains: [],
+    channel_connectors: [],
   };
 }
 
@@ -282,6 +287,44 @@ export const supabase = {
   from: (table: string) => chain(table),
   rpc: (name: string, args?: Record<string, unknown>) => {
     if (name === "current_user_tenant_id") return Promise.resolve(ok(TENANT));
+
+    // MERGES, exactly as the real `set_tenant_brand` does
+    // (`brand = COALESCE(brand,'{}') || _patch`). Modelled as a merge and not a
+    // replace on purpose: a stub that replaced would hide the very data-loss bug
+    // this branch fixes in WorkspaceSettingsPanel, and a drive over it would
+    // "prove" a save that destroys its neighbours.
+    if (name === "set_tenant_brand") {
+      const patch = (args?._patch ?? {}) as Record<string, unknown>;
+      const row = (db.tenants ?? [])[0];
+      if (!row) return Promise.resolve(fail("Harness: tenant row missing"));
+      row.brand = { ...(row.brand as Record<string, unknown> ?? {}), ...patch };
+      persist();
+      return Promise.resolve(ok(row.brand));
+    }
+
+    // Derived from the SAME `tenants.brand` the editor writes, because that is
+    // what the real resolver does. Deriving it lets a drive prove the whole loop
+    // the owner cares about: type a name, save it, and watch the step that said
+    // "business name still missing" stop saying it. A hardcoded readiness blob
+    // could never show that transition.
+    if (name === "tenant_comms_readiness") {
+      const brand = ((db.tenants ?? [])[0]?.brand ?? {}) as Record<string, unknown>;
+      const nonEmpty = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+      const hasName = nonEmpty(brand.business_name) || nonEmpty(brand.name);
+      return Promise.resolve(ok({
+        tenant_id: TENANT,
+        can_send_sms: false,
+        blocked_reason: "registration_absent",
+        subaccount: "connected",
+        number: (db.tenant_phone_numbers ?? []).length ? "assigned" : "absent",
+        number_e164: (db.tenant_phone_numbers ?? []).length ? "+15550001111" : null,
+        business: { has_name: hasName, has_website: nonEmpty(brand.website), has_phone: nonEmpty(brand.business_phone) },
+        a2p: "absent",
+        consent: { granted_count: 1, suppressed_count: 0, state: "ready" },
+        delivery: { state: "delivering", sent_30d: 0, delivered_30d: 0, failed_30d: 0, last_inbound_at: null },
+        billing: { subscription: "active", plan_name: "Solo", period_end: null, cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0 },
+      }));
+    }
     if (name === "is_current_user_tenant_admin") return Promise.resolve(ok(state() !== "readonly"));
 
     // Who could be added as a host. Real shape: every teammate, each flagged with
@@ -337,7 +380,59 @@ export const supabase = {
   functions: {
     // A harness never leaves for a provider. Reporting a failure is the honest
     // answer — nothing was started, so nothing may be claimed.
-    invoke: () => Promise.resolve({ data: null, error: { message: "Harness: no provider handshake" } }),
+    invoke: (fn: string, opts?: { body?: Record<string, unknown> }) => {
+      // The domain lifecycle is modelled because it is a DATABASE lifecycle on
+      // this side of the seam — list/add/set_default/remove all resolve to rows.
+      // The Resend call the real function makes is the part a harness must not
+      // pretend to, and `add` here is explicitly a REGISTRATION RECORD, not a
+      // provider account: it stores `pending`, never `verified`.
+      if (fn === "manage-tenant-domain") {
+        const body = opts?.body ?? {};
+        const verb = String(body.verb ?? "");
+        const rows = (db.tenant_email_domains ??= []);
+        const find = (id: unknown) => rows.find((r) => r.id === String(id));
+        if (verb === "list") return Promise.resolve(ok({ domains: rows }));
+        if (verb === "add") {
+          const domain = String(body.domain ?? "").trim().toLowerCase();
+          if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) return Promise.resolve(ok({ error: "invalid_domain" }));
+          rows.push({
+            id: `dom-${rows.length + 1}`, tenant_id: TENANT, domain,
+            from_email_local: String(body.from_email_local ?? "no-reply"),
+            from_name: String(body.from_name ?? ""),
+            // `pending` because nothing verified anything. A harness that seeded
+            // `verified` would let a drive claim DNS it never checked.
+            status: "pending", is_default: rows.length === 0, dns_records: [],
+          });
+          persist();
+          return Promise.resolve(ok({ domain: rows[rows.length - 1] }));
+        }
+        if (verb === "refresh") {
+          const row = find(body.id);
+          if (!row) return Promise.resolve(ok({ error: "not_found" }));
+          // Still pending: re-reading DNS that was never published changes nothing.
+          return Promise.resolve(ok({ domain: row }));
+        }
+        if (verb === "set_default") {
+          const row = find(body.id);
+          if (!row) return Promise.resolve(ok({ error: "not_found" }));
+          rows.forEach((r) => { r.is_default = false; });
+          row.is_default = true;
+          persist();
+          return Promise.resolve(ok({ ok: true }));
+        }
+        if (verb === "remove") {
+          const i = rows.findIndex((r) => r.id === String(body.id));
+          if (i < 0) return Promise.resolve(ok({ error: "not_found" }));
+          rows.splice(i, 1);
+          persist();
+          return Promise.resolve(ok({ ok: true }));
+        }
+        return Promise.resolve(ok({ error: "unknown_verb" }));
+      }
+      // Everything that would leave for a provider — the Google handshake above
+      // all — stays refused. Nothing was started, so nothing may be claimed.
+      return Promise.resolve({ data: null, error: { message: "Harness: no provider handshake" } });
+    },
   },
 };
 

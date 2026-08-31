@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
     // This function answers a BROWSER redirect from Zoom, so a failure has to go
     // back through `redirectTo` like every other error here — a JSON 400 would
     // leave the host staring at a raw error body instead of the connectors page.
-    const resolved = await resolveTenantForUser(admin, hostUserId);
+    const resolved = await resolveTenantForUser(admin, hostUserId, (parsed.w as string | null) ?? null);
     if (!resolved.tenantId) {
       return redirectTo(returnOrigin, "error", "no_tenant_for_user");
     }

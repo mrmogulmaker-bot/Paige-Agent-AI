@@ -524,6 +524,9 @@ function requestedSegment(search: string): ConnectionsSegment | undefined {
 }
 
 function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
+  // The account slug, for the one link this surface owes to Setup — where the
+  // business record actually lives.
+  const account = useParams().account ?? "";
   const comms = useSoloComms();
   const identity = useManagedIdentity();
   // The owner-locked Connections shape, from #660: Communications owns whether a
@@ -637,17 +640,23 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
               {r ? <>
                 <p>{registrationStep(r).detail}</p>
                 <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
-                {/* The step above GRADES these three fields. Editing them right
-                    underneath it is the point: it used to report a missing
-                    business name and offer nowhere to supply one, which is a
-                    description of a problem rather than a way out of it. Both
-                    read the same `tenants.brand` keys, so the grade re-reads
-                    itself the moment this saves. */}
-                <BusinessDetailsPanel comms={comms} onSaved={readiness.retry}/>
                 <p className="ss-note">Filing with a carrier is not something this surface can do. A registration can be
                   prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
               </> : noRecord("registration")}
             </ReadState>
+            {/* These three fields live in SETUP, not here (owner ruling,
+                2026-08-31): the business owner, legal name, address and phone are
+                Setup's, and Connections owns only what we hand the tenant from our
+                own server — the sending domain and the email address on it.
+
+                So this card GRADES them and points at their one home. An earlier
+                revision of this branch put an editor here, which made Connections a
+                second place to type a business name while `SuBusiness` on Setup was
+                already the first — exactly the duplication §18 exists to stop. */}
+            <p className="ss-note">
+              Your legal name, website and business phone live in{" "}
+              <Link to={`/solo/${account}/settings/setup`}>Setup</Link>. Carriers read them from there.
+            </p>
           </Card>
           <Card title="Consent and opt-outs" icon={ShieldCheck}
             truth={r ? consentStep(r).truth : "PARTIAL"}
@@ -821,60 +830,6 @@ function Outcome({ state }: { state: WriteState }) {
 /** Shown in place of the controls when the caller may not write here (§9). */
 function NotYours({ what }: { what: string }) {
   return <p className="ss-note">Only a workspace admin can change {what}. Your access here is read-only.</p>;
-}
-
-function BusinessDetailsPanel({ comms, onSaved }: { comms: ReturnType<typeof useSoloComms>; onSaved: () => void }) {
-  const [draft, setDraft] = useState(comms.business);
-  const [saving, setSaving] = useState(false);
-  const [outcome, setOutcome] = useState<WriteState>(null);
-  const [dirty, setDirty] = useState(false);
-
-  // Adopt the persisted record whenever it changes UNDER an untouched form —
-  // the first load arrives after mount, and the account can switch beneath us.
-  // A dirty form is never overwritten: losing something half-typed to a
-  // background refresh is its own defect.
-  useEffect(() => { if (!dirty) setDraft(comms.business); }, [comms.business, dirty]);
-
-  const set = (k: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDirty(true); setOutcome(null);
-    setDraft((d) => ({ ...d, [k]: e.target.value }));
-  };
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true); setOutcome(null);
-    const res = await comms.saveBusiness(draft);
-    setSaving(false);
-    if (res.ok) {
-      setDirty(false);
-      setOutcome({ tone: "ok", message: "Saved. Carrier registration reads these three fields." });
-      // The readiness ladder is a SEPARATE read (`tenant_comms_readiness()`), and
-      // it is what grades these exact fields. Without this the person saves a
-      // business name and the step above still says "Partly filled in" until a
-      // reload — a save that does not visibly land reads as a save that failed.
-      onSaved();
-    } else setOutcome({ tone: "bad", message: res.error ?? "That didn't save." });
-  };
-
-  if (!comms.canManage) return <NotYours what="your business details"/>;
-
-  return <form className="ss-form" onSubmit={save}>
-    <div className="ss-form-row">
-      <label><span>Legal business name</span>
-        <input value={draft.name} onChange={set("name")} placeholder="As registered" autoComplete="organization" disabled={saving}/></label>
-      <label><span>Website</span>
-        <input value={draft.website} onChange={set("website")} placeholder="https://…" autoComplete="url" inputMode="url" disabled={saving}/></label>
-      <label><span>Business phone</span>
-        <input value={draft.phone} onChange={set("phone")} placeholder="+1…" autoComplete="tel" inputMode="tel" disabled={saving}/></label>
-    </div>
-    <div className="ss-form-actions">
-      <button type="submit" className="ss-btn" disabled={saving || !dirty}>
-        {saving ? <RefreshCw className="ss-spin" aria-hidden/> : <CheckCircle2 aria-hidden/>}
-        {saving ? "Saving…" : "Save business details"}
-      </button>
-    </div>
-    <Outcome state={outcome}/>
-  </form>;
 }
 
 function SendingDomainsPanel({ comms }: { comms: ReturnType<typeof useSoloComms> }) {
