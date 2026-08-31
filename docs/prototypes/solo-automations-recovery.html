@@ -1,4 +1,4 @@
-<title>Automations Under Integrations</title>
+<title>Automations Inside Integrations</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -167,9 +167,9 @@ body {
   color: var(--pg-gold-deep);
 }
 .pg-brand strong { font: 700 13px/1 var(--pg-font-display); letter-spacing: .18em; }
-.pg-brand span { display: block; margin-top: 4px; font: 500 9.5px/1 var(--pg-font-data); letter-spacing: .1em; color: var(--pg-muted); }
+.pg-brand span { display: block; margin-top: 4px; font: 500 11px/1 var(--pg-font-data); letter-spacing: .1em; color: var(--pg-muted); }
 .pg-navlist { display: flex; flex-direction: column; gap: 2px; padding: 9px 8px; overflow-y: auto; overflow-x: hidden; }
-.pg-navlabel { margin: 10px 11px 5px; font: 700 9.5px/1 var(--pg-font-ui); letter-spacing: .14em; text-transform: uppercase; color: var(--pg-faint); }
+.pg-navlabel { margin: 10px 11px 5px; font: 700 11px/1 var(--pg-font-ui); letter-spacing: .14em; text-transform: uppercase; color: var(--pg-faint); }
 .pg-nav-a {
   position: relative; display: flex; align-items: center; gap: 10px;
   min-height: 34px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--pg-r-chip);
@@ -189,7 +189,7 @@ body {
   box-shadow: var(--pg-rim); font: 700 10.5px/1 var(--pg-font-ui);
 }
 .pg-seal strong { display: block; font-size: 12.2px; font-weight: 600; }
-.pg-seal small { display: block; font-size: 9.8px; color: var(--pg-muted); }
+.pg-seal small { display: block; font-size: 11px; color: var(--pg-muted); }
 
 .pg-canvas { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--pg-canvas); }
 .pg-spine {
@@ -197,7 +197,7 @@ body {
   background: var(--pg-spine); border-bottom: 1px solid var(--pg-line-soft); box-shadow: var(--pg-e1);
 }
 .pg-context { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.pg-context span { font: 500 9.5px/1.2 var(--pg-font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-muted); }
+.pg-context span { font: 500 11px/1.2 var(--pg-font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-muted); }
 .pg-context strong { font: 600 14px/1.25 var(--pg-font-display); }
 .pg-cmd {
   flex: 0 1 380px; margin-inline: auto; display: flex; align-items: center; gap: 8px;
@@ -250,7 +250,7 @@ body {
 .pg-plate-hd h2 { font-size: 13.6px; font-weight: 600; }
 .pg-plate-hd p { margin: 2px 0 0; font-size: 11.8px; color: var(--pg-muted); }
 .pg-plate-hd .pg-hd-copy { min-width: 0; margin-right: auto; }
-.pg-eyebrow { font: 500 9.5px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; color: var(--pg-faint); }
+.pg-eyebrow { font: 500 11px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; color: var(--pg-faint); }
 
 .pg-truth {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
@@ -330,8 +330,8 @@ body {
 }
 .pg-step-n { display: flex; align-items: center; gap: 7px; }
 .pg-step-n b {
-  width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%;
-  font: 500 9.6px/1 var(--pg-font-data); border: 1px solid var(--pg-line); color: var(--pg-muted);
+  width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%;
+  font: 500 11px/1 var(--pg-font-data); border: 1px solid var(--pg-line); color: var(--pg-muted);
 }
 .pg-step[aria-current="step"] .pg-step-n b { border-color: var(--pg-gold-fill); color: var(--pg-gold-core); }
 .pg-step-n span { font-size: 12.6px; font-weight: 600; color: var(--pg-ink); }
@@ -458,7 +458,7 @@ body {
 .pg-prov-hd strong { display: block; font-size: 13px; font-weight: 600; }
 .pg-prov-hd small { display: block; margin-top: 1px; font-size: 11.2px; color: var(--pg-muted); }
 .pg-prov-state { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0; }
-.pg-prov-state dt { font: 500 9.2px/1 var(--pg-font-ui); letter-spacing: .11em; text-transform: uppercase; color: var(--pg-faint); }
+.pg-prov-state dt { font: 500 11px/1 var(--pg-font-ui); letter-spacing: .11em; text-transform: uppercase; color: var(--pg-faint); }
 .pg-prov-state dd { margin: 4px 0 0; font-size: 12px; color: var(--pg-ink-2); }
 .pg-prov-foot { display: flex; align-items: center; gap: 8px; padding-top: 9px; border-top: 1px solid var(--pg-line-soft); }
 .pg-prov-foot span { font-size: 11.2px; color: var(--pg-faint); margin-left: auto; }
@@ -509,18 +509,130 @@ table.rv-matrix code { font: 400 11px/1.5 "JetBrains Mono", monospace; color: va
 body[data-motion="reduced"] * { transition-duration: .001ms !important; animation-duration: .001ms !important; }
 </style>
 
+<style>
+/* ── Revision: owner-language surfaces ─────────────────────────────────────
+   Raw table names, enum names and internal architecture labels are removed
+   from the canvas. They survive only inside fold-outs and the details sheet,
+   where someone who wants the provenance can ask for it. Type sizes are
+   raised so the 900-wide frame stays comfortable.
+   ------------------------------------------------------------------------ */
+.pg-page { gap: 14px; }
+.pg-head p { font-size: 13.4px; color: var(--pg-ink-2); }
+.pg-hint { font-size: 12.2px; }
+.pg-plate-hd p { font-size: 12.4px; }
+
+/* Compact status card — replaces the explanatory slab */
+.pg-status { display: flex; flex-direction: column; gap: 12px; padding: 15px 16px; }
+.pg-status-top { display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; }
+.pg-status-top h2 { font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; }
+.pg-status p { margin: 0; font-size: 13.2px; line-height: 1.6; color: var(--pg-ink-2); max-width: 70ch; }
+.pg-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 1px; }
+.pg-action {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); cursor: pointer;
+  background: var(--pg-surface); color: var(--pg-ink); font-size: 13px; font-weight: 500;
+  transition: background .14s, border-color .14s, transform .12s;
+}
+.pg-action:hover { background: var(--pg-raised); border-color: var(--pg-line-strong); }
+.pg-action:active { transform: translateY(1px); box-shadow: var(--pg-inset); }
+.pg-action[data-primary] { border-color: var(--pg-line-authority); box-shadow: var(--pg-lift-1); background: var(--pg-raised); }
+.pg-action[data-primary]:hover {
+  border-color: var(--pg-gold-fill);
+  background: color-mix(in srgb, var(--pg-gold-bloom) 34%, var(--pg-raised));
+  box-shadow: var(--pg-lift-2);
+}
+.pg-action:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.pg-action .pg-badge {
+  min-width: 21px; height: 20px; padding: 0 6px; border-radius: var(--pg-r-pill);
+  display: inline-grid; place-items: center; background: var(--pg-graphite); color: var(--pg-gold-core);
+  font: 600 11.5px/1 var(--pg-font-data);
+}
+
+/* Capability cards with progressive disclosure */
+.pg-caps { display: flex; flex-direction: column; }
+.pg-cap { border-top: 1px solid var(--pg-line-soft); padding: 0; }
+.pg-caps > .pg-cap:first-child { border-top: 0; }
+.pg-cap-head { display: grid; grid-template-columns: 3px 1fr auto; gap: 0 14px; align-items: start; padding: 14px 16px; }
+.pg-cap-bar { align-self: stretch; border-radius: 2px; background: var(--pg-line-strong); }
+.pg-cap[data-s="ready"] .pg-cap-bar { background: var(--k-automation); }
+.pg-cap[data-s="live"] .pg-cap-bar { background: var(--pg-positive); }
+.pg-cap-copy { min-width: 0; }
+.pg-cap-copy h3 { font-size: 13.8px; font-weight: 600; letter-spacing: -.006em; }
+.pg-cap-copy p { margin: 5px 0 0; font-size: 12.9px; line-height: 1.55; color: var(--pg-ink-2); max-width: 72ch; }
+.pg-state {
+  display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
+  padding: 5px 10px; border-radius: var(--pg-r-pill); border: 1px solid var(--pg-line);
+  background: var(--pg-surface); color: var(--pg-muted); font-size: 11.6px; font-weight: 500;
+}
+.pg-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pg-state[data-s="ready"] { color: var(--k-automation); border-color: color-mix(in srgb, var(--k-automation) 40%, var(--pg-line)); }
+.pg-state[data-s="live"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 40%, var(--pg-line)); }
+
+/* Fold-out — native details, keyboard-operable, no motion dependency */
+.pg-fold { margin: 0 16px 14px 33px; }
+.pg-fold > summary {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; list-style: none;
+  padding: 5px 9px; margin-left: -9px; border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); font-size: 12.2px; transition: color .14s, background .14s;
+}
+.pg-fold > summary::-webkit-details-marker { display: none; }
+.pg-fold > summary:hover { color: var(--pg-ink); background: var(--pg-surface); }
+.pg-fold > summary:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 2px; }
+.pg-fold > summary::before {
+  content: ""; width: 0; height: 0; flex: none;
+  border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform .18s ease;
+}
+.pg-fold[open] > summary::before { transform: rotate(90deg); }
+.pg-fold-body {
+  margin-top: 8px; padding: 12px 14px; border-radius: var(--pg-r-chip);
+  border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
+}
+.pg-fold-body p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.6; color: var(--pg-ink-2); max-width: 72ch; }
+.pg-fold-body p:last-child { margin-bottom: 0; }
+.pg-fold-body dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; }
+.pg-fold-body dt { font: 500 11px/1.5 var(--pg-font-data); color: var(--pg-faint); white-space: nowrap; }
+.pg-fold-body dd { margin: 0; font-size: 12.3px; color: var(--pg-ink-2); }
+
+/* Owner-language governed chain */
+.pg-chain { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; padding: 14px 16px 16px; }
+.pg-link { position: relative; flex: 1 1 158px; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 0 16px 10px 0; }
+.pg-link::after { content: "→"; position: absolute; right: 3px; top: 2px; color: var(--pg-faint); font-size: 13px; line-height: 1; }
+.pg-link:last-child { padding-right: 0; }
+.pg-link:last-child::after { content: none; }
+.pg-link b { font-size: 12.9px; font-weight: 600; color: var(--pg-ink); }
+.pg-link small { font-size: 12px; color: var(--pg-muted); line-height: 1.5; }
+.pg-link[data-s="gap"] b::after {
+  content: "not yet"; margin-left: 7px; padding: 2px 6px; border-radius: 4px;
+  font: 500 11px/1.4 var(--pg-font-data); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--pg-warning); border: 1px solid color-mix(in srgb, var(--pg-warning) 45%, transparent);
+}
+
+/* Outcome preview in owner language */
+.pg-outcome-row { grid-template-columns: 15px 1fr; padding: 10px 16px; }
+.pg-outcome-row strong { font-size: 12.9px; font-weight: 500; }
+
+.pg-step small { font-size: 11.4px; text-transform: none; letter-spacing: 0; font-family: var(--pg-font-ui); color: var(--pg-muted); }
+.pg-step[aria-current="step"] small { color: var(--pg-ink-2); }
+.pg-step-n span { font-size: 13px; }
+.pg-lane-why, .pg-rule em { font-size: 12.7px; }
+.pg-row > .pg-eyebrow { font-size: 11px; }
+.pg-ctl { font-size: 12.8px; min-height: 34px; }
+.pg-cap-head:focus-within { background: var(--pg-surface); }
+</style>
+
 <div class="rv-bar" role="group" aria-label="Prototype review controls">
   <div class="rv-brand">
-    <strong>Automations under Integrations</strong>
-    <span>Menus unchanged · read-only prototype</span>
+    <strong>Automations inside Integrations</strong>
+    <span>Review prototype · not production chrome</span>
   </div>
   <div class="rv-grp">
-    <label id="lbl-screen">Surface</label>
+    <label id="lbl-screen">Review view</label>
     <div class="rv-seg" role="group" aria-labelledby="lbl-screen">
       <button type="button" data-screen="cmd" aria-pressed="false">Command Center</button>
       <button type="button" data-screen="catalogue" aria-pressed="false">Integrations · Catalogue</button>
-      <button type="button" data-screen="auto" aria-pressed="false">Automations · today</button>
-      <button type="button" data-screen="intended" aria-pressed="true">Automations · intended</button>
+      <button type="button" data-screen="auto" aria-pressed="true">Automations · today</button>
+      <button type="button" data-screen="intended" aria-pressed="false">Automations · intended</button>
     </div>
   </div>
   <div class="rv-grp">
@@ -549,8 +661,8 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
 </div>
 
 <div class="rv-note">
-  <b>Menus untouched.</b>
-  <span>The six-slot rail and the eight-item Settings rail are exactly as they ship — nothing added, nothing renamed, nothing reordered. The only new structure is the sub-tab strip inside Integrations, which copies the strip Command Center already uses. Every figure inside the frame is read from the live workspace or declared absent; nothing is simulated as working.</span>
+  <b>These four views are a review aid, not a product control.</b>
+  <span>In the product a person sees one Automations surface showing one truthful state — there is no today/intended switch. “Today” is what that surface shows now; “intended” is the same surface once the missing piece exists. Nothing inside the frame writes anything, and nothing claims a capability that has no contract behind it.</span>
 </div>
 
 <div class="rv-stage">
@@ -593,42 +705,39 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
 
         <main class="pg-main" id="mainScroll" tabindex="-1">
 
-          <!-- Command Center — included only to show the main rail is untouched -->
           <div class="pg-page" id="screen-cmd" hidden>
             <div class="pg-head">
               <div class="pg-head-copy">
                 <h1>Systems Check</h1>
-                <p>Shown here only to demonstrate that the main rail and its sub-tabs are untouched by this change. Nothing on this surface is altered.</p>
+                <p>Shown only to confirm the main menu is untouched by this change. Nothing on this surface moves.</p>
               </div>
             </div>
             <section class="pg-plate">
-              <div class="pg-absence">
-                <span class="pg-eyebrow">Not part of this change</span>
-                <h3>Command Center keeps everything it has</h3>
-                <p>Its two sub-tabs, its evidence graph, its coverage read and its decision queue are all unchanged. Automations never appears here, and the Automations URL no longer resolves the rail to this destination.</p>
+              <div class="pg-status">
+                <div class="pg-status-top"><h2>Command Center keeps everything it has</h2></div>
+                <p>Its two tabs, its evidence graph and its decision queue are unchanged. Automations never appears here.</p>
               </div>
             </section>
           </div>
 
-          <!-- Integrations → Catalogue -->
           <div class="pg-page" id="screen-catalogue" hidden>
             <div class="pg-head">
               <div class="pg-head-copy">
                 <span class="pg-eyebrow">Solo settings</span>
                 <h1>Integrations</h1>
-                <p>External tools, bridges, and safe configuration handoffs. Provider colour identifies the tool — never its readiness or your permission.</p>
+                <p>The outside tools your business uses, and what Paige is allowed to do with them.</p>
               </div>
             </div>
             <section class="pg-plate">
               <div class="pg-plate-hd">
                 <div class="pg-hd-copy">
-                  <h2>Integration catalogue</h2>
-                  <p>Connections own phone, sending identity and calendars. Marketplace owns Paige capabilities.</p>
+                  <h2>Your tools</h2>
+                  <p>Colour identifies the tool, never whether it is ready or permitted.</p>
                 </div>
-                <div class="pg-filters" role="group" aria-label="Filter catalogue" id="catFilters">
+                <div class="pg-filters" role="group" aria-label="Filter tools" id="catFilters">
                   <button type="button" data-cat="all" aria-pressed="true">All</button>
                   <button type="button" data-cat="automation" aria-pressed="false">Automation</button>
-                  <button type="button" data-cat="financial" aria-pressed="false">Financial</button>
+                  <button type="button" data-cat="financial" aria-pressed="false">Money</button>
                   <button type="button" data-cat="documents" aria-pressed="false">Documents</button>
                   <button type="button" data-cat="client-data" aria-pressed="false">Client data</button>
                   <button type="button" data-cat="developer" aria-pressed="false">Developer</button>
@@ -638,68 +747,72 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
             </section>
           </div>
 
-          <!-- Integrations → Automations -->
+          <!-- ░░ TODAY — one truthful state, owner language ░░ -->
           <div class="pg-page" id="screen-auto">
             <div class="pg-head">
               <div class="pg-head-copy">
                 <span class="pg-eyebrow">Solo settings · Integrations</span>
                 <h1>Automations</h1>
-                <p>Rules that run without you. This workspace has none, and no automation has run here — the four lanes below are the real substrate, each with the seam it is missing.</p>
+                <p>Things Paige does on her own, so you do not have to remember them.</p>
               </div>
             </div>
 
             <section class="pg-plate">
-              <div class="pg-absence">
-                <span class="pg-eyebrow">The state of this workspace</span>
-                <h3>Wired, but nothing can reach the end</h3>
-                <p>Four automation substrates ship. Every one stops before it can do work for you: the workflow catalogue is operator-scoped, the pipeline lane has no delivery route configured, form automations are created elsewhere, and the only live record here is Systems Check remediation. No automation run has ever been recorded — for this workspace or any other.</p>
-                <p>Nothing here is waiting on a decision. Each lane names the seam that is missing.</p>
-                <div class="pg-draft-flag"><strong>Draft pending Claude Design.</strong> Absence titles and bodies are surface and belong to CD (<code>absence-copy.md</code>). This wording is a draft to keep the round moving, never a settled default.</div>
+              <div class="pg-status">
+                <div class="pg-status-top">
+                  <h2>Nothing is running yet</h2>
+                  <span class="pg-state">Nothing set up</span>
+                </div>
+                <p>Paige has not been given anything to run for you, and nothing has run here before. The kind you can set up follows a client through your pipeline — so a pipeline is the first thing she needs.</p>
+                <div class="pg-actions">
+                  <button class="pg-action" type="button" data-primary id="actPipeline">
+                    Set up your pipeline
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 12h13"/><path d="m12 6 6 6-6 6"/></svg>
+                  </button>
+                  <button class="pg-action" type="button" id="actFlagged">
+                    See what she has flagged
+                    <span class="pg-badge">13</span>
+                  </button>
+                </div>
               </div>
             </section>
 
             <section class="pg-plate">
               <div class="pg-plate-hd">
-                <div class="pg-hd-copy"><h2>The four lanes</h2><p>Read live. Open one for its evidence and what it needs.</p></div>
-                <span class="pg-truth">3 blocked · 1 read-only</span>
+                <div class="pg-hd-copy">
+                  <h2>What she can run for you</h2>
+                  <p>Four kinds. Open one to see where it stands.</p>
+                </div>
               </div>
-              <div class="pg-lanes" id="lanes"></div>
-            </section>
-
-            <section class="pg-plate">
-              <div class="pg-plate-hd">
-                <div class="pg-hd-copy"><h2>What makes the first automation possible</h2><p>The shortest real path, in dependency order. None of it can be done from this screen today.</p></div>
-              </div>
-              <ol class="pg-steps">
-                <li><strong>Give this workspace a pipeline with stages</strong><span>Stage automations attach to a deal moving between stages. This workspace has no pipeline and no deals, so there is nothing to attach a rule to.</span></li>
-                <li><strong>Configure a delivery route for automation dispatch</strong><span>The stage trigger fires and logs correctly, but no workspace has a delivery route set and the platform fallback is absent. Until one exists, a rule that fires records <code>skipped_no_webhook</code> instead of acting.</span></li>
-                <li><strong>Author the first rule</strong><span>The one lane whose write contract is real and tenant-safe today: an owner may create, edit and deactivate stage rules. It has no home in this shell yet.</span></li>
-                <li><strong>Then, and only then, show runs</strong><span>Run history, success rate and attention counts become truthful the moment real runs exist. Until then this screen shows none of them.</span></li>
-              </ol>
+              <div class="pg-caps" id="caps"></div>
             </section>
           </div>
 
-          <!-- Integrations → Automations · the intended usable workspace -->
+          <!-- ░░ INTENDED — the same surface once the missing piece exists ░░ -->
           <div class="pg-page" id="screen-intended" hidden>
             <div class="pg-head">
               <div class="pg-head-copy">
                 <span class="pg-eyebrow">Solo settings · Integrations</span>
                 <h1>Automations</h1>
-                <p>Tell Paige what should happen on its own. Every field below is a real column on a contract you can already write to — the gaps are named where they exist, never papered over.</p>
+                <p>Tell Paige what should happen on its own, see what it would do before it runs, and keep the last word.</p>
               </div>
             </div>
 
-            <nav class="pg-flowbar" aria-label="Automation lifecycle" id="flowbar"></nav>
+            <nav class="pg-flowbar" aria-label="How an automation gets made" id="flowbar"></nav>
 
             <div class="pg-two">
               <section class="pg-plate">
                 <div class="pg-plate-hd">
-                  <div class="pg-hd-copy"><h2>Your automations</h2><p>None yet — this list is real and empty.</p></div>
+                  <div class="pg-hd-copy"><h2>Yours</h2><p>Nothing set up yet.</p></div>
                 </div>
-                <div class="pg-rulelist" id="ruleList"></div>
-                <div style="padding:11px 13px;border-top:1px solid var(--pg-line-soft)">
-                  <button class="pg-ctl" type="button" id="newRule" style="width:100%;justify-content:center">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                <div style="padding:16px">
+                  <p style="margin:0;font-size:12.9px;line-height:1.6;color:var(--pg-ink-2)">
+                    When you make one it appears here, with whether it is on and when it last ran.
+                  </p>
+                </div>
+                <div style="padding:0 16px 16px">
+                  <button class="pg-action" type="button" id="newRule" style="width:100%;justify-content:center" data-primary>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                     New automation
                   </button>
                 </div>
@@ -708,104 +821,81 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
               <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
                 <section class="pg-plate">
                   <div class="pg-plate-hd">
-                    <div class="pg-hd-copy"><h2 id="editorTitle">New automation</h2><p>Draft — nothing is saved from this prototype.</p></div>
-                    <span class="pg-contract" data-c="real">Contract real</span>
+                    <div class="pg-hd-copy"><h2>New automation</h2><p>Nothing is saved from this prototype.</p></div>
                   </div>
                   <div class="pg-form">
                     <div class="pg-row">
                       <span class="pg-eyebrow">When</span>
                       <div class="pg-row-body">
                         <div class="pg-ctlrow">
-                          <button class="pg-ctl" type="button" data-missing="true" disabled>Pick a starting stage</button>
-                          <span style="align-self:center;color:var(--pg-faint)">→</span>
-                          <button class="pg-ctl" type="button" data-missing="true" disabled>Pick a destination stage</button>
-                          <span class="pg-contract" data-c="gap" style="align-self:center">Needs a pipeline</span>
+                          <button class="pg-ctl" type="button" data-missing="true" disabled>a client reaches a stage…</button>
+                          <span class="pg-state">Needs your pipeline first</span>
                         </div>
-                        <p class="pg-hint">A rule fires when a deal moves between stages — <code>from_stage_id</code> → <code>to_stage_id</code>. This workspace has no pipeline and no deals, so there is nothing to choose from yet. That is gap 2 below.</p>
+                        <p class="pg-hint">You pick the moment — a client moving from one stage of your pipeline to the next. Set the pipeline up and these fill in.</p>
                       </div>
                     </div>
-
                     <div class="pg-row">
                       <span class="pg-eyebrow">Then</span>
                       <div class="pg-row-body">
-                        <div class="pg-ctlrow" id="intentRow" role="group" aria-label="Message intent"></div>
-                        <p class="pg-hint">Real enum on <code>compose_intent</code>. It also sets the consent class the dispatcher enforces: transactional and notification need transactional consent, marketing and nurture need marketing consent.</p>
+                        <div class="pg-ctlrow" id="intentRow" role="group" aria-label="Kind of message"></div>
+                        <p class="pg-hint" id="intentHint"></p>
                       </div>
                     </div>
-
                     <div class="pg-row">
                       <span class="pg-eyebrow">Voice</span>
                       <div class="pg-row-body">
                         <div class="pg-ctlrow" id="toneRow" role="group" aria-label="Tone"></div>
-                        <p class="pg-hint">Free text on <code>tone</code>, with an optional <code>template_hint</code>. These are the values the shipped rule editor already writes.</p>
+                        <p class="pg-hint">How it should sound. She writes it in your voice either way.</p>
                       </div>
                     </div>
-
                     <div class="pg-row">
-                      <span class="pg-eyebrow">Delivery</span>
+                      <span class="pg-eyebrow">Before it goes</span>
                       <div class="pg-row-body">
-                        <div class="pg-ctlrow" id="modeRow" role="group" aria-label="Delivery mode"></div>
+                        <div class="pg-ctlrow" id="modeRow" role="group" aria-label="Approval"></div>
                         <p class="pg-hint" id="modeHint"></p>
                       </div>
                     </div>
                   </div>
                   <div class="pg-slide-foot" style="border-top:1px solid var(--pg-line-soft)">
-                    <button class="pg-btn" type="button" disabled>Save automation</button>
-                    <button class="pg-btn" type="button" id="sandboxBtn">Test in sandbox</button>
-                    <span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert here — the write contract is real</span>
+                    <button class="pg-action" type="button" disabled>Save</button>
+                    <button class="pg-action" type="button" id="sandboxBtn">See what it would do</button>
                   </div>
                 </section>
 
                 <section class="pg-plate">
                   <div class="pg-plate-hd">
-                    <div class="pg-hd-copy"><h2>Test in sandbox</h2><p>What would happen to one chosen contact, without sending.</p></div>
-                    <span class="pg-contract" data-c="gap">Contract missing</span>
+                    <div class="pg-hd-copy"><h2>Before it ever runs</h2><p>Try it against one client. Nothing is sent.</p></div>
                   </div>
                   <div class="pg-outcome" id="outcomeList"></div>
-                  <div style="padding:12px 15px;border-top:1px solid var(--pg-line-soft)">
-                    <p class="pg-hint">These six outcomes are not invented — they are the exact <code>PreSendOutcome</code> values the shipped pre-send pipeline already returns, in its locked gate order. What is missing is an endpoint that runs those gates for a test contact and reports the result instead of sending. That is gap 3.</p>
-                  </div>
+                  <details class="pg-fold" style="margin-top:10px">
+                    <summary>Why she might hold or stop</summary>
+                    <div class="pg-fold-body">
+                      <p>Every message passes the same checks, in the same order, whether you sent it or she did: whether this client asked not to be contacted, whether the address has opted out, whether they agreed to this kind of message, whether you have paused automatic sending, and whether it is a reasonable hour to text.</p>
+                      <p>If any check is unclear, she stops rather than guesses.</p>
+                    </div>
+                  </details>
                 </section>
               </div>
             </div>
 
             <section class="pg-plate">
               <div class="pg-plate-hd">
-                <div class="pg-hd-copy"><h2>How a rule is governed</h2><p>An automation is never its own authority. It runs through the chain that already governs everything else.</p></div>
-                <span class="pg-contract" data-c="real">No parallel authority</span>
+                <div class="pg-hd-copy"><h2>How this stays yours</h2><p>An automation never gets its own permission. It runs inside the limits you already set.</p></div>
               </div>
               <div class="pg-chain" id="chain"></div>
-              <div style="padding:0 15px 14px">
-                <p class="pg-hint">Nothing in this redesign introduces a second autonomy model, a private rail, or a bypass. A rule declares what it wants to do; the clamp above decides whether it may, and the bus and rail record what actually happened. The one link not yet reading live for a Solo owner is named as such rather than drawn as working.</p>
-              </div>
+              <details class="pg-fold" style="margin:0 16px 16px">
+                <summary>What sits behind each step</summary>
+                <div class="pg-fold-body">
+                  <dl id="chainDetail"></dl>
+                </div>
+              </details>
             </section>
 
             <section class="pg-plate">
               <div class="pg-plate-hd">
-                <div class="pg-hd-copy"><h2>The minimum missing contract</h2><p>Everything else this flow needs already ships. These four are what stand between a Solo owner and a working automation.</p></div>
+                <div class="pg-hd-copy"><h2>What is still missing</h2><p>The rest of this already works. These are the pieces that do not.</p></div>
               </div>
-              <div>
-                <div class="pg-gapcard"><b>1</b><div>
-                  <strong>A step that actually executes the rule</strong>
-                  <p>The stage trigger fires, enforces consent and then <em>POSTs to an external webhook</em>. No code path takes a triggered event plus its rule and produces a draft or a send. This is the one gap that blocks everything: without it an automation can be authored and can fire, but can never do anything.</p>
-                  <p class="pg-have">Already shipping and reusable: <code>pre-send-pipeline</code> (the five legal gates), <code>channel-adapters</code> (outbound send), <code>paige_pending_approvals</code> (the draft lane), <code>railAutomation</code> (telemetry). The missing piece is the function that drives those four.</p>
-                </div></div>
-                <div class="pg-gapcard"><b>2</b><div>
-                  <strong>A trigger that does not require a pipeline</strong>
-                  <p>A rule is keyed on <code>pipeline_id</code> and <code>to_stage_id</code>, so a workspace with no pipeline cannot author a single automation. Either give the workspace a pipeline, or admit a second trigger shape.</p>
-                  <p class="pg-have">Already shipping: the rule table, its RLS, and the deal-stage trigger itself.</p>
-                </div></div>
-                <div class="pg-gapcard"><b>3</b><div>
-                  <strong>A dry-run that reports an outcome without sending</strong>
-                  <p>Nothing can currently answer “what would this do?”. The result shape already exists as <code>PreSendOutcome</code>; what is absent is a callable that evaluates the gates for a test contact and returns which one it lands on.</p>
-                  <p class="pg-have">Already shipping: the gate order, the outcome enum, and consent and suppression reads.</p>
-                </div></div>
-                <div class="pg-gapcard"><b>4</b><div>
-                  <strong>One run history across both engines</strong>
-                  <p>Stage runs land in <code>stage_automation_events</code>, workflow runs in <code>paige_workflow_runs</code>. There is no single read, so “manage” cannot show a person one honest timeline.</p>
-                  <p class="pg-have">Already shipping: both stores, both with real status vocabularies including honest skip reasons.</p>
-                </div></div>
-              </div>
+              <div class="pg-caps" id="gaps"></div>
             </section>
           </div>
 
@@ -830,25 +920,23 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
 <div class="rv-drawer">
   <div class="rv-drawer-in">
     <h2>Flow matrix — real, unavailable, mocked</h2>
-    <p>“Real” means read from a live contract this workspace can genuinely use. “Unavailable” means the substrate exists but cannot complete, and the surface says so. “Mocked” means the prototype supplies it for review only and it must not ship as-is.</p>
+    <p>Reviewer reference, not part of the product surface. “Real” means a live contract this workspace can genuinely use; “unavailable” means it exists but cannot complete, and the surface says so plainly; “mocked” means the prototype supplies it for review only.</p>
     <div class="rv-tablewrap">
       <table class="rv-matrix">
-        <thead><tr><th scope="col">Element</th><th scope="col">Class</th><th scope="col">Evidence / reason</th><th scope="col">Contract</th></tr></thead>
+        <thead><tr><th scope="col">Element</th><th scope="col">Class</th><th scope="col">Reason</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Main rail (6 slots)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Not touched by this change. No slot added, renamed or reordered.</td><td><code>tenantShellRoutes.ts</code></td></tr>
-          <tr><th scope="row">Settings rail (8 items)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Setup · Team · Connections · Integrations · Notifications · Security &amp; data · Vault · Billing, exactly as shipped.</td><td><code>SOLO_SETTINGS_DESTINATIONS</code></td></tr>
-          <tr><th scope="row">Integrations sub-tab strip</th><td><span class="t-chip" data-t="mock">New</span></td><td>The one added structure. Copies the strip Command Center already renders (Systems Check | Mind) rather than inventing a pattern.</td><td><code>settings.tsx:543</code></td></tr>
-          <tr><th scope="row">Third URL level</th><td><span class="t-chip" data-t="mock">Needs a hook</span></td><td><code>leafBySlug</code>/<code>leafPath</code> already exist and are tier-generic, but <code>useSubtabRoute</code> reads two levels only. A leaf-aware variant is required.</td><td><code>useSubtabRoute.ts</code></td></tr>
-          <tr><th scope="row">Existing <code>/automations</code> URL</th><td><span class="t-chip" data-t="real">Redirect</span></td><td>Stays resolvable and redirects to the new address rather than 404-ing a shipped route.</td><td><code>SoloApp.tsx</code> LEGACY_SETTINGS</td></tr>
-          <tr><th scope="row">Workflow catalogue lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>23 registry rows, all platform-scoped; the trigger seam restricts those to operator authority. 20 of 23 also have no linked flow.</td><td><code>paige_workflow_registry</code></td></tr>
-          <tr><th scope="row">Pipeline stage lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Real write contract and a working trigger, but no delivery route on any workspace and no platform fallback. This workspace has no pipeline.</td><td><code>stage_automation_rules</code></td></tr>
-          <tr><th scope="row">Form automations lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Readable and tenant-scoped; policy forbids every direct write from this surface. None exist here.</td><td><code>growth_form_automations</code></td></tr>
-          <tr><th scope="row">Filed actions lane (13)</th><td><span class="t-chip" data-t="real">Real</span></td><td>Read live 2026-08-31: 13 rows, all Systems Check remediation, all filed. Read-only; its home stays Command Center.</td><td><code>paige_actions</code></td></tr>
-          <tr><th scope="row">Run counts, success rate, “needs attention”</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. Zero runs exist platform-wide, so every figure would be invented.</td><td>—</td></tr>
-          <tr><th scope="row">Repair actions</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. There is no rule to repair and no contract that performs a repair.</td><td>—</td></tr>
-          <tr><th scope="row">“Capability: LIVE” on provider cards</th><td><span class="t-chip" data-t="none">Corrected</span></td><td>Currently hardcoded on every card regardless of state. Derived from real state here.</td><td><code>settings-integrations.tsx:147</code></td></tr>
-          <tr><th scope="row">Absence titles and body copy</th><td><span class="t-chip" data-t="mock">Draft</span></td><td>Surface copy belongs to Claude Design; drafted here to keep the round moving.</td><td><code>absence-copy.md</code></td></tr>
-          <tr><th scope="row">Slide-out actions</th><td><span class="t-chip" data-t="mock">Inert</span></td><td>Disabled and labelled. No prototype control writes anything.</td><td>—</td></tr>
+          <tr><th scope="row">Main rail (6 slots)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Not touched. No slot added, renamed or reordered.</td></tr>
+          <tr><th scope="row">Settings rail (8 items)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Exactly as shipped.</td></tr>
+          <tr><th scope="row">Automations sub-tab</th><td><span class="t-chip" data-t="mock">New</span></td><td>The one added structure, copying the strip Command Center already renders.</td></tr>
+          <tr><th scope="row">“Set up your pipeline”</th><td><span class="t-chip" data-t="real">Real</span></td><td>A workspace admin can genuinely create pipelines and stages; policy verified. It is the prerequisite for the one automation kind that is authorable.</td></tr>
+          <tr><th scope="row">“See what she has flagged (13)”</th><td><span class="t-chip" data-t="real">Real</span></td><td>13 filed items read live from this workspace, all from its systems check. Reachable today.</td></tr>
+          <tr><th scope="row">Stage follow-ups</th><td><span class="t-chip" data-t="none">Blocked</span></td><td>Real write contract and a working trigger, but no delivery route anywhere and this workspace has no pipeline.</td></tr>
+          <tr><th scope="row">Ready-made automations</th><td><span class="t-chip" data-t="none">Blocked</span></td><td>All catalogue entries are platform-scoped, which the trigger restricts to operator authority.</td></tr>
+          <tr><th scope="row">Form follow-ups</th><td><span class="t-chip" data-t="none">Blocked</span></td><td>Readable and scoped, but policy forbids every direct write from this surface.</td></tr>
+          <tr><th scope="row">Counts, runs, rates, repairs, health</th><td><span class="t-chip" data-t="none">Absent</span></td><td>Deliberately not shown. No run has ever happened, so any figure would be invented.</td></tr>
+          <tr><th scope="row">Message-check outcomes</th><td><span class="t-chip" data-t="real">Real vocabulary</span></td><td>The six results the shipped pre-send checks already return, restated in plain language.</td></tr>
+          <tr><th scope="row">“Save”, “See what it would do”</th><td><span class="t-chip" data-t="mock">Inert</span></td><td>Disabled or explanatory. No prototype control writes anything.</td></tr>
+          <tr><th scope="row">Copy on the canvas</th><td><span class="t-chip" data-t="mock">Draft</span></td><td>Wording is a design decision and sits with Claude Design; drafted here so the flow can be judged.</td></tr>
         </tbody>
       </table>
     </div>
@@ -881,126 +969,180 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
     return '<svg width="' + (s || 15) + '" height="' + (s || 15) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + "</svg>";
   }
 
-  /* Rails, transcribed from the shipped surfaces. Neither list is modified. */
-  var MAIN_RAIL = [
-    ["Command Center", "home"], ["Clients", "users"], ["Campaigns", "mega"],
-    ["Marketplace", "store"], ["Analytics", "chart"], ["Settings", "gear"]
-  ];
-  var SETTINGS_RAIL = [
-    ["Setup", "build"], ["Team", "users"], ["Connections", "link"], ["Integrations", "gear"],
-    ["Notifications", "bell"], ["Security & data", "shield"], ["Vault", "vault"], ["Billing", "coin"]
+  var MAIN_RAIL = [["Command Center","home"],["Clients","users"],["Campaigns","mega"],["Marketplace","store"],["Analytics","chart"],["Settings","gear"]];
+  var SETTINGS_RAIL = [["Setup","build"],["Team","users"],["Connections","link"],["Integrations","gear"],["Notifications","bell"],["Security & data","shield"],["Vault","vault"],["Billing","coin"]];
+
+  /* Owner language on the surface. Provenance lives in the fold-out only. */
+  var CAPS = [
+    { id:"stage", s:"ready", title:"Follow up when a client moves forward",
+      state:"Ready to build",
+      body:"When a client reaches a new stage with you, Paige writes the next message and either shows it to you or sends it. This is the one you can set up yourself — it needs your pipeline first.",
+      detail:[
+        ["What works","You can create, change and switch these off yourself, and the moment a client moves is already detected reliably."],
+        ["What does not","There is no route for the message to actually leave yet, so one would be recorded as held rather than sent."],
+        ["In this workspace","No pipeline and no clients in one, so there is nothing to attach it to."]
+      ]},
+    { id:"catalogue", s:"", title:"Ready-made automations",
+      state:"Not yours to run",
+      body:"A set of prepared jobs exists, but they belong to the platform team rather than to your workspace, so none of them can be started from here.",
+      detail:[
+        ["Why","Every prepared job is owned at the platform level, and starting one is restricted to that team."],
+        ["Also","Most are not connected to anything that could carry them out."],
+        ["What would change it","Either versions that belong to your workspace, or permission for an owner to start a platform one."]
+      ]},
+    { id:"form", s:"", title:"Follow up when someone fills in a form",
+      state:"Set up with the form",
+      body:"These are attached to a form when you build it, not created here. You have none yet.",
+      detail:[
+        ["Where they live","With the form itself, in your campaign builder."],
+        ["Why not here","This surface can read them but is not allowed to create or change them, deliberately."]
+      ]},
+    { id:"flagged", s:"live", title:"Things Paige has flagged",
+      state:"13 waiting",
+      body:"Thirteen items she has raised from your systems check and filed for you. These are the only automatic records in your workspace so far — she raised them, you have not acted on them.",
+      detail:[
+        ["Where they came from","Your systems check, not a rule you set up."],
+        ["Where to see them","Command Center, on the systems check tab."],
+        ["Status","All thirteen are filed and waiting."]
+      ]}
   ];
 
-  var LANES = [
-    { id:"workflow", title:"Workflow catalogue", kind:"Workflows", state:"blocked", truth:"", truthLabel:"No substrate",
-      why:"Twenty-three workflows exist in the catalogue, and this workspace can run none of them. All twenty-three are platform-scoped, and the trigger seam restricts platform-scoped workflows to operator authority.",
-      src:["paige_workflow_registry","paige_workflow_runs"],
-      evidence:"registry rows            23  (all tenant_id IS NULL)\nrunnable by this owner    0  (platform rows -> operator only)\nmissing a linked flow    20  of 23\nruns ever recorded        0  platform-wide",
-      needs:"Either tenant-scoped catalogue entries this workspace owns, or an explicit grant letting an owner run a platform workflow. Both are backend decisions, not screen decisions.",
-      note:"The catalogue also holds operator-only and vertical-specific entries. None of them should ever surface as a Solo automation." },
-    { id:"stage", title:"Pipeline stage rules", kind:"Stage rules", state:"authorable", truth:"held", truthLabel:"Authorable, not deliverable",
-      why:"The one lane whose write contract is genuinely yours: an owner may create, edit and deactivate rules, and the stage trigger fires and records what happened honestly. It still cannot deliver anything.",
-      src:["stage_automation_rules","stage_automation_events"],
-      evidence:"rules authored, all workspaces     0\ntrigger events recorded            2   both 'skipped_no_rule'\nworkspaces with a delivery route   0\nplatform fallback route            absent\nthis workspace: pipelines 0 · deals 0",
-      needs:"A pipeline with stages in this workspace, and a delivery route for dispatch. Without the route a rule that fires records skipped_no_webhook rather than acting.",
-      note:"The two recorded events are the proof the trigger works: it fired, found no rule, and said so instead of failing silently." },
-    { id:"form", title:"Form automations", kind:"Form rules", state:"blocked", truth:"", truthLabel:"Read-only by policy",
-      why:"Readable here and scoped to this workspace, but policy forbids every direct write from this surface. They are created by the form builder, not from an automations screen.",
-      src:["growth_form_automations"],
-      evidence:"rows for this workspace   0\nrows, all workspaces      0\ndirect write from client  denied by policy",
-      needs:"Nothing on the backend. If these should be authorable here, that is a product decision about where the form builder ends and this surface begins.",
-      note:"Reading them here would be honest. Offering to create one here would not be." },
-    { id:"actions", title:"Filed actions", kind:"Action bus", state:"live", truth:"live", truthLabel:"Live · read-only here",
-      why:"The only automation record with real rows in this workspace. Thirteen actions have been filed, all Systems Check remediation. Shown for completeness; their home stays Command Center.",
-      src:["paige_actions"],
-      evidence:"actions in this workspace   13\nkind                        systems.remediate  (all)\nstatus                      filed  (all)\nread live 2026-08-31",
-      needs:"Nothing. This lane is accurate today.",
-      note:"These were produced by Systems Check, not by a rule you authored. Presenting them as “your automations” would misread what they are." }
+  var FLOW = [
+    ["Describe it","Say what should happen, in your own words."],
+    ["Check it","See what it would do to a real client, before it runs."],
+    ["Approve it","Decide whether she shows you first or sends on her own."],
+    ["Watch it","See every time it runs, and what came of it."]
+  ];
+
+  var INTENTS = [
+    ["transactional","Something they are expecting","A receipt, a confirmation, a next step they already agreed to."],
+    ["notification","A heads-up","Letting them know something happened."],
+    ["nurture","Keeping in touch","Staying useful between pieces of work."],
+    ["marketing","An offer","Promoting something. Needs their agreement to marketing.'"]
+  ];
+  var TONES = ["warm","professional","consultative","welcoming","encouraging","celebratory"];
+  var MODES = [
+    ["draft_for_review","Show me first","She writes it and puts it in front of you. Nothing leaves until you say so."],
+    ["auto_send","Let her send it","It goes without you. The checks below still run, and can still stop it."]
+  ];
+  var OUTCOMES = [
+    ["pass","She would send it"],
+    ["queue","She would wait — you have paused automatic sending"],
+    ["queue","She would wait — too late in the day to text"],
+    ["stop","She would stop — this client asked not to be contacted"],
+    ["stop","She would stop — this address has opted out"],
+    ["stop","She would stop — they have not agreed to this kind of message"]
+  ];
+  var CHAIN = [
+    ["You decide","", "You set what she may do without asking."],
+    ["She reads your work","", "Your clients, their stage, what has already happened."],
+    ["She works out the move","", "What to say and when."],
+    ["Your limits apply","gap","Nothing may go further than you allowed."],
+    ["She files it","", "The action is recorded, not fired off quietly."],
+    ["You see what happened","", "Every run appears in your workspace."]
+  ];
+  var CHAIN_DETAIL = [
+    ["You decide","You set how far she may go without asking. A single automation can be more cautious than that, never bolder."],
+    ["She reads your work","Only your own clients and their stage with you — nothing from anyone else's workspace."],
+    ["She works out the move","What to say, and whether now is the right moment."],
+    ["Your limits apply","Your setting is checked before anything happens. The page where you see and change it does not show live numbers yet."],
+    ["She files it","It joins the same queue your flagged items sit in, so nothing happens quietly."],
+    ["You see what happened","Written down only after it really ran — never in advance."]
+  ];
+  var GAPS = [
+    { id:"g1", s:"", title:"Something has to carry the message out", state:"The blocker",
+      body:"A rule can be written and the moment can be detected, but nothing yet takes that and actually produces the message. Until it does, an automation can exist and still never do anything.",
+      detail:[["Already built","The safety checks, the sending itself, the approval queue and the activity record."],["Missing","The one step that joins them together."]]},
+    { id:"g2", s:"", title:"You need a pipeline before you can build one", state:"Prerequisite",
+      body:"Automations attach to a client moving through your stages, so a workspace without a pipeline has nothing to attach one to.",
+      detail:[["Already built","Pipelines, stages, and your permission to create both."],["Missing","Nothing — this is a setup step, and it is the safe next action offered above."]]},
+    { id:"g3", s:"", title:"There is no way to try one safely yet", state:"Missing",
+      body:"You cannot currently ask “what would this do?” and get an answer without something happening.",
+      detail:[["Already built","The checks themselves, and the exact set of answers they give."],["Missing","A way to run them for one client without sending."]]},
+    { id:"g4", s:"", title:"Run history is split in two", state:"Missing",
+      body:"Two kinds of automatic work are recorded separately, so there is no single list of everything that ran.",
+      detail:[["Already built","Both records, each with honest outcomes including why something was skipped."],["Missing","One view across both."]]}
   ];
 
   var PROVIDERS = [
-    { id:"n8n", mark:"n8n", name:"n8n", kind:"Automation", cat:"automation", config:"Not configured", health:"Not measurable", cap:"none", evidence:"Not reported",
-      body:"Read from a safe status getter that returns connection state only — never credentials or provider payloads. This workspace has not configured it.", handoff:"Open Automations" },
-    { id:"mcp", mark:"MCP", name:"MCP bridge", kind:"External tool bridge", cat:"developer", config:"Not configured", health:"Not measurable", cap:"none", evidence:"Not reported",
-      body:"Read from a safe status getter that returns connection state only. No safe configuration handoff exists for a Solo owner yet.", handoff:null },
-    { id:"quickbooks", mark:"QB", name:"QuickBooks", kind:"Financial tools", cat:"financial", config:"Not established", health:"Not measurable", cap:"partial", evidence:"Version One evidence",
-      body:"Sync seams exist in the codebase, but nothing proves a readiness state for this workspace. No connection is being claimed.", handoff:null },
-    { id:"stripe", mark:"St", name:"Stripe Connect", kind:"Commerce", cat:"financial", config:"Not established", health:"Not measurable", cap:"partial", evidence:"Version One evidence",
-      body:"Payout-account records exist. They do not prove this workspace is connected, active, or entitled to a capability.", handoff:null },
-    { id:"docusign", mark:"Ds", name:"DocuSign", kind:"Documents", cat:"documents", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
-      body:"Signature seams exist but have no tenant-safe governed contract.", handoff:null },
-    { id:"apollo", mark:"Ap", name:"Apollo", kind:"Client data", cat:"client-data", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
-      body:"Enrichment configuration is platform-global and cannot establish this workspace’s connection.", handoff:null },
-    { id:"plaid", mark:"Pl", name:"Plaid", kind:"Financial tools", cat:"financial", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
-      body:"Bank-link scaffolding does not prove tenant-safe readiness.", handoff:null },
-    { id:"api", mark:"API", name:"Webhooks & direct API", kind:"Developer tools", cat:"developer", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
-      body:"Platform webhook and API-key records are not a Solo tenant contract.", handoff:null }
+    { id:"n8n", mark:"n8n", name:"n8n", kind:"Automation", cat:"automation", config:"Not connected", health:"Nothing to measure", cap:"none",
+      body:"Nothing is connected for this workspace. No keys or account details are shown here, or held here.", handoff:"Open Automations" },
+    { id:"mcp", mark:"MCP", name:"Tool bridge", kind:"Connects other tools", cat:"developer", config:"Not connected", health:"Nothing to measure", cap:"none",
+      body:"Nothing is connected for this workspace, and there is no safe way to set it up from here yet.", handoff:null },
+    { id:"quickbooks", mark:"QB", name:"QuickBooks", kind:"Accounting", cat:"financial", config:"Not set up", health:"Nothing to measure", cap:"partial",
+      body:"Groundwork exists, but nothing proves this workspace is connected. No connection is being claimed.", handoff:null },
+    { id:"stripe", mark:"St", name:"Stripe", kind:"Payments", cat:"financial", config:"Not set up", health:"Nothing to measure", cap:"partial",
+      body:"Payout records exist. They do not show this workspace is connected or entitled to anything.", handoff:null },
+    { id:"docusign", mark:"Ds", name:"DocuSign", kind:"Signatures", cat:"documents", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Groundwork exists but has no safe way to reach your workspace yet.", handoff:null },
+    { id:"apollo", mark:"Ap", name:"Apollo", kind:"Client data", cat:"client-data", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Set up across the whole platform rather than per workspace, so nothing can be claimed for yours.", handoff:null },
+    { id:"plaid", mark:"Pl", name:"Plaid", kind:"Bank links", cat:"financial", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Groundwork exists but does not show your workspace is ready.", handoff:null },
+    { id:"api", mark:"API", name:"Direct connections", kind:"For developers", cat:"developer", config:"Not set up", health:"Nothing to measure", cap:"none",
+      body:"Platform-level records are not a connection for your workspace.", handoff:null }
   ];
 
-  /* The five-step human flow, each labelled with whether its contract exists today. */
-  var FLOW = [
-    ["Create", "real", "stage_automation_rules · RLS write"],
-    ["Edit", "real", "same row · owner may update"],
-    ["Test", "gap", "no dry-run callable exists"],
-    ["Approve", "real", "paige_pending_approvals"],
-    ["Manage", "gap", "no unified run history"]
-  ];
-  /* Real enum values, transcribed from the shipped rule editor — not invented. */
-  var INTENTS = [["transactional","Transactional"],["notification","Notification"],["nurture","Nurture"],["marketing","Marketing"]];
-  var TONES = ["warm","professional","consultative","welcoming","encouraging","celebratory"];
-  var MODES = [
-    ["draft_for_review","Hold it for me","Lands in your approvals queue. Real: this is the shipped approval contract, with realtime and an approval policy per action."],
-    ["auto_send","Send on its own","Fires without you. The consent, suppression, do-not-disturb and quiet-hours gates still run first and can still stop it."]
-  ];
-  /* The exact PreSendOutcome values the shipped pipeline returns, in its locked order. */
-  var OUTCOMES = [
-    ["stop","Client do-not-disturb","blocked_dnd"],
-    ["stop","On the suppression list","blocked_suppressed"],
-    ["stop","No consent for this intent","blocked_no_consent"],
-    ["queue","Workspace auto-send paused","queued_dnd_window"],
-    ["queue","Outside SMS quiet hours","queued_quiet_hours"],
-    ["pass","Clear to send","sent"]
-  ];
-
-  /* The governed path. Each link's state was checked against the code, not assumed. */
-  var CHAIN = [
-    ["Human", "real", "You author the rule and set how far it may go."],
-    ["Read", "real", "Deals, contacts and stage changes are live reads today."],
-    ["Brain", "real", "The model router ships; it is not yet wired to this path."],
-    ["Trust Compass", "gap", "The Solo compass surface reads no live data yet."],
-    ["Action Bus", "real", "paige_actions — 13 filed rows in this workspace."],
-    ["Rail", "real", "Run telemetry emitters ship and fire after a real run."]
-  ];
-
-  var S = { screen:"intended", theme:"light", vp:"1536x770", cat:"all", step:0, intent:"nurture", tone:"warm", mode:"draft_for_review" };
+  var S = { screen:"auto", theme:"light", vp:"1536x770", cat:"all", step:0, intent:"nurture", tone:"warm", mode:"draft_for_review" };
   var shell = document.getElementById("shell"), frame = document.getElementById("frame");
   var navlist = document.getElementById("navlist"), substrip = document.getElementById("substrip");
-  var lanesEl = document.getElementById("lanes"), provGrid = document.getElementById("provGrid");
-  var slide = document.getElementById("slide"), lastFocus = null;
+  var provGrid = document.getElementById("provGrid"), slide = document.getElementById("slide"), lastFocus = null;
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
   function isAuto() { return S.screen === "auto" || S.screen === "intended"; }
   function inSettings() { return S.screen === "catalogue" || isAuto(); }
 
+  function navBtn(label, icon, active) {
+    return '<button type="button" class="pg-nav-a' + (active ? " is-active" : "") + '"' +
+      (active ? ' aria-current="page"' : "") + ">" + (active ? "<i></i>" : "") +
+      ico(icon) + "<span>" + esc(label) + "</span></button>";
+  }
+  function renderRail() {
+    var h = "";
+    if (inSettings()) {
+      h += navBtn("Back to PAIGE", "back", false);
+      h += '<div class="pg-navlabel">Settings</div>';
+      SETTINGS_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Integrations"); });
+    } else {
+      MAIN_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Command Center"); });
+    }
+    navlist.innerHTML = h;
+  }
+  function renderSubstrip() {
+    var autoKey = S.screen === "intended" ? "intended" : "auto";
+    var tabs = inSettings() ? [["catalogue","Your tools","link"],[autoKey,"Automations","bolt"]]
+                            : [["cmd","Systems Check","pulse"],["cmdmind","Mind","mind"]];
+    substrip.innerHTML = tabs.map(function (t) {
+      return '<button type="button" role="tab" class="pg-subtab" data-sub="' + t[0] + '" aria-selected="' +
+        (t[0] === S.screen ? "true" : "false") + '">' + ico(t[2], 14) + "<span>" + esc(t[1]) + "</span></button>";
+    }).join("");
+  }
+
+  function capCard(c, idx) {
+    return '<div class="pg-cap" data-s="' + c.s + '">' +
+      '<div class="pg-cap-head"><span class="pg-cap-bar" aria-hidden="true"></span>' +
+      '<div class="pg-cap-copy"><h3>' + esc(c.title) + "</h3><p>" + esc(c.body) + "</p></div>" +
+      '<span class="pg-state" data-s="' + c.s + '">' + esc(c.state) + "</span></div>" +
+      '<details class="pg-fold"><summary>Details</summary><div class="pg-fold-body"><dl>' +
+      c.detail.map(function (d) { return "<dt>" + esc(d[0]) + "</dt><dd>" + esc(d[1]) + "</dd>"; }).join("") +
+      "</dl></div></details></div>";
+  }
+  function renderToday() {
+    document.getElementById("caps").innerHTML = CAPS.map(capCard).join("");
+  }
+
   function renderIntended() {
     document.getElementById("flowbar").innerHTML = FLOW.map(function (f, i) {
-      return '<button type="button" class="pg-step" data-step="' + i + '"' +
-        (i === S.step ? ' aria-current="step"' : "") + '>' +
-        '<span class="pg-step-n"><b>' + (i + 1) + "</b><span>" + esc(f[0]) + "</span></span>" +
-        '<small data-c="' + f[1] + '">' + esc(f[2]) + "</small></button>";
+      return '<button type="button" class="pg-step" data-step="' + i + '"' + (i === S.step ? ' aria-current="step"' : "") + ">" +
+        '<span class="pg-step-n"><b>' + (i + 1) + "</b><span>" + esc(f[0]) + "</span></span><small>" + esc(f[1]) + "</small></button>";
     }).join("");
-
-    document.getElementById("ruleList").innerHTML =
-      '<div style="padding:18px 13px;display:flex;flex-direction:column;gap:5px">' +
-      '<strong style="font-size:12.7px">No automations yet</strong>' +
-      '<span style="font-size:11.9px;color:var(--pg-muted);line-height:1.55">' +
-      'This list reads <code style="font:400 10.8px/1 var(--pg-font-data)">stage_automation_rules</code> for this workspace. ' +
-      'It is genuinely empty — no rule has been authored here, or on any workspace.</span></div>';
 
     document.getElementById("intentRow").innerHTML = INTENTS.map(function (t) {
       return '<button type="button" class="pg-ctl" data-intent="' + t[0] + '" aria-pressed="' +
         (S.intent === t[0] ? "true" : "false") + '">' + esc(t[1]) + "</button>";
     }).join("");
+    var pi = INTENTS.filter(function (t) { return t[0] === S.intent; })[0];
+    document.getElementById("intentHint").textContent = pi[2];
 
     document.getElementById("toneRow").innerHTML = TONES.map(function (t) {
       return '<button type="button" class="pg-ctl" data-tone="' + t + '" aria-pressed="' +
@@ -1011,81 +1153,35 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
       return '<button type="button" class="pg-ctl" data-mode="' + m[0] + '" aria-pressed="' +
         (S.mode === m[0] ? "true" : "false") + '">' + esc(m[1]) + "</button>";
     }).join("");
-    var picked = MODES.filter(function (m) { return m[0] === S.mode; })[0];
-    document.getElementById("modeHint").innerHTML =
-      esc(picked[2]) + ' Real column <code>send_mode</code>.';
-
-    document.getElementById("chain").innerHTML = CHAIN.map(function (c) {
-      return '<div class="pg-link" data-s="' + c[1] + '"><b>' + esc(c[0]) + "</b>" +
-        "<span>" + (c[1] === "real" ? "Live" : "Not yet") + "</span>" +
-        "<small>" + esc(c[2]) + "</small></div>";
-    }).join("");
+    document.getElementById("modeHint").textContent = MODES.filter(function (m) { return m[0] === S.mode; })[0][2];
 
     document.getElementById("outcomeList").innerHTML = OUTCOMES.map(function (o) {
-      return '<div class="pg-outcome-row" data-o="' + o[0] + '"><i></i><strong>' + esc(o[1]) +
-        "</strong><code>" + esc(o[2]) + "</code></div>";
+      return '<div class="pg-outcome-row" data-o="' + o[0] + '"><i></i><strong>' + esc(o[1]) + "</strong></div>";
     }).join("");
-  }
 
-  function navBtn(label, icon, active) {
-    return '<button type="button" class="pg-nav-a' + (active ? " is-active" : "") + '"' +
-      (active ? ' aria-current="page"' : "") + ">" + (active ? "<i></i>" : "") +
-      ico(icon) + "<span>" + esc(label) + "</span></button>";
-  }
-
-  function renderRail() {
-    var h = "";
-    if (inSettings()) {
-      // The Settings contextual rail, exactly as shipped.
-      h += navBtn("Back to PAIGE", "back", false);
-      h += '<div class="pg-navlabel">Settings</div>';
-      SETTINGS_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Integrations"); });
-    } else {
-      MAIN_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Command Center"); });
-    }
-    navlist.innerHTML = h;
-  }
-
-  function renderSubstrip() {
-    var autoKey = S.screen === "intended" ? "intended" : "auto";
-    var tabs = inSettings()
-      ? [["catalogue", "Catalogue", "link"], [autoKey, "Automations", "bolt"]]
-      : [["cmd", "Systems Check", "pulse"], ["cmdmind", "Mind", "mind"]];
-    substrip.innerHTML = tabs.map(function (t) {
-      var on = t[0] === S.screen;
-      return '<button type="button" role="tab" class="pg-subtab" data-sub="' + t[0] + '" aria-selected="' + (on ? "true" : "false") + '">' +
-        ico(t[2], 14) + "<span>" + esc(t[1]) + "</span>" +
-        (isAuto() && t[0] === autoKey ? '<span class="pg-subtab-count">None yet</span>' : "") + "</button>";
+    document.getElementById("chain").innerHTML = CHAIN.map(function (c) {
+      return '<div class="pg-link"' + (c[1] ? ' data-s="gap"' : "") + "><b>" + esc(c[0]) + "</b><small>" + esc(c[2]) + "</small></div>";
     }).join("");
-  }
-
-  function renderLanes() {
-    lanesEl.innerHTML = LANES.map(function (l) {
-      return '<button type="button" class="pg-lane" data-lane="' + l.id + '" data-state="' + l.state + '">' +
-        '<span class="pg-lane-stripe" aria-hidden="true"></span><span class="pg-lane-body">' +
-        '<span class="pg-lane-title"><strong>' + esc(l.title) + "</strong>" +
-        '<span class="pg-kind">' + esc(l.kind) + "</span>" +
-        '<span class="pg-truth"' + (l.truth ? ' data-v="' + l.truth + '"' : "") + ">" + esc(l.truthLabel) + "</span></span>" +
-        '<span class="pg-lane-why">' + esc(l.why) + "</span>" +
-        '<span class="pg-lane-src">' + l.src.map(function (s) { return "<code>" + esc(s) + "</code>"; }).join("") + "</span></span>" +
-        '<span class="pg-lane-end">Evidence<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span></button>';
+    document.getElementById("chainDetail").innerHTML = CHAIN_DETAIL.map(function (d) {
+      return "<dt>" + esc(d[0]) + "</dt><dd>" + esc(d[1]) + "</dd>";
     }).join("");
+
+    document.getElementById("gaps").innerHTML = GAPS.map(capCard).join("");
   }
 
-  function capLabel(c) { return c === "partial" ? "Capability: partial" : "Capability: none"; }
-
+  function capLabel(c) { return c === "partial" ? "Partly set up" : "Not connected"; }
   function renderProviders() {
     var rows = PROVIDERS.filter(function (p) { return S.cat === "all" || p.cat === S.cat; });
     provGrid.innerHTML = rows.length ? rows.map(function (p) {
       return '<button type="button" class="pg-prov" data-prov="' + p.id + '" data-cat="' + p.cat + '">' +
         '<span class="pg-prov-hd"><span class="pg-prov-mark" aria-hidden="true">' + esc(p.mark) + "</span>" +
         "<div><strong>" + esc(p.name) + "</strong><small>" + esc(p.kind) + "</small></div>" +
-        '<span class="pg-truth"' + (p.cap === "partial" ? ' data-v="held"' : "") + ">" + esc(capLabel(p.cap)) + "</span></span>" +
-        '<dl class="pg-prov-state"><div><dt>Workspace</dt><dd>' + esc(p.config) + "</dd></div>" +
-        "<div><dt>Health</dt><dd>" + esc(p.health) + "</dd></div></dl>" +
+        '<span class="pg-state"' + (p.cap === "partial" ? ' data-s="ready"' : "") + ">" + esc(capLabel(p.cap)) + "</span></span>" +
+        '<dl class="pg-prov-state"><div><dt>In your workspace</dt><dd>' + esc(p.config) + "</dd></div>" +
+        "<div><dt>Working?</dt><dd>" + esc(p.health) + "</dd></div></dl>" +
         '<span class="pg-prov-foot">' + (p.handoff ? '<span class="pg-btn" style="pointer-events:none">' + esc(p.handoff) + "</span>" : "") +
-        "<span>" + esc(p.evidence) + "</span></span></button>";
-    }).join("") : '<p style="font-size:12.4px;color:var(--pg-muted);margin:0">Nothing in this category.</p>';
+        "<span>Nothing claimed</span></span></button>";
+    }).join("") : '<p style="font-size:12.6px;color:var(--pg-muted);margin:0">Nothing in this group.</p>';
   }
 
   function openSlide(title, sub, body, foot, trigger) {
@@ -1108,8 +1204,7 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   var VP = { "1536x770":[1536,770], "1366x768":[1366,768], "1024x768":[1024,768], "900x1000":[900,1000] };
   function applyViewport() {
     var d = VP[S.vp];
-    frame.style.width = d[0] + "px";
-    frame.style.height = d[1] + "px";
+    frame.style.width = d[0] + "px"; frame.style.height = d[1] + "px";
     document.getElementById("vpTag").textContent = d[0] + " × " + d[1];
     var avail = Math.max(320, document.querySelector(".rv-stage").clientWidth - 36);
     var scale = Math.min(1, avail / d[0]);
@@ -1125,8 +1220,8 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
     document.getElementById("screen-auto").hidden = S.screen !== "auto";
     document.getElementById("screen-intended").hidden = S.screen !== "intended";
     document.getElementById("ctxTitle").textContent = inSettings() ? "Settings" : "Command Center";
-    document.getElementById("ctxKicker").textContent = "FIRST STERLING CAPITAL";
-    renderRail(); renderSubstrip(); renderProviders(); renderIntended(); applyViewport(); closeSlide();
+    renderRail(); renderSubstrip(); renderToday(); renderIntended(); renderProviders();
+    applyViewport(); closeSlide();
     document.getElementById("mainScroll").scrollTop = 0;
   }
 
@@ -1145,10 +1240,8 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   segGroup("motion", function (v) { document.body.setAttribute("data-motion", v); });
 
   substrip.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-sub]");
-    if (!b) return;
-    var k = b.getAttribute("data-sub");
-    if (k === "cmdmind") return;
+    var b = e.target.closest("[data-sub]"); if (!b) return;
+    var k = b.getAttribute("data-sub"); if (k === "cmdmind") return;
     S.screen = k;
     document.querySelectorAll(".rv-seg button[data-screen]").forEach(function (x) {
       x.setAttribute("aria-pressed", x.getAttribute("data-screen") === k ? "true" : "false");
@@ -1157,38 +1250,12 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   });
 
   document.getElementById("catFilters").addEventListener("click", function (e) {
-    var b = e.target.closest("button[data-cat]");
-    if (!b) return;
+    var b = e.target.closest("button[data-cat]"); if (!b) return;
     this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
     b.setAttribute("aria-pressed", "true");
-    S.cat = b.getAttribute("data-cat");
-    renderProviders();
+    S.cat = b.getAttribute("data-cat"); renderProviders();
   });
 
-  lanesEl.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-lane]"); if (!t) return;
-    var l = LANES.filter(function (x) { return x.id === t.getAttribute("data-lane"); })[0]; if (!l) return;
-    openSlide(l.title, l.kind + " · " + l.truthLabel,
-      '<div class="pg-field"><span class="pg-eyebrow">Why it cannot run</span><p>' + esc(l.why) + "</p></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">Read from the live workspace</span><div class="pg-evidence">' + esc(l.evidence) + "</div></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">What it would take</span><p>' + esc(l.needs) + "</p></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">Worth knowing</span><p>' + esc(l.note) + "</p></div>",
-      '<button class="pg-btn" type="button" disabled>Author a rule</button><span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype — nothing here writes</span>', t);
-  });
-
-  provGrid.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-prov]"); if (!t) return;
-    var p = PROVIDERS.filter(function (x) { return x.id === t.getAttribute("data-prov"); })[0]; if (!p) return;
-    openSlide(p.name, p.kind,
-      '<div class="pg-field"><span class="pg-eyebrow">What this reads</span><p>' + esc(p.body) + "</p></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">State</span><div class="pg-evidence">' +
-        esc("workspace   " + p.config + "\nhealth      " + p.health + "\nevidence    " + p.evidence) + "</div></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">Boundary</span><p>No credentials or provider payloads are shown on this surface, and none are held by it.</p></div>',
-      '<button class="pg-btn" type="button" disabled>' + esc(p.handoff || "Setup handoff unavailable") +
-        '</button><span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype</span>', t);
-  });
-
-  /* Intended-workspace controls. Every one changes local draft state only. */
   document.getElementById("screen-intended").addEventListener("click", function (e) {
     var step = e.target.closest("[data-step]");
     if (step) { S.step = Number(step.getAttribute("data-step")); renderIntended(); return; }
@@ -1201,18 +1268,33 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   });
 
   document.getElementById("sandboxBtn").addEventListener("click", function () {
-    openSlide("Test in sandbox", "This callable does not exist yet",
-      '<div class="pg-field"><span class="pg-eyebrow">What you would get</span><p>A dry run against one contact you choose: the rule is evaluated, the five legal gates run in their locked order, and you are told exactly which gate the message lands on — without anything being sent.</p></div>' +
-      '<div class="pg-field"><span class="pg-eyebrow">Why it is honest to show this</span><p>The outcome vocabulary is not invented. It is the exact set the shipped pre-send pipeline already returns, and that pipeline already fails closed when a consent or suppression read errors.</p></div>' +
-      '<div class="pg-field"><span class="pg-eyebrow">What is missing</span><div class="pg-evidence">' +
-      esc("have  gate order        locked, shipped\nhave  outcome enum      PreSendOutcome\nhave  consent reads     shipped\nhave  suppression reads shipped\nNEED  a callable that evaluates without dispatching") + "</div></div>",
-      '<button class="pg-btn" type="button" disabled>Run the test</button><span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Disabled — the contract does not exist</span>',
-      this);
+    openSlide("See what it would do", "Not possible yet",
+      '<div class="pg-field"><p>You would pick one client, and Paige would tell you exactly what would happen to them — sent, held, or stopped and why — without anything actually being sent.</p></div>' +
+      '<div class="pg-field"><p>The checks that would decide this already run on every message today. What is missing is a way to ask them a question without also doing the thing.</p></div>',
+      '<button class="pg-action" type="button" disabled>Try it</button>', this);
   });
 
-  document.getElementById("newRule").addEventListener("click", function () {
-    S.step = 0; renderIntended();
-    document.getElementById("editorTitle").textContent = "New automation";
+  document.getElementById("actPipeline").addEventListener("click", function () {
+    openSlide("Set up your pipeline", "This one you can do today",
+      '<div class="pg-field"><p>A pipeline is the set of stages a client moves through with you. Once it exists, Paige can watch for someone reaching a stage and act on it.</p></div>' +
+      '<div class="pg-field"><p>You can create it yourself — it lives with your campaigns. In the product this button takes you straight there.</p></div>',
+      '<button class="pg-action" type="button" data-primary disabled>Go to pipeline setup</button>', this);
+  });
+  document.getElementById("actFlagged").addEventListener("click", function () {
+    openSlide("Things Paige has flagged", "13 waiting",
+      '<div class="pg-field"><p>Thirteen items she raised from your systems check and filed for you. None came from a rule you set up — she noticed them herself.</p></div>' +
+      '<div class="pg-field"><p>They live on your Command Center, under the systems check tab. In the product this button takes you there.</p></div>',
+      '<button class="pg-action" type="button" data-primary disabled>Open systems check</button>', this);
+  });
+  document.getElementById("newRule").addEventListener("click", function () { S.step = 0; renderIntended(); });
+
+  provGrid.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-prov]"); if (!t) return;
+    var p = PROVIDERS.filter(function (x) { return x.id === t.getAttribute("data-prov"); })[0]; if (!p) return;
+    openSlide(p.name, p.kind,
+      '<div class="pg-field"><p>' + esc(p.body) + "</p></div>" +
+      '<div class="pg-field"><p><strong>In your workspace:</strong> ' + esc(p.config) + "<br><strong>Working?</strong> " + esc(p.health) + "</p></div>",
+      '<button class="pg-action" type="button" disabled>' + esc(p.handoff || "Nothing to set up here yet") + "</button>", t);
   });
 
   document.getElementById("slideClose").addEventListener("click", closeSlide);
@@ -1230,7 +1312,6 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   });
   window.addEventListener("resize", applyViewport);
 
-  renderLanes();
   applyAll();
 })();
 </script>
