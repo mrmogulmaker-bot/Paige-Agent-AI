@@ -203,17 +203,26 @@ describe("Truth boundary", () => {
     expect(card?.textContent).not.toContain("Status not reported");
   });
 
-  it("names the card for the provider, not for the protocol under it", async () => {
+  it("names the card for the provider AND says which kind of connection it is", async () => {
     // The slot can only ever hold Zapier — the setter writes that provider and that
     // endpoint, and the registry's CHECK refuses a Zapier row that is not OAuth. The
     // name used to be derived by sniffing the connected host, which meant an owner saw
     // a different card depending on state. It is now what the card IS.
+    //
+    // "MCP" WAS BANNED HERE AND IS NOW REQUIRED. Owner ruling, 2026-08-31: the old rule
+    // treated the term as protocol jargon and hid it, which is defensible in the abstract
+    // and failed the actual person. Someone who came looking for an MCP connection stood
+    // on this screen and could not tell whether they had one. A sentence can be correct
+    // and still leave a reader unable to recognise the thing in front of them; recognition
+    // wins. The rest of the protocol vocabulary stays out — those are implementation
+    // details a workspace never asked about, whereas "MCP" is the name of the thing they
+    // came to connect.
     world();
     const { host } = await render();
     const card = host.querySelector('.ig-card[data-provider="mcp"]');
     expect(card?.textContent).toContain("Zapier");
-    // None of the protocol vocabulary belongs on an owner-facing card.
-    for (const jargon of ["MCP", "bridge", "transport", "SSE", "Bearer"]) {
+    expect(card?.textContent).toContain("MCP connection");
+    for (const jargon of ["bridge", "transport", "SSE", "Bearer", "JSON-RPC"]) {
       expect(card?.textContent).not.toContain(jargon);
     }
   });
@@ -544,26 +553,32 @@ describe("n8n tool bridge (MCP)", () => {
     const { host } = await render();
     await openCard(host, "n8n");
     const section = mcpSection(host);
-    expect(section.textContent).toContain("If your n8n instance publishes its own tools");
+    expect(section.textContent).toContain("If your n8n instance runs an MCP server");
     expect(section.querySelector("form")).toBeTruthy();
     // "Not connected" and "connected" are the only two claims available before a probe,
     // and neither of the misleading middle states may appear.
     expect(section.textContent).not.toContain("Connected");
   });
 
-  it("keeps the transport out of the n8n section's own copy too", async () => {
-    // The Zapier card was cleaned up and this section was renamed with it, which left
-    // "the tool bridge" and "Connect the bridge" pointing at a name no longer on screen.
-    // Same bar, same reason: a workspace is connecting n8n, not a protocol.
+  it("names this section as the n8n MCP connection, and still keeps the plumbing out", async () => {
+    // The two n8n connections are independent and a workspace has to be able to tell them
+    // apart by reading them. "Direct tool access" described what the section does and
+    // concealed what it is, so the section that IS the MCP connection was the one nobody
+    // could find. It says so now.
     //
-    // "Transport" and "Bearer" are deliberately NOT in this list. They are the labels
-    // n8n's own settings use for the values being copied across, so here they are the
-    // workspace's vocabulary rather than ours.
+    // "Transport" and "Bearer" are deliberately NOT in the banned list. They are the
+    // labels n8n's own settings use for the values being copied across, so here they are
+    // the workspace's vocabulary rather than ours.
     world({ n8n: { configured: false } });
     const { host } = await render();
     await openCard(host, "n8n");
     const copy = mcpSection(host).textContent ?? "";
-    for (const jargon of ["bridge", "MCP", "JSON-RPC"]) {
+    expect(copy).toContain("n8n MCP connection");
+    // ...and the section says outright that it is not the other one, because two
+    // connections to the same provider is exactly where someone assumes one implies the
+    // other.
+    expect(copy).toContain("separate from the API connection");
+    for (const jargon of ["bridge", "JSON-RPC"]) {
       expect(copy).not.toContain(jargon);
     }
   });
