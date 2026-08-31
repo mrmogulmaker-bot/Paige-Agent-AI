@@ -97,6 +97,8 @@ export interface AutomationDraft {
 }
 
 export interface SoloAutomationsState {
+  /** True only until the first read settles. A refresh after a write does NOT
+   *  raise this — otherwise toggling a rule blanks the whole surface. */
   loading: boolean;
   /** True when a read failed. No state is claimed in that case — not even "empty". */
   error: boolean;
@@ -191,7 +193,8 @@ export function useSoloAutomations() {
 
   const load = useCallback(async () => {
     const token = ++epoch.current;
-    setState((s) => ({ ...s, loading: true, error: false, writeError: null }));
+    // Keep `loading` as-is on a refresh: it is the first-load signal only.
+    setState((s) => ({ ...s, error: false, writeError: null }));
 
     if (!activeTenantId) {
       if (epoch.current === token) {
@@ -263,11 +266,14 @@ export function useSoloAutomations() {
       setState((s) => ({ ...s, saving: true, writeError: null }));
       const { error } = await run();
       if (error) {
-        const message =
-          typeof error === "object" && error && "message" in error
-            ? String((error as { message: unknown }).message)
-            : "The change was not saved.";
-        setState((s) => ({ ...s, saving: false, writeError: message }));
+        // Deliberately NOT the database's own text: it names constraints and
+        // columns, which is both meaningless to the reader and more internal
+        // detail than this surface should ever show.
+        setState((s) => ({
+          ...s,
+          saving: false,
+          writeError: "That change was not saved. Nothing was altered — try again.",
+        }));
         return false;
       }
       await load();

@@ -24,6 +24,12 @@ const db = vi.hoisted(() => ({
   failTable: null as string | null,
   selects: [] as Array<{ table: string; columns: string }>,
   writes: [] as Array<{ table: string; op: string; values?: Record<string, unknown> }>,
+  /** When set, a write parks here so the mid-write render can be inspected. */
+  holdWrite: null as null | { release: () => void; promise: Promise<{ error: unknown }> },
+  failWrite: false,
+  /** When true, every SELECT parks — used to observe the reload AFTER a write. */
+  holdReads: false,
+  releaseReads: [] as Array<() => void>,
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -39,6 +45,11 @@ vi.mock("@/integrations/supabase/client", () => {
       : table === "pipeline_stages" ? db.stages
       : table === "stage_automation_events" ? db.events
       : [];
+  const writeResult = (): Promise<{ error: unknown }> => {
+    if (db.failWrite) return Promise.resolve({ error: { message: 'null value in column "tone" violates not-null constraint' } });
+    if (db.holdWrite) return db.holdWrite.promise;
+    return Promise.resolve({ error: null });
+  };
   return {
     supabase: {
       rpc: (name: string) =>
@@ -51,7 +62,10 @@ vi.mock("@/integrations/supabase/client", () => {
         select: (columns: string) => {
           db.selects.push({ table, columns });
           const result = { data: rowsFor(table), error: db.failTable === table ? { message: "read failed" } : null };
-          return { eq: () => ({ order: () => Promise.resolve(result) }) };
+          const settle = () => db.holdReads
+            ? new Promise<typeof result>((done) => db.releaseReads.push(() => done(result)))
+            : Promise.resolve(result);
+          return { eq: () => ({ order: settle }) };
         },
         insert: (values: Record<string, unknown>) => {
           db.writes.push({ table, op: "insert", values });
@@ -59,7 +73,7 @@ vi.mock("@/integrations/supabase/client", () => {
         },
         update: (values: Record<string, unknown>) => {
           db.writes.push({ table, op: "update", values });
-          return { eq: () => Promise.resolve({ error: null }) };
+          return { eq: () => writeResult() };
         },
         delete: () => {
           db.writes.push({ table, op: "delete" });
@@ -88,6 +102,7 @@ beforeEach(() => {
   context.loading = false;
   db.rules = []; db.pipelines = []; db.stages = []; db.events = [];
   db.admin = true; db.failTable = null; db.selects = []; db.writes = [];
+  db.holdWrite = null; db.failWrite = false; db.holdReads = false; db.releaseReads = [];
 });
 
 describe("Automations sub-tab routing (owned locally by Integrations)", () => {
@@ -204,6 +219,100 @@ describe("Authoring a rule", () => {
     expect(host.textContent).toContain("When a client moves from Enquiry to Working");
     expect(host.textContent).not.toContain("compose_intent");
     expect(host.textContent).not.toContain("send_mode");
+  });
+});
+
+describe("More than one pipeline (regressions from the exact-head review)", () => {
+  beforeEach(() => {
+    db.pipelines = [{ id: "p1", name: "Sales" }, { id: "p2", name: "Delivery" }];
+    db.stages = [
+      { id: "a1", pipeline_id: "p1", label: "Enquiry", order_index: 0 },
+      { id: "a2", pipeline_id: "p1", label: "Working", order_index: 1 },
+      { id: "b1", pipeline_id: "p2", label: "Kickoff", order_index: 0 },
+      { id: "b2", pipeline_id: "p2", label: "Delivered", order_index: 1 },
+    ];
+  });
+
+  it("names each rule's stages from its own pipeline, not the first one", async () => {
+    db.rules = [{
+      id: "r2", pipeline_id: "p2", from_stage_id: "b1", to_stage_id: "b2",
+      compose_intent: "transactional", tone: "warm", template_hint: null,
+      send_mode: "draft_for_review", is_active: false, updated_at: null,
+    }];
+    const { host } = await render(`${BASE}/automations`);
+    expect(host.textContent).toContain("from Kickoff to Delivered");
+    // The old behaviour resolved stages off pipelines[0] and rendered this.
+    expect(host.textContent).not.toContain("a stage you removed");
+  });
+
+  it("keeps an edited rule on its own pipeline instead of moving it", async () => {
+    db.rules = [{
+      id: "r2", pipeline_id: "p2", from_stage_id: "b1", to_stage_id: "b2",
+      compose_intent: "transactional", tone: "warm", template_hint: null,
+      send_mode: "draft_for_review", is_active: false, updated_at: null,
+    }];
+    const { host } = await render(`${BASE}/automations`);
+    const change = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Change");
+    await act(async () => change?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    const save = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Save changes"));
+    await act(async () => save?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    const update = db.writes.find((w) => w.op === "update" && w.values?.pipeline_id);
+    expect(update?.values?.pipeline_id).toBe("p2");
+    // Its stages must stay on p2 as well — the editor used to offer p1's.
+    expect(["b1", "b2"]).toContain(update?.values?.to_stage_id);
+  });
+
+  it("authors a new rule against a pipeline that actually has stages", async () => {
+    db.pipelines = [{ id: "empty", name: "Unused" }, { id: "p1", name: "Sales" }];
+    const { host } = await render(`${BASE}/automations`);
+    const open = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("New automation"));
+    await act(async () => open?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const save = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Save automation"));
+    await act(async () => save?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const insert = db.writes.find((w) => w.op === "insert");
+    expect(insert?.values?.pipeline_id).toBe("p1");
+  });
+
+  it("keeps the surface visible while a change is saving, instead of blanking it", async () => {
+    db.rules = [{
+      id: "r1", pipeline_id: "p1", from_stage_id: "a1", to_stage_id: "a2",
+      compose_intent: "nurture", tone: "warm", template_hint: null,
+      send_mode: "draft_for_review", is_active: false, updated_at: null,
+    }];
+    const { host } = await render(`${BASE}/automations`);
+
+    // The blank happened during the RELOAD that follows a write, not during the
+    // write itself — so that is the moment this parks and inspects.
+    db.holdReads = true;
+    const toggle = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Turn on");
+    await act(async () => { toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(db.releaseReads.length).toBeGreaterThan(0); // the reload really is in flight
+    expect(host.textContent).not.toContain("Checking what is set up");
+    expect(host.textContent).toContain("from Enquiry to Working");
+
+    db.holdReads = false;
+    await act(async () => { db.releaseReads.forEach((r) => r()); await Promise.resolve(); });
+    expect(host.textContent).toContain("from Enquiry to Working");
+  });
+
+  it("never shows the database's own error text when a change fails", async () => {
+    db.rules = [{
+      id: "r1", pipeline_id: "p1", from_stage_id: "a1", to_stage_id: "a2",
+      compose_intent: "nurture", tone: "warm", template_hint: null,
+      send_mode: "draft_for_review", is_active: false, updated_at: null,
+    }];
+    db.failWrite = true;
+    const { host } = await render(`${BASE}/automations`);
+    const toggle = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Turn on");
+    await act(async () => { toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(host.textContent).toMatch(/was not saved/i);
+    expect(host.textContent).not.toMatch(/constraint|violates|null value|column "/i);
   });
 });
 

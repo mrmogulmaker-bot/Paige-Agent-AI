@@ -16,7 +16,7 @@
  * shows a run count, a success rate, a health signal or a repair action, because
  * no automation has ever run.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AlertTriangle, Check, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
@@ -67,11 +67,27 @@ export function SoloAutomationsView() {
   const [editing, setEditing] = useState<AutomationRule | "new" | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
-  const firstPipeline = a.pipelines[0] ?? null;
-  const stages = useMemo(
-    () => (firstPipeline ? a.stagesByPipeline.get(firstPipeline.id) ?? [] : []),
-    [firstPipeline, a.stagesByPipeline],
+  // Stages are resolved PER RULE, never from a single "first" pipeline. A
+  // workspace may have several, and reading them all off pipelines[0] made every
+  // rule on another pipeline render as "a stage you removed" — telling an owner
+  // their rule was broken when it was fine.
+  const stagesFor = useCallback(
+    (pipelineId: string) => a.stagesByPipeline.get(pipelineId) ?? [],
+    [a.stagesByPipeline],
   );
+
+  // A new rule is authored against the first pipeline that actually HAS stages,
+  // which is also the condition `hasPipeline` reports on.
+  const authoringPipeline = useMemo(
+    () => a.pipelines.find((p) => (a.stagesByPipeline.get(p.id)?.length ?? 0) > 0) ?? null,
+    [a.pipelines, a.stagesByPipeline],
+  );
+
+  // Editing keeps the rule on ITS OWN pipeline. Passing the first pipeline here
+  // silently moved an edited rule onto a different pipeline, and repointed its
+  // stage at a foreign pipeline's stage — a corrupting write, not a display bug.
+  const editorPipelineId =
+    editing && editing !== "new" ? editing.pipeline_id : authoringPipeline?.id ?? null;
 
   // Never leave an editor open against data that no longer supports it.
   useEffect(() => {
@@ -183,7 +199,7 @@ export function SoloAutomationsView() {
             {a.rules.map((rule) => (
               <li key={rule.id} className="sa-rule" data-on={rule.is_active ? "true" : "false"}>
                 <div className="sa-rule-copy">
-                  <p className="sa-rule-sentence">{ruleSentence(rule, stages)}</p>
+                  <p className="sa-rule-sentence">{ruleSentence(rule, stagesFor(rule.pipeline_id))}</p>
                   <p className="sa-rule-meta">
                     {MODES.find((m) => m.value === rule.send_mode)?.label ?? rule.send_mode}
                     {" · "}
@@ -227,12 +243,12 @@ export function SoloAutomationsView() {
           </ul>
         )}
 
-        {editing !== null && firstPipeline && (
+        {editing !== null && editorPipelineId && (
           <AutomationEditor
             key={editing === "new" ? "new" : editing.id}
             rule={editing === "new" ? null : editing}
-            pipelineId={firstPipeline.id}
-            stages={stages}
+            pipelineId={editorPipelineId}
+            stages={stagesFor(editorPipelineId)}
             saving={a.saving}
             onCancel={() => setEditing(null)}
             onSave={async (draft) => {
