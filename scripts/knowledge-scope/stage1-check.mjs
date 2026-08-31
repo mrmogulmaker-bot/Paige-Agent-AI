@@ -84,6 +84,21 @@ function anthropicStream(kind = "text") {
         { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
         { type: "message_stop" },
       ]
+    // A round proposing TWO tools. This exists so a check can prove the dispatch guard is
+    // asserted PER TOOL: with a batch-level check the account can change after the first
+    // tool has run and every later tool in the same round still executes on stale scope.
+    // Distinct `limit` args make the two dispatches individually identifiable in the RPC
+    // recorder — `plan_list` maps straight through to a `plan_list` RPC with `p_limit`.
+    : kind === "two-tools"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "plan_list" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"limit":11}' } },
+        { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tool-2", name: "plan_list" } },
+        { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"limit":22}' } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
     : [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
         { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
@@ -123,6 +138,11 @@ globalThis.fetch = async (url, init) => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    // A provider round that FAILS. Used to reach the loop's forced-termination path — the
+    // branch that issues a tools-less CLOSING call — without needing to exhaust MAX_ROUNDS.
+    if (next === "fail") {
+      return new Response(JSON.stringify({ error: "upstream" }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
     return anthropicStream(next);
   }
@@ -479,7 +499,16 @@ group("active-account changes during the agent loop stop later provider calls");
   });
   assert("13.1 only the already-authorized first provider round runs", r.providerCalls.length === 1, `provider calls: ${r.providerCalls.length}`);
   assert("13.2 no stale telemetry is written after invalidation", !r.telemetry, JSON.stringify(r.telemetry?.row ?? null));
-  assert("13.3 the tool proposed from stale Knowledge is never dispatched", !r.rec.rpc.some((call) => call.name === "plan_list"), JSON.stringify(r.rec.rpc.filter((call) => call.name === "plan_list")));
+  // 13.3 previously asserted that no `plan_list` RPC was issued. That check could never fail:
+  // in this harness `plan_list` returns an error result before it reaches its RPC even on a
+  // fully valid turn, so `rec.rpc` never contains it under ANY scope and the assertion was
+  // true by construction. The observable that actually distinguishes dispatched from refused
+  // is the step trace — a dispatched tool is narrated as `0:tool-N`, a refused one is not.
+  assert(
+    "13.3 the tool proposed from stale Knowledge is never dispatched",
+    !/"id":"0:tool-\d"/.test(r.responseText),
+    r.responseText.slice(0, 300),
+  );
   assert(
     "13.4 no later provider payload carries prior-account knowledge",
     !r.providerCalls.slice(1).some((body) => JSON.stringify(body).includes("CHILD-PRIVATE-MARKER")),
@@ -539,14 +568,27 @@ group("document post-processing fails closed at provider and sync boundaries");
   }
 }
 
-group("attached-document turns never carry tenant Knowledge into provider stages");
+group("attached-document turns DO carry tenant Knowledge, and its guard actually fires");
 {
+  // WHAT THIS GROUP USED TO ASSERT, AND WHY IT WAS WRONG. It previously asserted that a
+  // document turn does NOT query tenant Knowledge — i.e. it encoded the `&& !attachedDocument`
+  // exclusion as the intended behaviour and passed green. Two defects were being certified:
+  //   (a) §58 — `main` grounds document turns in Knowledge; excluding them silently removed a
+  //       shipped capability, and a passing check made that invisible.
+  //   (b) The exclusion left `tenantKbScopeTenantId` null on precisely the path the document
+  //       revalidation points protect, so every one of them returned `true` without asking the
+  //       resolver. Group 14 kept passing because it drives the callback DIRECTLY with an
+  //       injected stub; it can never observe that the real path passes an inert one.
+  // So this group is now the integration proof group 14 cannot be: it drives the real handler
+  // with a real attached document and asserts both that Knowledge flows and that a switched
+  // account stops it.
   const document = {
     fileName: "operating-notes.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     kind: "docx",
     textContent: "Internal operating notes",
   };
+
   const valid = await drive({
     personaTenant: CHILD,
     personaSequence: [CHILD],
@@ -557,14 +599,279 @@ group("attached-document turns never carry tenant Knowledge into provider stages
     // the second is the real streamed chat response under test.
     provider: ["private-text", "private-text"],
   });
-  assert("15.1 attached document does not query tenant Knowledge", !valid.kbCall, JSON.stringify(valid.kbCall ?? null));
-  assert("15.2 no tenant Knowledge telemetry is written", !valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
+  assert("15.1 a document turn DOES query tenant Knowledge (§58 capability retained)", !!valid.kbCall, `rpcs seen: ${valid.rec.rpc.map((x) => x.name).join(", ") || "(none)"}`);
+  assert("15.2 it queries the ACTIVE tenant", valid.kbCall?.args?.p_tenant_id === CHILD, `expected ${CHILD}, got ${valid.kbCall?.args?.p_tenant_id}`);
   assert(
-    "15.3 no document provider payload contains a tenant Knowledge chunk",
-    !valid.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
-    JSON.stringify(valid.providerCalls),
+    "15.3 the retrieved chunk reaches the document provider payload",
+    valid.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
+    JSON.stringify(valid.providerCalls).slice(0, 400),
   );
-  assert("15.4 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
+  assert("15.4 telemetry is written for a scope that held", !!valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
+  assert("15.5 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
+
+  // THE LOAD-BEARING HALF. The account changes after retrieval. The document path must refuse
+  // before its reply crosses the boundary, must write no telemetry, and must say so. If the
+  // retrieval gate is ever narrowed to exclude documents again, `tenantKbScopeTenantId` goes
+  // null, `holdDirectFramesForKnowledgeScope` goes false, the refusal never fires, and these
+  // three fail — which is exactly the regression that shipped green last time.
+  const switched = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+  });
+  assert(
+    "15.6 a switched document turn withholds the reply",
+    !switched.responseText.includes("CHILD-PRIVATE-MARKER"),
+    switched.responseText.slice(0, 400),
+  );
+  assert(
+    "15.7 a switched document turn reports the cancellation",
+    switched.responseText.includes("ACTIVE_ACCOUNT_CHANGED"),
+    switched.responseText.slice(0, 400),
+  );
+  assert(
+    "15.8 a switched document turn writes no tenant Knowledge telemetry",
+    !switched.telemetry,
+    JSON.stringify(switched.telemetry?.row ?? null),
+  );
+  assert(
+    "15.9 a switched document turn makes no provider call at all",
+    switched.providerCalls.length === 0,
+    `provider calls: ${switched.providerCalls.length}`,
+  );
+
+  // A switch that lands AFTER the pre-egress refusal has already passed. This exercises the
+  // document stream's OWN close-boundary check rather than the 409 above — the point at which
+  // the provider reply exists and `holdDirectFramesForKnowledgeScope` is holding it back.
+  const lateSwitch = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document },
+    provider: ["private-text", "private-text"],
+  });
+  assert(
+    "15.10a the late-switch case really reached the provider (else it is just the 409 again)",
+    lateSwitch.providerCalls.length > 0,
+    `provider calls: ${lateSwitch.providerCalls.length}`,
+  );
+  assert(
+    "15.10 a late switch still withholds the held document reply",
+    !lateSwitch.responseText.includes("CHILD-PRIVATE-MARKER"),
+    lateSwitch.responseText.slice(0, 400),
+  );
+  assert(
+    "15.11 a late switch streams the active-account cancellation",
+    lateSwitch.responseText.includes("active workspace changed"),
+    lateSwitch.responseText.slice(0, 400),
+  );
+  assert(
+    "15.12 a late switch writes no tenant Knowledge telemetry",
+    !lateSwitch.telemetry,
+    JSON.stringify(lateSwitch.telemetry?.row ?? null),
+  );
+}
+
+
+// ── 16 · The dispatch guard is asserted PER TOOL, not once per batch ──────────────
+group("tool dispatch re-asserts scope for every tool, not once per round");
+{
+  // WHY THIS GROUP EXISTS. Reverting the dispatch check from per-tool back to per-batch
+  // was undetectable by every other check in this file: a round with ONE tool behaves
+  // identically either way, and every earlier group uses a one-tool round. A batch is not
+  // instantaneous — one round can propose several tools and an early one can take seconds —
+  // so a batch-level check authorises the whole list on the scope that held when the FIRST
+  // tool ran. This group is the only thing standing between that and a green merge.
+  //
+  // HOW THE SWITCH IS TIMED. `personaSequence` is consumed one entry per
+  // `get_paige_persona_context` call, clamped at the last entry, so `n` CHILDs followed by
+  // AGENCY switches the account at call index `n`. The calls, in order, are:
+  //   0 turn start (personaCtx)   1 pre-egress revalidation   2 post-round revalidation
+  //   3 tool-1 dispatch           4 tool-2 dispatch           5 pre-continuation
+  // so n=3 lands the switch on the FIRST tool's check and n=4 on the SECOND's.
+  //
+  // THE DISCRIMINATOR is the step trace. A mid-batch abort returns `scopeInvalidated` and the
+  // caller breaks BEFORE narrating the round, so no `0:tool-*` step is emitted at all. With a
+  // batch-level check at n=4 there is no second check to fail: both tools run, the round
+  // completes, and BOTH steps are narrated (verified by mutation — this is not a guess).
+  const stepIds = (text) => (text.match(/"id":"0:tool-\d"/g) || []).map((m) => m.slice(7, -1));
+  const runTools = (n) => drive({
+    personaTenant: CHILD,
+    personaSequence: n === null ? [CHILD] : Array(n).fill(CHILD).concat([AGENCY]),
+    memberships: n === null ? [CHILD] : [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["two-tools", "private-text"],
+  });
+
+  const stable = await runTools(null);
+  assert(
+    "16.1 a stable scope dispatches BOTH tools of a two-tool round",
+    stepIds(stable.responseText).length === 2,
+    JSON.stringify(stepIds(stable.responseText)),
+  );
+
+  const beforeFirst = await runTools(3);
+  assert(
+    "16.2 a switch before the first tool dispatches neither",
+    stepIds(beforeFirst.responseText).length === 0,
+    JSON.stringify(stepIds(beforeFirst.responseText)),
+  );
+  assert(
+    "16.3 a switch before the first tool makes no continuation provider call",
+    beforeFirst.providerCalls.length === 1,
+    `provider calls: ${beforeFirst.providerCalls.length}`,
+  );
+
+  const betweenTools = await runTools(4);
+  assert(
+    "16.4 a switch BETWEEN the two tools aborts the round (per-tool guard, not per-batch)",
+    stepIds(betweenTools.responseText).length === 0,
+    `narrated steps: ${JSON.stringify(stepIds(betweenTools.responseText))} — a batch-level check narrates both`,
+  );
+  assert(
+    "16.5 a switch between the two tools makes no continuation provider call",
+    betweenTools.providerCalls.length === 1,
+    `provider calls: ${betweenTools.providerCalls.length}`,
+  );
+  assert(
+    "16.6 a switch between the two tools writes no tenant Knowledge telemetry",
+    !betweenTools.telemetry,
+    JSON.stringify(betweenTools.telemetry?.row ?? null),
+  );
+}
+
+
+// ── 17 · The durable record is written at the LAST boundary, not the first ────────
+group("Knowledge telemetry commits only after the reply has actually crossed");
+{
+  // Telemetry is the one DURABLE row this mechanism writes, so it is committed after the
+  // reply has been forwarded and the scope re-asserted a final time — not before the frames,
+  // where a later cancellation would leave a permanent record claiming a retrieval grounded
+  // a reply that never legitimately landed. Moving the commit back above the reply is
+  // otherwise invisible: every earlier group either cancels before the reply (so no telemetry
+  // either way) or holds scope throughout (so telemetry either way).
+  //
+  // Call indices on a tool-less agentic round: 0 turn start, 1 pre-egress, 2 post-round,
+  // 3 pre-emission, 4 post-drain. n=4 therefore switches the account at the post-drain
+  // boundary ALONE — the reply is already out, and only the durable write is left to refuse.
+  const atPostDrain = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["private-text"],
+  });
+  assert(
+    "17.1 the reply really did cross first (else this is testing an earlier boundary)",
+    atPostDrain.responseText.includes("CHILD-PRIVATE-MARKER"),
+    atPostDrain.responseText.slice(0, 300),
+  );
+  assert(
+    "17.2 no telemetry row is written when scope lapses at the post-drain boundary",
+    !atPostDrain.telemetry,
+    JSON.stringify(atPostDrain.telemetry?.row ?? null),
+  );
+
+  // The positive half: an unbroken scope must still record its retrieval, or 17.2 could be
+  // satisfied by telemetry that simply never writes.
+  const held = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["private-text"],
+  });
+  assert("17.3 an unbroken scope does write its telemetry row", !!held.telemetry, JSON.stringify(held.telemetry ?? null));
+  assert("17.4 that row carries the ACTIVE tenant", held.telemetry?.row?.tenant_id === CHILD, JSON.stringify(held.telemetry?.row ?? null));
+
+  // The boundary one call EARLIER is the pre-emission gate: the round is finished and the
+  // reply is assembled, but nothing has been written to the wire yet. That one must withhold
+  // the reply itself, not merely the telemetry — asserted separately so removing it fails for
+  // its own reason rather than as a side effect of shifting later call indices.
+  const atPreEmission = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["private-text"],
+  });
+  assert(
+    "17.5 a lapse at the pre-emission boundary withholds the reply itself",
+    !atPreEmission.responseText.includes("CHILD-PRIVATE-MARKER"),
+    atPreEmission.responseText.slice(0, 300),
+  );
+  assert(
+    "17.6 a lapse at the pre-emission boundary streams the cancellation instead",
+    atPreEmission.responseText.includes("active workspace changed"),
+    atPreEmission.responseText.slice(0, 300),
+  );
+}
+
+
+// ── 18 · Each loop-continuation boundary is individually load-bearing ─────────────
+group("every provider re-entry in the agent loop re-asserts scope on its own");
+{
+  // The loop re-asserts scope at three distinct points and, until this group existed, TWO of
+  // them could be deleted with the suite still fully green — the surviving checks happened to
+  // catch the switch at a neighbouring boundary instead. A guard that no check can distinguish
+  // from its neighbour is a guard nobody will notice losing. Each assertion below pins ONE
+  // boundary by timing the switch to land exactly on it (indices, single-tool round:
+  //   0 turn start · 1 pre-egress · 2 post-round · 3 tool dispatch · 4 pre-continuation
+  //   · 5 pre-closing-call · 6 pre-emission · 7 post-drain)
+  // and by counting provider calls, which is the only signal that separates "the next call was
+  // never made" from "it was made and its result was later suppressed".
+
+  // (a) PRE-CONTINUATION — after a tool round is folded into `convo`, before the next model
+  //     call. `convo` carries the Knowledge-grounded system prompt, so a continuation issued
+  //     after a switch re-sends the prior account's private content to the provider.
+  const atContinuation = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "CHILD-PRIVATE-MARKER",
+    provider: ["tool", "text"],
+  });
+  assert(
+    "18.1 a switch at the continuation boundary makes no second provider call",
+    atContinuation.providerCalls.length === 1,
+    `provider calls: ${atContinuation.providerCalls.length} — removing that check lets the continuation fire`,
+  );
+  assert(
+    "18.2 no continuation payload carries the prior account's Knowledge",
+    !atContinuation.providerCalls.slice(1).some((body) => JSON.stringify(body).includes("CHILD-PRIVATE-MARKER")),
+    JSON.stringify(atContinuation.providerCalls.slice(1)).slice(0, 400),
+  );
+
+  // (b) PRE-CLOSING-CALL — the loop terminated early (here: the continuation round failed
+  //     upstream) and the handler is about to issue a tools-less CLOSING call to produce a
+  //     reply. That call carries `convo` too, so it needs its own assertion; it is reached on
+  //     a different code path from (a) and cannot be covered by it.
+  const atClosingCall = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, CHILD, CHILD, CHILD, CHILD, AGENCY],
+    memberships: [CHILD, AGENCY],
+    chunkContent: "CHILD-PRIVATE-MARKER",
+    provider: ["tool", "fail", "text"],
+  });
+  assert(
+    "18.3 the failed-continuation path really was reached (else 18.4 proves nothing)",
+    atClosingCall.providerCalls.length >= 2,
+    `provider calls: ${atClosingCall.providerCalls.length}`,
+  );
+  assert(
+    "18.4 a switch at the closing-call boundary makes no closing provider call",
+    atClosingCall.providerCalls.length === 2,
+    `provider calls: ${atClosingCall.providerCalls.length} — removing that check lets the closing call fire`,
+  );
+  assert(
+    "18.5 the closing path writes no stale telemetry",
+    !atClosingCall.telemetry,
+    JSON.stringify(atClosingCall.telemetry?.row ?? null),
+  );
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

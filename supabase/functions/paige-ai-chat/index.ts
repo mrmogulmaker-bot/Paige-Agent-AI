@@ -1454,10 +1454,22 @@ JSON:`;
       // retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator — must
       // never be handed some arbitrary account's knowledge, and `null` is not a scope to
       // search. Fail closed and silent rather than substituting anything (§9/§13).
-      // Attached-document turns have additional provider/sync stages that cannot
-      // share one atomic active-account transaction. Fail closed: the document is
-      // handled on its own proven path, without injecting tenant Knowledge.
-      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId && !attachedDocument) {
+      //
+      // DOCUMENT TURNS RETRIEVE KNOWLEDGE TOO, and deliberately so. An earlier revision of
+      // this change excluded them (`&& !attachedDocument`) on the reasoning that their extra
+      // provider/sync stages "cannot share one atomic active-account transaction." That was
+      // wrong twice over. It silently removed Knowledge grounding from every document turn —
+      // a capability `main` has today, so a §58 regression — and, because the exclusion left
+      // `tenantKbScopeTenantId` null on exactly the path they protect, it made the document
+      // path's own revalidation points structurally unreachable: they returned `true` without
+      // ever asking the resolver. A guard that cannot fire is not a guard.
+      //
+      // The stages are not one transaction and were never going to be. What makes them safe is
+      // the same thing that makes the agentic path safe: `revalidateTenantKnowledgeScope()` is
+      // re-asserted at each boundary that carries this content further — before the sync's
+      // provider egress, after it returns, and at stream close — and the reply is withheld
+      // behind `holdDirectFramesForKnowledgeScope` until the last of those passes.
+      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
@@ -5764,14 +5776,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
-      // Actual dispatch boundary: the account may change after the model round
-      // was consumed but before its proposed tools execute. Abort the entire
-      // batch before approvals, reads, writes, or provider side effects.
-      if (!(await revalidateTenantKnowledgeScope())) {
-        return { toolResults, executed, scopeInvalidated: true };
-      }
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
+        // Actual dispatch boundary: the account may change after the model round was
+        // consumed but before its proposed tools execute. This is asserted PER TOOL, not
+        // once per batch, because a batch is not instantaneous — one round may propose
+        // several tools and an early one can take seconds (a provider call, a document
+        // build, an outbound send). A batch-level check authorises the whole list on the
+        // scope that held when the FIRST tool ran, which is exactly the window this change
+        // exists to close. Checking here also preserves the loop's one-result-per-executed-tc
+        // invariant: `tc` has not been pushed to `executed` yet, so an abort leaves no
+        // half-dispatched call behind.
+        //
+        // HONEST CONSEQUENCE (§13): aborting mid-batch means tools EARLIER in the same batch
+        // may already have run and had real effects, and the caller discards this round
+        // entirely (it breaks without appending to `convo`), so those effects are not narrated
+        // in the thread. They remain recorded where the tools themselves record them. That is
+        // the deliberate trade — a side effect that already happened under valid scope is not
+        // undone by refusing the ones that would follow under stale scope.
+        if (!(await revalidateTenantKnowledgeScope())) {
+          return { toolResults, executed, scopeInvalidated: true };
+        }
         executed.push(tc);
 
         // ── CLIENT-SEAT GATE (Tier Rail Phase D, §9/#133) ────────────────────
@@ -8133,7 +8158,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
             return;
           }
-          await commitTenantKnowledgeTelemetry();
+          // Telemetry is NOT committed here. It is the one DURABLE record this mechanism
+          // writes, so it is deferred until after the last provider byte of the reply has
+          // been forwarded and the scope re-asserted one final time (see the end of the
+          // reply block below). Committing it here would record a retrieval as having
+          // grounded a reply that the drain may still be cancelled out from under.
           // Approvals + confirm cards, then her actual reply.
           if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
           for (const c of confirmTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
@@ -8184,6 +8213,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: fallback } }] })}\n\n`));
             controller.enqueue(enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
           }
+
+          // FINAL BOUNDARY — asserted after the reply has been forwarded, before the only
+          // durable record this mechanism writes. A closing provider call is issued while the
+          // scope is valid, but its bytes arrive over a window that is not instantaneous, so
+          // this is the last point at which "the account that asked is still the account that
+          // is here" can be established at all.
+          //
+          // HONEST RESIDUAL (§13) — state precisely what this does NOT cover. The closing
+          // stream's bytes are forwarded to the caller LIVE as they arrive; an account change
+          // DURING that drain is caught here, after those bytes have already left. Closing
+          // that window would mean buffering the whole reply and flushing it only on success —
+          // exactly what `holdDirectFramesForKnowledgeScope` does on the document path — and on
+          // this path that would remove live token streaming from every turn that carries
+          // Knowledge. That is a product trade, not a security judgement, and it is not taken
+          // unilaterally here. What IS guaranteed: the content was authorised when the call was
+          // made, the caller is the same session throughout, and no durable record of a
+          // stale-scope retrieval is written.
+          if (await revalidateTenantKnowledgeScope()) {
+            await commitTenantKnowledgeTelemetry();
+          } else {
+            pendingTenantKbTelemetry = null;
+          }
+
           // Persist Paige's reply (owner Your-Paige threads only; no-op without a
           // threadId). bundle_ref carries the queued approvals + confirm cards so
           // the UI reconstructs them on reload. waitUntil keeps it alive past close.
@@ -8313,6 +8365,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // branch) re-checks the ACTIVE TENANT before the sync's provider egress. They
                 // guard different axes — client ownership vs. active-account scope — so the
                 // merge keeps both.
+                //
+                // This callback is only a real guard while document turns actually retrieve
+                // tenant Knowledge. If the retrieval gate above is ever narrowed to exclude
+                // `attachedDocument` again, `tenantKbScopeTenantId` is null on this path and
+                // every call here returns `true` without asking the resolver — the guard goes
+                // quiet rather than failing. The harness asserts a REFUSAL on this exact path
+                // (scripts/knowledge-scope, group 14) so that regression cannot land green.
                 scopedClientId || null,
                 paigeChatUploadId,
                 revalidateTenantKnowledgeScope,

@@ -334,6 +334,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run test:client-memory-authz
 
+      - name: Smoke — active-account Knowledge scope (§9 tenant KB fail-closed)
+        if: ${{ !cancelled() }}
+        run: npm run test:knowledge-scope
+
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant
