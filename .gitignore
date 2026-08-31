@@ -24,10 +24,11 @@ dist-ssr
 *.sw?
 
 # Claude Code local session state (settings + agent worktrees) — never commit,
-# but DO version shared project commands under .claude/commands/ so every session
-# (and every teammate) gets them.
+# but DO version shared project commands under .claude/commands/ and shared project
+# skills under .claude/skills/ so every session (and every teammate) gets them.
 .claude/*
 !.claude/commands/
+!.claude/skills/
 
 # Live-drive helper screenshot artifacts — rendered PNGs are never committed (may contain
 # authed-surface pixels); credentials are ENV-only and never written to disk. (scripts/live-drive)
