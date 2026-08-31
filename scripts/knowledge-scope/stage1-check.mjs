@@ -1467,6 +1467,17 @@ group("safety-first streaming: protected turns buffer, ordinary turns stream");
     !ordinary.telemetry && !!ordinary.logged.find((l) => /KB_FORBIDDEN|REFUSED/.test(l.msg)),
     JSON.stringify({ tel: !!ordinary.telemetry }),
   );
+  // THE OTHER HALF OF THE RULING, MEASURED RATHER THAN ASSERTED. "Ordinary chat retains normal
+  // live token streaming" is a claim about COST as well as content: the guard must short-circuit
+  // before the RPC, not merely return true after paying for one. An ordinary turn makes exactly
+  // the ONE persona call every request makes to resolve its own scope, and no revalidation on
+  // top. Without this, a change that made every turn pay four extra round-trips would be
+  // invisible here — every content assertion in this file would still pass.
+  assert(
+    "20.ordinary ...and pays NO revalidation RPC (exactly the one initial resolution)",
+    personaCallsOf(ordinary) === 1,
+    `persona calls: ${personaCallsOf(ordinary)}`,
+  );
 
   // NEUTRAL PROGRESS STILL REACHES THE USER while a protected answer is being checked. The rule
   // is "buffer the derived content", not "show nothing".
