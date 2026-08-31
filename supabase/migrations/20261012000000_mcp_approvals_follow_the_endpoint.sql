@@ -70,11 +70,18 @@ LANGUAGE plpgsql
 SET search_path TO 'public'
 AS $$
 BEGIN
-  -- Compared on the ciphertext: `platform_encrypt` is deterministic for a given input in
-  -- this schema, so an unchanged address encrypts identically and an unchanged connection
-  -- keeps its approvals. If that ever stops being true the comparison fails SAFE — it
-  -- reads as a change and revokes, which costs a re-approval rather than granting one.
-  IF NEW.server_url_ct IS DISTINCT FROM OLD.server_url_ct THEN
+  -- Compared on the DECRYPTED endpoint, never on the ciphertext.
+  --
+  -- `platform_encrypt` is `pgp_sym_encrypt`, which carries a random session key, so the
+  -- same address encrypts to different bytes on every call. A ciphertext comparison
+  -- therefore reads "changed" every single time — and an admin who merely rotated their
+  -- n8n key, or reconnected Zapier, would silently lose every approval they had made.
+  -- That is not a safe default; it is a feature that quietly stops working.
+  --
+  -- The earlier version of this trigger asserted the opposite in a comment and was proved
+  -- by a stub whose encryption was deterministic, so the proof agreed with the comment
+  -- and both were wrong about production.
+  IF public.platform_decrypt(NEW.server_url_ct) IS DISTINCT FROM public.platform_decrypt(OLD.server_url_ct) THEN
     NEW.approved_capabilities := '[]'::jsonb;
     NEW.capability_pins       := '{}'::jsonb;
   END IF;

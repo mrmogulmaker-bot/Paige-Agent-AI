@@ -346,10 +346,24 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
   const str = (v: unknown, cap: number) => (typeof v === "string" ? v.slice(0, cap) : undefined);
 
   // Discovery: approved capability NAMES only. Provider descriptions do not cross.
+  //
+  // Each name is checked against an identifier grammar rather than merely being a string.
+  // The array was capped at 200 and every item copied verbatim, which bounds how MANY
+  // strings arrive and nothing about what any one of them contains — a single element
+  // could be a paragraph of instructions or a credential. This function's own comment
+  // calls it the last gate before the model, so it does not get to assume the projection
+  // upstream already cleaned the value: that is the assumption the comment rejects.
+  //
+  // Out-of-grammar names are DROPPED, not truncated. A capability whose name is prose is
+  // not a capability this workspace can have approved, and a truncated name would name
+  // the wrong thing.
   if (Array.isArray(d.actions)) {
+    const CAPABILITY_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
     return {
       success: d.ok === true,
-      actions: (d.actions as unknown[]).filter((a): a is string => typeof a === "string").slice(0, 200),
+      actions: (d.actions as unknown[])
+        .filter((a): a is string => typeof a === "string" && CAPABILITY_NAME.test(a))
+        .slice(0, 200),
       approved_count: typeof d.approved_count === "number" ? d.approved_count : 0,
       unapproved_count: typeof d.unapproved_count === "number" ? d.unapproved_count : 0,
       note: "These are the capabilities this workspace has approved. Anything else is not available.",

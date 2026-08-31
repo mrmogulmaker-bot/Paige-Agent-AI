@@ -119,6 +119,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:definer-fns
 
+      - name: Authority guard (no service-role work or provider traffic before the caller is authorized)
+        if: ${{ !cancelled() }}
+        run: npm run lint:action-authority
+
       - name: SSRF fork guard (§18 — one address validator; use _shared/ssrfGuard.ts safeFetch)
         if: ${{ !cancelled() }}
         run: npm run lint:ssrf-fork

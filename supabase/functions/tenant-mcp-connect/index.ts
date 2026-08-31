@@ -75,13 +75,23 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey);
 
   if (action === "disconnect") {
+    // Authority BEFORE the irreversible part. Revoking at the provider cannot be undone,
+    // and it used to happen before the RPC's admin check — so any member of the workspace
+    // could destroy the grant, get a 403 for their trouble, and leave the row still
+    // reading as connected. "The RPC checks it" is only true for the RPC; it says nothing
+    // about the service-role work done on the way there.
+    const { data: canDisconnect } = await userClient.rpc("is_current_user_tenant_admin");
+    if (canDisconnect !== true) return jsonResponse({ error: "forbidden" }, 403);
+
     // For a granted connection, revoke at the provider BEFORE clearing locally. Clearing
     // first would leave a live grant nobody can see and nobody can withdraw — the local
     // row is the only record of what to revoke.
     let revoked: boolean | null = null;
     if (OAUTH_PROVIDERS.has(provider)) revoked = await revokeGrant(admin, tenantId, provider);
 
-    // Authority lives in the RPC: it raises unless the caller is an admin of this tenant.
+    // Authority lives in the RPC too: it raises unless the caller is an admin of this
+    // tenant. Kept as well as the check above — this is the boundary that actually holds
+    // for every other caller of the RPC.
     const { error } = await userClient.rpc("clear_tenant_mcp_connection", { _provider: provider });
     if (error) {
       const code = writeCode(error.message);
@@ -109,6 +119,11 @@ Deno.serve(async (req) => {
     const headerName = typeof body.header_name === "string" ? body.header_name.trim() : "";
     const label = typeof body.label === "string" ? body.label.trim() : "";
 
+    // authority-note: this branch has no separate admin check because the FIRST thing it
+    // does is the admin-gated setter, running as the user so the RPC's own tenant-admin
+    // check applies. `probeAndRecord` below is reached only after that write succeeded, so
+    // nothing service-role and nothing outbound happens for a caller who lacks authority.
+    //
     // The setter validates shape and enforces tenant-admin in its own body, and writes
     // `pending_verification`. Running it as the USER is what makes that check apply.
     const { error } = await userClient.rpc("set_tenant_n8n_mcp_connection", {
@@ -175,6 +190,15 @@ Deno.serve(async (req) => {
     const pins = body.pins && typeof body.pins === "object" && !Array.isArray(body.pins)
       ? body.pins as Record<string, unknown>
       : {};
+
+    // Authority BEFORE the workspace's credential is decrypted and before a single
+    // request leaves for the provider. Without this, any member could make the platform
+    // spend the tenant's credential on provider traffic, and could enumerate capability
+    // names by the difference in what came back: a name that exists reaches the RPC and
+    // returns 403, a name that does not returns `capabilities_changed` naming it. Two
+    // different answers to the same unauthorised question is an oracle.
+    const { data: canApprove } = await userClient.rpc("is_current_user_tenant_admin");
+    if (canApprove !== true) return jsonResponse({ error: "forbidden" }, 403);
 
     // A pin from the browser is not trusted: it is re-derived from the provider here, so
     // approving cannot be used to pin a contract the provider never offered. The client's
@@ -267,6 +291,14 @@ Deno.serve(async (req) => {
     const code = typeof body.code === "string" ? body.code : "";
     const returnedState = typeof body.state === "string" ? body.state : "";
     if (!code || !returnedState) return jsonResponse({ error: "oauth_bad_callback" }, 400);
+
+    // The same provider check `oauth_begin` makes, and for a sharper reason. Without it a
+    // callback naming `n8n` was accepted, spent the single-use state, wrote the ZAPIER row
+    // (the setter names that provider itself), and then probed and updated the N8N row
+    // from the request's provider — one action mutating two providers' rows, neither of
+    // them the one the caller named. Checked before the state is consumed, so a request
+    // that will be refused cannot destroy a flow someone else legitimately started.
+    if (!OAUTH_PROVIDERS.has(provider)) return jsonResponse({ error: "unsupported_provider" }, 400);
 
     // Completing a grant is the act that gives Paige a credential for this workspace, so
     // it needs the same authority as starting one. `oauth_begin` is admin-gated and this

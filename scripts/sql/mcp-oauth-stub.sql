@@ -18,15 +18,32 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role; END IF;
 END $$;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
 
 CREATE TABLE IF NOT EXISTS public.tenants (id uuid PRIMARY KEY);
 
 -- Encryption is proved by the platform's own tests; here it only has to round-trip so the
--- migrations' encrypt/decrypt call sites type-check and execute.
-CREATE OR REPLACE FUNCTION public.platform_encrypt(_t text) RETURNS bytea LANGUAGE sql IMMUTABLE AS $$ SELECT convert_to(_t,'UTF8') $$;
-CREATE OR REPLACE FUNCTION public.platform_decrypt(_b bytea) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT convert_from(_b,'UTF8') $$;
+-- migrations' encrypt/decrypt call sites execute.
+--
+-- RANDOMIZED ON PURPOSE. Production's `platform_encrypt` is `pgp_sym_encrypt`, whose
+-- ciphertext carries a random session key, so the SAME plaintext encrypts to DIFFERENT
+-- bytes every call. This stub used `convert_to`, which is deterministic — and that single
+-- difference made a proof pass that production would have failed: a trigger comparing
+-- ciphertext read "unchanged" here and "changed" on prod. A stub that is easier than the
+-- thing it stands in for does not prove anything about the thing it stands in for.
+--
+-- A 16-byte random prefix reproduces the property that matters. It is NOT encryption and
+-- is not pretending to be.
+CREATE OR REPLACE FUNCTION public.platform_encrypt(_t text) RETURNS bytea LANGUAGE sql VOLATILE AS $$
+  SELECT CASE WHEN _t IS NULL THEN NULL
+              ELSE gen_random_bytes(16) || convert_to(_t, 'UTF8') END
+$$;
+CREATE OR REPLACE FUNCTION public.platform_decrypt(_b bytea) RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE WHEN _b IS NULL THEN NULL
+              ELSE convert_from(substring(_b from 17), 'UTF8') END
+$$;
 
 CREATE OR REPLACE FUNCTION public.is_platform_owner() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
 CREATE OR REPLACE FUNCTION public.is_tenant_admin(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
