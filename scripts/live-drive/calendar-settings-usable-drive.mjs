@@ -22,11 +22,15 @@
  * WHAT IT DRIVES, against the real route inside the real shell chain:
  *   1. The final actionable control is reachable by wheel, trackpad (fine
  *      deltas), touch drag, keyboard Space / PageDown / End from the REAL
- *      arrival state, sequential Tab, and by dragging the browser scrollbar.
+ *      arrival state, and sequential Tab. Dragging the scrollbar is attempted
+ *      and REPORTED, not scored: this browser paints overlay scrollbars, so a
+ *      headless drag cannot reliably grab one, and a miss would say nothing
+ *      about the surface.
  *   2. `.tcs-main` is the one deliberate vertical scroll owner; nothing nested
  *      in the surface has become a second one.
- *   3. The scrollbar is VISIBLE and draggable — an authorized scroll surface
- *      that hides its scrollbar gives a human no affordance and nothing to grab.
+ *   3. The scrollbar is NOT SUPPRESSED — an authorized scroll surface that hides
+ *      its scrollbar gives a human no signal the page continues and nothing to
+ *      grab. Both suppressors are checked, since undoing one leaves the other.
  *   4. No fixed-height, `overflow:hidden`, clipped panel or focus trap hides
  *      content; no horizontal overflow.
  *   5. Areas OPEN, because that is when a human is acting and when the last
@@ -37,6 +41,12 @@
  * proves REACHABILITY, SCROLL OWNERSHIP and GEOMETRY. It is not the deployed app
  * and proves nothing about production data or auth. The owner's acceptance on the
  * deployed route remains owed and is never claimed here.
+ *
+ * RUN IT AGAINST A SETTLED TREE. The harness is a Vite dev server; editing a
+ * source file mid-run hot-reloads the page under the drive, which either
+ * destroys the execution context or — worse — silently measures a different
+ * build than the one on disk. Both happened while this was being written, and
+ * the second produced failures that looked like product defects and were not.
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
@@ -310,6 +320,73 @@ async function run() {
       observe(tag, "shell rail click then keyboard (shared chrome, out of this lane's scope)",
               `scrollTop=${afterRail} after clicking the Solo nav rail — ` +
               `${afterRail > 0 ? "still scrolls" : "focus lands on <body>, which cannot scroll"}`);
+
+      // 7d — TOUCH DRAG. A real finger swipe, dispatched through CDP because
+      //      Playwright has no swipe primitive. This is the input a human on a
+      //      laptop trackpad-as-touchscreen or a tablet actually uses, and it is
+      //      handled by a different code path in Blink than the wheel.
+      await reset(page);
+      const cdp = await page.context().newCDPSession(page);
+      const touchX = Math.round(vp.w / 2);
+      for (let swipe = 0; swipe < 60; swipe++) {
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchStart", touchPoints: [{ x: touchX, y: Math.round(vp.h * 0.8) }],
+        });
+        for (let step = 1; step <= 6; step++) {
+          await cdp.send("Input.dispatchTouchEvent", {
+            type: "touchMove",
+            touchPoints: [{ x: touchX, y: Math.round(vp.h * 0.8 - step * (vp.h * 0.1)) }],
+          });
+        }
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        if ((await finalVisible(page)).visible) break;
+      }
+      await settle(page);
+      record(tag, "touch drag reaches the final control", (await finalVisible(page)).visible,
+             JSON.stringify(await finalVisible(page)));
+
+      // 7e — DRAGGING THE SCROLLBAR ITSELF, which is the affordance the owner
+      //      lost. Grab near the right edge of the owner and pull down.
+      //
+      //      Reported honestly rather than scored: this browser paints OVERLAY
+      //      scrollbars (proven by the control probe in `geom`), so there is no
+      //      persistent gutter to grab and a headless drag can miss the bar
+      //      entirely. A miss here is evidence about the ENVIRONMENT, not about
+      //      the surface — scoring it either way would be a fabricated verdict.
+      await reset(page);
+      const edge = await page.evaluate((id) => {
+        const r = document.getElementById(id).getBoundingClientRect();
+        return { x: Math.round(r.right - 4), top: Math.round(r.top + 12), bottom: Math.round(r.bottom - 12) };
+      }, OWNER);
+      await page.mouse.move(edge.x, edge.top + 4);
+      await page.waitForTimeout(120);           // overlay bars fade in on hover
+      await page.mouse.down();
+      for (let i = 1; i <= 10; i++) {
+        await page.mouse.move(edge.x, edge.top + ((edge.bottom - edge.top) * i) / 10);
+        await page.waitForTimeout(20);
+      }
+      await page.mouse.up();
+      await settle(page);
+      const afterDrag = await scrollTopOf(page);
+      // Dragging the thumb from the top of the track to the bottom travels the
+      // WHOLE extent. Anything materially short of that was not the thumb --
+      // most likely a press on content and a selection autoscroll -- so it is
+      // reported as inconclusive rather than dressed up as a grab. An 18px
+      // result against a 5,134px extent is the case that forced this wording.
+      const extent = geom.scrollH - geom.clientH;
+      const grabbed = afterDrag > extent * 0.6;
+      const verdict = grabbed
+        ? "the thumb was grabbed and travelled the track"
+        : afterDrag > 0
+          ? "INCONCLUSIVE — the page moved, but far less than a full-track drag would " +
+            "move it, so this was probably not the thumb"
+          : "no grab";
+      observe(tag, "dragging the scrollbar",
+              `scrollTop=${afterDrag} of a ${extent}px extent · ${verdict} · this browser ` +
+              `paints overlay scrollbars (an unstyled control scroller reports a ` +
+              `${geom.probeGutter}px gutter), so there is no persistent bar for a headless ` +
+              `drag to aim at; either way this measures the ENVIRONMENT, not the surface, ` +
+              `and is not scored`);
 
       // 8 — TAB focus travel
       await reset(page);
