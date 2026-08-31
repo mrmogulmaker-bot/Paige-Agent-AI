@@ -314,6 +314,44 @@ const bearer = { kind: "bearer", token: "super-secret-token-1234" };
     JSON.stringify(deleted));
 }
 
+// ── Which stored connections are usable, and as what ──────────────────────────────
+//
+// This predicate existed three times -- in the Zapier action caller, in resolveConnection
+// and in probeAndRecord -- and when the URL-credential shape was added, the AUTH MAPPING
+// learned about it in all three while the GUARD learned about it in one. A correctly saved
+// Zapier address was therefore mapped to the right auth and then refused before use:
+// discovery said "not connected" and the probe recorded an error, on a connection that had
+// just been saved. Answering both questions in one function is what stops that recurring.
+{
+  const url = "https://mcp.zapier.com/api/mcp/s/secret/mcp";
+
+  const urlAuth = mcp.authFromSecret({ server_url: url, auth_kind: "url" });
+  check("an address that carries its own credential is usable",
+    urlAuth !== null, JSON.stringify(urlAuth));
+  check("...and sends no Authorization header",
+    urlAuth?.kind === "none", JSON.stringify(urlAuth));
+
+  const bearer = mcp.authFromSecret({ server_url: url, auth_kind: "bearer", auth_token: "t" });
+  check("a bearer connection still authenticates as a bearer",
+    bearer?.kind === "bearer" && bearer.token === "t");
+
+  const header = mcp.authFromSecret({
+    server_url: url, auth_kind: "header", auth_header_name: "X-Key", auth_token: "t",
+  });
+  check("a header connection still names its header",
+    header?.kind === "header" && header.name === "X-Key" && header.token === "t");
+
+  // The refusals stay refusals: widening for the URL shape must not make a genuinely
+  // unconfigured connection look usable.
+  check("a connection with no address is refused",
+    mcp.authFromSecret({ auth_kind: "bearer", auth_token: "t" }) === null);
+  check("a non-URL connection with no credential is refused",
+    mcp.authFromSecret({ server_url: url, auth_kind: "bearer" }) === null);
+  check("header auth without a header name falls back rather than sending a nameless header",
+    mcp.authFromSecret({ server_url: url, auth_kind: "header", auth_token: "t" })?.kind === "bearer");
+  check("nothing at all is refused", mcp.authFromSecret(null) === null);
+}
+
 // A provider that allocates a session and then answers initialize with a JSON-RPC error.
 // The session exists the moment the header comes back, so it has to be released even
 // though the handshake never completed. Validating the body before reading the header

@@ -233,3 +233,48 @@ BEGIN
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'approval-setter proof: all assertions passed'; END $$;
+
+-- ── The secret read's WHOLE contract, not one field of it ──────────────────────────
+--
+-- 20261016 changed one guard in `get_tenant_mcp_secret` by copying the body from 20261005
+-- and editing it. 20261008 had already added `approved_capabilities` and `capability_pins`
+-- to that function, and the copy silently dropped them. Nothing failed at apply time; the
+-- damage was that every governed Zapier call refused itself as unapproved.
+--
+-- The previous proof asserted only that a URL connection reads as `configured`, which stayed
+-- true while two fields the caller depends on disappeared. So this asserts the FIELDS, by
+-- name, because a function that answers one question correctly and drops another is exactly
+-- what a single-question assertion cannot see.
+DO $$
+DECLARE _t uuid := '33333333-3333-3333-3333-333333333333'; _s jsonb;
+BEGIN
+  -- `enabled` is set explicitly. The legacy normalisation earlier in this file disables
+  -- the rows it rewrites, and a disabled connection makes `get_tenant_mcp_secret` return
+  -- early with neither field -- so without this the assertions below would have failed
+  -- for a reason that has nothing to do with what they are testing.
+  UPDATE public.tenant_mcp_connections
+     SET approved_capabilities = '["slack_send_message"]'::jsonb,
+         capability_pins       = '{"slack_send_message":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'::jsonb,
+         enabled               = true
+   WHERE tenant_id = _t AND provider = 'zapier';
+
+  _s := public.get_tenant_mcp_secret(_t, 'zapier');
+
+  -- Proves the read got past its early returns, so a later failure is about the FIELDS.
+  PERFORM pg_temp.chk('the connection under test is readable at all',
+    (_s ->> 'configured') = 'true' AND (_s ->> 'enabled') = 'true');
+
+  PERFORM pg_temp.chk('the secret read still carries what the workspace approved',
+    _s -> 'approved_capabilities' = '["slack_send_message"]'::jsonb);
+  PERFORM pg_temp.chk('...and the contract it approved them against',
+    _s -> 'capability_pins' = '{"slack_send_message":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}'::jsonb);
+  -- Everything else the governed caller reads, named so a future rewrite cannot quietly
+  -- shed one of them either.
+  PERFORM pg_temp.chk('...and every other field its callers depend on',
+    (_s ? 'server_url') AND (_s ? 'auth_kind') AND (_s ? 'auth_header_name')
+    AND (_s ? 'auth_token') AND (_s ? 'refresh_token') AND (_s ? 'transport')
+    AND (_s ? 'expires_at') AND (_s ? 'oauth_issuer') AND (_s ? 'oauth_client_id')
+    AND (_s ? 'oauth_client_secret') AND (_s ? 'provider') AND (_s ? 'enabled'));
+END $$;
+
+DO $$ BEGIN RAISE NOTICE 'secret-read contract proof: all assertions passed'; END $$;
