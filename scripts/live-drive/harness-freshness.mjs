@@ -24,42 +24,51 @@ import path from "node:path";
  * @param base   harness origin, e.g. http://127.0.0.1:5203
  * @param files  repo-relative source paths whose freshness actually matters
  */
-export async function assertHarnessServesWorkingTree(base, files) {
-  const stale = [];
-  for (const rel of files) {
-    const abs = path.resolve(rel);
+/**
+ * @param base     harness origin, e.g. http://127.0.0.1:5203
+ * @param expected [{ file, markers }] — `markers` are STRING LITERALS from the
+ *                 change under test. Literals survive Vite's TS/TSX transform;
+ *                 source LINES do not, which is how the first version of this
+ *                 check went wrong. It sampled the last 40 substantial lines of
+ *                 each file, and in a .tsx file those are JSX — compiled into
+ *                 `jsx(...)` calls, so they were absent from the served module
+ *                 whether the build was stale or fresh. It reported 40/40 missing
+ *                 either way, and its apparent catch of a genuinely stale server
+ *                 was luck, not detection.
+ *
+ * Each marker must be present on DISK too. A marker that no longer exists in the
+ * source is a stale expectation, and silently passing on one would rebuild the
+ * blind spot this exists to remove.
+ */
+export async function assertHarnessServesWorkingTree(base, expected) {
+  const problems = [];
+  for (const { file, markers } of expected) {
+    const abs = path.resolve(file);
     const onDisk = fs.readFileSync(abs, "utf8");
+    const absentFromDisk = markers.filter((m) => !onDisk.includes(m));
+    if (absentFromDisk.length) {
+      problems.push(`${file}: marker(s) no longer in the source — ${JSON.stringify(absentFromDisk)}`);
+      continue;
+    }
     let served;
     try {
       const res = await fetch(`${base}/@fs${abs}`);
       served = res.ok ? await res.text() : null;
     } catch (e) {
-      throw new Error(`harness freshness: could not fetch ${rel} from ${base} — ${e.message}`);
+      throw new Error(`harness freshness: could not fetch ${file} from ${base} — ${e.message}`);
     }
-    if (served === null) { stale.push(`${rel}: not served`); continue; }
-
-    // Vite transforms TS/TSX, so the served text is not byte-identical. Compare on
-    // distinctive lines instead: every non-trivial line of source that survives
-    // transformation should appear. Comments and types are stripped, so only
-    // executable-looking lines are sampled.
-    const sample = onDisk
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 28 && !l.startsWith("//") && !l.startsWith("*") && !l.startsWith("/*"))
-      .slice(-40);
-    const missing = sample.filter((l) => !served.includes(l));
-    // A transform can legitimately reshape a minority of lines; a stale module
-    // misses nearly all of the recent ones.
-    if (sample.length && missing.length > sample.length * 0.6) {
-      stale.push(`${rel}: ${missing.length}/${sample.length} recent source lines absent from the served module`);
+    if (served === null) { problems.push(`${file}: not served`); continue; }
+    const absentFromServed = markers.filter((m) => !served.includes(m));
+    if (absentFromServed.length) {
+      problems.push(`${file}: served module is missing ${JSON.stringify(absentFromServed)}`);
     }
   }
-  if (stale.length) {
+  if (problems.length) {
     throw new Error(
       "HARNESS IS SERVING A STALE BUILD — refusing to measure it.\n  " +
-        stale.join("\n  ") +
+        problems.join("\n  ") +
         "\n  Restart the harness so it serves the working tree, then re-run.",
     );
   }
-  console.log(`   harness freshness: ${files.length} file(s) match the working tree`);
+  console.log(`   harness freshness: ${expected.length} file(s) serve the working tree`);
 }

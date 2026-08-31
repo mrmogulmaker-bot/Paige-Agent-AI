@@ -163,7 +163,10 @@ const finalVisible = (page) =>
   });
 
 async function run() {
-  await assertHarnessServesWorkingTree(BASE, ["src/solo/settings.tsx", "src/solo/settings.css", "src/solo/solo-tokens.css"]);
+  await assertHarnessServesWorkingTree(BASE, [
+    { file: "src/solo/settings.tsx", markers: ["tcs-main--settings-scrollbar-hidden"] },
+    { file: "src/solo/solo-tokens.css", markers: ["main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden"] },
+  ]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const theme of THEMES) {
     for (const vp of VIEWPORTS) {

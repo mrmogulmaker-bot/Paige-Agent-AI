@@ -91,7 +91,11 @@ const navTo = async (page, label) => {
 };
 
 async function run() {
-  await assertHarnessServesWorkingTree(BASE, ["src/components/tenant-shell/TenantCommandCenterShell.tsx", "src/solo/settings.tsx", "src/solo/solo-tokens.css"]);
+  await assertHarnessServesWorkingTree(BASE, [
+    { file: "src/components/tenant-shell/TenantCommandCenterShell.tsx", markers: ["tcs-main--settings-scrollbar-shown"] },
+    { file: "src/solo/settings.tsx", markers: ["tcs-main--settings-scrollbar-hidden", "scrollOwner.contains(document.activeElement)"] },
+    { file: "src/solo/solo-tokens.css", markers: ["main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden"] },
+  ]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const theme of THEMES) {
     for (const vp of VIEWPORTS) {

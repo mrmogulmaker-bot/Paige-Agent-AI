@@ -67,7 +67,10 @@ const settle = async (page) => {
 };
 
 async function run() {
-  await assertHarnessServesWorkingTree(BASE, ["src/solo/settings.tsx", "src/solo/settings.css", "src/solo/solo-tokens.css"]);
+  await assertHarnessServesWorkingTree(BASE, [
+    { file: "src/solo/settings.tsx", markers: ["tcs-main--settings-scrollbar-hidden", "scrollOwner.contains(document.activeElement)"] },
+    { file: "src/solo/solo-tokens.css", markers: ["main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden"] },
+  ]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const dest of DESTINATIONS) {
     for (const theme of THEMES) {

@@ -71,7 +71,9 @@ const record = (surface, viewport, name, ok, detail) => {
 const HOST = "[data-solo-screen-host]";
 
 async function run() {
-  await assertHarnessServesWorkingTree(BASE, ["src/solo/solo-tokens.css", "src/solo/settings.tsx"]);
+  await assertHarnessServesWorkingTree(BASE, [
+    { file: "src/solo/solo-tokens.css", markers: ["main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden"] },
+  ]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const surface of SURFACES) {
     for (const theme of THEMES) {
