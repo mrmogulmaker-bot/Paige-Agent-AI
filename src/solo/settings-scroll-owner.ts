@@ -23,10 +23,11 @@ export function settingsScrollOwner(root: HTMLElement | null): HTMLElement | nul
 }
 
 /**
- * Added by a Settings surface that is long enough to need a scrollbar a human can
- * see and drag. It does NOT fight `tcs-main--settings-scrollbar-hidden` by
- * removing it — React runs CHILD effects before PARENT effects, so a removal
- * inside the surface is undone microseconds later when `SoloSettings` re-adds it.
- * Two classes and a cascade cannot lose that race.
+ * Settings is the intentionally scrollable browse class (owner policy 2026-08-31),
+ * so its scroll owner shows a bar a human can see and drag. This is ADDED next to
+ * `tcs-main--settings-scrollbar-hidden` rather than removing it: both are applied
+ * by `SoloSettings` in the same effect, and the cascade — not effect ordering —
+ * decides which wins. See `settings.css` for why the winning selector has to name
+ * both classes.
  */
 export const SETTINGS_SCROLLBAR_SHOWN = "tcs-main--settings-scrollbar-shown";

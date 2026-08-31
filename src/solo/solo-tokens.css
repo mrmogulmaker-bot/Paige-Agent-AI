@@ -80,22 +80,30 @@
 @media(max-width:1240px){.paige-solo .inbox{grid-template-columns:264px minmax(0,1fr)}.paige-solo .inbox>.ctc{display:none !important}}
 @media(max-width:980px){.paige-solo .inbox{grid-template-columns:minmax(0,1fr)}.paige-solo .inbox>.tlist{display:none !important}}
 .paige-solo .fade-in{animation:fi .35s ease backwards;min-width:0;max-width:100%}
-/* Inner `main` elements a screen renders must not scroll: each screen owns its
-   own regions (`.pg-body` below is the usual one) and a second scroller inside
-   one parks controls off the edge of a box nobody can see the end of.
+.paige-solo main{overflow:hidden!important}
+/* SETTINGS ONLY, and deliberately narrow.
 
-   `SoloApp`'s OWN screen host is excluded, because it is not an inner main --
-   it is the element `SoloApp` sets `overflow: hidden` or `auto` on itself, from
-   whether the route owns its internal scrolling. `!important` beat that inline
-   style, so document-flow routes (Settings most of all) were clipped at the fold
-   with no scroll owner anywhere: the host could not scroll and `#tenant-shell-main`
-   never overflowed either, because its only child is `height: 100%`. Measured on
-   Settings > Connections > Calendars: 2,456px of content in a 702px host, computed
-   `overflow-y: hidden`, and End left `scrollTop` at 0.
+   The rule above is a blanket clip on every `main` inside `.paige-solo`, and
+   it also catches `SoloApp`'s OWN screen host, whose inline
+   `overflow: hidden|auto` is chosen per route. `!important` beat that inline
+   style, so a document-flow route was clipped at the fold with no scroll owner
+   anywhere: the host could not scroll, and `#tenant-shell-main` never overflowed
+   either, because its only child is `height: 100%`. Measured on
+   Settings > Connections > Calendars: 2,456px of content in a 702px host,
+   computed `overflow-y: hidden`, End leaving `scrollTop` at 0.
 
-   The exclusion hands that decision back to `SoloApp`, which already makes it
-   correctly -- `full` routes still compute `hidden` from their own inline style. */
-.paige-solo main:not([data-solo-screen-host]){overflow:hidden!important}
+   Owner policy (2026-08-31): SETTINGS is the intentionally scrollable
+   marketplace/browse class. Clients, Growth, Compass, Command Center, Mind and
+   Analytics keep their form-fitting, design-locked interaction policy and must
+   NOT become document-scrollable as a side effect of repairing Settings.
+
+   So this exception is keyed on `.tcs-main--settings-scrollbar-hidden`, which
+   `SoloSettings` -- and nothing else in the repo -- puts on the scroll owner it
+   resolves, and removes on unmount. It therefore matches ONLY while a Settings
+   destination is mounted, and only on `SoloApp`'s own host. Every other route
+   keeps the blanket clip above, byte for byte: a non-Settings host never carries
+   the class, so this selector can never match one. */
+.paige-solo main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden{overflow:auto!important}
 .paige-solo .pg{height:100%;display:flex;flex-direction:column;min-height:0}
 .paige-solo .pg-hd{flex:none;padding:14px 30px 12px;border-bottom:1px solid var(--line-soft);background:var(--surface);position:sticky;top:0;z-index:5}
 .paige-solo .pg-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}

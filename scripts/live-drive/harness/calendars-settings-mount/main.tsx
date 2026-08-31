@@ -46,6 +46,32 @@ import "@/index.css";
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") === "light" ? "light" : "dark";
 
+/**
+ * Which Solo route to mount. Settings is the default because that is the surface
+ * under repair, but the LOCKED surfaces have to be drivable through this same
+ * harness — proving Settings scrolls is only half the owner's policy, and the
+ * other half (clients, growth and compass stay form-fitting) cannot be proven in
+ * a harness that can only render Settings.
+ *
+ * These are URL SLUGS, resolved by `branchBySlug` exactly as the app resolves
+ * them (`trust-compass` is the slug; `compass` is the internal key).
+ */
+const ROUTES: Record<string, string> = {
+  settings: "/solo/1971670/settings/connections?segment=calendars",
+  "settings-setup": "/solo/1971670/settings/setup",
+  "settings-integrations": "/solo/1971670/settings/integrations",
+  "settings-notifications": "/solo/1971670/settings/notifications",
+  "settings-billing": "/solo/1971670/settings/billing",
+  "settings-team": "/solo/1971670/settings/team",
+  "settings-vault": "/solo/1971670/settings/vault",
+  "settings-security": "/solo/1971670/settings/security-data",
+  clients: "/solo/1971670/clients",
+  growth: "/solo/1971670/growth",
+  compass: "/solo/1971670/trust-compass",
+};
+const routeKey = params.get("route") ?? "settings";
+const entry = ROUTES[routeKey] ?? ROUTES.settings;
+
 document.documentElement.setAttribute("data-pg", theme);
 document.documentElement.classList.toggle("dark", theme === "dark");
 
@@ -63,7 +89,7 @@ createRoot(document.getElementById("root")!).render(
             splat parts, not a `:tab` param — a `/settings/:tab` route would render
             happily and resolve every destination to the DEFAULT, measuring Setup
             while claiming to measure Calendars. */}
-        <MemoryRouter initialEntries={["/solo/1971670/settings/connections?segment=calendars"]}>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path="/solo/:account/*" element={<SoloApp />} />
           </Routes>

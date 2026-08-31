@@ -37,7 +37,7 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
-import { settingsScrollOwner } from "./settings-scroll-owner";
+import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
 import "./settings.css";
 
@@ -862,8 +862,38 @@ export function SoloSettings() {
   const scrollOwnerOf = settingsScrollOwner;
   useEffect(() => {
     const scrollOwner = scrollOwnerOf(rootRef.current);
-    scrollOwner?.classList.add("tcs-main--settings-scrollbar-hidden");
-    return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
+    if (!scrollOwner) return;
+    scrollOwner.classList.add("tcs-main--settings-scrollbar-hidden");
+
+    // EVERY Settings destination, not just the long ones. Owner policy makes
+    // Settings the intentionally scrollable browse class, so its one scroll owner
+    // has to be visible AND drivable from the keyboard wherever you land.
+    //
+    // `tabindex="-1"` makes the owner focusable without adding a tab stop, and
+    // focus is taken only when nothing else holds it, so it never steals focus
+    // from a control already in use. Without it the owner cannot hold focus at
+    // all: on a fresh load focus sits on <body>, Blink propagates scroll keys
+    // UPWARD from the focused node and never descends into a scrollable
+    // descendant, and the shell above is `overflow: hidden` — so Space, PageDown
+    // and End each left `scrollTop` at 0.
+    scrollOwner.classList.add(SETTINGS_SCROLLBAR_SHOWN);
+    const hadTabIndex = scrollOwner.hasAttribute("tabindex");
+    if (!hadTabIndex) scrollOwner.setAttribute("tabindex", "-1");
+    if (document.activeElement === document.body || document.activeElement === null) {
+      scrollOwner.focus({ preventScroll: true });
+    }
+
+    return () => {
+      scrollOwner.classList.remove("tcs-main--settings-scrollbar-hidden");
+      scrollOwner.classList.remove(SETTINGS_SCROLLBAR_SHOWN);
+      if (!hadTabIndex) {
+        // Blur BEFORE the attribute goes: removing `tabindex` does not itself
+        // blur, and once the element is not focusable `blur()` is not reliably
+        // honoured. Reversed, focus stays on shared chrome after Settings is gone.
+        if (document.activeElement === scrollOwner) scrollOwner.blur();
+        scrollOwner.removeAttribute("tabindex");
+      }
+    };
   }, []);
   // One scroll owner across the whole route means one scroll POSITION across it
   // too: without this, opening a short destination after scrolling a long one

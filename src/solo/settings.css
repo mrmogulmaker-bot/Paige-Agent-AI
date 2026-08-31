@@ -199,3 +199,24 @@
   .ss-sections { gap: 18px; }
   .ss-subsection-head p { margin-left: 0; }
 }
+
+/* SETTINGS SHOWS ITS SCROLLBAR.
+ *
+ * Owner policy (2026-08-31): Settings is the intentionally scrollable
+ * marketplace/browse class, so its one scroll owner must be visible and
+ * draggable. Command Center, Clients, Campaigns/Growth, Compass, Mind and
+ * Analytics keep their form-fitting policy and are untouched by these rules.
+ *
+ * The suppression above sets BOTH lanes — `scrollbar-width` for Firefox and
+ * modern Chrome, `::-webkit-scrollbar` for Chrome and Safari — and undoing only
+ * one leaves the bar hidden in the other, so both are undone here.
+ *
+ * The selectors name BOTH classes because `SoloSettings` applies both to the
+ * same element and a single-class override would tie on specificity, leaving
+ * source order to decide. `::-webkit-scrollbar` restores the shell's own
+ * geometry (`tenant-command-center-shell.css`), not invented dimensions: styling
+ * that pseudo-element at all makes Chromium stop drawing its own bar, so the
+ * thumb and track rules the shell already ships are what must apply.
+ */
+.tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown { scrollbar-width: auto; -ms-overflow-style: auto; }
+[data-tenant-shell] .tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown::-webkit-scrollbar { display: block; width: 10px; height: 10px; }
