@@ -539,7 +539,7 @@ group("document post-processing fails closed at provider and sync boundaries");
   }
 }
 
-group("real document stream withholds prior-account content until final revalidation");
+group("attached-document turns never carry tenant Knowledge into provider stages");
 {
   const document = {
     fileName: "operating-notes.docx",
@@ -551,32 +551,20 @@ group("real document stream withholds prior-account content until final revalida
     personaTenant: CHILD,
     personaSequence: [CHILD],
     memberships: [CHILD],
-    chunkContent: "CHILD-PRIVATE-MARKER",
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     bodyExtras: { document },
     // General-field extraction is best-effort and consumes the first test response;
     // the second is the real streamed chat response under test.
     provider: ["private-text", "private-text"],
   });
-  assert("15.1 a valid document turn releases the authorized response", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
-
-  for (const [label, finalState] of [
-    ["account switch", AGENCY],
-    ["unresolved scope", null],
-    ["membership revocation", { data: null, error: { message: "not authorized", code: "42501" } }],
-  ]) {
-    const r = await drive({
-      personaTenant: CHILD,
-      personaSequence: [CHILD, CHILD, finalState],
-      memberships: [AGENCY, CHILD],
-      chunkContent: "CHILD-PRIVATE-MARKER",
-      bodyExtras: { document },
-      provider: ["private-text", "private-text"],
-    });
-    assert(`15 ${label}: prior-account response text is discarded`, !r.responseText.includes("CHILD-PRIVATE-MARKER"), r.responseText);
-    assert(`15 ${label}: only the cancellation response is released`, r.responseText.includes("active workspace changed"), r.responseText);
-    assert(`15 ${label}: no stale telemetry is written`, !r.telemetry, JSON.stringify(r.telemetry?.row ?? null));
-    assert(`15 ${label}: no sync is attempted`, r.syncCalls.length === 0, `sync calls: ${r.syncCalls.length}`);
-  }
+  assert("15.1 attached document does not query tenant Knowledge", !valid.kbCall, JSON.stringify(valid.kbCall ?? null));
+  assert("15.2 no tenant Knowledge telemetry is written", !valid.telemetry, JSON.stringify(valid.telemetry?.row ?? null));
+  assert(
+    "15.3 no document provider payload contains a tenant Knowledge chunk",
+    !valid.providerCalls.some((body) => JSON.stringify(body).includes("PRIVATE-KB-SOURCE-MARKER")),
+    JSON.stringify(valid.providerCalls),
+  );
+  assert("15.4 the existing document response path remains usable", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

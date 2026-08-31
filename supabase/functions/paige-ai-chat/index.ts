@@ -1248,7 +1248,10 @@ JSON:`;
       // retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator — must
       // never be handed some arbitrary account's knowledge, and `null` is not a scope to
       // search. Fail closed and silent rather than substituting anything (§9/§13).
-      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
+      // Attached-document turns have additional provider/sync stages that cannot
+      // share one atomic active-account transaction. Fail closed: the document is
+      // handled on its own proven path, without injecting tenant Knowledge.
+      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId && !attachedDocument) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
@@ -7993,6 +7996,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // and post-processing checks complete. This prevents prior-account Knowledge
     // from crossing the response boundary if authority changes mid-stream.
     const directFrames: string[] = [];
+    const holdDirectFramesForKnowledgeScope = !!tenantKbScopeTenantId;
     // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
     // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
     // the first delta, so this is a lightweight confirmation, not a dependency.
@@ -8020,7 +8024,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (directSseBuf) {
             for (const line of directSseBuf.split("\n")) {
               if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-              directFrames.push(`${line}\n\n`);
+              if (holdDirectFramesForKnowledgeScope) directFrames.push(`${line}\n\n`);
               try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) fullAssistantResponse += c; } catch { /* skip */ }
             }
             directSseBuf = "";
@@ -8120,23 +8124,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
           }
 
-          if (!sentWritingPhase) {
+          if (holdDirectFramesForKnowledgeScope && !sentWritingPhase) {
             sentWritingPhase = true;
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
           }
-          for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));
+          if (holdDirectFramesForKnowledgeScope) {
+            for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));
+          }
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
           return;
         }
 
+        if (!holdDirectFramesForKnowledgeScope) {
+          if (!sentWritingPhase) {
+            sentWritingPhase = true;
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
+          }
+          controller.enqueue(value);
+        }
         directSseBuf += decoder.decode(value, { stream: true });
         let nl: number;
         while ((nl = directSseBuf.indexOf("\n")) !== -1) {
           const line = directSseBuf.slice(0, nl);
           directSseBuf = directSseBuf.slice(nl + 1);
           if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-          directFrames.push(`${line}\n\n`);
+          if (holdDirectFramesForKnowledgeScope) directFrames.push(`${line}\n\n`);
           try {
             const parsed = JSON.parse(line.slice(6));
             const content = parsed.choices?.[0]?.delta?.content;
@@ -8144,7 +8157,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           } catch { /* skip */ }
         }
         // Keep the pull loop advancing without exposing buffered provider bytes.
-        controller.enqueue(new Uint8Array());
+        if (holdDirectFramesForKnowledgeScope) controller.enqueue(new Uint8Array());
       },
     });
 

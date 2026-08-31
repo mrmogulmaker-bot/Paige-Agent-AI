@@ -49,12 +49,11 @@ is the real code. No check passes on a string match against source text.
 ## Failing-first
 
 **14 of the original 34 checks fail on the pre-fix handler** at base `66ee5a27`.
-The current 78-check suite also covers the independently discovered in-flight account-change
+The expanded suite also covers the independently discovered in-flight account-change
 race: active account switch, unresolved scope, membership revocation, and a change between
 agent-loop rounds all fail closed before another provider call and suppress stale telemetry.
 It also proves the actual tool-dispatch boundary and document extraction/sync boundaries stop
-before tools, providers, writes, or telemetry when authority changes. All 78 checks pass after
-both corrections.
+before tools, providers, writes, or telemetry when authority changes.
 
 The decisive ones:
 
@@ -70,9 +69,9 @@ The decisive ones:
 - **14** — document post-processing revalidates before extraction and before sync. Valid scope
   preserves the path; switched, unresolved, or revoked scope produces no unauthorized provider
   call, sync, post-processing write, or stale telemetry.
-- **15** — the real attached-document handler buffers streamed provider frames until the final
-  account check. A mid-stream switch, unresolved scope, or revocation discards prior-account
-  response text and releases only the cancellation frame; the valid path still returns normally.
+- **15** — attached-document turns fail closed by never injecting tenant Knowledge into their
+  multi-stage provider/sync path. The existing document response remains usable, while no
+  `match_tenant_knowledge` call, Knowledge telemetry, or private KB chunk reaches that path.
 
 ## A trap worth naming
 
