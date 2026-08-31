@@ -56,7 +56,7 @@ export default function PipelineAdmin() {
 
   const loadBoard = async (pid: string) => {
     const [{ data: st }, { data: ds }] = await Promise.all([
-      supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).order("order_index"),
+      supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).is("archived_at", null).order("order_index"),
       supabase.from("deals").select("*").eq("pipeline_id", pid).order("created_at", { ascending: false }),
     ]);
     setStages((st as PipelineStage[]) || []);
