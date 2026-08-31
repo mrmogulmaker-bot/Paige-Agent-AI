@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
 
 /**
  * THE TWO HALVES OF THE OWNER'S SCROLL POLICY, LOCKED (2026-08-31).
@@ -85,6 +86,33 @@ describe("locked surfaces keep their form-fitting policy", () => {
       "src/solo/settings.tsx",
     ]);
     expect(settingsTsx).toMatch(/classList\.remove\("tcs-main--settings-scrollbar-hidden"\)/);
+  });
+});
+
+describe("the shell hands Settings its focus back", () => {
+  const shell = rules(read("src/components/tenant-shell/TenantCommandCenterShell.tsx"));
+
+  it("does not restore the command field over the Settings scroll owner", () => {
+    // The shell restores focus to the PAIGE command field on every pathname change
+    // while the rail is collapsed. Without this guard it overrode the focus
+    // Settings had just placed on its scroll owner, and End/PageDown/Space did
+    // nothing until the human clicked or Tabbed back into the page.
+    expect(shell).toMatch(/classList\.contains\("tcs-main--settings-scrollbar-shown"\)/);
+  });
+
+  it("keys that guard on the SAME class Settings actually applies", () => {
+    // The shell is shared chrome and must not import a tier's module, so the
+    // literal is duplicated. This is the only thing stopping the two drifting
+    // apart into a guard that silently never matches.
+    const literal = shell.match(/classList\.contains\("([^"]+)"\)/);
+    expect(literal, "the shell guard is gone").toBeTruthy();
+    expect(literal![1]).toBe(SETTINGS_SCROLLBAR_SHOWN);
+  });
+
+  it("leaves the command-field restore intact for every other route", () => {
+    // The guard must SKIP, never replace: non-Settings routes reach the restore
+    // with focus on the rail link and must still get the command field.
+    expect(shell).toMatch(/\[data-tenant-paige-command\][^;]*focus\(\{ preventScroll: true \}\)/);
   });
 });
 

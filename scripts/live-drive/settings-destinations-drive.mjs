@@ -172,19 +172,17 @@ async function run() {
           record(dest, tag, "Settings moves focus into the scroll owner on in-app navigation",
                  arrival.ownerWasFocused, `focus trail: ${JSON.stringify(arrival.trail)}`);
 
-          if (arrival.stillInOwner) {
-            await page.keyboard.press("End");
-            const reached = await settle(page);
-            record(dest, tag, "keyboard reaches the end after in-app navigation",
-                   arrival.extent <= 1 || reached >= arrival.extent - 2,
-                   `scrollTop ${reached} of ${arrival.extent}`);
-          } else {
-            observe(dest, tag, "shared chrome took focus back after navigation",
-                    `final focus ${arrival.finalFocus} — the shell restores the PAIGE command ` +
-                    `field on pathname change while the rail is collapsed ` +
-                    `(TenantCommandCenterShell). Keyboard scrolling needs one Tab or click ` +
-                    `into the page until that is changed, which is shell scope, not this lane's.`);
-          }
+          // SCORED now, not observed. The shell used to restore the PAIGE command
+          // field over this focus on every pathname change with the rail collapsed;
+          // it now skips when the Settings owner holds focus, so keyboard scrolling
+          // must work immediately after navigation with no click and no Tab.
+          record(dest, tag, "focus REMAINS in the owner — shared chrome does not take it back",
+                 arrival.stillInOwner, `final focus ${arrival.finalFocus} · trail ${JSON.stringify(arrival.trail)}`);
+          await page.keyboard.press("End");
+          const reached = await settle(page);
+          record(dest, tag, "keyboard reaches the end after in-app navigation, with no click or Tab",
+                 arrival.extent <= 1 || reached >= arrival.extent - 2,
+                 `scrollTop ${reached} of ${arrival.extent}`);
         }
 
         await page.screenshot({ path: path.join(OUT, `${dest}-${tag}.png`) });
