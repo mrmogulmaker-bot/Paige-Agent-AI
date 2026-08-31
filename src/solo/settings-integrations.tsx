@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert, Workflow, Zap } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
+import { useN8nConnection } from "./data/useN8nConnection";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -26,6 +27,10 @@ type IntegrationReadState = {
   mcp: SafeConnectionStatus | null;
 };
 
+/**
+ * Whitelists what may cross into the surface. `last_error` and any raw payload
+ * are deliberately absent: provider error text is unbounded external content.
+ */
 function sanitizeSafeConnectionStatus(value: unknown): SafeConnectionStatus | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const source = value as Record<string, unknown>;
@@ -41,7 +46,7 @@ function sanitizeSafeConnectionStatus(value: unknown): SafeConnectionStatus | nu
   };
 }
 
-type ProviderIdentity = "n8n" | "zapier" | "mcp";
+type ProviderIdentity = "n8n" | "zapier" | "mcp" | "quickbooks" | "stripe" | "docusign" | "apollo" | "plaid" | "api";
 type CatalogueCategory = "all" | "automation" | "financial" | "documents" | "client-data" | "developer";
 
 const CATALOGUE_FILTERS: ReadonlyArray<{ id: CatalogueCategory; label: string }> = [
@@ -64,18 +69,12 @@ function isZapierMcpHost(host: string | null | undefined) {
 
 function statusPresentation(value: SafeConnectionStatus | null) {
   if (!value?.configured || value.status === "unconfigured") {
-    return { truth: "UNAVAILABLE" as SettingsTruth, account: "Not configured", health: "Not measurable", tone: "neutral" };
+    return { truth: "UNAVAILABLE" as SettingsTruth, account: "Not connected", tone: "neutral" };
   }
-  if (value.enabled === false) {
-    return { truth: "PARTIAL" as SettingsTruth, account: "Turned off", health: "Paused", tone: "warn" };
-  }
-  if (value.status === "error") {
-    return { truth: "PARTIAL" as SettingsTruth, account: "Configured", health: "Needs attention", tone: "bad" };
-  }
-  if (value.status === "connected") {
-    return { truth: "LIVE" as SettingsTruth, account: "Connected", health: "Available", tone: "ok" };
-  }
-  return { truth: "PARTIAL" as SettingsTruth, account: "Configured", health: "Status not reported", tone: "neutral" };
+  if (value.enabled === false) return { truth: "PARTIAL" as SettingsTruth, account: "Turned off", tone: "warn" };
+  if (value.status === "error") return { truth: "PARTIAL" as SettingsTruth, account: "Needs attention", tone: "bad" };
+  if (value.status === "connected") return { truth: "LIVE" as SettingsTruth, account: "Connected", tone: "ok" };
+  return { truth: "PARTIAL" as SettingsTruth, account: "Status not reported", tone: "neutral" };
 }
 
 function useIntegrationStatus() {
@@ -121,129 +120,273 @@ function useIntegrationStatus() {
   };
 }
 
-function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
-  return <span className="ss-truth" data-truth={value}>{capability ? `Capability: ${value}` : value}</span>;
-}
+/* ── The catalogue ────────────────────────────────────────────────────────────
+   One row per provider. `connectable` is the whole product rule: a card either
+   owns a real, tenant-safe connection contract for that exact provider, or it
+   says so plainly. It never points at another surface. */
 
-function BridgeCard({
-  name,
-  kind,
-  provider,
-  value,
-  action,
-}: {
+type ProviderRow = {
+  id: ProviderIdentity;
   name: string;
   kind: string;
-  provider: ProviderIdentity;
-  value: SafeConnectionStatus | null;
-  action?: { href: string; label: string } | null;
-}) {
-  const state = statusPresentation(value);
-  const evidence = value?.last_sync_at || value?.last_probed_at;
-  const mark = provider === "n8n" ? "n8n" : provider === "zapier" ? "zapier" : "MCP";
-  return <article className="ss-card ss-integration-card" data-provider={provider} data-owner="integrations">
-    <header>
-      <span className="ss-provider-mark" data-provider-mark={provider} aria-hidden>{mark}</span>
-      <div className="ss-integration-title"><h2>{name}</h2><span>{value?.label?.trim() || kind}</span></div>
-      {/* Was hardcoded to LIVE on every card regardless of state, so a card could
-          claim the capability was live while reporting "Not configured". Derived
-          from the same safe status the rest of the card reads. */}
-      <Truth value={state.truth} capability />
-    </header>
-    <div className="ss-card-body">
-      <dl className="ss-integration-state">
-        <div><dt>Workspace configuration</dt><dd>{state.account}</dd></div>
-        <div><dt>Operational health</dt><dd><span className="ss-status" data-tone={state.tone}><i />{state.health}</span></dd></div>
-      </dl>
-      <div className="ss-integration-evidence">
-        <span>Latest safe evidence</span>
-        <strong>{evidence ? "Recorded by the provider bridge" : "Not reported"}</strong>
-      </div>
-      {typeof value?.workflow_count === "number" && <p className="ss-note">{value.workflow_count} workflow {value.workflow_count === 1 ? "record" : "records"} reported. This is not a run or success claim.</p>}
-      <div className="ss-integration-actions">
-        {action ? <Link className="ss-integration-cta" to={action.href}>{action.label}<ArrowUpRight aria-hidden /></Link> : <span className="ss-integration-handoff">Setup handoff unavailable</span>}
-        <span>No credentials or provider payloads shown</span>
-      </div>
-      <div className="ss-integration-footer"><Truth value={state.truth} /><span>{action ? "Opens a separate established owner" : "No safe Solo configuration handoff is available yet."}</span></div>
-    </div>
-  </article>;
+  filter: Exclude<CatalogueCategory, "all">;
+  /** Only true where an audited, tenant-scoped connection seam exists today. */
+  connectable: boolean;
+  /** Why the connection cannot be offered yet. Shown in the panel, not the card. */
+  note: string;
+};
+
+const PROVIDERS: ReadonlyArray<ProviderRow> = [
+  { id: "n8n", name: "n8n", kind: "Automation", filter: "automation", connectable: true,
+    note: "" },
+  { id: "mcp", name: "MCP bridge", kind: "External tool bridge", filter: "developer", connectable: false,
+    note: "The bridge reports its own status, but there is no tenant-safe way to set it up from here yet. Its credential path is deliberately not reachable from a browser." },
+  { id: "quickbooks", name: "QuickBooks", kind: "Financial tools", filter: "financial", connectable: false,
+    note: "The sync seams exist, but nothing yet proves a connection belongs to this workspace, so no setup is offered." },
+  { id: "stripe", name: "Stripe Connect", kind: "Commerce", filter: "financial", connectable: false,
+    note: "Payout records exist at the platform level. They do not show that this workspace is connected, so nothing is claimed." },
+  { id: "docusign", name: "DocuSign", kind: "Documents", filter: "documents", connectable: false,
+    note: "The signature seams are older than the tenant-safe rules this surface follows, so setup is not offered yet." },
+  { id: "apollo", name: "Apollo", kind: "Client data", filter: "client-data", connectable: false,
+    note: "Enrichment settings are shared platform-wide, which cannot establish a connection for this workspace on its own." },
+  { id: "plaid", name: "Plaid", kind: "Financial tools", filter: "financial", connectable: false,
+    note: "Bank-link scaffolding exists but does not amount to a connection this workspace owns." },
+  { id: "api", name: "Webhooks & direct API", kind: "Developer tools", filter: "developer", connectable: false,
+    note: "Platform webhook and key records are not the same thing as a connection for this workspace." },
+];
+
+function providerMark(id: ProviderIdentity, zapier: boolean) {
+  if (id === "n8n") return "n8n";
+  if (id === "mcp") return zapier ? "zap" : "MCP";
+  return id.slice(0, 2).toUpperCase();
 }
 
-const RECOVERED_SURFACES = [
-  { id: "quickbooks", name: "QuickBooks", category: "Financial tools", filter: "financial" as CatalogueCategory, truth: "PARTIAL" as SettingsTruth, owner: "Integrations · financial data bridge", note: "OAuth and financial sync seams exist, but no canonical active-Solo-tenant readiness projection is proven." },
-  { id: "stripe", name: "Stripe Connect", category: "Commerce", filter: "financial" as CatalogueCategory, truth: "PARTIAL" as SettingsTruth, owner: "Integrations · commerce account", note: "Tenant payout-account records exist. They do not prove this workspace is connected, active, or entitled to a Paige capability." },
-  { id: "docusign", name: "DocuSign", category: "Documents", filter: "documents" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · document service bridge", note: "Legacy admin and signature seams need a tenant-safe governed contract." },
-  { id: "apollo", name: "Apollo", category: "Client data", filter: "client-data" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · client data bridge", note: "Legacy enrichment configuration is platform-global and cannot establish this workspace’s connection." },
-  { id: "plaid", name: "Plaid", category: "Financial tools", filter: "financial" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · financial data bridge", note: "Bank-link scaffolding does not prove tenant-safe readiness." },
-  { id: "api", name: "Webhooks & direct API", category: "Developer tools", filter: "developer" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · developer bridge", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
-] as const;
+/* ── n8n: the one provider with a real connection flow ────────────────────── */
+
+function N8nPanelBody({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
+  // Mounted only for the provider that owns this seam, so opening any other
+  // card issues no n8n read at all.
+  const a = useN8nConnection();
+  const [editing, setEditing] = useState(false);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+
+  if (a.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking this workspace…</p>;
+
+  if (a.error) {
+    return <div className="ig-state" role="alert">
+      <TriangleAlert aria-hidden />
+      <span>The connection could not be read, so nothing is being claimed either way — not connected, and not disconnected.</span>
+      <button type="button" className="ig-btn" onClick={() => void a.reload()}>Try again</button>
+    </div>;
+  }
+
+  const showForm = editing || !a.configured;
+
+  return <>
+    {a.configured && !editing && <dl className="ig-facts">
+      <div><dt>State</dt><dd>{a.status === "error" ? "Needs attention" : a.status === "connected" ? "Connected" : "Set up"}</dd></div>
+      {a.label && <div><dt>Name</dt><dd>{a.label}</dd></div>}
+      {a.baseUrl && <div><dt>Address</dt><dd className="ig-mono">{a.baseUrl}</dd></div>}
+      <div><dt>API key</dt><dd className="ig-mono">{a.last4 ? `••••••••${a.last4}` : "Stored"}</dd></div>
+      {typeof a.workflowCount === "number" && <div><dt>Workflows seen</dt><dd>{a.workflowCount}</dd></div>}
+    </dl>}
+
+    {!a.configured && !editing && <p className="ig-lede">
+      Connect your own n8n instance so Paige can see what lives there. You provide the address and an
+      API key; the key is stored encrypted and is never shown again, not even to you.
+    </p>}
+
+    {a.writeError && <p className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} />{a.writeError}</p>}
+
+    {!a.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
+
+    {showForm && a.canWrite
+      ? <N8nForm
+          a={a}
+          existing={a.configured}
+          onDirtyChange={onDirtyChange}
+          onDone={() => { setEditing(false); onDirtyChange(false); }}
+        />
+      : a.canWrite && <div className="ig-actions">
+          <button type="button" className="ig-btn" data-primary onClick={() => setEditing(true)} disabled={a.saving}>
+            <KeyRound aria-hidden size={14} />{a.status === "error" ? "Reconnect" : "Manage"}
+          </button>
+          {confirmingDisconnect ? <span className="ig-confirm">
+            <button type="button" className="ig-btn" data-danger disabled={a.saving}
+              onClick={() => { setConfirmingDisconnect(false); void a.disconnect(); }}>
+              Disconnect it
+            </button>
+            <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
+          </span> : <button type="button" className="ig-btn" disabled={a.saving} onClick={() => setConfirmingDisconnect(true)}>
+            <Link2Off aria-hidden size={14} />Disconnect
+          </button>}
+        </div>}
+  </>;
+}
+
+/**
+ * The key lives only here, only while it is being typed, and is cleared on
+ * every submit — success or failure alike. It is never lifted into the hook,
+ * never written to storage, never logged, and never echoed back into an error
+ * message. On a failed save the field is empty on purpose: re-entering it is a
+ * smaller cost than holding a secret in memory for a retry that may not come.
+ */
+function N8nForm({
+  a, existing, onDone, onDirtyChange,
+}: {
+  a: ReturnType<typeof useN8nConnection>;
+  existing: boolean;
+  onDone: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const [baseUrl, setBaseUrl] = useState(a.baseUrl ?? "");
+  const [label, setLabel] = useState(a.label ?? "");
+  const [apiKey, setApiKey] = useState("");
+
+  const dirty = apiKey.length > 0 || baseUrl !== (a.baseUrl ?? "") || label !== (a.label ?? "");
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+
+  const valid = baseUrl.trim().length > 0 && apiKey.length > 0;
+
+  return <form
+    className="ig-form"
+    onSubmit={async (event) => {
+      event.preventDefault();
+      if (!valid || a.saving) return;
+      const submitted = apiKey;
+      setApiKey("");
+      const ok = await a.connect({ baseUrl, apiKey: submitted, label });
+      if (ok) onDone();
+    }}
+  >
+    <label className="ig-field">
+      <span>Instance address</span>
+      <input
+        type="url" inputMode="url" autoComplete="off" spellCheck={false}
+        placeholder="https://your-instance.app.n8n.cloud"
+        value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} disabled={a.saving}
+      />
+      <small>Has to start with https://</small>
+    </label>
+    <label className="ig-field">
+      <span>API key</span>
+      <input
+        type="password" autoComplete="off" spellCheck={false}
+        placeholder={existing ? "Enter the key again to reconnect" : "Paste your n8n API key"}
+        value={apiKey} onChange={(event) => setApiKey(event.target.value)} disabled={a.saving}
+      />
+      <small>{existing ? "The stored key is never shown, so a change needs it again." : "Stored encrypted. It is never displayed after this."}</small>
+    </label>
+    <label className="ig-field">
+      <span>Name <em>optional</em></span>
+      <input
+        type="text" autoComplete="off" placeholder="What you call this instance"
+        value={label} onChange={(event) => setLabel(event.target.value)} disabled={a.saving}
+      />
+    </label>
+    <div className="ig-actions">
+      <button type="submit" className="ig-btn" data-primary disabled={!valid || a.saving}>
+        {a.saving ? "Saving…" : existing ? "Save changes" : "Connect n8n"}
+      </button>
+      {existing && <button type="button" className="ig-btn" onClick={onDone} disabled={a.saving}>Cancel</button>}
+    </div>
+  </form>;
+}
+
+/* ── The contextual panel ─────────────────────────────────────────────────── */
+
+function ProviderPanel({ row, zapier, onClose }: { row: ProviderRow; zapier: boolean; onClose: () => void }) {
+  const [dirty, setDirty] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  const requestClose = useCallback(() => {
+    if (dirty) { setConfirmingClose(true); return; }
+    onClose();
+  }, [dirty, onClose]);
+
+  useEffect(() => { closeRef.current?.focus(); }, []);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { requestClose(); return; }
+      if (event.key !== "Tab") return;
+      // This dialog declares aria-modal, so focus has to stay inside it.
+      // Without this, Tab walks out into the page behind while assistive
+      // technology has been told that page is inert.
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+      else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
+      else if (!panel.contains(active)) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [requestClose]);
+
+  return <div className="ig-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+    <aside className="ig-panel" ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="ig-panel-title">
+      <header>
+        <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id, zapier)}</span>
+        <div><h2 id="ig-panel-title">{row.name}</h2><span>{row.kind}</span></div>
+        <button ref={closeRef} type="button" className="ig-close" onClick={requestClose} aria-label={`Close ${row.name}`}><X aria-hidden size={16} /></button>
+      </header>
+
+      <div className="ig-panel-body">
+        {confirmingClose && <div className="ig-confirm-close" role="alertdialog" aria-label="Discard changes">
+          <p>You have unsaved details here. Close anyway?</p>
+          <div className="ig-actions">
+            <button type="button" className="ig-btn" data-danger onClick={onClose}>Discard them</button>
+            <button type="button" className="ig-btn" onClick={() => setConfirmingClose(false)}>Keep editing</button>
+          </div>
+        </div>}
+
+        {row.connectable
+          ? <N8nPanelBody onDirtyChange={setDirty} />
+          : <><p className="ig-lede">{row.note}</p>
+              <p className="ig-note">Setting this up is not offered here yet, rather than offered and quietly not working.</p></>}
+      </div>
+
+      <footer><span>No credentials or provider payloads are shown here.</span></footer>
+    </aside>
+  </div>;
+}
+
+/* ── Routing (owned locally; the shared hook reads two levels) ─────────────── */
 
 type IntegrationsLeaf = "catalogue" | "automations";
 
-/**
- * Third-level routing for `/solo/{n}/settings/integrations/{leaf}`, resolved HERE
- * rather than in the shared `useSubtabRoute`. That hook reads two levels and is
- * used by screens outside this surface, including Command Center's; leaving it
- * untouched is what keeps this change confined to Integrations. An unknown or
- * absent leaf resolves to the catalogue, so every previously shipped Integrations
- * URL keeps working exactly as before.
- */
-function useIntegrationsLeaf(): [IntegrationsLeaf, (leaf: IntegrationsLeaf) => void] {
+function useIntegrationsLeaf(): [IntegrationsLeaf, (next: IntegrationsLeaf) => void] {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const base = useMemo(() => {
-    const match = pathname.match(/^(\/solo\/[^/]+\/settings\/integrations)(?:\/|$)/);
-    return match ? match[1] : null;
-  }, [pathname]);
-  const leaf: IntegrationsLeaf = useMemo(() => {
-    const match = pathname.match(/^\/solo\/[^/]+\/settings\/integrations\/([^/?#]+)/);
-    return match?.[1] === "automations" ? "automations" : "catalogue";
-  }, [pathname]);
+  const match = pathname.match(/^\/solo\/[^/]+\/settings\/integrations(?:\/([^/]+))?/);
+  const leaf: IntegrationsLeaf = match?.[1] === "automations" ? "automations" : "catalogue";
+  const base = pathname.replace(/\/(automations)$/, "");
   const setLeaf = useCallback((next: IntegrationsLeaf) => {
-    if (!base) return;
     navigate(next === "catalogue" ? `${base}${search}` : `${base}/automations${search}`);
   }, [base, navigate, search]);
   return [leaf, setLeaf];
 }
 
-function useSoloDestination(leaf: "automations") {
-  const { pathname } = useLocation();
-  // Points at the Automations sub-tab of this page — the one home for automations
-  // (§18). It deliberately does NOT point at the old standalone /automations
-  // address, which was a fixture-backed surface and is now retired.
-  // This preserves route context only. Tenant authority still comes exclusively from
-  // useTenantContext and the server-resolved RPCs above; the URL never scopes a read.
-  const match = pathname.match(/^(\/solo\/[^/]+)(?:\/|$)/);
-  return match ? `${match[1]}/settings/integrations/${leaf}` : null;
-}
-
 export function SoloIntegrationsView() {
   const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
-  const mcpProvider: ProviderIdentity = isZapierMcpHost(status.mcp?.server_url_host) ? "zapier" : "mcp";
-  const automationsHref = useSoloDestination("automations");
-  const catalogueRef = useRef<HTMLDivElement>(null);
-  const [catalogueScrollable, setCatalogueScrollable] = useState(false);
+  const zapier = isZapierMcpHost(status.mcp?.server_url_host);
   const [category, setCategory] = useState<CatalogueCategory>("all");
-  const categoryIncludes = (candidate: CatalogueCategory) => category === "all" || category === candidate;
-  const recoveredSurfaces = RECOVERED_SURFACES.filter((surface) => categoryIncludes(surface.filter));
+  const [open, setOpen] = useState<ProviderRow | null>(null);
 
-  useEffect(() => {
-    const catalogue = catalogueRef.current;
-    if (!catalogue) return;
-    const measure = () => setCatalogueScrollable(catalogue.scrollHeight > catalogue.clientHeight + 1);
-    measure();
-    window.addEventListener("resize", measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(catalogue);
-    return () => {
-      window.removeEventListener("resize", measure);
-      observer?.disconnect();
-    };
-  }, [category, status.loading, status.error, status.n8n, status.mcp]);
+  const liveStatus = (id: ProviderIdentity) => id === "n8n" ? status.n8n : id === "mcp" ? status.mcp : null;
+  const rows = PROVIDERS.filter((row) => category === "all" || row.filter === category);
 
   const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [
-    { id: "catalogue", label: "Your tools", Icon: Workflow },
+    { id: "catalogue", label: "Integrations", Icon: Plug },
     { id: "automations", label: "Automations", Icon: Zap },
   ];
 
@@ -258,61 +401,39 @@ export function SoloIntegrationsView() {
     </div>
 
     {leaf === "automations" ? <SoloAutomationsView /> : <>
-    <section className="ss-catalogue" aria-labelledby="ss-catalogue-title">
-      <div className="ss-catalogue-heading">
-        <div className="ss-catalogue-title"><span>Browse by provider</span><h2 id="ss-catalogue-title">Integration catalogue</h2></div>
-        <div className="ss-catalogue-heading-meta">
-          <p>Provider color identifies the tool—not readiness or permission.</p>
-          <span className="ss-catalogue-scroll-hint" id="ss-catalogue-scroll-hint"><ChevronsDown aria-hidden />{catalogueScrollable ? "Scroll to browse" : "All integrations visible"}</span>
-        </div>
-        <div className="ss-catalogue-filters" role="group" aria-label="Filter integration catalogue">
-          {CATALOGUE_FILTERS.map((filter) => <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>{filter.label}</button>)}
-        </div>
-        <dl className="ss-owner-boundary" aria-label="Product ownership">
-          <div><dt>Connections</dt><dd>Phone, sending identity, delivery, and calendars</dd></div>
-          <div><dt>Integrations</dt><dd>External data, workflow, and service bridges</dd></div>
-          <div><dt>Marketplace</dt><dd>Governed Paige capability lifecycle</dd></div>
-        </dl>
+      <div className="ig-bar" role="group" aria-label="Filter integrations">
+        {CATALOGUE_FILTERS.map((filter) => (
+          <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>
+            {filter.label}
+          </button>
+        ))}
       </div>
-      <div ref={catalogueRef} className="ss-catalogue-scroll" role="region" aria-label="Integration catalogue" aria-describedby="ss-catalogue-scroll-hint" data-scrollable={catalogueScrollable ? "true" : "false"} tabIndex={0}>
-        {status.loading ? <div className="ss-state" role="status"><RefreshCw className="ss-spin" />Clearing and resolving this account…</div>
-          : status.error ? <div className="ss-state" role="alert"><TriangleAlert /><span><strong>Couldn’t read integration status</strong>No connection state is being claimed for this account.</span><button type="button" onClick={status.retry}>Retry</button></div>
-          : (categoryIncludes("automation") || categoryIncludes("developer")) && <div className="ss-integration-grid">
-            {categoryIncludes("automation") && <BridgeCard name="n8n" kind="Automation" provider="n8n" value={status.n8n} action={automationsHref ? { href: automationsHref, label: "Open Automations" } : null} />}
-            {categoryIncludes("developer") && <BridgeCard name={mcpProvider === "zapier" ? "Zapier MCP" : "MCP bridge"} kind="External tool bridge" provider={mcpProvider} value={status.mcp} />}
-          </div>}
 
-        {recoveredSurfaces.length > 0 && <section className="ss-recovered" aria-labelledby="ss-recovered-title">
-          <div className="ss-recovered-heading">
-            <div><span>Version One evidence</span><h2 id="ss-recovered-title">Recovered, not connected</h2></div>
-            <p>No tenant connection is claimed</p>
+      {status.loading ? <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Resolving this account…</p>
+        : status.error ? <div className="ig-state" role="alert">
+            <TriangleAlert aria-hidden />
+            <span>Integration status could not be read. No connection state is being claimed for this account.</span>
+            <button type="button" className="ig-btn" onClick={status.retry}>Try again</button>
           </div>
-          <div className="ss-recovered-grid">
-            {recoveredSurfaces.map((surface) => <article key={surface.name} className="ss-recovered-item" data-provider={surface.id} data-owner="integrations">
-                <span className="ss-recovered-mark" aria-hidden>{surface.name.slice(0, 2)}</span>
-                <div className="ss-recovered-title"><span>{surface.category}</span><strong>{surface.name}</strong><small>{surface.owner}</small></div>
-                <Truth value={surface.truth} />
-                <p>{surface.note}</p>
-                <div className="ss-recovered-action">
-                  <span className="ss-integration-handoff">Setup handoff unavailable</span>
-                </div>
-              </article>)}
-          </div>
-        </section>}
-      </div>
-    </section>
-
-    <div className="ss-integration-grid ss-integration-supporting">
-      <section className="ss-card">
-        <header><span className="ss-card-icon"><Store aria-hidden /></span><h2>Marketplace boundary</h2><Truth value="UNAVAILABLE" /></header>
-        <div className="ss-card-body"><p>Marketplace owns governed Paige capabilities and their install, update, remove, and activation lifecycle. Stripe Connect is an Integration; a future Marketplace capability may depend on it only after the required authority and recovery contracts exist.</p></div>
-      </section>
-      <section className="ss-card">
-        <header><span className="ss-card-icon"><ShieldCheck aria-hidden /></span><h2>Permissions and governed actions</h2><Truth value="UNAVAILABLE" /></header>
-        <div className="ss-card-body"><p>Connection permissions, revocation, and PAIGE actions appear only when an authoritative tenant-safe contract supports them. Any future action must use the existing Action Bus and Trust Compass controls.</p><p className="ss-note">No raw payloads, credentials, messages, prompts, hidden reasoning, or silent execution are exposed here.</p></div>
-      </section>
-    </div>
+        : <ul className="ig-grid">
+            {rows.map((row) => {
+              const live = statusPresentation(liveStatus(row.id));
+              const name = row.id === "mcp" && zapier ? "Zapier MCP" : row.name;
+              return <li key={row.id}>
+                <button type="button" className="ig-card" data-provider={row.id} data-owner="integrations"
+                  onClick={() => setOpen(row)} aria-haspopup="dialog">
+                  <span className="ss-provider-mark" data-provider-mark={row.id} aria-hidden>{providerMark(row.id, zapier)}</span>
+                  <span className="ig-card-title"><strong>{name}</strong><small>{row.kind}</small></span>
+                  <span className="ig-card-state" data-tone={row.connectable || live.truth !== "UNAVAILABLE" ? live.tone : "neutral"}>
+                    <i aria-hidden />{row.connectable ? live.account : "Not available"}
+                  </span>
+                </button>
+              </li>;
+            })}
+          </ul>}
     </>}
+
+    {open && <ProviderPanel row={open} zapier={zapier} onClose={() => setOpen(null)} />}
   </div>;
 }
 
