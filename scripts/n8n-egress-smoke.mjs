@@ -364,6 +364,32 @@ check("what a workflow calls its tags does not reach the model at all",
 check("...only how many there were",
   BASELINE || ran.channels?.tags_added_count === 2, JSON.stringify(ran.channels));
 
+// -- Timestamps, which used to be a free-text field with a date-shaped name ----
+//
+// `updatedAt`, `startedAt` and `stoppedAt` went through the same "strip controls and
+// truncate" path as any other provider string, so a date field was an unguarded place to
+// put a sentence. They are now parsed and RE-EMITTED from the parsed instant, so what the
+// model reads is generated here and cannot carry provider text at all.
+console.log("\n-- provider timestamps --");
+routes.set("/api/v1/workflows", (req, res) => json(res, 200, {
+  data: [
+    { id: "wf-ts", name: "Timestamped", active: true, tags: [], updatedAt: INJECTION },
+    { id: "wf-ok", name: "Real date", active: true, tags: [], updatedAt: "2026-01-02T03:04:05.000Z" },
+    { id: "wf-far", name: "Absurd date", active: true, tags: [], updatedAt: "0001-01-01T00:00:00Z" },
+  ],
+}));
+bytes = await egress({ action: "list" });
+const stamped = JSON.parse(bytes);
+check("a sentence in a timestamp field does not reach the model",
+  !bytes.includes("IGNORE ALL PREVIOUS"), BASELINE ? "" : bytes.slice(0, 200));
+check("...it is dropped rather than shown as an unparseable date",
+  BASELINE || stamped.workflows?.[0]?.updated_at === null, JSON.stringify(stamped.workflows?.[0]));
+check("a real timestamp survives, re-emitted in our own rendering",
+  BASELINE || stamped.workflows?.[1]?.updated_at === "2026-01-02T03:04:05.000Z",
+  JSON.stringify(stamped.workflows?.[1]));
+check("a date far outside any plausible clock skew is dropped",
+  BASELINE || stamped.workflows?.[2]?.updated_at === null, JSON.stringify(stamped.workflows?.[2]));
+
 // -- A run against an instance that reports a foreign tenant's execution -------
 console.log("\n-- an execution report --");
 routes.set("/api/v1/executions/ex-1", (req, res) => json(res, 200, {

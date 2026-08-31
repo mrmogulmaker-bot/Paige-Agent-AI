@@ -9,10 +9,12 @@
 -- a live customer row) is NOT referenced, altered, read, or tested against anywhere
 -- in this migration. Nothing here can touch that row or its secret.
 --
--- SAFE TO RESTRUCTURE: `tenant_mcp_connections` holds 0 rows on production
--- (verified before writing this), so the primary-key change rewrites nothing. The
--- `provider` backfill default of 'zapier' is therefore a no-op in practice and
--- exists only so the column can be NOT NULL without a separate pass.
+-- SAFE TO RESTRUCTURE, AND NOT BECAUSE THE TABLE IS EMPTY: `tenant_mcp_connections`
+-- holds 0 rows on production (measured, not assumed), so the primary-key change and the
+-- `provider` backfill rewrite nothing THERE. That fact is reported for the deploy record,
+-- not relied on: it describes one database, and this file is replayed by every environment
+-- and preview branch. Section 3 therefore normalises whatever rows exist before any new
+-- constraint is added, so the migration is correct on a populated database too.
 --
 -- PROVIDER-NATIVE TRANSPORT, from the providers' own current documentation:
 --   • Zapier MCP  — Streamable HTTP ONLY. Zapier states it does not support SSE.
@@ -79,34 +81,48 @@ ALTER TABLE public.tenant_mcp_connections
 ALTER TABLE public.tenant_mcp_connections
   ADD COLUMN IF NOT EXISTS oauth_scopes text;
 
--- ── 3. Provider-native transport, and stdio removed ─────────────────────────────
-ALTER TABLE public.tenant_mcp_connections
-  DROP CONSTRAINT IF EXISTS tenant_mcp_connections_transport_check;
-ALTER TABLE public.tenant_mcp_connections
-  DROP CONSTRAINT IF EXISTS tenant_mcp_connections_transport_chk;
-ALTER TABLE public.tenant_mcp_connections
-  ADD CONSTRAINT tenant_mcp_connections_transport_chk CHECK (
-    (provider = 'zapier' AND transport = 'http')
-    OR (provider = 'n8n' AND transport IN ('http', 'sse'))
-  );
+-- ── 3. Normalise the rows that are actually there, BEFORE any check is added ────────
+--
+-- ORDER IS THE WHOLE POINT. Every constraint below rejects a shape the OLD table allowed
+-- and the backfill above has just produced, so each one aborts the entire deploy if a row
+-- still holds the old shape. Normalisation therefore runs FIRST, ahead of both checks, and
+-- covers EVERY legacy shape rather than the one that came to mind.
+--
+-- The previous version of this block sat between the two constraints. It normalised the
+-- auth shape, so the auth check passed, and it never touched `transport`, so the transport
+-- check aborted on any row saved as 'sse' or 'stdio' — both of which 20260804130000
+-- explicitly accepted. The bug was not the reasoning, which is written out below; it was
+-- that the reasoning was applied to one of the two constraints and never re-checked against
+-- the other.
+--
+-- Transport first, and for every row rather than only Zapier's: the client speaks
+-- Streamable HTTP and nothing else, 20261014 narrows the column to 'http' outright, and no
+-- stored value other than 'http' has ever reached the wire. Rewriting it removes nothing
+-- that worked. This touches no credential.
+DO $$
+DECLARE _n integer;
+BEGIN
+  UPDATE public.tenant_mcp_connections
+     SET transport = 'http'
+   WHERE transport <> 'http';
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  RAISE NOTICE 'mcp registry: normalised % connection(s) to the http transport', _n;
+END $$;
 
 -- Zapier is OAuth-only here: a pasted long-lived Zapier token is refused by the
 -- schema, not merely discouraged by the UI.
---
--- BEFORE the constraint, normalise whatever is actually in the table. Both new columns
--- default to the legacy shape ('zapier' + 'bearer'), which the constraint below forbids —
--- so any pre-existing row would fail this statement and take the whole deploy down. The
--- previous version of this migration was safe only because the table was believed to be
--- empty, and "believed to be empty" is not a property a migration can rely on: it is a
--- claim about production that the migration itself cannot check and a reviewer cannot
--- verify.
 --
 -- What a legacy row IS: a Zapier connection whose credential was pasted. That credential
 -- cannot work on the new path at all — every Zapier call now refreshes an OAuth grant it
 -- does not have — so leaving it in place would be a connection that reads as configured
 -- and is not (§13). The row is therefore emptied of its unusable credential and marked
 -- unconfigured, NOT deleted: the workspace keeps its row and sees that it needs
--- reconnecting, which is the true state.
+-- reconnecting, which is the true state. The endpoint is deliberately kept, so the admin
+-- can see which connection this was.
+--
+-- "The table is empty on production" is true today and is NOT what makes this safe: that
+-- is a claim about one database, which the migration cannot check and a reviewer cannot
+-- verify, and which says nothing about any other environment replaying the same file.
 DO $$
 DECLARE _n integer;
 BEGIN
@@ -125,6 +141,17 @@ BEGIN
   RAISE NOTICE 'mcp registry: normalised % legacy zapier connection(s) to oauth/unconfigured', _n;
 END $$;
 
+-- ── 4. Provider-native transport, and stdio removed ─────────────────────────────
+ALTER TABLE public.tenant_mcp_connections
+  DROP CONSTRAINT IF EXISTS tenant_mcp_connections_transport_check;
+ALTER TABLE public.tenant_mcp_connections
+  DROP CONSTRAINT IF EXISTS tenant_mcp_connections_transport_chk;
+ALTER TABLE public.tenant_mcp_connections
+  ADD CONSTRAINT tenant_mcp_connections_transport_chk CHECK (
+    (provider = 'zapier' AND transport = 'http')
+    OR (provider = 'n8n' AND transport IN ('http', 'sse'))
+  );
+
 ALTER TABLE public.tenant_mcp_connections
   DROP CONSTRAINT IF EXISTS tenant_mcp_connections_provider_auth_chk;
 ALTER TABLE public.tenant_mcp_connections
@@ -141,7 +168,7 @@ ALTER TABLE public.tenant_mcp_connections
     auth_kind <> 'header' OR (auth_header_name IS NOT NULL AND btrim(auth_header_name) <> '')
   );
 
--- ── 4. Honest status ────────────────────────────────────────────────────────────
+-- ── 5. Honest status ────────────────────────────────────────────────────────────
 ALTER TABLE public.tenant_mcp_connections
   DROP CONSTRAINT IF EXISTS tenant_mcp_connections_status_check;
 ALTER TABLE public.tenant_mcp_connections
@@ -150,7 +177,7 @@ ALTER TABLE public.tenant_mcp_connections
   ADD CONSTRAINT tenant_mcp_connections_status_chk
   CHECK (status IN ('unconfigured', 'pending_verification', 'connected', 'error'));
 
--- ── 5. Provider-scoped RPCs ─────────────────────────────────────────────────────
+-- ── 6. Provider-scoped RPCs ─────────────────────────────────────────────────────
 -- The old single-connection signatures are DROPPED rather than overloaded: adding a
 -- defaulted `_provider` would leave two candidates and make a named-argument call
 -- from PostgREST ambiguous. Every producer is updated in the same change (§37):
@@ -430,7 +457,7 @@ BEGIN
 END;
 $$;
 
--- ── 6. Grants — anon never reaches any of these ─────────────────────────────────
+-- ── 7. Grants — anon never reaches any of these ─────────────────────────────────
 REVOKE ALL ON FUNCTION public._mcp_resolve_tenant(uuid, boolean)                                   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public._mcp_check_provider(text)                                            FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.get_tenant_mcp_connections(uuid)                                     FROM PUBLIC, anon;

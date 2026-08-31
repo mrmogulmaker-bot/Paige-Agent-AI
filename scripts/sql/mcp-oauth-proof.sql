@@ -25,7 +25,23 @@
 --     -f supabase/migrations/20261012000000_mcp_approvals_follow_the_endpoint.sql \
 --     -f supabase/migrations/20261013000000_mcp_oauth_scopes_is_an_array.sql \
 --     -f supabase/migrations/20261014000000_mcp_http_transport_only.sql \
+--     -f supabase/migrations/20261015000000_mcp_capability_names_are_identifiers.sql \
 --     -f scripts/sql/mcp-oauth-proof.sql
+--
+--
+-- A SECOND CHAIN, for what happens to rows that already exist. This file replays against an
+-- EMPTY table, which is the state production is in and is therefore the state that hides an
+-- entire class of defect: a constraint that rejects a legacy shape aborts nothing when there
+-- is nothing to reject. Run scripts/sql/mcp-legacy-proof.sql for that case -- same migration
+-- list, with scripts/sql/mcp-legacy-row-seed.sql inserted after the stub and
+-- scripts/sql/mcp-loose-capability-seed.sql after 20261006:
+--
+--   psql ... -f scripts/sql/mcp-oauth-stub.sql \
+--            -f scripts/sql/mcp-legacy-row-seed.sql \
+--            -f <20261005> -f <20261006> \
+--            -f scripts/sql/mcp-loose-capability-seed.sql \
+--            -f <20261007> -f <20261008> -f <20261011..20261015> \
+--            -f scripts/sql/mcp-legacy-proof.sql
 --
 -- The chain is the whole list, in order. An assertion added for a later migration will
 -- fail with "function does not exist" if an earlier one is dropped from it, which is a

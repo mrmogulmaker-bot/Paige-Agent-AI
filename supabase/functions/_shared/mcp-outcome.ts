@@ -409,18 +409,26 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
 
   // Discovery: approved capability NAMES only. Provider descriptions do not cross.
   //
-  // Each name is checked against an identifier grammar rather than merely being a string.
-  // The array was capped at 200 and every item copied verbatim, which bounds how MANY
-  // strings arrive and nothing about what any one of them contains — a single element
-  // could be a paragraph of instructions or a credential. This function's own comment
-  // calls it the last gate before the model, so it does not get to assume the projection
-  // upstream already cleaned the value: that is the assumption the comment rejects.
+  // WHAT THIS CHECK IS, AND WHAT IT IS NOT. It re-asserts the grammar that
+  // 20261015000000 makes a CHECK constraint on `approved_capabilities`: an out-of-grammar
+  // name can no longer be stored, so it can no longer be approved, so it should never
+  // arrive here. This stays because this function is the last gate before a model's
+  // context and does not get to assume the layer above it ran -- but it is a second
+  // assertion of an invariant now held in the database, not the place the invariant lives.
+  //
+  // It bounds SHAPE, not MEANING, and saying otherwise would be the overclaim this comment
+  // used to make. A name still cannot contain a line break, a quote, or the punctuation
+  // that would let it read as a new turn once serialised into a transcript, and it is
+  // bounded to 64 characters. It CAN still be `IGNORE_PRIOR_INSTRUCTIONS`, because that is
+  // a valid identifier and no identifier grammar excludes it. The control against that is
+  // the human one: a tenant admin approved this exact name. That residual risk is real and
+  // is recorded rather than described as closed.
   //
   // Out-of-grammar names are DROPPED, not truncated. A capability whose name is prose is
   // not a capability this workspace can have approved, and a truncated name would name
   // the wrong thing.
   if (Array.isArray(d.actions)) {
-    const CAPABILITY_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
+    const CAPABILITY_NAME = /^[A-Za-z0-9_.:-]{1,64}$/;
     return {
       success: d.ok === true,
       actions: (d.actions as unknown[])
@@ -526,6 +534,30 @@ const oneOf = (v: unknown, allowed: ReadonlySet<string>): string | null => {
   return t && allowed.has(t) ? t : null;
 };
 
+/** A timestamp is PARSED and RE-EMITTED, never copied through.
+ *
+ *  These fields used to run through `providerText`, which strips control characters and
+ *  truncates and is otherwise a pass-through -- so `updatedAt: "IGNORE ALL PRIOR
+ *  INSTRUCTIONS"` reached the model verbatim as an `updated_at`. Bounding the length of
+ *  provider prose does not stop it being provider prose.
+ *
+ *  A date has an actual grammar, so it does not need a filter: parse it, and if it parses,
+ *  emit OUR canonical rendering of the instant rather than the provider's string. The value
+ *  the model sees is then generated here from a number, and cannot carry anything the
+ *  provider wrote. Anything that does not parse -- or lands outside a sane range, which
+ *  catches a bare integer being read as an epoch -- is dropped rather than shown.
+ *
+ *  Bounded to keep a provider from claiming an instant far enough out to render oddly
+ *  wherever it is finally displayed; the window is deliberately wide, not a business rule. */
+const tsOrNull = (v: unknown): string | null => {
+  if (typeof v !== "string" && typeof v !== "number") return null;
+  const ms = typeof v === "number" ? v : Date.parse(v);
+  if (!Number.isFinite(ms)) return null;
+  // 1990-01-01 .. 2100-01-01. A provider clock may be skewed; it is not a century out.
+  if (ms < 631152000000 || ms > 4102444800000) return null;
+  return new Date(ms).toISOString();
+};
+
 const boolOrNull = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
 const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 /** An id is provider-chosen but must not be prose: anything outside this grammar is dropped
@@ -623,7 +655,7 @@ export function projectN8nForModel(raw: unknown): Record<string, unknown> {
         // are both, syntactically, perfectly good labels. The grammar was the wrong
         // instrument; the right question is whether the value is acted on at all.
         tags_count: Array.isArray(x.tags) ? x.tags.length : 0,
-        updated_at: providerText(x.updatedAt, 40),
+        updated_at: tsOrNull(x.updatedAt),
       };
     });
     out.count = numOrNull(d.count);
@@ -639,8 +671,8 @@ export function projectN8nForModel(raw: unknown): Record<string, unknown> {
         finished: boolOrNull(x.finished),
         mode: oneOf(x.mode, N8N_MODE),
         status: oneOf(x.status, N8N_STATUS),
-        started_at: providerText(x.startedAt, 40),
-        stopped_at: providerText(x.stoppedAt, 40),
+        started_at: tsOrNull(x.startedAt),
+        stopped_at: tsOrNull(x.stoppedAt),
       };
     });
     out.count = numOrNull(d.count);
@@ -686,8 +718,8 @@ export function projectN8nForModel(raw: unknown): Record<string, unknown> {
     } else {
       out.status = oneOf(d.status, N8N_STATUS);
       out.finished = boolOrNull(d.finished);
-      out.started_at = providerText(d.started_at, 40);
-      out.stopped_at = providerText(d.stopped_at, 40);
+      out.started_at = tsOrNull(d.started_at);
+      out.stopped_at = tsOrNull(d.stopped_at);
       // The failing node's name does NOT cross either. It was tempting — "the Send step
       // failed" is genuinely useful — but a node name is free text the same attacker
       // writes, Paige cannot act on a node, and admitting it would make the one named

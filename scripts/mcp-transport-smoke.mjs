@@ -270,6 +270,7 @@ let lastRequest = null;
 let initialized = false;
 let exchange = [];
 let deleted = [];
+let ackFailDeleted = [];
 
 const bearer = { kind: "bearer", token: "super-secret-token-1234" };
 {
@@ -308,6 +309,42 @@ const bearer = { kind: "bearer", token: "super-secret-token-1234" };
   // DELETE every probe, discovery and action leaks one until the provider expires it.
   check("the session is released when the work is done", deleted.includes(SESSION_ID),
     JSON.stringify(deleted));
+}
+
+// A provider that issues a session and then refuses the acknowledgement. This is the
+// unhealthy-provider case: an outage, or a server that disagrees about the protocol
+// version. A session was allocated, so it must still be released — the cleanup used to
+// begin AFTER the acknowledgement, so this exact path leaked one every time.
+const ACK_FAIL_SESSION = "ack-fail-session";
+routes.set("/mcp-ack-fails", (req, res) => {
+  if (req.method === "DELETE") {
+    ackFailDeleted.push(req.headers["mcp-session-id"]);
+    res.writeHead(204).end();
+    return;
+  }
+  let raw = "";
+  req.on("data", (c) => { raw += c; });
+  req.on("end", () => {
+    const body = raw ? JSON.parse(raw) : {};
+    if (body.method === "initialize") {
+      res.writeHead(200, { "Content-Type": "application/json", "Mcp-Session-Id": ACK_FAIL_SESSION });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18", capabilities: {} } }));
+      return;
+    }
+    // The acknowledgement, and anything after it, is refused.
+    res.writeHead(503, { "Content-Type": "text/plain" }).end("unavailable");
+  });
+});
+{
+  ackFailDeleted = [];
+  let ackError = null;
+  try {
+    await mcp.mcpListTools({ serverUrl: "https://public.example/mcp-ack-fails", auth: bearer });
+  } catch (e) { ackError = e; }
+  check("a refused handshake acknowledgement is an error, not a silent continue",
+    ackError?.code === "mcp_http_error" && ackError?.httpStatus === 503);
+  check("...and the session it already issued is still released",
+    ackFailDeleted.includes(ACK_FAIL_SESSION), JSON.stringify(ackFailDeleted));
 }
 
 // A provider may answer the same request as an event stream.

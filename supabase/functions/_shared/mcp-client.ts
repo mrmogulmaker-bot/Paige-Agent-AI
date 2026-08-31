@@ -198,14 +198,19 @@ async function withMcpSession<T>(
   // Header names are case-insensitive; `Headers.get` handles that.
   const sessionId = initRes.headers.get("mcp-session-id");
 
-  // A notification has no id and expects no result. A server answering 202 with an empty
-  // body is the normal case, so its response is not parsed as an envelope.
-  const ackRes = await post(opts, { jsonrpc: "2.0", method: "notifications/initialized" }, sessionId);
-  if (ackRes.status < 200 || ackRes.status >= 300) {
-    throw new McpError("mcp_http_error", undefined, ackRes.status);
-  }
-
+  // Everything from here on is inside the cleanup, because from here on there is a session
+  // to release. The acknowledgement used to sit ABOVE this `try`: when it timed out or came
+  // back non-2xx — an outage, or a server that disagrees about the protocol — the throw left
+  // an allocated session behind, which is exactly the leak the DELETE exists to prevent, on
+  // exactly the path where a provider is already unhealthy.
   try {
+    // A notification has no id and expects no result. A server answering 202 with an empty
+    // body is the normal case, so its response is not parsed as an envelope.
+    const ackRes = await post(opts, { jsonrpc: "2.0", method: "notifications/initialized" }, sessionId);
+    if (ackRes.status < 200 || ackRes.status >= 300) {
+      throw new McpError("mcp_http_error", undefined, ackRes.status);
+    }
+
     return await body(async (method, params) => resultOf(await post(opts, {
       jsonrpc: "2.0",
       id: crypto.randomUUID(),
