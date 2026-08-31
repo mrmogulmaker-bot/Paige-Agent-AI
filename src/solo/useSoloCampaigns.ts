@@ -77,6 +77,12 @@ type SubmissionRow = {
 };
 type AutomationRow = { id: string; form_id: string; target_slug: string; enabled: boolean };
 type DispatchRow = { automation_id: string; status: string };
+type PipelineWorkspacePayload = {
+  can_manage?: boolean;
+  pipelines?: { id: string; name: string; description?: string | null; is_default?: boolean }[];
+  stages?: { id: string; pipeline_id: string; label: string; description?: string | null; order_index: number; archived_at?: string | null }[];
+  deals?: { id: string; title: string; pipeline_id: string; stage_id: string; client_name?: string | null; owner_user_id?: string | null; status?: string | null; source?: string | null; next_action?: string | null; updated_at: string; portal_available?: boolean; history?: { summary: string; createdAt: string }[] }[];
+};
 
 const emptyPipeline: PipelineWorkspace = { canManage: false, pipelines: [], stages: [], deals: [] };
 const empty = { campaigns: [], artifacts: [], submissions: [], pipelineWorkspace: emptyPipeline };
@@ -84,7 +90,7 @@ const empty = { campaigns: [], artifacts: [], submissions: [], pipelineWorkspace
 export function useSoloCampaigns(): SoloCampaignsState {
   const { activeTenantId, activeTenant, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [state, setState] = useState<Omit<SoloCampaignsState, "retry">>({
+  const [state, setState] = useState<Omit<SoloCampaignsState, "retry" | "pipelineAction">>({
     phase: accountContextLoading ? "resolving" : "loading",
     ...empty,
   });
@@ -113,9 +119,11 @@ export function useSoloCampaigns(): SoloCampaignsState {
     } else if (action.type === "archive-stage" || action.type === "restore-stage") {
       name = "manage_pipeline_stage";
       args = { _action: action.type === "archive-stage" ? "archive" : "restore", _pipeline_id: null, _stage_id: action.stageId, _label: null, _description: null };
-    } else {
+    } else if (action.type === "reorder-stages") {
       name = "reorder_pipeline_stages";
       args = { _pipeline_id: action.pipelineId, _ordered_ids: action.orderedIds };
+    } else {
+      return { ok: false, message: "That pipeline action is not supported." };
     }
     const { error } = await supabase.rpc(name as never, args as never);
     if (error) {
@@ -198,7 +206,7 @@ export function useSoloCampaigns(): SoloCampaignsState {
           };
         };
         const tenantSlug = activeTenant?.slug ?? "";
-        const rawPipeline = (pipelineResponse.data ?? {}) as Record<string, any>;
+        const rawPipeline = (pipelineResponse.data ?? {}) as unknown as PipelineWorkspacePayload;
         const pipelineWorkspace: PipelineWorkspace = {
           canManage: rawPipeline.can_manage === true,
           pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, name: row.name, description: row.description ?? "", isDefault: row.is_default === true })),
