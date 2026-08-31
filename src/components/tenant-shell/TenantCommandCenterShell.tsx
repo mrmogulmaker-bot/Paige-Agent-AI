@@ -21,6 +21,7 @@ import {
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { useAgentPresence } from "@/components/ui/paige";
+import { holdsSettingsScrollFocus } from "./settings-scroll-contract";
 import { CommandGlyph, CommandMark } from "@/operator/shell/CommandMark";
 import {
   resolveTenantShellDestination,
@@ -245,7 +246,13 @@ export function TenantCommandCenterShell({
 
   useEffect(() => {
     if (!paigeFocusToken || paigeFull || railExpanded) return;
-    const restore = () => document.querySelector<HTMLElement>("[data-tenant-paige-command]")?.focus({ preventScroll: true });
+    const restore = () => {
+      // A destination that has deliberately taken focus for its own scroll owner
+      // keeps it. See `settings-scroll-contract.ts` for why this is a shared
+      // predicate rather than a class-name comparison, and why it uses `closest`.
+      if (holdsSettingsScrollFocus(document.activeElement)) return;
+      document.querySelector<HTMLElement>("[data-tenant-paige-command]")?.focus({ preventScroll: true });
+    };
     const frame = window.requestAnimationFrame(restore);
     const settledTimer = window.setTimeout(restore, 150);
     return () => {

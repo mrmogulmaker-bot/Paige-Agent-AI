@@ -37,6 +37,7 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
+import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
 import "./settings.css";
 
@@ -858,19 +859,69 @@ export function SoloSettings() {
   // outer main while the inner host owns the scroll left the visible scrollbar
   // undressed, which is the contract `.tcs-main--settings-scrollbar-hidden` exists
   // to hold.
-  const scrollOwnerOf = (root: HTMLElement | null) =>
-    root?.closest<HTMLElement>("[data-solo-screen-host]") ?? root?.closest<HTMLElement>("#tenant-shell-main") ?? null;
+  const scrollOwnerOf = settingsScrollOwner;
   useEffect(() => {
     const scrollOwner = scrollOwnerOf(rootRef.current);
-    scrollOwner?.classList.add("tcs-main--settings-scrollbar-hidden");
-    return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
+    if (!scrollOwner) return;
+    scrollOwner.classList.add("tcs-main--settings-scrollbar-hidden");
+
+    // EVERY Settings destination, not just the long ones. Owner policy makes
+    // Settings the intentionally scrollable browse class, so its one scroll owner
+    // has to be visible AND drivable from the keyboard wherever you land.
+    //
+    // `tabindex="-1"` makes the owner focusable without adding a tab stop, and
+    // focus is taken only when nothing else holds it, so it never steals focus
+    // from a control already in use. Without it the owner cannot hold focus at
+    // all: on a fresh load focus sits on <body>, Blink propagates scroll keys
+    // UPWARD from the focused node and never descends into a scrollable
+    // descendant, and the shell above is `overflow: hidden` — so Space, PageDown
+    // and End each left `scrollTop` at 0.
+    scrollOwner.classList.add(SETTINGS_SCROLLBAR_SHOWN);
+    const hadTabIndex = scrollOwner.hasAttribute("tabindex");
+    if (!hadTabIndex) scrollOwner.setAttribute("tabindex", "-1");
+    if (document.activeElement === document.body || document.activeElement === null) {
+      scrollOwner.focus({ preventScroll: true });
+    }
+
+    return () => {
+      scrollOwner.classList.remove("tcs-main--settings-scrollbar-hidden");
+      scrollOwner.classList.remove(SETTINGS_SCROLLBAR_SHOWN);
+      if (!hadTabIndex) {
+        // Blur BEFORE the attribute goes: removing `tabindex` does not itself
+        // blur, and once the element is not focusable `blur()` is not reliably
+        // honoured. Reversed, focus stays on shared chrome after Settings is gone.
+        if (document.activeElement === scrollOwner) scrollOwner.blur();
+        scrollOwner.removeAttribute("tabindex");
+      }
+    };
   }, []);
   // One scroll owner across the whole route means one scroll POSITION across it
   // too: without this, opening a short destination after scrolling a long one
   // lands part-way down its content instead of on its heading.
+  //
+  // AND ONE FOCUS POSITION. `SoloSettings` does NOT remount when the destination
+  // changes — the contextual nav renders into the shell chrome, outside `<main>`,
+  // and activating it changes only the URL splat. So the mount effect above runs
+  // exactly once, at cold load, and every destination reached the normal way was
+  // left with focus on the nav link: outside the owner, and Blink propagates
+  // scroll keys UPWARD from the focused node, so End and PageDown did nothing.
+  // Measured: 1,228px of Connections content unreachable by keyboard after an
+  // in-app nav click, while the wheel still worked and a click into the content
+  // silently fixed it. Every drive missed it because a harness always arrives by
+  // cold load, which is the one path that was never broken.
+  //
+  // Focus moves only when the owner does not already contain it, so a control the
+  // human is using inside the page is never interrupted. Taking it FROM the nav
+  // link is the intended behaviour, not a theft: activating that link is a
+  // commitment to the destination, and moving focus into the region that just
+  // rendered is what a keyboard user needs in order to read it.
   useEffect(() => {
     const scrollOwner = scrollOwnerOf(rootRef.current);
-    if (scrollOwner) scrollOwner.scrollTop = 0;
+    if (!scrollOwner) return;
+    scrollOwner.scrollTop = 0;
+    if (!scrollOwner.contains(document.activeElement)) {
+      scrollOwner.focus({ preventScroll: true });
+    }
   }, [tab, segment]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
