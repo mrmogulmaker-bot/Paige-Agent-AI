@@ -262,6 +262,12 @@ export function useSoloCampaigns(): SoloCampaignsState {
     return () => { current = false; };
   }, [accountContextLoading, activeTenantId, activeTenant?.slug, refreshKey]);
 
-  return { ...state, retry, pipelineAction };
+  const synchronousTenantId = activeTenantId ?? null;
+  const visibleState = state.tenantId === synchronousTenantId ? state : {
+    tenantId: synchronousTenantId,
+    phase: accountContextLoading ? "resolving" as const : synchronousTenantId ? "loading" as const : "unavailable" as const,
+    ...empty,
+  };
+  return { ...visibleState, retry, pipelineAction };
 }
 
