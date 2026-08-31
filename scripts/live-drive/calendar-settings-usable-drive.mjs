@@ -49,6 +49,7 @@
  * the second produced failures that looked like product defects and were not.
  */
 import { chromium } from "playwright";
+import { assertHarnessServesWorkingTree } from "./harness-freshness.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -162,6 +163,7 @@ const finalVisible = (page) =>
   });
 
 async function run() {
+  await assertHarnessServesWorkingTree(BASE, ["src/solo/settings.tsx", "src/solo/settings.css", "src/solo/solo-tokens.css"]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const theme of THEMES) {
     for (const vp of VIEWPORTS) {

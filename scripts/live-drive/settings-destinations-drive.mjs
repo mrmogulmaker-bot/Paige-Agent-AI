@@ -26,6 +26,7 @@
  * This is not the deployed app.
  */
 import { chromium } from "playwright";
+import { assertHarnessServesWorkingTree } from "./harness-freshness.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -66,6 +67,7 @@ const settle = async (page) => {
 };
 
 async function run() {
+  await assertHarnessServesWorkingTree(BASE, ["src/solo/settings.tsx", "src/solo/settings.css", "src/solo/solo-tokens.css"]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const dest of DESTINATIONS) {
     for (const theme of THEMES) {

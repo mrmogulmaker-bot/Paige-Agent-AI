@@ -35,6 +35,7 @@
  * server and editing source mid-run silently measures a different build.
  */
 import { chromium } from "playwright";
+import { assertHarnessServesWorkingTree } from "./harness-freshness.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -90,6 +91,7 @@ const navTo = async (page, label) => {
 };
 
 async function run() {
+  await assertHarnessServesWorkingTree(BASE, ["src/components/tenant-shell/TenantCommandCenterShell.tsx", "src/solo/settings.tsx", "src/solo/solo-tokens.css"]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const theme of THEMES) {
     for (const vp of VIEWPORTS) {

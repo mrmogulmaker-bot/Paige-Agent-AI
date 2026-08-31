@@ -47,6 +47,7 @@
  * a different build than the one on disk.
  */
 import { chromium } from "playwright";
+import { assertHarnessServesWorkingTree } from "./harness-freshness.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -70,6 +71,7 @@ const record = (surface, viewport, name, ok, detail) => {
 const HOST = "[data-solo-screen-host]";
 
 async function run() {
+  await assertHarnessServesWorkingTree(BASE, ["src/solo/solo-tokens.css", "src/solo/settings.tsx"]);
   const browser = await chromium.launch({ executablePath: EXE });
   for (const surface of SURFACES) {
     for (const theme of THEMES) {
