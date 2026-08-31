@@ -115,7 +115,7 @@ export default function StageAutomationRules() {
 
   const loadPipelineData = async (pid: string) => {
     const [{ data: st }, { data: rl }] = await Promise.all([
-      supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).order("order_index"),
+      supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).is("archived_at", null).order("order_index"),
       supabase.from("stage_automation_rules").select("*").eq("pipeline_id", pid),
     ]);
     setStages((st as PipelineStage[]) || []);
