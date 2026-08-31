@@ -8,6 +8,7 @@ const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.t
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
 const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
 const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
+const taskGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831195500_solo_pipeline_task_tenant_guard.sql"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -103,7 +104,10 @@ describe("Solo Campaigns approved contract", () => {
     expect(migration).toContain("revoke all on function public.get_pipeline_workspace(uuid) from public,anon");
     expect(dealGuardMigration).toContain("c.id=d.contact_client_id and c.tenant_id=_tenant");
     expect(dealGuardMigration).toContain("DEAL_CLIENT_TENANT_MISMATCH");
-    expect(dealGuardMigration).toContain("deals_enforce_tenant_links");
+    expect(dealGuardMigration).toContain("trg_validate_deal_tenant_links");
+    expect(taskGuardMigration).toContain("t.tenant_id=_tenant");
+    expect(taskGuardMigration).toContain("TASK_DEAL_TENANT_MISMATCH");
+    expect(taskGuardMigration).toContain("trg_validate_task_deal_tenant_link");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
