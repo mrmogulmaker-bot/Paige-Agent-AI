@@ -18,6 +18,9 @@ const USER    = "44444444-4444-4444-8444-444444444444";
 const OWN     = "55555555-5555-4555-8555-555555555555"; // a client this caller may read
 const FOREIGN = "66666666-6666-4666-8666-666666666666"; // another tenant's client
 const NULLTEN = "77777777-7777-4777-8777-777777777777"; // client row with tenant_id NULL
+const OTHERTEN = "88888888-8888-4888-8888-888888888888"; // visible via a non-tenant policy, other workspace
+const CALLER_TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const OTHER_TENANT  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const VECTOR = Array.from({ length: 1024 }, (_, i) => (i % 7) / 10);
 
@@ -61,7 +64,7 @@ const MEMORY_TEXT = "SECRET-CLIENT-MEMORY-CONTENT";
  * admits `tenant_id IS NULL` to ANY authenticated user — which is exactly why the handler
  * must exclude it), FOREIGN is invisible.
  */
-async function drive({ clientId, clientsError = null, memoryReadError = null }) {
+async function drive({ clientId, clientsError = null, memoryReadError = null, text = "what do you know about me?" }) {
   const logged = [];
   embedCount = 0;
   const origError = console.error, origWarn = console.warn;
@@ -72,20 +75,43 @@ async function drive({ clientId, clientsError = null, memoryReadError = null }) 
     authUser: { id: USER, email: "owner@example.test" },
     rpcs: {
       check_rate_limit: { data: true, error: null },
+      current_user_tenant_id: { data: CALLER_TENANT, error: null },
+      is_platform_operator: { data: false, error: null },
       get_paige_persona_context: { data: [{ tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
       match_paige_memory: { data: [{ source: "memory", memory_type: "user_preference", content: MEMORY_TEXT, similarity: 0.95 }], error: null },
     },
     tableErrors: { ...(clientsError ? { clients: clientsError } : {}), ...(memoryReadError ? { client_memory: memoryReadError } : {}) },
+    // What the SERVICE-ROLE client sees: everything, including the foreign client. This is the
+    // hazard itself — if the authorization read is made with this client, a foreign id resolves.
+    serviceTables: {
+      client_memory: (filters) => (filters.some((f) => f[0] === "gte" && f[1] === "created_at") ? [] : [{ memory_type: "user_preference", content: MEMORY_TEXT, created_at: new Date().toISOString() }]),
+      clients: (filters) => {
+        const idEq = filters.find((f) => f[0] === "eq" && f[1] === "id")?.[2];
+        return idEq ? [{ id: idEq, tenant_id: "99999999-9999-4999-8999-999999999999" }] : [];
+      },
+    },
     tables: {
       // RLS emulation: only rows this caller may see, and only when the filters match.
       clients: (filters) => {
         const idEq = filters.find((f) => f[0] === "eq" && f[1] === "id")?.[2];
         const excludesNullTenant = filters.some((f) => f[0] === "not" && f[1] === "tenant_id");
-        if (idEq === OWN) return [{ id: OWN }];
-        if (idEq === NULLTEN) return excludesNullTenant ? [] : [{ id: NULLTEN }];
-        return []; // FOREIGN and anything else: invisible under RLS
+        if (idEq === OWN) return [{ id: OWN, tenant_id: CALLER_TENANT }];
+        // Visible to this caller via a NON-TENANT policy (coach/cs_rep/sales_rep assignment),
+        // but owned by another workspace. "Visible to me" is NOT "may read this client's
+        // memory" — the residual bypass the review found.
+        if (idEq === OTHERTEN) return [{ id: OTHERTEN, tenant_id: OTHER_TENANT }];
+        if (idEq === NULLTEN) return excludesNullTenant ? [] : [{ id: NULLTEN, tenant_id: null }];
+        return []; // FOREIGN: invisible under RLS
       },
-      client_memory: () => [{ memory_type: "user_preference", content: MEMORY_TEXT, created_at: new Date().toISOString() }],
+      // The dedupe probe on the WRITE path selects `id` with a 7-day `gte` window. Returning a
+      // row there makes the handler think a duplicate exists and skip the insert — which is
+      // exactly why the write assertions passed vacuously at first. Return nothing for the
+      // dedupe shape so the insert is genuinely reached and can be witnessed.
+      client_memory: (filters) => {
+        const isDedupe = filters.some((f) => f[0] === "gte" && f[1] === "created_at");
+        if (isDedupe) return [];
+        return [{ memory_type: "user_preference", content: MEMORY_TEXT, created_at: new Date().toISOString() }];
+      },
     },
   });
 
@@ -94,7 +120,7 @@ async function drive({ clientId, clientsError = null, memoryReadError = null }) 
     const res = await handler(new Request("http://local/paige-ai-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-      body: JSON.stringify({ messages: [{ role: "user", content: "what do you know about me?" }], ...(clientId !== undefined ? { clientId } : {}) }),
+      body: JSON.stringify({ messages: [{ role: "user", content: text }], ...(clientId !== undefined ? { clientId } : {}) }),
     }));
     status = res.status;
     try { bodyText = await res.text(); } catch { /* streamed */ }
@@ -144,10 +170,14 @@ console.log("\nunauthorized client context fails closed BEFORE any memory is rea
   assert("2.3 …the memory embedding (a paid call) is skipped versus an authorized turn",
     foreign.embeds < authorizedForEmbeds.embeds,
     `refused: ${foreign.embeds}, authorized: ${authorizedForEmbeds.embeds}`);
-  assert("2.4 …no memory content reaches the response",
-    !foreign.bodyText.includes(MEMORY_TEXT));
+  // NOTE: an earlier 2.4 asserted the response body carries no memory text. That was VACUOUS —
+  // ANTHROPIC_API_KEY is "" in this harness so every turn 500s and no body ever contains it,
+  // fixed or not. Replaced with what is actually observable: nothing was read to put there.
+  assert("2.4 …no client_memory row is read at all, so none can reach the prompt",
+    !foreign.rec.from.some((f) => f.table === "client_memory" && f.op === "select"),
+    JSON.stringify(foreign.rec.from.filter((f) => f.table === "client_memory")));
   assert("2.5 …and the refusal is logged at ERROR with its reason",
-    foreign.logged.some((l) => l.level === "error" && /client memory scope REFUSED/.test(l.msg) && /not authorized/.test(l.msg)),
+    foreign.logged.some((l) => l.level === "error" && /client scope REFUSED/.test(l.msg) && /not authorized/.test(l.msg)),
     JSON.stringify(foreign.logged.map((l) => `${l.level}:${l.msg.slice(0, 90)}`)));
   assert("2.6 …and the rejected id is never echoed into the log",
     !foreign.logged.some((l) => l.msg.includes(FOREIGN)),
@@ -177,6 +207,67 @@ console.log("\nunauthorized client context fails closed BEFORE any memory is rea
   assert("2.11 …and is reported as a read failure, not as 'not authorized'",
     readFail.logged.some((l) => l.level === "error" && /authorization read failed/.test(l.msg)),
     JSON.stringify(readFail.logged.map((l) => l.msg.slice(0, 90))));
+}
+
+console.log("\nthe authorization read itself is made with the caller's authority");
+{
+  const own = await drive({ clientId: OWN });
+  // THE single load-bearing property of the whole fix. Without this the suite was green against
+  // the vulnerable code: swapping the JWT client for the service-role one is one token, and the
+  // recorder did not capture who asked, so no assertion could see it.
+  const authReads = own.rec.from.filter((f) => f.table === "clients" && f.op === "select");
+  assert("4.1 the client authorization read is made through the JWT client",
+    authReads.length > 0 && authReads.every((f) => f.client === "jwt"),
+    JSON.stringify(authReads.map((f) => f.client)));
+  assert("4.2 it is NEVER made through the service-role client",
+    !authReads.some((f) => f.client === "service"),
+    JSON.stringify(authReads.map((f) => f.client)));
+
+  // "Visible to me" is not "may read this client's private data": coach/cs_rep/sales_rep
+  // policies grant visibility with NO tenant predicate.
+  const otherTenant = await drive({ clientId: OTHERTEN });
+  assert("4.3 a client VISIBLE via a non-tenant policy but owned by another workspace is refused",
+    otherTenant.memoryReads.length === 0 && otherTenant.memoryRpc.length === 0,
+    JSON.stringify({ reads: otherTenant.memoryReads.length, rpc: otherTenant.memoryRpc.length }));
+  assert("4.4 …and the reason names the workspace mismatch, not a generic denial",
+    otherTenant.logged.some((l) => l.level === "error" && /different workspace/.test(l.msg)),
+    JSON.stringify(otherTenant.logged.map((l) => l.msg.slice(0, 100))));
+}
+
+console.log("\na refused client turn WRITES nothing, anywhere");
+{
+  // The write path is the read's twin: an unauthorized id here plants attacker-authored text as
+  // a `user_preference` — the type this handler surfaces at the TOP of the prompt for whoever
+  // legitimately reads that client next. Guarding the read alone is stored prompt injection.
+  const foreignWrite = await drive({ clientId: FOREIGN, text: "please be brief and stop explaining basics" });
+  const ownWrite = await drive({ clientId: OWN, text: "please be brief and stop explaining basics" });
+  assert("5.0 the write path IS reachable in this harness (guards the check itself)",
+    (ownWrite.rec.inserts ?? []).some((i) => i.table === "client_memory"),
+    "an authorized turn must actually write, or 5.1 proves nothing");
+  assert("5.1 a refused turn performs NO inserts of any kind",
+    (foreignWrite.rec.inserts ?? []).length === 0,
+    JSON.stringify((foreignWrite.rec.inserts ?? []).map((i) => i.table)));
+  assert("5.2 …and no insert anywhere carries the refused id",
+    !JSON.stringify(foreignWrite.rec.inserts ?? []).includes(FOREIGN),
+    JSON.stringify(foreignWrite.rec.inserts ?? []));
+}
+
+console.log("\nno read of ANY table carries a refused client id");
+{
+  // Section 3 below scopes to client_memory and rpc args. buildUserContext reads profiles,
+  // user_subscriptions, tasks, businesses, documents and quickbooks_connections — all
+  // service-role, all interpolated into the prompt, and all invisible to a client_memory-only
+  // assertion. This is the whole-recorder version.
+  const foreignAll = await drive({ clientId: FOREIGN });
+  const leaked = foreignAll.rec.from.filter(
+    (f) => f.table !== "clients" && JSON.stringify(f.filters).includes(FOREIGN),
+  );
+  assert("6.1 no table read outside the authorization lookup carries the refused id",
+    leaked.length === 0,
+    JSON.stringify(leaked.map((f) => `${f.client}:${f.table}`)));
+  assert("6.2 the caller's own id is used instead, so the turn still works",
+    foreignAll.rec.from.some((f) => JSON.stringify(f.filters).includes(USER)),
+    "no caller-scoped read observed");
 }
 
 console.log("\nthe caller cannot reach another client's memory by any body-supplied route");

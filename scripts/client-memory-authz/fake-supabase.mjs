@@ -25,8 +25,14 @@ function mkRecorder() {
 }
 
 class QueryBuilder {
-  constructor(table, scenario, recorder) {
+  constructor(table, scenario, recorder, kind) {
     this._table = table;
+    // WHICH CLIENT asked. Without this the recorder captured table/op/filters only, so a check
+    // could assert the SHAPE of an authorization query but never its AUTHORITY — and swapping
+    // the JWT client for the service-role one (the single token that reinstates the original
+    // vulnerability) left the whole suite green. Recording the caller is what makes the one
+    // property this fix depends on witnessable at all.
+    this._kind = kind;
     this._scenario = scenario;
     this._recorder = recorder;
     this._filters = [];
@@ -61,6 +67,10 @@ class QueryBuilder {
   limit(n) { this._limit = n; this._filters.push(["limit", n]); return this; }
 
   _rows() {
+    const svc = this._scenario.serviceTables?.[this._table];
+    if (this._kind === "service" && svc !== undefined) {
+      return (typeof svc === "function" ? svc(this._filters) : svc) ?? [];
+    }
     const fn = this._scenario.tables?.[this._table];
     if (typeof fn === "function") return fn(this._filters) ?? [];
     if (Array.isArray(fn)) return fn;
@@ -69,6 +79,7 @@ class QueryBuilder {
 
   _record(single) {
     this._recorder.from.push({
+      client: this._kind,
       table: this._table,
       op: this._op,
       filters: this._filters,
@@ -112,7 +123,7 @@ class FakeClient {
     this.removeChannel = () => {};
   }
 
-  from(table) { return new QueryBuilder(table, this._scenario, this._recorder); }
+  from(table) { return new QueryBuilder(table, this._scenario, this._recorder, this._kind); }
 
   async rpc(name, args) {
     this._recorder.rpc.push({ client: this._kind, name, args });

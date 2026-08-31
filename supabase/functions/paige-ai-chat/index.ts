@@ -543,6 +543,74 @@ serve(async (req) => {
 
     const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
 
+    // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
+    //
+    // `clientId` arrives in the REQUEST BODY. Every consumer below used it raw, and most of them
+    // read or write with the SERVICE-ROLE client (`supabase`), for which auth.uid() is NULL — so
+    // RLS and every SECURITY DEFINER caller-guard are exempt BY CONSTRUCTION. That covered a
+    // memory READ, a memory WRITE, and `buildUserContext`, whose payload is far larger than the
+    // memory: profile FICO estimates, bank name and average balance, asset/revenue ranges,
+    // subscriptions, tasks, businesses, documents and QuickBooks — interpolated into the prompt.
+    //
+    // Resolved HERE, above everything, because an earlier draft guarded only the read: on the
+    // very turn it logged a refusal it still wrote attacker-authored text into the refused
+    // client's memory as a `user_preference` — the type this handler surfaces at the TOP of the
+    // prompt. Fixing the read while leaving the write is cross-tenant stored prompt injection.
+    //
+    // The predicate is TENANT EQUALITY, not mere visibility. `clients` carries policies
+    // (`clients_coaches_assigned`, `cs_rep_assigned_full`, `sales_rep_assigned_full`) that grant
+    // visibility with NO tenant predicate, so "I can SELECT this row" does not mean "I may read
+    // this client's private data". `.not("tenant_id","is",null)` is still required — the
+    // `tenant_isolation` policy admits `tenant_id IS NULL` to ANY authenticated user — but it is
+    // necessary, not sufficient. A platform operator is the one sanctioned cross-tenant caller.
+    let authorizedClientId: string | null = null;
+    let clientScopeRefusal: string | null = null;
+    if (payloadClientId) {
+      try {
+        const [{ data: callerTenantRaw, error: tenantErr }, { data: operatorRaw }] = await Promise.all([
+          supabaseClient.rpc("current_user_tenant_id"),
+          supabaseClient.rpc("is_platform_operator"),
+        ]);
+        const callerTenantId = (callerTenantRaw ?? null) as string | null;
+        const isOperator = operatorRaw === true;
+        if (tenantErr) {
+          clientScopeRefusal = "caller workspace could not be resolved";
+        } else {
+          const { data: authClientRow, error: authClientErr } = await supabaseClient
+            .from("clients")
+            .select("id, tenant_id")
+            .eq("id", payloadClientId)
+            .not("tenant_id", "is", null)
+            .maybeSingle();
+          const rowTenant = (authClientRow as any)?.tenant_id ?? null;
+          if (authClientErr) {
+            // A read failure is UNKNOWN authority, never permission.
+            clientScopeRefusal = "client authorization read failed";
+          } else if (!(authClientRow as any)?.id) {
+            clientScopeRefusal = "client context is not authorized for this caller";
+          } else if (!isOperator && (!callerTenantId || rowTenant !== callerTenantId)) {
+            clientScopeRefusal = "client belongs to a different workspace";
+          } else {
+            authorizedClientId = (authClientRow as any).id as string;
+          }
+        }
+      } catch (e) {
+        clientScopeRefusal = "client authorization failed";
+        void e;
+      }
+      if (clientScopeRefusal) {
+        // §13 — diagnosable, and never echoing the rejected identifier or any client field.
+        console.error(
+          "[paige] client scope REFUSED — no client-scoped data for this turn",
+          JSON.stringify({ reason: clientScopeRefusal }),
+        );
+      }
+    }
+    /** The ONLY client id any consumer may use. Null means caller-scoped or refused. */
+    const scopedClientId: string | null = authorizedClientId;
+    /** True when a client was named but could not be authorized: do NO client-scoped work. */
+    const clientScopeDenied: boolean = clientScopeRefusal !== null;
+
     // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
     // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
     // client's own live feed both see it in real time (§7/§8 two-way loop). This is
@@ -665,14 +733,14 @@ JSON:`;
       if (summaryContent.trim()) {
         const summaryEmbedding = await embedText(summaryContent.trim());
         const memoryInsert: any = {
-          client_user_id: payloadClientId || user.id,
+          client_user_id: scopedClientId || user.id,
           memory_type: "session_summary",
           content: summaryContent.trim(),
           source_session_id: rawData.sessionId || null,
           embedding: summaryEmbedding,
           metadata: { channel: "text" },
         };
-        if (payloadClientId) memoryInsert.client_id = payloadClientId;
+        if (scopedClientId) memoryInsert.client_id = scopedClientId;
         await supabase.from("client_memory").insert(memoryInsert);
       }
 
@@ -696,13 +764,13 @@ JSON:`;
             if (labelMap[m]) {
               const emb = await embedText(labelMap[m]);
               const milestoneMemory: any = {
-                client_user_id: payloadClientId || user.id,
+                client_user_id: scopedClientId || user.id,
                 memory_type: "milestone_completed",
                 content: labelMap[m],
                 source_session_id: rawData.sessionId || null,
                 embedding: emb,
               };
-              if (payloadClientId) milestoneMemory.client_id = payloadClientId;
+              if (scopedClientId) milestoneMemory.client_id = scopedClientId;
               await supabase.from("client_memory").insert(milestoneMemory);
             }
           }
@@ -723,14 +791,14 @@ JSON:`;
               if (typeof p !== "string" || !p.trim()) continue;
               const emb = await embedText(p.trim());
               const prefMemory: any = {
-                client_user_id: payloadClientId || user.id,
+                client_user_id: scopedClientId || user.id,
                 memory_type: "user_preference",
                 content: p.trim(),
                 source_session_id: rawData.sessionId || null,
                 embedding: emb,
                 metadata: { channel: "text", source: "auto_extracted" },
               };
-              if (payloadClientId) prefMemory.client_id = payloadClientId;
+              if (scopedClientId) prefMemory.client_id = scopedClientId;
               await supabase.from("client_memory").insert(prefMemory);
             }
           }
@@ -801,7 +869,7 @@ JSON:`;
               .eq("id", payloadClientId)
               .not("tenant_id", "is", null)
               .maybeSingle();
-            if (authCreditClient?.id) targetUserId = payloadClientId;
+            if (authCreditClient?.id && scopedClientId) targetUserId = scopedClientId;
           }
           const timestamp = Date.now();
           const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -867,7 +935,7 @@ JSON:`;
                 .eq("id", payloadClientId)
                 .not("tenant_id", "is", null)
                 .maybeSingle();
-              if (authClient?.id) generalTargetUserId = payloadClientId;
+              if (authClient?.id && scopedClientId) generalTargetUserId = scopedClientId;
             }
             const timestamp = Date.now();
             const safeName = (attachedDocument.fileName || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -916,6 +984,7 @@ JSON:`;
     // === LOAD CLIENT MEMORY (recent + semantic) ===
     //
     // §9 CROSS-CLIENT LEAK, CLOSED HERE.
+    // Scope was resolved ONCE at the top of the handler (see CLIENT SCOPE AUTHORIZATION).
     // `payloadClientId` arrives in the REQUEST BODY. Both memory lookups below used it to key
     // reads made with the SERVICE-ROLE client (`supabase`), for which `auth.uid()` is NULL — so
     // RLS and every SECURITY DEFINER caller-guard are exempt BY CONSTRUCTION. A caller could
@@ -934,61 +1003,26 @@ JSON:`;
     // no embedding (a paid provider call), no RPC, nothing in the prompt. Falling back would be
     // safe for confidentiality but would silently mask a caller probing for other clients.
     let memoryBlock = "";
-    let authorizedClientId: string | null = null;
-    let memoryScopeRefusal: string | null = null;
-    if (payloadClientId) {
-      // UNREACHABLE TODAY, kept as schema-drift defence only: the request schema already
-      // declares `clientId: z.string().uuid()`, so a malformed value is rejected with 400
-      // before this handler runs. Documented as such rather than presented as live coverage.
-      if (typeof payloadClientId !== "string" || !UUID_RE.test(payloadClientId)) {
-        memoryScopeRefusal = "client context is malformed";
-      } else {
-        const { data: authMemClient, error: authMemErr } = await supabaseClient
-          .from("clients")
-          .select("id")
-          .eq("id", payloadClientId)
-          .not("tenant_id", "is", null)
-          .maybeSingle();
-        if (authMemErr) {
-          // A read failure is UNKNOWN authority, never permission. Fail closed.
-          memoryScopeRefusal = `client authorization read failed: ${authMemErr.message}`;
-        } else if (!authMemClient?.id) {
-          // Foreign, deleted, revoked, or NULL-tenant: RLS returned nothing for this caller.
-          memoryScopeRefusal = "client context is not authorized for this caller";
-        } else {
-          authorizedClientId = authMemClient.id as string;
-        }
-      }
-      if (memoryScopeRefusal) {
-        // §13 — the visible symptom is Paige answering without memory. Log the refusal with the
-        // reason so it is diagnosable, and never echo the rejected id's contents.
-        console.error(
-          "[paige] client memory scope REFUSED — no memory context for this turn",
-          JSON.stringify({ reason: memoryScopeRefusal }),
-        );
-      }
-    }
-
     try {
       // Refused client context does NO memory work at all: the block below is skipped entirely,
       // so there is no recent read, no semantic embedding, and no match_paige_memory call.
-      const memoryQuery = memoryScopeRefusal
+      const memoryQuery = clientScopeDenied
         ? null
-        : authorizedClientId
-        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", authorizedClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
+        : scopedClientId
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", scopedClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
         : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(15);
 
       // Embed the latest user message so we can retrieve semantically-relevant
       // memories and past chat snippets in parallel with the recent-memory pull.
       const lastUserContent = lastUserMessage?.content?.slice(0, 4000) || "";
-      const semanticPromise = (lastUserContent && !memoryScopeRefusal)
+      const semanticPromise = (lastUserContent && !clientScopeDenied)
         ? embedText(lastUserContent).then(async (queryEmbedding) => {
             if (!queryEmbedding) return [] as any[];
             const { data, error } = await supabase.rpc("match_paige_memory", {
               _query_embedding: queryEmbedding,
               // AUTHORIZED id only. Never the raw body value.
-              _target_user_id: authorizedClientId || user.id,
-              _target_client_id: authorizedClientId || null,
+              _target_user_id: scopedClientId || user.id,
+              _target_client_id: scopedClientId || null,
               _match_threshold: 0.7,
               _memory_count: 5,
               _message_count: 3,
@@ -1073,8 +1107,15 @@ JSON:`;
           /\bplease (be|stop|don'?t|use|avoid)/,
         ];
         const matched = preferenceTriggers.some((re) => re.test(text));
-        if (matched) {
-          const targetUserId = payloadClientId || user.id;
+        // A REFUSED client does no client-scoped work at all, including writes. Falling back to
+        // the caller's own id would be safe for confidentiality, but a turn whose scope we just
+        // declined should not mutate state on the strength of that turn — and the fallback made
+        // the refusal invisible in the write path.
+        if (matched && !clientScopeDenied) {
+          // A refused client writes NOTHING: an unauthorized id here would plant
+          // attacker-authored text as a `user_preference`, the type surfaced at the top of
+          // the prompt for whoever legitimately reads that client next.
+          const targetUserId = scopedClientId || user.id;
           // Avoid dupes: skip if we wrote the exact same content in the last 7 days.
           const { data: dup } = await supabase
             .from("client_memory")
@@ -1094,7 +1135,7 @@ JSON:`;
               embedding: emb,
               metadata: { source: "explicit_signal", channel: "text" },
             };
-            if (payloadClientId) row.client_id = payloadClientId;
+            if (scopedClientId) row.client_id = scopedClientId;
             await supabase.from("client_memory").insert(row);
           }
         }
@@ -1160,7 +1201,11 @@ JSON:`;
     // §2 — buildUserContext queries credit tables + emits credit strings ONLY when
     // fundingEnabled; a non-funding/bare tenant's client gets profile/subscription/
     // tasks/businesses/documents + QuickBooks cash awareness, never credit (§36).
-    const contextUserId = payloadClientId || user.id;
+    // The largest client-scoped read in the handler: profile FICO estimates, bank name and
+    // average balance, asset/revenue ranges, subscriptions, tasks, businesses, documents,
+    // QuickBooks — all service-role, all interpolated into the prompt. A refused client
+    // falls back to the CALLER, never to the named id.
+    const contextUserId = scopedClientId || user.id;
     const userContext = await buildUserContext(supabase, contextUserId, fundingEnabled);
 
     // Knowledge base search
@@ -1244,7 +1289,7 @@ JSON:`;
           const { data: ragProfile } = await supabase
             .from("profiles")
             .select("state")
-            .eq("user_id", payloadClientId || user.id)
+            .eq("user_id", scopedClientId || user.id)
             .maybeSingle();
           const filter: Record<string, unknown> = {};
           if (ragProfile?.state) filter.state = ragProfile.state;
@@ -3666,13 +3711,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // (2a) FOCUSED CLIENT — name who she's looking at, so "this client"/"her"/"him"
       // resolves to a real person. Resolved from the clients row; falls back silently.
       try {
-        if (payloadClientId) {
-          // JWT client (RLS-enforced): a foreign-tenant clientId returns nothing,
-          // so a body-supplied UUID from another tenant can never leak a name (§9).
+        if (scopedClientId) {
+          // JWT client (RLS-enforced) AND the hoisted scope decision. RLS alone was not enough:
+          // `tenant_isolation` admits `tenant_id IS NULL` to any authenticated caller, so a
+          // NULL-tenant client's name could reach any prompt. The scoped id excludes those.
           const { data: fc } = await supabaseClient
             .from("clients")
             .select("first_name, last_name")
-            .eq("id", payloadClientId)
+            .eq("id", scopedClientId)
             .maybeSingle();
           const fcName = [fc?.first_name, fc?.last_name].filter(Boolean).join(" ").trim();
           if (fcName) {
@@ -3704,8 +3750,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // automations, calendar, other staff) into context so she's aware of
       // cross-surface events. Rows come back newest-first; capped compact.
       try {
-        if (payloadClientId) {
-          const { data: railRows } = await supabaseClient.rpc("get_client_rail", { p_contact_id: payloadClientId, p_limit: 20, p_lens: "coach" });
+        if (scopedClientId) {
+          // The RPC carries its own correct in-body guard, so this is defence in depth: a
+          // refused client does no rail read either, keeping one rule for the whole handler.
+          const { data: railRows } = await supabaseClient.rpc("get_client_rail", { p_contact_id: scopedClientId, p_limit: 20, p_lens: "coach" });
           const rows = Array.isArray(railRows) ? railRows : [];
           if (rows.length) {
             const relTime = (iso: string): string => {
@@ -5593,7 +5641,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const args = JSON.parse(tc.function.arguments);
             const writeBackPayload = {
               updates: args.updates,
-              target_user_id: payloadClientId || user.id,
+              target_user_id: scopedClientId || user.id,
             };
 
             const wbResponse = await fetch(`${supabaseUrl}/functions/v1/paige-write-back`, {
@@ -5900,7 +5948,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const args = JSON.parse(tc.function.arguments || "{}");
             const targetId = (typeof args.contact_id === "string" && args.contact_id.trim())
               ? args.contact_id.trim()
-              : payloadClientId;
+              : scopedClientId;
             if (!targetId) {
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, no_client_in_focus: true, note: "No client is in focus right now. Ask the operator which client they mean, or open a client's file first, then try again." }) });
             } else {
@@ -7446,7 +7494,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const args = JSON.parse(tc.function.arguments || "{}");
             const actionType = String(args.action_type || "email").toLowerCase();
             const channel = actionType === "sms" ? "sms" : "email";
-            const contactId = args.contact_id || payloadClientId || null;
+            const contactId = args.contact_id || scopedClientId || null;
             const body = String(args.body || "").trim();
             const summary = String(args.summary || (channel === "sms" ? "Text a client" : "Email a client")).trim();
             if (!body) {
@@ -7969,7 +8017,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 supabaseUrl,
                 supabaseServiceKey,
                 supabase,
-                payloadClientId || null,
+                scopedClientId || null,
                 paigeChatUploadId
               );
               const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
