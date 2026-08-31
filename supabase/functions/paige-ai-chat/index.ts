@@ -7415,7 +7415,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const zapBody: Record<string, unknown> =
                 tc.function.name === "zapier_list_actions"
                   ? { action: "list" }
-                  : { tool_name: args.tool_name, arguments: args.arguments ?? {} };
+                  // `contact_id` is carried so the provenance record can be filed against
+                  // the client this turn is actually about. It is the turn's OWN scoped
+                  // contact, never one the model chose: the rail is contact-scoped, and a
+                  // model-supplied id would let a capability run be recorded against
+                  // somebody it had nothing to do with.
+                  : { tool_name: args.tool_name, arguments: args.arguments ?? {}, contact_id: scopedClientId ?? null };
               const { data: zapData, error: zapErr } = await supabaseClient.functions.invoke("call-zapier-action", { body: zapBody });
               if (zapErr) throw zapErr;
               // WHAT REACHES THE MODEL. Everything pushed into `toolResults` below is

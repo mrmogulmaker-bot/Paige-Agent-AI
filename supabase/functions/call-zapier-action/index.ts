@@ -40,7 +40,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
 import { mcpListTools } from "../_shared/mcp-client.ts";
-import { callApprovedCapability, projectDiscovery } from "../_shared/mcp-outcome.ts";
+import { callApprovedCapability, fileGovernedOutcome, projectDiscovery } from "../_shared/mcp-outcome.ts";
 import { discoverAuthorizationServer, isExpired, refreshTokens } from "../_shared/mcp-oauth.ts";
 
 // The SSRF validator that used to live inline here is now `_shared/ssrfGuard.ts`, reached
@@ -190,6 +190,13 @@ Deno.serve(async (req) => {
     });
     if (eErr) console.error("[call-zapier-action] evidence not recorded:", eErr.message);
   }
+
+  // 5. Provenance. Every call — including every refusal — leaves a record the workspace
+  //    can read, carrying what happened and never what the provider said. The rail entry
+  //    is contact-scoped by construction, so it is written only when this turn genuinely
+  //    has a contact; `contact_id` is taken from the caller's request rather than invented.
+  const contactId = typeof body.contact_id === "string" && body.contact_id ? body.contact_id : null;
+  await fileGovernedOutcome(admin, { tenantId, outcome, contactId });
 
   return jsonResponse({ ok: outcome.status === "ok", ...outcome });
 });

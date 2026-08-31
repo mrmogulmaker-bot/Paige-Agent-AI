@@ -389,3 +389,106 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
       : "The provider's own output is not shown here. Do not claim to know its contents.",
   };
 }
+
+/* ── Provenance: the Action Bus and the Rail ────────────────────────────────────
+   The last leg of the governed path. A capability that ran has to leave a record the
+   organisation can read, and that record is subject to the same boundary as everything
+   else: it carries what happened, never what the provider said.
+
+   Both writers already exist and are used as they are (§18). `file_action` is the only
+   writer of `paige_actions`; `record_rail_event` is the only writer of the rail. Neither
+   is wrapped, forked or replaced here — this composes them. */
+
+/** Everything a provenance record may carry. Composed by us; no provider field survives. */
+function provenanceOf(outcome: McpOutcome): Record<string, unknown> {
+  return {
+    provider: outcome.provider,
+    capability: outcome.capability,
+    status: outcome.status,
+    authorization: outcome.authorization,
+    at: outcome.at,
+    // The reference, not the detail. Reading it needs tenant-scoped admin authority.
+    evidence_ref: outcome.evidence_ref,
+  };
+}
+
+function titleOf(outcome: McpOutcome): string {
+  switch (outcome.status) {
+    case "ok": return `Ran ${outcome.capability} on ${outcome.provider}`;
+    case "denied": return `Refused ${outcome.capability} on ${outcome.provider}`;
+    case "unavailable": return `Could not reach ${outcome.provider} to run ${outcome.capability}`;
+    default: return `${outcome.capability} did not succeed on ${outcome.provider}`;
+  }
+}
+
+/**
+ * Files the provenance of one governed capability call.
+ *
+ * WHAT IS RECORDED WHERE, AND WHY THEY DIFFER
+ *
+ * The Action Bus is tenant-scoped and its contact is optional, so every call is filed
+ * there — including the refusals, which are the ones worth being able to find later.
+ *
+ * The Rail is contact-scoped by construction: `paige_client_events.contact_id` is NOT NULL
+ * and references `clients`, and `record_rail_event` refuses a contact that is not in the
+ * tenant. A capability run that is not about a particular client therefore has no place on
+ * it, and inventing a contact to satisfy the column would put a fabricated association in
+ * front of an operator. So the rail entry is written only when the turn genuinely has a
+ * contact in scope, and its absence is reported rather than worked around.
+ *
+ * Never throws. Provenance failing must not turn a completed action into a reported
+ * failure — the action happened, and saying otherwise would be the lie this whole path is
+ * built to avoid. Failures are logged and reported in the return value.
+ */
+export async function fileGovernedOutcome(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  opts: { tenantId: string; outcome: McpOutcome; contactId?: string | null },
+): Promise<{ actionFiled: boolean; railFiled: boolean; railSkipped: "no_contact" | null }> {
+  const payload = provenanceOf(opts.outcome);
+  let actionFiled = false;
+  let railFiled = false;
+
+  try {
+    const { error } = await admin.rpc("file_action", {
+      p_action_kind: "owner.external_capability",
+      p_title: titleOf(opts.outcome),
+      // Our own shape description. It contains no provider text by construction.
+      p_summary: opts.outcome.summary,
+      p_contact_id: opts.contactId ?? null,
+      p_payload: payload,
+      p_created_by_agent: "paige",
+      p_tenant_id: opts.tenantId,
+      // The operator already approved this at the tool gate; the row records, it does
+      // not ask again.
+      p_autonomy_lane: "auto",
+    });
+    if (error) console.error("[mcp] action not filed:", error.message);
+    else actionFiled = true;
+  } catch (e) {
+    console.error("[mcp] action not filed:", e instanceof Error ? e.message : "unknown");
+  }
+
+  if (!opts.contactId) return { actionFiled, railFiled: false, railSkipped: "no_contact" };
+
+  try {
+    const { error } = await admin.rpc("record_rail_event", {
+      p_contact_id: opts.contactId,
+      // An existing kind: "Paige took an action for the operator". Owner-internal, which
+      // is correct — a client has no business seeing the workspace's integrations.
+      p_event_kind: "owner.action_taken",
+      p_surface: "your_paige",
+      p_actor_type: "paige_agent",
+      p_title: titleOf(opts.outcome),
+      p_summary: opts.outcome.summary,
+      p_payload: payload,
+      p_tenant_id: opts.tenantId,
+    });
+    if (error) console.error("[mcp] rail event not filed:", error.message);
+    else railFiled = true;
+  } catch (e) {
+    console.error("[mcp] rail event not filed:", e instanceof Error ? e.message : "unknown");
+  }
+
+  return { actionFiled, railFiled, railSkipped: null };
+}

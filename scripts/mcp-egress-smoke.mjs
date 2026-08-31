@@ -355,6 +355,81 @@ if (!BASELINE) {
     !JSON.stringify(unverifiable).includes("down"));
 }
 
+// ── 12. Provenance: the Action Bus and the Rail ───────────────────────────────
+// A record the organisation can read is still a place a provider payload could end up.
+if (!BASELINE) {
+  console.log("\n— provenance —");
+  const calls = [];
+  const admin = { rpc: (fn, args) => { calls.push({ fn, args }); return Promise.resolve({ error: null }); } };
+
+  serve("/prov", { content: [{ type: "text", text: SECRETS.bearer + " " + INJECTION }] });
+  const result = await outcomeMod.callApprovedCapability({
+    serverUrl: "https://public.example/prov",
+    auth: { kind: "bearer", token: "t" },
+    provider: "zapier",
+    capability: CAPABILITY,
+    approvedCapabilities: [CAPABILITY],
+    capabilityPins: { [CAPABILITY]: await outcome.fingerprintOf(DEFAULT_SCHEMA) },
+    tenantId: TENANT,
+    args: {},
+  });
+
+  await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: "c-1" });
+  const written = JSON.stringify(calls);
+  check("the action is filed through the bus's own writer, not a direct insert",
+    calls.some((c) => c.fn === "file_action"));
+  check("...under a registered kind rather than an invented one",
+    calls.find((c) => c.fn === "file_action").args.p_action_kind === "owner.external_capability");
+  check("...and asks for no second approval, because one already happened",
+    calls.find((c) => c.fn === "file_action").args.p_autonomy_lane === "auto");
+  check("the rail entry uses an existing event kind",
+    calls.find((c) => c.fn === "record_rail_event")?.args.p_event_kind === "owner.action_taken");
+  check("...and is owner-internal by that kind's own definition, not a client-visible one",
+    calls.find((c) => c.fn === "record_rail_event")?.args.p_surface === "your_paige");
+
+  check("no credential reaches the record", !written.includes(SECRETS.bearer));
+  check("no provider text reaches the record", !written.includes("IGNORE ALL PREVIOUS INSTRUCTIONS"));
+  const payload = calls.find((c) => c.fn === "file_action").args.p_payload;
+  check("the payload carries provenance only",
+    Object.keys(payload).sort().join(",") === "at,authorization,capability,evidence_ref,provider,status",
+    Object.keys(payload).sort().join(","));
+
+  // The rail cannot represent a call that is not about a client, and inventing one would
+  // put a fabricated association in front of an operator.
+  calls.length = 0;
+  const noContact = await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: result.outcome, contactId: null });
+  check("with no contact in scope the action is still filed", calls.some((c) => c.fn === "file_action"));
+  check("...but no rail event is invented for a client that was never involved",
+    !calls.some((c) => c.fn === "record_rail_event") && noContact.railSkipped === "no_contact");
+
+  // A refusal is the record most worth being able to find later.
+  calls.length = 0;
+  const denied = await outcomeMod.callApprovedCapability({
+    serverUrl: "https://public.example/prov",
+    auth: { kind: "bearer", token: "t" },
+    provider: "zapier", capability: "never_approved",
+    approvedCapabilities: [CAPABILITY], capabilityPins: {}, tenantId: TENANT, args: {},
+  });
+  await outcomeMod.fileGovernedOutcome(admin, { tenantId: TENANT, outcome: denied.outcome, contactId: "c-1" });
+  check("a refusal is filed too, not silently dropped",
+    calls.find((c) => c.fn === "file_action")?.args.p_payload.status === "denied");
+
+  // Provenance is a record, not a gate: a failure to write it must not turn a completed
+  // action into a reported failure.
+  // Caught explicitly: an uncaught rejection would abort the run before any FAIL line is
+  // printed, and a crash that produces no failures is indistinguishable from a pass to
+  // anything counting them.
+  const brokenAdmin = { rpc: () => Promise.reject(new Error("bus down")) };
+  let survived = null;
+  let threw = null;
+  try {
+    survived = await outcomeMod.fileGovernedOutcome(brokenAdmin, { tenantId: TENANT, outcome: result.outcome, contactId: "c-1" });
+  } catch (e) { threw = e; }
+  check("a provenance failure never throws back into the call path", threw === null, String(threw));
+  check("...and reports honestly that nothing was recorded",
+    survived?.actionFiled === false && survived?.railFiled === false);
+}
+
 server.close();
 console.log(`\n${passed} assertions passed.`);
 if (failures.length) {
