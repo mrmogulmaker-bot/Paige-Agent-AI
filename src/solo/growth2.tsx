@@ -143,11 +143,11 @@ function PipelineSurface({ data, setDetail }) {
   const [configuring,setConfiguring]=React.useState(false);
   const [creating,setCreating]=React.useState(false);
   const [newPipeline,setNewPipeline]=React.useState({name:"",description:"",starter:"blank"});
-  const selected=workspace.pipelines.find((item)=>item.id===(selectedId||workspace.pipelines[0]?.id));
+  const selected=workspace.pipelines.find((item)=>item.id===selectedId)??workspace.pipelines[0];
   const stages=selected?workspace.stages.filter((stage)=>stage.pipelineId===selected.id).sort((a,b)=>a.orderIndex-b.orderIndex):[];
   const activeStages=stages.filter((stage)=>!stage.archivedAt);
   const focusId=activeStages.some((stage)=>stage.id===focusedStageId)?focusedStageId:activeStages[0]?.id;
-  React.useEffect(()=>{ if(selected&&!selectedId)setSelectedId(selected.id); },[selected,selectedId]);
+  React.useEffect(()=>{ if(selected&&selected.id!==selectedId){setSelectedId(selected.id);setFocusedStageId("");setConfiguring(false);} },[selected,selectedId]);
   const openDeal=(deal)=>setDetail({title:deal.title,rows:[["Client",deal.clientName],["Owner",deal.owner],["Status",deal.status],["Next action",deal.nextAction],["Source evidence",deal.source],["Client portal",deal.portalAvailable?"Available":"Not connected"],["Last changed",formatDate(deal.updatedAt)],["Stage history",deal.history.length?deal.history.map((item)=>`${item.summary} · ${formatDate(item.createdAt)}`).join("\n"):"No recorded stage history"]],note:"This contextual record shows only durable fields returned for this tenant. Financial and lifecycle facts are omitted when they are not attributed."});
   const create=async()=>{const result=await data.pipelineAction({type:"create-pipeline",...newPipeline});if(result.ok){setCreating(false);setNewPipeline({name:"",description:"",starter:"blank"});}};
   return <section className="campaigns-surface pipeline-surface"><SurfaceHead truthKey="pipeline" title="Deal workspace" description="Tenant-owned pipelines, custom stages, and contextual work records." action={<div className="pipeline-actions"><label><span className="sr-only">Pipeline</span><select value={selected?.id||""} onChange={(event)=>{setSelectedId(event.target.value);setFocusedStageId("");setConfiguring(false);}}>{workspace.pipelines.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="btn btn-s" disabled={!workspace.canManage} onClick={()=>setCreating(true)}>New pipeline</button>{selected&&<button className="btn btn-s" onClick={()=>setConfiguring(!configuring)}>Configure stages</button>}</div>}/><StateFrame phase={data.phase} retry={data.retry} noun="pipeline workspace">
