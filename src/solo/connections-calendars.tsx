@@ -40,9 +40,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
-  CalendarCheck, CalendarDays, CalendarX2, ChevronRight, Copy, ExternalLink,
+  ArrowDown, ArrowUp, CalendarCheck, CalendarDays, CalendarX2, ChevronRight, Copy, ExternalLink,
   Info, Link2, Loader2, Plus, RefreshCw, Trash2, TriangleAlert,
-  Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown, CalendarPlus,
+  UserPlus, Users, Video, Undo2, ChevronsDownUp, ChevronsUpDown, CalendarPlus,
 } from "lucide-react";
 import {
   type AvailState, type CalendarDraft, type CalendarRow, type NotifyConfig,
@@ -53,7 +53,7 @@ import {
   slugify, willSaveAppointmentType, willSaveDateOverride, willSaveQuestion,
 } from "@/lib/calendar/config";
 import { isStale as accountIsStale } from "@/lib/calendar/account-identity";
-import { useCalendarConnections, type CalendarHost, type Capability, type SendReadiness } from "./data/useCalendarConnections";
+import { useCalendarConnections, type CalendarHost, type Capability, type HostCandidate, type SendReadiness } from "./data/useCalendarConnections";
 import "./connections-calendars.css";
 
 /* ------------------------------------------------------------- primitives */
@@ -65,14 +65,21 @@ function Pill({ tone, children }: { tone?: Tone; children: ReactNode }) {
 }
 
 function Btn({
-  children, onClick, kind, size, disabled, title, type,
+  children, onClick, kind, size, disabled, title, type, "aria-label": ariaLabel,
 }: {
   children: ReactNode; onClick?: () => void; kind?: "ghost" | "act" | "danger";
   size?: "s"; disabled?: boolean; title?: string; type?: "button" | "submit";
+  /**
+   * Required in practice for an ICON-ONLY button: its whole label is a glyph
+   * marked `aria-hidden`, so without this it reaches a screen reader as an
+   * unnamed button. The prop was simply absent before, which is why every
+   * icon-only button on this surface was anonymous.
+   */
+  "aria-label"?: string;
 }) {
   return (
     <button type={type ?? "button"} className="cc-btn" data-kind={kind} data-size={size}
-      onClick={onClick} disabled={disabled} title={title}>
+      onClick={onClick} disabled={disabled} title={title} aria-label={ariaLabel}>
       {children}
     </button>
   );
@@ -578,6 +585,29 @@ export function CalendarsView() {
     note("info", "Saved. The public page now uses these settings.");
   }, [selected, patch, slugInput, conn, hydrate, identity, note]);
 
+  /**
+   * Commit a new host roster for the calendar on screen.
+   *
+   * This writes IMMEDIATELY rather than joining the draft's Save bar. Membership
+   * and order are not fields of the calendar row — they are rows of their own,
+   * rewritten atomically by their own RPC — and holding them in the draft would
+   * mean Discard silently reverted a roster change the database had already
+   * taken, or Save pushed one nobody had asked for.
+   *
+   * It carries the same guard as `save`: a result that belongs to an account or
+   * a preset the reader has left is dropped rather than reported into whatever
+   * they are looking at now.
+   */
+  const saveHosts = useCallback(async (orderedUserIds: string[]) => {
+    if (!selected) return;
+    const token = identity.capture();
+    const editing = selected.id;
+    const result = await conn.saveHosts(selected.id, orderedUserIds);
+    if (!identity.stillCurrent(token) || liveSelected.current !== editing) return;
+    if (!result.ok) { note("bad", result.message); return; }
+    note("info", "Saved. Bookings follow this order from now on.");
+  }, [selected, conn, identity, note]);
+
   const jumpTo = useCallback((key: AreaKey) => {
     setOpen((o) => ({ ...o, [key]: true }));
     // Two frames: one for the open state to commit, one for layout to settle, so
@@ -849,6 +879,10 @@ export function CalendarsView() {
                     area={a.key} draft={draft} set={set} avail={avail} setAvail={setAvail}
                     slugInput={slugInput} setSlugInput={setSlugInput}
                     hosts={hosts} hostsError={conn.hostsError} onRetryHosts={conn.refresh}
+                    hostCandidates={selected ? (conn.hostCandidates[selected.id] ?? []) : []}
+                    onSaveHosts={saveHosts}
+                    hostsBusy={conn.busy === selected.id}
+                    canWrite={conn.canWrite}
                     readiness={conn.readiness} disabled={ro} account={account}
                   />
                 </Area>
@@ -1152,6 +1186,10 @@ interface BodyProps {
   hosts: CalendarHost[];
   hostsError: string | null;
   onRetryHosts: () => void;
+  hostCandidates: HostCandidate[];
+  onSaveHosts: (orderedUserIds: string[]) => void;
+  hostsBusy: boolean;
+  canWrite: boolean;
   readiness: SendReadiness;
   disabled: boolean;
   account: string;
@@ -1448,8 +1486,36 @@ function MenuBody({ draft: d, set, disabled }: BodyProps) {
   );
 }
 
-function TeamBody({ draft: d, set, hosts, hostsError, onRetryHosts, disabled, account }: BodyProps) {
+function TeamBody({
+  draft: d, set, hosts, hostsError, onRetryHosts, hostCandidates, onSaveHosts, hostsBusy,
+  canWrite, disabled, account,
+}: BodyProps) {
   const roundRobin = d.type === "round_robin";
+  // Only round-robin and collective calendars read the whole roster. A personal
+  // or class calendar books `hostIds[0]` and ignores the rest (public-booking's
+  // `hostView`), so offering to add a teammate here would promise a booking that
+  // never arrives.
+  const multiHost = d.type === "round_robin" || d.type === "collective";
+  const [adding, setAdding] = useState("");
+
+  // Every edit sends the WHOLE roster in order, because position is priority.
+  const order = hosts.map((h) => h.user_id);
+  const move = (i: number, by: number) => {
+    const next = [...order];
+    const j = i + by;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    onSaveHosts(next);
+  };
+
+  // The roster is editable only when the reader may write AND the read
+  // succeeded. Offering these controls over a list that failed to load would
+  // invite someone to "fix" a roster they cannot actually see.
+  // `hostsBusy` belongs here as much as the rest: every control below sends the
+  // WHOLE roster built from the `hosts` it can see, so a second click landing
+  // before the reload would replay a stale array — removing two people in a row
+  // could restore whichever one the later request still contained.
+  const editable = canWrite && !disabled && !hostsError && !hostsBusy;
   return (
     <>
       {hostsError ? (
@@ -1467,7 +1533,7 @@ function TeamBody({ draft: d, set, hosts, hostsError, onRetryHosts, disabled, ac
         </Notice>
       ) : (
         <div className="cc-hosts">
-          {hosts.map((h) => (
+          {hosts.map((h, i) => (
             <div key={h.user_id} className="cc-host">
               <span className="cc-host-av">{initialsOf(h.full_name)}</span>
               <span className="cc-host-n">
@@ -1477,6 +1543,28 @@ function TeamBody({ draft: d, set, hosts, hostsError, onRetryHosts, disabled, ac
                   {h.hasCustomHours ? `own hours${h.timezone ? ` (${h.timezone})` : ""}` : "inherits this calendar’s hours"}
                 </small>
               </span>
+              {editable && (
+                <span className="cc-host-act">
+                  {/* Named for the person, not the row: "Move up" alone tells a
+                      screen-reader user nothing about WHOSE order is changing. */}
+                  <Btn kind="ghost" size="s" disabled={i === 0}
+                    aria-label={`Move ${h.full_name ?? "this host"} up`} onClick={() => move(i, -1)}>
+                    <ArrowUp aria-hidden />
+                  </Btn>
+                  <Btn kind="ghost" size="s" disabled={i === hosts.length - 1}
+                    aria-label={`Move ${h.full_name ?? "this host"} down`} onClick={() => move(i, 1)}>
+                    <ArrowDown aria-hidden />
+                  </Btn>
+                  {/* Disabled rather than hidden on the last host: the reason is
+                      the point, and a control that vanishes teaches nothing. */}
+                  <Btn kind="ghost" size="s" disabled={hosts.length <= 1}
+                    title={hosts.length <= 1 ? "A calendar needs at least one host" : undefined}
+                    aria-label={`Remove ${h.full_name ?? "this host"}`}
+                    onClick={() => onSaveHosts(order.filter((id) => id !== h.user_id))}>
+                    <Trash2 aria-hidden />
+                  </Btn>
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -1501,11 +1589,45 @@ function TeamBody({ draft: d, set, hosts, hostsError, onRetryHosts, disabled, ac
         </p>
       )}
 
+      {editable && !multiHost && hosts.length > 0 && (
+        // Said rather than silently omitted, for the same reason Remove is
+        // disabled rather than hidden on the last host: the reason is the point.
+        <p className="cc-fine">
+          {d.type === "event"
+            ? "A class is run by one host, so a teammate added here would never be given a booking. Make this round-robin or collective to share it."
+            : "A one-on-one calendar books the host at the top of this list, so a teammate added here would never be given a booking. Make this round-robin or collective to share it."}
+        </p>
+      )}
+
+      {editable && multiHost && (
+        <div className="cc-fields" data-cols="2">
+          <Field label="Add a host" hint="They take bookings on this calendar from the moment they are added.">
+            <div className="cc-new">
+              <select className="cc-sel" value={adding} disabled={hostCandidates.length === 0}
+                aria-label="Teammate to add as a host"
+                onChange={(e) => setAdding(e.target.value)}>
+                <option value="">
+                  {hostCandidates.length === 0 ? "Everyone available is already a host" : "Choose a teammate…"}
+                </option>
+                {hostCandidates.map((c) => (
+                  <option key={c.user_id} value={c.user_id}>{c.full_name ?? "Team member"}</option>
+                ))}
+              </select>
+              <Btn kind="act" size="s" disabled={!adding}
+                onClick={() => { onSaveHosts([...order, adding]); setAdding(""); }}>
+                <UserPlus aria-hidden /> Add host
+              </Btn>
+            </div>
+          </Field>
+        </div>
+      )}
+
       <p className="cc-scope">
         <Users aria-hidden />
         <span>
-          Adding, removing and reordering hosts is done from the calendar itself, where the whole
-          roster is rewritten in one go so an order is never left half-applied.{" "}
+          {editable
+            ? "Membership and order save the moment you change them — the whole roster is rewritten in one go, so an order is never left half-applied."
+            : "Only an admin on this workspace can change who takes these bookings."}{" "}
           {account && <Link to={`/solo/${account}/clients/calendar`}>Open the calendar</Link>}
         </span>
       </p>

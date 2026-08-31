@@ -217,6 +217,11 @@ async function scrubSensitiveInputs(page) {
  * @param {object | ((page: import('playwright').Page, auth: object) => Promise<void>)} [opts.auth]
  *        object → defaultFormLogin(page, auth); function → custom login routine (page, {}) ;
  *        omitted → no auth. Credentials always via ENV.
+ * @param {string} [opts.storageState]
+ *        Path to a Playwright storage-state JSON — an ALREADY-AUTHENTICATED session handed over by
+ *        whoever holds the login. Preferred over `auth` when the owner would rather not put a
+ *        password anywhere this process can read: the drive reuses the session and never sees, is
+ *        told, or types a credential. When set, `auth` is skipped entirely.
  * @param {number} [opts.timeoutMs]              per-navigation timeout (default 45000)
  * @param {{width:number,height:number}} [opts.viewport]  default 1440x900
  * @param {number} [opts.deviceScaleFactor]      default 2
@@ -231,6 +236,7 @@ export async function liveDrive(opts = {}) {
     steps,
     assert,
     auth,
+    storageState,
     timeoutMs = 45000,
     viewport = { width: 1440, height: 900 },
     deviceScaleFactor = 2,
@@ -273,7 +279,15 @@ export async function liveDrive(opts = {}) {
   }
 
   try {
-    const context = await browser.newContext({ viewport, deviceScaleFactor });
+    // A handed-over session is the safest authentication there is: no credential is
+    // read, typed, logged or held by this process at any point. It is therefore
+    // preferred over the form login, and it SUPPRESSES it — attempting both would
+    // re-enter a password on a session that is already signed in.
+    const context = await browser.newContext({
+      viewport,
+      deviceScaleFactor,
+      ...(storageState ? { storageState } : {}),
+    });
     const page = await context.newPage();
     page.setDefaultTimeout(timeoutMs);
     page.setDefaultNavigationTimeout(timeoutMs);
@@ -281,7 +295,7 @@ export async function liveDrive(opts = {}) {
     const response = await page.goto(url, { waitUntil, timeout: timeoutMs });
     const status = response ? response.status() : null;
 
-    if (auth) {
+    if (auth && !storageState) {
       if (typeof auth === "function") {
         await auth(page, {});
       } else {
@@ -294,7 +308,7 @@ export async function liveDrive(opts = {}) {
 
     // Secret hygiene: after an authed drive, blank any lingering email/password inputs before the
     // screenshot so an un-navigated login form can't leak a plaintext email into the pixels.
-    if (auth) await scrubSensitiveInputs(page);
+    if (auth && !storageState) await scrubSensitiveInputs(page);
 
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
     await page.screenshot({ path: screenshotPath, fullPage: false });
