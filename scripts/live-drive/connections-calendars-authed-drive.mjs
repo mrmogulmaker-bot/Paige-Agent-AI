@@ -26,20 +26,27 @@
  * Provider connection is a separate, separately-authorized act. Every provider
  * capability this drive does not exercise is reported UNVERIFIED, never assumed.
  *
- * CREDENTIALS ARE ENV-ONLY and are never printed, returned, logged, committed, or
- * captured in a screenshot. Use a scoped test account — never owner PII.
+ * AUTHORIZATION BOUNDARY (owner-set): ONE tenant only. No sub-account is requested,
+ * used, or inferred. The account-switch scenario therefore CANNOT be proven here and
+ * is reported UNVERIFIED permanently rather than approximated — there is deliberately
+ * no second-account input to set.
+ *
+ * PREFERRED AUTHENTICATION IS A HANDED-OVER SESSION, not a password. Point
+ * LIVE_DRIVE_STORAGE_STATE at a Playwright storage-state JSON exported from a browser
+ * that is ALREADY signed in. The drive then reuses that session and never sees, is
+ * told, types, logs or screenshots a credential. The email/password path remains only
+ * as a fallback, and those values are ENV-only and never printed either way.
  *
  * REQUIRED ENV:
- *   LIVE_DRIVE_URL       login URL, e.g. https://<host>/auth
- *   LIVE_DRIVE_EMAIL     scoped test-account email
- *   LIVE_DRIVE_PASSWORD  scoped test-account password
- *   CAL_ACCOUNT          the account number whose Solo settings to drive (§65 address)
+ *   LIVE_DRIVE_URL             a URL on the deployed host, e.g. https://<host>/auth
+ *   CAL_ACCOUNT                the account number whose Solo settings to drive (§65 address)
+ *   and ONE of:
+ *   LIVE_DRIVE_STORAGE_STATE   path to a storage-state JSON from a signed-in browser  ← preferred
+ *   LIVE_DRIVE_EMAIL + LIVE_DRIVE_PASSWORD   fallback form login
  * OPTIONAL:
- *   CAL_ACCOUNT_B        a SECOND account number the same login may reach — enables
- *                        flow G. Absent, G reports UNVERIFIED rather than passing.
- *   CAL_ALLOW_WRITES     must be "true" to run the write flows (A–E). Absent, the
- *                        drive runs READ-ONLY (F + G + render) so a first run can
- *                        never mutate a real tenant before anyone has looked at it.
+ *   CAL_ALLOW_WRITES     must be "true" to run the write flows (A–E). Absent — and it is
+ *                        absent by default — the drive is strictly READ-ONLY: it renders,
+ *                        reads, and asserts, and performs no write of any kind.
  *
  * Run:  node scripts/live-drive/connections-calendars-authed-drive.mjs
  */
@@ -51,17 +58,20 @@ const ART = path.join(import.meta.dirname, "artifacts", "connections-calendars-a
 
 const URL_ = process.env.LIVE_DRIVE_URL;
 const ACCOUNT = process.env.CAL_ACCOUNT;
-const ACCOUNT_B = process.env.CAL_ACCOUNT_B;
 const WRITES = process.env.CAL_ALLOW_WRITES === "true";
+const SESSION = process.env.LIVE_DRIVE_STORAGE_STATE;
 const hasCreds = Boolean(process.env.LIVE_DRIVE_EMAIL && process.env.LIVE_DRIVE_PASSWORD);
+const authorized = Boolean(SESSION) || hasCreds;
 
-if (!URL_ || !hasCreds || !ACCOUNT) {
+if (!URL_ || !authorized || !ACCOUNT) {
   // Skipping is the honest outcome, and it is NOT a pass. Nothing downstream may
   // read this exit code as evidence that anything was verified (§13).
   console.log(
     "↷ SKIP — no authenticated session available.\n" +
-      "   Set LIVE_DRIVE_URL, LIVE_DRIVE_EMAIL, LIVE_DRIVE_PASSWORD and CAL_ACCOUNT to run.\n" +
-      "   Add CAL_ALLOW_WRITES=true to include the create/edit/save flows.\n" +
+      "   Preferred: LIVE_DRIVE_URL + CAL_ACCOUNT + LIVE_DRIVE_STORAGE_STATE (a storage-state\n" +
+      "   JSON from an ALREADY signed-in browser — no credential ever reaches this process).\n" +
+      "   Fallback: LIVE_DRIVE_EMAIL + LIVE_DRIVE_PASSWORD instead of the storage state.\n" +
+      "   The drive is READ-ONLY unless CAL_ALLOW_WRITES=true is set deliberately.\n" +
       "   Every capability below therefore remains UNVERIFIED — not passing, not failing.",
   );
   process.exit(0);
@@ -107,11 +117,12 @@ const result = await liveDrive({
   screenshotPath: shot("00-after-login"),
   // Pinned to the real form: Auth.tsx renders #email / #password and more than one
   // submit button, so the generic selector could press the wrong one.
-  auth: {
-    emailSelector: "#email",
-    passwordSelector: "#password",
-    submitSelector: 'button[type="submit"]',
-  },
+  // A handed-over session wins and suppresses the form login entirely, so no password
+  // is entered on a browser that is already signed in.
+  ...(SESSION ? { storageState: SESSION } : {}),
+  auth: SESSION
+    ? undefined
+    : { emailSelector: "#email", passwordSelector: "#password", submitSelector: 'button[type="submit"]' },
   steps: async (page) => {
     await page.goto(connectionsUrl(ACCOUNT), { waitUntil: "networkidle" });
     await page.waitForSelector(".cc-area, .cc-empty", { timeout: 30_000 });
@@ -135,6 +146,7 @@ const result = await liveDrive({
     /* ------------------------------------------------------------- writes */
 
     if (!WRITES) {
+      console.log("  (read-only posture: no write is attempted, so no record can change)");
       for (const id of [
         "A · create the first preset",
         "B · edit, save, reload, value holds",
@@ -259,23 +271,14 @@ const result = await liveDrive({
 
     /* ------------------------------------------------- account boundaries */
 
-    if (ACCOUNT_B) {
-      const aTitles = await page.locator(".cc-preset-name, .cc-area-t").allInnerTexts().catch(() => []);
-      await page.goto(connectionsUrl(ACCOUNT_B), { waitUntil: "networkidle" });
-      await page.waitForSelector(".cc-area, .cc-empty, .cc-notice", { timeout: 30_000 });
-      await page.waitForTimeout(1500);
-      const bTitles = await page.locator(".cc-preset-name, .cc-area-t").allInnerTexts().catch(() => []);
-      const bodyB = await page.locator("body").innerText().catch(() => "");
-      // Any preset NAME unique to A must not be readable while B is on screen.
-      const aOnly = aTitles.filter((t) => t && !/^\d+$/.test(t) && !bTitles.includes(t));
-      const leaked = aOnly.filter((t) => bodyB.includes(t));
-      await page.screenshot({ path: shot("03-account-b"), fullPage: false });
-      record("G · account boundaries hold", leaked.length === 0 ? "PASS" : "FAIL",
-        `names unique to the first account still visible under the second: ${leaked.length}`);
-    } else {
-      record("G · account boundaries hold", "UNVERIFIED",
-        "CAL_ACCOUNT_B not set — a rendered account switch was not exercised");
-    }
+    // G · account boundaries. Only ONE tenant is authorized for this drive, and a
+    // boundary cannot be demonstrated from inside a single account — you would be
+    // asserting that nothing crossed a line you never approached. There is
+    // deliberately no second-account input, so this can only be UNVERIFIED here.
+    // The guard itself is proven as a unit (src/lib/calendar/account-identity.test.ts);
+    // that is a different and lesser class of evidence, and does not close this.
+    record("G · account boundaries hold", "UNVERIFIED",
+      "one authorized tenant — a rendered A→B switch cannot be exercised, and is not approximated");
 
     // Provider handshakes are never exercised here, and are never assumed.
     record("H · Google / Zoom / Apple connect", "UNVERIFIED",
