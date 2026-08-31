@@ -21,8 +21,10 @@ export type CampaignArtifact = {
   publicHref: string;
   recentSubmissions: number;
   routingConfigured: boolean;
+  routingState: "No route" | "Draft route" | "Approval-gated" | "Active";
   routingTargets: string[];
   recentDispatches: { succeeded: number; failed: number; other: number };
+  dispatchStatuses: Record<string, number>;
 };
 
 export type CampaignSubmission = {
@@ -75,7 +77,7 @@ type SubmissionRow = {
   contact_id: string | null;
   deal_id: string | null;
 };
-type AutomationRow = { id: string; form_id: string; target_slug: string; enabled: boolean };
+type AutomationRow = { id: string; form_id: string; target_slug: string; enabled: boolean; config_json: Record<string, unknown> | null };
 type DispatchRow = { automation_id: string; status: string };
 type PipelineWorkspacePayload = {
   can_manage?: boolean;
@@ -153,7 +155,7 @@ export function useSoloCampaigns(): SoloCampaignsState {
           supabase.from("growth_funnels").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_forms").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_form_submissions").select("id,form_id,source,processing_state,created_at,contact_id,deal_id").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(200),
-          supabase.from("growth_form_automations").select("id,form_id,target_slug,enabled").eq("tenant_id", activeTenantId).eq("enabled", true),
+          supabase.from("growth_form_automations").select("id,form_id,target_slug,enabled,config_json").eq("tenant_id", activeTenantId),
           supabase.from("growth_submission_dispatches").select("automation_id,status").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(200),
           supabase.rpc("get_pipeline_workspace" as never, { _tenant_id: activeTenantId } as never),
         ]);
@@ -193,10 +195,14 @@ export function useSoloCampaigns(): SoloCampaignsState {
         }, {});
         const routingEvidence = (formId: string) => {
           const configured = automationsByForm[formId] ?? [];
+          const enabled = configured.filter((automation)=>automation.enabled);
           const outcomes = configured.flatMap((automation) => dispatchesByAutomation[automation.id] ?? []);
+          const approvalGated = enabled.some((automation)=>automation.config_json?.autonomy_lane === "confirm" || automation.config_json?.approval_required === true);
           return {
             routingConfigured: configured.length > 0,
-            routingTargets: [...new Set(configured.map((row) => row.target_slug))],
+            routingState: configured.length === 0 ? "No route" as const : enabled.length === 0 ? "Draft route" as const : approvalGated ? "Approval-gated" as const : "Active" as const,
+            routingTargets: [...new Set(enabled.map((row) => row.target_slug))],
+            dispatchStatuses: outcomes.reduce<Record<string,number>>((counts,row)=>{const key=row.status||"unrecorded";counts[key]=(counts[key]??0)+1;return counts;},{}),
             recentDispatches: outcomes.reduce((counts, row) => {
               if (["succeeded", "success", "completed"].includes(row.status)) counts.succeeded += 1;
               else if (["failed", "error"].includes(row.status)) counts.failed += 1;
@@ -216,11 +222,11 @@ export function useSoloCampaigns(): SoloCampaignsState {
         const artifacts: CampaignArtifact[] = [
           ...pages.filter((row) => row.status === "published").map((row) => ({
             id: row.id, type: "page" as const, name: row.title, slug: row.slug, status: row.status,
-            updatedAt: row.updated_at, publicHref: tenantSlug ? `/p/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 },
+            updatedAt: row.updated_at, publicHref: tenantSlug ? `/p/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingState:"No route" as const, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 }, dispatchStatuses:{},
           })),
           ...funnels.filter((row) => row.status === "active").map((row) => ({
             id: row.id, type: "funnel" as const, name: row.name, slug: row.slug, status: row.status,
-            updatedAt: row.updated_at, publicHref: tenantSlug ? `/f/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 },
+            updatedAt: row.updated_at, publicHref: tenantSlug ? `/f/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingState:"No route" as const, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 }, dispatchStatuses:{},
           })),
           ...forms.filter((row) => row.status === "active").map((row) => ({
             id: row.id, type: "form" as const, name: row.name, slug: row.slug, status: row.status,
