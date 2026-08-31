@@ -23,7 +23,7 @@ begin
       'portal_available',c.linked_user_id is not null,
       'next_action',(select t.title from public.tasks t where t.deal_id=d.id and t.status::text not in ('completed','cancelled') order by t.due_date nulls last,t.created_at limit 1),
       'history',coalesce((select jsonb_agg(jsonb_build_object('summary',coalesce(a.summary,a.type),'createdAt',a.created_at) order by a.created_at desc) from (select * from public.deal_activities da where da.deal_id=d.id order by da.created_at desc limit 20) a),'[]'::jsonb)
-    ) order by d.updated_at desc) from public.deals d left join public.clients c on c.id=d.contact_client_id where d.tenant_id=_tenant),'[]'::jsonb)
+    ) order by d.updated_at desc) from public.deals d left join public.clients c on c.id=d.contact_client_id and c.tenant_id=_tenant where d.tenant_id=_tenant),'[]'::jsonb)
   );
 end$$;
 revoke all on function public.get_pipeline_workspace(uuid) from public,anon;
