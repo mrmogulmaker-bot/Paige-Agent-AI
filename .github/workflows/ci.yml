@@ -119,6 +119,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:definer-fns
 
+      - name: SSRF fork guard (§18 — one address validator; use _shared/ssrfGuard.ts safeFetch)
+        if: ${{ !cancelled() }}
+        run: npm run lint:ssrf-fork
+
       - name: Tier-feature guard (§60 — render gates must not hardcode a tier; use useTierFeatures)
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
@@ -337,6 +341,14 @@ jobs:
       - name: Smoke — MCP registry is provider-scoped and its aggregate is deterministic
         if: ${{ !cancelled() }}
         run: npm run smoke:mcp-registry
+
+      - name: Smoke — hardened outbound transport (SSRF, redirect refusal, bounded time and size)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:mcp-transport
+
+      - name: Smoke — no provider payload, injection, credential or foreign-tenant data reaches the model
+        if: ${{ !cancelled() }}
+        run: npm run smoke:mcp-egress
 
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}

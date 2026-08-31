@@ -1,14 +1,19 @@
-// Shared SSRF guard for any edge function that fetches a caller/tenant-supplied URL
-// (outbound webhooks, connected-app endpoints, image fetches, …).
+// Shared SSRF guard + hardened outbound transport for any edge function that fetches a
+// caller/tenant-supplied URL (outbound webhooks, connected-app endpoints, MCP servers, …).
 //
 // String matching alone is bypassable (IPv4-mapped IPv6, DNS → internal, link-local),
 // so we resolve the host and validate EVERY resolved IP numerically against
 // private/loopback/link-local/ULA/carrier-grade-NAT/mapped ranges. IP literals are
-// validated directly. Callers MUST also fetch with redirect:"manual" (or re-validate
-// each hop) so a 3xx can't bounce to an internal target after this check passes.
+// validated directly.
 //
-// This is the same numeric guard paige-n8n's assertSafeUrl uses, lifted into _shared so
-// new callers reuse one hardened implementation instead of forking it (§12/§13).
+// This file is the ONE home (§18). The same numeric validator was independently forked
+// inline into paige-n8n and call-zapier-action; new callers use `safeFetch` here rather
+// than copying it a fifth time.
+//
+// `safeFetch` closes the three gaps every fork shares — credentials in the URL, an
+// unbounded wait, and an unbounded response body — and refuses redirects outright
+// instead of trying to re-validate each hop, which is the stricter of the two postures
+// and the only one with no TOCTOU window between the check and the connection.
 
 function ipv4ToInt(ip: string): number | null {
   const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -54,28 +59,154 @@ function ipUnsafe(rawIp: string): boolean {
   return false; // a routable public IPv6
 }
 
+/** Every rejection this module can produce. Stable, non-sensitive, safe to surface. */
+export type SsrfReason =
+  | "invalid_url"
+  | "url_must_be_https"
+  | "url_has_embedded_credentials"
+  | "url_host_not_allowed"
+  | "url_host_unresolvable"
+  | "url_resolves_to_private_address"
+  | "url_redirect_refused"
+  | "request_timed_out"
+  | "response_too_large"
+  | "request_failed";
+
+export class SsrfError extends Error {
+  constructor(public readonly reason: SsrfReason, detail?: string) {
+    super(detail ? `${reason}: ${detail}` : reason);
+    this.name = "SsrfError";
+  }
+}
+
 /**
- * Throws if `raw` is not an https:// URL that resolves ONLY to public addresses.
- * Use before fetching any tenant/caller-supplied destination. Pair with
- * redirect:"manual" on the fetch so a redirect can't defeat the check.
+ * Throws if `raw` is not an https:// URL, carries embedded credentials, or resolves to
+ * anything but public addresses. Use before fetching any tenant/caller-supplied
+ * destination. Prefer `safeFetch`, which runs this and then holds the rest of the
+ * guarantees (no redirects, bounded time, bounded size).
  */
 export async function assertPublicHttpUrl(raw: string): Promise<void> {
   let u: URL;
-  try { u = new URL(raw); } catch { throw new Error("invalid_url"); }
-  if (u.protocol !== "https:") throw new Error("url_must_be_https");
+  try { u = new URL(raw); } catch { throw new SsrfError("invalid_url"); }
+  if (u.protocol !== "https:") throw new SsrfError("url_must_be_https");
+  // A URL like https://user:pass@host puts a secret somewhere it will be logged, and is
+  // also a classic parser-confusion vector (https://good.com@evil.com).
+  if (u.username || u.password) throw new SsrfError("url_has_embedded_credentials");
   const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
-    throw new Error("url_host_not_allowed");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
+    throw new SsrfError("url_host_not_allowed");
   }
   // IP literal → validate directly; hostname → resolve A + AAAA and validate all.
   if (ipv4ToInt(host) !== null || host.includes(":")) {
-    if (ipUnsafe(host)) throw new Error("url_host_not_allowed");
+    if (ipUnsafe(host)) throw new SsrfError("url_host_not_allowed");
     return;
   }
   const ips: string[] = [];
   for (const kind of ["A", "AAAA"] as const) {
     try { ips.push(...await Deno.resolveDns(host, kind)); } catch { /* no records of this kind */ }
   }
-  if (ips.length === 0) throw new Error("url_host_unresolvable");
-  for (const ip of ips) if (ipUnsafe(ip)) throw new Error("url_resolves_to_private_address");
+  if (ips.length === 0) throw new SsrfError("url_host_unresolvable");
+  for (const ip of ips) if (ipUnsafe(ip)) throw new SsrfError("url_resolves_to_private_address");
+}
+
+export type SafeFetchOptions = {
+  /** Wall-clock ceiling for the whole request, including reading the body. */
+  timeoutMs?: number;
+  /** Hard ceiling on the bytes we will read. Reading stops at the cap, it never buffers past it. */
+  maxBytes?: number;
+};
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_BYTES = 1_048_576; // 1 MiB
+
+/**
+ * The single hardened outbound call for tenant-supplied destinations.
+ *
+ *  1. SSRF-validates the URL (https, no embedded credentials, public addresses only).
+ *  2. Refuses to follow redirects — a 3xx is an error, not a hop. Re-validating each hop
+ *     would still leave the window between the check and the connect; refusing has none.
+ *  3. Bounds the wall clock with a real abort, so a hung provider cannot pin a worker.
+ *  4. Bounds the body by reading the stream and stopping at the cap, so an enormous or
+ *     endless response cannot exhaust memory.
+ *
+ * Throws `SsrfError` with a stable reason for every failure. The reason is safe to log
+ * and safe to show; the caller's URL and credentials never appear in it.
+ */
+export async function safeFetch(
+  url: string,
+  init: RequestInit = {},
+  opts: SafeFetchOptions = {},
+): Promise<{ status: number; headers: Headers; body: string; truncated: boolean }> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+
+  await assertPublicHttpUrl(url);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let res: Response;
+    try {
+      res = await fetch(url, { ...init, redirect: "manual", signal: controller.signal });
+    } catch (e) {
+      if (controller.signal.aborted) throw new SsrfError("request_timed_out");
+      throw new SsrfError("request_failed", e instanceof Error ? e.name : undefined);
+    }
+
+    // `redirect: "manual"` surfaces the 3xx rather than following it. Deno gives the real
+    // status; a fetch implementation that opaques it reports status 0 with type
+    // "opaqueredirect". Both mean the same thing here: we were pointed somewhere else,
+    // and we do not go.
+    if ((res.status >= 300 && res.status < 400) || res.type === "opaqueredirect") {
+      throw new SsrfError("url_redirect_refused");
+    }
+
+    const { body, truncated } = await readBounded(res, maxBytes, controller);
+    return { status: res.status, headers: res.headers, body, truncated };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Reads at most `maxBytes` from the response. Stops at the cap rather than buffering the
+ * whole body first, so the cap is a real memory bound and not just a truncation after the
+ * damage is done.
+ */
+async function readBounded(
+  res: Response,
+  maxBytes: number,
+  controller: AbortController,
+): Promise<{ body: string; truncated: boolean }> {
+  if (!res.body) return { body: "", truncated: false };
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (total + value.byteLength > maxBytes) {
+        chunks.push(value.subarray(0, maxBytes - total));
+        total = maxBytes;
+        truncated = true;
+        break;
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } catch (e) {
+    if (controller.signal.aborted) throw new SsrfError("request_timed_out");
+    throw new SsrfError("request_failed", e instanceof Error ? e.name : undefined);
+  } finally {
+    // Releasing the lock and cancelling lets the connection close even when we stopped
+    // early at the cap; without it an endless body keeps the socket alive.
+    try { await reader.cancel(); } catch { /* already closed */ }
+  }
+  const merged = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { merged.set(c, at); at += c.byteLength; }
+  return { body: new TextDecoder().decode(merged), truncated };
 }

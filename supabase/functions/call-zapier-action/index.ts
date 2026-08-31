@@ -18,75 +18,34 @@
 //  • The MCP server URL + bearer token are decrypted server-side ONLY, via the
 //    service-role-only get_tenant_mcp_secret RPC. They never touch the browser and
 //    are read only for the caller's OWN resolved tenant, never an arbitrary one.
-//  • The tenant-supplied MCP server_url is SSRF-guarded (https-only + internal-host
-//    blocklist with numeric IP validation + manual-redirect) so a tenant admin can't
-//    point it at an internal target or DNS-rebind (§13).
+//  • The tenant-supplied MCP server_url is SSRF-guarded via the shared client: https
+//    only, no credentials embedded in the URL, numeric validation of every resolved
+//    address, redirects refused rather than followed, and a bounded wall clock and
+//    response size — so a tenant admin can't point it at an internal target, DNS-rebind
+//    onto one, or hold a worker open (§13).
 //  • If the tenant has no configured/enabled connection → an honest structured
 //    "not_connected" response (§13); NEVER a fallback to the shared env token.
+//
+// THE EGRESS BOUNDARY. This function's response is serialised into a model's context by
+// `paige-ai-chat`. A provider's answer is therefore UNTRUSTED INPUT reaching Paige: it can
+// carry instructions aimed at her, credentials, or another tenant's records. So no
+// provider payload, prose, schema or error text is returned from here. What is returned is
+// the outcome projection from `_shared/mcp-outcome.ts` — which capability ran, whether it
+// worked, when, whether it was authorised, and an opaque reference under which the detail
+// is held encrypted and tenant-scoped.
+//
+// AND IT FAILS CLOSED. A capability the workspace has not approved is not called at all.
+// A connection proves reachability; `approved_capabilities` is the separate authorisation
+// decision, and it is empty until somebody makes it.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
+import { mcpListTools } from "../_shared/mcp-client.ts";
+import { callApprovedCapability, projectDiscovery } from "../_shared/mcp-outcome.ts";
 
-// ── SSRF guard (mirrors paige-n8n) ────────────────────────────────────────────────
-// String matching alone is bypassable (IPv4-mapped IPv6, DNS → internal, link-local),
-// so we resolve the host and validate every resolved IP NUMERICALLY against private/
-// loopback/link-local/ULA/mapped ranges. IP literals are validated directly.
-function ipv4ToInt(ip: string): number | null {
-  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return null;
-  const o = m.slice(1).map(Number);
-  if (o.some((n) => n > 255)) return null;
-  return (((o[0] << 24) >>> 0) + (o[1] << 16) + (o[2] << 8) + o[3]) >>> 0;
-}
-function ipv4Private(ip: string): boolean {
-  const n = ipv4ToInt(ip);
-  if (n === null) return true; // unparseable → treat as unsafe
-  const inRange = (base: string, bits: number) => {
-    const b = ipv4ToInt(base)!;
-    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1)) >>> 0;
-    return (n & mask) >>> 0 === (b & mask) >>> 0;
-  };
-  return inRange("0.0.0.0", 8) || inRange("10.0.0.0", 8) || inRange("127.0.0.0", 8) ||
-    inRange("169.254.0.0", 16) || inRange("172.16.0.0", 12) || inRange("192.168.0.0", 16) ||
-    inRange("100.64.0.0", 10) || inRange("192.0.0.0", 24) || inRange("198.18.0.0", 15) ||
-    n === ipv4ToInt("255.255.255.255");
-}
-function ipUnsafe(rawIp: string): boolean {
-  const ip = rawIp.toLowerCase().replace(/^\[|\]$/g, "");
-  if (ipv4ToInt(ip) !== null) return ipv4Private(ip);
-  if (ip === "::1" || ip === "::") return true;
-  if (/^fe[89ab]/.test(ip)) return true;            // fe80::/10 link-local
-  if (/^f[cd]/.test(ip)) return true;               // fc00::/7 ULA
-  if (/^(64:ff9b::|2002:)/.test(ip)) {              // NAT64 / 6to4 → extract v4 if dotted
-    const d = ip.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (d) return ipv4Private(d[1]);
-    return true;
-  }
-  const mappedDotted = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mappedDotted) return ipv4Private(mappedDotted[1]);
-  const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
-    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16);
-    return ipv4Private(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
-  }
-  return false; // a routable public IPv6
-}
-async function assertSafeUrl(raw: string): Promise<void> {
-  let u: URL;
-  try { u = new URL(raw); } catch { throw new Error("Invalid MCP server URL"); }
-  if (u.protocol !== "https:") throw new Error("MCP server URL must be https://");
-  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("MCP server host is not allowed");
-  if (ipv4ToInt(host) !== null || host.includes(":")) {
-    if (ipUnsafe(host)) throw new Error("MCP server host is not allowed");
-    return;
-  }
-  const ips: string[] = [];
-  for (const kind of ["A", "AAAA"] as const) {
-    try { ips.push(...await Deno.resolveDns(host, kind)); } catch { /* no records of this kind */ }
-  }
-  if (ips.length === 0) throw new Error("MCP server host could not be resolved");
-  for (const ip of ips) if (ipUnsafe(ip)) throw new Error("MCP server URL resolves to a non-public address");
-}
+// The SSRF validator that used to live inline here is now `_shared/ssrfGuard.ts`, reached
+// through `_shared/mcp-client.ts`. It is the same numeric guard, plus the three things
+// every inline copy was missing: credentials in the URL are rejected, the wall clock is
+// bounded, and the response body is bounded. Redirects were already refused and still are.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -137,59 +96,61 @@ Deno.serve(async (req) => {
   const token: string = secret.auth_token;
   if (!serverUrl || !token) return jsonResponse({ ok: false, error: "not_connected", detail: "The Zapier/MCP connection is missing its server URL or token. Reconnect it in Settings → Integrations → Zapier." });
 
-  // 3. SSRF-guard the tenant-controlled server URL before the outbound POST.
-  try {
-    await assertSafeUrl(serverUrl);
-  } catch (e) {
-    return jsonResponse({ error: "unsafe_server_url", detail: e instanceof Error ? e.message : "blocked" }, 400);
-  }
+  // 3. Discovery, reduced to the workspace's OWN approved names. The provider's
+  //    catalogue and its descriptions are provider-written text and do not cross.
+  const auth = secret.auth_kind === "header" && secret.auth_header_name
+    ? { kind: "header" as const, name: secret.auth_header_name as string, token }
+    : { kind: "bearer" as const, token };
+  const approved: string[] = Array.isArray(secret.approved_capabilities)
+    ? (secret.approved_capabilities as unknown[]).filter((c): c is string => typeof c === "string")
+    : [];
 
-  // 4. Minimal MCP JSON-RPC over HTTP — Zapier's MCP server supports tools/list + a
-  //    single-shot tools/call. The method + params are chosen server-side from the
-  //    validated request shape; the tenant only controls the (SSRF-guarded) server URL.
-  const rpc = isList
-    ? { method: "tools/list", params: {} }
-    : { method: "tools/call", params: { name: body.tool_name, arguments: body.arguments ?? {} } };
-  let callRes: Response;
-  try {
-    callRes = await fetch(serverUrl, {
-      method: "POST",
-      redirect: "manual",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        ...rpc,
-      }),
-    });
-  } catch (e) {
-    return jsonResponse({ error: "mcp_request_failed", detail: e instanceof Error ? e.message : "fetch failed" }, 502);
-  }
-  const text = await callRes.text();
-  if (!callRes.ok) return jsonResponse({ error: `mcp_${callRes.status}`, detail: text.slice(0, 500) }, 502);
-  const parsed = tryJson(text);
   if (isList) {
-    // Shape the MCP tools/list envelope into a lean actions[] the model can read
-    // (name + description only — never leak raw schemas into the tool result).
-    return jsonResponse({ ok: true, actions: extractActions(parsed) });
+    let discovered: Array<{ name: string }> = [];
+    try {
+      discovered = await mcpListTools({ serverUrl, auth });
+    } catch {
+      // The provider's failure reason is not carried; an empty, honest answer is.
+      return jsonResponse({ ok: false, error: "discovery_unavailable", actions: [], approved_count: 0 });
+    }
+    const projected = projectDiscovery(discovered, approved);
+    return jsonResponse({
+      ok: true,
+      // `actions` is kept as the key so the existing consumer keeps working, but it now
+      // carries approved NAMES only — never the provider's descriptions (§37: the
+      // consumer's access path is preserved, the unsafe payload is not).
+      actions: projected.approved,
+      approved_count: projected.approved.length,
+      // Stated rather than hidden, so "no actions" is distinguishable from "none approved".
+      unapproved_count: projected.unapproved_count,
+    });
   }
-  return jsonResponse({ ok: true, result: parsed });
+
+  // 4. One governed call. Authorisation is checked before anything leaves the process,
+  //    and only the projection comes back.
+  const { outcome, evidence } = await callApprovedCapability({
+    serverUrl,
+    auth,
+    provider: "zapier",
+    capability: String(body.tool_name),
+    approvedCapabilities: approved,
+    tenantId,
+    args: (body.arguments ?? {}) as Record<string, unknown>,
+  });
+
+  // The detail is written where a model cannot read it. A failure to store evidence must
+  // not turn a completed action into a reported failure, so it is recorded and moved past.
+  if (evidence) {
+    const { error: eErr } = await admin.rpc("record_tenant_mcp_evidence", {
+      _tenant_id: tenantId,
+      _provider: evidence.provider,
+      _capability: evidence.capability,
+      _status: outcome.status,
+      _payload: evidence.payload,
+      _ref: evidence.ref,
+    });
+    if (eErr) console.error("[call-zapier-action] evidence not recorded:", eErr.message);
+  }
+
+  return jsonResponse({ ok: outcome.status === "ok", ...outcome });
 });
-
-function tryJson(s: string): unknown { try { return JSON.parse(s); } catch { return s; } }
-
-// Pull [{name, description}] out of an MCP tools/list JSON-RPC response, tolerating
-// both the JSON-RPC envelope ({result:{tools:[…]}}) and a bare {tools:[…]} shape.
-// Returns [] on any unexpected shape — an honest empty list, never a throw.
-function extractActions(parsed: unknown): Array<{ name: string; description: string }> {
-  const p = parsed as any;
-  const tools = p?.result?.tools ?? p?.tools;
-  if (!Array.isArray(tools)) return [];
-  return tools
-    .filter((t: any) => t && typeof t.name === "string")
-    .map((t: any) => ({ name: t.name as string, description: typeof t.description === "string" ? t.description : "" }));
-}

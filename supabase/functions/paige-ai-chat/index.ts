@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
+import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
@@ -7417,9 +7418,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   : { tool_name: args.tool_name, arguments: args.arguments ?? {} };
               const { data: zapData, error: zapErr } = await supabaseClient.functions.invoke("call-zapier-action", { body: zapBody });
               if (zapErr) throw zapErr;
-              result = (zapData as any)?.ok === false || (zapData as any)?.error
-                ? { success: false, ...(zapData as any) }
-                : { success: true, ...(zapData as any) };
+              // WHAT REACHES THE MODEL. Everything pushed into `toolResults` below is
+              // serialised verbatim into this model's context, so an MCP provider's answer
+              // is untrusted input arriving at Paige — a prompt-injection surface, a
+              // credential surface, and a cross-tenant surface at once. The edge function
+              // therefore returns an OUTCOME PROJECTION, never a provider payload, and
+              // this adapter forwards only the fields that projection is allowed to carry.
+              // Spreading the response wholesale, as this once did, is what let a raw
+              // JSON-RPC envelope of any size and content through.
+              result = projectOutcomeForModel(zapData);
             }
 
             // STUDIO SESSION LINKAGE (#292) — when this chat IS a project's design session, attach

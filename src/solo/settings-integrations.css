@@ -102,6 +102,10 @@
 .ig-close:hover { border-color: color-mix(in srgb, var(--pg-violet) 50%, var(--pg-line)); background: var(--pg-raised); }
 .ig-close:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
 .ig-panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+/* A drawer holding more than one connection separates them with a quiet rule and a
+   small label, so neither reads as a continuation of the other. */
+.ig-section + .ig-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--pg-line-soft); }
+.ig-section > h3 { margin: 0 0 10px; color: var(--pg-faint); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .ig-panel > footer { flex: none; padding: 10px 14px; border-top: 1px solid var(--pg-line); color: var(--pg-faint); font-size: 9.5px; }
 .ig-confirm-close { margin: 0 0 13px; padding: 11px; border: 1px solid color-mix(in srgb, var(--pg-warning) 40%, var(--pg-line)); border-radius: 9px; background: color-mix(in srgb, var(--pg-warning) 8%, transparent); }
 .ig-confirm-close p { margin: 0 0 9px; color: var(--pg-ink-2); font-size: 11.5px; }

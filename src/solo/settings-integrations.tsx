@@ -3,6 +3,7 @@ import { KeyRound, Link2Off, Plug, RefreshCw, TriangleAlert, Workflow, X, Zap } 
 import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
 import { useN8nConnection } from "./data/useN8nConnection";
+import { useMcpConnection, type McpDraft } from "./data/useMcpConnection";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -256,6 +257,191 @@ function N8nPanelBody({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boo
   </>;
 }
 
+/* ── n8n's tool bridge: the same provider, a second connection ─────────────
+   An n8n workspace can expose an MCP endpoint as well as its REST API, and the
+   two are independent: one can work while the other does not. They live in the
+   same drawer because they belong to the same provider, and in separate
+   sections because connecting one says nothing about the other. */
+
+function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
+  const m = useMcpConnection("n8n");
+  const [editing, setEditing] = useState(false);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const commit = useCallback(async (run: () => Promise<boolean>) => {
+    const ok = await run();
+    // The catalogue card reads its own snapshot, so it is refreshed whether or not
+    // the probe succeeded: a stored-but-failing connection is a real state change.
+    onChanged();
+    return ok;
+  }, [onChanged]);
+
+  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking the tool bridge…</p>;
+
+  if (m.error) {
+    return <div className="ig-state" role="alert">
+      <TriangleAlert aria-hidden />
+      <span>The tool bridge could not be read, so nothing is being claimed either way.</span>
+      <button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button>
+    </div>;
+  }
+
+  const showForm = editing || !m.configured;
+
+  return <>
+    {m.configured && !editing && <dl className="ig-facts">
+      <div><dt>State</dt><dd>{mcpStateWords(m.status)}</dd></div>
+      {m.label && <div><dt>Name</dt><dd>{m.label}</dd></div>}
+      {m.serverUrlHost && <div><dt>Server</dt><dd className="ig-mono">{m.serverUrlHost}</dd></div>}
+      <div><dt>Credential</dt><dd className="ig-mono">{m.last4 ? `••••••••${m.last4}` : "Stored"}</dd></div>
+      {m.transport && <div><dt>Transport</dt><dd>{m.transport === "sse" ? "Server-sent events" : "HTTP"}</dd></div>}
+    </dl>}
+
+    {!m.configured && !editing && <p className="ig-lede">
+      If your n8n instance exposes an MCP server, connect it here so Paige can see the tools it offers.
+      You provide the address and a credential; the credential is stored encrypted and is never shown again.
+    </p>}
+
+    {m.writeError && <p className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} />{m.writeError}</p>}
+
+    {!m.canWrite && <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>}
+
+    {showForm && m.canWrite
+      ? <McpForm m={m} existing={m.configured} onDirtyChange={onDirtyChange} onCommit={commit}
+          onDone={() => { setEditing(false); onDirtyChange(false); }} />
+      : m.canWrite && <div className="ig-actions">
+          <button type="button" className="ig-btn" data-primary onClick={() => setEditing(true)} disabled={m.saving}>
+            <KeyRound aria-hidden size={14} />{m.status === "connected" ? "Manage" : "Reconnect"}
+          </button>
+          {/* Re-runs the probe against what is already stored. It never re-sends a
+              credential, which is what makes it safe to offer on a failing connection. */}
+          <button type="button" className="ig-btn" disabled={m.saving} onClick={() => void commit(() => m.verify())}>
+            <RefreshCw aria-hidden size={14} />{m.saving ? "Checking…" : "Check it again"}
+          </button>
+          {confirmingDisconnect ? <span className="ig-confirm">
+            <button type="button" className="ig-btn" data-danger disabled={m.saving}
+              onClick={() => { setConfirmingDisconnect(false); void commit(() => m.disconnect()); }}>
+              Disconnect it
+            </button>
+            <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
+          </span> : <button type="button" className="ig-btn" disabled={m.saving} onClick={() => setConfirmingDisconnect(true)}>
+            <Link2Off aria-hidden size={14} />Disconnect
+          </button>}
+        </div>}
+  </>;
+}
+
+/**
+ * A saved connection and a proven one are different states and are never shown as the
+ * same word. `pending_verification` means it was stored but the check has not finished;
+ * `error` means the check ran and failed. Rendering either as "Connected" would be the
+ * exact false green this whole path exists to prevent.
+ */
+function mcpStateWords(status: string | null): string {
+  if (status === "connected") return "Connected";
+  if (status === "error") return "Saved, not working";
+  if (status === "pending_verification") return "Saved, not checked yet";
+  return "Set up";
+}
+
+/**
+ * The credential lives only here, only while it is being typed, and is cleared on every
+ * submit — success or failure alike. It is never lifted into the hook, never stored,
+ * never logged, and never echoed into an error message.
+ */
+function McpForm({
+  m, existing, onDone, onDirtyChange, onCommit,
+}: {
+  m: ReturnType<typeof useMcpConnection>;
+  existing: boolean;
+  onDone: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onCommit: (run: () => Promise<boolean>) => Promise<boolean>;
+}) {
+  const [serverUrl, setServerUrl] = useState("");
+  const [credential, setCredential] = useState("");
+  const [authKind, setAuthKind] = useState<McpDraft["authKind"]>((m.authKind === "header" ? "header" : "bearer"));
+  const [headerName, setHeaderName] = useState("");
+  const [transport, setTransport] = useState<McpDraft["transport"]>(m.transport === "sse" ? "sse" : "http");
+  const [label, setLabel] = useState(m.label ?? "");
+
+  // The stored address is never returned to a browser — only its host — so this field
+  // starts empty even when reconnecting, and says why rather than looking like a bug.
+  const dirty = credential.length > 0 || serverUrl.length > 0 || label !== (m.label ?? "");
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+
+  const needsHeaderName = authKind === "header";
+  const valid = serverUrl.trim().length > 0 && credential.length > 0 && (!needsHeaderName || headerName.trim().length > 0);
+
+  return <form
+    className="ig-form"
+    onSubmit={async (event) => {
+      event.preventDefault();
+      if (!valid || m.saving) return;
+      const submitted = credential;
+      setCredential("");
+      const ok = await onCommit(() => m.connect({ serverUrl, credential: submitted, authKind, headerName, transport, label }));
+      if (ok) onDone();
+    }}
+  >
+    <label className="ig-field">
+      <span>MCP server address</span>
+      <input
+        type="url" inputMode="url" autoComplete="off" spellCheck={false}
+        placeholder="https://your-instance.app.n8n.cloud/mcp/…"
+        value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} disabled={m.saving}
+      />
+      <small>
+        {existing && m.serverUrlHost
+          ? `Currently ${m.serverUrlHost}. The full address is never shown back, because an n8n MCP path is itself a secret — enter it again to change it.`
+          : "Has to start with https://"}
+      </small>
+    </label>
+    <label className="ig-field">
+      <span>Credential</span>
+      <input
+        type="password" autoComplete="off" spellCheck={false}
+        placeholder={existing ? "Enter the credential again to reconnect" : "Paste the credential n8n expects"}
+        value={credential} onChange={(event) => setCredential(event.target.value)} disabled={m.saving}
+      />
+      <small>{existing ? "The stored credential is never shown, so a change needs it again." : "Stored encrypted. It is never displayed after this."}</small>
+    </label>
+    <label className="ig-field">
+      <span>How it is sent</span>
+      <select value={authKind} onChange={(event) => setAuthKind(event.target.value as McpDraft["authKind"])} disabled={m.saving}>
+        <option value="bearer">As a Bearer token</option>
+        <option value="header">In a header you name</option>
+      </select>
+    </label>
+    {needsHeaderName && <label className="ig-field">
+      <span>Header name</span>
+      <input
+        type="text" autoComplete="off" spellCheck={false} placeholder="X-N8N-Api-Key"
+        value={headerName} onChange={(event) => setHeaderName(event.target.value)} disabled={m.saving}
+      />
+    </label>}
+    <label className="ig-field">
+      <span>Transport</span>
+      <select value={transport} onChange={(event) => setTransport(event.target.value as McpDraft["transport"])} disabled={m.saving}>
+        <option value="http">HTTP</option>
+        <option value="sse">Server-sent events</option>
+      </select>
+    </label>
+    <label className="ig-field">
+      <span>Name <em>optional</em></span>
+      <input
+        type="text" autoComplete="off" placeholder="What you call this bridge"
+        value={label} onChange={(event) => setLabel(event.target.value)} disabled={m.saving}
+      />
+    </label>
+    <div className="ig-actions">
+      <button type="submit" className="ig-btn" data-primary disabled={!valid || m.saving}>
+        {m.saving ? "Connecting…" : existing ? "Save changes" : "Connect the bridge"}
+      </button>
+      {existing && <button type="button" className="ig-btn" onClick={onDone} disabled={m.saving}>Cancel</button>}
+    </div>
+  </form>;
+}
+
 /**
  * The key lives only here, only while it is being typed, and is cleared on
  * every submit — success or failure alike. It is never lifted into the hook,
@@ -335,7 +521,12 @@ function N8nForm({
 /* ── The contextual panel ─────────────────────────────────────────────────── */
 
 function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; zapier: boolean; onClose: () => void; onChanged: () => void }) {
-  const [dirty, setDirty] = useState(false);
+  // A drawer can hold more than one connection, so unsaved input is tracked per
+  // section. Closing is guarded if EITHER has something unsaved — a single shared
+  // flag would let one section clear the other's guard and silently discard input.
+  const [apiDirty, setApiDirty] = useState(false);
+  const [mcpDirty, setMcpDirty] = useState(false);
+  const dirty = apiDirty || mcpDirty;
   const [confirmingClose, setConfirmingClose] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -395,7 +586,21 @@ function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; 
         </div>}
 
         {row.connectable
-          ? <N8nPanelBody onDirtyChange={setDirty} onChanged={onChanged} />
+          ? <>
+              {/* Two connections, one provider. Each is independent: the REST API can
+                  work while the tool bridge does not, and neither implies the other.
+                  They are kept in separate sections so no state reads as shared, and
+                  either section can report its own failure without the other looking
+                  broken. Unsaved input in either one guards the same close. */}
+              <section className="ig-section" aria-labelledby="ig-sec-api">
+                <h3 id="ig-sec-api">Instance API</h3>
+                <N8nPanelBody onDirtyChange={setApiDirty} onChanged={onChanged} />
+              </section>
+              <section className="ig-section" aria-labelledby="ig-sec-mcp">
+                <h3 id="ig-sec-mcp">Tool bridge (MCP)</h3>
+                <N8nMcpSection onDirtyChange={setMcpDirty} onChanged={onChanged} />
+              </section>
+            </>
           : <><p className="ig-lede">{row.note}</p>
               <p className="ig-note">Setting this up is not offered here yet, rather than offered and quietly not working.</p></>}
       </div>
