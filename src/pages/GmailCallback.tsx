@@ -4,6 +4,7 @@
 // a Google error, a missing param, or a callback error each show a real message —
 // never a silent success.
 import { useEffect, useState } from "react";
+import { takeOAuthReturn } from "@/solo/data/oauthReturn";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,7 +82,15 @@ export default function GmailCallback() {
       setMessage(`Connected${addr ? ` as ${addr}` : ""}. Redirecting...`);
       toast.success("Gmail connected");
       const returnOrigin = safeReturnOrigin((data as { return_origin?: string } | null)?.return_origin);
-      const dest = "/admin/integrations/email";
+      // Land back where the handshake STARTED, when that surface recorded an
+      // address. This page has always hardcoded the legacy admin route, which is
+      // correct for the surface it was written for and wrong for anyone else: a
+      // Solo tenant connecting from /solo/{account}/settings/connections consented
+      // at Google, came back, and was dropped on an admin page they cannot even
+      // open — so the flow never closed where they were working. `takeOAuthReturn`
+      // is read-and-clear and refuses anything but a same-origin absolute path,
+      // which is what keeps this from becoming an open redirect.
+      const dest = takeOAuthReturn() ?? "/admin/integrations/email";
       setTimeout(() => {
         if (returnOrigin && returnOrigin !== window.location.origin) {
           window.location.replace(`${returnOrigin}${dest}`);

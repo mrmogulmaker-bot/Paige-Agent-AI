@@ -18,11 +18,6 @@
  * is describing a capability rather than providing one (§70). Every write reuses a
  * seam that ALREADY EXISTED and already enforces authority server-side:
  *
- *   business details → `set_tenant_brand(_tenant_id, _patch)`. It MERGES
- *     (`brand = COALESCE(brand,'{}') || _patch`) and raises 42501 through
- *     `can_manage_tenant_brand`. Merging is not incidental: `WorkspaceSettingsPanel`
- *     used to write the whole `brand` object with four keys, which silently DELETED
- *     these three. That panel now goes through the same RPC.
  *   domains         → `manage-tenant-domain` verbs add/refresh/set_default/remove,
  *     the same seam `EmailDomainsPanel` has used on the legacy admin route.
  *   Google account  → `gmail-oauth-start` / `gmail-disconnect`.
@@ -31,11 +26,19 @@
  * subscribe/checkout (money, §38). Those controls stay DISABLED/Preview.
  *
  * NO SILENT PROVIDER ACTION (§38): `startGmailConnect` RETURNS a consent URL and
- * navigates nowhere. The person clicks it. Nothing in this adapter activates a
- * provider, spends money, or changes a credential on its own.
+ * does not navigate — the CALLER performs the redirect, in response to a click.
+ * Nothing in this adapter reaches a provider, spends money, or changes a
+ * credential on its own. (An earlier version of this note said it "navigates
+ * nowhere. The person clicks it", which read as though no code performed a
+ * redirect at all; the panel does, on the click. Said precisely, since the whole
+ * point of the line is that the boundary is real.)
  *
- * §9: no client-supplied tenant_id — the edge fn + RPCs derive scope from the
- * verified session/RLS. Honest degrade (§13): a failed read surfaces an error and
+ * §9: no tenant id is passed from the client. `manage-tenant-domain` derives the
+ * tenant from the verified session, the connector read is RLS-scoped, and the
+ * gmail functions resolve it server-side. (This adapter briefly also wrote the
+ * business record via `set_tenant_brand`, which DID take a client-supplied
+ * `_tenant_id`; that editor moved to Setup on the owner's ruling, so the claim is
+ * now true again — it was not while that write lived here.) Honest degrade (§13): a failed read surfaces an error and
  * an empty/`null` shape, never a fabricated domain or plan.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -110,9 +113,10 @@ export interface SoloCommsData {
 
   /* ----- mutations (this slice) --------------------------------------------
    * Every one goes through a seam that already existed and already enforces
-   * authority server-side: `set_tenant_brand` raises 42501 via
-   * `can_manage_tenant_brand`, and `manage-tenant-domain` derives its tenant
-   * from the verified session. None of them takes a client-supplied tenant id.
+   * authority server-side: `manage-tenant-domain` derives its tenant from the
+   * verified session and re-checks the caller's role, and the gmail functions
+   * resolve the tenant server-side. None of them takes a client-supplied
+   * tenant id.
    */
   addDomain: (input: { domain: string; fromEmailLocal: string; fromName: string }) => Promise<SoloMutationResult>;
   refreshDomain: (id: string) => Promise<SoloMutationResult>;
@@ -235,6 +239,11 @@ export function useSoloComms(): SoloCommsData {
         // The read the "Connected mailbox" card said did not exist. The contract
         // DOES exist — `gmail-oauth-callback` writes this row — nobody had wired
         // the read, so the card reported UNAVAILABLE for a live capability.
+        // NOT `.maybeSingle()`. Nothing constrains this table to one gmail row per
+        // tenant — `gmail-oauth-callback` keys its lookup on `inbound_address`, so
+        // a second Google address INSERTS a second row and never deactivates the
+        // first. `maybeSingle()` throws PGRST116 on two rows, which would have
+        // turned a second connection into a permanently unreadable card.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types (repo-wide pattern, cf. OwnerWelcome/EmailIntegrationConfig)
         (supabase as any)
           .from("channel_connectors")
@@ -242,7 +251,8 @@ export function useSoloComms(): SoloCommsData {
           .eq("tenant_id", tenantId)
           .eq("channel_type", "email")
           .eq("provider", "gmail")
-          .maybeSingle(),
+          .order("active", { ascending: false })
+          .limit(1),
         // Fail-closed authority for the write controls. The server re-checks on
         // every mutation regardless; this only decides whether to render them.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types (repo-wide pattern)
@@ -293,22 +303,31 @@ export function useSoloComms(): SoloCommsData {
       });
 
 
-      // A failed connector read is NOT reported as "not connected" — that would
-      // be a fabricated negative. It stays null, and the card says it could not
-      // be read (§13).
-      const mailboxRow = mailboxRes.error ? null : asRecord(mailboxRes.data);
-      setMailbox(
-        mailboxRes.error
-          ? null
-          : {
-              connected: Boolean(mailboxRow.active) && str(mailboxRow.status) !== "revoked",
-              address: str(mailboxRow.from_address),
-              displayName: str(mailboxRow.display_name),
-              provider: str(mailboxRow.provider),
-              status: str(mailboxRow.status),
-            },
-      );
-      setCanManage(manageRes.data === true);
+      // "Not connected" is a CLAIM ABOUT THE ACCOUNT, and it may only be made
+      // from a read that was actually allowed to see the answer.
+      //
+      // An error is the easy case. The hard one is RLS: `channel_connectors_select`
+      // requires a global admin/coach role on top of the tenant match, so a
+      // tenant_members OWNER without that app_role gets ZERO ROWS AND NO ERROR —
+      // indistinguishable, to a naive guard, from having no connector. Reported as
+      // "Not connected" that invites someone to re-run an OAuth grant they already
+      // hold. So an empty result is only read as "none" when the caller is one the
+      // policy admits; otherwise the card says it could not read it (§13).
+      const canManageRead = manageRes.data === true;
+      setCanManage(canManageRead);
+      const mailboxRows = Array.isArray(mailboxRes.data) ? mailboxRes.data : [];
+      const mailboxRow = asRecord(mailboxRows[0]);
+      if (mailboxRes.error || (mailboxRows.length === 0 && !canManageRead)) {
+        setMailbox(null);
+      } else {
+        setMailbox({
+          connected: Boolean(mailboxRow.active) && str(mailboxRow.status) !== "revoked",
+          address: str(mailboxRow.from_address),
+          displayName: str(mailboxRow.display_name),
+          provider: str(mailboxRow.provider),
+          status: str(mailboxRow.status),
+        });
+      }
 
       // --- billing (skipped for sub-accounts) ---
       if (isSubAccount) {

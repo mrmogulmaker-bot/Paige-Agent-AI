@@ -26,6 +26,7 @@ import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloBusiness } from "./data/useSoloBusiness";
 import { useSoloOwner } from "./data/useSoloOwner";
 import { useSoloComms } from "./data/useSoloComms";
+import { rememberOAuthReturn } from "./data/oauthReturn";
 import { SoloIntegrationsView } from "./settings-integrations";
 import {
   createSettingsRequestGate,
@@ -966,8 +967,15 @@ function GoogleSendingAccountPanel({ comms }: { comms: ReturnType<typeof useSolo
           const { url, error } = await comms.startGmailConnect();
           setBusy(false);
           if (!url) { setOutcome({ tone: "bad", message: error ?? "Couldn't start the Google sign-in." }); return; }
-          // Opened, never auto-redirected: the consent screen is something the
-          // person chose to go to, in a window they can close (§38).
+          // Record where to come back to BEFORE leaving. Without this the Gmail
+          // callback falls back to the legacy admin route and a Solo tenant is
+          // returned to a page they cannot open, so the flow never closes on the
+          // card they started from. Same-origin absolute path only — the store
+          // refuses anything else at both ends.
+          rememberOAuthReturn(`${window.location.pathname}${window.location.search}`);
+          // This is a same-tab redirect the person asked for by clicking. It is
+          // NOT a background navigation: nothing here leaves for a provider until
+          // the button is pressed (§38).
           window.location.assign(url);
         }}>
         {busy ? <RefreshCw className="ss-spin" aria-hidden/> : <ExternalLink aria-hidden/>}
