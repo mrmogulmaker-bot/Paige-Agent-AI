@@ -119,11 +119,20 @@ async function flowFirstPreset(page) {
 /** 2 · An existing preset can be edited and the edit SURVIVES a re-read. */
 async function flowEditPersists(page) {
   await open(page);
-  await openArea(page, "Details");
-  const title = page.locator(".cc-area-b .cc-in").first();
+  const details = await openArea(page, "Details");
+  const title = details.locator(".cc-area-b input.cc-in").first();
+  const before = await title.inputValue().catch(() => "<no input>");
   const fresh = `Harness renamed ${Date.now() % 100000}`;
   await title.fill(fresh);
+  await page.waitForTimeout(150);
+  const after = await title.inputValue().catch(() => "<no input>");
+  const barSeen = await page.locator(".cc-bar").count();
+  const actDisabled = await page.locator(".cc-bar button", { hasText: /^\s*Save/ }).first()
+    .isDisabled().catch(() => "<no save button>");
+  console.log(`      diag: before="${before}" after="${after}" saveBar=${barSeen} saveDisabled=${actDisabled}`);
   const s = await save(page);
+  const noticeAfter = (await page.locator(".cc-notice").allInnerTexts().catch(() => [])).join(" | ");
+  console.log(`      diag: notice after save = "${noticeAfter.slice(0, 120)}"`);
   if (!s.pressed) return record("2 · edit an existing preset and save", false, `save unavailable (${JSON.stringify(s)})`);
 
   // Re-open the surface from scratch. A value that only lived in React state
@@ -154,18 +163,24 @@ async function flowRoundRobin(page) {
 async function flowBufferAndRules(page) {
   await open(page);
   const area = await openArea(page, "Booking rules");
-  const chip15 = area.locator(".cc-chip", { hasText: /^15m$/ });
-  const count = await chip15.count();
-  if (count < 1) return record("4 · booking rules · 15-minute buffer", false, "no 15m buffer chip");
-  await chip15.first().click();          // buffer before
-  if (count > 1) await chip15.nth(1).click();
-  await save(page);
+  const has15 = await area.locator(".cc-chip", { hasText: /^15m$/ }).count();
+  if (has15 < 1) return record("4 · booking rules · 15-minute buffer", false, "no 15m buffer chip offered");
 
-  await open(page);
-  const again = await openArea(page, "Booking rules");
-  const pressed = await again.locator('.cc-chip[aria-pressed="true"]', { hasText: /^15m$/ }).count();
-  record("4 · booking rules · 15-minute buffer", pressed > 0,
-    `15m chips still pressed after reload: ${pressed}`);
+  // The seed already holds 15m, so clicking 15m would assert nothing. Move to a
+  // value the row does NOT have, prove that lands, then set 15m and prove THAT
+  // lands — the 15-minute buffer the assignment names, actually exercised.
+  const set = async (label) => {
+    const a = await openArea(page, "Booking rules");
+    await a.locator(".cc-chip", { hasText: new RegExp(`^${label}$`) }).first().click();
+    await save(page);
+    await open(page);
+    const b = await openArea(page, "Booking rules");
+    return b.locator(`.cc-chip[aria-pressed="true"]`, { hasText: new RegExp(`^${label}$`) }).count();
+  };
+  const moved = await set("30m");
+  const back = await set("15m");
+  record("4 · booking rules · 15-minute buffer", moved > 0 && back > 0,
+    `30m persisted=${moved} then 15m persisted=${back}`);
 }
 
 /** 4b · Notifications / follow-ups are editable, not a read-only summary. */

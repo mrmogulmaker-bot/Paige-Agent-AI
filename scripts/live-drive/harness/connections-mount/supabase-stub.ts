@@ -122,7 +122,29 @@ function seed(): Record<string, Row[]> {
   };
 }
 
-const db: Record<string, Row[]> = seed();
+/**
+ * A database survives a page reload; a module-scoped object does not. Seeding at
+ * module load modelled "a fresh database every navigation", which made it
+ * IMPOSSIBLE for any drive to prove a save persisted — the reload that was meant
+ * to re-read the row silently rebuilt it from the seed instead. Session storage
+ * is the smallest thing that models the real property: writes outlive a reload,
+ * and a fresh browser context (a new drive run) starts clean.
+ */
+const STORE_KEY = `paige-harness-store:${state()}`;
+
+function load(): Record<string, Row[]> {
+  try {
+    const raw = sessionStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw) as Record<string, Row[]>;
+  } catch { /* storage unavailable — fall through to a fresh seed */ }
+  return seed();
+}
+
+const db: Record<string, Row[]> = load();
+
+function persist() {
+  try { sessionStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch { /* ignore */ }
+}
 
 const ok = (data: unknown) => ({ data, error: null as { message: string } | null });
 const fail = (message: string) => ({ data: null, error: { message } });
@@ -176,6 +198,7 @@ function chain(table: string) {
     if (pending?.kind === "update") {
       const hit = rows().filter(matches);
       for (const r of hit) Object.assign(r, pending.payload as Row);
+      persist();
       return (cached = ok(hit));
     }
     if (pending?.kind === "insert") {
@@ -189,12 +212,14 @@ function chain(table: string) {
         ...r,
       }));
       rows().push(...added);
+      persist();
       return (cached = ok(added));
     }
     if (pending?.kind === "delete") {
       const keep = rows().filter((r) => !matches(r));
       const removed = rows().length - keep.length;
       db[table] = keep;
+      persist();
       return (cached = ok(removed ? [{}] : []));
     }
     return (cached = ok(rows().filter(matches)));
