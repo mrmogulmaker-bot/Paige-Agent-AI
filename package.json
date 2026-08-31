@@ -41,6 +41,7 @@
     "smoke:mcp-registry": "node scripts/mcp-registry-provider-smoke.mjs",
     "smoke:mcp-transport": "node scripts/mcp-transport-smoke.mjs",
     "smoke:mcp-egress": "node scripts/mcp-egress-smoke.mjs",
+    "smoke:mcp-oauth": "node scripts/mcp-oauth-smoke.mjs",
     "smoke:comms-tenant-scope": "node scripts/comms-tenant-scope-smoke.mjs",
     "lint:conversation-tenant": "node scripts/comms-conversation-tenant-lint.mjs",
     "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",

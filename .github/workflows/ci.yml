@@ -350,6 +350,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:mcp-egress
 
+      - name: Smoke — MCP OAuth (S256 only, issuer verified, state single-use, tokens rotate)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:mcp-oauth
+
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant
