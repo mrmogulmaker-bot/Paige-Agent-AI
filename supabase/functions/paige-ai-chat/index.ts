@@ -1364,8 +1364,9 @@ JSON:`;
         }
       }
 
-      // Unresolved or unconfirmed authoritative scope does NO tenant work: no embedding (a paid
-      // call), no retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator —
+      // Unresolved or unconfirmed authoritative scope does NO tenant KNOWLEDGE work: no knowledge
+      // embedding (a paid call), no retrieval, no tenant telemetry. (The RAG block above embeds
+      // the same question on its own path; that is separate and out of this change's scope.) A tenant-less caller — the Platform Operator —
       // must never be handed some arbitrary account's knowledge, and `null` is not a scope to
       // search. Fail closed rather than substituting anything (§9/§13).
       if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId && tkScopeOk) {

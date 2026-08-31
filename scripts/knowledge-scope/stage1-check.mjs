@@ -96,8 +96,31 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x" }) {
+async function drive({
+  personaTenant, memberships, kbRejects = false, bodyExtras = {}, noAuth = false, unauthenticated = false,
+  chunkTitle = "Onboarding", chunkContent = "x",
+  // THE AUTHORITY AXIS — independent of personaTenant on purpose.
+  //
+  // This used to be `profiles: () => [{ active_tenant_id: personaTenant }]`, i.e. the declared
+  // active workspace was DERIVED FROM the persona tenant. They could never disagree, so every
+  // isolation assertion passed by construction and proved only that a tenant id was plumbed
+  // through — never that a WRONG one is refused. A fixture that cannot express the defect
+  // cannot witness the fix.
+  //
+  // `declaredActive`   — profiles.active_tenant_id. `undefined` keeps the legacy coupling so
+  //                      the pre-existing checks keep meaning what they meant; pass `null` for
+  //                      "no active workspace", or a different id for stale/mismatched.
+  // `activeSequence`   — successive values returned by successive profiles reads, so authority
+  //                      can CHANGE MID-TURN at an exact boundary. The handler reads profiles at:
+  //                        1 turn-start baseline · 2 knowledge scope · 3 model egress
+  //                        4 tool execution · 5 document provider sync
+  //                      The last value repeats once the sequence is exhausted.
+  declaredActive = undefined,
+  activeSequence = null,
+}) {
   const logged = [];
+  let profilesReadIdx = 0;
+  const profilesReads = [];
   resetEmbeds();
   const origWarn = console.warn;
   const origError = console.error;
@@ -119,7 +142,27 @@ async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras
     },
     tables: {
       tenant_members: () => memberships.map((t) => ({ tenant_id: t })),
-      profiles: () => [{ active_tenant_id: personaTenant }],
+      // Only ACTIVE-SCOPE reads advance the sequence. The handler also reads `profiles` for
+      // unrelated columns (`state`, names); counting those would make every sequence index
+      // hostage to code this PR does not touch. Keyed on the selected column instead.
+      profiles: (filters) => {
+        const isScopeRead = (filters ?? []).some(
+          (f) => f[0] === "select" && String(f[1] ?? "").includes("active_tenant_id"),
+        );
+        if (!isScopeRead) return [{ active_tenant_id: declaredActive === undefined ? personaTenant : declaredActive }];
+        if (Array.isArray(activeSequence) && activeSequence.length) {
+          const v = profilesReadIdx < activeSequence.length
+            ? activeSequence[profilesReadIdx]
+            : activeSequence[activeSequence.length - 1];
+          profilesReadIdx += 1;
+          profilesReads.push(v);
+          return [{ active_tenant_id: v }];
+        }
+        const v = declaredActive === undefined ? personaTenant : declaredActive;
+        profilesReadIdx += 1;
+        profilesReads.push(v);
+        return [{ active_tenant_id: v }];
+      },
     },
   });
 
@@ -151,7 +194,8 @@ async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras
   const kbCall = rec.rpc.find((r) => r.name === "match_tenant_knowledge");
   const memberReads = rec.from.filter((f) => f.table === "tenant_members");
   const telemetry = rec.inserts.find((i) => i.table === "kb_query_telemetry");
-  return { rec, kbCall, memberReads, telemetry, logged, status, embeds: embedCalls() };
+  return { rec, kbCall, memberReads, telemetry, logged, status, embeds: embedCalls(),
+           profilesReads, profilesReadCount: profilesReadIdx };
 }
 
 // ── 1 · Multi-membership active-account resolution ───────────────────────────────
@@ -383,6 +427,131 @@ group("a stale or wrong account's knowledge cannot enter the prompt");
     "11.3 exactly one knowledge query is issued per turn (no second, wider sweep)",
     r.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").length === 1,
     `count: ${r.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").length}`,
+  );
+}
+
+
+// ===========================================================================================
+// 12. AUTHORITY BOUNDARIES — the account-switch race and the provider/sync crossing.
+//
+// These are the checks the old fixture could not express at all: it derived
+// profiles.active_tenant_id FROM the persona tenant, so authority could never disagree and
+// every assertion above passed by construction. With the authority axis independent, a WRONG
+// or MOVED account is now witnessable — and each of these fails if the boundary is removed.
+// ===========================================================================================
+console.log("\nauthority boundaries — stale, missing, and mid-turn account switch");
+{
+  // --- MISSING context: no active workspace declared -------------------------------------
+  const missing = await drive({ personaTenant: SOLO, memberships: [SOLO], declaredActive: null });
+  assert(
+    "12.1 no declared active workspace: knowledge is NOT searched",
+    !missing.rec.rpc.some((x) => x.name === "match_tenant_knowledge"),
+    JSON.stringify(missing.rec.rpc.map((x) => x.name)),
+  );
+  // The KNOWLEDGE embedding is the one this boundary controls. Other blocks (the RAG path)
+  // embed the same question independently and are out of this PR's scope, so assert the
+  // DIFFERENCE against an otherwise-identical confirmed run rather than a global zero — a
+  // global-zero assertion would have been simply false, and passing it would have meant
+  // weakening the check until it agreed with the code.
+  const confirmedSame = await drive({ personaTenant: SOLO, memberships: [SOLO], declaredActive: SOLO });
+  assert(
+    "12.2 …and the knowledge embedding (a paid call) is skipped versus a confirmed turn",
+    missing.embeds < confirmedSame.embeds,
+    `refused: ${missing.embeds}, confirmed: ${confirmedSame.embeds}`,
+  );
+  assert(
+    "12.3 …and no telemetry row is written under an unconfirmed scope",
+    !missing.telemetry, JSON.stringify(missing.telemetry ?? null),
+  );
+  assert(
+    "12.4 …and the refusal is logged at ERROR with its reason, never silent",
+    missing.logged.some((l) => l.level === "error" && /knowledge scope REFUSED/.test(l.msg) && /no active workspace/.test(l.msg)),
+    JSON.stringify(missing.logged.map((l) => `${l.level}:${l.msg.slice(0, 80)}`)),
+  );
+
+  // --- STALE / MISMATCHED: the resolver fell back to a different workspace ----------------
+  const stale = await drive({ personaTenant: AGENCY, memberships: [AGENCY, CHILD], declaredActive: CHILD });
+  assert(
+    "12.5 resolved scope != declared active workspace: knowledge is NOT searched",
+    !stale.rec.rpc.some((x) => x.name === "match_tenant_knowledge"),
+    JSON.stringify(stale.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").map((x) => x.args.p_tenant_id)),
+  );
+  assert(
+    "12.6 …and neither workspace's knowledge is substituted",
+    !stale.rec.rpc.some((x) => x.name === "match_tenant_knowledge" && (x.args.p_tenant_id === AGENCY || x.args.p_tenant_id === CHILD)),
+  );
+
+  // --- ACCOUNT SWITCH DURING RESOLUTION (baseline read, then KB read) ---------------------
+  const duringRes = await drive({ personaTenant: AGENCY, memberships: [AGENCY], activeSequence: [AGENCY, CHILD] });
+  assert(
+    "12.7 switch DURING resolution: knowledge is not searched under the pre-switch scope",
+    !duringRes.rec.rpc.some((x) => x.name === "match_tenant_knowledge" && x.args.p_tenant_id === AGENCY),
+    JSON.stringify(duringRes.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").map((x) => x.args.p_tenant_id)),
+  );
+
+  // --- ACCOUNT SWITCH IMMEDIATELY BEFORE MODEL EGRESS ------------------------------------
+  // reads: 1 baseline, 2 knowledge (both AGENCY, so knowledge legitimately loads), 3 egress -> CHILD
+  const beforeEgress = await drive({ personaTenant: AGENCY, memberships: [AGENCY], activeSequence: [AGENCY, AGENCY, CHILD] });
+  assert(
+    "12.8 switch immediately BEFORE egress: the turn is refused, nothing is sent",
+    beforeEgress.status === 409, `status: ${beforeEgress.status}`,
+  );
+  assert(
+    "12.9 …and the refusal names the moved authority",
+    beforeEgress.logged.some((l) => l.level === "error" && /authority REVALIDATION FAILED/.test(l.msg) && /model-egress/.test(l.msg)),
+    JSON.stringify(beforeEgress.logged.map((l) => `${l.level}:${l.msg.slice(0, 90)}`)),
+  );
+  assert(
+    "12.10 …and knowledge that WAS loaded pre-switch never reaches a model",
+    beforeEgress.status === 409,
+  );
+
+  // --- AUTHORITY LOSS mid-turn (revocation: active workspace becomes null) ----------------
+  const revoked = await drive({ personaTenant: AGENCY, memberships: [AGENCY], activeSequence: [AGENCY, AGENCY, null] });
+  assert(
+    "12.11 authority REVOKED before egress: refused, not downgraded to a fallback",
+    revoked.status === 409, `status: ${revoked.status}`,
+  );
+
+  // --- MALFORMED context -----------------------------------------------------------------
+  const malformed = await drive({ personaTenant: AGENCY, memberships: [AGENCY], activeSequence: [AGENCY, AGENCY, 12345] });
+  assert(
+    "12.12 MALFORMED active workspace value is refused, never coerced",
+    malformed.status === 409, `status: ${malformed.status}`,
+  );
+
+  // --- REGRESSION: a stable, correctly-scoped turn is untouched ---------------------------
+  const stable = await drive({ personaTenant: CHILD, memberships: [AGENCY, CHILD], declaredActive: CHILD, chunkContent: "child-material" });
+  assert(
+    "12.13 REGRESSION: a stable correctly-scoped turn still retrieves and still answers",
+    stable.rec.rpc.some((x) => x.name === "match_tenant_knowledge" && x.args.p_tenant_id === CHILD) && stable.status !== 409,
+    `status: ${stable.status}`,
+  );
+  assert(
+    "12.14 REGRESSION: the other tenant is never queried on that turn",
+    !stable.rec.rpc.some((x) => x.name === "match_tenant_knowledge" && x.args.p_tenant_id === AGENCY),
+  );
+  assert(
+    "12.15 REGRESSION: telemetry is stamped with the searched scope, not the other membership",
+    !!stable.telemetry && stable.telemetry.row.tenant_id === CHILD, JSON.stringify(stable.telemetry?.row?.tenant_id ?? null),
+  );
+
+  // --- FIRST USE / EMPTY: correctly scoped, but the workspace has no knowledge yet --------
+  const firstUse = await drive({ personaTenant: SOLO, memberships: [SOLO], declaredActive: SOLO, kbRejects: false, chunkContent: "" });
+  assert(
+    "12.16 FIRST USE: an empty-content workspace still resolves scope and still answers",
+    firstUse.status !== 409, `status: ${firstUse.status}`,
+  );
+
+  // --- The authority axis is genuinely independent (guards the fixture itself) ------------
+  assert(
+    "12.17 the fixture reads profiles more than once per turn (boundaries are real)",
+    stable.profilesReadCount >= 2, `reads: ${stable.profilesReadCount}`,
+  );
+  assert(
+    "12.18 declaredActive is NOT derived from personaTenant any more",
+    stale.profilesReads.every((v) => v === CHILD) && stale.profilesReads.length > 0,
+    JSON.stringify(stale.profilesReads),
   );
 }
 
