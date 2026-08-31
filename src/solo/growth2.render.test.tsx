@@ -67,6 +67,23 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.textContent).toContain("Add a stage");
     expect(host.textContent).toContain("Archive");
   });
+
+  it("keeps the creation dialog open and surfaces a failed save", async () => {
+    (harness.state.pipelineAction as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, message: "Pipeline could not be created" });
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
+    const name = host.querySelector('[role="dialog"] input') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Campaign follow-up");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create") as HTMLButtonElement).click();
+    });
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Pipeline could not be created");
+  });
+
   it("renders populated grounded rows and closes details with Escape", () => {
     renderAt("/solo/42/growth/catalog");
     expect(host.textContent).toContain("Published page");
