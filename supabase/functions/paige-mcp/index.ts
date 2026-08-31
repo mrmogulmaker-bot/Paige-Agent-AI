@@ -511,6 +511,7 @@ mcp.tool("create_deal", {
         .select("id")
         .eq("pipeline_id", args.pipeline_id)
         .eq("tenant_id", tenantId)
+        .is("archived_at", null)
         .order("order_index", { ascending: true })
         .limit(1);
       resolvedStage = stages?.[0]?.id;
