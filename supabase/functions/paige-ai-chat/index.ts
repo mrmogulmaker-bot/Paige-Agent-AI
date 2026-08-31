@@ -1705,10 +1705,34 @@ JSON:`;
     ]);
     // The general setter. Every below-the-latch source that reaches the model calls this; the
     // tool seam is one caller among several rather than the only one.
+    //
+    // THE LINE THIS DRAWS, which five incomplete enumerations were missing: CONFIGURATION is not
+    // EVIDENCE. Paige's persona, the voice block, the operating core, the tenant's brand tokens
+    // and the canvas-state pointer are configuration — they define how she behaves, they are
+    // identical on every turn for that workspace, and they are already in the prompt of every
+    // request. Protecting them would protect literally everything and the ruling's second half
+    // ("ordinary chat retains live streaming") would mean nothing.
+    //
+    // EVIDENCE is what she looked UP about this subject, on this turn: Knowledge chunks, RAG
+    // hits, documents, memory, the client file, the rolling summary, a focused client's name,
+    // the sending identity, the activity rail, tool results. That is what this protects, and it
+    // is the question to ask of anything added later — "is this who Paige IS, or what she just
+    // read?" Read, and it calls this.
+    // LOGS EVERY CALL, not only the first — and that is a testability decision, not noise. With
+    // an early return the flag flips once and the log names whichever source happened to win the
+    // race, so a turn that touches five evidence sources is indistinguishable from one that
+    // touches one. Removing any four of the five call sites then changes nothing observable, and
+    // a mutation test cannot tell them apart: exactly what happened when five of these were
+    // wired together and only one turned out to be individually caught.
+    //
+    // One line per evidence source per turn, and every site becomes provable on its own.
     const markProtectedLate = (reason: string) => {
-      if (lateRetrievalProtected) return;
+      const already = lateRetrievalProtected;
       lateRetrievalProtected = true;
-      console.log("[paige] turn switched to the protected buffered path", JSON.stringify({ reason }));
+      console.log(
+        "[paige] protected evidence reached the model",
+        JSON.stringify({ reason, already_protected: already }),
+      );
     };
     const markLateRetrievalProtected = (executed: any[], receipts: Set<string>) => {
       if (lateRetrievalProtected) return;
@@ -3723,6 +3747,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         if (isOperator === true) {
           const ownerBlock = await loadOwnerContextBlock(supabase, user.id);
           if (ownerBlock) {
+            // The operator briefing is READ — identity rows and live platform metrics, not
+            // configuration — so it protects like any other retrieved evidence.
+            markProtectedLate("operator_context_block");
             aiMessages.splice(2, 0, { role: "system", content: ownerBlock });
           }
         }
@@ -4056,6 +4083,8 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       const whoLine = operatorName
         ? `You are speaking with ${operatorName}${operatorFirst ? ` — address them as ${operatorFirst}` : ""}, ${operatorRoleLabel ? `${operatorRoleLabel} on` : "a member of"} ${personaCtx?.tenant_name ?? "this"} team. This is a named teammate, not an anonymous user: greet and refer to them by their first name naturally, and remember it for this conversation.\n\n`
         : "";
+      // `whoLine` names the real person and their workspace, both read from storage.
+      if (whoLine) markProtectedLate("crm_operator_who_line");
       aiMessages.push({
         role: "system",
         content: whoLine +
@@ -4150,6 +4179,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             .maybeSingle();
           const fcName = [fc?.first_name, fc?.last_name].filter(Boolean).join(" ").trim();
           if (fcName) {
+            // A real client's name, read from their row.
+            markProtectedLate("focused_client_name");
             aiMessages.push({
               role: "system",
               content: `FOCUSED CLIENT: you are currently looking at ${fcName}'s file with ${operatorName || "the operator"}. When they say "this client", "her", or "him" without a name, they mean ${fcName} — refer to them by name.`,
@@ -4166,6 +4197,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           const { data: senderRow } = await supabaseClient.rpc("tenant_sender_identity", { _tenant_id: personaCtx.tenant_id });
           const s = (Array.isArray(senderRow) ? senderRow[0] : senderRow) as any;
           if (s?.from_name && s?.from_address) {
+            // The workspace's sending identity, resolved through an RPC.
+            markProtectedLate("tenant_sender_identity");
             aiMessages.push({
               role: "system",
               content: `When you draft an email for this workspace it sends from ${s.from_name} <${s.from_address}>. If the operator asks which address goes out, tell them that one — don't invent a different sender.`,
@@ -4200,6 +4233,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const lines = rows.slice(0, 15).map((r: any) =>
               `- ${railKindLabel(String(r?.event_kind ?? ""))} — ${String(r?.title ?? "(no title)").replace(/\s+/g, " ").slice(0, 120)} (${relTime(r?.occurred_at)})`,
             );
+            // Up to fifteen activity titles for one named client — the richest of these.
+            markProtectedLate("client_activity_rail");
             aiMessages.push({
               role: "system",
               content: `RECENT ACTIVITY ON THIS CLIENT (across all Paige surfaces — portal, automations, calendar, other staff), newest first:\n${lines.join("\n")}`,

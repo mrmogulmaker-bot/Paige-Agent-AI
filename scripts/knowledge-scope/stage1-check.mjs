@@ -301,8 +301,13 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
   resetEmbeds();
   const origWarn = console.warn;
   const origError = console.error;
+  const origLog = console.log;
   console.warn = (...a) => logged.push({ level: "warn", msg: a.join(" ") });
   console.error = (...a) => logged.push({ level: "error", msg: a.join(" ") });
+  // `console.log` is captured too, because the handler announces each protected-evidence source
+  // there and that announcement is the only thing that distinguishes the five below-the-latch
+  // call sites from one another.
+  console.log = (...a) => logged.push({ level: "log", msg: a.join(" ") });
   resetProvider(provider);
   let personaCall = 0;
   const personaStates = personaSequence ?? [personaTenant];
@@ -373,6 +378,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
   } finally {
     console.warn = origWarn;
     console.error = origError;
+    console.log = origLog;
     syncThrows = false;
   }
 
@@ -2592,6 +2598,76 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.v a failed final check withholds the STREAMED closing body, not just replayed chunks",
     !streamAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
     streamAtGate.responseText.slice(0, 400),
+  );
+
+  // 21.w — THE ACTIVITY RAIL, standing in for the five below-the-latch EVIDENCE sources wired at
+  // once: the operator briefing, the CRM who-line, the focused client's name, the workspace
+  // sending identity, and this. The previous commit NAMED seven such sources in its own message
+  // and wired exactly one — so the mechanism was right and the sweep was not, which is the same
+  // half-finished shape five enumerations before it had.
+  //
+  // The rail is chosen because it is the richest: up to fifteen activity titles for one named
+  // client, read from storage. It also proves the general setter works from a call site far from
+  // the tool seam, which is what the rolling-summary case established and this confirms is not a
+  // one-off.
+  const RAIL_CLIENT = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const railOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    bodyExtras: { clientId: RAIL_CLIENT },
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      // The client-scope authorization compares the client's tenant against this resolver;
+      // unstubbed it returns null and every client-scoped turn is refused before the persona
+      // resolution even runs.
+      current_user_tenant_id: { data: CHILD, error: null },
+      is_platform_owner: { data: false, error: null },
+      tenant_sender_identity: { data: [{ from_name: "Ada Coaching", from_address: "hello@ada.test" }], error: null },
+      // The rail arrives through an RPC, not a table read.
+      get_client_rail: { data: [{ event_kind: "note.added", title: "PRIVATE-RAIL-MARKER call notes", occurred_at: new Date().toISOString() }], error: null },
+    },
+    tableExtras: {
+      user_roles: () => [{ role: "admin" }],
+      clients: () => [{ id: RAIL_CLIENT, tenant_id: CHILD, linked_user_id: USER, first_name: "Ada", last_name: "L" }],
+      // The operator's own name; without it `whoLine` is empty and that site never fires.
+      profiles: () => [{ active_tenant_id: CHILD, first_name: "Sam", last_name: "Rivera", full_name: "Sam Rivera" }],
+    },
+  };
+  const railClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...railOpts,
+  });
+  const railTotal = personaCallsOf(railClean);
+  assert(
+    "21.w CONTROL — a client-scoped turn with rail activity is protected",
+    railTotal >= 2,
+    `persona calls: ${railTotal}`,
+  );
+  // EACH SITE, BY NAME. "The turn is protected" is satisfied by any ONE of the five firing, so
+  // removing four of them changed nothing measurable and the mutations passed — the first
+  // version of this case asserted exactly that and was wrong to. The handler now logs every
+  // call rather than only the first, so each site is provable on its own and deleting any one
+  // fails here with its own name in the message.
+  const lateReasons = railClean.logged
+    .filter((l) => /protected evidence reached the model/.test(l.msg))
+    .map((l) => (l.msg.match(/"reason":"([^"]+)"/) ?? [])[1])
+    .filter(Boolean);
+  for (const reason of ["crm_operator_who_line", "focused_client_name", "tenant_sender_identity", "client_activity_rail"]) {
+    assert(
+      `21.w the ${reason} source marks the turn protected`,
+      lateReasons.includes(reason),
+      `saw: ${lateReasons.join(", ") || "(none)"}`,
+    );
+  }
+  const railAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(railTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...railOpts,
+  });
+  assert(
+    "21.w a failed final check withholds the reply on a client-scoped turn",
+    !railAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    railAtGate.responseText.slice(0, 300),
   );
 }
 
