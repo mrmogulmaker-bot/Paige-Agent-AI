@@ -90,10 +90,21 @@ class QueryBuilder {
     });
   }
 
+  /** An injected error, optionally scoped to ONE operation.
+   *
+   *  `tableErrors: { client_memory: e }` fails every op on the table; `{ "client_memory:insert": e }`
+   *  fails only the insert. The distinction is load-bearing: failing the READ makes the handler
+   *  refuse for unknown authority and never reach the write, so a table-wide error can never
+   *  witness a rejected WRITE — which is exactly the class of bug the write checks exist to catch. */
+  _injected() {
+    const t = this._live().scenario.tableErrors ?? {};
+    return t[`${this._table}:${this._op}`] ?? t[this._table];
+  }
+
   maybeSingle() {
     this._record(true);
     const rows = this._rows();
-    const injected = this._live().scenario.tableErrors?.[this._table];
+    const injected = this._injected();
     if (injected) return Promise.resolve({ data: null, error: injected });
     return Promise.resolve({ data: rows[0] ?? null, error: null });
   }
@@ -101,7 +112,7 @@ class QueryBuilder {
 
   then(res, rej) {
     this._record(false);
-    const injectedThen = this._live().scenario.tableErrors?.[this._table];
+    const injectedThen = this._injected();
     if (injectedThen) return Promise.resolve({ data: null, error: injectedThen, count: 0 }).then(res, rej);
     return Promise.resolve({ data: this._rows(), error: null, count: this._rows().length }).then(res, rej);
   }

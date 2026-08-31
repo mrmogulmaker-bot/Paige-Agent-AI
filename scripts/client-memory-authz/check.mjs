@@ -1114,5 +1114,57 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
     "the corrective note is missing");
 }
 
+// ── 16. NO DURABLE WRITE IN THIS FILE IGNORES ITS OWN ERROR ──────────────────────────────────
+//
+// postgrest-js defaults `shouldThrowOnError` to FALSE, so a constraint violation, an RLS refusal or
+// a missing column RESOLVES with an `error` on the result instead of throwing. `await
+// supabase.from(x).insert(y)` inside a try/catch therefore catches NOTHING for the commonest
+// failures, and the row silently never lands. That is how a status outside a live CHECK killed a
+// whole feature while the code reported success, and how four `client_memory` inserts — the things
+// Paige later recalls about a person — could fail with no symptom but her quietly remembering
+// nothing.
+//
+// THIS IS A STATIC CHECK AND IS LABELLED AS ONE. It reads the source rather than driving a rejected
+// write, and I say so rather than dressing it up: the memory write path is not reachable from this
+// harness's fixtures, so a runtime assertion here would have witnessed nothing while appearing to
+// prove something. What this DOES catch is the recurrence that actually matters — a NEW write added
+// later that ignores its error — which no single runtime case would have caught either.
+//
+// The runtime half is covered elsewhere and honestly: `writeIfScopeCurrent` is driven against a
+// postgrest-shaped `{error}` in the extraction path, and 13.10 drives a rejected proposal insert
+// through the real handler.
+{
+  if (process.env.PROBE) {
+    for (const t of ["analytics_events","paige_chat_threads","kb_query_telemetry","client_memory","deal_activities"]) {
+      const d = await drive({ clientId: OWN, stream: true, extraBody: { threadId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" },
+        tableErrorsExtra: { [`${t}:insert`]: { message: "boom", code: "23514" }, [`${t}:update`]: { message: "boom", code: "23514" } } });
+      const hit = d.logged.filter((l) => /write REJECTED/.test(l.msg)).map((l)=>l.msg);
+      console.log("PROBE", t, hit.length ? hit[0].slice(0,90) : "(not reached)");
+    }
+  }
+  const src = await (await import("node:fs/promises")).readFile(
+    new URL("../../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
+  const lines = src.split("\n");
+  const unchecked = [];
+  for (let n = 0; n < lines.length; n++) {
+    const l = lines[n];
+    if (!/\b(supabase|supabaseClient|supabaseAdmin|admin)\.from\(/.test(l)) continue;
+    if (!/\.(insert|upsert)\(|\.update\(\{/.test(l)) continue;
+    // A write is accounted for if it is wrapped by one of the two checked helpers, destructures the
+    // error itself, or is returned to a caller that will.
+    const window = lines.slice(Math.max(0, n - 3), n + 1).join("\n");
+    if (/recordWrite|writeIfScopeCurrent|error|return await/.test(window)) continue;
+    unchecked.push(`${n + 1}: ${l.trim().slice(0, 90)}`);
+  }
+  assert("16.1 every durable write reads its error, is wrapped, or returns it",
+    unchecked.length === 0, JSON.stringify(unchecked));
+
+  // The guard against the check above passing because it found nothing to look at — the failure
+  // mode that made an earlier check in this file green while reading an empty object.
+  const wrapped = (src.match(/recordWrite\(/g) ?? []).length;
+  assert("16.2 …and the checked-write helper is actually in use (guards 16.1)",
+    wrapped >= 8, String(wrapped));
+}
+
 console.log(`\n${checks - failures} passed, ${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

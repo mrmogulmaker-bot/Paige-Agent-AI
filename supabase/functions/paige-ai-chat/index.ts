@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
+import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectN8nForModel, projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
@@ -157,6 +158,12 @@ function describeStep(
 
 // Fire-and-forget analytics writer for Paige internals (RAG, Firecrawl, legal flags).
 // Uses the service-role client and never blocks the chat response.
+/** Thin alias over the shared checked write, so this file's call sites stay short. The logic lives
+ *  in `_shared/checked-write.ts` because `writeIfScopeCurrent` below needs exactly the same check,
+ *  and two inline copies is how one of them gets weakened without the other noticing. */
+const recordWrite = (label: string, write: PromiseLike<unknown>): Promise<boolean> =>
+  checkedWrite(label, write);
+
 async function logAnalyticsEvent(
   supabaseAdmin: ReturnType<typeof createClient>,
   userId: string | null,
@@ -164,17 +171,13 @@ async function logAnalyticsEvent(
   event_category: "paige" | "engagement" | "system",
   properties: Record<string, unknown> = {},
 ): Promise<void> {
-  try {
-    await supabaseAdmin.from("analytics_events").insert({
-      user_id: userId,
-      event_name,
-      event_category,
-      properties,
-      page_path: "edge:paige-ai-chat",
-    });
-  } catch (e) {
-    console.warn("[paige] analytics insert failed:", (e as Error)?.message);
-  }
+  await recordWrite("analytics_events", supabaseAdmin.from("analytics_events").insert({
+    user_id: userId,
+    event_name,
+    event_category,
+    properties,
+    page_path: "edge:paige-ai-chat",
+  }));
 }
 
 // Human labels for Paige-rail event kinds. Shared by the focused-client rail
@@ -931,7 +934,7 @@ JSON:`;
           metadata: { channel: "text" },
         };
         if (scopedClientId) memoryInsert.client_id = scopedClientId;
-        await supabase.from("client_memory").insert(memoryInsert);
+        await recordWrite("client_memory:turn", supabase.from("client_memory").insert(memoryInsert));
       }
 
       // Insert milestone memories if detected
@@ -961,7 +964,7 @@ JSON:`;
                 embedding: emb,
               };
               if (scopedClientId) milestoneMemory.client_id = scopedClientId;
-              await supabase.from("client_memory").insert(milestoneMemory);
+              await recordWrite("client_memory:milestone", supabase.from("client_memory").insert(milestoneMemory));
             }
           }
         } catch (err) {
@@ -989,7 +992,7 @@ JSON:`;
                 metadata: { channel: "text", source: "auto_extracted" },
               };
               if (scopedClientId) prefMemory.client_id = scopedClientId;
-              await supabase.from("client_memory").insert(prefMemory);
+              await recordWrite("client_memory:preference", supabase.from("client_memory").insert(prefMemory));
             }
           }
         } catch (err) {
@@ -1369,7 +1372,7 @@ JSON:`;
               metadata: { source: "explicit_signal", channel: "text" },
             };
             if (scopedClientId) row.client_id = scopedClientId;
-            await supabase.from("client_memory").insert(row);
+            await recordWrite("client_memory:extracted", supabase.from("client_memory").insert(row));
           }
         }
       }
@@ -2047,11 +2050,7 @@ JSON:`;
       if (!pendingTenantKbTelemetry) return;
       const row = pendingTenantKbTelemetry;
       pendingTenantKbTelemetry = null;
-      try {
-        await supabase.from("kb_query_telemetry").insert(row);
-      } catch (error) {
-        console.warn("[paige] kb telemetry log failed:", error);
-      }
+      await recordWrite("kb_query_telemetry", supabase.from("kb_query_telemetry").insert(row));
     };
 
     // Use the client's local clock when provided so greetings + time-of-day
@@ -4104,8 +4103,13 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         emit?.({ state: "progress", pct: 80 }); // summarizer returned
         const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
         if (summary) {
-          await supabaseClient.from("paige_chat_threads")
-            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId);
+          // "compacted" is a CLAIM ABOUT A STORED ROW, so it is only made when the row stored.
+          // Reporting compaction for a summary that was rejected would leave the thread believing
+          // its history is folded when the next turn will re-send all of it — a silent regression
+          // in both cost and behaviour, and invisible because postgrest resolves rather than throws.
+          const stored = await recordWrite("paige_chat_threads:summary", supabaseClient.from("paige_chat_threads")
+            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId));
+          if (!stored) { emit?.({ state: "skipped" }); return "skipped"; }
           emit?.({ state: "progress", pct: 100 });
           emit?.({ state: "done" });
           return "compacted";
@@ -4263,7 +4267,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
             const raw = String(firstU?.content ?? "").trim().replace(/\s+/g, " ");
             if (raw) {
               const title = raw.split(" ").slice(0, 7).join(" ").slice(0, 60);
-              await supabaseClient.from("paige_chat_threads").update({ title }).eq("id", payloadThreadId);
+              await recordWrite("paige_chat_threads:title", supabaseClient.from("paige_chat_threads").update({ title }).eq("id", payloadThreadId));
             }
           }
         } catch { /* title is a nicety, never block */ }
@@ -7803,11 +7807,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                       created_by: user.id,
                     }).select("id").single();
                     if (derr) throw derr;
-                    await admin.from("deal_activities").insert({
+                    await recordWrite("deal_activities:created", admin.from("deal_activities").insert({
                       deal_id: deal.id, type: "created",
                       summary: `Deal created in ${stage.label}`,
                       actor_user_id: user.id, payload: { source: "paige", stage_id: stage.id },
-                    });
+                    }));
                     result = { success: true, deal_id: deal.id, stage: stage.label, status };
                   }
                 }
@@ -7839,11 +7843,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   if (!moved) {
                     result = { success: false, error: "That deal isn't in your workspace." };
                   } else {
-                    await admin.from("deal_activities").insert({
+                    await recordWrite("deal_activities:stage_changed", admin.from("deal_activities").insert({
                       deal_id: args.deal_id, type: "stage_changed",
                       summary: `Moved to ${stage.label}${args.reason ? ` — ${String(args.reason).slice(0, 200)}` : ""}`,
                       actor_user_id: user.id, payload: { stage_id: stage.id, source: "paige" },
-                    });
+                    }));
                     result = { success: true, deal_id: args.deal_id, stage: stage.label, status };
                   }
                 }
@@ -10091,9 +10095,9 @@ export async function runStructuredExtractionAndSync(
     // A rejected write returns FALSE, exactly like a scope change, because to every caller here
     // those are the same fact: the thing you were told was saved was not saved. Loud, never silent
     // — this is the whole reason the class of defect was invisible.
-    const outcome = (await write()) as { error?: { message?: string; code?: string } } | null | undefined;
-    if (outcome && typeof outcome === "object" && outcome.error) {
-      console.error("[paige] durable write REJECTED", JSON.stringify({ write: label, code: outcome.error.code ?? null, message: outcome.error.message ?? null }));
+    const outcome = writeOutcome(await write());
+    if (!outcome.ok) {
+      console.error("[paige] durable write REJECTED", JSON.stringify({ write: label, code: outcome.code, message: outcome.message }));
       return "rejected";
     }
     return "ok";
