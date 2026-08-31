@@ -142,19 +142,46 @@ function PipelineSurface({ data, setDetail }) {
   const [focusedStageId,setFocusedStageId]=React.useState("");
   const [configuring,setConfiguring]=React.useState(false);
   const [creating,setCreating]=React.useState(false);
+  const [createPending,setCreatePending]=React.useState(false);
   const [createMessage,setCreateMessage]=React.useState("");
+  const createDialogRef=React.useRef(null);
+  const createOpenerRef=React.useRef(null);
   const [newPipeline,setNewPipeline]=React.useState({name:"",description:"",starter:"blank"});
   const selected=workspace.pipelines.find((item)=>item.id===selectedId)??workspace.pipelines[0];
   const stages=selected?workspace.stages.filter((stage)=>stage.pipelineId===selected.id).sort((a,b)=>a.orderIndex-b.orderIndex):[];
   const activeStages=stages.filter((stage)=>!stage.archivedAt);
   const focusId=activeStages.some((stage)=>stage.id===focusedStageId)?focusedStageId:activeStages[0]?.id;
   React.useEffect(()=>{ if(selected&&selected.id!==selectedId){setSelectedId(selected.id);setFocusedStageId("");setConfiguring(false);} },[selected,selectedId]);
+  React.useEffect(()=>{
+    if(!creating)return;
+    const dialog=createDialogRef.current;
+    const inerted=[];
+    let current=dialog;
+    while(current?.parentElement&&!current.parentElement.classList.contains("solo-campaigns")){
+      [...current.parentElement.children].filter((node)=>node!==current).forEach((node)=>{if(!node.hasAttribute("inert")){node.setAttribute("inert","");inerted.push(node);}});
+      current=current.parentElement;
+    }
+    const nav=document.querySelector(".solo-campaigns > .campaigns-nav");
+    if(nav&&!nav.hasAttribute("inert")){nav.setAttribute("inert","");inerted.push(nav);}
+    dialog?.querySelector("input")?.focus({preventScroll:true});
+    const onKeyDown=(event)=>{
+      if(event.key==="Escape"){if(dialog?.getAttribute("aria-busy")==="true")return;event.preventDefault();setCreating(false);return;}
+      if(event.key!=="Tab")return;
+      const focusable=[...(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')??[])];
+      if(!focusable.length){event.preventDefault();return;}
+      const first=focusable[0];const last=focusable[focusable.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    };
+    window.addEventListener("keydown",onKeyDown);
+    return()=>{window.removeEventListener("keydown",onKeyDown);inerted.forEach((node)=>node.removeAttribute("inert"));createOpenerRef.current?.focus({preventScroll:true});};
+  },[creating]);
   const openDeal=(deal)=>setDetail({title:deal.title,rows:[["Client",deal.clientName],["Owner",deal.owner],["Status",deal.status],["Next action",deal.nextAction],["Source evidence",deal.source],["Client portal",deal.portalAvailable?"Available":"Not connected"],["Last changed",formatDate(deal.updatedAt)],["Stage history",deal.history.length?deal.history.map((item)=>`${item.summary} · ${formatDate(item.createdAt)}`).join("\n"):"No recorded stage history"]],note:"This contextual record shows only durable fields returned for this tenant. Financial and lifecycle facts are omitted when they are not attributed."});
-  const openCreate=()=>{setCreateMessage("");setCreating(true);};
+  const openCreate=(event)=>{createOpenerRef.current=event.currentTarget;setCreateMessage("");setCreating(true);};
   const closeCreate=()=>{setCreateMessage("");setCreating(false);};
-  const create=async()=>{setCreateMessage("");const result=await data.pipelineAction({type:"create-pipeline",...newPipeline});if(result.ok){setCreating(false);setNewPipeline({name:"",description:"",starter:"blank"});return;}setCreateMessage(result.message);};
+  const create=async()=>{if(createPending)return;setCreatePending(true);setCreateMessage("");try{const result=await data.pipelineAction({type:"create-pipeline",...newPipeline});if(result.ok){setCreating(false);setNewPipeline({name:"",description:"",starter:"blank"});return;}setCreateMessage(result.message);}finally{setCreatePending(false);}};
   return <section className="campaigns-surface pipeline-surface"><SurfaceHead truthKey="pipeline" title="Deal workspace" description="Tenant-owned pipelines, custom stages, and contextual work records." action={<div className="pipeline-actions"><label><span className="sr-only">Pipeline</span><select value={selected?.id||""} onChange={(event)=>{setSelectedId(event.target.value);setFocusedStageId("");setConfiguring(false);}}>{workspace.pipelines.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="btn btn-s" disabled={!workspace.canManage} onClick={openCreate}>New pipeline</button>{selected&&<button className="btn btn-s" onClick={()=>setConfiguring(!configuring)}>Configure stages</button>}</div>}/><StateFrame phase={data.phase} retry={data.retry} noun="pipeline workspace">
-    {creating&&<div className="pipeline-create" role="dialog" aria-modal="true" aria-labelledby="new-pipeline-title"><h3 id="new-pipeline-title">Create pipeline</h3><label><span>Name</span><input autoFocus value={newPipeline.name} onChange={(event)=>setNewPipeline({...newPipeline,name:event.target.value})}/></label><label><span>Description</span><input value={newPipeline.description} onChange={(event)=>setNewPipeline({...newPipeline,description:event.target.value})}/></label><label><span>Starting point</span><select value={newPipeline.starter} onChange={(event)=>setNewPipeline({...newPipeline,starter:event.target.value})}><option value="blank">Blank pipeline</option><option value="simple">Simple starter stages</option></select></label>{createMessage&&<p className="pipeline-save-message" role="alert">{createMessage}</p>}<div><button className="btn btn-s" onClick={closeCreate}>Cancel</button><button className="btn btn-s btn-p" disabled={!newPipeline.name.trim()} onClick={create}>Create</button></div></div>}
+    {creating&&<div ref={createDialogRef} className="pipeline-create" role="dialog" aria-modal="true" aria-labelledby="new-pipeline-title" aria-busy={createPending}><h3 id="new-pipeline-title">Create pipeline</h3><label><span>Name</span><input disabled={createPending} value={newPipeline.name} onChange={(event)=>setNewPipeline({...newPipeline,name:event.target.value})}/></label><label><span>Description</span><input disabled={createPending} value={newPipeline.description} onChange={(event)=>setNewPipeline({...newPipeline,description:event.target.value})}/></label><label><span>Starting point</span><select disabled={createPending} value={newPipeline.starter} onChange={(event)=>setNewPipeline({...newPipeline,starter:event.target.value})}><option value="blank">Blank pipeline</option><option value="simple">Simple starter stages</option></select></label>{createMessage&&<p className="pipeline-save-message" role="alert">{createMessage}</p>}<div><button className="btn btn-s" disabled={createPending} onClick={closeCreate}>Cancel</button><button className="btn btn-s btn-p" disabled={createPending||!newPipeline.name.trim()} onClick={create}>{createPending?"Creating…":"Create"}</button></div></div>}
     {workspace.pipelines.length===0?<div className="pipeline-empty"><h2>No pipeline yet</h2><p>Create a blank pipeline or choose the optional starter stages. A campaign is one possible use, not a requirement.</p><button className="btn btn-s btn-p" disabled={!workspace.canManage} onClick={openCreate}>Create pipeline</button>{!workspace.canManage&&<p>You have read-only access. A tenant administrator can create the first pipeline.</p>}</div>:<>
       {selected&&configuring&&<PipelineConfigPanel pipeline={selected} stages={stages} canManage={workspace.canManage} run={data.pipelineAction} onClose={()=>setConfiguring(false)}/>}
       {selected&&activeStages.length===0?<div className="pipeline-empty"><h2>No active stages</h2><p>Add a tenant-owned stage to begin organizing work. Archived stages remain available in configuration.</p></div>:selected&&<div className="pipeline-board-wrap"><div className="pipeline-stage-focus"><label><span>Focused stage</span><select value={focusId||""} onChange={(event)=>setFocusedStageId(event.target.value)}>{activeStages.map((stage)=><option key={stage.id} value={stage.id}>{stage.label}</option>)}</select></label></div><div className="pipeline-board" style={{"--pipeline-stage-count":activeStages.length}}>{activeStages.map((stage)=><section key={stage.id} className={`pipeline-lane ${stage.id===focusId?"is-focused":""}`}><header><div><h3>{stage.label}</h3>{stage.description&&<p>{stage.description}</p>}</div></header><div className="pipeline-cards">{workspace.deals.filter((deal)=>deal.pipelineId===selected.id&&deal.stageId===stage.id).map((deal)=><button key={deal.id} className="pipeline-card" onClick={()=>openDeal(deal)}><strong>{deal.title}</strong><span>{deal.clientName}</span><small>{deal.owner}</small><small>{deal.nextAction}</small><span className="pipeline-evidence">{deal.source}</span></button>)}{!workspace.deals.some((deal)=>deal.pipelineId===selected.id&&deal.stageId===stage.id)&&<p className="pipeline-lane-empty">No work in this stage</p>}</div></section>)}</div></div>}
