@@ -122,6 +122,18 @@ function anthropicStream(kind = "text") {
     // `matches: [...]`, real contact names, emails, phones and lifecycle stages read out of the
     // tenant's book. A name cannot express "this tool sometimes reads", which is why the receipt
     // test is now a shape test as well.
+    // `deal_move_stage` — a receipt-named tool whose result is SMALL, FLAT and not a list, and
+    // still carries `stage: stage.label` read out of `pipeline_stages`. It slipped past both the
+    // size bound and the record-list test, which is what showed a SHAPE heuristic could never
+    // answer "is this result free of evidence?".
+    : kind === "deal-stage"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "deal_move_stage" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ deal_id: "dddd2222-3333-4444-8555-666677778888", stage_id: "eeee2222-3333-4444-8555-666677778888", confirm: true }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
     : kind === "dedup-contact"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
@@ -2961,6 +2973,48 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.ad ...and the whole transcript never carries it either",
     !denied.responseText.includes(FOREIGN_CLIENT),
     denied.responseText.slice(0, 300),
+  );
+
+  // 21.ae — A SMALL, FLAT TENANT READ-BACK. `deal_move_stage` returns `stage: stage.label`, read
+  // out of `pipeline_stages` — not a list, well under the size bound, and therefore invisible to
+  // both shape criteria. Third miss in a row on the same question, which is what established
+  // that a heuristic about SHAPE was never going to answer it: a receipt ECHOES, and a value in
+  // the result that is not in the arguments came from storage.
+  const dealOpts = {
+    kbRejects: true,
+    provider: ["deal-stage", "private-text"],
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+      current_user_tenant_id: { data: CHILD, error: null },
+      is_platform_owner: { data: false, error: null },
+    },
+    tableExtras: {
+      user_roles: () => [{ role: "admin" }],
+      // The label the model never supplied — the whole point of the case.
+      pipeline_stages: () => [{ id: "eeee2222-3333-4444-8555-666677778888", label: "PRIVATE-STAGELABEL-MARKER", pipeline_id: "ffff2222-3333-4444-8555-666677778888" }],
+      deals: () => [{ id: "dddd2222-3333-4444-8555-666677778888", tenant_id: CHILD, stage_id: "eeee2222-3333-4444-8555-666677778888" }],
+    },
+  };
+  const dealClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...dealOpts,
+  });
+  const dealTotal = personaCallsOf(dealClean);
+  assert(
+    "21.ae a receipt-named tool returning an UNECHOED value protects the turn",
+    dealTotal > 1,
+    `persona calls: ${dealTotal} — 1 means a small flat read-back passed as a receipt`,
+  );
+  const dealAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(dealTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...dealOpts,
+  });
+  assert(
+    "21.ae ...so a failed final check withholds the reply it grounded",
+    !dealAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    dealAtGate.responseText.slice(0, 300),
   );
 }
 

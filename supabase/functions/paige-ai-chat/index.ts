@@ -1754,21 +1754,50 @@ JSON:`;
     // OF RECORDS. Any nested array of objects, or an oversized payload, is evidence whatever the
     // tool is called. That catches the dedup branch without anyone having to have thought of it,
     // which is the property every name-based enumeration on this branch has failed to have.
-    // §13 — THE TWO CRITERIA ARE REDUNDANT ON THE ONE CASE ANY TEST DRIVES, and saying so is
-    // better than implying coverage that does not exist. The dedup payload is both a record list
-    // AND over the size bound, so removing EITHER criterion alone leaves the suite green and only
-    // removing both fails. Measured, not assumed. The size bound is the belt: it catches a large
-    // flat payload — a long free-text field read from storage — that the record-list test would
-    // wave through. Do not delete either on the strength of a green suite.
+    // §13 — WHICH OF THE THREE TESTS IS ACTUALLY LOAD-BEARING, measured after the echo rule
+    // landed and NOT the answer this comment gave one commit ago. The ECHO RULE is: removing it,
+    // or accepting every string, each fails 2 checks. The size bound and the record-list test are
+    // now BELTS — removing either leaves the suite green, because every case anything drives is
+    // caught by the echo rule first. They stay because they are cheap and they fail closed on
+    // shapes the echo rule was not designed for (a colossal payload, a list of records whose
+    // every field happens to be echoed), but nothing here proves them and I am not going to
+    // claim otherwise. The previous version of this note said the two shape tests were the
+    // redundant pair and each caught the dedup case; that was true then and is not true now.
     const RECEIPT_MAX_CHARS = 600;
-    const resultIsReceiptShaped = (raw: string | undefined): boolean => {
+    //
+    // AND THE THIRD MISS IS WHY THIS NOW CHECKS EVERY STRING, not just the shape. `deal_create`
+    // and `deal_move_stage` return `stage: stage.label`, read out of `pipeline_stages` — SMALL,
+    // FLAT, and not a list, so it slipped past both criteria above. Three misses in a row on the
+    // same question ("is this result free of evidence?") is the signal that a heuristic about
+    // SHAPE was never going to answer it.
+    //
+    // The rule that does: A RECEIPT ECHOES. Every string in the result must be something the
+    // model itself supplied in the arguments, or an identifier, or a short status token. A value
+    // that appears in the result and NOT in the arguments came from storage, whatever its size
+    // or shape. That is the definition of a read, expressed as a test rather than as a list, and
+    // it is the fourth attempt because the first three were lists in disguise.
+    //
+    // Conservative on purpose: an unrecognised string protects the turn. A tool error message or
+    // a storage URL is not demonstrably an echo, so it buffers — the cost is latency on a turn
+    // that already ran a tool, and the alternative is another round of this.
+    const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const STATUS_TOKEN = /^[a-z][a-z0-9_]{0,23}$/; // success, needs_confirm, open, queued…
+    const valueIsEchoOrId = (v: unknown, argsRaw: string): boolean => {
+      if (v == null || typeof v === "boolean" || typeof v === "number") return true;
+      if (typeof v === "string") {
+        return UUIDISH.test(v) || STATUS_TOKEN.test(v) || argsRaw.includes(v);
+      }
+      if (Array.isArray(v)) return v.every((x) => valueIsEchoOrId(x, argsRaw));
+      if (typeof v === "object") return Object.values(v as any).every((x) => valueIsEchoOrId(x, argsRaw));
+      return false;
+    };
+    const resultIsReceiptShaped = (raw: string | undefined, argsRaw: string): boolean => {
       if (typeof raw !== "string" || raw.length > RECEIPT_MAX_CHARS) return false;
       let out: any;
       try { out = JSON.parse(raw); } catch { return false; }
       if (!out || typeof out !== "object" || Array.isArray(out)) return false;
-      return !Object.values(out).some(
-        (v) => Array.isArray(v) && v.some((x) => x && typeof x === "object"),
-      );
+      if (Object.values(out).some((v) => Array.isArray(v) && v.some((x) => x && typeof x === "object"))) return false;
+      return Object.values(out).every((v) => valueIsEchoOrId(v, argsRaw));
     };
     const markLateRetrievalProtected = (executed: any[], results: any[], receipts: Set<string>) => {
       if (lateRetrievalProtected) return;
@@ -1776,7 +1805,8 @@ JSON:`;
         const name = tc?.function?.name ?? "";
         if (!receipts.has(name)) return true; // not a receipt by name → evidence
         const res = results.find((r: any) => r?.tool_call_id === tc?.id);
-        return !resultIsReceiptShaped(res?.content); // named a receipt, but did not come back as one
+        // named a receipt, but did not come back as one
+        return !resultIsReceiptShaped(res?.content, String(tc?.function?.arguments ?? ""));
       });
       if (!evidence) return;
       markProtectedLate(`tool:${evidence?.function?.name ?? "unknown"}`);
