@@ -47,12 +47,30 @@ const PROTOCOL_VERSION = "2025-06-18";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BYTES = 1_048_576;
 
+/**
+ * Header names this transport sets itself, and which a tenant's custom header name may
+ * therefore not be. The token-grammar check below stops a NEW header being injected; it
+ * does nothing about an EXISTING one being replaced, and the auth headers are spread last,
+ * so a workspace that named its header `Accept` silently decided this client's content
+ * negotiation — or, worse, named it `Authorization` and decided its own credential was the
+ * bearer token for a server that reads both.
+ */
+const RESERVED_HEADERS = new Set([
+  "authorization", "content-type", "accept", "mcp-protocol-version",
+  // Not set here, but set by the runtime, and a value that changes which virtual host
+  // answers is not a thing a credential field gets to decide.
+  "host", "content-length", "connection", "transfer-encoding",
+]);
+
 function authHeaders(auth: McpAuth): Record<string, string> {
   // A custom header name is tenant-supplied, so it is constrained to the RFC 9110 token
   // grammar. Without this a newline in the name would let a tenant inject headers.
   if (auth.kind === "header") {
     if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(auth.name)) {
       throw new McpError("mcp_protocol_error", "invalid header name");
+    }
+    if (RESERVED_HEADERS.has(auth.name.toLowerCase())) {
+      throw new McpError("mcp_protocol_error", "reserved header name");
     }
     return { [auth.name]: auth.token };
   }
@@ -111,10 +129,20 @@ export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
   }
 
   if (res.status < 200 || res.status >= 300) {
-    // Provider text is bounded before it is carried anywhere. It is external content:
-    // callers surface it as a detail, never as an instruction.
-    throw new McpError("mcp_http_error", res.body.slice(0, 300), res.status);
+    // The STATUS is carried and the body is not. Nothing reads the detail — every surface
+    // words these failures from the code — so a bounded slice of provider text bought
+    // nothing and put arbitrary third-party content into an Error message, which is the
+    // one object in this path that gets logged, wrapped and stringified by code that never
+    // asked what was in it.
+    throw new McpError("mcp_http_error", undefined, res.status);
   }
+
+  // A truncated envelope is not a short envelope: half a JSON-RPC response parses as
+  // nothing, or worse, as something. This is the one place `response_too_large` was
+  // declared and worded for and never actually raised, so an oversized answer arrived as
+  // "that address answered, but not as an MCP server" — which reads as the workspace
+  // having typed the wrong URL.
+  if (res.truncated) throw new McpError("response_too_large");
 
   const envelope = parseEnvelope(res.body, res.headers.get("content-type") ?? "");
   if (envelope === null) throw new McpError("mcp_malformed_response");

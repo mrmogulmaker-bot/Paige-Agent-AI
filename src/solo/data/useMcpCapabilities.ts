@@ -15,6 +15,7 @@
  */
 import { useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 import type { McpProvider } from "./useMcpConnection";
 
 export type DiscoveredCapability = {
@@ -72,7 +73,10 @@ export function useMcpCapabilities(provider: McpProvider) {
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
       body: { provider, action: "discover" },
     });
-    const failure = (data as { error?: string })?.error;
+    // On a non-2xx `data` is null and the body is on the error — reading it from `data`
+    // alone made every mapping below unreachable on exactly the responses it was written
+    // for, so the user saw the fallback line no matter what actually went wrong.
+    const failure = (await readFunctionErrorBody(error, data))?.error as string | undefined;
     if (error || failure) {
       setState({ tools: null, loading: false, saving: false, error: describe(failure, "The list could not be loaded.") });
       return;
@@ -93,7 +97,7 @@ export function useMcpCapabilities(provider: McpProvider) {
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
       body: { provider, action: "approve", capabilities: names, pins },
     });
-    const failure = (data as { error?: string })?.error;
+    const failure = (await readFunctionErrorBody(error, data))?.error as string | undefined;
     if (error || failure) {
       setState((prev) => ({ ...prev, saving: false, error: describe(failure, "That did not save, and nothing was changed.") }));
       // A changed provider means the list on screen is stale; reloading it is the only

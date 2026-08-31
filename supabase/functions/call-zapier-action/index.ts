@@ -41,7 +41,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
 import { mcpListTools } from "../_shared/mcp-client.ts";
 import { callApprovedCapability, fileGovernedOutcome, projectDiscovery } from "../_shared/mcp-outcome.ts";
-import { discoverAuthorizationServer, isExpired, refreshTokens } from "../_shared/mcp-oauth.ts";
+import { discoverAuthorizationServer, discoverProtectedResource, isExpired, refreshTokens } from "../_shared/mcp-oauth.ts";
 
 // The SSRF validator that used to live inline here is now `_shared/ssrfGuard.ts`, reached
 // through `_shared/mcp-client.ts`. It is the same numeric guard, plus the three things
@@ -103,12 +103,21 @@ Deno.serve(async (req) => {
   if (secret.auth_kind === "oauth" && isExpired(secret.expires_at) && secret.refresh_token && secret.oauth_issuer) {
     try {
       const server = await discoverAuthorizationServer(String(secret.oauth_issuer));
+      // RFC 8707: the resource indicator has to be the one the SERVER advertises, and the
+      // grant was obtained with that value. Substituting the endpoint URL happens to be
+      // the same string for Zapier today and is not the same thing — an authorization
+      // server that advertises a different resource identifier would refuse the refresh,
+      // and the connection would look like it had expired rather than like it had been
+      // asked the wrong question. Re-read rather than stored so it cannot go stale, and
+      // the endpoint is the fallback because that is what the grant used before this.
+      let resource = serverUrl;
+      try { resource = (await discoverProtectedResource(serverUrl)).resource; } catch { /* keep the endpoint */ }
       const rotated = await refreshTokens({
         server,
         clientId: String(secret.oauth_client_id ?? ""),
         clientSecret: secret.oauth_client_secret ? String(secret.oauth_client_secret) : null,
         refreshToken: String(secret.refresh_token),
-        resource: serverUrl,
+        resource,
       });
       const { error: rErr } = await admin.rpc("rotate_tenant_mcp_tokens", {
         _tenant_id: tenantId,

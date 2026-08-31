@@ -217,8 +217,11 @@ console.log("\n— the REST call —");
   // `n8n_302` — so a check for "some error" stays green while the protection is gone.
   // And a redirect followed inside the HTTP client is invisible from out here, so
   // "the target was never contacted" cannot see the case it names either.
+  // Named as a redirect and NOT as an unsafe address. The refusal is the same; what an
+  // admin is told is not. A healthy instance that has moved redirects, and telling its
+  // owner their address points somewhere private is both false and unactionable.
   check("a redirect from the instance is REFUSED, by name",
-    r.body?.error === "unsafe_instance_url" && r.body?.detail === "url_redirect_refused",
+    r.body?.error === "instance_url_redirects" && r.body?.detail === "url_redirect_refused",
     JSON.stringify(r.body ?? {}).slice(0, 110));
   check("...and no request to the redirect target is made from here",
     !r.contacted.some((c) => c.host.includes("169.254")), r.contacted.map((c) => c.host).join(", "));

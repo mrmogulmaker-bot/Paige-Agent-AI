@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
-import { projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
+import { projectN8nForModel, projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
@@ -7399,9 +7399,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : { action: "update", workflow_id: args.workflow_id, name: args.name, nodes: args.nodes, connections: args.connections, settings: args.settings };
               const { data: n8nData, error: n8nErr } = await supabaseClient.functions.invoke("paige-n8n", { body: n8nBody });
               if (n8nErr) throw n8nErr;
-              result = (n8nData as any)?.error
-                ? { success: false, ...(n8nData as any) }
-                : { success: true, ...(n8nData as any) };
+              // Same boundary as the Zapier lane below, and for the same reason: a
+              // workspace's n8n instance is a third-party host, and everything it says
+              // arrives here as untrusted input on its way into a model's context.
+              // Spreading the response wholesale, as this once did, carried the webhook's
+              // own body (4000 characters of whatever the workflow chose to return) and
+              // every provider error body straight through.
+              result = projectN8nForModel(n8nData);
             } else if (
               tc.function.name === "zapier_list_actions" || tc.function.name === "zapier_run_action"
             ) {

@@ -358,6 +358,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:n8n-ssrf
 
+      - name: Smoke — no n8n webhook body, provider error or workflow definition reaches the model
+        if: ${{ !cancelled() }}
+        run: npm run smoke:n8n-egress
+
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant

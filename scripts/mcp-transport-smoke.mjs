@@ -38,6 +38,16 @@ const DNS = {
   "mixed.example": { A: ["93.184.216.34", "127.0.0.1"] }, // one bad address is enough
   "v6-ula.example": { AAAA: ["fd00::1"] },
   "mapped.example": { AAAA: ["::ffff:169.254.169.254"] }, // metadata via mapped v6
+  // The spellings the old prefix regexes did not have. Each one resolved to an address
+  // that is not a legitimate destination and each one was ALLOWED.
+  "translated.example": { AAAA: ["::ffff:0:127.0.0.1"] },  // IPv4-translated loopback
+  "compat.example": { AAAA: ["::169.254.169.254"] },       // IPv4-compatible metadata
+  "sitelocal.example": { AAAA: ["fec0::1"] },              // fec0::/10
+  "multicast6.example": { AAAA: ["ff02::1"] },             // ff00::/8
+  "multicast4.example": { A: ["224.0.0.1"] },              // 224.0.0.0/4
+  "reserved4.example": { A: ["240.0.0.1"] },               // 240.0.0.0/4
+  "relay6to4.example": { A: ["192.88.99.1"] },             // 6to4 relay anycast
+  "sixtofour.example": { AAAA: ["2002:a00:1::1"] },        // 6to4 wrapping 10.0.0.1
 };
 globalThis.Deno = {
   resolveDns: async (host, kind) => {
@@ -106,13 +116,44 @@ check(".internal is refused", await reasonOf(() => guard.assertPublicHttpUrl("ht
 check("a loopback literal is refused", await reasonOf(() => guard.assertPublicHttpUrl("https://127.0.0.1/x")) === "url_host_not_allowed");
 check("the cloud metadata address is refused", await reasonOf(() => guard.assertPublicHttpUrl("https://169.254.169.254/x")) === "url_host_not_allowed");
 check("an RFC1918 literal is refused", await reasonOf(() => guard.assertPublicHttpUrl("https://10.1.2.3/x")) === "url_host_not_allowed");
-check("a DNS rebind onto a private address is refused",
+// Named for what it actually tests. A host that resolves to a private address is refused
+// — which is a static resolution, not a rebind. A rebind is a host that answers PUBLIC to
+// this check and PRIVATE to the socket `fetch` opens afterwards, and nothing here can
+// stop that, because `fetch` does its own resolution and cannot be pinned to the address
+// that was validated. The old name claimed a property this file does not hold; the
+// residual risk is written down in ssrfGuard.ts rather than asserted away.
+check("a name that resolves to a private address is refused",
   await reasonOf(() => guard.assertPublicHttpUrl("https://rebind.example/x")) === "url_resolves_to_private_address");
 check("one private address among several is enough to refuse",
   await reasonOf(() => guard.assertPublicHttpUrl("https://mixed.example/x")) === "url_resolves_to_private_address");
 check("an IPv6 ULA is refused", await reasonOf(() => guard.assertPublicHttpUrl("https://v6-ula.example/x")) === "url_resolves_to_private_address");
 check("metadata reached through a mapped IPv6 address is refused",
   await reasonOf(() => guard.assertPublicHttpUrl("https://mapped.example/x")) === "url_resolves_to_private_address");
+
+// Every one of these was ALLOWED by the prefix regexes this guard used to carry. They are
+// listed individually rather than folded into one case because each is a different way of
+// writing an address, and "the parser handles notation" is exactly the claim under test.
+for (const [host, what] of [
+  ["translated.example", "an IPv4-translated loopback (::ffff:0:127.0.0.1)"],
+  ["compat.example", "an IPv4-compatible metadata address (::169.254.169.254)"],
+  ["sitelocal.example", "an IPv6 site-local address (fec0::/10)"],
+  ["multicast6.example", "an IPv6 multicast address (ff00::/8)"],
+  ["multicast4.example", "an IPv4 multicast address (224.0.0.0/4)"],
+  ["reserved4.example", "a reserved IPv4 address (240.0.0.0/4)"],
+  ["relay6to4.example", "the 6to4 relay anycast address (192.88.99.0/24)"],
+  ["sixtofour.example", "a 6to4 address wrapping an RFC1918 target"],
+]) {
+  check(`${what} is refused`,
+    await reasonOf(() => guard.assertPublicHttpUrl(`https://${host}/x`)) === "url_resolves_to_private_address");
+}
+
+// A literal that is not an address at all must fail closed rather than fall through the
+// bottom of the parser as "a routable public IPv6".
+check("an unparseable IPv6 literal fails closed",
+  await reasonOf(() => guard.assertPublicHttpUrl("https://[::ffff:zz]/x")) !== null);
+// ...and a genuinely public IPv6 still works, so the parser did not close the door.
+check("a public IPv6 address is still allowed",
+  await reasonOf(() => guard.assertPublicHttpUrl("https://[2606:4700:4700::1111]/x")) === null);
 check("an unresolvable host fails closed",
   await reasonOf(() => guard.assertPublicHttpUrl("https://nowhere.example/x")) === "url_host_unresolvable");
 check("a public host is allowed", await reasonOf(() => guard.assertPublicHttpUrl("https://public.example/x")) === null);
@@ -148,6 +189,11 @@ routes.set("/slow", (_q, res) => { res.writeHead(200, { "Content-Type": "applica
 routes.set("/ok", (_q, res) => {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ ok: true }));
+});
+
+routes.set("/denied", (_q, res) => {
+  res.writeHead(401, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "SUPER-SECRET-BODY: internal detail nobody asked to carry" }));
 });
 {
   const r = await guard.safeFetch("https://public.example/ok");
@@ -219,7 +265,28 @@ routes.set("/mcp-garbage", (_q, res) => { res.writeHead(200, { "Content-Type": "
     httpErr?.code === "mcp_http_error" && httpErr?.httpStatus === 401);
 
   const junkErr = await asError(mcp.mcpListTools({ serverUrl: "https://public.example/mcp-garbage", auth: bearer }));
-  check("a non-MCP endpoint is refused rather than half-parsed", junkErr?.code === "mcp_malformed_response");
+  // The reason was declared and worded and never raised, so an oversized answer read as
+// "not an MCP server" — which points the workspace at their address instead of the server.
+check("an oversized MCP response is named as oversized, not as a bad address",
+  await reasonOf(() => mcp.mcpRequest({
+    serverUrl: "https://public.example/huge",
+    auth: { kind: "bearer", token: "t" },
+    method: "tools/list",
+    maxBytes: 4096,
+  })) === "response_too_large");
+
+// The status is what a workspace can act on. The body is arbitrary third-party text and
+// has no business inside an Error that other code will log and stringify.
+{
+  let carried = null;
+  try {
+    await mcp.mcpRequest({ serverUrl: "https://public.example/denied", auth: { kind: "bearer", token: "t" }, method: "tools/list" });
+  } catch (e) { carried = e; }
+  check("a rejected credential does not carry the provider's error body in the message",
+    !String(carried?.message ?? "").includes("SUPER-SECRET-BODY"), String(carried?.message));
+}
+
+check("a non-MCP endpoint is refused rather than half-parsed", junkErr?.code === "mcp_malformed_response");
 
   // The single most important property of this whole layer.
   const everything = [rpcErr, httpErr, junkErr]
@@ -241,7 +308,18 @@ routes.set("/mcp-garbage", (_q, res) => { res.writeHead(200, { "Content-Type": "
     serverUrl: "https://public.example/mcp-json",
     auth: { kind: "header", name: "X-N8N-Api-Key", token: "hdr-secret" },
   });
-  check("a valid custom header name is used verbatim", lastRequest.headers["x-n8n-api-key"] === "hdr-secret");
+  // The grammar check stops a new header being injected; it says nothing about an existing
+// one being replaced, and the auth headers are spread last.
+for (const reserved of ["Authorization", "Accept", "Content-Type", "MCP-Protocol-Version", "Host"]) {
+  check(`a custom header name of ${reserved} is refused rather than overriding ours`,
+    (await reasonOf(() => mcp.mcpRequest({
+      serverUrl: "https://public.example/ok",
+      auth: { kind: "header", name: reserved, token: "t" },
+      method: "tools/list",
+    }))) !== null);
+}
+
+check("a valid custom header name is used verbatim", lastRequest.headers["x-n8n-api-key"] === "hdr-secret");
   check("...and no Bearer header is sent alongside it", lastRequest.headers.authorization === undefined);
 }
 

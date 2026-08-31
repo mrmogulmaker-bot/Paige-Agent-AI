@@ -165,9 +165,8 @@ Deno.serve(async (req) => {
       case "list": {
         const res = await n8nFetch(baseUrl, apiKey, "/workflows?limit=200");
         if (!res.ok) {
-          const detail = (await res.text()).slice(0, 300);
           await markSync("error", `n8n ${res.status}`, null);
-          return json({ error: `n8n_${res.status}`, detail }, 502);
+          return json({ error: `n8n_${res.status}` }, 502);
         }
         const data = await res.json();
         const items = (data?.data ?? []).map((w: any) => ({
@@ -185,14 +184,23 @@ Deno.serve(async (req) => {
       case "get": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`);
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) }, 502);
-        return json({ ok: true, workflow: await res.json() });
+        if (!res.ok) return json({ error: `n8n_${res.status}` }, 502);
+        // Bounded on the same principle as everything else here: node parameters hold
+        // whatever a workflow author put in them, including URLs and credential-shaped
+        // values, so the definition itself does not leave this function.
+        const wfGet = await res.json();
+        return json({ ok: true, workflow: {
+          id: wfGet?.id ?? null, name: wfGet?.name ?? null, active: !!wfGet?.active,
+          tags: (wfGet?.tags ?? []).map((t: any) => t?.name).filter(Boolean),
+          node_count: Array.isArray(wfGet?.nodes) ? wfGet.nodes.length : null,
+          updatedAt: wfGet?.updatedAt ?? null,
+        } });
       }
       case "executions": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const limit = Math.min(50, Math.max(1, Number(body.limit) || 10));
         const res = await n8nFetch(baseUrl, apiKey, `/executions?workflowId=${encodeURIComponent(body.workflow_id)}&limit=${limit}`);
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) }, 502);
+        if (!res.ok) return json({ error: `n8n_${res.status}` }, 502);
         const data = await res.json();
         const runs = (data?.data ?? []).map((e: any) => ({
           id: e.id, finished: e.finished, mode: e.mode, status: e.status,
@@ -209,7 +217,7 @@ Deno.serve(async (req) => {
         let wfName: string | null = null;
         if (!path && body.workflow_id) {
           const wres = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`);
-          if (!wres.ok) return json({ error: `n8n_${wres.status}`, detail: (await wres.text()).slice(0, 300) }, 502);
+          if (!wres.ok) return json({ error: `n8n_${wres.status}` }, 502);
           const wf = await wres.json();
           wfName = typeof wf?.name === "string" ? wf.name : null;
           const nodes: any[] = wf?.nodes ?? [];
@@ -290,7 +298,10 @@ Deno.serve(async (req) => {
             smsSent: sms, emailSent: email, telegramSent: o.telegramSent ?? null,
             tagsAdded: tags, name: o.name ?? null, errors: errs,
           } : null,
-          raw_response: respText,             // log/debug only — never quoted to the operator as proof
+          // The webhook's own response body is NOT returned. It was read to extract the
+          // typed outcome above and its job ends there: it is written by whatever the
+          // workflow chose to return, so forwarding it hands an arbitrary third-party
+          // string to every consumer of this response, the model included.
           note: !hookOk
             ? "The webhook returned a non-2xx — the workflow may be inactive, or the path/payload didn't match. Nothing was sent."
             : hasOutcome
@@ -322,7 +333,7 @@ Deno.serve(async (req) => {
         const res = await n8nFetch(baseUrl, apiKey, "/workflows", { method: "POST", body: JSON.stringify(payload) });
         // Expected n8n rejection → 200 + ok:false so the real reason reaches Paige
         // (a 502 would be collapsed by functions.invoke to a generic non-2xx string).
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const wf = await res.json();
         // Fold the Paige-authored workflow into the tenant's registry, tagged as hers.
         if (wf?.id) await admin.rpc("record_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: wf.id, _name: wf.name }).then(() => {}, () => {});
@@ -339,7 +350,7 @@ Deno.serve(async (req) => {
           if (!uv.valid) return json({ ok: false, error: "invalid_workflow", detail: uv.errors.join("; "), validation: uv });
         }
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, { method: "PUT", body: JSON.stringify(payload) });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const wf = await res.json();
         return json({ ok: true, workflow_id: wf?.id, name: wf?.name, active: !!wf?.active });
       }
@@ -351,7 +362,7 @@ Deno.serve(async (req) => {
         if (!body.execution_id) return json({ ok: false, error: "execution_id_required", detail: "Provide the execution_id (from a run response or the executions list)." });
         const res = await n8nFetch(baseUrl, apiKey, `/executions/${encodeURIComponent(body.execution_id)}?includeData=true`);
         if (res.status === 404) return json({ ok: false, error: "execution_not_found", detail: "No execution with that id. Run the executions action to list recent runs for the workflow." });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const ex = await res.json();
         const rd = ex?.data?.resultData ?? {};
         const lastNode: string | null = rd?.lastNodeExecuted ?? null;
@@ -396,7 +407,7 @@ Deno.serve(async (req) => {
       case "deactivate": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}/${action}`, { method: "POST" });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const wf = await res.json();
         return json({ ok: true, workflow_id: wf?.id, active: !!wf?.active });
       }
@@ -404,7 +415,7 @@ Deno.serve(async (req) => {
         // PREFERRED default over delete — reversible ("park don't weave", §4).
         if (!body.workflow_id) return json({ ok: false, error: "workflow_id_required" });
         const d = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}/deactivate`, { method: "POST" });
-        if (!d.ok) return json({ ok: false, error: `n8n_${d.status}`, detail: (await d.text()).slice(0, 300) });
+        if (!d.ok) return json({ ok: false, error: `n8n_${d.status}` });
         const wf = await d.json();
         const name = String(wf?.name ?? "");
         if (!name.startsWith("[archived]")) {
@@ -419,7 +430,7 @@ Deno.serve(async (req) => {
         // Permanent — only on an explicit "delete permanently".
         if (!body.workflow_id) return json({ ok: false, error: "workflow_id_required" });
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, { method: "DELETE" });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         // Registry cleanup; if the RPC is absent, a subsequent list resync drops the ghost.
         await admin.rpc("forget_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: body.workflow_id }).then(() => {}, () => {});
         return json({ ok: true, deleted: true, workflow_id: body.workflow_id, note: "Workflow permanently deleted from n8n." });
@@ -432,12 +443,24 @@ Deno.serve(async (req) => {
     // difference between "your n8n is down" and "that address was refused" is the
     // difference between waiting and fixing.
     if (e instanceof SsrfError) {
+      // Three different things, told apart, because they ask different things of an admin.
+      //
+      // A REDIRECT is not a bad address. A healthy instance that has moved, or that sits
+      // behind a proxy adding a trailing slash, redirects — and marking the whole
+      // connection `unsafe_instance_url` told the admin their address pointed somewhere
+      // private, which is both false and unactionable. It is the connection SETTING that
+      // needs updating to whatever the instance now answers on.
+      //
+      // A TIMEOUT or a transport failure says nothing about the address at all and must
+      // not put the connection into an error state that reads as misconfiguration.
+      const redirected = e.reason === "url_redirect_refused";
+      const unreachable = e.reason === "request_timed_out" || e.reason === "request_failed";
+      // `markSync` records what is true: an address that resolves somewhere private is a
+      // configuration error; a redirect or an outage is a state of the instance.
       await markSync("error", e.reason, null);
-      const refusedByAddress = e.reason !== "request_timed_out" && e.reason !== "request_failed";
-      return json({
-        error: refusedByAddress ? "unsafe_instance_url" : "n8n_request_failed",
-        detail: e.reason,
-      }, refusedByAddress ? 400 : 502);
+      if (redirected) return json({ error: "instance_url_redirects", detail: e.reason }, 400);
+      if (unreachable) return json({ error: "n8n_request_failed", detail: e.reason }, 502);
+      return json({ error: "unsafe_instance_url", detail: e.reason }, 400);
     }
     const msg = e instanceof Error ? e.message : "n8n_request_failed";
     await markSync("error", msg.slice(0, 300), null);

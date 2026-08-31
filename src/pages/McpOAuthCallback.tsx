@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 import "./McpOAuthCallback.css";
 
 type Phase =
@@ -62,8 +63,14 @@ export default function McpOAuthCallback() {
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
       body: { provider: "zapier", action: "oauth_complete", code, state },
     });
-    if (error || (data as { error?: string })?.error) {
-      setPhase({ kind: "failed", message: describeFailure((data as { code?: string; error?: string })?.code ?? (data as { error?: string })?.error) });
+    // On a non-2xx the body is on the error, not on `data`. Without this the callback
+    // reported the generic failure for every refusal, including the ones a person can act
+    // on — an expired authorization, a state that had already been spent.
+    const failure = await readFunctionErrorBody(error, data);
+    if (error || typeof failure?.error === "string") {
+      const code = typeof failure?.code === "string" ? failure.code : undefined;
+      const reason = typeof failure?.error === "string" ? failure.error : undefined;
+      setPhase({ kind: "failed", message: describeFailure(code ?? reason) });
       return;
     }
     // Granted is not the same as working: the probe decides. Both are honest outcomes and

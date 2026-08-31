@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
 
@@ -175,8 +176,13 @@ export function useMcpConnection(provider: McpProvider) {
     // A failed request and a request that succeeded but could not save are the same
     // thing to an admin: nothing changed. A failed PROBE is not — the connection was
     // stored, it just does not work, and saying "nothing changed" there would be false.
-    if (error || (data as { error?: string })?.error) {
-      const code = (data as { code?: string })?.code;
+    // The reason lives in the response BODY, and on a non-2xx that body is on the error
+    // rather than on `data`. Reading only `data` left `code` undefined for every refusal
+    // the RPC actually raises, so a permission failure and a malformed address produced
+    // the same generic line.
+    const failure = await readFunctionErrorBody(error, data);
+    if (error || typeof failure?.error === "string") {
+      const code = typeof failure?.code === "string" ? failure.code : undefined;
       setState((prev) => ({ ...prev, saving: false, writeError: mcpWriteMessage(code, "write") }));
       return false;
     }

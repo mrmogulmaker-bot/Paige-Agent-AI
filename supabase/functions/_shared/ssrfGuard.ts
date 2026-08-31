@@ -12,8 +12,23 @@
 //
 // `safeFetch` closes the three gaps every fork shares — credentials in the URL, an
 // unbounded wait, and an unbounded response body — and refuses redirects outright
-// instead of trying to re-validate each hop, which is the stricter of the two postures
-// and the only one with no TOCTOU window between the check and the connection.
+// instead of trying to re-validate each hop, which is the stricter of the two postures:
+// a hop is never followed, so a hop is never validated, and a redirect chain cannot walk
+// an approved host into an internal one.
+//
+// RESIDUAL RISK, stated rather than implied: this guard resolves the host and then hands
+// the URL to `fetch`, which resolves it AGAIN. Between those two resolutions a name can
+// change what it points at, and this validated the first answer while the socket used the
+// second. Closing it needs the connection pinned to the IP that was checked, and Deno's
+// `fetch` exposes no way to do that — there is no per-request resolver hook and no
+// connect-time callback. So the window is real and is NOT closed here.
+//
+// What bounds it: a short TTL is not enough on its own, but an attacker also has to win
+// the race on a host the workspace's own admin configured, and every fetch through here
+// is already refused a redirect, refused a non-HTTPS scheme, and capped in time and size.
+// Do not read the checks below as proving the connected address is safe; read them as
+// proving the CONFIGURED address is, which is the property the product actually needs.
+// If a pinned-IP transport becomes available, this is the first place it belongs.
 
 function ipv4ToInt(ip: string): number | null {
   const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -34,28 +49,95 @@ function ipv4Private(ip: string): boolean {
   return inRange("0.0.0.0", 8) || inRange("10.0.0.0", 8) || inRange("127.0.0.0", 8) ||
     inRange("169.254.0.0", 16) || inRange("172.16.0.0", 12) || inRange("192.168.0.0", 16) ||
     inRange("100.64.0.0", 10) || inRange("192.0.0.0", 24) || inRange("198.18.0.0", 15) ||
+    // 6to4 relay anycast: a public-looking address whose whole purpose is to forward
+    // somewhere else, so what it finally reaches is not what was validated here.
+    inRange("192.88.99.0", 24) ||
+    // Multicast and the reserved top of the space. Neither is a legitimate destination
+    // for an outbound API call, and 240/4 in particular is where non-addresses live.
+    inRange("224.0.0.0", 4) || inRange("240.0.0.0", 4) ||
     n === ipv4ToInt("255.255.255.255");
 }
+
+/**
+ * An IPv6 address as its 16 bytes, or null if it is not one.
+ *
+ * Written as a parser rather than a set of prefix regexes because the regexes kept being
+ * one spelling short: `::ffff:127.0.0.1` was caught and `::ffff:0:127.0.0.1` was not, and
+ * every such miss is silently an allow. A parser has no spellings — the same address in
+ * any notation becomes the same 16 bytes, and the checks are then arithmetic.
+ */
+function parseIpv6(ip: string): Uint8Array | null {
+  if (!/^[0-9a-f:.]+$/.test(ip)) return null;
+  const halves = ip.split("::");
+  if (halves.length > 2) return null;
+
+  // A trailing dotted quad contributes two hextets.
+  const toHextets = (part: string): number[] | null => {
+    if (part === "") return [];
+    const groups = part.split(":");
+    const out: number[] = [];
+    for (let i = 0; i < groups.length; i += 1) {
+      const g = groups[i];
+      if (g.includes(".")) {
+        if (i !== groups.length - 1) return null;
+        const n = ipv4ToInt(g);
+        if (n === null) return null;
+        out.push((n >>> 16) & 0xffff, n & 0xffff);
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+      out.push(parseInt(g, 16));
+    }
+    return out;
+  };
+
+  const head = toHextets(halves[0]);
+  const tail = halves.length === 2 ? toHextets(halves[1]) : [];
+  if (head === null || tail === null) return null;
+
+  let hextets: number[];
+  if (halves.length === 2) {
+    const fill = 8 - head.length - tail.length;
+    if (fill < 1) return null;
+    hextets = [...head, ...new Array(fill).fill(0), ...tail];
+  } else {
+    hextets = head;
+  }
+  if (hextets.length !== 8) return null;
+
+  const bytes = new Uint8Array(16);
+  hextets.forEach((h, i) => { bytes[i * 2] = (h >> 8) & 0xff; bytes[i * 2 + 1] = h & 0xff; });
+  return bytes;
+}
+
+const dotted = (b: Uint8Array, at: number) => `${b[at]}.${b[at + 1]}.${b[at + 2]}.${b[at + 3]}`;
 
 function ipUnsafe(rawIp: string): boolean {
   const ip = rawIp.toLowerCase().replace(/^\[|\]$/g, "");
   if (ipv4ToInt(ip) !== null) return ipv4Private(ip);
-  // IPv6 (canonical or literal). Handle embedded/mapped IPv4 explicitly.
-  if (ip === "::1" || ip === "::") return true;
-  if (/^fe[89ab]/.test(ip)) return true;            // fe80::/10 link-local
-  if (/^f[cd]/.test(ip)) return true;               // fc00::/7 ULA
-  if (/^(64:ff9b::|2002:)/.test(ip)) {              // NAT64 / 6to4 → extract v4 if dotted
-    const d = ip.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (d) return ipv4Private(d[1]);
-    return true;
-  }
-  const mappedDotted = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mappedDotted) return ipv4Private(mappedDotted[1]);
-  const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
-    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16);
-    return ipv4Private(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
-  }
+
+  const b = parseIpv6(ip);
+  if (b === null) return true; // unparseable -> treat as unsafe, same as IPv4
+
+  // Anything whose top 64 bits are zero. That is `::`, `::1`, every IPv4-mapped and
+  // IPv4-compatible spelling, and every IPv4-translated one -- and none of them is a
+  // legitimate public destination, so the whole low block is refused rather than
+  // enumerated. Where a v4 address is embedded, it is ALSO judged as a v4 address, so a
+  // public one in a mapped form is still refused on the block rule and a private one
+  // cannot slip through a notation this code has not seen before.
+  if (b.subarray(0, 8).every((x) => x === 0)) return true;
+
+  // fe80::/10 link-local, fec0::/10 site-local, fc00::/7 ULA, ff00::/8 multicast.
+  if (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) return true;
+  if (b[0] === 0xfe && (b[1] & 0xc0) === 0xc0) return true;
+  if ((b[0] & 0xfe) === 0xfc) return true;
+  if (b[0] === 0xff) return true;
+
+  // 64:ff9b::/96 (NAT64) and 64:ff9b:1::/48 -- the embedded v4 is the real destination.
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return ipv4Private(dotted(b, 12));
+  // 2002::/16 (6to4) -- the embedded v4 sits immediately after the prefix.
+  if (b[0] === 0x20 && b[1] === 0x02) return ipv4Private(dotted(b, 2));
+
   return false; // a routable public IPv6
 }
 
@@ -140,11 +222,16 @@ export async function safeFetch(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
 
-  await assertPublicHttpUrl(url);
-
+  // The deadline starts BEFORE the guard, not after it. `assertPublicHttpUrl` resolves the
+  // host, and a resolver that hangs is a wait like any other — outside the clock, a
+  // "bounded" call could still sit for however long DNS took, which is the exact property
+  // the bound exists to remove.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    await assertPublicHttpUrl(url);
+    if (controller.signal.aborted) throw new SsrfError("request_timed_out");
+
     let res: Response;
     try {
       res = await fetch(url, { ...init, redirect: "manual", signal: controller.signal });

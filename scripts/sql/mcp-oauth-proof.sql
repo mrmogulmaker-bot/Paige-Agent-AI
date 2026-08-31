@@ -20,7 +20,14 @@
 --     -f supabase/migrations/20261005000000_mcp_registry_provider_scoped.sql \
 --     -f supabase/migrations/20261006000000_mcp_capability_policy_and_evidence.sql \
 --     -f supabase/migrations/20261007000000_mcp_oauth_state_and_tokens.sql \
+--     -f supabase/migrations/20261008000000_mcp_capability_pins.sql \
+--     -f supabase/migrations/20261011000000_mcp_evidence_no_raw_readback.sql \
+--     -f supabase/migrations/20261012000000_mcp_approvals_follow_the_endpoint.sql \
 --     -f scripts/sql/mcp-oauth-proof.sql
+--
+-- The chain is the whole list, in order. An assertion added for a later migration will
+-- fail with "function does not exist" if an earlier one is dropped from it, which is a
+-- confusing way to learn that the runbook drifted from the file.
 --
 -- Every assertion RAISEs on failure, so a green run is the whole result.
 --
@@ -187,3 +194,57 @@ BEGIN
   RAISE NOTICE 'ok: a browser-reachable caller gets metadata, never the raw payload';
 END $$;
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+
+-- ── An approval belongs to an endpoint, not to a name ─────────────────────────
+DO $$
+DECLARE t uuid := '11111111-1111-4111-8111-111111111111';
+BEGIN
+  PERFORM public.set_tenant_n8n_mcp_connection('https://a.example/mcp','tok','http','bearer',NULL,NULL,t);
+  PERFORM public.set_tenant_mcp_approved_capabilities('n8n', ARRAY['send_email'], t,
+            jsonb_build_object('send_email', repeat('c',64)));
+  IF jsonb_array_length((SELECT approved_capabilities FROM public.tenant_mcp_connections
+                          WHERE tenant_id=t AND provider='n8n')) <> 1
+    THEN RAISE EXCEPTION 'THE APPROVAL WAS NOT RECORDED'; END IF;
+
+  -- Reconnecting to a DIFFERENT server must not inherit consent granted for the first.
+  PERFORM public.set_tenant_n8n_mcp_connection('https://b.example/mcp','tok','http','bearer',NULL,NULL,t);
+  IF jsonb_array_length((SELECT approved_capabilities FROM public.tenant_mcp_connections
+                          WHERE tenant_id=t AND provider='n8n')) <> 0
+    THEN RAISE EXCEPTION 'AN APPROVAL SURVIVED A CHANGE OF SERVER'; END IF;
+  IF (SELECT capability_pins FROM public.tenant_mcp_connections WHERE tenant_id=t AND provider='n8n') <> '{}'::jsonb
+    THEN RAISE EXCEPTION 'A PIN SURVIVED A CHANGE OF SERVER'; END IF;
+  RAISE NOTICE 'ok: pointing at a different server withdraws every approval';
+
+  -- Re-saving the SAME address is not a change and must not cost the admin their work.
+  PERFORM public.set_tenant_mcp_approved_capabilities('n8n', ARRAY['send_email'], t,
+            jsonb_build_object('send_email', repeat('c',64)));
+  PERFORM public.set_tenant_n8n_mcp_connection('https://b.example/mcp','tok2','http','bearer',NULL,NULL,t);
+  IF jsonb_array_length((SELECT approved_capabilities FROM public.tenant_mcp_connections
+                          WHERE tenant_id=t AND provider='n8n')) <> 1
+    THEN RAISE EXCEPTION 'RE-SAVING THE SAME ADDRESS WITHDREW THE APPROVALS'; END IF;
+  RAISE NOTICE 'ok: re-saving the same address keeps them';
+
+  -- Disconnect means revoked, not paused.
+  PERFORM public.clear_tenant_mcp_connection('n8n', t);
+  IF jsonb_array_length((SELECT approved_capabilities FROM public.tenant_mcp_connections
+                          WHERE tenant_id=t AND provider='n8n')) <> 0
+    THEN RAISE EXCEPTION 'DISCONNECTING LEFT THE APPROVALS IN PLACE'; END IF;
+  RAISE NOTICE 'ok: disconnecting withdraws every approval';
+
+  -- The case the endpoint-change trigger cannot see. Disconnect a second time: the address
+  -- is already NULL, so `server_url_ct` does not change and the trigger does not fire. Only
+  -- the explicit clear inside `clear_tenant_mcp_connection` withdraws anything here, which
+  -- is why that clear is not redundant with the trigger and why it needs its own assertion.
+  PERFORM public.set_tenant_mcp_approved_capabilities('n8n', ARRAY['send_email'], t,
+            jsonb_build_object('send_email', repeat('c',64)));
+  IF jsonb_array_length((SELECT approved_capabilities FROM public.tenant_mcp_connections
+                          WHERE tenant_id=t AND provider='n8n')) <> 1
+    THEN RAISE EXCEPTION 'THE SECOND-DISCONNECT SETUP DID NOT TAKE'; END IF;
+  PERFORM public.clear_tenant_mcp_connection('n8n', t);
+  IF jsonb_array_length((SELECT approved_capabilities FROM public.tenant_mcp_connections
+                          WHERE tenant_id=t AND provider='n8n')) <> 0
+    THEN RAISE EXCEPTION 'DISCONNECTING AN ALREADY-CLEARED CONNECTION LEFT THE APPROVALS'; END IF;
+  IF (SELECT capability_pins FROM public.tenant_mcp_connections WHERE tenant_id=t AND provider='n8n') <> '{}'::jsonb
+    THEN RAISE EXCEPTION 'DISCONNECTING AN ALREADY-CLEARED CONNECTION LEFT THE PINS'; END IF;
+  RAISE NOTICE 'ok: disconnect revokes even when the address was already gone';
+END $$;

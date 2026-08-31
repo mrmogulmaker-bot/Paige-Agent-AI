@@ -390,6 +390,213 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
   };
 }
 
+/* -- The same boundary, for n8n ------------------------------------------------
+   n8n is the other provider whose answers reach the model, and it is untrusted for the
+   same reasons: a workspace's n8n instance is a third-party host, its workflows are
+   editable by anyone with access to it, and a webhook body is written by whatever the
+   workflow chose to return. The Zapier lane was given a projection and this one was not,
+   which left an asymmetry with no principle behind it.
+
+   n8n differs from the MCP lane in one way that changes the shape of the fix rather than
+   its existence: its responses have a KNOWN schema, and the feature is unusable without
+   some provider-authored text -- a workspace asks Paige to "turn on the lead nurture
+   workflow" by name. So this is not "no text crosses". It is: only the fields named here
+   cross, each one type-checked, length-capped and stripped of anything that could pass
+   for framing, and the envelope says plainly that what it carries is untrusted. */
+
+/** Caps and cleans one provider-authored string. Control characters go -- they are how a
+ *  value gets to look like a new line, a new speaker, or a new instruction once it is
+ *  serialised into a transcript. Everything else is kept as-is and simply bounded: the
+ *  alternative is pattern-matching for injection phrasing, which cannot be made to work. */
+function providerText(v: unknown, cap: number): string | null {
+  if (typeof v !== "string") return null;
+  const cleaned = v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
+  return cleaned ? cleaned.slice(0, cap) : null;
+}
+
+function providerTextList(v: unknown, cap: number, max: number): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const item of v) {
+    const s = providerText(item, cap);
+    if (s) out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+const boolOrNull = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/** An id is provider-chosen but must not be prose: anything outside this grammar is dropped
+ *  rather than truncated, because a "workflow id" carrying a sentence is not an id. */
+const idOrNull = (v: unknown): string | null => {
+  const s = typeof v === "string" ? v : typeof v === "number" ? String(v) : null;
+  return s && /^[A-Za-z0-9_.:-]{1,64}$/.test(s) ? s : null;
+};
+
+/**
+ * Narrows a `paige-n8n` response to the fields a model may see.
+ *
+ * An allowlist, like {@link projectOutcomeForModel}, and for the same reason: a field this
+ * function has never heard of is dropped, so a key added to the edge function later cannot
+ * reach a model by nobody having thought about it here.
+ *
+ * What is deliberately NOT carried, at any size: the webhook's own response body, any
+ * provider error body, and a whole workflow definition. None of them tells Paige anything
+ * she can act on that the typed fields do not, and each is an arbitrary attacker-writable
+ * string arriving inside a trusted-looking tool result.
+ */
+export function projectN8nForModel(raw: unknown): Record<string, unknown> {
+  const d = (raw ?? {}) as Record<string, unknown>;
+
+  // An error, in our words. The provider's `detail` is never forwarded; where the edge
+  // function's own detail is a fixed string it wrote itself, it is safe, but telling the
+  // two apart at this boundary is not possible, so neither crosses.
+  if (typeof d.error === "string") {
+    const code = providerText(d.error, 48) ?? "n8n_failed";
+    const known: Record<string, string> = {
+      not_connected: "This workspace has not connected an n8n account yet.",
+      unsafe_instance_url: "The stored n8n address is not one this platform will call. It needs correcting in Settings.",
+      instance_url_redirects: "The stored n8n address redirects somewhere else, which is not followed. The address it points at needs saving in Settings.",
+      n8n_request_failed: "The n8n instance could not be reached just now.",
+      unauthorized: "That action is not available to this caller.",
+      forbidden: "n8n control is admin-only.",
+      no_tenant: "That action is not available to this caller.",
+      secret_lookup_failed: "This workspace's n8n credentials could not be read.",
+      workflow_id_required: "That call needs a workflow id.",
+      execution_id_required: "That call needs an execution id.",
+      execution_not_found: "There is no run with that id.",
+      workflow_or_path_required: "That call needs a workflow id or an explicit webhook path.",
+      not_webhook_triggered: "That workflow is not webhook-triggered, so it cannot be run this way.",
+      workflow_inactive: "That workflow is turned off, so its webhook will not respond. Offer to turn it on first.",
+      invalid_workflow: "That workflow definition did not validate.",
+      nothing_to_update: "That call changed nothing.",
+      name_and_nodes_required: "That call needs a name and a set of nodes.",
+    };
+    return {
+      success: false,
+      error: code,
+      // `n8n_502` and friends are generated from a status code, so they are ours, but the
+      // body that came with them is not and is gone by here.
+      detail: known[code] ?? (/^n8n_\d{3}$/.test(code)
+        ? "The n8n instance refused that request."
+        : "That action could not be completed."),
+      untrusted: true,
+    };
+  }
+
+  const out: Record<string, unknown> = { success: d.ok === true, untrusted: true };
+  const action = providerText(d.action, 32);
+  if (action) out.action = action;
+
+  // test
+  if (typeof d.connected === "boolean") {
+    out.connected = d.connected;
+    out.workflow_count = numOrNull(d.workflow_count);
+    return out;
+  }
+
+  // list
+  if (Array.isArray(d.workflows)) {
+    out.workflows = (d.workflows as unknown[]).slice(0, 200).map((w) => {
+      const x = (w ?? {}) as Record<string, unknown>;
+      return {
+        id: idOrNull(x.id),
+        name: providerText(x.name, 120),
+        active: boolOrNull(x.active),
+        tags: providerTextList(x.tags, 40, 12),
+        updated_at: providerText(x.updatedAt, 40),
+      };
+    });
+    out.count = numOrNull(d.count);
+    return out;
+  }
+
+  // executions
+  if (Array.isArray(d.executions)) {
+    out.executions = (d.executions as unknown[]).slice(0, 50).map((e) => {
+      const x = (e ?? {}) as Record<string, unknown>;
+      return {
+        id: idOrNull(x.id),
+        finished: boolOrNull(x.finished),
+        mode: providerText(x.mode, 32),
+        status: providerText(x.status, 32),
+        started_at: providerText(x.startedAt, 40),
+        stopped_at: providerText(x.stoppedAt, 40),
+      };
+    });
+    out.count = numOrNull(d.count);
+    return out;
+  }
+
+  // validate -- the validator is ours, so its findings are ours to forward.
+  if (action === "validate") {
+    out.valid = boolOrNull(d.valid);
+    out.errors = providerTextList(d.errors, 200, 25);
+    return out;
+  }
+
+  // run / execution_get -- the delivery truth-table, and nothing the workflow wrote.
+  if (action === "run" || action === "execution_get") {
+    const ch = (d.channels ?? {}) as Record<string, unknown>;
+    out.workflow_id = idOrNull(d.workflow_id);
+    out.execution_id = idOrNull(d.execution_id);
+    out.delivered = boolOrNull(d.delivered);
+    out.outcome_source = providerText(d.outcome_source, 32);
+    out.channels = {
+      sms_sent: boolOrNull(ch.sms_sent),
+      email_sent: boolOrNull(ch.email_sent),
+      // Whatever a workflow calls a tag is its own business; it is bounded, not typed.
+      tags_added: providerTextList(ch.tags_added, 40, 12),
+    };
+    // The workflow's own error strings do NOT cross, only how many there were. Carrying
+    // them was tried and it was the hole: a workflow that wants to talk to the model
+    // simply fails on purpose and puts its instructions in `errors`, which is provider
+    // text arriving inside a field the model has every reason to read closely.
+    //
+    // The line this draws, and it is the same one everywhere in this function: an
+    // IDENTIFIER the model must match against crosses, because "turn on the lead nurture
+    // workflow" cannot be served without the name. NARRATIVE never does, because nothing
+    // Paige does next depends on it. The detail is not lost — it is in the evidence
+    // record, behind a tenant-scoped read, which is where detail belongs.
+    out.error_count = Array.isArray(d.errors) ? d.errors.length : 0;
+    if (action === "run") {
+      out.fired = boolOrNull(d.fired);
+      out.http_status = numOrNull(d.http_status);
+      out.verified = boolOrNull(d.verified);
+    } else {
+      out.status = providerText(d.status, 32);
+      out.finished = boolOrNull(d.finished);
+      out.started_at = providerText(d.started_at, 40);
+      out.stopped_at = providerText(d.stopped_at, 40);
+      // The node NAME is an identifier an operator can act on ("the Send step failed").
+      // Its message is the provider's prose and stays out, for the reason above.
+      const ne = (d.node_error ?? null) as Record<string, unknown> | null;
+      out.failed_node = ne ? providerText(ne.name, 120) : null;
+    }
+    // `note` and `verify_hint` are written by the edge function, not by n8n, and they
+    // carry the honest-reporting discipline about not claiming a send. They are re-derived
+    // here rather than forwarded, so a provider-controlled value can never arrive wearing
+    // them.
+    out.note = out.delivered === true
+      ? "The workflow confirmed the send in its response."
+      : out.delivered === false
+        ? `The workflow reported it did NOT send${out.error_count ? ` and raised ${out.error_count} error(s)` : ""}. Do not tell the operator it was delivered. The error text is not shown here; it is in the run record.`
+        : "Delivery is UNCONFIRMED. Say 'fired, delivery unconfirmed' and verify with n8n_execution_get before claiming a send.";
+    return out;
+  }
+
+  // create / update / activate / deactivate / archive / delete
+  out.workflow_id = idOrNull(d.workflow_id);
+  const name = providerText(d.name, 120);
+  if (name) out.name = name;
+  out.active = boolOrNull(d.active);
+  if (typeof d.archived === "boolean") out.archived = d.archived;
+  if (typeof d.deleted === "boolean") out.deleted = d.deleted;
+  return out;
+}
+
+
 /* ── Provenance: the Action Bus and the Rail ────────────────────────────────────
    The last leg of the governed path. A capability that ran has to leave a record the
    organisation can read, and that record is subject to the same boundary as everything

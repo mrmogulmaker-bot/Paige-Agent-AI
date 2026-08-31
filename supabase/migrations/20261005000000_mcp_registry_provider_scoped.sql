@@ -92,6 +92,39 @@ ALTER TABLE public.tenant_mcp_connections
 
 -- Zapier is OAuth-only here: a pasted long-lived Zapier token is refused by the
 -- schema, not merely discouraged by the UI.
+--
+-- BEFORE the constraint, normalise whatever is actually in the table. Both new columns
+-- default to the legacy shape ('zapier' + 'bearer'), which the constraint below forbids —
+-- so any pre-existing row would fail this statement and take the whole deploy down. The
+-- previous version of this migration was safe only because the table was believed to be
+-- empty, and "believed to be empty" is not a property a migration can rely on: it is a
+-- claim about production that the migration itself cannot check and a reviewer cannot
+-- verify.
+--
+-- What a legacy row IS: a Zapier connection whose credential was pasted. That credential
+-- cannot work on the new path at all — every Zapier call now refreshes an OAuth grant it
+-- does not have — so leaving it in place would be a connection that reads as configured
+-- and is not (§13). The row is therefore emptied of its unusable credential and marked
+-- unconfigured, NOT deleted: the workspace keeps its row and sees that it needs
+-- reconnecting, which is the true state.
+DO $$
+DECLARE _n integer;
+BEGIN
+  UPDATE public.tenant_mcp_connections SET
+    auth_kind        = 'oauth',
+    auth_token_ct    = NULL,
+    auth_token_last4 = NULL,
+    auth_header_name = NULL,
+    enabled          = false,
+    status           = 'unconfigured',
+    last_error       = NULL
+  WHERE provider = 'zapier' AND auth_kind <> 'oauth';
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  -- Recorded in the deploy log so what actually happened is on record, rather than
+  -- inferred afterwards from the absence of a failure.
+  RAISE NOTICE 'mcp registry: normalised % legacy zapier connection(s) to oauth/unconfigured', _n;
+END $$;
+
 ALTER TABLE public.tenant_mcp_connections
   DROP CONSTRAINT IF EXISTS tenant_mcp_connections_provider_auth_chk;
 ALTER TABLE public.tenant_mcp_connections

@@ -93,6 +93,15 @@ Deno.serve(async (req) => {
   }
 
   if (action === "connect") {
+    // `CONNECTABLE` is the set of providers a workspace connects by PASTING an address and
+    // a token. Zapier is not one of them — it is granted through OAuth — and this check is
+    // what makes that true at the seam rather than only in the UI. Without it, `connect`
+    // with `provider: "zapier"` fell through to the n8n setter below and overwrote the
+    // workspace's n8n row with whatever the caller sent, from a surface that never offers
+    // that combination and therefore never gets tested with it.
+    if (!CONNECTABLE.has(provider)) {
+      return jsonResponse({ error: "not_directly_connectable", provider }, 400);
+    }
     const serverUrl = typeof body.server_url === "string" ? body.server_url.trim() : "";
     const authToken = typeof body.auth_token === "string" ? body.auth_token : "";
     const transport = typeof body.transport === "string" ? body.transport : "http";
@@ -258,6 +267,19 @@ Deno.serve(async (req) => {
     const code = typeof body.code === "string" ? body.code : "";
     const returnedState = typeof body.state === "string" ? body.state : "";
     if (!code || !returnedState) return jsonResponse({ error: "oauth_bad_callback" }, 400);
+
+    // Completing a grant is the act that gives Paige a credential for this workspace, so
+    // it needs the same authority as starting one. `oauth_begin` is admin-gated and this
+    // was not, which left the second half of an admin-only flow open to any member who
+    // ended up holding the callback.
+    //
+    // Checked BEFORE the state is spent. A state is single-use, so a caller who fails a
+    // check after redemption has still destroyed the flow, and the admin who started it
+    // would have to begin again with no explanation. (This does not make the state
+    // unburnable — anyone holding it can spend it — but it stops a member of the same
+    // workspace burning one by trying.)
+    const { data: canComplete } = await userClient.rpc("is_current_user_tenant_admin");
+    if (canComplete !== true) return jsonResponse({ error: "forbidden" }, 403);
 
     // Redeemed exactly once, in SQL. A replayed callback finds nothing.
     const { data: pending, error: sErr } = await admin.rpc("consume_tenant_mcp_oauth_state", { _state: returnedState });

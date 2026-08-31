@@ -43,6 +43,7 @@
     "smoke:mcp-egress": "node scripts/mcp-egress-smoke.mjs",
     "smoke:mcp-oauth": "node scripts/mcp-oauth-smoke.mjs",
     "smoke:n8n-ssrf": "node scripts/paige-n8n-ssrf-smoke.mjs",
+    "smoke:n8n-egress": "node scripts/n8n-egress-smoke.mjs",
     "smoke:comms-tenant-scope": "node scripts/comms-tenant-scope-smoke.mjs",
     "lint:conversation-tenant": "node scripts/comms-conversation-tenant-lint.mjs",
     "smoke:voice-twiml-callback": "node scripts/voice-twiml-callback-smoke.mjs",
