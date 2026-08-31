@@ -21,7 +21,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
-import { APPROVABLE_KEYS, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
+import { APPROVABLE_KEYS, buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +67,7 @@ serve(async (req) => {
   // cross-tenant write primitive (§59 — the grant is never the guard).
   const { data: upload, error: uploadErr } = await asCaller
     .from("credit_report_uploads")
-    .select("id, user_id, client_id, analysis_status, analysis_result")
+    .select("id, user_id, client_id, analysis_status, extraction_review_state, analysis_result")
     .eq("id", body.upload_id)
     .maybeSingle();
 
@@ -81,13 +81,13 @@ serve(async (req) => {
     return json({ error: "I couldn't find that document in this workspace." }, 404);
   }
 
-  if (upload.analysis_status === "applied") {
+  if (upload.extraction_review_state === "applied") {
     // Idempotent by state. A double-tap on Approve, or a retry after a dropped response, must not
     // write the same report twice — `sync-credit-report-data` upserts by account, but inquiries
     // and negative items would duplicate.
     return json({ ok: true, already_applied: true, applied_keys: [] });
   }
-  if (upload.analysis_status !== "awaiting_review") {
+  if (upload.extraction_review_state !== "awaiting_review") {
     return json({ error: "That document isn't waiting for review any more." }, 409);
   }
 
@@ -96,25 +96,55 @@ serve(async (req) => {
     return json({ error: "I no longer have the reading of that document, so there's nothing to apply." }, 409);
   }
 
-  // ── The key list, intersected with the closed set. ──
+  // ── Rebuild the payload AND the proposal from the stored extraction. ──
+  // The proposal is re-derived rather than trusted from the request, so what is approvable here is
+  // exactly what a person could have been shown.
+  const payload = buildCreditSyncPayload(structured, upload.user_id as string, (upload.client_id as string | null) ?? null);
+  const proposal = buildCreditProposal(String(upload.id), structured, payload);
+  const offered = new Set(proposal.fields.map((f) => f.key));
+
+  // ── The key list, intersected with what was ACTUALLY OFFERED — not merely with the closed set. ──
+  //
+  // §13 — INTERSECTING WITH `APPROVABLE_KEYS` ALONE WAS NOT ENOUGH, and an independent reviewer
+  // drove the gap. `buildCreditProposal` deliberately OMITS a score outside 300–850, because a
+  // value the model did not plausibly read must never be shown to a human as something extracted
+  // from their document. But the apply path checked only "is this key in the closed set" and "is
+  // the value non-null" — so naming `credit_score_experian` in the request body wrote a stored 999
+  // straight onto `profiles`, a fabricated score the person was never shown and could not have
+  // approved.
+  //
+  // The closed set says which keys EXIST. The proposal says which keys were OFFERED for this
+  // document. Only the second is an answer to "what could this person have agreed to", and it is
+  // the one the gate needs.
   const approved = new Set(
     body.approved_keys.filter((k): k is typeof APPROVABLE_KEYS[number] =>
-      (APPROVABLE_KEYS as readonly string[]).includes(k)),
+      (APPROVABLE_KEYS as readonly string[]).includes(k) && offered.has(k)),
   );
+
+  const admin = createClient(supabaseUrl, serviceKey);
+
   if (approved.size === 0) {
-    // Declining everything is a real answer, not a failure. Record it so the card does not come
-    // back and so the row's state reflects what the person decided.
-    await createClient(supabaseUrl, serviceKey)
+    // Declining everything is a real answer, not a failure. Guarded like the apply path so a
+    // decline cannot overwrite a state something else already moved, and audited for the same
+    // reason an apply is: "the person said no" is a decision worth being able to reconstruct.
+    const { data: declined } = await admin
       .from("credit_report_uploads")
-      .update({ analysis_status: "declined" })
-      .eq("id", body.upload_id);
+      .update({ extraction_review_state: "declined" })
+      .eq("id", body.upload_id)
+      .eq("extraction_review_state", "awaiting_review")
+      .select("id");
+    if (declined?.length) {
+      const { error: declineAuditErr } = await admin.from("audit_logs").insert({
+        user_id: user.id,
+        entity: "credit_report",
+        entity_id: body.upload_id,
+        action: "extraction_declined",
+        data: { offered_keys: [...offered], source: "paige_chat_extraction_proposal" },
+      });
+      if (declineAuditErr) console.error("[apply-extraction] decline audit write failed:", declineAuditErr.message);
+    }
     return json({ ok: true, declined: true, applied_keys: [] });
   }
-
-  // ── Build the write from the STORED extraction, then remove what was not approved. ──
-  // Same mapping the proposal was derived from (`_shared/credit-extraction-payload.ts`), so the
-  // person approves and the server writes the same thing by construction rather than by review.
-  const payload = buildCreditSyncPayload(structured, upload.user_id as string, (upload.client_id as string | null) ?? null);
 
   const scores: Record<string, unknown> = {};
   if (approved.has("credit_score_equifax") && payload.scores?.equifax != null) scores.equifax = payload.scores.equifax;
@@ -134,6 +164,35 @@ serve(async (req) => {
     discrepancies: [],
   };
 
+  // ── CLAIM THE ROW FIRST, then write. ──
+  //
+  // §13 — THE PREVIOUS ORDER WAS READ-THEN-WRITE AND ITS IDEMPOTENCE WAS DECORATIVE. The
+  // `already_applied` check above ran against a row that was only stamped `applied` AFTER the sync
+  // returned, and the stamp had no state predicate. An independent reviewer fired two approvals of
+  // the same row concurrently: both returned 200 and both reached the sync. The only thing standing
+  // between a double-tap and duplicated `credit_inquiries` and `credit_negative_items` rows was the
+  // browser card disabling its own button.
+  //
+  // The update below is a compare-and-set: it moves the row out of `awaiting_review` and returns
+  // the row only if IT made that transition. A second caller finds nothing to claim and stops. The
+  // status is rolled back on a sync failure so the person can retry rather than lose the proposal —
+  // which is why the claim is a distinct state rather than the final one.
+  const { data: claimed, error: claimErr } = await admin
+    .from("credit_report_uploads")
+    .update({ extraction_review_state: "applied", last_analyzed_at: new Date().toISOString() })
+    .eq("id", body.upload_id)
+    .eq("extraction_review_state", "awaiting_review")
+    .select("id");
+  if (claimErr) {
+    console.error("[apply-extraction] claim failed:", claimErr.message);
+    return json({ error: "I couldn't save those just now. Nothing was changed — try again." }, 500);
+  }
+  if (!claimed?.length) {
+    // Somebody else claimed it between the read above and here. Not an error to the person: the
+    // thing they asked for is happening.
+    return json({ ok: true, already_applied: true, applied_keys: [] });
+  }
+
   // ── Perform the write through the owning contract. ──
   const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
     method: "POST",
@@ -141,8 +200,6 @@ serve(async (req) => {
     body: JSON.stringify(scoped),
   });
   const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
-
-  const admin = createClient(supabaseUrl, serviceKey);
 
   if (!syncResponse.ok) {
     console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
@@ -153,13 +210,14 @@ serve(async (req) => {
       entity_id: body.upload_id,
       data: { status: syncResponse.status, approved_keys: [...approved], error: syncBody?.error ?? null },
     });
-    // The row stays `awaiting_review` so the person can try again rather than losing the proposal.
+    // RELEASE THE CLAIM so the person can try again rather than losing the proposal. Without this,
+    // a transient sync failure would leave the row `applied` with nothing applied — the worst of
+    // both, and unrecoverable from the card.
+    await admin.from("credit_report_uploads")
+      .update({ extraction_review_state: "awaiting_review" })
+      .eq("id", body.upload_id);
     return json({ error: "I couldn't save those to the profile. Nothing was changed — try again." }, 502);
   }
-
-  await admin.from("credit_report_uploads")
-    .update({ analysis_status: "applied", last_analyzed_at: new Date().toISOString() })
-    .eq("id", body.upload_id);
 
   // ATTRIBUTION (§13): what a person approved, when, and which of it was applied. Written with the
   // column shape `audit_logs` actually has — `entity`/`entity_id`/`data`, never

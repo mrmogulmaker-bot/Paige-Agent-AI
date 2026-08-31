@@ -972,8 +972,23 @@ person approves, not a write that already happened.
 |---|---|---|---|---|---|---|---|
 | Document upload in chat | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | Credit-report auto-write on upload | — | — | — | — | — | — | 403 |
-| `extraction_proposal` card rendered | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (portal, pre-existing) | 403 |
-| `paige-apply-extraction` (approval writes) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| `extraction_proposal` card rendered | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| `paige-apply-extraction` (approval writes) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A truthful `sync_status` on a document turn | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+
+**§13 — THE TWO CLIENT ROWS SAID ✓ AND WERE FALSE, in the ledger §66 exists to keep true.** The
+client portal DOES ship an `ExtractionProposalCard`, but it is fed by a client-side regex over
+TYPED TEXT (`conversationalExtractor`), posts VALUES to `paige-write-back`, and has no consumer for
+the server's `extraction_proposal` frame at all; nothing under `src/components/app/` calls
+`paige-apply-extraction`. Recording a capability on a tier that does not have it is precisely the
+failure mode that makes a session answer "do we have this?" wrongly from the source of truth. Caught
+by an independent reviewer grepping the claim rather than reading it.
+
+The portal and the floating widget DO parse `sync_status`, so the document turn keeps emitting one
+alongside the proposal — otherwise those two surfaces would have gone from showing a sync panel to
+showing nothing, which is a §58 silent removal. That frame now reports `success: false` on a turn
+that wrote nothing, because `SyncStatusPanel` keys "✅ Profile Sync Complete" off `success` and a
+completed sync is not what happened.
 
 **§58 — A SHIPPED CAPABILITY WAS DELIBERATELY REMOVED, and this row is the explicit call-out the
 section requires.** Until this change, a credit-report PDF dropped into chat caused

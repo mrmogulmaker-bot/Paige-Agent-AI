@@ -118,10 +118,25 @@ describe("what the surface says about the gap is the measured number", () => {
     }
 
     const invisible = [...gate].filter((k) => !catalogue.has(k));
-    expect(gate.size).toBe(46);
-    expect(catalogue.size).toBe(23);
-    expect(invisible).toHaveLength(23);
-    // The one that makes it more than bookkeeping: a permanent delete the operator cannot disable.
-    expect(invisible).toContain("n8n_delete_workflow");
+
+    // THIS USED TO MEASURE THE GAP; IT NOW ASSERTS THERE ISN'T ONE.
+    //
+    // For a long time the gate governed 46 tools and the catalogue listed 23, so 23 were governed
+    // but INVISIBLE — permanently `confirm`, with no way for the tenant to turn them off or on.
+    // Among them `n8n_delete_workflow`, a permanent delete the operator could not disable. The gap
+    // opened when a migration that said it re-declared the catalogue "verbatim" quietly dropped the
+    // n8n rows, and widened one tool at a time after that: a tool added to the gate and not to the
+    // list fails nothing and simply never appears.
+    //
+    // Migration 20261020000000 closes it. Asserting ZERO rather than a number is the point — a
+    // count has to be re-agreed every time the gate changes, and re-agreeing a number is how the
+    // gap grew. The invariant does not need updating; it needs obeying.
+    //
+    // If this fails, do NOT adjust it: a tool was added to `MUTATING_TOOLS` without a catalogue
+    // row, and the fix is the row. The failure message names exactly which.
+    expect(invisible).toEqual([]);
+    expect(catalogue.size).toBeGreaterThanOrEqual(gate.size);
+    // Kept explicitly, because it is the one that made this more than bookkeeping.
+    expect(catalogue.has("n8n_delete_workflow")).toBe(true);
   });
 });

@@ -156,6 +156,10 @@ async function drive({
   readCheck = { can_read_document: false, document_kind: "other", first_five_account_names: [] },
   extraBody = undefined,
   toolCall = undefined,
+  /** Per-drive RPC overrides, merged over the defaults below. Needed since `update_client_data`
+   *  became autonomy-gated: proving the tool loop still reaches write-back requires driving a
+   *  tenant that has deliberately set that tool to `auto`. */
+  rpcOverrides = {},
 }) {
   const logged = [];
   embedCount = 0;
@@ -178,6 +182,7 @@ async function drive({
       is_platform_owner: ownerRpc,
       get_paige_persona_context: { data: [{ tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
       match_paige_memory: { data: [{ source: "memory", memory_type: "user_preference", content: MEMORY_TEXT, similarity: 0.95 }], error: null },
+      ...rpcOverrides,
     },
     tableErrors: { ...(clientsError ? { clients: clientsError } : {}), ...(memoryReadError ? { client_memory: memoryReadError } : {}) },
     // What the SERVICE-ROLE client sees: everything, including the foreign client. This is the
@@ -689,11 +694,34 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
   // another's, and no check reached the tool loop at all before this.
   const upd = { name: "update_client_data", args: { updates: { first_name: "Renamed", monthly_revenue: 99999 } } };
 
-  const allowedTool = await drive({ clientId: OWN, stream: true, toolCall: upd });
-  assert("12.0 the tool loop IS reachable and an AUTHORIZED turn calls write-back (guards this section)",
+  // §13 — `update_client_data` IS NOW AUTONOMY-GATED, so an authorized turn no longer writes on
+  // its own. It was the one write tool that reached `paige-write-back` — which can set
+  // `profile.ssn` and `profile.date_of_birth` — with no confirm, no off switch and no autonomy row:
+  // a tenant that set every other tool to `confirm` still had this one running unattended.
+  //
+  // These two assertions are UPDATED, not deleted. What they guard — that the tool loop is
+  // reachable, and that a write targets the AUTHORIZED client rather than the caller — is exactly
+  // as load-bearing as before; it now happens on the far side of an approval. Deleting them because
+  // the shape changed would have removed the only proof that this section's refusals are refusing
+  // something that otherwise works.
+  const proposed = await drive({ clientId: OWN, stream: true, toolCall: upd });
+  assert("12.0 an AUTHORIZED turn now PROPOSES rather than writing — the gate covers this tool",
+    !proposed.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+    JSON.stringify(proposed.outboundCalls.map((c) => c.url)));
+  assert("12.0a …and asks, rather than silently doing nothing",
+    proposed.bodyText.includes("paige_confirm") || proposed.bodyText.includes("needs_confirm"),
+    proposed.bodyText.slice(0, 400));
+
+  // The same call, with autonomy set to `auto` — the tenant's own deliberate choice. The tool loop
+  // is still reachable and still targets the authorized client.
+  const allowedTool = await drive({
+    clientId: OWN, stream: true, toolCall: upd,
+    rpcOverrides: { resolve_tool_autonomy: { data: "auto", error: null } },
+  });
+  assert("12.0b the tool loop IS reachable and a turn the tenant set to auto calls write-back (guards this section)",
     allowedTool.outboundCalls.some((c) => c.url.includes("paige-write-back")),
     JSON.stringify(allowedTool.outboundCalls.map((c) => c.url)));
-  assert("12.0b …targeting the AUTHORIZED client, never the caller",
+  assert("12.0c …targeting the AUTHORIZED client, never the caller",
     allowedTool.outboundCalls.filter((c) => c.url.includes("paige-write-back"))
       .every((c) => c.body.includes(OWN) && !c.body.includes(`"target_user_id":"${USER}"`)),
     JSON.stringify(allowedTool.outboundCalls.filter((c) => c.url.includes("paige-write-back")).map((c) => c.body)));

@@ -137,6 +137,7 @@ describe("PAIGE chat — a document proposes, it does not write", () => {
     expect(apply).toBeTruthy();
     expect(apply!.body.upload_id).toBe(UPLOAD_ID);
     expect(Array.isArray(apply!.body.approved_keys)).toBe(true);
+    expect(apply!.body.approved_keys.sort()).toEqual(["credit_score_equifax", "negative_items"]);
     // THE POINT: keys travel, values do not. A body carrying 712 would mean the browser decided
     // what lands on the profile.
     expect(JSON.stringify(apply!.body)).not.toContain("712");
@@ -173,6 +174,53 @@ describe("PAIGE chat — a document proposes, it does not write", () => {
     const apply = calls.find((c) => c.url.includes("paige-apply-extraction"));
     expect(apply).toBeTruthy();
     expect(apply!.body.approved_keys).toEqual([]);
+
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("PAIGE chat — unticking a field means it is not written", () => {
+  /**
+   * THE MUTATION THAT PASSED EVERY OTHER TEST. Making the card's `toggle()` a no-op — so a person
+   * unticks "Equifax score", presses Save, and the score is written anyway — left all three of the
+   * tests above green, because none of them ever unchecked a box. "Sends the ticked keys" was not
+   * testing ticking at all; it was testing that A list was sent.
+   *
+   * Found by an independent reviewer. This is the case that makes the per-field checklist mean
+   * something.
+   */
+  it("omits the field the person unticked", async () => {
+    const calls: Array<{ url: string; body: any }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+      if (String(url).includes("paige-apply-extraction")) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, applied_keys: ["negative_items"] }) };
+      }
+      return sse([
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "I read your report." } }] })}\n\n`,
+        `data: ${JSON.stringify({ extraction_proposal: PROPOSAL })}\n\n`,
+        "data: [DONE]\n\n",
+      ]);
+    }));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(<PaigeAIChat hideHeader fill soloTenantSafety />); await Promise.resolve(); });
+    await sendTurn(host);
+
+    // Untick the Equifax score specifically.
+    const boxes = Array.from(host.querySelectorAll<HTMLElement>('[role="checkbox"], input[type="checkbox"]'));
+    expect(boxes.length).toBeGreaterThan(1);
+    await act(async () => { boxes[0].click(); await Promise.resolve(); });
+
+    const save = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((b) => /save selected/i.test(b.textContent ?? ""))!;
+    await act(async () => { save.click(); await Promise.resolve(); await Promise.resolve(); });
+
+    const apply = calls.find((c) => c.url.includes("paige-apply-extraction"));
+    expect(apply).toBeTruthy();
+    expect(apply!.body.approved_keys).toEqual(["negative_items"]);
 
     await act(async () => root.unmount());
     host.remove();

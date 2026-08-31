@@ -50,7 +50,11 @@ type Message = {
   documentFileName?: string;
   documentKind?: AttachedDocKind;
   queued?: QueuedApproval[];
-  confirm?: Array<{ tool: string; summary: string }>;
+  /** `fingerprint` is the server's hash of the EXACT call each summary describes. Approve echoes
+   *  them back so the gate runs that call and not whatever the model re-emits — see the gate's own
+   *  note. Optional: a rehydrated turn has summaries but no live fingerprints, which is correct,
+   *  because a past decision must never be re-fired (§15). */
+  confirm?: Array<{ tool: string; summary: string; fingerprint?: string }>;
   /** True on turns rehydrated from history: their confirm cards render settled,
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
@@ -686,8 +690,11 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null) => {
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, approvedFingerprints?: string[]) => {
     if (soloTenantSafety && !activeTenantId) return;
+    // Deliberately NOT stored on the retry: an approval is for one call at one moment. Replaying it
+    // on a network retry would re-approve whatever the model emits the second time, which is the
+    // exact substitution the fingerprint exists to prevent.
     retryTurnRef.current = { base, rollback, userText, doc };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -764,6 +771,9 @@ const PaigeAIChatInner = ({
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
+            // The exact calls the person ticked on a confirm card. The gate will only run a call
+            // whose fingerprint is here; `confirm:true` on its own no longer opens it.
+            ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
             // Attachment (#480): the edge inlines pdf/image as image_url and docx
             // textContent as a text block. Pass the REAL mimeType/kind/textContent
             // — the hook already extracted docx client-side.
@@ -817,7 +827,7 @@ const PaigeAIChatInner = ({
       let queuedThisTurn: QueuedApproval[] = [];
       // Accumulate EVERY pending confirmation this turn — a blanket "Approve" runs
       // all of them, so the operator must see all of them (design-crew B1).
-      const confirmThisTurn: Array<{ tool: string; summary: string }> = [];
+      const confirmThisTurn: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
       // #29 — deliverables (document/image) Paige persisted this turn, streamed as
       // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
       const artifactsThisTurn: PaigeArtifact[] = [];
@@ -937,7 +947,7 @@ const PaigeAIChatInner = ({
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
-              confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) });
+              confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary), ...(parsed.paige_confirm.fingerprint ? { fingerprint: String(parsed.paige_confirm.fingerprint) } : {}) });
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
               continue;
             }
@@ -1032,12 +1042,25 @@ const PaigeAIChatInner = ({
       toast({ title: "Couldn't save those", description: String(body?.error ?? "Try again in a moment."), variant: "destructive" });
       throw new Error(String(body?.error ?? "apply failed"));
     }
-    // Mark the turn settled so a re-render — or a history rehydrate — never re-offers a decision
-    // the person has already made (§15).
-    setMessages((prev) => prev.map((m) => (m.extractionProposal?.id === proposal.id ? { ...m, confirmResolved: true } : m)));
+    // §13/§70 — NOTHING IS UNMOUNTED HERE, AND THAT IS THE FIX. The first version marked the turn
+    // settled on success, which unmounted the card in the same commit — reproducing, one step
+    // later, exactly the invisibility this slice is about: the write to a credit profile happened
+    // and the person saw nothing. The card vanished, its own "Saved" state never rendered, and the
+    // only toast was on failure. An independent reviewer read the post-apply DOM and found the
+    // transcript back at the greeting.
+    //
+    // `ExtractionProposalCard` already owns a settled state and shows what was recorded. It only
+    // needed to be left alone to do it. Not re-rendering the message list is also what preserves
+    // that internal state — a `setMessages` here would reconcile the card back to `idle`.
+    //
+    // Re-offering after a reload is not a risk to guard against: `extractionProposal` is live-turn
+    // only and is never rehydrated, so there is nothing to re-offer.
   };
 
-  const handleSend = async (overrideText?: string) => {
+  /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
+   *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
+   *  longer opens it. Absent on every ordinary turn. */
+  const handleSend = async (overrideText?: string, approvedFingerprints?: string[]) => {
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
@@ -1062,7 +1085,7 @@ const PaigeAIChatInner = ({
     setMessages(base);
     setInput("");
     if (currentDoc) setAttachedDoc(null);
-    await streamTurn(base, rollback, userContent, currentDoc);
+    await streamTurn(base, rollback, userContent, currentDoc, approvedFingerprints);
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1375,8 +1398,12 @@ const PaigeAIChatInner = ({
                         {!!message.confirm?.length && !message.confirmResolved && index === messages.length - 1 && !isLoading && (
                           <PaigeConfirmCard
                             items={message.confirm.map((c) => c.summary)}
+                            // The fingerprints of the exact calls these summaries describe. Without
+                            // them "Approved — run it." is a sentence the model interprets, and the
+                            // call it re-emits need not be the one the person read.
+                            fingerprints={message.confirm.map((c) => c.fingerprint).filter((f): f is string => !!f)}
                             disabled={isLoading}
-                            onApprove={() => void handleSend("Approved — run it.")}
+                            onApprove={(fps) => void handleSend("Approved — run it.", fps)}
                             onDeny={() => void handleSend("Hold off — skip that one.")}
                           />
                         )}
@@ -1414,7 +1441,7 @@ const PaigeAIChatInner = ({
                             new interaction (§00: CD owns how it looks, and it already ruled on
                             this one). Live-turn only: a rehydrated turn must never re-offer a
                             proposal that has already been applied or declined server-side. */}
-                        {message.extractionProposal && !message.confirmResolved && (
+                        {message.extractionProposal && (
                           <div className="mt-2">
                             <ExtractionProposalCard
                               proposal={message.extractionProposal}

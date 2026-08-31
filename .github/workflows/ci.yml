@@ -346,6 +346,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run test:knowledge-scope
 
+      - name: Smoke — a document PROPOSES (only what was read is offered; the closed set is not the offer)
+        if: ${{ !cancelled() }}
+        run: npm run test:extraction-proposal
+
       - name: Smoke — MCP registry is provider-scoped and its aggregate is deterministic
         if: ${{ !cancelled() }}
         run: npm run smoke:mcp-registry

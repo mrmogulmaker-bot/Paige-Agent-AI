@@ -299,6 +299,11 @@ const messageSchema = z.object({
   userTime: z.string().max(64).optional(),
   userTimezone: z.string().max(80).optional(),
   userTimeFormatted: z.string().max(200).optional(),
+  /** Fingerprints of the exact tool calls the person approved on the confirm card. The gate
+   *  requires the call it is about to run to be one of these — a `confirm:true` flag on its own no
+   *  longer opens it, because that flag says only that SOMETHING was approved, not what. Bounded
+   *  and shaped so a body cannot smuggle anything else through this field. */
+  approvedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
 });
 
 const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
@@ -623,6 +628,10 @@ serve(async (req) => {
     }
 
     const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
+    // The approvals this request carries, as a set. Derived ONCE from the validated body — never
+    // re-read from a raw field further down, which is how a validated value stops being the value
+    // that gets used.
+    const approvedConfirmations = new Set<string>(validatedData.approvedConfirmations ?? []);
 
     // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
     //
@@ -5885,6 +5894,47 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // commits. 'auto' lets her act on her own; 'off' disables the tool. Read-only
     // tools are never gated. This is the single control that stops Paige from
     // "jumping the gun" — creating a pipeline (etc.) without proposing first.
+    /**
+     * A STABLE FINGERPRINT OF THE EXACT CALL A HUMAN WAS SHOWN.
+     *
+     * THE DEFECT THIS CLOSES. The gate's only re-entry test was `gateArgs.confirm !== true`. A
+     * person read `confirm_summary`, clicked Approve, and the UI sent the literal string
+     * "Approved — run it." The MODEL then re-emitted the tool call FROM SCRATCH, and nothing
+     * anywhere tied the arguments it emitted the second time to the ones the summary described.
+     * Same tool, different amount, different recipient, different client — all approved, because
+     * "approved" meant nothing more than "a boolean is now true".
+     *
+     * The fingerprint is issued with the refusal, echoed back by the surface that showed the card,
+     * and re-derived here from the arguments about to execute. They must match. The model may
+     * re-emit whatever it likes; if it is not what the person saw, the gate refuses again.
+     *
+     * THREAT MODEL, stated so the design is judged on what it actually defends. The echo is
+     * client-supplied, so a caller could in principle send a fingerprint they were never issued.
+     * That is not the risk: the caller IS the human whose approval this is, and a human choosing to
+     * approve their own action is approval. The risk is the MODEL substituting different arguments
+     * between the proposal and the execution, and against that the echo is sound — the browser
+     * cannot know the fingerprint of arguments the model has not emitted yet.
+     *
+     * Keys are sorted and `confirm` is dropped, so the fingerprint is a property of the ACTION and
+     * not of how the model happened to order its JSON or whether the flag was already set.
+     */
+    const confirmFingerprint = async (tool: string, args: Record<string, unknown>): Promise<string> => {
+      const stable = (v: unknown): unknown => {
+        if (Array.isArray(v)) return v.map(stable);
+        if (v && typeof v === "object") {
+          return Object.fromEntries(
+            Object.keys(v as Record<string, unknown>).sort()
+              .filter((k) => k !== "confirm")
+              .map((k) => [k, stable((v as Record<string, unknown>)[k])]),
+          );
+        }
+        return v;
+      };
+      const bytes = new TextEncoder().encode(`${tool}\u0000${JSON.stringify(stable(args))}`);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+    };
+
     const MUTATING_TOOLS = new Set<string>([
       // Containment tombstones: these Marketplace mutations are deliberately not
       // registered or dispatched. Keeping them classified as mutating means a
@@ -5909,11 +5959,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
       "author_event_kind",
+      // §13 — THESE TWO WERE NOT IN THIS SET, AND BOTH ARE WRITES.
+      //
+      // `update_client_data` forwards to `paige-write-back`, which writes a NAMED client's profile
+      // fields — the single most consequential per-client write Paige can make — and it never
+      // reached this gate at all. No confirm, no off switch, no autonomy row: a tenant that turned
+      // everything else to `confirm` still had this running unattended.
+      //
+      // `delegate_to_subagent` dispatches a subagent RUN. Its sibling `forge_subagent` was gated;
+      // the one that actually executes was not.
+      //
+      // Both default to `confirm` like every other entry, because the catalog default is `confirm`
+      // for anything without a row (`resolve_tool_autonomy`). A tenant that wants either on
+      // autopilot sets it deliberately, which is the point.
+      "update_client_data", "delegate_to_subagent",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
     // raw internal tool_key (§11: no backend function names in visible copy).
     const TOOL_LABELS: Record<string, string> = {
+      update_client_data: "saving details to a client's file",
+      delegate_to_subagent: "handing work to one of her specialists",
       crm_update_contact: "updating a contact",
       crm_create_contact: "adding a contact",
       crm_delete_contact: "deleting a contact",
@@ -6042,6 +6108,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
         case "save_to_knowledge_base":
           return `Save "${a?.title || "this"}" to your knowledge base so Paige can draw on it later.`;
+        case "update_client_data": {
+          // Names the FIELDS, never their values: a confirm card is shown in a transcript, and a
+          // summary that echoed an SSN or a date of birth back onto the screen would put the very
+          // data this write is careful about into the one place it should not be.
+          const updates = a?.updates && typeof a.updates === "object" ? a.updates : a;
+          const paths = Object.keys(updates ?? {}).filter((k) => k !== "confirm" && k !== "client_id").slice(0, 8);
+          return `Save ${paths.length ? paths.length : "these"} detail${paths.length === 1 ? "" : "s"} to the client's file${paths.length ? ` (${paths.join(", ")})` : ""}.`;
+        }
+        case "delegate_to_subagent":
+          return `Hand this to your ${a?.subagent_slug || a?.slug || "specialist"} and let them run it${a?.task ? `: "${String(a.task).slice(0, 120)}"` : ""}.`;
         case "author_event_kind":
           return `Add a new activity kind "${a?.label || a?.slug || ""}" for this practice to track${a?.visibility === "client_visible" ? " (clients can see it)" : " (staff only)"}. It's added for your workspace only.`;
         case "plan_set_reminder":
@@ -6327,11 +6403,41 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, error: `${(TOOL_LABELS[tc.function.name] || "this action").replace(/^./, (c) => c.toUpperCase())} is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled (don't mention any internal names) and don't retry.` }) });
             continue;
           }
-          if (autoMode === "confirm" && gateArgs.confirm !== true) {
-            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, confirm_summary: describeConfirm(tc.function.name, gateArgs), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
-            continue;
+          if (autoMode === "confirm") {
+            // THE APPROVAL IS BOUND TO THE CALL, NOT TO A BOOLEAN.
+            //
+            // `gateArgs.confirm !== true` was the entire re-entry test. A person read the summary,
+            // clicked Approve, the UI sent "Approved — run it.", and the model re-emitted the tool
+            // call from scratch — with nothing tying the arguments it emitted the second time to
+            // the ones the summary described. Different amount, different recipient, different
+            // client: all approved.
+            //
+            // Now the refusal issues a fingerprint of the exact call, the surface that showed the
+            // card echoes it back, and this re-derives it from the arguments about to run. Both
+            // conditions, not either: `confirm:true` alone no longer opens the gate.
+            const fp = await confirmFingerprint(tc.function.name, gateArgs);
+            const approvedHere = gateArgs.confirm === true && approvedConfirmations.has(fp);
+            if (!approvedHere) {
+              // §13 — WHY A MISMATCH IS REPORTED AS A PLAIN RE-ASK RATHER THAN AS TAMPERING. The
+              // overwhelmingly common cause is benign: the model re-emitted with a tweaked field
+              // because the person's approval message mentioned one. The right answer to that is
+              // to show the NEW summary and ask again — which is what happens, because the
+              // refusal below carries the fingerprint of what is actually being proposed now.
+              // Calling it an attack would be both wrong and unhelpful.
+              const changed = gateArgs.confirm === true && approvedConfirmations.size > 0;
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: false,
+                needs_confirm: true,
+                confirm_fingerprint: fp,
+                confirm_summary: describeConfirm(tc.function.name, gateArgs),
+                note: changed
+                  ? "Do NOT retry. What you're about to run is NOT what the operator approved — the details changed. Show them the new confirm_summary and ask again."
+                  : "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true.",
+              }) });
+              continue;
+            }
           }
-          // autoMode === 'auto', or confirm already satisfied → fall through to execute.
+          // autoMode === 'auto', or the approval matched this exact call → fall through to execute.
         }
 
         if (tc.function.name === "update_client_data") {
@@ -8491,7 +8597,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Confirm-before-commit UX (#120): mutating tools gated to 'confirm' return
       // needs_confirm; we surface each as a `paige_confirm` frame so the client can
       // render an Approve/Deny card instead of Paige asking in prose.
-      const confirmTrace: Array<{ tool: string; summary: string }> = [];
+      // Carries the FINGERPRINT alongside the summary, because the surface that shows the card has
+      // to echo it back for the approval to bind to this exact call rather than to a boolean.
+      const confirmTrace: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
@@ -8657,7 +8765,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   ok = parsed?.success !== false;
                   // Capture a pending confirmation so the client renders an approve card.
                   if (parsed?.needs_confirm && parsed?.confirm_summary) {
-                    confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary) });
+                    confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary), ...(parsed.confirm_fingerprint ? { fingerprint: String(parsed.confirm_fingerprint) } : {}) });
                   }
                 } catch { /* keep ok */ }
                 const derived = describeStep(tc, res);
@@ -9131,11 +9239,33 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // `extraction_proposal`, so the frame a person needs is the frame they now get.
               if (syncResult?.awaiting_review && syncResult?.proposal?.fields?.length > 0) {
                 emitCloseFrame(`data: ${JSON.stringify({ extraction_proposal: syncResult.proposal })}\n\n`);
+                // AND a truthful `sync_status` for the surfaces that do not parse the proposal yet.
+                //
+                // §58 — without this, the client portal and the floating widget went from showing a
+                // sync panel to showing NOTHING on a credit-report turn: they render
+                // `SyncStatusPanel` from `sync_status`, and this path stopped emitting one. A
+                // capability quietly disappearing on two shipped surfaces is exactly what that
+                // section exists to catch, and the §37 inventory that missed it walked producers of
+                // `sync-credit-report-data` without walking consumers of this frame.
+                //
+                // `success: false` because nothing was written — the panel's headline keys off it,
+                // and "✅ Profile Sync Complete" for a turn that wrote nothing is the falsehood this
+                // whole slice is about. The message says what is actually true and what happens next.
+                emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: false, awaiting_review: true, error: "I've read the report and pulled out what I found. Nothing has been saved yet — I'll wait for you to tell me which parts to keep." } })}\n\n`);
               } else if (syncResult?.awaiting_review) {
                 // Read successfully, but nothing survived the "only what was actually read"
                 // filter — no plausible score, no items. There is nothing to approve, and saying
                 // so is better than an empty card (§13/§70).
-                emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: true, awaiting_review: true, nothing_to_propose: true } })}\n\n`);
+                // §13 — `success: true` HERE WOULD BE A LIE ON TWO SHIPPED SURFACES. The client
+                // portal and the floating widget both render `SyncStatusPanel` from this frame, and
+                // that panel keys its "✅ Profile Sync Complete" headline off `success` — so a turn
+                // in which NOTHING was written would have announced a completed sync, with zeroes
+                // under it. Found by an independent reviewer rendering the real panel with this
+                // exact payload.
+                //
+                // The §37 inventory for this slice walked producers of `sync-credit-report-data`
+                // and never walked CONSUMERS of this frame. Both halves are the contract.
+                emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: false, awaiting_review: true, nothing_to_propose: true, error: "I read the document, but nothing in it was clear enough to be worth saving to the profile." } })}\n\n`);
               } else {
                 emitCloseFrame(`data: ${JSON.stringify({ sync_status: syncResult })}\n\n`);
               }
@@ -9504,7 +9634,24 @@ export async function runStructuredExtractionAndSync(
       console.error("[paige] active account changed — durable write skipped", JSON.stringify({ write: label }));
       return false;
     }
-    await write();
+    // §32/§13 — THE RETURNED ERROR IS READ. It was not, and that is how a durable write that
+    // NEVER LANDED reported success for an entire feature.
+    //
+    // postgrest-js defaults `shouldThrowOnError` to false, so a constraint violation RESOLVES with
+    // an `error` in the result rather than throwing. `await write(); return true;` therefore said
+    // "written" for a row Postgres had rejected. The concrete case: a status value outside a live
+    // CHECK constraint failed 23514, the extraction was never persisted, and the handler went on to
+    // emit an approval card whose Approve button could never work — because the record it referenced
+    // did not carry what it needed. Green build, green tests, dead feature.
+    //
+    // A rejected write returns FALSE, exactly like a scope change, because to every caller here
+    // those are the same fact: the thing you were told was saved was not saved. Loud, never silent
+    // — this is the whole reason the class of defect was invisible.
+    const outcome = (await write()) as { error?: { message?: string; code?: string } } | null | undefined;
+    if (outcome && typeof outcome === "object" && outcome.error) {
+      console.error("[paige] durable write REJECTED", JSON.stringify({ write: label, code: outcome.error.code ?? null, message: outcome.error.message ?? null }));
+      return false;
+    }
     return true;
   };
   // A failure path still has to report the failure, but it must not persist another
@@ -9640,7 +9787,15 @@ export async function runStructuredExtractionAndSync(
       return { success: false, error: "I read the document, but I couldn't attach it to a record, so there's nothing for you to approve yet.", step: "no_upload_record" };
     }
     const stamped = await writeIfScopeCurrent("credit_report_uploads", () => supabase.from("credit_report_uploads").update({
-      analysis_status: "awaiting_review",
+      // `completed` — the READ genuinely completed. Whether a person wants the fields APPLIED is a
+      // different question, on its own column. Writing `awaiting_review` here failed a live CHECK
+      // constraint (23514) and, because the helper swallowed the returned error, did so silently:
+      // the extraction was never persisted and the card that appeared could never work. Eight
+      // consumers also read a non-terminal `analysis_status` as a stalled parse — including
+      // Paige's own context, which would have described a report sitting correctly with a human as
+      // "⚠️ STUCK UPLOAD". See migration 20261019000000.
+      analysis_status: "completed",
+      extraction_review_state: "awaiting_review",
       report_type: structured.report_type || "consumer",
       bureau_detected: structured.bureau_detected || null,
       analysis_result: structured,

@@ -15,12 +15,18 @@ import { Check, X, ShieldQuestion } from "lucide-react";
  */
 export function PaigeConfirmCard({
   items,
+  fingerprints,
   onApprove,
   onDeny,
   disabled,
 }: {
   items: string[];
-  onApprove: () => void;
+  /** Fingerprints of the EXACT calls these summaries describe. Approve echoes them back, and the
+   *  server will only run a call whose fingerprint is among them — so "approved" means "this,
+   *  precisely", not "a boolean is now true". Optional so a caller that has not adopted the
+   *  binding still renders; that caller's approvals simply will not open the gate. */
+  fingerprints?: string[];
+  onApprove: (fingerprints: string[]) => void;
   onDeny: () => void;
   disabled?: boolean;
 }) {
@@ -47,7 +53,7 @@ export function PaigeConfirmCard({
             <p className="mt-0.5 text-sm text-foreground">{items[0]}</p>
           )}
           <div className="mt-2.5 flex flex-wrap gap-2">
-            <Button size="sm" variant="gold" onClick={onApprove} disabled={disabled}>
+            <Button size="sm" variant="gold" onClick={() => onApprove(fingerprints ?? [])} disabled={disabled}>
               <Check className="mr-1 h-4 w-4" /> {multi ? "Approve all" : "Approve"}
             </Button>
             <Button size="sm" variant="ghost" onClick={onDeny} disabled={disabled} className="text-muted-foreground">
