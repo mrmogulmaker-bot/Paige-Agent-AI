@@ -21,7 +21,7 @@ export type CampaignArtifact = {
   publicHref: string;
   recentSubmissions: number;
   routingConfigured: boolean;
-  routingState: "No route" | "Draft route" | "Approval-gated" | "Active";
+  routingState: "No route" | "Draft route" | "Approval-gated" | "Human-only" | "Active + human-only" | "Active";
   routingTargets: string[];
   recentDispatches: { succeeded: number; failed: number; other: number };
   dispatchStatuses: Record<string, number>;
@@ -204,10 +204,17 @@ export function useSoloCampaigns(): SoloCampaignsState {
             });
             return counts;
           }, {});
-          const approvalGated = enabled.some((automation)=>automation.effective_autonomy_lane !== "auto");
+          const approvalGated = enabled.some((automation)=>automation.effective_autonomy_lane === "confirm");
+          const humanOnly = enabled.some((automation)=>automation.effective_autonomy_lane === "off");
+          const active = enabled.some((automation)=>automation.effective_autonomy_lane === "auto");
           return {
             routingConfigured: configured.length > 0,
-            routingState: configured.length === 0 ? "No route" as const : enabled.length === 0 ? "Draft route" as const : approvalGated ? "Approval-gated" as const : "Active" as const,
+            routingState: configured.length === 0 ? "No route" as const
+              : enabled.length === 0 ? "Draft route" as const
+              : approvalGated ? "Approval-gated" as const
+              : humanOnly && active ? "Active + human-only" as const
+              : humanOnly ? "Human-only" as const
+              : "Active" as const,
             routingTargets: [...new Set(enabled.map((row) => row.target_slug))],
             dispatchStatuses,
             recentDispatches: Object.entries(dispatchStatuses).reduce((counts, [status, count]) => {
