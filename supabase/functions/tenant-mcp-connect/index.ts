@@ -1,4 +1,19 @@
 // tenant-mcp-connect — connect, verify and disconnect a workspace's own MCP server.
+// REDEPLOY NOTE (2026-08-31): a deploy that said it succeeded and did not.
+//
+// The edge-function pipeline ran for the commit that added `tools/list` pagination to
+// `_shared/mcp-client.ts`, resolved this function as affected (correctly -- it imports that
+// file), bundled it, and printed "deployed tenant-mcp-connect". The platform record stayed
+// at version 1 with its original timestamp, and the deployed source still had the old
+// single-page reader, while `call-zapier-action` -- bundled from the SAME shared file eight
+// seconds earlier in the SAME run -- advanced to version 45 with the new code.
+//
+// So a green deploy log is not evidence a function is live. The check that caught it was
+// comparing the function's stored `version`/`updated_at` against the run that claimed to
+// deploy it; the source read alone looked like a cache artefact and would have been
+// dismissed. Anything that matters should be verified against the stored record, not the
+// CLI's own report -- the schema twin of "it compiled, therefore it runs".
+
 //
 // WHY THIS IS AN EDGE FUNCTION AND NOT AN RPC. Saving a connection is a database write
 // and lives in `set_tenant_n8n_mcp_connection`, which is where its authority belongs.
