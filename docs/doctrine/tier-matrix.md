@@ -42,6 +42,8 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
   `_kind='consumer'` mint for an **agency** target, §32.a-proven; #460 narrowed that guard to agency-only
   so Enterprise passes).
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
+- **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.
+
   (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
   `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
 - **`subaccount_management` = Agency + Enterprise; `fleet_console` = God** only.
