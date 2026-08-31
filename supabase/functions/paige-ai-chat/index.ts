@@ -8428,7 +8428,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 controller.close();
                 return;
               }
-              await commitTenantKnowledgeTelemetry();
               const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
               controller.enqueue(new TextEncoder().encode(syncEvent));
             } catch (err) {
@@ -8437,12 +8436,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               controller.enqueue(new TextEncoder().encode(errorEvent));
             }
           } else if (extractionProposal && extractionProposal.fields?.length > 0) {
-            await commitTenantKnowledgeTelemetry();
             // General document path: emit extraction proposal for inline confirmation card.
             const proposalEvent = `data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`;
             controller.enqueue(new TextEncoder().encode(proposalEvent));
-          } else {
-            await commitTenantKnowledgeTelemetry();
           }
 
           // Detect Paige's outputs for analytics: entity diagrams + legal flags.
@@ -8527,6 +8523,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
             } else {
               for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));
+              // The durable record is written HERE, after the reply has actually crossed — the
+              // same rule the agentic path follows, and now the same single site (§18) rather
+              // than three commits scattered up the branch. Those three fired before the flush
+              // check, so a switch landing on that check withheld the reply and still left a
+              // permanent row saying the retrieval had grounded one. Telemetry now records
+              // replies that landed, on both paths, or nothing.
+              await commitTenantKnowledgeTelemetry();
             }
           }
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));

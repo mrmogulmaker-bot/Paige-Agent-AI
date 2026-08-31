@@ -973,7 +973,15 @@ group("once refused, every later revalidation stays refused");
   // stopping at 6, that entire outer block could be deleted and the suite stayed at 113/0 —
   // while a switch landing at 7 leaked the reply AND wrote `kb_query_telemetry`. A boundary no
   // check can distinguish from its neighbours is one a future edit deletes as redundant.
-  for (const n of [2, 3, 4, 5, 6, 7]) {
+  //
+  // AND WHY 8 IS IN IT. A valid credit-report turn makes exactly nine persona calls (indices
+  // 0..8); the last is the flush boundary's own resolver call. Stopping at 7 left that call —
+  // the one added in response to review — completely unexercised: reverting it to a bare read
+  // of the sticky flag kept the suite at 118/0. This is the recurring trap in this file, and it
+  // has now caught me twice: the guard you just wrote is the one your mutation list forgets.
+  // (n=9 and beyond are NOT switch cases at all — the sequence runs out before the account
+  // changes — so 8 is genuinely the last boundary there is to pin.)
+  for (const n of [2, 3, 4, 5, 6, 7, 8]) {
     const r = await creditTurn(Array(n).fill(CHILD).concat([AGENCY]), [CHILD, AGENCY]);
     assert(
       `19 switch at persona call ${n}: the prior workspace's reply is never flushed`,
