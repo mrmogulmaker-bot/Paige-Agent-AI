@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
+const pipelineSettings = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineSettings.tsx"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
 const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
 const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
@@ -141,6 +142,10 @@ describe("Solo Campaigns approved contract", () => {
     expect(reorderMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline_id::text,0))");
     expect(source).toContain("[data.tenantId]");
     expect(source).toContain('setNewPipeline({name:"",description:"",starter:"blank"})');
+    expect(adapter).toContain("state.tenantId === synchronousTenantId");
+    expect(adapter).toContain('synchronousTenantId ? "loading" as const');
+    expect(pipelineSettings).toContain('rpc("reorder_pipeline_stages" as never');
+    expect(pipelineSettings).not.toContain('supabase.from("pipeline_stages").update({ order_index:');
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
