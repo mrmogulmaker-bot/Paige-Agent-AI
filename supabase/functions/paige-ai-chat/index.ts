@@ -1900,6 +1900,18 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
         if (identityError) throw identityError;
         const row = Array.isArray(identity) ? identity[0] : identity;
         if (row?.default_web_url) {
+          // The workspace's website and email sending domains, read through an RPC — the same
+          // class as `tenant_sender_identity` below, which was wired while this was not.
+          //
+          // §13 — UNREACHABLE AT RUNTIME TODAY, and the mark is here for when it is not. The
+          // call above uses `admin`, which is not defined in this scope (`TS2304`, one of the 14
+          // known `deno check` errors on this file, present on `main` too). It throws a
+          // `ReferenceError` straight into the catch below, so `tenantDomainContext` is
+          // permanently "" and never reaches the prompt. That is a real defect — the workspace's
+          // own domain answer has silently never worked — but it is pre-existing and belongs to
+          // its own change, not this one. Marking it now means the protection is already correct
+          // the moment the identifier is fixed, rather than becoming a fresh gap that day.
+          markProtectedLate("tenant_domain_identity");
           tenantDomainContext = `TENANT DOMAIN IDENTITY — SOURCE OF TRUTH
 - This workspace's default website/portal domain is ${row.default_web_url}.
 - Give that exact URL when the owner asks "what is my domain?" or is onboarding a client.
