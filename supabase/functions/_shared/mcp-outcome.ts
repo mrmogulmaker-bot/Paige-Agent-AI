@@ -568,6 +568,7 @@ export function projectN8nForModel(raw: unknown): Record<string, unknown> {
       unsafe_instance_url: "The stored n8n address is not one this platform will call. It needs correcting in Settings.",
       instance_url_redirects: "The stored n8n address redirects somewhere else, which is not followed. The address it points at needs saving in Settings.",
       n8n_request_failed: "The n8n instance could not be reached just now.",
+      n8n_response_too_large: "The n8n instance sent more than can be read safely, so nothing was read. Narrow the request and try again.",
       unauthorized: "That action is not available to this caller.",
       forbidden: "n8n control is admin-only.",
       no_tenant: "That action is not available to this caller.",

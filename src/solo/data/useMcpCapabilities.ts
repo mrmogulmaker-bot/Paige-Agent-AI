@@ -60,6 +60,8 @@ function describe(code: unknown, fallback: string): string {
     case "forbidden":
     case "MCP_FORBIDDEN":
       return "Only a workspace admin can approve capabilities.";
+    case "tenant_changed":
+      return "You switched workspaces while that was saving, so nothing was changed. Try again here.";
     case "discovery_failed":
       return "The provider could not be reached, so there is nothing to show.";
     default:
@@ -92,7 +94,7 @@ export function useMcpCapabilities(provider: McpProvider) {
     const token = gate.current.begin();
     setState((prev) => ({ ...prev, loading: true, error: null }));
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
-      body: { provider, action: "discover" },
+      body: { provider, action: "discover", expected_tenant_id: activeTenantId },
     });
     if (!gate.current.isCurrent(token)) return;
     // On a non-2xx `data` is null and the body is on the error — reading it from `data`
@@ -104,7 +106,10 @@ export function useMcpCapabilities(provider: McpProvider) {
       return;
     }
     setState({ tools: readTools(data), loading: false, saving: false, error: null });
-  }, [provider]);
+    // `activeTenantId` is a real dependency: the callback SENDS it, so a stale closure
+    // would tell the server the request was started for a workspace the person has
+    // already left — the exact confusion this expectation exists to refuse.
+  }, [activeTenantId, provider]);
 
   /**
    * Replaces the approval set outright. Approving is a statement of the whole list, not an
@@ -117,7 +122,7 @@ export function useMcpCapabilities(provider: McpProvider) {
     for (const tool of state.tools ?? []) if (names.includes(tool.name) && tool.schemaHash) pins[tool.name] = tool.schemaHash;
 
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
-      body: { provider, action: "approve", capabilities: names, pins },
+      body: { provider, action: "approve", capabilities: names, pins, expected_tenant_id: activeTenantId },
     });
     const failure = (await readFunctionErrorBody(error, data))?.error as string | undefined;
     if (error || failure) {
@@ -133,7 +138,7 @@ export function useMcpCapabilities(provider: McpProvider) {
       tools: (prev.tools ?? []).map((t) => ({ ...t, approved: names.includes(t.name) })),
     }));
     return true;
-  }, [discover, provider, state.tools]);
+  }, [activeTenantId, discover, provider, state.tools]);
 
   return { ...state, discover, approve };
 }

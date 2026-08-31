@@ -95,10 +95,14 @@ export type McpRequestOptions = {
  * must not reach a model, a transcript, memory or Rail: `_shared/mcp-outcome.ts` is the
  * boundary that decides what may. Nothing here is a safe thing to forward.
  */
-export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
-  let res: Awaited<ReturnType<typeof safeFetch>>;
+/** One POST to the endpoint. No lifecycle opinion — the caller supplies the frame. */
+async function post(
+  opts: McpRequestOptions,
+  payload: Record<string, unknown>,
+  sessionId: string | null,
+): Promise<Awaited<ReturnType<typeof safeFetch>>> {
   try {
-    res = await safeFetch(
+    return await safeFetch(
       opts.serverUrl,
       {
         method: "POST",
@@ -108,14 +112,10 @@ export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
           // request, so both are advertised and both are handled below.
           Accept: "application/json, text/event-stream",
           "MCP-Protocol-Version": PROTOCOL_VERSION,
+          ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
           ...authHeaders(opts.auth),
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: crypto.randomUUID(),
-          method: opts.method,
-          params: opts.params ?? {},
-        }),
+        body: JSON.stringify(payload),
       },
       {
         timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -127,7 +127,10 @@ export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
     if (e instanceof McpError) throw e;
     throw new McpError("mcp_protocol_error");
   }
+}
 
+/** The JSON-RPC result, or the mapped failure. Shared by the handshake and the call. */
+function resultOf(res: Awaited<ReturnType<typeof safeFetch>>): unknown {
   if (res.status < 200 || res.status >= 300) {
     // The STATUS is carried and the body is not. Nothing reads the detail — every surface
     // words these failures from the code — so a bounded slice of provider text bought
@@ -138,10 +141,7 @@ export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
   }
 
   // A truncated envelope is not a short envelope: half a JSON-RPC response parses as
-  // nothing, or worse, as something. This is the one place `response_too_large` was
-  // declared and worded for and never actually raised, so an oversized answer arrived as
-  // "that address answered, but not as an MCP server" — which reads as the workspace
-  // having typed the wrong URL.
+  // nothing, or worse, as something.
   if (res.truncated) throw new McpError("response_too_large");
 
   const envelope = parseEnvelope(res.body, res.headers.get("content-type") ?? "");
@@ -154,6 +154,58 @@ export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
   }
   if (!("result" in e)) throw new McpError("mcp_malformed_response");
   return e.result;
+}
+
+export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
+  // THE LIFECYCLE, WHICH THIS CLIENT USED TO SKIP ENTIRELY.
+  //
+  // MCP requires `initialize`, then the `notifications/initialized` notification, before
+  // any normal operation. This client sent `tools/list` as its very first request, so a
+  // server that enforces the lifecycle — which a compliant one does — could reject every
+  // probe, every discovery and every action, with valid credentials and a correct address.
+  // The repository's own `paige-mcp-smoke` has always done the handshake; this client was
+  // written without it and nothing compared the two.
+  //
+  // It was invisible because the test server answered `tools/list` unconditionally. A stub
+  // more permissive than the thing it stands in for proves the code works against the
+  // stub, which is the third time that has cost this change a defect.
+  //
+  // A stateful server may return `Mcp-Session-Id` on initialize; every later request in
+  // this exchange carries it. No session is cached between calls: an edge invocation is
+  // short-lived, a cache would be a second source of truth about a connection this code
+  // does not own, and three round trips is the honest price of correctness here.
+  const initRes = await post(opts, {
+    jsonrpc: "2.0",
+    id: crypto.randomUUID(),
+    method: "initialize",
+    params: {
+      protocolVersion: PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "paige", version: "1" },
+    },
+  }, null);
+  resultOf(initRes);
+
+  // Header names are case-insensitive; `Headers.get` handles that.
+  const sessionId = initRes.headers.get("mcp-session-id");
+
+  // A notification has no id and expects no result. A server answering 202 with an empty
+  // body is the normal case, so its response is not parsed as an envelope.
+  const ackRes = await post(opts, {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+  }, sessionId);
+  if (ackRes.status < 200 || ackRes.status >= 300) {
+    throw new McpError("mcp_http_error", undefined, ackRes.status);
+  }
+
+  const res = await post(opts, {
+    jsonrpc: "2.0",
+    id: crypto.randomUUID(),
+    method: opts.method,
+    params: opts.params ?? {},
+  }, sessionId);
+  return resultOf(res);
 }
 
 /**

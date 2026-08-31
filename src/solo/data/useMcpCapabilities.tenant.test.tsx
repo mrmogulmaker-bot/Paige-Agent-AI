@@ -93,6 +93,30 @@ describe("capability discovery across a workspace switch", () => {
     expect(latest().tools).toBeNull();
   });
 
+  // The server resolves the tenant itself; this value only lets it REFUSE. Without it, a
+  // request started for one workspace and landing after a switch is silently rebound to
+  // whichever workspace is active by then — the approval applies to the wrong book.
+  it("tells the server which workspace the request was started for", async () => {
+    harness.invoke.mockResolvedValueOnce(tools(["gmail_send_email"]));
+    mount();
+    await act(async () => { await latest().discover(); });
+
+    expect(harness.invoke).toHaveBeenCalledWith("tenant-mcp-connect", {
+      body: { provider: "zapier", action: "discover", expected_tenant_id: "tenant-a" },
+    });
+  });
+
+  it("...and sends it when approving, which is the mutation that matters", async () => {
+    harness.invoke.mockResolvedValueOnce(tools(["gmail_send_email"]));
+    mount();
+    await act(async () => { await latest().discover(); });
+    harness.invoke.mockResolvedValueOnce({ data: { ok: true }, error: null });
+    await act(async () => { await latest().approve(["gmail_send_email"]); });
+
+    const approve = harness.invoke.mock.calls.at(-1);
+    expect(approve?.[1]?.body?.expected_tenant_id).toBe("tenant-a");
+  });
+
   // The case the reset alone cannot cover, and therefore the one that proves the gate is
   // load-bearing rather than decorative: two discoveries in flight for the SAME workspace,
   // the OLDER one answering last. No tenant changes, so nothing clears state — only the

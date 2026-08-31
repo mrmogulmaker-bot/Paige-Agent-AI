@@ -303,6 +303,20 @@ check("a workflow that fails OUR validator says which check failed",
 check("...and that is the only failure whose detail crosses",
   BASELINE || !("validation_errors" in projectN8nForModel({ error: "n8n_500", detail: INJECTION })));
 
+// -- An answer too large to read is not an empty answer ------------------------
+console.log("\n-- an oversized API response --");
+routes.set("/api/v1/workflows", (req, res) => {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  // Well over the 2 MiB read cap, so the body arrives truncated and cannot parse.
+  res.write('{"data":[{"id":"wf-1","name":"' + "x".repeat(3_000_000) + '"}]}');
+  res.end();
+});
+bytes = await egress({ action: "list" });
+check("an n8n answer too large to read is reported as too large, not as an empty list",
+  BASELINE || (/n8n_response_too_large/.test(bytes) && /"success":false/.test(bytes)),
+  bytes.slice(0, 200));
+check("...and no part of the oversized body reaches the model", !bytes.includes("xxxxxxxxxx"));
+
 // -- A rejected webhook is not a fired one ------------------------------------
 console.log("\n-- a rejected webhook --");
 routes.set("/webhook/hook-1", (req, res) => json(res, 502, { message: "no workflow listening" }));

@@ -73,6 +73,25 @@ Deno.serve(async (req) => {
   const { data: tenantId, error: tErr } = await userClient.rpc("current_user_tenant_id");
   if (tErr || !tenantId) return jsonResponse({ error: "no_tenant" }, 400);
 
+  // WHICH WORKSPACE THE PERSON THOUGHT THEY WERE ACTING ON.
+  //
+  // `current_user_tenant_id()` reads `profiles.active_tenant_id`, which a workspace switch
+  // has already written by the time this resolves. So an admin who starts a connect, a
+  // disconnect or an approval and switches workspaces before the request lands has the
+  // whole mutation rebound to the NEW workspace: A's credential stored in B, B's grant
+  // revoked, A's approval selection applied to B. Nothing about that is visible; both
+  // workspaces are theirs and the request succeeds.
+  //
+  // This value is NOT authority and grants nothing — the server still resolves the tenant
+  // itself and every check below uses the resolved one. It is an EXPECTATION, and its only
+  // power is to refuse: if the caller meant a different workspace than the one the server
+  // now resolves, nothing happens at all. Omitting it keeps the old behaviour, so this
+  // cannot break a caller that has not been taught to send it.
+  const expected = typeof body.expected_tenant_id === "string" ? body.expected_tenant_id : null;
+  if (expected && expected !== tenantId) {
+    return jsonResponse({ error: "tenant_changed" }, 409);
+  }
+
   const admin = createClient(supabaseUrl, serviceKey);
 
   if (action === "disconnect") {

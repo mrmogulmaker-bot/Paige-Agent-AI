@@ -170,8 +170,12 @@ export function useMcpConnection(provider: McpProvider) {
 
   const invoke = useCallback(async (body: Record<string, unknown>): Promise<boolean> => {
     setState((prev) => ({ ...prev, saving: true, writeError: null }));
+    // The workspace this request was STARTED for. The server resolves the tenant itself
+    // and this grants nothing; it only lets the server refuse if the person switched
+    // workspaces between clicking and the request landing, which would otherwise rebind
+    // the whole mutation to whichever workspace happened to be active by then.
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
-      body: { provider, ...body },
+      body: { provider, expected_tenant_id: activeTenantId, ...body },
     });
     // A failed request and a request that succeeded but could not save are the same
     // thing to an admin: nothing changed. A failed PROBE is not — the connection was
@@ -193,7 +197,7 @@ export function useMcpConnection(provider: McpProvider) {
       return false;
     }
     return true;
-  }, [load, provider]);
+  }, [activeTenantId, load, provider]);
 
   /** The credential is an argument here and nowhere else. */
   const connect = useCallback((draft: McpDraft) => invoke({

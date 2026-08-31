@@ -799,7 +799,7 @@ describe("Zapier (consent, not credentials)", () => {
     await click(zapierButton(host, "Connect Zapier"));
 
     const [, options] = invoke.mock.calls.at(-1)!;
-    expect(options.body).toEqual({ provider: "zapier", action: "oauth_begin" });
+    expect(options.body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "oauth_begin" });
     // Everything about the consent URL — the issuer, the client, the challenge — is
     // discovered and composed server-side. The browser only follows.
     expect(assigned).toEqual(["https://as.zapier.example/authorize?code_challenge=abc&state=xyz"]);
@@ -842,11 +842,11 @@ describe("Zapier (consent, not credentials)", () => {
     await openCard(host, "mcp");
 
     await click(zapierButton(host, "Check it again"));
-    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "verify" });
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "verify" });
 
     await click(zapierButton(host, "Disconnect"));
     await click(zapierButton(host, "Disconnect it"));
-    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "disconnect" });
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "disconnect" });
     // No token, no key, no client secret — this browser has never held one.
     for (const [, options] of invoke.mock.calls) {
       expect(Object.keys(options.body).join(",")).not.toMatch(/token|secret|key|verifier/i);
@@ -925,7 +925,7 @@ describe("Capability approval", () => {
 
     invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
     await click(capsButton(host, "See what is available"));
-    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "discover" });
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "discover", expected_tenant_id: "tenant-a" });
     expect(capRows(host).map((b) => b.textContent)).toHaveLength(2);
     expect(capRows(host).every((b) => b.getAttribute("aria-pressed") === "false")).toBe(true);
   });

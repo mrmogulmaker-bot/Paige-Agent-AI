@@ -104,6 +104,13 @@ async function n8nFetch(baseUrl: string, apiKey: string, path: string, init: Req
     ...init,
     headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json", Accept: "application/json", ...(init.headers || {}) },
   }, { timeoutMs: N8N_TIMEOUT_MS, maxBytes: N8N_MAX_BYTES });
+  // A body that hit the cap is a FAILURE here, not a short success. Half a JSON document
+  // does not parse, `json()` turned that into `null`, and `ok` stayed true because the
+  // status was 200 — so an oversized listing was reported as "this workspace has no
+  // workflows", and a create or update whose response was truncated reported no id while
+  // the workflow had in fact been created on the instance. Raising is what makes every
+  // existing call site handle it, rather than each one having to remember a flag.
+  if (res.truncated) throw new SsrfError("response_too_large");
   return {
     ok: res.status >= 200 && res.status < 300,
     status: res.status,
@@ -462,9 +469,13 @@ Deno.serve(async (req) => {
       // not put the connection into an error state that reads as misconfiguration.
       const redirected = e.reason === "url_redirect_refused";
       const unreachable = e.reason === "request_timed_out" || e.reason === "request_failed";
+      // Distinct from an unreachable instance and from a bad address: the instance
+      // answered, and answered with more than this function will hold.
+      const tooLarge = e.reason === "response_too_large";
       // `markSync` records what is true: an address that resolves somewhere private is a
       // configuration error; a redirect or an outage is a state of the instance.
       await markSync("error", e.reason, null);
+      if (tooLarge) return json({ error: "n8n_response_too_large", detail: e.reason }, 502);
       if (redirected) return json({ error: "instance_url_redirects", detail: e.reason }, 400);
       if (unreachable) return json({ error: "n8n_request_failed", detail: e.reason }, 502);
       return json({ error: "unsafe_instance_url", detail: e.reason }, 400);

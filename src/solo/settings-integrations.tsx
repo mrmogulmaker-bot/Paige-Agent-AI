@@ -344,6 +344,7 @@ function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
    invite somebody to paste a long-lived token that cannot be rotated. */
 
 function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
+  const { activeTenantId } = useTenantContext();
   const m = useMcpConnection("zapier");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -352,8 +353,11 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
   const begin = useCallback(async () => {
     setStarting(true);
     setStartError(null);
+    // Starting a grant is a write too: it registers a single-use flow against a workspace.
+    // Sent for the same reason as every other call here — the server resolves the tenant
+    // and this only lets it refuse if the person has since moved somewhere else.
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
-      body: { provider: "zapier", action: "oauth_begin" },
+      body: { provider: "zapier", expected_tenant_id: activeTenantId, action: "oauth_begin" },
     });
     const url = (data as { authorize_url?: string })?.authorize_url;
     if (error || !url) {
@@ -364,7 +368,7 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
     // A full navigation, not a popup: consent belongs in the address bar where the
     // person can see whose sign-in page they are on.
     window.location.assign(url);
-  }, []);
+  }, [activeTenantId]);
 
   if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking this workspace…</p>;
 

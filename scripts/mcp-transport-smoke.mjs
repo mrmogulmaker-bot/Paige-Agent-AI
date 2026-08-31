@@ -207,29 +207,96 @@ const TOOLS = [
   { name: "no_name_here" },
   { description: "nameless, must be dropped" },
 ];
-routes.set("/mcp-json", (req, res) => {
-  let raw = "";
-  req.on("data", (c) => { raw += c; });
-  req.on("end", () => {
-    lastRequest = { headers: req.headers, body: JSON.parse(raw) };
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ jsonrpc: "2.0", id: lastRequest.body.id, result: { tools: TOOLS } }));
-  });
-});
+/**
+ * A server that ENFORCES the MCP lifecycle, which is the only kind worth testing against.
+ *
+ * The previous stub answered `tools/list` unconditionally, so a client that never sent
+ * `initialize` passed every assertion here and would have been rejected by every compliant
+ * provider. A stub more permissive than the real thing proves the code works against the
+ * stub. This one refuses anything before the handshake, issues a session id, and requires
+ * it on every later request — exactly what a stateful Streamable HTTP server does.
+ */
+const SESSION_ID = "sess-abc-123";
+function lifecycleServer(resultFor) {
+  return (req, res) => {
+    let raw = "";
+    req.on("data", (c) => { raw += c; });
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      exchange.push({ headers: req.headers, body });
+
+      if (body.method === "initialize") {
+        initialized = false;
+        res.writeHead(200, { "Content-Type": "application/json", "Mcp-Session-Id": SESSION_ID });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0", id: body.id,
+          result: { protocolVersion: body.params?.protocolVersion, capabilities: {}, serverInfo: { name: "stub", version: "1" } },
+        }));
+        return;
+      }
+
+      if (body.method === "notifications/initialized") {
+        initialized = true;
+        res.writeHead(202).end();
+        return;
+      }
+
+      // Everything else requires a completed handshake AND the session it issued.
+      if (!initialized) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id ?? null, error: { code: -32002, message: "server not initialized" } }));
+        return;
+      }
+      if (req.headers["mcp-session-id"] !== SESSION_ID) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id ?? null, error: { code: -32001, message: "unknown session" } }));
+        return;
+      }
+
+      lastRequest = { headers: req.headers, body };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: resultFor(body) }));
+    });
+  };
+}
+routes.set("/mcp-json", lifecycleServer(() => ({ tools: TOOLS })));
 let lastRequest = null;
+let initialized = false;
+let exchange = [];
 
 const bearer = { kind: "bearer", token: "super-secret-token-1234" };
 {
-  const tools = await mcp.mcpListTools({ serverUrl: "https://public.example/mcp-json", auth: bearer });
+  exchange = [];
+  // Caught rather than allowed to propagate. A client that skips the lifecycle is REJECTED
+  // by the server below, and an uncaught rejection would abort the whole run before any
+  // FAIL line printed — a crash that reports nothing looks the same as a pass to anything
+  // counting failures, which is how a proof stops proving without anyone noticing.
+  let tools = [];
+  let listError = null;
+  try {
+    tools = await mcp.mcpListTools({ serverUrl: "https://public.example/mcp-json", auth: bearer });
+  } catch (e) { listError = e; }
+  check("a compliant server accepts the exchange at all", listError === null,
+    listError ? `${listError.code ?? listError.message} ${listError.httpStatus ?? ""}` : "");
   check("tools/list returns the named tools", tools.length === 2 && tools[0].name === "send_email");
   check("a tool with no name is dropped rather than half-read", tools.every((t) => typeof t.name === "string" && t.name));
   check("no input schema crosses the boundary",
     !JSON.stringify(tools).includes("inputSchema") && !JSON.stringify(tools).includes("properties"));
-  check("the credential is sent as a Bearer header", lastRequest.headers.authorization === `Bearer ${bearer.token}`);
-  check("the protocol version is declared", !!lastRequest.headers["mcp-protocol-version"]);
+  check("the credential is sent as a Bearer header", lastRequest?.headers?.authorization === `Bearer ${bearer.token}`);
+  check("the protocol version is declared", !!lastRequest?.headers?.["mcp-protocol-version"]);
   check("both response framings are advertised",
-    lastRequest.headers.accept.includes("application/json") && lastRequest.headers.accept.includes("text/event-stream"));
-  check("the method is chosen by us, not the caller", lastRequest.body.method === "tools/list");
+    !!lastRequest?.headers?.accept?.includes("application/json") && !!lastRequest?.headers?.accept?.includes("text/event-stream"));
+  check("the method is chosen by us, not the caller", lastRequest?.body?.method === "tools/list");
+
+  // The lifecycle the client used to skip. A compliant server rejects everything before it.
+  check("the exchange opens with initialize", exchange[0]?.body?.method === "initialize");
+  check("...then acknowledges with notifications/initialized",
+    exchange[1]?.body?.method === "notifications/initialized" && exchange[1]?.body?.id === undefined);
+  check("...and only then sends the request", exchange[2]?.body?.method === "tools/list");
+  check("the session the server issued is carried on every request after it",
+    exchange.slice(1).every((e) => e.headers["mcp-session-id"] === SESSION_ID));
+  check("the credential is sent on the handshake too, not only on the request",
+    exchange.every((e) => e.headers.authorization === `Bearer ${bearer.token}`));
 }
 
 // A provider may answer the same request as an event stream.
