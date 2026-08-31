@@ -180,12 +180,30 @@ async function run() {
       // measuring a page the shell is deliberately blocking and calling the surface
       // unreachable.
       const backdrop = await page.$(".tcs-paige-backdrop");
+      let backdropWasUp = false;
       if (backdrop && await backdrop.isVisible()) {
+        backdropWasUp = true;
         await backdrop.click();
         await page.waitForTimeout(250);
+        // Dismissing it leaves focus on the removed button, so it falls to <body>,
+        // which cannot scroll. A human's very next act is to click the page they
+        // came for — and that click lands focus on the scroll owner, because the
+        // repair made it focusable. Doing that here is the human's path, not a
+        // shortcut around the measurement: the keyboard rows below still have to
+        // reach the last control on their own.
+        const b = await page.evaluate(() => {
+          const o = document.querySelector("[data-solo-screen-host]") ?? document.querySelector("#tenant-shell-main");
+          const r = o.getBoundingClientRect();
+          return { x: Math.round(r.left + 6), y: Math.round(r.top + r.height / 2) };
+        });
+        await page.mouse.click(b.x, b.y);
+        await page.waitForTimeout(120);
         observe(tag, "shell PAIGE backdrop was covering the page",
-                "dismissed it first, as a human would — the shell makes PAIGE modal at " +
-                "<=1080px and blocks the content behind it by design");
+                "the shell makes PAIGE modal at <=1080px and blocks the content behind it by " +
+                "design; the drive dismissed it and clicked back into the page, as a human " +
+                "would. NOTE the shell consequence: dismissing it drops focus to <body>, which " +
+                "cannot scroll, so keyboard scrolling is dead until that click — same root as " +
+                "the nav-rail row below, and shared chrome rather than this surface");
       }
 
       await page.screenshot({ path: path.join(OUT, `${tag}-01-initial.png`) });
