@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
+const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -70,4 +71,33 @@ describe("Solo Campaigns approved contract", () => {
     expect(css).toMatch(/\.campaigns-nav\{[^}]*background:var\(--pg-canvas\)/);
     expect(css).toMatch(/\.campaigns-scroll>\.pg-hd\{[^}]*background:transparent/);
   });
+
+  it("implements the approved tenant-owned Pipeline contract without a fixed campaign or sales taxonomy", () => {
+    expect(source).toContain('title="Deal workspace"');
+    expect(source).toContain("New pipeline");
+    expect(source).toContain("Blank pipeline");
+    expect(source).toContain("Simple starter stages");
+    expect(source).toContain("Configure stages");
+    expect(source).toContain("Add a stage");
+    expect(source).toContain("Focused stage");
+    expect(source).toContain("Routing, approvals, and repair evidence");
+    expect(source).not.toMatch(/pipeline.*revenue|pipeline.*ROI|pipeline.*payment/i);
+  });
+
+  it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
+    for (const contract of ["get_pipeline_workspace", "create_tenant_pipeline", "update_pipeline_details", "manage_pipeline_stage", "reorder_pipeline_stages"]) {
+      expect(adapter + migration).toContain(contract);
+    }
+    for (const action of ["create", "update", "archive", "restore"]) expect(migration).toContain(`_action='${action}'`);
+    expect(migration).toContain("PIPELINE_STAGE_OCCUPIED");
+    expect(migration).toContain("public.is_tenant_admin(_tenant)");
+    expect(migration).toContain("revoke all on function public.get_pipeline_workspace(uuid) from public,anon");
+  });
+
+  it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
+    expect(css).toContain('.solo-campaigns[data-campaigns-view="pipeline"] .campaigns-scroll>.pg-hd h1{font-size:20px}');
+    expect(css).toContain(".pipeline-board{");
+    expect(css).toContain(".pipeline-card{");
+  });
 });
+
