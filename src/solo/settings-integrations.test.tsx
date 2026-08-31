@@ -45,16 +45,20 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-/** Default world: n8n unconfigured, MCP unconfigured, caller is a tenant admin. */
+/**
+ * Default world: n8n API unconfigured, no MCP connection for any provider, caller
+ * is a tenant admin. `mcp` is PROVIDER-KEYED because the registry is provider
+ * scoped — one workspace may hold an n8n MCP endpoint and a Zapier one at once.
+ */
 function world(over: {
   n8n?: Record<string, unknown> | null;
-  mcp?: Record<string, unknown> | null;
+  mcp?: Partial<Record<"n8n" | "zapier", Record<string, unknown>>> | null;
   admin?: boolean;
   writeError?: { message: string } | null;
 } = {}) {
   rpc.mockImplementation((name: string) => {
     if (name === "get_tenant_n8n_connection") return Promise.resolve({ data: over.n8n ?? { configured: false, status: "unconfigured" }, error: null });
-    if (name === "get_tenant_mcp_connection") return Promise.resolve({ data: over.mcp ?? { configured: false, status: "unconfigured" }, error: null });
+    if (name === "get_tenant_mcp_connections") return Promise.resolve({ data: over.mcp ?? {}, error: null });
     if (name === "is_current_user_tenant_admin") return Promise.resolve({ data: over.admin !== false, error: null });
     if (name === "set_tenant_n8n_connection" || name === "clear_tenant_n8n_connection") {
       return Promise.resolve({ data: null, error: over.writeError ?? null });
@@ -104,7 +108,7 @@ describe("Truth boundary", () => {
     world({ n8n: { configured: true, status: "connected", label: "Workflow bridge", workflow_count: 3, secret: "must-not-survive", raw_payload: "must-not-survive", last_error: "must-not-survive" } });
     const { host } = await render();
     expect(rpc).toHaveBeenCalledWith("get_tenant_n8n_connection");
-    expect(rpc).toHaveBeenCalledWith("get_tenant_mcp_connection");
+    expect(rpc).toHaveBeenCalledWith("get_tenant_mcp_connections");
     // No status read may carry a tenant argument: the seam derives it.
     for (const call of rpc.mock.calls.filter((c) => String(c[0]).startsWith("get_"))) {
       expect(call.length).toBe(1);
@@ -153,16 +157,39 @@ describe("Truth boundary", () => {
   });
 
   it("uses Zapier identity only when the safe MCP host proves Zapier", async () => {
-    world({ mcp: { configured: true, status: "connected", server_url_host: "https://mcp.zapier.com/x" } });
+    world({ mcp: { zapier: { configured: true, status: "connected", server_url_host: "https://mcp.zapier.com/x" } } });
     const { host } = await render();
     expect(host.textContent).toContain("Zapier MCP");
   });
 
   it("keeps an unknown MCP server neutral rather than branding it", async () => {
-    world({ mcp: { configured: true, status: "connected", server_url_host: "https://mcp.example.dev/x" } });
+    world({ mcp: { zapier: { configured: true, status: "connected", server_url_host: "https://mcp.example.dev/x" } } });
     const { host } = await render();
     expect(host.textContent).toContain("MCP bridge");
     expect(host.textContent).not.toContain("Zapier");
+  });
+
+  it("never reads one MCP provider's state onto the other", async () => {
+    // The registry is provider-scoped. With BOTH connected and in deliberately
+    // DIFFERENT states, a card that picked an arbitrary row would show the wrong
+    // one — the frontend half of the same nondeterminism fixed in the systems
+    // check. The MCP bridge card reports Zapier; n8n's MCP state is not its own.
+    world({
+      mcp: {
+        zapier: { configured: true, status: "error", server_url_host: "https://mcp.zapier.com/x" },
+        n8n: { configured: true, status: "connected", server_url_host: "https://harness.app.n8n.cloud" },
+      },
+    });
+    const { host } = await render();
+    const bridge = host.querySelector('.ig-card[data-provider="mcp"]');
+    // Provider identity is resolved from ZAPIER's host. Reading n8n's row instead
+    // would fail `isZapierMcpHost` and render the generic "MCP bridge", so this
+    // name is the observable proof that the right provider row was selected.
+    expect(bridge?.textContent).toContain("Zapier MCP");
+    expect(bridge?.textContent).not.toContain("n8n");
+    // The n8n card reports the shipped API-key connection, never n8n's MCP row —
+    // that row is connected here, and the card must still say Not connected.
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
   });
 
   it("filters the catalogue with accessible pressed controls", async () => {
@@ -375,9 +402,9 @@ describe("Review findings", () => {
     // The catalogue read must run again on success, or the card behind the
     // panel keeps claiming the old state.
     world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
-    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connection").length;
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connections").length;
     await submit(host);
-    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connection").length;
+    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connections").length;
     expect(after).toBeGreaterThan(before);
     expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Connected");
   });

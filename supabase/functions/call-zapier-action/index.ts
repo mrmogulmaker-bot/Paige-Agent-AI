@@ -120,7 +120,12 @@ Deno.serve(async (req) => {
   // 2. Pull the tenant's decrypted MCP creds (service-role-only RPC), scoped to the
   //    caller's OWN resolved tenant. Honest degrade if not configured/enabled (§13) —
   //    never a fallback to the shared ZAPIER_MCP_TOKEN env.
-  const { data: secret, error: sErr } = await admin.rpc("get_tenant_mcp_secret", { _tenant_id: tenantId });
+  // The registry is provider-scoped: one tenant may hold an n8n MCP connection AND a
+  // Zapier one, so the provider must be named. This function is the Zapier caller.
+  const { data: secret, error: sErr } = await admin.rpc("get_tenant_mcp_secret", {
+    _tenant_id: tenantId,
+    _provider: "zapier",
+  });
   if (sErr) return jsonResponse({ error: "secret_lookup_failed" }, 500);
   if (!secret?.configured) {
     return jsonResponse({ ok: false, error: "not_connected", detail: "This workspace hasn't connected a Zapier/MCP account yet. Connect one in Settings → Integrations → Zapier." });

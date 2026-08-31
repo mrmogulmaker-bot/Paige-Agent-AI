@@ -23,8 +23,14 @@ type IntegrationReadState = {
   tenantId: string | null;
   loading: boolean;
   error: boolean;
+  /** The shipped n8n API-key connection. Separate from n8n's MCP endpoint. */
   n8n: SafeConnectionStatus | null;
-  mcp: SafeConnectionStatus | null;
+  /**
+   * MCP connections keyed by provider. The registry is provider-scoped: one
+   * workspace may hold an n8n MCP endpoint AND a Zapier one at the same time,
+   * so a single `mcp` slot can no longer represent it.
+   */
+  mcp: Partial<Record<"n8n" | "zapier", SafeConnectionStatus>>;
 };
 
 /**
@@ -44,6 +50,22 @@ function sanitizeSafeConnectionStatus(value: unknown): SafeConnectionStatus | nu
     workflow_count: typeof source.workflow_count === "number" ? source.workflow_count : null,
     server_url_host: typeof source.server_url_host === "string" ? source.server_url_host : null,
   };
+}
+
+/**
+ * The provider-scoped getter returns `{ n8n: {...}, zapier: {...} }`. Each entry
+ * goes through the same field whitelist as a single connection, so `last_error`
+ * and any provider payload stay out of the browser exactly as before.
+ */
+function sanitizeMcpByProvider(value: unknown): Partial<Record<"n8n" | "zapier", SafeConnectionStatus>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const out: Partial<Record<"n8n" | "zapier", SafeConnectionStatus>> = {};
+  for (const provider of ["n8n", "zapier"] as const) {
+    const entry = sanitizeSafeConnectionStatus(source[provider]);
+    if (entry) out[provider] = entry;
+  }
+  return out;
 }
 
 type ProviderIdentity = "n8n" | "zapier" | "mcp" | "quickbooks" | "stripe" | "docusign" | "apollo" | "plaid" | "api";
@@ -80,21 +102,22 @@ function statusPresentation(value: SafeConnectionStatus | null) {
 function useIntegrationStatus() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const gate = useRef(createSettingsRequestGate());
-  const [state, setState] = useState<IntegrationReadState>({ tenantId: null, loading: true, error: false, n8n: null, mcp: null });
+  const [state, setState] = useState<IntegrationReadState>({ tenantId: null, loading: true, error: false, n8n: null, mcp: {} });
 
   const load = useCallback(async () => {
     const token = gate.current.begin();
-    setState({ tenantId: null, loading: true, error: false, n8n: null, mcp: null });
+    setState({ tenantId: null, loading: true, error: false, n8n: null, mcp: {} });
     if (!activeTenantId) {
-      setState({ tenantId: null, loading: false, error: false, n8n: null, mcp: null });
+      setState({ tenantId: null, loading: false, error: false, n8n: null, mcp: {} });
       return;
     }
     const [n8nResult, mcpResult] = await Promise.all([
       supabase.rpc("get_tenant_n8n_connection"),
-      // This safe getter is newer than the generated client types. It returns status only;
-      // its secret-bearing counterpart is never callable from this browser surface.
+      // Provider-scoped safe getter, newer than the generated client types. It
+      // returns status per provider only; its secret-bearing counterpart is
+      // service-role and is never callable from this browser surface.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase as any).rpc("get_tenant_mcp_connection"),
+      (supabase as any).rpc("get_tenant_mcp_connections"),
     ]);
     if (!gate.current.isCurrent(token)) return;
     const failed = Boolean(n8nResult.error || mcpResult.error);
@@ -103,7 +126,7 @@ function useIntegrationStatus() {
       loading: false,
       error: failed,
       n8n: failed ? null : sanitizeSafeConnectionStatus(n8nResult.data),
-      mcp: failed ? null : sanitizeSafeConnectionStatus(mcpResult.data),
+      mcp: failed ? {} : sanitizeMcpByProvider(mcpResult.data),
     });
   }, [activeTenantId]);
 
@@ -406,11 +429,13 @@ function useIntegrationsLeaf(): [IntegrationsLeaf, (next: IntegrationsLeaf) => v
 export function SoloIntegrationsView() {
   const [leaf, setLeaf] = useIntegrationsLeaf();
   const status = useIntegrationStatus();
-  const zapier = isZapierMcpHost(status.mcp?.server_url_host);
+  const zapier = isZapierMcpHost(status.mcp.zapier?.server_url_host);
   const [category, setCategory] = useState<CatalogueCategory>("all");
   const [open, setOpen] = useState<ProviderRow | null>(null);
 
-  const liveStatus = (id: ProviderIdentity) => id === "n8n" ? status.n8n : id === "mcp" ? status.mcp : null;
+  // n8n's card reports its shipped API-key connection; the MCP bridge card reports
+  // the tenant's Zapier MCP endpoint. Both are provider-scoped reads now.
+  const liveStatus = (id: ProviderIdentity) => id === "n8n" ? status.n8n : id === "mcp" ? (status.mcp.zapier ?? null) : null;
   const rows = PROVIDERS.filter((row) => category === "all" || row.filter === category);
 
   const tabs: ReadonlyArray<{ id: IntegrationsLeaf; label: string; Icon: typeof Workflow }> = [

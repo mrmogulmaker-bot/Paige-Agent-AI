@@ -334,6 +334,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run test:client-memory-authz
 
+      - name: Smoke — MCP registry is provider-scoped and its aggregate is deterministic
+        if: ${{ !cancelled() }}
+        run: npm run smoke:mcp-registry
+
       - name: Lint — every paige_conversations insert stamps a tenant (C-7)
         if: ${{ !cancelled() }}
         run: npm run lint:conversation-tenant
