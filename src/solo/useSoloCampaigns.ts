@@ -77,8 +77,15 @@ type SubmissionRow = {
   contact_id: string | null;
   deal_id: string | null;
 };
-type AutomationRow = { id: string; form_id: string; target_slug: string; enabled: boolean; config_json: Record<string, unknown> | null };
-type DispatchRow = { automation_id: string; status: string };
+type RoutingEvidenceRow = {
+  id: string;
+  form_id: string;
+  target_slug: string;
+  enabled: boolean;
+  effective_autonomy_lane: "auto" | "confirm" | "off";
+  dispatch_statuses: Record<string, number> | null;
+};
+type RoutingEvidencePayload = { routes?: RoutingEvidenceRow[] };
 type PipelineWorkspacePayload = {
   can_manage?: boolean;
   pipelines?: { id: string; name: string; description?: string | null; is_default?: boolean }[];
@@ -150,16 +157,15 @@ export function useSoloCampaigns(): SoloCampaignsState {
     setState({ phase: "loading", ...empty });
     void (async () => {
       try {
-        const [pageResponse, funnelResponse, formResponse, submissionResponse, automationResponse, dispatchResponse, pipelineResponse] = await Promise.all([
+        const [pageResponse, funnelResponse, formResponse, submissionResponse, routingResponse, pipelineResponse] = await Promise.all([
           supabase.from("growth_pages").select("id,slug,title,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_funnels").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_forms").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_form_submissions").select("id,form_id,source,processing_state,created_at,contact_id,deal_id").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(200),
-          supabase.from("growth_form_automations").select("id,form_id,target_slug,enabled,config_json").eq("tenant_id", activeTenantId),
-          supabase.from("growth_submission_dispatches").select("automation_id,status").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(200),
+          supabase.rpc("get_pipeline_routing_evidence" as never, { _tenant_id: activeTenantId } as never),
           supabase.rpc("get_pipeline_workspace" as never, { _tenant_id: activeTenantId } as never),
         ]);
-        const firstError = [pageResponse.error, funnelResponse.error, formResponse.error, submissionResponse.error, automationResponse.error, dispatchResponse.error, pipelineResponse.error].find(Boolean);
+        const firstError = [pageResponse.error, funnelResponse.error, formResponse.error, submissionResponse.error, routingResponse.error, pipelineResponse.error].find(Boolean);
         if (firstError) throw firstError;
         if (!current) return;
 
@@ -183,30 +189,31 @@ export function useSoloCampaigns(): SoloCampaignsState {
           counts[row.formId] = (counts[row.formId] ?? 0) + 1;
           return counts;
         }, {});
-        const automations = (automationResponse.data ?? []) as AutomationRow[];
-        const dispatches = (dispatchResponse.data ?? []) as DispatchRow[];
-        const automationsByForm = automations.reduce<Record<string, AutomationRow[]>>((groups, row) => {
+        const routingPayload = (routingResponse.data ?? {}) as unknown as RoutingEvidencePayload;
+        const automations = routingPayload.routes ?? [];
+        const automationsByForm = automations.reduce<Record<string, RoutingEvidenceRow[]>>((groups, row) => {
           (groups[row.form_id] ??= []).push(row);
-          return groups;
-        }, {});
-        const dispatchesByAutomation = dispatches.reduce<Record<string, DispatchRow[]>>((groups, row) => {
-          (groups[row.automation_id] ??= []).push(row);
           return groups;
         }, {});
         const routingEvidence = (formId: string) => {
           const configured = automationsByForm[formId] ?? [];
           const enabled = configured.filter((automation)=>automation.enabled);
-          const outcomes = configured.flatMap((automation) => dispatchesByAutomation[automation.id] ?? []);
-          const approvalGated = enabled.some((automation)=>automation.config_json?.autonomy_lane === "confirm" || automation.config_json?.approval_required === true);
+          const dispatchStatuses = configured.reduce<Record<string, number>>((counts, automation) => {
+            Object.entries(automation.dispatch_statuses ?? {}).forEach(([status, count]) => {
+              counts[status] = (counts[status] ?? 0) + count;
+            });
+            return counts;
+          }, {});
+          const approvalGated = enabled.some((automation)=>automation.effective_autonomy_lane !== "auto");
           return {
             routingConfigured: configured.length > 0,
             routingState: configured.length === 0 ? "No route" as const : enabled.length === 0 ? "Draft route" as const : approvalGated ? "Approval-gated" as const : "Active" as const,
             routingTargets: [...new Set(enabled.map((row) => row.target_slug))],
-            dispatchStatuses: outcomes.reduce<Record<string,number>>((counts,row)=>{const key=row.status||"unrecorded";counts[key]=(counts[key]??0)+1;return counts;},{}),
-            recentDispatches: outcomes.reduce((counts, row) => {
-              if (["succeeded", "success", "completed"].includes(row.status)) counts.succeeded += 1;
-              else if (["failed", "error"].includes(row.status)) counts.failed += 1;
-              else counts.other += 1;
+            dispatchStatuses,
+            recentDispatches: Object.entries(dispatchStatuses).reduce((counts, [status, count]) => {
+              if (["succeeded", "success", "completed"].includes(status)) counts.succeeded += count;
+              else if (["failed", "error"].includes(status)) counts.failed += count;
+              else counts.other += count;
               return counts;
             }, { succeeded: 0, failed: 0, other: 0 }),
           };
