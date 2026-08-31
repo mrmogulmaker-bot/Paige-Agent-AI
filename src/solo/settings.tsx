@@ -852,11 +852,26 @@ export function SoloSettings() {
     });
   }, [segment, segmentSpent, location.pathname, location.search, location.state, navigate]);
   const rootRef = useRef<HTMLDivElement>(null);
+  // The element that actually scrolls Settings is SoloApp's screen host when the
+  // shell provides one, and the shell's own `#tenant-shell-main` otherwise (the
+  // Settings surface is also mounted bare in tests and harnesses). Dressing the
+  // outer main while the inner host owns the scroll left the visible scrollbar
+  // undressed, which is the contract `.tcs-main--settings-scrollbar-hidden` exists
+  // to hold.
+  const scrollOwnerOf = (root: HTMLElement | null) =>
+    root?.closest<HTMLElement>("[data-solo-screen-host]") ?? root?.closest<HTMLElement>("#tenant-shell-main") ?? null;
   useEffect(() => {
-    const scrollOwner = rootRef.current?.closest<HTMLElement>("#tenant-shell-main");
+    const scrollOwner = scrollOwnerOf(rootRef.current);
     scrollOwner?.classList.add("tcs-main--settings-scrollbar-hidden");
     return () => scrollOwner?.classList.remove("tcs-main--settings-scrollbar-hidden");
   }, []);
+  // One scroll owner across the whole route means one scroll POSITION across it
+  // too: without this, opening a short destination after scrolling a long one
+  // lands part-way down its content instead of on its heading.
+  useEffect(() => {
+    const scrollOwner = scrollOwnerOf(rootRef.current);
+    if (scrollOwner) scrollOwner.scrollTop = 0;
+  }, [tab, segment]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
   return <div ref={rootRef} className="solo-settings">
