@@ -1571,41 +1571,33 @@ JSON:`;
     // where tokens were already gone by the time the last check ran, and a hold on the document
     // path that engaged only when the KB happened to match.
     //
-    // THE SOURCES OF PROTECTED EVIDENCE THAT ARE KNOWN AT ENTRY. Deliberately not numbered in
-    // this heading: it said FOUR while the list below held eight, inside the very comment block
-    // rewritten for honesty one revision earlier. The list is the list; a count beside it is one
-    // more thing that can be wrong.
-    //   1. `tenantKbContext`  — tenant Knowledge chunks.
-    //   2. `ragContext`       — titles and body text from `rag_documents`; document-derived.
-    //   3. `attachedDocument` — the document itself, whether or not anything matched it. This is
-    //      the §58 case: such a turn used to stream live when the KB missed.
-    //   4. `sessionDocContext` — filenames and summaries of documents analysed EARLIER in this
-    //      session, interpolated into the system prompt so follow-up questions can be answered
-    //      from them. Enumerating only the first three missed this entirely: "what did that
-    //      contract say about termination?" is answered wholly out of document-derived evidence,
-    //      carried no attachment, and so streamed live and paid no revalidation at all. The
-    //      summaries were produced under the workspace that was active when the document was
-    //      read, which is exactly the authority that may since have changed.
+    // PROTECTED EVIDENCE KNOWN AT ENTRY. The list is immediately below, in the code, where it
+    // cannot drift from what runs. Do not restate it in prose here and do not count it: this
+    // block has now carried FOUR false claims about its own contents, and every one of them was
+    // a summary of the code sitting six lines away.
     //
-    // §13 — WHY THIS IS A `const`, and two claims the previous revisions made that were false.
+    // §13 — THE FOUR, recorded because the pattern matters more than any one of them:
+    //   1. A `markTurnProtected()` setter whose comment said late retrievals switch the turn onto
+    //      the buffered path. NOTHING CALLED IT; deleting it left the suite green.
+    //   2. "There are exactly two Knowledge retrieval sites in this handler." There were more.
+    //   3. "Every source that reaches the model is read ABOVE this line … a positional property,
+    //      checkable by reading." It is not: the rolling summary, the domain identity, the
+    //      focused client, the sender identity and the activity rail are all read far below.
+    //   4. A prose enumeration under this heading that stopped at four while the code enumerated
+    //      nine — and a correction sentence that said "eight" after a ninth had been added.
     //
-    // The first: a `markTurnProtected()` setter with a comment saying late retrievals switch the
-    // turn onto the buffered path. NOTHING CALLED IT, and deleting it left the suite fully green
-    // — the safety property was resting on a function that never ran. The second, which replaced
-    // it, was worse for being precise: "there are exactly two Knowledge retrieval sites in this
-    // handler." There are at least six sources below, four of which that count silently
-    // excluded, and each was found only because someone went and looked rather than trusting the
-    // sentence. A count is a claim; do not write one here again without re-deriving it.
+    // (3) and (4) are the sharpest, because BOTH were left in place by the commit whose message
+    // announced fixing them: the refuted sentence stayed verbatim three paragraphs above its own
+    // refutation, and an independent reviewer found it there. A comment that summarises adjacent
+    // code earns nothing and goes stale on the next edit; the code is the enumeration.
     //
-    // WHAT IS ACTUALLY TRUE, and what the enumeration is for: every source that reaches the
-    // model — the system prompt or the message array — is read ABOVE this line, and protected
-    // content is emitted only from the reply stage far below. So the latch is settled before
-    // anything can emit. That is a positional property, checkable by reading, not a count.
+    // WHAT IS TRUE, and it is a rule rather than a description: a source known at entry belongs
+    // in the list below. A source read after it calls `markProtectedLate`. Which one applies is
+    // decided by where the read happens, and both are enforced by tests that fail by name.
     //
-    // Sealing it as `const` keeps THIS LIST honest — a source enumerated here cannot quietly be
-    // reassigned later. It is NOT a claim that the list is complete, and reading it that way is
-    // how the last two revisions went wrong. Several things reach the model from far below this
-    // point, and they are handled by `markProtectedLate`, not by this constant.
+    // Sealing the entry list as `const` keeps THAT list honest — a source enumerated below cannot
+    // quietly be reassigned later. It is not, and has never been, a claim that everything
+    // reaching the model is in it.
     const turnCarriesProtectedContentAtEntry =
       // 1. Tenant Knowledge chunks.
       !!tenantKbContext ||
@@ -8589,11 +8581,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           //     text live under exactly this justification.
           //   · phase markers (`paige_phase`) and compaction frames (`{state, pct}`).
           //   · the fixed `client_scope` refusal category — one of six constant strings.
-          //   · the `client_scope_refused` `sync_status` — a fixed category with no payload, and
-          //     the one entry here that is DOCUMENT-path only. It is buffered like every other
-          //     close-out frame on that path; it is listed as neutral because its payload
-          //     carries nothing, not because it goes direct. The earlier wording said it was not
-          //     held, which contradicted the same commit's other hunk.
+          // The `client_scope_refused` `sync_status` used to be listed here and is NOT, because
+          // it IS held — it goes through `emitCloseFrame` on the document path like every other
+          // close-out frame. Two revisions running put it in a list headed "not held" and then
+          // explained in its own entry that it was held; an entry that argues against its own
+          // heading is worse than no entry. It carries a fixed category and no payload, so
+          // nothing turns on it either way, and it is named here only so the next reader does
+          // not re-add it.
           // Each names an activity without quoting the evidence, which is what lets the user see
           // progress while a protected answer is still being checked. The `[DONE]` sentinel is
           // NOT on this list any more: it is buffered, because arriving ahead of the released

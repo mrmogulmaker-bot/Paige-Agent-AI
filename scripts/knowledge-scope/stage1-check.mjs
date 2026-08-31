@@ -295,7 +295,7 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false }) {
   const logged = [];
   syncThrows = throwOnSync;
   resetEmbeds();
@@ -340,7 +340,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
       // `ragContext` was `""` in every assertion in this file: removing it from the latch left
       // the whole suite green. An independent review found that, and this stub is what ends it.
       match_rag_documents: () => (ragHits
-        ? { data: [{ id: "rag-1", title: "Tracked outcomes", summary: "PRIVATE-RAG-SOURCE-MARKER", content: "", similarity: 0.88 }], error: null }
+        ? { data: [{ id: "rag-1", title: "PRIVATE-RAGTITLE-MARKER outcomes", summary: "PRIVATE-RAG-SOURCE-MARKER", content: "", similarity: 0.88 }], error: null }
         : { data: [], error: null }),
       // Scenario-specific RPCs (e.g. the `save_marketing_content` a `document_generate` tool
       // call persists through). Last, so a scenario can also override a default above.
@@ -870,7 +870,7 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
     fileName: "operating-notes.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     kind: "docx",
-    textContent: "Internal operating notes",
+    textContent: "PRIVATE-DOCTEXT-MARKER internal operating notes",
   };
 
   const valid = await drive({
@@ -1234,7 +1234,7 @@ group("once refused, every later revalidation stays refused");
   // switch during extraction refused the first and passed the second, so the buffered
   // prior-workspace reply held by `holdDirectFramesForKnowledgeScope` was flushed to the client.
   // The entire suite was green while this was true, which is the whole reason this group exists.
-  const pdf = { fileName: "report.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
+  const pdf = { fileName: "PRIVATE-PDFNAME-MARKER.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
   // Persistence is the OTHER durable effect at the close of a document turn, and it is invisible
   // to every assertion above — they read the stream and the telemetry table. A revision that
   // moved the telemetry commit behind the flush check and left `persistAssistantTurn` in FRONT
@@ -1479,10 +1479,10 @@ group("safety-first streaming: protected turns buffer, ordinary turns stream");
   });
 
   const docx = {
-    fileName: "notes.docx",
+    fileName: "PRIVATE-DOCXNAME-MARKER.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     kind: "docx",
-    textContent: "Internal operating notes",
+    textContent: "PRIVATE-DOCTEXT-MARKER internal operating notes",
   };
 
   // Each shape is driven twice: once stable (the positive control — it must DELIVER), then once
@@ -1704,7 +1704,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   // the answer to "what did that contract say?" crossed with no active-account check at all.
   const sessionDocs = {
     sessionDocumentContext: [
-      { fileName: "termination-terms.pdf", summary: "PRIVATE-SESSION-DOC-MARKER: 30-day notice required." },
+      { fileName: "PRIVATE-DOCNAME-MARKER-terms.pdf", summary: "PRIVATE-SESSION-DOC-MARKER: 30-day notice required." },
     ],
   };
   const sessionClean = await drive({
@@ -1856,10 +1856,10 @@ group("safety-first streaming: the sources the first enumeration missed");
   // where the two are distinguishable.
   const emptyRow = { data: [{}], error: null };
   const docFixture = {
-    fileName: "notes.docx",
+    fileName: "PRIVATE-DOCXNAME-MARKER.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     kind: "docx",
-    textContent: "Internal operating notes",
+    textContent: "PRIVATE-DOCTEXT-MARKER internal operating notes",
   };
   const operatorDegenerate = await drive({
     personaTenant: null,
@@ -1971,7 +1971,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   // enqueue and never entered `directFrames`, so it bypassed the document path's hold entirely:
   // a turn whose analysis was withheld still put the numbers from that analysis on screen.
   const syncFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("sync_status"));
-  const pdfFixture = { fileName: "report.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
+  const pdfFixture = { fileName: "PRIVATE-PDFNAME-MARKER.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
   const syncOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     bodyExtras: { document: pdfFixture },
@@ -2244,7 +2244,7 @@ group("safety-first streaming: the sources the first enumeration missed");
   // funding tenant document-derived and unbuffered. The gate matters in both directions, so the
   // NON-funding control below proves the fix did not simply buffer the whole platform.
   const fundingRows = {
-    credit_report_uploads: () => [{ id: "u1", file_name: "PRIVATE-PDF-MARKER.pdf", analysis_status: "completed", created_at: "2026-01-01T00:00:00Z", last_analyzed_at: "2026-01-01T00:00:00Z", bureau_detected: "experian", error_message: null }],
+    credit_report_uploads: () => [{ id: "u1", file_name: "PRIVATE-PDF-MARKER.pdf", analysis_status: "completed", created_at: "2026-01-01T00:00:00Z", last_analyzed_at: "2026-01-01T00:00:00Z", bureau_detected: "PRIVATE-BUREAU-MARKER", error_message: null }],
     profiles: () => [{ active_tenant_id: CHILD, full_name: "Test", estimated_fico_ex: 705, estimated_fico_eq: 712, estimated_fico_tu: 698 }],
   };
   const fundingOpts = { kbRejects: true, provider: ["private-text"], fundingEnabled: true, tableExtras: fundingRows };
@@ -2554,7 +2554,7 @@ group("safety-first streaming: the sources the first enumeration missed");
     kbRejects: true,
     provider: ["private-text"],
     fundingEnabled: true,
-    tableExtras: { knowledge_base: () => [{ title: "T", content: "PRIVATE-KBASE-MARKER", summary: null, framework: "f", category: "c" }] },
+    tableExtras: { knowledge_base: () => [{ title: "PRIVATE-KBTITLE-MARKER", content: "PRIVATE-KBASE-MARKER", summary: null, framework: "f", category: "c" }] },
   };
   const kbaseClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...kbaseOpts,
@@ -2669,6 +2669,69 @@ group("safety-first streaming: the sources the first enumeration missed");
     !railAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
     railAtGate.responseText.slice(0, 300),
   );
+
+  // 21.x — THE REVALIDATION RESOLVER MUST RUN ON THE JWT CLIENT. This file's own header claims
+  // "the fake records WHICH client made each call, so 'the JWT-scoped guard is engaged' is
+  // proven, not assumed" — and that was true of exactly one call, `match_tenant_knowledge`. The
+  // `get_paige_persona_context` call the entire safety-first gate rests on had no client-kind
+  // assertion at all, so moving it to the SERVICE client was green. Under service-role
+  // `auth.uid()` is NULL, which is the precise exemption the original defect turned on: the
+  // resolver would stop resolving the caller and start resolving nobody.
+  const jwtProbe = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["private-text"],
+  });
+  const personaCalls = jwtProbe.rec.rpc.filter((c) => c.name === "get_paige_persona_context");
+  assert(
+    "21.x CONTROL — the revalidation resolver is actually called on this turn",
+    personaCalls.length >= 2,
+    `persona calls: ${personaCalls.length}`,
+  );
+  assert(
+    "21.x every persona-context resolution runs on the JWT client, never service-role",
+    personaCalls.every((c) => c.client === "jwt"),
+    JSON.stringify(personaCalls.map((c) => c.client)),
+  );
+}
+
+// ── 21z · The receipt set, asserted on its CONTENTS ──────────────────────────────
+//
+// Membership of `TOOL_RESULT_IS_RECEIPT` decides whether a tool result switches the turn onto
+// the protected path, and only two tools in this whole file drive it — so adding a genuine READ
+// tool to the set, or adding the generators the comment says "deliberately land" outside it, was
+// free: both mutations left the suite fully green. Driving a fixture per tool is not realistic;
+// asserting the SET is, and it catches exactly the drift the inverted design exists to prevent.
+//
+// Read from the handler's source rather than exported, because exporting it would change the
+// shipped module's shape to suit a test.
+group("the tool-result receipt set");
+{
+  const HANDLER_SRC = (await import("node:fs")).readFileSync(
+    new URL("../../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
+  const block = HANDLER_SRC.slice(
+    HANDLER_SRC.indexOf("const TOOL_RESULT_IS_RECEIPT = new Set<string>(["),
+    HANDLER_SRC.indexOf("const markProtectedLate"),
+  );
+  assert("21z.1 CONTROL — the receipt set literal was located in the handler",
+    block.length > 100 && block.includes("crm_create_contact"), `block length ${block.length}`);
+  // Tools whose result carries evidence — read back from tenant storage, generated from tenant
+  // branding, or an unbounded spread of whatever an external system returned. None may be a
+  // receipt. `draft_marketing_content` is here because it already shipped as a receipt once.
+  for (const tool of [
+    "draft_marketing_content", "growth_funnel_build",
+    "n8n_run_workflow", "n8n_create_workflow", "n8n_update_workflow", "zapier_run_action",
+    "crm_search_contacts", "crm_get_contact_summary", "crm_list_deals", "crm_list_tasks",
+    "crm_pipeline_summary", "growth_list", "plan_list", "action_list", "action_get",
+    "get_client_rail", "delegate_to_subagent", "deep_research", "web_fetch", "list_event_kinds",
+  ]) {
+    assert(`21z ${tool} is NOT classified as a write receipt`,
+      !new RegExp(`"${tool}"`).test(block), `found "${tool}" inside the receipt set`);
+  }
+  // And the set must not be empty — an empty set makes every tool evidence, which is safe but
+  // means the classification is doing nothing and the next reader will "restore" it blind.
+  assert("21z.2 the receipt set is non-empty",
+    (block.match(/"[a-z0-9_]+"/g) ?? []).length >= 20,
+    `entries: ${(block.match(/"[a-z0-9_]+"/g) ?? []).length}`);
 }
 
 // ── 22 · The classifier itself ───────────────────────────────────────────────────
@@ -2718,6 +2781,11 @@ group("the neutral-frame classifier itself");
     !isNeutral(f({ paige_step: { kind: "action", label: "PRIVATE-MEMORY-MARKER EQ 712 EX 705 TU 698" } })), "");
   assert("22.12 evidence hidden in an action step DETAIL is protected",
     !isNeutral(f({ paige_step: { kind: "action", label: "Working on that", detail: "PRIVATE-MEMORY-MARKER EQ 712" } })), "");
+  // ONLY the `choices` branch catches this: ordinary reply text, no marker, no refusal phrase.
+  // 22.13 below is caught by the marker scan and 22.6 passes either way, so deleting that branch
+  // — the one guarding the primary leak channel — was green until this case existed.
+  assert("22.12b any reply content that is not the refusal sentence is protected",
+    !isNeutral(f({ choices: [{ delta: { content: "Here is what I found in your file." } }] })), "");
   assert("22.13 evidence smuggled beside the refusal sentence is protected",
     !isNeutral(f({ choices: [{ delta: { content: "workspace changed PRIVATE-MEMORY-MARKER EQ 712" } }] })), "");
   // NO MARKER in this one, deliberately. With a marker the frame is caught by the marker scan

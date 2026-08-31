@@ -167,6 +167,37 @@ The decisive ones:
   `detail` each streamed the evidence live on a protected turn with 223/223 green. It now checks
   single-key shape, bounded field lengths, and scans every frame for the fixtures' protected markers
   regardless of the key it wears.
+- **21.r–21.x, 21z, 22** — the rounds after the second review, and what each exists for:
+  - **21.r** a tool that is a WRITE and a GENERATOR at once (`draft_marketing_content`). The
+    receipt set was borrowed from `MUTATING_TOOLS`, which answers "does this write?" and not "is
+    this result free of evidence?" — different questions, and this is where they diverge.
+  - **21.s / 21.t** the rolling conversation summary and the request-supplied client file. The
+    summary absorbs persisted replies, so it carries forward verbatim exactly what this rule
+    buffers — and it is read ~2,000 lines BELOW the latch, which is what forced the general
+    `markProtectedLate` setter.
+  - **21.u** `knowledge_base` hits, honestly scoped: it proves the source is WIRED and cannot
+    prove it independently load-bearing, because the funding client file protects the same turn.
+  - **21.v** the live token-forwarding branch. Every gate scenario resolved through the replayed
+    `finalChunks`, so the branch an ordinary protected reply actually streams through had no test.
+  - **21.w** the five below-the-latch evidence sources, asserted **by name**. With all five wired,
+    deleting any four was green — "the turn is protected" is satisfied by any one firing. The
+    handler now logs every call rather than only the first so each site is provable alone.
+  - **21.x** the revalidation resolver runs on the JWT client. This file's header claimed client
+    identity was "proven, not assumed" — true of one call, and not of the one the whole gate
+    rests on. Moving it to service-role was green; under service-role `auth.uid()` is NULL, the
+    exemption the original defect turned on.
+  - **21z** the receipt set asserted on its CONTENTS, read from the handler's source. Only two
+    tools drive that set, so adding a read tool to it was free.
+  - **22** the classifier itself. Every check in groups 20 and 21 rests on `nonNeutralFrames`, and
+    nothing tested it: all six of its branches could be deleted with the suite green.
+
+- **A leak the derived marker list did not catch, and the fix.** Deriving `PROTECTED_MARKERS` from
+  this file's source fixed a hand-maintained *token list*; it did not fix hand-maintained
+  *coverage*. A reviewer proved that putting an UNMARKED fixture value — the session document's
+  filename — into a live `paige_phase` frame passed all 286 checks while the filename sat on the
+  wire of a refused turn. **Every value a fixture plants as protected evidence now carries a
+  marker**: document filenames and text, RAG and KB titles, the chunk title, the detected bureau.
+  If you add a fixture, mark what it plants, or the classifier cannot see it leak.
 
 ## A trap worth naming
 
