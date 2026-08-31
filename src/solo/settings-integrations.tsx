@@ -349,6 +349,18 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  const [serverUrl, setServerUrl] = useState("");
+  const [label, setLabel] = useState("");
+
+  // The address is cleared on save whether or not the probe succeeded: it has been stored
+  // either way, and leaving a secret-bearing URL sitting in a field after it is no longer
+  // needed is one more place for it to be seen or captured.
+  const save = useCallback(async () => {
+    const ok = await m.connectByUrl(serverUrl, label);
+    setServerUrl("");
+    onChanged();
+    return ok;
+  }, [m, serverUrl, label, onChanged]);
 
   const begin = useCallback(async () => {
     setStarting(true);
@@ -388,13 +400,51 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
           reads as a claim that the connection is live ("Connected to …") or is a
           technical detail this card exists to keep off the screen. The state row above
           is the one honest answer, and it is the probe's, not the grant's. */}
-      <div><dt>Access</dt><dd>Granted by you on Zapier. No key is stored here.</dd></div>
+      <div><dt>Access</dt><dd>{m.authKind === "url"
+        ? "The address you saved. Stored encrypted and never shown again."
+        : "Granted by you on Zapier. No key is stored here."}</dd></div>
     </dl>}
 
     {!m.configured && <p className="ig-lede">
-      Connect Zapier by approving it on Zapier's own sign-in page. Nothing is pasted here and no key is
-      kept: the access can be withdrawn from either side at any time.
+      Paste the MCP server address from your Zapier account. Zapier gives each account its own address,
+      and that address is what authorises the connection, so it is stored encrypted and is never shown
+      again after you save it.
     </p>}
+
+    {m.canWrite && <div className="ig-form">
+      <label className="ig-field">
+        <span>Server address</span>
+        <input
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          value={serverUrl}
+          onChange={(e) => setServerUrl(e.target.value)}
+          placeholder="https://mcp.zapier.com/api/mcp/s/…"
+          disabled={m.saving}
+        />
+        <small>From Zapier, under your MCP server. It has to be on mcp.zapier.com.</small>
+      </label>
+      <label className="ig-field">
+        <span>Name <em>optional</em></span>
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="What you call this account"
+          disabled={m.saving}
+        />
+      </label>
+      <div className="ig-actions">
+        <button type="button" className="ig-btn" data-primary
+          disabled={m.saving || serverUrl.trim() === ""}
+          onClick={() => void save()}>
+          <Plug aria-hidden size={14} />
+          {m.saving ? "Connecting…" : m.configured ? "Replace the address" : "Connect Zapier"}
+        </button>
+      </div>
+    </div>}
 
     {/* Approving the connection and approving what Paige may RUN are separate acts, and
         a workspace that has done only the first should know the second is still owed. */}
@@ -415,9 +465,13 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
     {!m.canWrite
       ? <p className="ig-note">Only a workspace admin can change this connection. You can see its state here.</p>
       : <div className="ig-actions">
-          <button type="button" className="ig-btn" data-primary disabled={starting || m.saving} onClick={() => void begin()}>
+          {/* The grant path is kept rather than removed: a workspace already connected that
+              way keeps working, and an account whose Zapier offers sign-in can still use it.
+              It is no longer the primary act, because it is not the shape Zapier hands most
+              people. */}
+          <button type="button" className="ig-btn" disabled={starting || m.saving} onClick={() => void begin()}>
             <KeyRound aria-hidden size={14} />
-            {starting ? "Opening Zapier…" : m.configured ? "Reconnect" : "Connect Zapier"}
+            {starting ? "Opening Zapier…" : "Use Zapier sign-in instead"}
           </button>
           {m.configured && <button type="button" className="ig-btn" disabled={m.saving}
             onClick={() => void m.verify().then(onChanged)}>

@@ -36,6 +36,11 @@ import { verifyApprovalPins } from "../_shared/mcp-outcome.ts";
 const CONNECTABLE = new Set(["n8n"]);
 /** Providers that connect by an authorization grant. No credential is ever pasted. */
 const OAUTH_PROVIDERS = new Set(["zapier"]);
+// Providers connected by pasting an address that CARRIES its own credential. Kept separate
+// from CONNECTABLE because the request shape differs: no token, no auth kind, no header,
+// no transport choice. Zapier appears here as well as in OAUTH_PROVIDERS because a
+// workspace may hold either shape -- the grant path is not removed by the paste path.
+const URL_CONNECTABLE = new Set(["zapier"]);
 
 const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
 /**
@@ -129,7 +134,7 @@ Deno.serve(async (req) => {
     // with `provider: "zapier"` fell through to the n8n setter below and overwrote the
     // workspace's n8n row with whatever the caller sent, from a surface that never offers
     // that combination and therefore never gets tested with it.
-    if (!CONNECTABLE.has(provider)) {
+    if (!CONNECTABLE.has(provider) && !URL_CONNECTABLE.has(provider)) {
       return jsonResponse({ error: "not_directly_connectable", provider }, 400);
     }
     const serverUrl = typeof body.server_url === "string" ? body.server_url.trim() : "";
@@ -146,6 +151,23 @@ Deno.serve(async (req) => {
     //
     // The setter validates shape and enforces tenant-admin in its own body, and writes
     // `pending_verification`. Running it as the USER is what makes that check apply.
+    //
+    // A URL-credential provider takes only an address: the secret is a path segment of it,
+    // so there is no token, kind, header or transport for the caller to choose. Its setter
+    // pins the host, so this cannot be pointed anywhere but the provider it names.
+    if (URL_CONNECTABLE.has(provider)) {
+      const { error: urlErr } = await userClient.rpc("set_tenant_zapier_mcp_url_connection", {
+        _server_url: serverUrl,
+        _label: label || undefined,
+      });
+      if (urlErr) {
+        const code = writeCode(urlErr.message);
+        return jsonResponse({ error: "write_failed", code }, code === "MCP_FORBIDDEN" ? 403 : 400);
+      }
+      const probed = await probeAndRecord(admin, tenantId, provider);
+      return jsonResponse({ ok: true, ...probed });
+    }
+
     const { error } = await userClient.rpc("set_tenant_n8n_mcp_connection", {
       _server_url: serverUrl,
       _auth_token: authToken,
@@ -415,7 +437,9 @@ async function resolveConnection(
   if (!secret.server_url || !secret.auth_token) return { error: { ok: false, error: "not_connected" }, status: 200 };
   return {
     serverUrl: secret.server_url,
-    auth: secret.auth_kind === "header" && secret.auth_header_name
+    auth: secret.auth_kind === "url"
+      ? { kind: "none" }
+      : secret.auth_kind === "header" && secret.auth_header_name
       ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
       : { kind: "bearer", token: secret.auth_token },
     approved: Array.isArray(secret.approved_capabilities)
@@ -446,7 +470,9 @@ async function probeAndRecord(
     return { status: "error", code: "mcp_protocol_error" };
   }
 
-  const auth: McpAuth = secret.auth_kind === "header" && secret.auth_header_name
+  const auth: McpAuth = secret.auth_kind === "url"
+    ? { kind: "none" }
+    : secret.auth_kind === "header" && secret.auth_header_name
     ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
     : { kind: "bearer", token: secret.auth_token };
 

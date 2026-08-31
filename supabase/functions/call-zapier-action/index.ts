@@ -150,11 +150,20 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: "reauthorization_required", detail: "This workspace's Zapier authorization has expired. Reconnect it in Settings → Integrations → Zapier." });
     }
   }
-  if (!serverUrl || !token) return jsonResponse({ ok: false, error: "not_connected", detail: "The Zapier/MCP connection is missing its server URL or token. Reconnect it in Settings → Integrations → Zapier." });
+  // A 'url' connection has no separate token by design -- Zapier's per-user MCP server
+  // carries its secret in the address. Requiring a token here would report a correctly
+  // saved connection as missing one, which is the failure that looks exactly like "not
+  // connected" and sends the operator to re-enter something that was never absent.
+  const urlIsTheCredential = secret.auth_kind === "url";
+  if (!serverUrl || (!token && !urlIsTheCredential)) {
+    return jsonResponse({ ok: false, error: "not_connected", detail: "The Zapier connection is missing its server URL. Reconnect it in Settings → Integrations → Zapier." });
+  }
 
   // 3. Discovery, reduced to the workspace's OWN approved names. The provider's
   //    catalogue and its descriptions are provider-written text and do not cross.
-  const auth = secret.auth_kind === "header" && secret.auth_header_name
+  const auth = urlIsTheCredential
+    ? { kind: "none" as const }
+    : secret.auth_kind === "header" && secret.auth_header_name
     ? { kind: "header" as const, name: secret.auth_header_name as string, token }
     : { kind: "bearer" as const, token };
   const approved: string[] = Array.isArray(secret.approved_capabilities)

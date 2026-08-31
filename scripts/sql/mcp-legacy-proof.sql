@@ -113,3 +113,90 @@ BEGIN
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'capability-name proof: all assertions passed'; END $$;
+
+-- ── Zapier connects with the address Zapier issues ─────────────────────────────────
+--
+-- The registry used to accept a Zapier row ONLY with auth_kind='oauth', which refused the
+-- artifact Zapier actually gives a user: a personal MCP URL whose secret is a path segment
+-- and which carries no Authorization header at all.
+DO $$
+DECLARE _t uuid := '33333333-3333-3333-3333-333333333333';
+BEGIN
+  INSERT INTO public.tenant_mcp_connections
+    (tenant_id, provider, server_url_ct, transport, auth_kind, enabled, status)
+  VALUES
+    (_t, 'zapier', public.platform_encrypt('https://mcp.zapier.com/api/mcp/s/abc/mcp'),
+     'http', 'url', true, 'pending_verification')
+  ON CONFLICT (tenant_id, provider) DO UPDATE SET
+    auth_kind = 'url', auth_token_ct = NULL, auth_token_last4 = NULL,
+    server_url_ct = EXCLUDED.server_url_ct;
+END $$;
+
+SELECT pg_temp.chk('a Zapier connection can be stored with its address as the credential',
+  (SELECT count(*) = 1 FROM public.tenant_mcp_connections
+    WHERE provider = 'zapier' AND auth_kind = 'url' AND server_url_ct IS NOT NULL));
+
+-- A 'url' row must not also carry a token: two credentials for one connection means the
+-- consumer has to guess which is live.
+DO $$
+DECLARE _t uuid := '33333333-3333-3333-3333-333333333333'; _blocked boolean := false;
+BEGIN
+  BEGIN
+    UPDATE public.tenant_mcp_connections
+       SET auth_token_ct = public.platform_encrypt('stray'), auth_token_last4 = 'tray'
+     WHERE tenant_id = _t AND provider = 'zapier';
+  EXCEPTION WHEN check_violation THEN _blocked := true;
+  END;
+  PERFORM pg_temp.chk('a URL-credential row cannot also hold a token', _blocked);
+END $$;
+
+-- The OAuth shape is NOT removed by adding the pasted one (§58).
+DO $$
+DECLARE _t uuid := '33333333-3333-3333-3333-333333333333'; _ok boolean := true;
+BEGIN
+  BEGIN
+    UPDATE public.tenant_mcp_connections
+       SET auth_kind = 'oauth', refresh_token_ct = public.platform_encrypt('r')
+     WHERE tenant_id = _t AND provider = 'zapier';
+  EXCEPTION WHEN check_violation THEN _ok := false;
+  END;
+  PERFORM pg_temp.chk('a granted Zapier connection is still valid', _ok);
+END $$;
+
+-- n8n is unchanged: it never had a URL-credential shape and must not gain one silently.
+DO $$
+DECLARE _t uuid := '11111111-1111-1111-1111-111111111111'; _blocked boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.tenant_mcp_connections
+      (tenant_id, provider, server_url_ct, transport, auth_kind, enabled, status)
+    VALUES (_t, 'n8n', public.platform_encrypt('https://n8n.example/mcp'),
+            'http', 'url', true, 'pending_verification');
+  EXCEPTION WHEN check_violation THEN _blocked := true;
+  END;
+  PERFORM pg_temp.chk('n8n still requires a real credential, not a bare address', _blocked);
+END $$;
+
+-- The secret read must recognise the row. This is the assertion that would have caught a
+-- correctly-saved connection being reported as unconfigured because it holds no token.
+--
+-- The row is put back to the 'url' shape FIRST. The §58 check above deliberately turns it
+-- into a granted connection, which carries a refresh token -- and a refresh token satisfies
+-- the OLD guard too, so leaving it that way made this assertion pass whether or not the
+-- guard had been fixed. It passed for the wrong reason until the reset below was added.
+DO $$
+BEGIN
+  UPDATE public.tenant_mcp_connections
+     SET auth_kind = 'url', refresh_token_ct = NULL, auth_token_ct = NULL, auth_token_last4 = NULL
+   WHERE tenant_id = '33333333-3333-3333-3333-333333333333' AND provider = 'zapier';
+END $$;
+
+SELECT pg_temp.chk('a URL connection holds no token and no grant',
+  (SELECT auth_token_ct IS NULL AND refresh_token_ct IS NULL
+     FROM public.tenant_mcp_connections
+    WHERE tenant_id = '33333333-3333-3333-3333-333333333333' AND provider = 'zapier'));
+
+SELECT pg_temp.chk('the action caller sees a URL connection as configured',
+  (SELECT (public.get_tenant_mcp_secret('33333333-3333-3333-3333-333333333333', 'zapier') ->> 'configured') = 'true'));
+
+DO $$ BEGIN RAISE NOTICE 'zapier-url proof: all assertions passed'; END $$;

@@ -213,9 +213,23 @@ export function useMcpConnection(provider: McpProvider) {
   /** Re-runs the probe against what is already stored. Never re-sends a credential. */
   const verify = useCallback(() => invoke({ action: "verify" }), [invoke]);
 
+  /**
+   * Connect a provider whose ADDRESS is the credential.
+   *
+   * Deliberately not a variant of `connect` with empty strings for the other fields: a
+   * blank token and a blank header name are indistinguishable from a form the person
+   * failed to fill in, and the endpoint would have to guess which was meant. Sending only
+   * what exists says the shape outright.
+   */
+  const connectByUrl = useCallback((serverUrl: string, label: string) => invoke({
+    action: "connect",
+    server_url: serverUrl.trim(),
+    label: label.trim(),
+  }), [invoke]);
+
   const disconnect = useCallback(() => invoke({ action: "disconnect" }), [invoke]);
 
   const dismissWriteError = useCallback(() => setState((prev) => ({ ...prev, writeError: null })), []);
 
-  return { ...state, connect, verify, disconnect, reload: load, dismissWriteError };
+  return { ...state, connect, connectByUrl, verify, disconnect, reload: load, dismissWriteError };
 }

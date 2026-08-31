@@ -20,7 +20,12 @@ import { safeFetch, SsrfError, type SsrfReason } from "./ssrfGuard.ts";
 /** How a provider expects the tenant's credential to be presented. */
 export type McpAuth =
   | { kind: "bearer"; token: string }
-  | { kind: "header"; name: string; token: string };
+  | { kind: "header"; name: string; token: string }
+  // The endpoint itself carries the credential, so there is no header to send. Zapier's
+  // per-user MCP server is this shape: the secret is a path segment of the URL. Modelled
+  // as its own kind rather than a bearer with an empty token, so a missing credential can
+  // never be mistaken for a deliberate one.
+  | { kind: "none" };
 
 export type McpErrorCode =
   | SsrfReason
@@ -74,6 +79,7 @@ function authHeaders(auth: McpAuth): Record<string, string> {
     }
     return { [auth.name]: auth.token };
   }
+  if (auth.kind === "none") return {};
   return { Authorization: `Bearer ${auth.token}` };
 }
 

@@ -760,7 +760,7 @@ describe("n8n tool bridge (MCP)", () => {
  * cannot withdraw from their side. The schema refuses to store one; this proves the
  * surface never asks.
  */
-describe("Zapier (consent, not credentials)", () => {
+describe("Zapier (its address is its credential)", () => {
   const zapierSection = (host: HTMLElement) => {
     const panel = host.querySelector<HTMLElement>(".ig-panel");
     if (!panel) throw new Error("the Zapier panel is not open");
@@ -780,23 +780,52 @@ describe("Zapier (consent, not credentials)", () => {
     });
   });
 
-  it("offers no field in which a credential could be typed", async () => {
+  // The address Zapier issues carries its own secret in the path, so pasting it IS the
+  // act of authorising. These tests were written when consent was the only path and
+  // asserted there was no field to type into; that is no longer the design, because it
+  // refused the only credential Zapier actually hands its users.
+  const urlInput = (host: HTMLElement) =>
+    zapierSection(host).querySelector<HTMLInputElement>('input[type="url"]')!;
+
+  const ZAPIER_URL = "https://mcp.zapier.com/api/mcp/s/secret-path-segment/mcp";
+
+  it("takes the address, sends only what that shape needs, and does not leave it on screen", async () => {
     world();
+    invoke.mockResolvedValue({ data: { ok: true, status: "connected" }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
-    const panel = zapierSection(host);
-    expect(panel.querySelector("input")).toBeNull();
-    expect(panel.querySelector("form")).toBeNull();
-    expect(panel.textContent).toContain("Nothing is pasted here");
-    expect(zapierButton(host, "Connect Zapier")).toBeTruthy();
+
+    const field = urlInput(host);
+    expect(field).toBeTruthy();
+    await type(field, ZAPIER_URL);
+    await click(zapierButton(host, "Connect Zapier"));
+
+    const [, options] = invoke.mock.calls.at(-1)!;
+    // No token, no auth kind, no header, no transport: a shape that has none of those
+    // must not send blanks for them, or the endpoint cannot tell an absent field from an
+    // unfilled one.
+    expect(options.body).toEqual({
+      provider: "zapier",
+      expected_tenant_id: "tenant-a",
+      action: "connect",
+      server_url: ZAPIER_URL,
+      label: "",
+    });
+
+    // The address is a credential. Once stored, it has no business still sitting in the
+    // field or anywhere else in the rendered panel.
+    expect(urlInput(host).value).toBe("");
+    expect(zapierSection(host).textContent).not.toContain("secret-path-segment");
   });
 
-  it("asks the server where to send the person, and never builds that address itself", async () => {
+  it("keeps the sign-in grant available, and still asks the server where to send the person", async () => {
     world();
     invoke.mockResolvedValue({ data: { ok: true, authorize_url: "https://as.zapier.example/authorize?code_challenge=abc&state=xyz" }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
-    await click(zapierButton(host, "Connect Zapier"));
+    // A workspace already connected by grant keeps working, so the path is demoted, not
+    // deleted (§58).
+    await click(zapierButton(host, "Use Zapier sign-in instead"));
 
     const [, options] = invoke.mock.calls.at(-1)!;
     expect(options.body).toEqual({ provider: "zapier", expected_tenant_id: "tenant-a", action: "oauth_begin" });
@@ -805,15 +834,22 @@ describe("Zapier (consent, not credentials)", () => {
     expect(assigned).toEqual(["https://as.zapier.example/authorize?code_challenge=abc&state=xyz"]);
   });
 
-  it("says so plainly when the connection cannot be started", async () => {
+  it("says so plainly when the sign-in cannot be started", async () => {
     world();
     invoke.mockResolvedValue({ data: { error: "oauth_begin_failed", code: "discovery_failed" }, error: null });
     const { host } = await render();
     await openCard(host, "mcp");
-    await click(zapierButton(host, "Connect Zapier"));
+    await click(zapierButton(host, "Use Zapier sign-in instead"));
     expect(zapierSection(host).textContent).toContain("could not be reached");
     // Nowhere to go is better than somewhere wrong.
     expect(assigned).toEqual([]);
+  });
+
+  it("does not offer to save an empty address", async () => {
+    world();
+    const { host } = await render();
+    await openCard(host, "mcp");
+    expect(zapierButton(host, "Connect Zapier")?.disabled).toBe(true);
   });
 
   it("separates being connected from having approved anything", async () => {
