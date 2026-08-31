@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { SoloAutomationsView } from "./settings-automations";
 import { useN8nConnection } from "./data/useN8nConnection";
 import { useMcpConnection, type McpDraft } from "./data/useMcpConnection";
+import { useMcpCapabilities } from "./data/useMcpCapabilities";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate, type SettingsTruth } from "./settings-contract";
@@ -260,6 +261,76 @@ function N8nPanelBody({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boo
   </>;
 }
 
+/* ── What Paige may actually run ───────────────────────────────────────────
+   A connection is reachability. This is authority, and it is a separate act on
+   purpose: a workspace that connected a provider has not thereby agreed that
+   Paige may do everything on it. Nothing is approved until somebody says so
+   here, and until then every call is refused. */
+
+function CapabilityApproval({ provider }: { provider: "n8n" | "zapier" }) {
+  const caps = useMcpCapabilities(provider);
+  const [chosen, setChosen] = useState<string[] | null>(null);
+
+  // The list on screen is the source of the choice until it is saved; before that,
+  // what is ticked is whatever the server said is approved.
+  const selection = chosen ?? (caps.tools ?? []).filter((t) => t.approved).map((t) => t.name);
+  const dirty = chosen !== null
+    && JSON.stringify([...chosen].sort()) !== JSON.stringify((caps.tools ?? []).filter((t) => t.approved).map((t) => t.name).sort());
+
+  const toggle = (name: string) =>
+    setChosen(selection.includes(name) ? selection.filter((n) => n !== name) : [...selection, name]);
+
+  return <div className="ig-caps">
+    <h4>What Paige may run</h4>
+
+    {caps.tools === null && !caps.loading && <>
+      <p className="ig-lede">
+        Nothing is approved yet, so Paige will not run anything here. Load the list to choose what she may do.
+      </p>
+      <div className="ig-actions">
+        <button type="button" className="ig-btn" onClick={() => void caps.discover()}>
+          <RefreshCw aria-hidden size={14} />See what is available
+        </button>
+      </div>
+    </>}
+
+    {caps.loading && <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Asking the provider…</p>}
+
+    {caps.error && <p className="ig-error" role="alert"><TriangleAlert aria-hidden size={14} />{caps.error}</p>}
+
+    {caps.tools !== null && caps.tools.length === 0 && !caps.loading &&
+      <p className="ig-note">The provider offers nothing this workspace can run.</p>}
+
+    {caps.tools !== null && caps.tools.length > 0 && <>
+      <ul className="ig-caplist">
+        {caps.tools.map((tool) => {
+          const on = selection.includes(tool.name);
+          return <li key={tool.name}>
+            <button type="button" aria-pressed={on} onClick={() => toggle(tool.name)} disabled={caps.saving}>
+              <span className="ig-cap-name">{tool.name}</span>
+              {/* The provider wrote this. It is shown to a person deciding, and never
+                  travels on the path that reaches a model, where provider prose is an
+                  instruction surface rather than a description. */}
+              {tool.description && <span className="ig-cap-desc">{tool.description}</span>}
+            </button>
+          </li>;
+        })}
+      </ul>
+      <p className="ig-note">
+        Approving records the exact shape of each action as it is today. If the provider changes one,
+        Paige stops running it until you approve it again.
+      </p>
+      <div className="ig-actions">
+        <button type="button" className="ig-btn" data-primary disabled={!dirty || caps.saving}
+          onClick={() => void caps.approve(selection).then((ok) => { if (ok) setChosen(null); })}>
+          {caps.saving ? "Saving…" : `Approve ${selection.length} of ${caps.tools.length}`}
+        </button>
+        {dirty && <button type="button" className="ig-btn" onClick={() => setChosen(null)} disabled={caps.saving}>Cancel</button>}
+      </div>
+    </>}
+  </div>;
+}
+
 /* ── Zapier: connected by consent, never by a pasted credential ────────────
    Zapier runs an authorization server, so a workspace grants access instead of
    handing over a key. There is no form here on purpose: nothing this surface
@@ -317,6 +388,11 @@ function ZapierPanelBody({ onChanged }: { onChanged: () => void }) {
       Connecting lets Paige see what is available. She runs nothing until you approve the specific
       actions you want her to be able to take.
     </p>}
+
+    {/* Only once the connection is PROVEN. Offering an approval list against a connection
+        that does not work would show a list that cannot be loaded, or worse, record
+        approvals for a provider we have never successfully reached. */}
+    {m.configured && m.status === "connected" && m.canWrite && <CapabilityApproval provider="zapier" />}
 
     {(startError || m.writeError) && <p className="ig-error" role="alert">
       <TriangleAlert aria-hidden size={14} />{startError ?? m.writeError}
@@ -416,6 +492,8 @@ function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: bo
             <Link2Off aria-hidden size={14} />Disconnect
           </button>}
         </div>}
+
+    {m.configured && m.status === "connected" && m.canWrite && <CapabilityApproval provider="n8n" />}
   </>;
 }
 

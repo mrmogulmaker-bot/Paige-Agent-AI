@@ -839,3 +839,123 @@ describe("Zapier (consent, not credentials)", () => {
     expect(text).not.toContain("1111");
   });
 });
+
+/**
+ * Approving what Paige may run.
+ *
+ * Connecting is reachability; this is authority. The properties worth holding are the ones
+ * that would let authority widen by accident: approving against a stale list, approving a
+ * contract nobody looked at, or offering the choice at all against a connection that has
+ * never been proven to work.
+ */
+describe("Capability approval", () => {
+  const connected = (over = {}) => ({
+    zapier: { configured: true, enabled: true, status: "connected", auth_token_last4: "aaaa",
+              transport: "http", server_url_host: "mcp.zapier.com", approved_capabilities: [], ...over },
+  });
+  const panel = (host: HTMLElement) => host.querySelector<HTMLElement>(".ig-panel")!;
+  const capsButton = (host: HTMLElement, text: string) =>
+    Array.from(panel(host).querySelectorAll("button")).find((b) => b.textContent?.includes(text));
+  const capRows = (host: HTMLElement) =>
+    Array.from(panel(host).querySelectorAll<HTMLButtonElement>(".ig-caplist button"));
+
+  const TOOLS = [
+    { name: "send_email", description: "Send an email", schema_hash: "a".repeat(64), approved: false },
+    { name: "delete_row", description: "Delete a row", schema_hash: "b".repeat(64), approved: false },
+  ];
+
+  it("is not offered until the connection has been PROVEN", async () => {
+    // Offering approvals against an unproven connection would show a list that cannot
+    // load — or record approvals for a provider we have never successfully reached.
+    world({ mcp: connected({ status: "pending_verification" }) });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    expect(panel(host).querySelector(".ig-caps")).toBeNull();
+  });
+
+  it("says plainly that nothing is approved, and does not call the provider until asked", async () => {
+    world({ mcp: connected() });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    expect(panel(host).textContent).toContain("Nothing is approved yet");
+    // Discovery is an outbound request; it does not happen just because a panel opened.
+    expect(invoke.mock.calls.some((c) => c[1].body.action === "discover")).toBe(false);
+
+    invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
+    await click(capsButton(host, "See what is available"));
+    expect(invoke.mock.calls.at(-1)![1].body).toEqual({ provider: "zapier", action: "discover" });
+    expect(capRows(host).map((b) => b.textContent)).toHaveLength(2);
+    expect(capRows(host).every((b) => b.getAttribute("aria-pressed") === "false")).toBe(true);
+  });
+
+  it("approves a name together with the contract it was shown with", async () => {
+    world({ mcp: connected() });
+    invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    await click(capsButton(host, "See what is available"));
+
+    await click(capRows(host)[0]);
+    invoke.mockResolvedValue({ data: { ok: true, approved_count: 1, pinned_count: 1 }, error: null });
+    await click(capsButton(host, "Approve 1 of 2"));
+
+    const body = invoke.mock.calls.at(-1)![1].body;
+    expect(body.action).toBe("approve");
+    expect(body.capabilities).toEqual(["send_email"]);
+    // The pin is the fingerprint of the contract on screen. Without it the server has no
+    // way to tell the provider changed between looking and approving.
+    expect(body.pins).toEqual({ send_email: "a".repeat(64) });
+    // And nothing was approved that was never ticked.
+    expect(body.capabilities).not.toContain("delete_row");
+  });
+
+  it("approves the whole list, so unticking withdraws", async () => {
+    world({ mcp: connected() });
+    invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS.map((t) => ({ ...t, approved: true })) }, error: null });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    await click(capsButton(host, "See what is available"));
+    expect(capRows(host).every((b) => b.getAttribute("aria-pressed") === "true")).toBe(true);
+
+    await click(capRows(host)[1]);
+    invoke.mockResolvedValue({ data: { ok: true }, error: null });
+    await click(capsButton(host, "Approve 1 of 2"));
+    // A statement of the whole set, not an addition to it.
+    expect(invoke.mock.calls.at(-1)![1].body.capabilities).toEqual(["send_email"]);
+  });
+
+  it("refuses to record consent to a list that moved, and reloads it", async () => {
+    world({ mcp: connected() });
+    invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    await click(capsButton(host, "See what is available"));
+    await click(capRows(host)[0]);
+
+    invoke.mockResolvedValue({ data: { error: "capabilities_changed", changed: ["send_email"] }, error: null });
+    await click(capsButton(host, "Approve 1 of 2"));
+
+    expect(panel(host).textContent).toContain("changed while you were choosing");
+    expect(panel(host).textContent).toContain("nothing was approved");
+    // The list on screen is stale; leaving it up would invite approving it again.
+    expect(invoke.mock.calls.at(-1)![1].body.action).toBe("discover");
+  });
+
+  it("cannot save until something actually changed", async () => {
+    world({ mcp: connected() });
+    invoke.mockResolvedValue({ data: { ok: true, tools: TOOLS }, error: null });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    await click(capsButton(host, "See what is available"));
+    expect((capsButton(host, "Approve 0 of 2") as HTMLButtonElement).disabled).toBe(true);
+    await click(capRows(host)[0]);
+    expect((capsButton(host, "Approve 1 of 2") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("is not offered to someone who cannot grant it", async () => {
+    world({ admin: false, mcp: connected() });
+    const { host } = await render();
+    await openCard(host, "mcp");
+    expect(panel(host).querySelector(".ig-caps")).toBeNull();
+  });
+});
