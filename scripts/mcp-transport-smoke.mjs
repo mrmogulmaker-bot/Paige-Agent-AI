@@ -271,6 +271,9 @@ let initialized = false;
 let exchange = [];
 let deleted = [];
 let ackFailDeleted = [];
+let pagedCursors = [];
+let loopPages = 0;
+let badInitDeleted = [];
 
 const bearer = { kind: "bearer", token: "super-secret-token-1234" };
 {
@@ -309,6 +312,102 @@ const bearer = { kind: "bearer", token: "super-secret-token-1234" };
   // DELETE every probe, discovery and action leaks one until the provider expires it.
   check("the session is released when the work is done", deleted.includes(SESSION_ID),
     JSON.stringify(deleted));
+}
+
+// A provider that allocates a session and then answers initialize with a JSON-RPC error.
+// The session exists the moment the header comes back, so it has to be released even
+// though the handshake never completed. Validating the body before reading the header
+// meant the throw happened with the id still unread.
+const BAD_INIT_SESSION = "bad-init-session";
+routes.set("/mcp-init-errors", (req, res) => {
+  if (req.method === "DELETE") {
+    badInitDeleted.push(req.headers["mcp-session-id"]);
+    res.writeHead(204).end();
+    return;
+  }
+  let raw = "";
+  req.on("data", (c) => { raw += c; });
+  req.on("end", () => {
+    const body = raw ? JSON.parse(raw) : {};
+    res.writeHead(200, { "Content-Type": "application/json", "Mcp-Session-Id": BAD_INIT_SESSION });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, error: { code: -32603, message: "boom" } }));
+  });
+});
+{
+  badInitDeleted = [];
+  let initError = null;
+  try {
+    await mcp.mcpListTools({ serverUrl: "https://public.example/mcp-init-errors", auth: bearer });
+  } catch (e) { initError = e; }
+  check("a failed initialize is an error, not an empty catalogue",
+    initError?.code === "mcp_protocol_error", String(initError?.code));
+  check("...and the session it allocated before failing is still released",
+    badInitDeleted.includes(BAD_INIT_SESSION), JSON.stringify(badInitDeleted));
+}
+
+// A provider that paginates its catalogue, which the spec allows and Zapier-scale
+// accounts produce. Reading only the first page is not a smaller list with a smaller
+// consequence: approvals are stored as a whole set, so an operator editing one visible
+// approval silently revokes every tool that was on a later page.
+const PAGED_SESSION = "paged-session";
+routes.set("/mcp-paged", (req, res) => {
+  if (req.method === "DELETE") { res.writeHead(204).end(); return; }
+  let raw = "";
+  req.on("data", (c) => { raw += c; });
+  req.on("end", () => {
+    const body = raw ? JSON.parse(raw) : {};
+    if (body.method === "initialize") {
+      res.writeHead(200, { "Content-Type": "application/json", "Mcp-Session-Id": PAGED_SESSION });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18", capabilities: {} } }));
+      return;
+    }
+    if (body.method === "notifications/initialized") { res.writeHead(202).end(); return; }
+    if (body.method === "tools/list") {
+      pagedCursors.push(body.params?.cursor ?? null);
+      const page = body.params?.cursor === "p2"
+        ? { tools: [{ name: "page_two_tool", description: "d" }] }
+        : { tools: [{ name: "page_one_tool", description: "d" }], nextCursor: "p2" };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: page }));
+      return;
+    }
+    res.writeHead(400).end();
+  });
+});
+{
+  pagedCursors = [];
+  const tools = await mcp.mcpListTools({ serverUrl: "https://public.example/mcp-paged", auth: bearer });
+  const names = tools.map((t) => t.name);
+  check("a tool on a later page is not lost", names.includes("page_two_tool"), JSON.stringify(names));
+  check("...alongside the first page rather than instead of it", names.includes("page_one_tool"));
+  // The cursor the server handed back is the one sent, not one we invented.
+  check("the provider's own cursor is what asks for the next page",
+    JSON.stringify(pagedCursors) === JSON.stringify([null, "p2"]), JSON.stringify(pagedCursors));
+}
+
+// A provider whose cursor never advances would page forever. The chain is bounded rather
+// than trusted, because the cursor is provider-controlled.
+routes.set("/mcp-cursor-loop", (req, res) => {
+  if (req.method === "DELETE") { res.writeHead(204).end(); return; }
+  let raw = "";
+  req.on("data", (c) => { raw += c; });
+  req.on("end", () => {
+    const body = raw ? JSON.parse(raw) : {};
+    if (body.method === "initialize") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18", capabilities: {} } }));
+      return;
+    }
+    if (body.method === "notifications/initialized") { res.writeHead(202).end(); return; }
+    loopPages += 1;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "looping", description: "d" }], nextCursor: "same" } }));
+  });
+});
+{
+  loopPages = 0;
+  await mcp.mcpListTools({ serverUrl: "https://public.example/mcp-cursor-loop", auth: bearer });
+  check("a cursor that never advances does not page forever", loopPages <= 21, String(loopPages));
 }
 
 // A provider that issues a session and then refuses the acknowledgement. This is the

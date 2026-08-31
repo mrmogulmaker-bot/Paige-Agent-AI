@@ -199,17 +199,22 @@ async function withMcpSession<T>(
       clientInfo: { name: "paige", version: "1" },
     },
   }, null);
-  resultOf(initRes);
-
-  // Header names are case-insensitive; `Headers.get` handles that.
+  // The header is read BEFORE the body is judged. A server can allocate a session and then
+  // answer with a malformed, truncated, or error envelope; validating first meant the throw
+  // happened while the session id was still unread, so the DELETE below had nothing to send
+  // and the session was abandoned. Header names are case-insensitive; `Headers.get` handles
+  // that.
   const sessionId = initRes.headers.get("mcp-session-id");
 
   // Everything from here on is inside the cleanup, because from here on there is a session
-  // to release. The acknowledgement used to sit ABOVE this `try`: when it timed out or came
-  // back non-2xx — an outage, or a server that disagrees about the protocol — the throw left
-  // an allocated session behind, which is exactly the leak the DELETE exists to prevent, on
-  // exactly the path where a provider is already unhealthy.
+  // to release — including the validation of the initialize result itself. The
+  // acknowledgement used to sit ABOVE this `try`, and so did that validation: on an outage
+  // or a protocol disagreement the throw left an allocated session behind, which is exactly
+  // the leak the DELETE exists to prevent, on exactly the path where a provider is already
+  // unhealthy.
   try {
+    resultOf(initRes);
+
     // A notification has no id and expects no result. A server answering 202 with an empty
     // body is the normal case, so its response is not parsed as an envelope.
     const ackRes = await post(opts, { jsonrpc: "2.0", method: "notifications/initialized" }, sessionId);
@@ -265,7 +270,7 @@ export async function withApprovedCapabilitySession<T>(
   }) => Promise<T>,
 ): Promise<T> {
   return await withMcpSession(opts, async (call) => {
-    const tools = await fingerprintsOf(await call("tools/list"));
+    const tools = await fingerprintsOf(await collectToolPages(call));
     return await body({
       tools,
       call: (name, args) => call("tools/call", { name, arguments: args }),
@@ -327,9 +332,10 @@ export async function mcpListTools(opts: {
   auth: McpAuth;
   timeoutMs?: number;
 }): Promise<McpTool[]> {
-  const result = await mcpRequest({ ...opts, method: "tools/list" });
-  const tools = (result as { tools?: unknown })?.tools;
-  if (!Array.isArray(tools)) return [];
+  // One session, every page: the same reason `withApprovedCapabilitySession` collects them.
+  // This is the discovery the approval screen renders, so a missed page is a tool the
+  // operator is never offered and, once approvals are saved, one that gets revoked.
+  const tools = await withMcpSession(opts, (call) => collectToolPages(call));
   return tools
     .filter((t): t is Record<string, unknown> => !!t && typeof t === "object" && typeof (t as { name?: unknown }).name === "string")
     .map((t) => ({
@@ -349,12 +355,51 @@ export async function mcpListToolFingerprints(opts: {
   auth: McpAuth;
   timeoutMs?: number;
 }): Promise<McpToolFingerprint[]> {
-  return await fingerprintsOf(await mcpRequest({ ...opts, method: "tools/list" }));
+  return await fingerprintsOf(await withMcpSession(opts, (call) => collectToolPages(call)));
 }
 
-/** The shared reading of a `tools/list` result, used inside and outside a session. */
-async function fingerprintsOf(result: unknown): Promise<McpToolFingerprint[]> {
-  const tools = (result as { tools?: unknown })?.tools;
+/** Every page of a `tools/list`, read inside ONE session.
+ *
+ *  A compliant server may return `nextCursor` and hold the rest back. Reading only the
+ *  first page is not a partial list with a partial consequence: approvals are saved as a
+ *  WHOLE set, so a workspace editing any visible approval would have silently revoked every
+ *  approved tool it could not see, and an invocation of one would then be refused as
+ *  `no_longer_offered` — a capability the operator approved, reported as withdrawn by the
+ *  provider. The pages are collected in the caller's session because a cursor is only
+ *  meaningful within the session that issued it.
+ *
+ *  Bounded twice, because a cursor chain is provider-controlled: a page ceiling, and a
+ *  ceiling on how many tools may be accumulated. A server that returns the cursor it was
+ *  just given would otherwise loop forever, so that is stopped explicitly rather than left
+ *  to the page cap. */
+const MAX_TOOL_PAGES = 20;
+const MAX_TOOLS = 2000;
+
+async function collectToolPages(
+  call: (method: string, params?: Record<string, unknown>) => Promise<unknown>,
+): Promise<unknown[]> {
+  const all: unknown[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_TOOL_PAGES; page++) {
+    const result = await call("tools/list", cursor === undefined ? {} : { cursor }) as
+      { tools?: unknown; nextCursor?: unknown } | null;
+    const tools = result?.tools;
+    if (Array.isArray(tools)) {
+      for (const t of tools) {
+        if (all.length >= MAX_TOOLS) break;
+        all.push(t);
+      }
+    }
+    const next = result?.nextCursor;
+    if (typeof next !== "string" || next === "" || next === cursor) break;
+    if (all.length >= MAX_TOOLS) break;
+    cursor = next;
+  }
+  return all;
+}
+
+/** The shared reading of `tools/list` pages, used inside and outside a session. */
+async function fingerprintsOf(tools: unknown): Promise<McpToolFingerprint[]> {
   if (!Array.isArray(tools)) return [];
   const out: McpToolFingerprint[] = [];
   for (const raw of tools) {
