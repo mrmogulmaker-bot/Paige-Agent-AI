@@ -84,6 +84,45 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toBe("Pipeline could not be created");
   });
 
+  it("prevents overlapping creation requests while a save is pending", async () => {
+    let finish: (value: { ok: boolean; message: string }) => void = () => undefined;
+    const pending = new Promise<{ ok: boolean; message: string }>((resolve) => { finish = resolve; });
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    action.mockImplementationOnce(() => pending);
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
+    const name = host.querySelector('[role="dialog"] input') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Campaign follow-up");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create") as HTMLButtonElement).click());
+    const pendingButton = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Creating…") as HTMLButtonElement;
+    expect(pendingButton.disabled).toBe(true);
+    act(() => pendingButton.click());
+    expect(action).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ ok: false, message: "Try again" }));
+  });
+
+  it("traps keyboard focus in creation and restores the opener on Escape", () => {
+    renderAt("/solo/42/growth/pipeline");
+    const opener = [...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement;
+    opener.focus();
+    act(() => opener.click());
+    const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+    const name = dialog.querySelector("input") as HTMLInputElement;
+    const cancelButton = [...dialog.querySelectorAll("button")].find((button)=>button.textContent==="Cancel") as HTMLButtonElement;
+    expect(document.activeElement).toBe(name);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true })));
+    expect(document.activeElement).toBe(cancelButton);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+    expect(document.activeElement).toBe(name);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it("renders populated grounded rows and closes details with Escape", () => {
     renderAt("/solo/42/growth/catalog");
     expect(host.textContent).toContain("Published page");
