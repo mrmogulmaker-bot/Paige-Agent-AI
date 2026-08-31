@@ -270,6 +270,21 @@ describe("Solo Settings rendered customer copy", () => {
     expect(css).toMatch(/\.ss-subnav\s*\{[^}]*background:\s*var\(--pg-canvas\)/);
   });
 
+  it("keeps Settings off SoloApp's clipped-host list, so its long tabs can be scrolled", () => {
+    // The regression this exists for: `settings` was in SoloApp's `full` set, so
+    // the screen host rendered `overflow:hidden` at `height:100%`. The Calendars
+    // tab — the longest surface in Settings — was cut off at the fold, and the
+    // shell's own scroll owner never overflowed either, so there was nothing to
+    // scroll by wheel, key or scrollbar. `.solo-settings` is a document flow with
+    // no internal scroller; its host must be the one that scrolls.
+    const app = readFileSync(path.resolve(process.cwd(), "src/solo/SoloApp.tsx"), "utf8");
+    const full = app.match(/const full=([^;]+);/)?.[1] ?? "";
+    expect(full).not.toBe("");
+    expect(full).not.toContain("'settings'");
+    // The host itself still switches on `full` — that is what makes the list load-bearing.
+    expect(app).toMatch(/overflow:full\?'hidden':'auto'/);
+  });
+
   it("hides Settings scrollbar chrome without disabling scrolling", () => {
     const css = readFileSync(path.resolve(process.cwd(), "src/solo/settings.css"), "utf8");
     expect(css).toContain(".tcs-main--settings-scrollbar-hidden");
