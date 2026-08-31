@@ -1040,6 +1040,44 @@ claim its approval.
 clamped by the Trust Compass ceiling (`20261021000000`); the token changes only how consent is
 carried, never who may act.
 
+### PAIGE Chat — repeatable processes (§67 automations), every chat surface
+
+**§66, same commit as the ship.** A tenant can now describe work they do the same way every time
+and have Paige build it as a process: a trigger, conditions, and an ordered chain of acts, with a
+lane the human grants it.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| See what can start a process (`automation_triggers_list`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| List processes + their resolved posture | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Paige builds one from a description | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Grant a process a lane (`automation_set_grant`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Turn one on / pause it | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Operator can switch these three tools off | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+
+**The Client row is a hard `—`, enforced twice.** `clientSeatToolAllowed` admits exactly one tool
+for a client-portal seat (`update_client_data`), so none of these reach dispatch; and RLS on
+`paige_automations` is admin-only within the tenant. Proven by check 15.0 in the authz harness,
+which drives a real client seat and asserts nothing is written — it exists because the harness
+defaults to a client seat and that is how the boundary was noticed at all.
+
+**Authoring is not granting, and the tables enforce it.** Paige creates every process at
+`granted_lane='confirm'`, `state='draft'`, explicitly, regardless of what the request said — an
+agent that could compose a process and authorise it in one call would be granting itself autonomy.
+Raising the lane is `automation_set_grant`, which is itself confirm-gated, so a human says yes to
+that specific change. And per `20261022000000`, changing the chain afterwards drops an `auto` grant
+back to `confirm`, because the human approved a specific sequence.
+
+**The resolved posture is what any surface must show, not the stored grant.** A process set to
+`auto` can still be asking — because the Trust Compass ceiling holds it, or because one of its own
+acts always requires approval. `resolve_automation_autonomy` returns both plus `capped_by`, and the
+tool results carry it so Paige tells the operator what will ACTUALLY happen (§13). A surface that
+renders `granted_lane` alone would be reporting a request as an outcome.
+
+**§61 default: no exception.** These follow the standing distribution — God/Solo/Sub-account yes,
+Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
+inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

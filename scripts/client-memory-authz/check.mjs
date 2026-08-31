@@ -986,5 +986,133 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
     JSON.stringify({ sawWebFetch: declared.includes("web_fetch") }));
 }
 
+// ── 15. §67 — PAIGE BUILDS A PROCESS, BUT NEVER GRANTS HERSELF ONE ───────────────────────────
+//
+// The whole point of granting autonomy to a PROCESS is that a human decides how much of it runs
+// unattended. An agent that could compose a process and authorise it in the same breath would have
+// granted itself autonomy, which is the one thing this design exists to prevent. So the row is born
+// at the floor — `confirm` and `draft` — whatever the operator said in the same sentence, and
+// raising it is a separate, confirm-gated act.
+{
+  // The tenant has set these to run without asking, so the gate is not what is under test here.
+  // The tier is stated EXPLICITLY rather than left to the harness default: `get_actor_access` is
+  // unstubbed by default and `resolveTier` fails closed to `client`, so an operator drive that did
+  // not say so would silently be testing a client seat — which is how 15.0 below was found.
+  const AUTO = { rpcOverrides: {
+    resolve_tool_autonomy: { data: "auto", error: null },
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+  } };
+  const AS_CLIENT = { get_actor_access: { data: { tier: "client" }, error: null } };
+  /** Model the process tables. The trigger catalogue is real reference data; the automations table
+   *  records what was inserted so the invariant can be read off the write itself. */
+  function processStore({ resolved = { effective: "confirm", capped_by: null, would_run: false, dark: [] } } = {}) {
+    return {
+      paige_automation_triggers: (filters) => {
+        const key = filters.find((f) => f[0] === "eq" && f[1] === "key")?.[2];
+        const rows = [
+          { key: "manual.run_now", is_live: true, dark_reason: null },
+          { key: "conversation.call_ended", is_live: false, dark_reason: "no voice substrate yet" },
+        ];
+        return key === undefined ? rows : rows.filter((r) => r.key === key);
+      },
+      paige_automations: () => [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "New lead welcome", granted_lane: "auto", state: "live" }],
+      paige_automation_acts: () => [],
+      __rpc: { resolve_automation_autonomy: { data: resolved, error: null } },
+    };
+  }
+
+  // A CLIENT-PORTAL SEAT CANNOT AUTHOR PROCESSES, and that is checked first because the harness
+  // caller is one by default — driving with a focused client is what surfaced it. Automations are
+  // an operator capability (§51/§60); a client being able to arm work inside someone's workspace
+  // would be the seam failure, not a feature.
+  const seatStore = processStore();
+  const asClient = await drive({
+    clientId: OWN, stream: true,
+    toolCall: { name: "automation_draft", args: { name: "x", trigger_key: "manual.run_now", steps: [{ tool_key: "crm_create_task" }] } },
+    rpcOverrides: { ...AUTO.rpcOverrides, ...AS_CLIENT, ...seatStore.__rpc },
+    tablesExtra: seatStore,
+  });
+  assert("15.0 a client-portal seat cannot author a process at all",
+    !asClient.rec.inserts.some((i) => i.table === "paige_automations"),
+    JSON.stringify(asClient.rec.inserts.map((i) => i.table)));
+
+  const st = processStore();
+  const built = await drive({
+    stream: true,
+    toolCall: { name: "automation_draft", args: {
+      name: "New lead welcome", trigger_key: "manual.run_now",
+      // The operator's phrasing said "just run it" — the model faithfully passes it on. It must
+      // change nothing, which is exactly why it is in the fixture.
+      granted_lane: "auto", state: "live",
+      steps: [{ tool_key: "crm_create_task" }],
+    } },
+    rpcOverrides: { ...AUTO.rpcOverrides, ...st.__rpc },
+    tablesExtra: st,
+  });
+  const row = built.rec.inserts.find((i) => i.table === "paige_automations")?.row;
+  assert("15.1 a process Paige builds is born asking-first and switched off",
+    !!row && row.granted_lane === "confirm" && row.state === "draft",
+    JSON.stringify(row ?? null));
+  // Kills: passing the model's arguments straight through, or defaulting these columns instead of
+  // setting them. Either would let "just run it automatically" arm a process nobody reviewed.
+  assert("15.2 …even when the call it was given said auto and live",
+    !!row && row.granted_lane !== "auto" && row.state !== "live",
+    JSON.stringify(row ?? null));
+  assert("15.3 …and it is stamped with the server-resolved tenant and its author",
+    !!row && Object.prototype.hasOwnProperty.call(row, "tenant_id") && row.created_by === USER,
+    JSON.stringify(row ?? null));
+
+  // A trigger that is not in the catalogue must be refused rather than invented, or Paige will
+  // cheerfully build a process that can never fire.
+  const invented = await drive({
+    stream: true,
+    toolCall: { name: "automation_draft", args: {
+      name: "Wishful", trigger_key: "someone.thinks.about.us", steps: [{ tool_key: "crm_create_task" }] } },
+    rpcOverrides: { ...AUTO.rpcOverrides, ...st.__rpc },
+    tablesExtra: st,
+  });
+  // ASSERTING THE REFUSAL, NOT MERELY THE ABSENCE OF A WRITE. Mutation-testing caught this one:
+  // with the trigger check removed the code throws on the missing row and still writes nothing, so
+  // "no insert" was true for the wrong reason and the mutation stayed green. What must hold is that
+  // the model is TOLD to pick a real trigger — otherwise it retries with another invented one.
+  const inventedWire = invented.modelEgress
+    .map((b) => (typeof b === "string" ? b : JSON.stringify(b))).join("\n").replace(/\\"/g, '"');
+  assert("15.4 an invented trigger builds nothing, and says why",
+    !invented.rec.inserts.some((i) => i.table === "paige_automations")
+      && /do not invent one/.test(inventedWire),
+    JSON.stringify({ inserts: invented.rec.inserts.map((i) => i.table), told: /do not invent one/.test(inventedWire) }));
+
+  // A process with no steps does nothing when it fires; building one would be a shell the operator
+  // finds later and cannot explain.
+  const stepless = await drive({
+    stream: true,
+    toolCall: { name: "automation_draft", args: { name: "Empty", trigger_key: "manual.run_now", steps: [] } },
+    rpcOverrides: { ...AUTO.rpcOverrides, ...st.__rpc },
+    tablesExtra: st,
+  });
+  assert("15.5 a process with no steps builds nothing",
+    !stepless.rec.inserts.some((i) => i.table === "paige_automations"),
+    JSON.stringify(stepless.rec.inserts.map((i) => i.table)));
+
+  // §13 — THE ANSWER CAN BE LESS THAN WHAT WAS ASKED FOR, AND SHE MUST BE TOLD SO. Storing `auto`
+  // while the ceiling holds it at `confirm` is not itself a lie; reporting back "it now runs on its
+  // own" would be. Kills: dropping the resolved posture from the tool result, which would leave the
+  // model writing that sentence from the value it just sent.
+  const capped = processStore({ resolved: { effective: "confirm", capped_by: "ceiling", would_run: true, dark: [] } });
+  const granted = await drive({
+    stream: true,
+    toolCall: { name: "automation_set_grant", args: { automation_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", lane: "auto" } },
+    rpcOverrides: { ...AUTO.rpcOverrides, ...capped.__rpc },
+    tablesExtra: capped,
+  });
+  const wire = granted.modelEgress.map((b) => (typeof b === "string" ? b : JSON.stringify(b))).join("\n").replace(/\\"/g, '"');
+  assert("15.6 a grant the ceiling holds down is reported as what will ACTUALLY happen",
+    wire.includes('"what_actually_happens":"confirm"') && wire.includes('"held_back_by":"ceiling"'),
+    wire.includes("what_actually_happens") ? "posture present but wrong" : "no posture in the tool result");
+  assert("15.7 …and the model is told in words not to let them believe it runs unattended",
+    /will NOT run as 'auto'/.test(wire),
+    "the corrective note is missing");
+}
+
 console.log(`\n${checks - failures} passed, ${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

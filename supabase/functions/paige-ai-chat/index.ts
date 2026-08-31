@@ -5909,6 +5909,80 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "automation_list",
+              description: "List the repeatable processes ('automations') this workspace has set up, with how much of each one you're currently allowed to run on your own and why. Use this whenever the operator asks what runs automatically, why something isn't running, or before you offer to change one. Read-only.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "automation_triggers_list",
+              description: "List the things that can START a process, and which of them actually work today. A trigger that isn't live says why. ALWAYS call this before drafting a process, so you only ever offer the operator something that can really fire. Read-only.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "automation_draft",
+              description: "Set up a repeatable process for this workspace: something that starts, and an ordered list of what you do when it does. Use this when the operator describes work they want handled the same way every time ('when a lead fills in my form, add them and send the welcome note'). It is always created switched OFF and asking-first — you never grant yourself autonomy. Tell them what you built and what it would do, then offer to turn it on.",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "Short name the operator would recognise, e.g. 'New lead welcome'." },
+                  trigger_key: { type: "string", description: "Which trigger starts it. Must be one from automation_triggers_list — never invent one." },
+                  steps: {
+                    type: "array",
+                    description: "What happens when it starts, in order.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        tool_key: { type: "string", description: "The action to take, named as one of your own tools, e.g. 'crm_create_task'." },
+                        action_kind: { type: "string", description: "Or an activity kind from the action bus, e.g. 'client.followup'. Give exactly ONE of tool_key or action_kind." },
+                        config: { type: "object", description: "Optional settings for this step." }
+                      }
+                    }
+                  },
+                  category: { type: "string", description: "Optional grouping, e.g. 'sales' or 'onboarding'." }
+                },
+                required: ["name", "trigger_key", "steps"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "automation_set_grant",
+              description: "Change how much of one process the operator lets you handle alone: 'auto' (run it without asking), 'confirm' (draft it and wait for their yes), or 'off'. This is THEIR decision about YOUR autonomy, so it always needs their explicit say-so first. Report back what the process will ACTUALLY do afterwards — the answer can be more restrictive than what they asked for, and if it is you say so plainly rather than letting them believe it's running unattended.",
+              parameters: {
+                type: "object",
+                properties: {
+                  automation_id: { type: "string", description: "Which process, from automation_list." },
+                  lane: { type: "string", enum: ["auto", "confirm", "off"], description: "How much they're letting you do on your own." }
+                },
+                required: ["automation_id", "lane"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "automation_set_state",
+              description: "Turn a process on ('live'), pause it, or put it back to a draft. Pausing keeps it exactly as it is; it just stops running.",
+              parameters: {
+                type: "object",
+                properties: {
+                  automation_id: { type: "string", description: "Which process, from automation_list." },
+                  state: { type: "string", enum: ["live", "paused", "draft"], description: "live runs it, paused keeps but stops it, draft returns it to being edited." }
+                },
+                required: ["automation_id", "state"]
+              }
+            }
+          },
     ];
 
     // ── AUTONOMY GATE WIRING ─────────────────────────────────────────────────
@@ -6062,6 +6136,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
       "author_event_kind",
+      // §67 — AUTHORING A PROCESS IS ITSELF A WRITE, AND GRANTING ONE IS A DECISION.
+      // `automation_draft` creates a row that cannot act (born `confirm` + `draft`), so gating it
+      // is not about danger — it is about the operator being able to see it in their autonomy
+      // settings and switch it off. `automation_set_grant` is the human deciding how much Paige
+      // may do alone, which is the one thing she must never be able to do for herself.
+      "automation_draft", "automation_set_grant", "automation_set_state",
       // §13 — THESE TWO WERE NOT IN THIS SET, AND BOTH ARE WRITES.
       //
       // `update_client_data` forwards to `paige-write-back`, which writes a NAMED client's profile
@@ -6149,6 +6229,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       plan_update_item: "updating a plan item",
       plan_remove_item: "removing a plan item",
       author_event_kind: "adding a new activity kind to track",
+      automation_draft: "setting up a repeatable process",
+      automation_set_grant: "changing how much of a process Paige handles alone",
+      automation_set_state: "turning a process on or off",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -6243,6 +6326,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         }
         case "delegate_to_subagent":
           return `Hand this to your ${a?.subagent_slug || a?.slug || "specialist"} and let them run it${a?.task ? `: "${String(a.task).slice(0, 120)}"` : ""}.`;
+        case "automation_draft": {
+          const n = typeof a?.name === "string" ? a.name : "a new process";
+          const count = Array.isArray(a?.steps) ? a.steps.length : 0;
+          return `Set up "${n}" — ${count} step${count === 1 ? "" : "s"}, starting when ${typeof a?.trigger_key === "string" ? a.trigger_key.split(".").pop()?.replace(/_/g, " ") : "its trigger fires"}. It will be created switched off and asking first.`;
+        }
+        case "automation_set_grant":
+          // The lane is the whole decision, so it is stated in the operator's terms rather than in
+          // the enum's. "auto" read back as "auto" is not something a person can weigh.
+          return a?.lane === "auto"
+            ? "Let this process run completely on its own, without checking with you each time."
+            : a?.lane === "off"
+              ? "Stop this process from doing anything at all."
+              : "Have this process draft its work and wait for your yes each time.";
+        case "automation_set_state":
+          return a?.state === "live" ? "Turn this process on."
+            : a?.state === "paused" ? "Pause this process — it keeps everything, it just stops running."
+            : "Put this process back to a draft.";
         case "author_event_kind":
           return `Add a new activity kind "${a?.label || a?.slug || ""}" for this practice to track${a?.visibility === "client_visible" ? " (clients can see it)" : " (staff only)"}. It's added for your workspace only.`;
         case "plan_set_reminder":
@@ -7018,6 +7118,176 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               role: "tool",
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
+          }
+        } else if (tc.function.name === "automation_triggers_list") {
+          // §67 — WHAT CAN ACTUALLY START SOMETHING. Offered before drafting so Paige can only ever
+          // propose a process that can really fire. A dark trigger is returned WITH its reason
+          // rather than hidden, because "you can't have that" is a worse answer than "not yet, and
+          // here's what it's waiting on" — and hiding it would let her invent one instead.
+          try {
+            const { data, error } = await supabaseClient
+              .from("paige_automation_triggers")
+              .select("key,label,category,description,is_live,dark_reason")
+              .order("category").order("key");
+            if (error) throw error;
+            const rows = (data ?? []) as Array<Record<string, unknown>>;
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+              success: true,
+              available: rows.filter((t) => t.is_live).map((t) => ({ key: t.key, label: t.label, category: t.category, description: t.description })),
+              not_yet: rows.filter((t) => !t.is_live).map((t) => ({ key: t.key, label: t.label, why_not: t.dark_reason })),
+              note: "Only offer a trigger from `available`. If what the operator wants is in `not_yet`, tell them plainly it isn't wired up yet and say why — never build it anyway and never invent a trigger key.",
+            }) });
+          } catch (_e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't read what's able to start a process right now." }) });
+          }
+        } else if (tc.function.name === "automation_list") {
+          // Each row carries its RESOLVED posture, not just its stored grant, because the stored
+          // grant is the question the operator asked and the resolved one is the answer. A process
+          // set to `auto` that is actually asking — because the ceiling or one of its own steps
+          // holds it — must not be reported as running unattended (§13).
+          try {
+            const { data, error } = await supabaseClient
+              .from("paige_automations")
+              .select("id,name,category,trigger_key,granted_lane,state,created_at")
+              .order("created_at", { ascending: false }).limit(50);
+            if (error) throw error;
+            const rows = (data ?? []) as Array<Record<string, unknown>>;
+            const resolved = await Promise.all(rows.map(async (a) => {
+              const { data: r } = await supabaseClient.rpc("resolve_automation_autonomy", { _automation_id: a.id });
+              const v = (r ?? {}) as Record<string, unknown>;
+              return {
+                id: a.id, name: a.name, category: a.category, trigger: a.trigger_key, state: a.state,
+                you_were_granted: a.granted_lane,
+                what_actually_happens: v.effective ?? null,
+                held_back_by: v.capped_by ?? null,
+                would_it_run: v.would_run ?? null,
+                cannot_fire_because: v.dark ?? [],
+              };
+            }));
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+              success: true, automations: resolved,
+              note: resolved.length === 0
+                ? "This workspace hasn't set up any repeatable processes yet. If the operator describes work they do the same way every time, offer to set it up."
+                : "`what_actually_happens` is the truth, not `you_were_granted`. If they differ, say so and name `held_back_by`: 'ceiling' means the platform's overall trust setting, 'floor' means one of the steps in that process always asks. If `would_it_run` is false, explain `cannot_fire_because` — don't call it active.",
+            }) });
+          } catch (_e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't read this workspace's processes right now." }) });
+          }
+        } else if (tc.function.name === "automation_draft") {
+          // §67 — SHE BUILDS IT, SHE DOES NOT GRANT IT. The row is created at the floor: `confirm`
+          // and `draft`, never `auto` and never `live`, regardless of anything the operator said in
+          // the same breath. Granting autonomy is a separate, deliberate act by a human through
+          // `automation_set_grant`, which is itself confirm-gated. An agent that could compose a
+          // process AND authorise it in one call would be granting itself autonomy.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const steps: Array<Record<string, unknown>> = Array.isArray(args.steps) ? args.steps.slice(0, 20) : [];
+            if (steps.length === 0) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "A process needs at least one step. Ask the operator what should actually happen when it starts." }) });
+            } else {
+              const { data: trig } = await supabaseClient
+                .from("paige_automation_triggers").select("key,is_live,dark_reason")
+                .eq("key", String(args.trigger_key ?? "")).maybeSingle();
+              if (!trig) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "That isn't something that can start a process. Call automation_triggers_list and pick one from `available` — do not invent one." }) });
+              } else {
+                const { data: created, error: cErr } = await supabaseClient
+                  .from("paige_automations")
+                  .insert({
+                    tenant_id: personaCtx?.tenant_id ?? null,
+                    name: String(args.name ?? "").slice(0, 120),
+                    category: typeof args.category === "string" ? args.category.slice(0, 40) : "general",
+                    trigger_key: trig.key,
+                    created_by: user.id,
+                    // Explicit, not defaulted: the floor is a decision this code is making, and a
+                    // reader should not have to look up a column default to see it.
+                    granted_lane: "confirm",
+                    state: "draft",
+                  })
+                  .select("id").single();
+                if (cErr || !created) {
+                  toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                    success: false,
+                    error: (cErr?.code === "23505")
+                      ? "This workspace already has a process with that name. Suggest a different one."
+                      : "Couldn't set that up. Tell the operator you hit a snag — don't say it was created.",
+                  }) });
+                } else {
+                  const rows = steps.map((s, n) => ({
+                    automation_id: created.id, position: n + 1,
+                    action_kind: typeof s.action_kind === "string" && s.action_kind ? s.action_kind : null,
+                    tool_key: typeof s.tool_key === "string" && s.tool_key ? s.tool_key : null,
+                    config: (s.config && typeof s.config === "object") ? s.config : {},
+                  }));
+                  const { error: aErr } = await supabaseClient.from("paige_automation_acts").insert(rows);
+                  if (aErr) {
+                    // The steps are the process. A half-built one that LOOKS created is worse than
+                    // none, so it is removed rather than left as a shell the operator would find
+                    // later and not understand.
+                    await supabaseClient.from("paige_automations").delete().eq("id", created.id);
+                    toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                      success: false,
+                      error: aErr.code === "23514"
+                        ? "Each step has to name exactly one thing to do — either one of your tools or one activity kind, not both and not neither. Rebuild the steps and try again."
+                        : "Couldn't save the steps, so nothing was created. Say that plainly.",
+                    }) });
+                  } else {
+                    const { data: posture } = await supabaseClient.rpc("resolve_automation_autonomy", { _automation_id: created.id });
+                    const v = (posture ?? {}) as Record<string, unknown>;
+                    toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                      success: true, automation_id: created.id, steps: rows.length,
+                      state: "draft", granted: "confirm",
+                      what_it_would_do: v.effective ?? "confirm",
+                      cannot_fire_because: v.dark ?? [],
+                      note: "Built, but switched OFF and set to ask you first — you never turn one on yourself. Walk the operator through what it would do, step by step, in their words. Then ask whether to turn it on, and whether it should run on its own or check with them each time. Do NOT claim it is running.",
+                    }) });
+                  }
+                }
+              }
+            }
+          } catch (_e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't set that up right now." }) });
+          }
+        } else if (tc.function.name === "automation_set_grant" || tc.function.name === "automation_set_state") {
+          // Both are confirm-gated above, so by here the operator has said yes to this exact change.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const id = String(args.automation_id ?? "");
+            const isGrant = tc.function.name === "automation_set_grant";
+            const patch = isGrant
+              ? { granted_lane: String(args.lane ?? "confirm") }
+              : { state: String(args.state ?? "draft") };
+            const { data: updated, error } = await supabaseClient
+              .from("paige_automations").update({ ...patch, updated_at: new Date().toISOString() })
+              .eq("id", id).select("id,name,granted_lane,state").maybeSingle();
+            if (error || !updated) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: false,
+                error: error?.code === "42501" || !updated
+                  ? "That change didn't go through — either the process isn't in this workspace or the operator isn't an admin here. Say so; don't claim it changed."
+                  : "Couldn't change that right now.",
+              }) });
+            } else {
+              const { data: posture } = await supabaseClient.rpc("resolve_automation_autonomy", { _automation_id: id });
+              const v = (posture ?? {}) as Record<string, unknown>;
+              // §13 — THE ANSWER CAN BE LESS THAN WHAT WAS ASKED FOR, AND SHE MUST SAY SO. Storing
+              // `auto` while the ceiling or a step holds it at `confirm` is not a lie by itself;
+              // reporting it back as "it now runs on its own" would be. The resolved value travels
+              // with the confirmation so the sentence she writes is the true one.
+              const asked = isGrant ? String(args.lane ?? "") : null;
+              const actual = (v.effective ?? null) as string | null;
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: true, name: updated.name,
+                granted: updated.granted_lane, state: updated.state,
+                what_actually_happens: actual, held_back_by: v.capped_by ?? null,
+                would_it_run: v.would_run ?? null, cannot_fire_because: v.dark ?? [],
+                note: (asked && actual && asked !== actual)
+                  ? `Saved, but it will NOT run as '${asked}' — it will '${actual}'. Tell the operator that directly and explain why: 'ceiling' is the workspace's overall trust setting, 'floor' means one of this process's own steps always asks. Do not let them believe it is running unattended.`
+                  : "Confirm the change in plain language. If `would_it_run` is false, say what it's waiting on rather than calling it active.",
+              }) });
+            }
+          } catch (_e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't change that right now." }) });
           }
         } else if (tc.function.name === "author_event_kind") {
           // Confirm-gated at the autonomy gate above (MUTATING_TOOLS); by here we're
