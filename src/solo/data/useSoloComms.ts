@@ -46,6 +46,17 @@ export interface SoloDomain {
   dnsRecords: DnsRecord[];
 }
 
+/**
+ * The outcome of one sender-domain write.
+ *
+ * A FLAT shape, deliberately, not a `{ok:true} | {ok:false;error}` union. This
+ * project compiles with `strict: false` (tsconfig.app.json), and without
+ * strictNullChecks TypeScript does not narrow a discriminated union on `ok` — so
+ * `if (!res.ok) use(res.error)` is a type error rather than the idiom it looks
+ * like. Flat here, so callers cannot be tripped by narrowing that never happens.
+ */
+export type DomainWriteResult = { ok: boolean; error?: string };
+
 export interface SoloSendingIdentity {
   fromName: string | null;
   supportEmail: string | null;
@@ -90,7 +101,7 @@ export interface SoloCommsData {
   manageDomain: (
     verb: "add" | "refresh" | "set_default" | "remove",
     payload: { domain?: string; from_name?: string; from_email_local?: string; id?: string },
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  ) => Promise<DomainWriteResult>;
 }
 
 /* ----- billing helpers (mirrors SetupBilling) --------------------------------- */
@@ -296,7 +307,7 @@ export function useSoloComms(): SoloCommsData {
     async (
       verb: "add" | "refresh" | "set_default" | "remove",
       payload: { domain?: string; from_name?: string; from_email_local?: string; id?: string },
-    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    ): Promise<DomainWriteResult> => {
       try {
         const { data, error: invokeErr } = await supabase.functions.invoke("manage-tenant-domain", {
           body: { verb, ...payload },
