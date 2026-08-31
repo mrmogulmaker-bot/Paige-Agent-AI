@@ -706,6 +706,24 @@ serve(async (req) => {
     const scopedClientId: string | null = authorizedClientId;
     /** True when a client was named but could not be authorized: do NO client-scoped work. */
     const clientScopeDenied: boolean = clientScopeRefusal !== null;
+      // THE SIX REFUSAL REASONS ARE NOT ONE KIND OF THING, and a consumer that treats them as one
+    // asserts something false to the person. Two are PERMISSION verdicts — the read succeeded and
+    // the answer was no. Four are UNKNOWN — an RPC blip, a failed read, a thrown exception —
+    // where this handler's own comment already says "a read failure is UNKNOWN authority, never
+    // permission." Both refuse the turn, correctly and identically; they must NOT produce the
+    // same message or the same consequence.
+    //
+    // Without this split the front end released the operator's focused client permanently on a
+    // transient RPC failure and told them Paige could not confirm the client belongs to their
+    // workspace — untrue, unactionable, and irreversible from their side. Adding the category
+    // rather than parsing the sentence: prose is not a contract, and a reworded reason should
+    // never silently re-classify a refusal.
+    const clientScopeKind: "permission" | "unknown" =
+      clientScopeRefusal === "client belongs to a different workspace" ||
+      clientScopeRefusal === "client context is not authorized for this caller"
+        ? "permission"
+        : "unknown";
+
     /**
      * The request body also carries a pre-rendered `clientContext` block, built CLIENT-SIDE from
      * the NAMED client's file. On a refusal the rest of this handler falls back to the CALLER's
@@ -738,7 +756,7 @@ serve(async (req) => {
     // The no-client path is untouched: it sends no `clientId`, so `clientScopeDenied` is false.
     if (clientScopeDenied) {
       const refusalText = "I couldn't confirm that this client belongs to your workspace, so I'm not able to pull anything from their file or act on their record in this conversation. Nothing has been saved. If you think this is wrong, reopen the client from your list and try again.";
-      const scopeFrame = { client_scope: { status: "refused", reason: clientScopeRefusal } };
+      const scopeFrame = { client_scope: { status: "refused", kind: clientScopeKind, reason: clientScopeRefusal } };
 
       if (generateSessionSummary) {
         return new Response(JSON.stringify({ summary: "", ...scopeFrame }), {
@@ -978,7 +996,7 @@ JSON:`;
       return new Response(
         JSON.stringify({
           summary: summaryContent.trim(),
-          ...(clientScopeDenied ? { client_scope: { status: "refused", reason: clientScopeRefusal } } : {}),
+          ...(clientScopeDenied ? { client_scope: { status: "refused", kind: clientScopeKind, reason: clientScopeRefusal } } : {}),
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -6945,13 +6963,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 .eq("id", args.client_id)
                 .eq("tenant_id", crmTenantId); // §9: only a client in the caller's OWN tenant
               if (error) throw error;
-              await admin.from("audit_logs").insert({
+              // §13 — THIS WROTE NOTHING FOR THE ENTIRE LIFE OF THE TOOL. `audit_logs` has
+              // `entity` / `entity_id` / `data`; it has no `resource_type`, `resource_id` or
+              // `metadata`, and `entity` is NOT NULL. So every one of these inserts failed with
+              // 42703 — and because supabase-js RETURNS its error rather than throwing, and this
+              // call never read the returned error, the failure was invisible. Moving a client's
+              // pipeline stage is one of the most consequential writes Paige makes on her own, and
+              // it produced no audit row at all. The file already documented the correct shape ~180
+              // lines below this, which is how a reviewer found it.
+              //
+              // The error is read now. A failed audit does not undo the write above, so it is
+              // reported loudly rather than swallowed — an unattributable write is exactly what
+              // this row exists to prevent.
+              const { error: auditErr } = await admin.from("audit_logs").insert({
                 user_id: user.id,
+                entity: "clients",
+                entity_id: args.client_id,
                 action: "crm_pipeline_change",
-                resource_type: "clients",
-                resource_id: args.client_id,
-                metadata: { status: args.status, reason: args.reason || null, via: "paige" },
+                data: { status: args.status, reason: args.reason || null, via: "paige" },
               });
+              if (auditErr) console.error("[paige] crm_pipeline_change audit write FAILED:", auditErr.message);
               result = { success: true, client_id: args.client_id, status: args.status };
             } else if (tc.function.name === "crm_assign_coach") {
               // Look up coach by email via auth admin
@@ -6965,12 +6996,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 .in("id", ids)
                 .eq("tenant_id", crmTenantId); // §9: never reassign another tenant's clients
               if (error) throw error;
-              await admin.from("audit_logs").insert({
+              // Same defect, same silence — and this one also named no target at all, so even with
+              // the right columns it would have recorded "a bulk reassignment happened" without
+              // saying to whom. `entity_id` is a single uuid and this is a bulk write, so the
+              // affected ids stay in `data` where a list belongs, and `entity_id` carries the coach
+              // the work moved TO, which is the one thing a reader needs first.
+              const { error: auditErr } = await admin.from("audit_logs").insert({
                 user_id: user.id,
+                entity: "clients",
+                entity_id: coach.id,
                 action: "crm_assign_coach",
-                resource_type: "clients",
-                metadata: { coach_user_id: coach.id, coach_email: args.coach_email, client_ids: ids, via: "paige" },
+                data: { coach_user_id: coach.id, coach_email: args.coach_email, client_ids: ids, via: "paige" },
               });
+              if (auditErr) console.error("[paige] crm_assign_coach audit write FAILED:", auditErr.message);
               result = { success: true, assigned: ids.length, coach_user_id: coach.id };
             } else if (tc.function.name === "crm_create_task") {
               const assignee = args.assignee_user_id || user.id;
@@ -8511,7 +8549,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
          // client on a refused turn. Presenting it is a frontend decision and is NOT this
          // function's to make (§00) — the seam is here for that surface to consume.
          if (clientScopeDenied) {
-           controller.enqueue(enc.encode(`data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`));
+           controller.enqueue(enc.encode(`data: ${JSON.stringify({ client_scope: { status: "refused", kind: clientScopeKind, reason: clientScopeRefusal } })}\n\n`));
          }
          // #12 — flush the PRE-FLIGHT compaction frames next, so the compacting card renders
          // before Paige's reasoning/answer streams. Empty (no-op) on every turn that didn't fold.
@@ -8988,7 +9026,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // rejected identifier.
         if (clientScopeDenied) {
           controller.enqueue(new TextEncoder().encode(
-            `data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`,
+            `data: ${JSON.stringify({ client_scope: { status: "refused", kind: clientScopeKind, reason: clientScopeRefusal } })}\n\n`,
           ));
         }
         for (const f of compactionLeadFrames) controller.enqueue(new TextEncoder().encode(f));

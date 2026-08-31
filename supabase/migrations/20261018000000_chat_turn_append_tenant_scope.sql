@@ -46,6 +46,26 @@
 --                       `supabase/tests/slice_e_agency_thread_delete_block.sql` names it in a
 --                       comment only.
 --
+-- §51 TIER-AWARE INVENTORY — the §37 list above names WHO calls this; this names FROM WHICH TIER,
+-- because the same request resolves differently per tier and that is the axis this predicate turns
+-- on. Added after a reviewer pointed out the first version named four callers and zero tiers.
+--   God / Super Admin   `paige-ai-chat` on a platform-lens thread (tenant_id NULL) → second
+--                       disjunct. On a CONTACT-BOUND thread in another tenant, via
+--                       `paige-context-router` support routing → third disjunct. Both allowed.
+--   Agency              acting in its own workspace → first disjunct. Acting on a sub-account it
+--                       has switched INTO, its active tenant is that sub-account, so the thread's
+--                       tenant matches → allowed. Acting on a sub-account WITHOUT switching in is
+--                       refused, which is the same answer the read policy already gives.
+--   Standalone / Solo   own workspace → first disjunct.
+--   Sub-account         own workspace → first disjunct; the parent's threads are refused, as they
+--                       are for reads.
+--   Client (portal)     has no `tenant_members` row, so `current_user_tenant_id()` is NULL and a
+--                       tenanted thread is refused by the first disjunct — but the portal does not
+--                       send a `threadId` at all (it does not persist), so no live caller is
+--                       affected. Recorded because "no caller today" is not "no caller ever".
+--   Anonymous           `auth.uid()` is NULL → the pre-existing `auth required` raise, before any
+--                       of this.
+--
 -- Signature and grants are unchanged, so no caller needs to change its argument list.
 
 -- §32 PROOF, driven against PRODUCTION Postgres inside BEGIN..ROLLBACK (nothing persisted). The
@@ -70,6 +90,17 @@
 -- policy refused to let `authenticated` even INSERT the foreign fixture thread, which is the
 -- read/insert half being fenced correctly and is not what this migration changes.
 --
+-- PREDICATE TRUTH TABLE, driven on production Postgres inside BEGIN..ROLLBACK. Seven cases, each
+-- one an argument someone made about this predicate; all seven match expectation:
+--
+--   tenant user, own workspace ................................ ALLOWED
+--   tenant user, FOREIGN workspace ............................ REFUSED   ← the hole this closes
+--   tenant user whose active tenant is NULL ................... REFUSED
+--   NON-owner appending to a NULL-tenant thread ............... REFUSED   ← the bare-IS-NOT-DISTINCT residue
+--   operator, own platform thread ............................. ALLOWED
+--   operator who has ENTERED a tenant, own platform thread .... ALLOWED
+--   operator, contact-bound thread in another tenant .......... ALLOWED   ← the support flow
+--
 -- §32 OWED, stated rather than implied: a rollback proof shows the SQL RUNS. It does not show the
 -- migration is LIVE. The persisted-apply confirmation — `supabase_migrations.schema_migrations`
 -- advanced past this version on prod AND the new body present in `pg_get_functiondef` — is owed
@@ -92,17 +123,45 @@ BEGIN
 
   -- One read for both checks. `v_found` is tracked separately because a thread's tenant_id is
   -- legitimately NULL for the platform lens, so "v_tenant IS NULL" cannot mean "no such thread".
-  SELECT caller_user_id, tenant_id, true
-    INTO v_owner, v_tenant, v_found
+  SELECT caller_user_id, tenant_id
+    INTO v_owner, v_tenant
     FROM public.paige_chat_threads
    WHERE id = p_thread_id;
+  -- FOUND, not a sentinel column. `SELECT … INTO` on zero rows assigns NULL to EVERY target,
+  -- including a literal `true`, so `v_found` would have been NULL and `IF NOT NULL` skips its
+  -- branch — the 'thread not found' raise was unreachable and every missing thread reported
+  -- 'thread not owned by caller' instead. Caught by an independent reviewer running the body
+  -- against a real Postgres. Security was unaffected (the owner check still raised); the message
+  -- was wrong and the comment described a mechanism that did not work.
+  v_found := FOUND;
 
   IF NOT v_found THEN RAISE EXCEPTION 'thread not found'; END IF;
   IF v_owner IS NULL OR v_owner <> v_uid THEN RAISE EXCEPTION 'thread not owned by caller'; END IF;
 
   IF NOT (
-       v_tenant IS NOT DISTINCT FROM public.current_user_tenant_id()
-    OR (v_tenant IS NULL AND public.is_platform_owner())
+       -- A TENANTED thread: the caller's active workspace must be that tenant. `IS NOT DISTINCT
+       -- FROM` guarded by `IS NOT NULL` rather than bare, because bare NULL-matching admits a
+       -- caller whose active tenant is NULL to any NULL-tenant thread and quietly bypasses the
+       -- operator gate below. Plain `=` is worse still: it yields NULL, `IF NOT (NULL)` skips the
+       -- raise, and the guard fails OPEN on every NULL. Both variants were driven.
+       (v_tenant IS NOT NULL AND v_tenant IS NOT DISTINCT FROM public.current_user_tenant_id())
+       -- A PLATFORM thread (tenant_id NULL) belongs to an operator, including one who has ENTERED
+       -- a tenant and therefore no longer has a NULL active tenant.
+    OR (v_tenant IS NULL AND public.is_platform_owner() IS TRUE)
+       -- THE OPERATOR ESCAPE FOR A TENANTED THREAD, which the first version of this predicate did
+       -- not have. `paige-context-router` creates CONTACT-BOUND threads, and
+       -- `paige_chat_thread_create` takes such a thread's tenant straight from `clients.tenant_id`
+       -- with no caller check — while the `clients` policy admits a cross-tenant read to
+       -- `is_platform_owner()`. So a super_admin running the support flow could create a thread
+       -- bound to another tenant's client and then be refused when appending to it, returning an
+       -- error and leaving an orphan thread row. Found by a reviewer driving the shipped body
+       -- against a local Postgres, not on prod.
+       --
+       -- `is_platform_owner()` (super_admin) rather than `is_platform_operator()`: this mirrors the
+       -- gate `paige_chat_thread_create` already uses for the platform lens, so the set that can
+       -- CREATE such a thread is exactly the set that can append to it. Widening both together is
+       -- §53's migration and belongs to that change, not this one.
+    OR public.is_platform_owner() IS TRUE
   ) THEN
     RAISE EXCEPTION 'thread belongs to a different workspace';
   END IF;

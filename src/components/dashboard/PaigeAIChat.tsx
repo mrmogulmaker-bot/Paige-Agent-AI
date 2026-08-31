@@ -120,11 +120,22 @@ export interface PaigeAIChatProps {
   clientId?: string | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
-  /** The server refused the focused client — it does not belong to this workspace. The surface
-   *  that OWNS focus must let it go; a UI that keeps asserting a scope the server denied is
-   *  telling the person something untrue. Carries the server's refusal category, never a client
-   *  identifier. */
-  onClientScopeRefused?: (reason: string) => void;
+  /** The chat is telling the surface that OWNS focus to let it go. Two reasons, both cases where
+   *  continuing to assert a focus would make the UI say something untrue:
+   *
+   *  `refused`        — the server returned a PERMISSION verdict: that client is not in this
+   *                     workspace. (Never for the four UNKNOWN refusal categories; a failed RPC is
+   *                     not a fact about ownership.)
+   *  `thread_resumed` — the person opened a saved conversation. Threads in the rail are
+   *                     owner-level (`contact_id IS NULL`) and their content may be about a
+   *                     DIFFERENT client than the one currently focused — focus is not persisted
+   *                     with the thread, so an earlier turn under focus A lives in an owner-level
+   *                     transcript. Replaying it under focus B would ship A's content on the next
+   *                     turn with B's scope. Releasing focus is what makes the resumed conversation
+   *                     mean what it says.
+   *
+   *  Carries the reason only, never a client identifier. */
+  onFocusRelease?: (reason: "refused" | "thread_resumed") => void;
   /** Sticky strip above the message list, shown only when a customer is focused. */
   focusBanner?: React.ReactNode;
   /** Quick-action chips above the composer. */
@@ -216,7 +227,7 @@ const PaigeAIChatInner = ({
   fill = false,
   clientId = null,
   clientContext,
-  onClientScopeRefused,
+  onFocusRelease,
   focusBanner,
   chips,
   greeting,
@@ -346,16 +357,42 @@ const PaigeAIChatInner = ({
   // parked here on the way out and adopted as the opening message on the way back in, so the
   // explanation survives its own consequence. A ref rather than state: the reset effect has to
   // read it in the same pass the refusal triggers, without scheduling another render.
-  const pendingScopeNoticeRef = useRef<string | null>(null);
+  // STAMPED WITH THE EPOCH IT WAS PARKED UNDER, not a bare string.
+  //
+  // "Cleared on read" is only true if something reads it. When focus is ALREADY null at the moment
+  // the refusal arrives — the person cleared the banner mid-stream, or an earlier reset released it
+  // — `onFocusRelease` is a no-op, the epoch never changes, and an unstamped notice sits in
+  // the ref indefinitely. The next epoch change of ANY kind then adopts it, so switching WORKSPACES
+  // could open the new one with "I couldn't confirm that client belongs to your workspace" about a
+  // client in the other one. Found by an independent reviewer driving exactly that sequence.
+  //
+  // The notice is adopted only when the epoch actually moves OFF the one it was parked under, and
+  // discarded otherwise. A notice about a scope nobody is leaving is not a notice.
+  const pendingScopeNoticeRef = useRef<{ epoch: string; text: string } | null>(null);
   const acceptedEpochRef = useRef<string>(scopeEpoch);
   const dictationGenerationRef = useRef(0);
   const [cancelled, setCancelled] = useState(false);
   const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | null>(null);
   const retryTurnRef = useRef<{ base: Message[]; rollback: Message[]; userText: string; doc?: AttachedDocument | null } | null>(null);
 
+  // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
+  // ONE SURFACE THAT NEEDED IT. A ticket was only issued when `soloTenantSafety` was set, and the
+  // shared workspace — the only mount that focuses clients — does not set it. So there the ticket
+  // was null, every late result was "accepted", the fetch carried no abort signal, and
+  // `invalidate()` aborted a controller that had never been created.
+  //
+  // The visible consequence was worse than no fence: the scope reset DID run, clearing the
+  // transcript, and then the next streamed chunk called `setMessages([...newMessages, …])` with the
+  // array captured BEFORE the switch — restoring the previous client's question and answer under
+  // the new client's scope, and shipping them on the next turn. The refusal notice was overwritten
+  // by the same mechanism, so the explanation flashed and vanished. An independent reviewer drove
+  // both.
+  //
+  // Acceptance is not a Solo nicety; it is the second half of the isolation the reset starts.
+  // Cancellation, the timeout fence and the offline pre-flight stay behind the flag — those are
+  // genuinely presentational choices — but whether a resolved request may still commit is not.
   const ticketAccepted = useCallback(
-    (ticket: PaigeRequestTicket | null) =>
-      !ticket || requestFenceRef.current.isCurrent(ticket, acceptedEpochRef.current),
+    (ticket: PaigeRequestTicket) => requestFenceRef.current.isCurrent(ticket, acceptedEpochRef.current),
     [],
   );
 
@@ -424,6 +461,7 @@ const PaigeAIChatInner = ({
   // a tenant-less, client-less surface has the constant epoch `"|"`, so this never fires.
   useEffect(() => {
     if (acceptedEpochRef.current === scopeEpoch) return;
+    const leavingEpoch = acceptedEpochRef.current;
     acceptedEpochRef.current = scopeEpoch;
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
@@ -433,8 +471,12 @@ const PaigeAIChatInner = ({
     // A refusal parked a notice on its way out; adopt it as the opening message so the
     // explanation survives the reset it caused. Cleared on read — it is a one-shot handoff, not
     // sticky state, and a stale notice greeting an unrelated switch would be its own lie.
-    const scopeNotice = pendingScopeNoticeRef.current;
+    // Adopted only by the transition it belongs to: the one LEAVING the epoch the refusal happened
+    // under. Any other epoch change discards it, so a notice cannot survive to greet an unrelated
+    // switch. Discarded either way — it is a one-shot handoff, never sticky state.
+    const parked = pendingScopeNoticeRef.current;
     pendingScopeNoticeRef.current = null;
+    const scopeNotice = parked?.epoch === leavingEpoch ? parked.text : null;
     setMessages([mkMsg({ role: "assistant", content: scopeNotice ?? openingGreeting })]);
     setInput("");
     setAttachedDoc(null);
@@ -537,10 +579,19 @@ const PaigeAIChatInner = ({
       if (!soloTenantSafety) return;
       cancelSoloRequest();
     }
+    // OPENING A SAVED CONVERSATION RELEASES THE FOCUSED CLIENT.
+    //
+    // The rail lists owner-level threads (`contact_id IS NULL`). Focus is not persisted with a
+    // thread, so a transcript written while client A was focused lives in one of these — and
+    // loading it while client B is focused replays A's content and ships it on the next turn under
+    // B's scope. The composite scope epoch closes the LIVE prop path; this is the same carry-over
+    // arriving through persistence, one click away, on the same surface.
+    //
+    // Released rather than refused: the person asked to open this conversation, and it is a
+    // conversation they own. What is not true is that it is about the client currently in focus.
+    if (clientId) onFocusRelease?.("thread_resumed");
     const previousTranscriptThreadId = hydratedFromRef.current;
-    const requestTicket = soloTenantSafety
-      ? requestFenceRef.current.begin(scopeEpoch)
-      : null;
+    const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     if (soloTenantSafety) {
       resetTranscriptFollow();
       setHistoryTransitioning(true);
@@ -644,9 +695,7 @@ const PaigeAIChatInner = ({
       return;
     }
     const newMessages = base;
-    const requestTicket = soloTenantSafety
-      ? requestFenceRef.current.begin(scopeEpoch)
-      : null;
+    const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     setIsLoading(true);
     setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
@@ -731,7 +780,10 @@ const PaigeAIChatInner = ({
               : {}),
             ...getUserClock(),
           }),
-          ...(requestTicket ? { signal: requestTicket.signal } : {}),
+          // Always. A conditional signal meant the surface that focuses clients issued
+          // un-abortable requests, so a switch could clear the transcript and then have the still-
+          // running stream write the previous client's content back into it.
+          signal: requestTicket.signal,
         }
       );
 
@@ -840,9 +892,36 @@ const PaigeAIChatInner = ({
               continue;
             }
             if (parsed.client_scope?.status === "refused") {
-              pendingScopeNoticeRef.current =
-                "I couldn't confirm that client belongs to your workspace, so I've let go of that focus. Nothing was saved. Reopen them from your client list if you think that's wrong.";
-              onClientScopeRefused?.(String(parsed.client_scope.reason ?? "client scope refused"));
+              // ONLY a PERMISSION verdict releases focus. Four of the server's six refusal
+              // categories mean UNKNOWN — an RPC blip, a failed authorization read, a thrown
+              // exception — and the handler's own comment says so: "a read failure is UNKNOWN
+              // authority, never permission." Treating those as "this client is not yours"
+              // permanently dropped the operator's focused client on a transient failure and told
+              // them something untrue about who the client belongs to. Both kinds still refuse the
+              // turn; only one is a fact about ownership.
+              const permissionRefusal = parsed.client_scope.kind === "permission";
+              const noticeText = permissionRefusal
+                ? "I couldn't confirm that client belongs to your workspace, so I've let go of that focus. Nothing was saved. Reopen them from your client list if you think that's wrong."
+                : "I couldn't check that client just now, so I stopped rather than guess. Nothing was saved — try that again.";
+              // THE NOTICE GOES IN THIS TURN'S TRANSCRIPT FIRST, unconditionally. That is where an
+              // explanation of a refused turn belongs, and it is what a person sees when nothing
+              // else happens.
+              assistantMessage = assistantMessage ? `${assistantMessage}\n\n${noticeText}` : noticeText;
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage }]);
+              // It is ALSO parked — but only when focus is genuinely about to be released, because
+              // that release resets the transcript and would otherwise delete the line just added.
+              //
+              // §13 — PARKING IT UNCONDITIONALLY WAS WRONG, and a test written for the stranding
+              // case caught it. A notice parked when nothing releases focus survives in the ref and
+              // is adopted by the NEXT epoch change of any kind — so a later, unrelated switch
+              // opened with an explanation of a refusal that had nothing to do with it. Epoch
+              // stamping alone does not fix that: both transitions leave the same epoch. Not
+              // parking it is what fixes it, and it is also the simpler truth — the notice only
+              // needs to survive a reset when a reset is coming.
+              if (permissionRefusal && onFocusRelease) {
+                pendingScopeNoticeRef.current = { epoch: scopeEpoch, text: noticeText };
+                onFocusRelease("refused");
+              }
               continue;
             }
             // #12 — conversation-compacting lifecycle (approaching/start/progress/done/skipped).

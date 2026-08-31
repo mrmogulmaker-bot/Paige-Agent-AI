@@ -311,8 +311,15 @@ describe("Solo PAIGE workspace contract", () => {
     // otherwise ship under the new scope. The ordering this line exists to pin (accept the new
     // epoch, THEN invalidate, THEN clear) is unchanged; only the value it keys on widened.
     expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}`;");
-    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;[\s\S]*requestFenceRef\.current\.invalidate\(\);/);
-    expect(chat).toContain("setMessages([mkMsg({ role: \"assistant\", content: openingGreeting })])");
+    // Bounded so it cannot reach the LATER `invalidate()` calls (startNewChat, unmount). The
+    // unbounded `[\s\S]*` version could not fail: inverting the accept/invalidate order left the
+    // whole 507-test suite green.
+    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;(?:[^\n]*\n){0,6}\s*requestFenceRef\.current\.invalidate\(\);/);
+    // §13 — THIS ASSERTION HAD GONE VACUOUS. The reset now seeds `scopeNotice ?? openingGreeting`,
+    // so the old literal no longer matched the reset at all — it was satisfied by the unrelated
+    // `startNewChat` and controlled-sync sites, and deleting the reset's `setMessages` entirely
+    // left this suite 23/23 green. Caught by an independent reviewer's mutation, not by reading.
+    expect(chat).toContain("setMessages([mkMsg({ role: \"assistant\", content: scopeNotice ?? openingGreeting })])");
     expect(chat).toContain('setInput("")');
     expect(chat).toContain("setAttachedDoc(null)");
     expect(chat).toContain("setIsLoading(false)");
