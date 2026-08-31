@@ -6597,13 +6597,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 if (args.stage_id) {
                   const { data: st } = await admin.from("pipeline_stages")
                     .select("id, stage_type, label")
-                    .eq("id", args.stage_id).eq("pipeline_id", args.pipeline_id).eq("tenant_id", tenantId)
+                    .eq("id", args.stage_id).eq("pipeline_id", args.pipeline_id).eq("tenant_id", tenantId).is("archived_at", null)
                     .maybeSingle();
                   stage = st;
                 } else {
                   const { data: st } = await admin.from("pipeline_stages")
                     .select("id, stage_type, label")
-                    .eq("pipeline_id", args.pipeline_id).eq("tenant_id", tenantId)
+                    .eq("pipeline_id", args.pipeline_id).eq("tenant_id", tenantId).is("archived_at", null)
                     .order("order_index", { ascending: true }).limit(1).maybeSingle();
                   stage = st;
                 }
@@ -6661,7 +6661,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
                 const { data: stage } = await admin.from("pipeline_stages")
-                  .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).maybeSingle();
+                  .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).is("archived_at", null).maybeSingle();
                 if (!stage) {
                   result = { success: false, error: "That stage isn't in your workspace." };
                 } else {

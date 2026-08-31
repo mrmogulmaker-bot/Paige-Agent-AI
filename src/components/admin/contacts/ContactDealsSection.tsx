@@ -26,7 +26,7 @@ export function ContactDealsSection({ contactId }: { contactId: string }) {
     const [{ data: ds }, { data: ps }, { data: sts }] = await Promise.all([
       supabase.from("deals").select("*").eq("contact_client_id", contactId).order("created_at", { ascending: false }),
       supabase.from("pipelines").select("*").order("is_default", { ascending: false }),
-      supabase.from("pipeline_stages").select("*").order("order_index"),
+      supabase.from("pipeline_stages").select("*").is("archived_at", null).order("order_index"),
     ]);
     setDeals((ds || []) as Deal[]);
     const piped = (ps || []) as Pipeline[];

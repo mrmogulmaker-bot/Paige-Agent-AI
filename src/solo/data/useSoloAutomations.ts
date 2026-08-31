@@ -225,7 +225,7 @@ export function useSoloAutomations() {
     const client = supabase as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          eq: (k: string, v: string) => { order: (c: string, o?: { ascending?: boolean }) => Promise<{ data: unknown; error: unknown }> };
+          eq: (k: string, v: string) => { is: (k: string, v: null) => { order: (c: string, o?: { ascending?: boolean }) => Promise<{ data: unknown; error: unknown }> }; order: (c: string, o?: { ascending?: boolean }) => Promise<{ data: unknown; error: unknown }> };
         };
       };
       rpc: (fn: string) => Promise<{ data: unknown; error: unknown }>;
@@ -234,7 +234,7 @@ export function useSoloAutomations() {
     const [rulesRes, pipelinesRes, stagesRes, outcomesRes, adminRes] = await Promise.all([
       client.from("stage_automation_rules").select(RULE_COLUMNS).eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
       client.from("pipelines").select("id,name").eq("tenant_id", activeTenantId).order("created_at", { ascending: true }),
-      client.from("pipeline_stages").select("id,pipeline_id,label,order_index").eq("tenant_id", activeTenantId).order("order_index", { ascending: true }),
+      client.from("pipeline_stages").select("id,pipeline_id,label,order_index").eq("tenant_id", activeTenantId).is("archived_at", null).order("order_index", { ascending: true }),
       // Consumed read-only from the existing event log. Deliberately NOT selecting
       // `webhook_response` or `error`: a provider payload and an internal error
       // string must never reach this surface.
