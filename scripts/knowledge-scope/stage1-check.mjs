@@ -524,8 +524,33 @@ group("active-account changes after retrieval fail closed before provider egress
   }
 }
 
+// Groups 13, 16, 17 and 18 time an account switch by counting `get_paige_persona_context`
+// calls against a documented index table. Group 19's bound is derived from a control run, but an
+// INTERIOR boundary cannot be derived the same way — you have to name the position you mean. So
+// each of those groups instead asserts the TOTAL for its round shape, and that is what keeps the
+// table honest: if a change adds, removes or moves a scope check, the total moves with it and
+// these assertions fail by name, instead of the timings silently sliding one boundary along and
+// testing something nobody chose. That silent slide has already happened twice on this branch,
+// both times leaving mutations that had been caught the round before passing green again.
+//
+// If one of these fails, do NOT just bump the number. Re-derive the table for that shape, then
+// fix every timing in the group that depends on it.
+const personaCalls = (r) => r.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
+const assertShape = async (label, plan, expected) => {
+  const control = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "CHILD-PRIVATE-MARKER", provider: plan,
+  });
+  assert(
+    `SHAPE ${label}: the documented index table still holds (${expected} persona calls)`,
+    personaCalls(control) === expected,
+    `expected ${expected}, got ${personaCalls(control)} — the timings in this group now point at different boundaries; re-derive the table, do not just bump this number`,
+  );
+};
+
 group("active-account changes during the agent loop stop later provider calls");
 {
+  await assertShape("grp13 tool+text", ["tool", "text"], 8);
   const r = await drive({
     personaTenant: CHILD,
     // initial resolution → initial provider boundary → post-round boundary →
@@ -793,6 +818,7 @@ group("attached-document turns DO carry tenant Knowledge, and its guard actually
 // ── 16 · The dispatch guard is asserted PER TOOL, not once per batch ──────────────
 group("tool dispatch re-asserts scope for every tool, not once per round");
 {
+  await assertShape("grp16 two-tools", ["two-tools", "private-text"], 9);
   // WHY THIS GROUP EXISTS. Reverting the dispatch check from per-tool back to per-batch
   // was undetectable by every other check in this file: a round with ONE tool behaves
   // identically either way, and every earlier group uses a one-tool round. A batch is not
@@ -865,6 +891,7 @@ group("tool dispatch re-asserts scope for every tool, not once per round");
 // ── 17 · The durable record is written at the LAST boundary, not the first ────────
 group("Knowledge telemetry commits only after the reply has actually crossed");
 {
+  await assertShape("grp17 tool-less round", ["private-text"], 5);
   // Telemetry is the one DURABLE row this mechanism writes, so it is committed after the
   // reply has been forwarded and the scope re-asserted a final time — not before the frames,
   // where a later cancellation would leave a permanent record claiming a retrieval grounded
@@ -932,6 +959,8 @@ group("Knowledge telemetry commits only after the reply has actually crossed");
 // ── 18 · Each loop-continuation boundary is individually load-bearing ─────────────
 group("every provider re-entry in the agent loop re-asserts scope on its own");
 {
+  await assertShape("grp18a tool+text", ["tool", "text"], 8);
+  await assertShape("grp18b tool+fail+text", ["tool", "fail", "text"], 8);
   // The loop re-asserts scope at three distinct points and, until this group existed, TWO of
   // them could be deleted with the suite still fully green — the surviving checks happened to
   // catch the switch at a neighbouring boundary instead. A guard that no check can distinguish
