@@ -206,12 +206,15 @@ function useIntegrationsLeaf(): [IntegrationsLeaf, (leaf: IntegrationsLeaf) => v
   return [leaf, setLeaf];
 }
 
-function useSoloDestination(slug: "automations") {
+function useSoloDestination(leaf: "automations") {
   const { pathname } = useLocation();
+  // Points at the Automations sub-tab of this page — the one home for automations
+  // (§18). It deliberately does NOT point at the old standalone /automations
+  // address, which was a fixture-backed surface and is now retired.
   // This preserves route context only. Tenant authority still comes exclusively from
   // useTenantContext and the server-resolved RPCs above; the URL never scopes a read.
   const match = pathname.match(/^(\/solo\/[^/]+)(?:\/|$)/);
-  return match ? `${match[1]}/${slug}` : null;
+  return match ? `${match[1]}/settings/integrations/${leaf}` : null;
 }
 
 export function SoloIntegrationsView() {

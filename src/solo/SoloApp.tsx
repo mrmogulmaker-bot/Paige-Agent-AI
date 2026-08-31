@@ -13,7 +13,6 @@ import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
 import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
 import { TrustCompass } from "./compass";
-import { AutomationsHub } from "./automations-build";
 import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
 import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
 import { ClientsHub } from "./conversations";
@@ -173,6 +172,15 @@ React.useEffect(() => {
     navigate(branchPath("solo", urlAccount, defaultBranchSlug("solo")), { replace: true });
     return;
   }
+  // The standalone Automations page was a fixture-backed surface: it claimed
+  // active rules, run counts, success rates and repair actions that no substrate
+  // ever produced. It is retired. The one real Automations home is the
+  // Integrations sub-tab, so the old address redirects there rather than 404ing —
+  // any bookmark a tenant already has keeps working.
+  if (urlSplat.split("/")[0] === "automations") {
+    navigate(`/solo/${urlAccount}/settings/integrations/automations`, { replace: true });
+    return;
+  }
   if (legacySettingsDestination) {
     navigate(`/solo/${urlAccount}/settings/${legacySettingsDestination}${location.search}`, { replace: true });
   }
@@ -211,7 +219,7 @@ const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home'||route==='analytics'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
 const accountEpochKey=activeTenantId??'resolving';
-const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings/>};
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:null,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings/>};
 const settingsActive=urlBranchSlug==='settings'?(urlSplat.split('/')[1]||'setup'):(legacySettingsDestination||'setup');
 const contextualNavigation=route==='settings'&&urlDriven?{
   label:'Settings',

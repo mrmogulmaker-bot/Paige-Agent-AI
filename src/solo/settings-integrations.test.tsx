@@ -180,9 +180,16 @@ describe("Solo Settings Integrations truth boundary", () => {
       text: link.textContent?.trim(),
       href: link.getAttribute("href"),
     }));
+    // Points at the Automations sub-tab of this page, never the retired
+    // standalone /solo/:account/automations surface.
     expect(destinations).toEqual([
-      { text: "Open Automations", href: "/solo/1971670/automations" },
+      { text: "Open Automations", href: "/solo/1971670/settings/integrations/automations" },
     ]);
+    // The owner's concern, made a standing check: no card anywhere in the
+    // catalogue may route to the retired fixture-backed page.
+    for (const { href } of destinations) {
+      expect(href).not.toMatch(/^\/solo\/[^/]+\/automations$/);
+    }
     const stripe = host.querySelector('[data-provider="stripe"]');
     expect(stripe?.textContent).toContain("Integrations · commerce account");
     expect(stripe?.textContent).not.toContain("Marketplace / Storefront");
