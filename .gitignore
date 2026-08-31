@@ -41,3 +41,7 @@ scripts/live-drive/artifacts/
 # Not deliverables: the harness's real outputs are its assertions and its labelled frames,
 # and its frames already land in scripts/live-drive/artifacts/ above.
 scripts/live-drive/harness/tmp/
+# Same rule, at the repo root: a review agent probing a live harness has to run its script
+# from inside the repo, because node module resolution fails from /tmp. Without this the probe
+# leaves the tree dirty and the next commit is one keystroke from carrying throwaway code.
+scratch-*.mjs
