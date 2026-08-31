@@ -57,6 +57,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 const OperatorEntry = lazyWithReload(() => import("@/operator/OperatorEntry"));
 const JoinPlatform = lazyWithReload(() => import("./pages/JoinPlatform"));
+const McpOAuthCallback = lazyWithReload(() => import("./pages/McpOAuthCallback"));
 const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
 const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
@@ -230,6 +231,10 @@ const App = () => (
             <Route path="/tenant-redesign" element={<PageSuspense><TenantRedesign /></PageSuspense>} />
             <Route path="/operator/*" element={<PageSuspense><OperatorEntry /></PageSuspense>} />
             <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
+            {/* Where a provider's consent lands. The path is registered with the provider
+                and compared by it on every exchange, so it is fixed rather than derived
+                from anything a caller can influence. */}
+            <Route path="/oauth/mcp/callback" element={<PageSuspense><McpOAuthCallback /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />

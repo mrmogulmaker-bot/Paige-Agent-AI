@@ -9,11 +9,20 @@
 //    A tenant can only ever reach ITS OWN connection — never another tenant's.
 //  • The n8n API key is decrypted server-side only, via the service-role-only
 //    get_tenant_n8n_secret RPC. It never touches the browser or Paige's context.
-//  • The tenant-supplied instance URL is SSRF-guarded (https-only + internal-host
-//    blocklist + manual-redirect re-validation) so it can't be pointed at an
-//    internal target or DNS-rebind.
+//  • The tenant-supplied instance URL goes through the SHARED guard
+//    (`_shared/ssrfGuard.ts` safeFetch): https only, NO credentials embedded in the
+//    URL, numeric validation of every resolved address, redirects refused rather
+//    than followed, and a bounded wall clock and response size on every call.
+//
+//    This function used to carry its own copy of that validator. The copy checked
+//    the hostname and nothing else, so `https://real.n8n.cloud@evil.example/` — which
+//    the setter accepted, and which READS as real.n8n.cloud in Settings — vetted as
+//    `evil.example`, passed, and received this workspace's `X-N8N-API-KEY`. Driven,
+//    the handler returned `{ok:true}` while the key left the process. The hostname
+//    check was not wrong; it was not the whole URL.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
+import { assertPublicHttpUrl, safeFetch, SsrfError } from "../_shared/ssrfGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,80 +72,52 @@ function validateWorkflow(body: any) {
   return { valid: errors.length === 0, errors, warnings, fireable, trigger: trigger ? { type: trigger.type, node: trigger.name } : null };
 }
 
-// SSRF guard. String matching alone is bypassable (IPv4-mapped IPv6, DNS →
-// internal, link-local), so we resolve the host and validate every resolved IP
-// NUMERICALLY against private/loopback/link-local/ULA/mapped ranges. IP literals
-// are validated directly. redirect:"manual" stops a 3xx from bouncing internal.
-function ipv4ToInt(ip: string): number | null {
-  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return null;
-  const o = m.slice(1).map(Number);
-  if (o.some((n) => n > 255)) return null;
-  return (((o[0] << 24) >>> 0) + (o[1] << 16) + (o[2] << 8) + o[3]) >>> 0;
-}
-function ipv4Private(ip: string): boolean {
-  const n = ipv4ToInt(ip);
-  if (n === null) return true; // unparseable → treat as unsafe
-  const inRange = (base: string, bits: number) => {
-    const b = ipv4ToInt(base)!;
-    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1)) >>> 0;
-    return (n & mask) >>> 0 === (b & mask) >>> 0;
-  };
-  return inRange("0.0.0.0", 8) || inRange("10.0.0.0", 8) || inRange("127.0.0.0", 8) ||
-    inRange("169.254.0.0", 16) || inRange("172.16.0.0", 12) || inRange("192.168.0.0", 16) ||
-    inRange("100.64.0.0", 10) || inRange("192.0.0.0", 24) || inRange("198.18.0.0", 15) ||
-    n === ipv4ToInt("255.255.255.255");
-}
-function ipUnsafe(rawIp: string): boolean {
-  const ip = rawIp.toLowerCase().replace(/^\[|\]$/g, "");
-  if (ipv4ToInt(ip) !== null) return ipv4Private(ip);
-  // IPv6 (canonical or literal). Handle embedded/mapped IPv4 explicitly.
-  if (ip === "::1" || ip === "::") return true;
-  if (/^fe[89ab]/.test(ip)) return true;            // fe80::/10 link-local
-  if (/^f[cd]/.test(ip)) return true;               // fc00::/7 ULA
-  if (/^(64:ff9b::|2002:)/.test(ip)) {              // NAT64 / 6to4 → extract v4 if dotted
-    const d = ip.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (d) return ipv4Private(d[1]);
-    return true;
-  }
-  const mappedDotted = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mappedDotted) return ipv4Private(mappedDotted[1]);
-  const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
-    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16);
-    return ipv4Private(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
-  }
-  return false; // a routable public IPv6
-}
-async function assertSafeUrl(raw: string): Promise<void> {
-  let u: URL;
-  try { u = new URL(raw); } catch { throw new Error("Invalid instance URL"); }
-  if (u.protocol !== "https:") throw new Error("Instance URL must be https://");
-  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("Instance URL host is not allowed");
-  // IP literal → validate directly; hostname → resolve A + AAAA and validate all.
-  if (ipv4ToInt(host) !== null || host.includes(":")) {
-    if (ipUnsafe(host)) throw new Error("Instance URL host is not allowed");
-    return;
-  }
-  const ips: string[] = [];
-  for (const kind of ["A", "AAAA"] as const) {
-    try { ips.push(...await Deno.resolveDns(host, kind)); } catch { /* no records of this kind */ }
-  }
-  if (ips.length === 0) throw new Error("Instance URL host could not be resolved");
-  for (const ip of ips) if (ipUnsafe(ip)) throw new Error("Instance URL resolves to a non-public address");
-}
+/**
+ * What a call site sees. Deliberately Response-shaped — `ok`, `status`, `text()`,
+ * `json()` — so the ten existing call sites read exactly as they did, and the change
+ * is the transport underneath rather than a rewrite of every branch.
+ */
+type N8nResult = {
+  ok: boolean;
+  status: number;
+  text: () => string;
+  // deno-lint-ignore no-explicit-any
+  json: () => any;
+  /** The body hit the read cap. The instance answered with more than we will hold. */
+  truncated: boolean;
+};
 
-// One n8n REST call, SSRF-validated, no auto-redirect (n8n API shouldn't 3xx;
-// following one blindly could bounce to an internal host).
-async function n8nFetch(baseUrl: string, apiKey: string, path: string, init: RequestInit = {}): Promise<Response> {
+/** Nothing an n8n instance can say is worth more of this function than these. */
+const N8N_TIMEOUT_MS = 15_000;
+const N8N_MAX_BYTES = 2_097_152; // 2 MiB — larger than any /api/v1 answer we consume.
+
+/**
+ * One n8n REST call through the shared guard.
+ *
+ * A 3xx now RAISES rather than arriving as a non-ok result. That is stricter than
+ * before and deliberately so: the n8n API has no reason to redirect, and refusing has
+ * no window between the check and the connect the way re-validating a hop would.
+ */
+async function n8nFetch(baseUrl: string, apiKey: string, path: string, init: RequestInit = {}): Promise<N8nResult> {
   const url = `${baseUrl.replace(/\/$/, "")}/api/v1${path}`;
-  await assertSafeUrl(url);
-  return await fetch(url, {
+  const res = await safeFetch(url, {
     ...init,
-    redirect: "manual",
     headers: { "X-N8N-API-KEY": apiKey, "Content-Type": "application/json", Accept: "application/json", ...(init.headers || {}) },
-  });
+  }, { timeoutMs: N8N_TIMEOUT_MS, maxBytes: N8N_MAX_BYTES });
+  // A body that hit the cap is a FAILURE here, not a short success. Half a JSON document
+  // does not parse, `json()` turned that into `null`, and `ok` stayed true because the
+  // status was 200 — so an oversized listing was reported as "this workspace has no
+  // workflows", and a create or update whose response was truncated reported no id while
+  // the workflow had in fact been created on the instance. Raising is what makes every
+  // existing call site handle it, rather than each one having to remember a flag.
+  if (res.truncated) throw new SsrfError("response_too_large");
+  return {
+    ok: res.status >= 200 && res.status < 300,
+    status: res.status,
+    text: () => res.body,
+    json: () => { try { return JSON.parse(res.body); } catch { return null; } },
+    truncated: res.truncated,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -172,10 +153,14 @@ Deno.serve(async (req) => {
   const baseUrl: string = secret.base_url;
   const apiKey: string = secret.api_key;
 
+  // Vet the stored address BEFORE anything is sent, so a bad one costs no outbound
+  // request at all — and, more to the point, never carries the API key anywhere.
   try {
-    await assertSafeUrl(`${baseUrl.replace(/\/$/, "")}/api/v1`);
+    await assertPublicHttpUrl(`${baseUrl.replace(/\/$/, "")}/api/v1`);
   } catch (e) {
-    return json({ error: "unsafe_instance_url", detail: e instanceof Error ? e.message : "blocked" }, 400);
+    // The stable reason only. It names the shape of the problem without echoing the
+    // address back, which for the credentials case would put the secret in the reply.
+    return json({ error: "unsafe_instance_url", detail: e instanceof SsrfError ? e.reason : "blocked" }, 400);
   }
 
   const markSync = (status: string, lastError: string | null, count: number | null) =>
@@ -187,9 +172,8 @@ Deno.serve(async (req) => {
       case "list": {
         const res = await n8nFetch(baseUrl, apiKey, "/workflows?limit=200");
         if (!res.ok) {
-          const detail = (await res.text()).slice(0, 300);
           await markSync("error", `n8n ${res.status}`, null);
-          return json({ error: `n8n_${res.status}`, detail }, 502);
+          return json({ error: `n8n_${res.status}` }, 502);
         }
         const data = await res.json();
         const items = (data?.data ?? []).map((w: any) => ({
@@ -207,14 +191,23 @@ Deno.serve(async (req) => {
       case "get": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`);
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) }, 502);
-        return json({ ok: true, workflow: await res.json() });
+        if (!res.ok) return json({ error: `n8n_${res.status}` }, 502);
+        // Bounded on the same principle as everything else here: node parameters hold
+        // whatever a workflow author put in them, including URLs and credential-shaped
+        // values, so the definition itself does not leave this function.
+        const wfGet = await res.json();
+        return json({ ok: true, workflow: {
+          id: wfGet?.id ?? null, name: wfGet?.name ?? null, active: !!wfGet?.active,
+          tags: (wfGet?.tags ?? []).map((t: any) => t?.name).filter(Boolean),
+          node_count: Array.isArray(wfGet?.nodes) ? wfGet.nodes.length : null,
+          updatedAt: wfGet?.updatedAt ?? null,
+        } });
       }
       case "executions": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const limit = Math.min(50, Math.max(1, Number(body.limit) || 10));
         const res = await n8nFetch(baseUrl, apiKey, `/executions?workflowId=${encodeURIComponent(body.workflow_id)}&limit=${limit}`);
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) }, 502);
+        if (!res.ok) return json({ error: `n8n_${res.status}` }, 502);
         const data = await res.json();
         const runs = (data?.data ?? []).map((e: any) => ({
           id: e.id, finished: e.finished, mode: e.mode, status: e.status,
@@ -231,7 +224,7 @@ Deno.serve(async (req) => {
         let wfName: string | null = null;
         if (!path && body.workflow_id) {
           const wres = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`);
-          if (!wres.ok) return json({ error: `n8n_${wres.status}`, detail: (await wres.text()).slice(0, 300) }, 502);
+          if (!wres.ok) return json({ error: `n8n_${wres.status}` }, 502);
           const wf = await wres.json();
           wfName = typeof wf?.name === "string" ? wf.name : null;
           const nodes: any[] = wf?.nodes ?? [];
@@ -253,15 +246,19 @@ Deno.serve(async (req) => {
         }
         if (!path) return json({ ok: false, error: "workflow_or_path_required", detail: "Provide a workflow_id (to resolve its webhook) or an explicit webhook_path." });
         const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${String(path).replace(/^\//, "")}`;
-        await assertSafeUrl(webhookUrl);
         const method = String(body.method || "POST").toUpperCase();
-        const hookRes = await fetch(webhookUrl, {
+        // Same guard as the REST path. The webhook is the more dangerous of the two —
+        // it is a workflow trigger, and its response was previously read in full before
+        // being sliced, so an enormous body was already spent by the time it was cut.
+        const hookRes = await safeFetch(webhookUrl, {
           method,
-          redirect: "manual",
           headers: { "Content-Type": "application/json" },
           body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body.payload ?? {}),
-        });
-        const respText = (await hookRes.text()).slice(0, 4000);
+        }, { timeoutMs: N8N_TIMEOUT_MS, maxBytes: N8N_MAX_BYTES });
+        // `safeFetch` reports a status, not a Response, and a 3xx never reaches here
+        // at all — it raises. So "accepted" is exactly 2xx.
+        const hookOk = hookRes.status >= 200 && hookRes.status < 300;
+        const respText = hookRes.body.slice(0, 4000);
         let parsed: any = null; try { parsed = JSON.parse(respText); } catch { /* non-JSON body */ }
         const o = parsed && typeof parsed === "object" ? parsed : {};
         // Any of these keys means the workflow reported a machine-readable send outcome.
@@ -283,7 +280,7 @@ Deno.serve(async (req) => {
         // webhook accepted it). Delivery/completion stays a separate concern (verified
         // via execution_get), so we file fired only, never a premature completed (§13).
         // Best-effort + non-blocking; skips unless a real client resolves from payload.
-        if (hookRes.ok) {
+        if (hookOk) {
           const hints = contactHintsFromPayload(body.payload ?? {});
           await emitAutomationRail(admin, {
             tenantId, contactId: hints.contactId, email: hints.email, phone: hints.phone,
@@ -295,7 +292,7 @@ Deno.serve(async (req) => {
           action: "run",
           workflow_id: body.workflow_id ?? null,
           webhook_path: String(path),
-          fired: hookRes.ok,                 // LAYER 1 — webhook accepted the request
+          fired: hookOk,                     // LAYER 1 — webhook accepted the request
           http_status: hookRes.status,
           verified: hasOutcome,              // did the workflow return a machine-readable outcome?
           delivered,                          // LAYER 2 — true | false | null(unknown). The headline field.
@@ -308,8 +305,11 @@ Deno.serve(async (req) => {
             smsSent: sms, emailSent: email, telegramSent: o.telegramSent ?? null,
             tagsAdded: tags, name: o.name ?? null, errors: errs,
           } : null,
-          raw_response: respText,             // log/debug only — never quoted to the operator as proof
-          note: !hookRes.ok
+          // The webhook's own response body is NOT returned. It was read to extract the
+          // typed outcome above and its job ends there: it is written by whatever the
+          // workflow chose to return, so forwarding it hands an arbitrary third-party
+          // string to every consumer of this response, the model included.
+          note: !hookOk
             ? "The webhook returned a non-2xx — the workflow may be inactive, or the path/payload didn't match. Nothing was sent."
             : hasOutcome
               ? (delivered
@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
         const res = await n8nFetch(baseUrl, apiKey, "/workflows", { method: "POST", body: JSON.stringify(payload) });
         // Expected n8n rejection → 200 + ok:false so the real reason reaches Paige
         // (a 502 would be collapsed by functions.invoke to a generic non-2xx string).
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const wf = await res.json();
         // Fold the Paige-authored workflow into the tenant's registry, tagged as hers.
         if (wf?.id) await admin.rpc("record_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: wf.id, _name: wf.name }).then(() => {}, () => {});
@@ -357,7 +357,7 @@ Deno.serve(async (req) => {
           if (!uv.valid) return json({ ok: false, error: "invalid_workflow", detail: uv.errors.join("; "), validation: uv });
         }
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, { method: "PUT", body: JSON.stringify(payload) });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const wf = await res.json();
         return json({ ok: true, workflow_id: wf?.id, name: wf?.name, active: !!wf?.active });
       }
@@ -369,7 +369,7 @@ Deno.serve(async (req) => {
         if (!body.execution_id) return json({ ok: false, error: "execution_id_required", detail: "Provide the execution_id (from a run response or the executions list)." });
         const res = await n8nFetch(baseUrl, apiKey, `/executions/${encodeURIComponent(body.execution_id)}?includeData=true`);
         if (res.status === 404) return json({ ok: false, error: "execution_not_found", detail: "No execution with that id. Run the executions action to list recent runs for the workflow." });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const ex = await res.json();
         const rd = ex?.data?.resultData ?? {};
         const lastNode: string | null = rd?.lastNodeExecuted ?? null;
@@ -400,9 +400,16 @@ Deno.serve(async (req) => {
           channels: { sms_sent: sms, email_sent: email, tags_added: tags },
           errors: errs,
           last_node: lastNode,
-          result: lastJson ? JSON.stringify(lastJson).slice(0, 4000) : null,
+          // The failing node's NAME as its own typed field. It used to exist only inside
+          // a formatted string ("Send: SMTP refused"), which no consumer could read a name
+          // out of — the projection tried, got `undefined`, and reported no failing node
+          // on every failed run while claiming in a comment that the name survived.
+          failed_node: nodeError?.name ?? null,
           node_error: nodeError ? `${nodeError.name}: ${nodeError.error}` : (rd?.error?.message ?? null),
-          nodes,
+          // `result` (up to 4000 characters of whatever the last node emitted) and the
+          // per-node `nodes` trace are NOT returned. They are the same arbitrary
+          // third-party text as the webhook body removed elsewhere in this file, and the
+          // typed fields above carry everything a caller acts on.
           verify_hint: status === "running" || status === "waiting"
             ? "Still in flight — delivery not yet knowable. Re-check in a moment."
             : (delivered === true ? "Confirmed from the stored execution — the send went out."
@@ -414,7 +421,7 @@ Deno.serve(async (req) => {
       case "deactivate": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}/${action}`, { method: "POST" });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         const wf = await res.json();
         return json({ ok: true, workflow_id: wf?.id, active: !!wf?.active });
       }
@@ -422,7 +429,7 @@ Deno.serve(async (req) => {
         // PREFERRED default over delete — reversible ("park don't weave", §4).
         if (!body.workflow_id) return json({ ok: false, error: "workflow_id_required" });
         const d = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}/deactivate`, { method: "POST" });
-        if (!d.ok) return json({ ok: false, error: `n8n_${d.status}`, detail: (await d.text()).slice(0, 300) });
+        if (!d.ok) return json({ ok: false, error: `n8n_${d.status}` });
         const wf = await d.json();
         const name = String(wf?.name ?? "");
         if (!name.startsWith("[archived]")) {
@@ -437,7 +444,7 @@ Deno.serve(async (req) => {
         // Permanent — only on an explicit "delete permanently".
         if (!body.workflow_id) return json({ ok: false, error: "workflow_id_required" });
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, { method: "DELETE" });
-        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}` });
         // Registry cleanup; if the RPC is absent, a subsequent list resync drops the ghost.
         await admin.rpc("forget_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: body.workflow_id }).then(() => {}, () => {});
         return json({ ok: true, deleted: true, workflow_id: body.workflow_id, note: "Workflow permanently deleted from n8n." });
@@ -446,6 +453,33 @@ Deno.serve(async (req) => {
         return json({ error: "unknown_action", detail: `Unknown n8n action: ${action}` }, 400);
     }
   } catch (e) {
+    // A guard refusal is not an instance failure and is not reported as one: the
+    // difference between "your n8n is down" and "that address was refused" is the
+    // difference between waiting and fixing.
+    if (e instanceof SsrfError) {
+      // Three different things, told apart, because they ask different things of an admin.
+      //
+      // A REDIRECT is not a bad address. A healthy instance that has moved, or that sits
+      // behind a proxy adding a trailing slash, redirects — and marking the whole
+      // connection `unsafe_instance_url` told the admin their address pointed somewhere
+      // private, which is both false and unactionable. It is the connection SETTING that
+      // needs updating to whatever the instance now answers on.
+      //
+      // A TIMEOUT or a transport failure says nothing about the address at all and must
+      // not put the connection into an error state that reads as misconfiguration.
+      const redirected = e.reason === "url_redirect_refused";
+      const unreachable = e.reason === "request_timed_out" || e.reason === "request_failed";
+      // Distinct from an unreachable instance and from a bad address: the instance
+      // answered, and answered with more than this function will hold.
+      const tooLarge = e.reason === "response_too_large";
+      // `markSync` records what is true: an address that resolves somewhere private is a
+      // configuration error; a redirect or an outage is a state of the instance.
+      await markSync("error", e.reason, null);
+      if (tooLarge) return json({ error: "n8n_response_too_large", detail: e.reason }, 502);
+      if (redirected) return json({ error: "instance_url_redirects", detail: e.reason }, 400);
+      if (unreachable) return json({ error: "n8n_request_failed", detail: e.reason }, 502);
+      return json({ error: "unsafe_instance_url", detail: e.reason }, 400);
+    }
     const msg = e instanceof Error ? e.message : "n8n_request_failed";
     await markSync("error", msg.slice(0, 300), null);
     return json({ error: "n8n_request_failed", detail: msg }, 502);

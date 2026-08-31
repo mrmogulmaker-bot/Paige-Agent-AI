@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+/**
+ * One SSRF validator, not five (§18).
+ *
+ * The numeric address validator was independently copied into four places before anyone
+ * noticed, and every copy was missing the same three protections. A comment asking people
+ * not to fork it is what failed; this fails the build instead.
+ *
+ * A file outside the shared home may not define the validator's internals. Import
+ * `_shared/ssrfGuard.ts` — or, for an outbound call to a tenant-supplied destination,
+ * `safeFetch`, which also bounds the wait and the body.
+ *
+ * The one grandfathered copy is named below with what it still owes, so it stays visible
+ * rather than becoming permanent by silence.
+ */
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const HOME = "supabase/functions/_shared/ssrfGuard.ts";
+
+/**
+ * Grandfathered forks. Each entry is a debt, not a blessing: it names the file and what
+ * consolidating it would gain. Removing an entry is the goal; adding one needs a reason
+ * that survives review.
+ */
+const GRANDFATHERED = {
+  // paige-n8n is NO LONGER here. Its fork was removed and the path moved to safeFetch
+  // after the deferral proved wrong: the copy checked the hostname only, so a stored
+  // `https://real.n8n.cloud@evil.example/` passed and the workspace's n8n API key was
+  // sent to evil.example while the handler returned {ok:true}. An entry in this list is
+  // a debt with a live consequence, not a note.
+  "supabase/functions/_shared/ssrf-guard.ts":
+    "An older, weaker guard (it permits http://) with one caller, studio-visual-critique. " +
+    "Superseded by ssrfGuard.ts; its caller should move and the file should go.",
+};
+
+// The internals — not the exported entry points, which callers are supposed to use.
+const FORK_MARKERS = [/function\s+ipv4Private\s*\(/, /function\s+ipUnsafe\s*\(/, /function\s+isPrivateV4\s*\(/];
+
+/**
+ * A plain recursive walk rather than `fs.globSync`, which does not exist before Node 22.
+ * CI pins Node 20, so the glob version threw there while passing locally — a guard that
+ * only runs on the author's machine is worse than no guard, because it reports success.
+ */
+function walk(dir, out = []) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walk(full, out);
+    else if (/\.(ts|tsx|mjs)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+const files = [...walk("supabase/functions"), ...walk("src"), ...walk("scripts")];
+
+const offenders = [];
+for (const file of files) {
+  const norm = file.replaceAll("\\", "/");
+  if (norm === HOME) continue;
+  const source = readFileSync(file, "utf8");
+  if (!FORK_MARKERS.some((re) => re.test(source))) continue;
+  if (norm in GRANDFATHERED) continue;
+  offenders.push(norm);
+}
+
+if (offenders.length) {
+  console.error("\nSSRF validator forked outside its one home.\n");
+  for (const f of offenders) console.error(`  ${f}`);
+  console.error(
+    `\nImport { safeFetch } from "${HOME}" instead of redefining the address validator.` +
+    "\nsafeFetch also refuses redirects and bounds the wait and the response size, which" +
+    "\nevery hand-rolled copy so far has been missing.\n",
+  );
+  process.exit(1);
+}
+
+const debts = Object.keys(GRANDFATHERED).length;
+console.log(`ssrf-fork-lint: one shared validator, ${debts} grandfathered fork(s) still owed.`);

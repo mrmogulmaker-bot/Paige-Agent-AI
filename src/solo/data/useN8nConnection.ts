@@ -83,6 +83,9 @@ export function n8nWriteMessage(raw: unknown): string {
   const code = typeof raw === "string" ? raw : "";
   if (code.includes("N8N_FORBIDDEN")) return "Only a workspace admin can change this connection.";
   if (code.includes("N8N_INSECURE_URL")) return "The address has to start with https:// so the key is never sent in the clear.";
+  // A URL like https://real.n8n.cloud@somewhere-else/ reads as the first host and
+  // resolves to the second, so the message names the fix rather than the shape.
+  if (code.includes("N8N_URL_CREDENTIALS")) return "Remove the username and password from the address — everything before the @ — and paste just your instance address.";
   if (code.includes("N8N_NO_URL")) return "Add the address of your n8n instance.";
   if (code.includes("N8N_NO_KEY")) return "Add an API key.";
   if (code.includes("N8N_NO_TENANT")) return "This workspace could not be identified, so nothing was changed.";
