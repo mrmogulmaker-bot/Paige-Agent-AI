@@ -907,9 +907,21 @@ JSON:`;
           // exclude NULL-tenant client rows (the clients RLS policy admits tenant_id IS NULL); a
           // foreign/NULL-tenant clientId resolves to nothing and falls back to the caller's own id.
           // `scopedClientId` is ALREADY the authorized-or-null decision (made once, above, on the
-          // JWT-scoped client and bound to the caller's tenant). Re-reading `clients` with the RAW
-          // body id here was a redundant round-trip on every PDF turn whose result was ANDed away,
-          // and it left the exact raw-id pattern in the file for the next reader to copy.
+          // JWT-scoped client and bound to the caller's tenant).
+          //
+          // §9 — on a REFUSED turn we do not persist at all. An earlier revision fell back to the
+          // caller here and called that a safe degrade; it is not. The caller attached this file
+          // believing it belonged to the client they named, so writing it under their own id
+          // durably misattributes ANOTHER person's credit report to them — and now that the sync
+          // is skipped, the `credit_report_uploads` row would also sit in `processing` forever.
+          // The legitimate no-client path is unaffected: it sends no `clientId`, so
+          // `clientScopeDenied` is false and the caller-owned upload proceeds as before.
+          if (clientScopeDenied) {
+            console.error(
+              "[paige] client scope REFUSED — credit-report document NOT persisted",
+              JSON.stringify({ reason: clientScopeRefusal }),
+            );
+          } else {
           const targetUserId = scopedClientId ?? user.id;
           const timestamp = Date.now();
           const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -937,6 +949,7 @@ JSON:`;
               .single();
             if (!insertErr) paigeChatUploadId = uploadRec.id;
           }
+          }
         } catch (storeErr) {
           console.error("[Paige] Error storing PDF:", storeErr);
         }
@@ -962,12 +975,19 @@ JSON:`;
         // clientId is supplied in the request body we do NOT trust it blindly (the verifier
         // flagged a body-supplied clientId used as the service-role storage folder = IDOR).
         // We validate it through the JWT-scoped `supabaseClient` (RLS-enforced) first — a
-        // foreign-tenant clientId returns nothing, so we fall back to the caller's own id and
-        // never write into another tenant's folder. This mirrors the FOCUSED-CLIENT §9 note
-        // used later in this handler (a foreign clientId simply resolves to nothing under RLS).
+        // foreign-tenant clientId resolves to nothing, so we never write into another tenant's
+        // folder. A refused scope now persists NOTHING rather than falling back to the caller —
+        // see the credit-report branch above for why that fallback was not a safe degrade.
         if (docKind === "pdf" && attachedDocument.base64) {
           try {
-            // Same as the credit-report path above: the authorization decision is already made.
+            // Same rule as the credit-report path above: a refused turn persists nothing, so
+            // the named subject's document is never filed under the caller.
+            if (clientScopeDenied) {
+              console.error(
+                "[paige] client scope REFUSED — general document NOT persisted",
+                JSON.stringify({ reason: clientScopeRefusal }),
+              );
+            } else {
             const generalTargetUserId = scopedClientId ?? user.id;
             const timestamp = Date.now();
             const safeName = (attachedDocument.fileName || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -980,6 +1000,7 @@ JSON:`;
               .upload(generalPath, genBytes.buffer, { contentType: "application/pdf" });
             if (!genStoreErr) paigeChatGeneralDocPath = generalPath;
             else console.warn("[Paige] general PDF store skipped:", genStoreErr.message);
+            }
           } catch (genErr) {
             console.warn("[Paige] Error storing general PDF:", (genErr as Error)?.message);
           }

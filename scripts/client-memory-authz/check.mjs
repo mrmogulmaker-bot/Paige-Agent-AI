@@ -523,11 +523,17 @@ console.log("\nthe DOCUMENT-upload path is bound to the same decision");
   assert("8.2b the authorized turn writes into the AUTHORIZED client's folder",
     ownDoc.rec.uploads.length > 0 && ownDoc.rec.uploads.every((u) => u.path.startsWith(`${OWN}/`)),
     JSON.stringify(ownDoc.rec.uploads.map((u) => u.path)));
-  assert("8.2c a REFUSED turn writes into the CALLER's own folder, never the named client's",
-    foreignDoc.rec.uploads.length > 0
-      && foreignDoc.rec.uploads.every((u) => u.path.startsWith(`${USER}/`))
-      && !foreignDoc.rec.uploads.some((u) => u.path.includes(FOREIGN)),
+  // NOT "writes into the caller's own folder". This asserted the caller-fallback as correct and
+  // so encoded the defect — the same mistake 9.3 made. The caller attached this file believing it
+  // was the named client's, so filing it under the caller durably misattributes another person's
+  // document to them. A refused turn persists nothing.
+  assert("8.2c a REFUSED turn persists NO document at all",
+    foreignDoc.rec.uploads.length === 0,
     JSON.stringify(foreignDoc.rec.uploads.map((u) => u.path)));
+  assert("8.2d …while the NO-CLIENT path still stores the caller's own document (8.2c is not over-broad)",
+    (await drive({ clientId: undefined, document: doc, stream: true, text: "here is my statement" }))
+      .rec.uploads.some((u) => u.path.startsWith(`${USER}/`)),
+    "a legitimate self-upload was suppressed — the gate is too wide");
   assert("8.3 …and no table read or write anywhere carries the refused id",
     !foreignDoc.rec.from.some((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(FOREIGN))
       && !foreignDoc.rec.inserts.some((i) => JSON.stringify(i.row ?? {}).includes(FOREIGN)),
@@ -635,9 +641,15 @@ console.log("\nthe CREDIT-REPORT upload branch is bound to the same decision");
   assert("10.5 …while an AUTHORIZED one still syncs (10.4 is not vacuous)",
     ownCredit.bodyText.includes("sync_status") && !ownCredit.bodyText.includes("client_scope_refused"),
     ownCredit.bodyText.slice(0, 300));
-  assert("10.3 …it lands under the CALLER's own id instead",
-    refusedCredit.rec.uploads.length > 0 && refusedCredit.rec.uploads.every((u) => u.path.startsWith(`${USER}/`)),
-    JSON.stringify(refusedCredit.rec.uploads.map((u) => u.path)));
+  // Likewise: no upload, and no `credit_report_uploads` row. Falling back to the caller also
+  // stranded that row in `analysis_status: "processing"` forever, because the sync is skipped.
+  assert("10.3 …and persists NOTHING: no upload and no credit_report_uploads row",
+    refusedCredit.rec.uploads.length === 0
+      && !refusedCredit.rec.inserts.some((i) => i.table === "credit_report_uploads"),
+    JSON.stringify({
+      uploads: refusedCredit.rec.uploads.map((u) => u.path),
+      rows: refusedCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").map((i) => i.row),
+    }));
 }
 
 console.log("\nthe refusal is announced on BOTH response paths, not just the agentic one");
