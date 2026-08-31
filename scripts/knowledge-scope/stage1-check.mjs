@@ -2919,6 +2919,49 @@ group("safety-first streaming: the sources the first enumeration missed");
     !urlAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
     urlAtGate.responseText.slice(0, 300),
   );
+
+  // 21.ad — THE CLIENT-SCOPE REFUSAL FRAME, whose two written promises had no test: "WITHOUT the
+  // rejected id or any client field" and "never the rejected identifier". Exactly one drive
+  // supplied a `clientId` and it was configured to SUCCEED, so `clientScopeDenied` was true in no
+  // drive and no refusal frame was ever produced. Two classifier blind spots would also have
+  // hidden a leaked id — the reason is checked only for type and a 64-char bound (a UUID is 36),
+  // and the single-key check is top-level, so `{client_scope:{status,reason,id}}` is one key.
+  //
+  // §13 — WHICH OF THE THREE EMITS THIS COVERS, because writing "the refusal frame" would imply
+  // all of them. It covers the EARLY-RETURN one. The other two, in the agentic and document
+  // streams, appear UNREACHABLE: `clientScopeDenied` is a `const`, and the branch that emits
+  // this frame returns unconditionally, so every later reference to it — those two emits and
+  // half a dozen defensive `if (clientScopeDenied)` branches — is dominated by that return.
+  //
+  // Evidence rather than reading: planting the rejected id into the agentic emit and into the
+  // document emit each left the suite at 335/0, while planting it here failed 2 checks. A
+  // mutation that changes nothing observable in a suite that otherwise catches this exact leak
+  // is what unreachable looks like from the outside. Filed separately; not claimed as covered.
+  const FOREIGN_CLIENT = "cccccccc-1111-4ccc-8ccc-cccccccccccc";
+  const denied = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    kbRejects: true, provider: ["private-text"],
+    bodyExtras: { clientId: FOREIGN_CLIENT },
+    rpcExtras: { current_user_tenant_id: { data: CHILD, error: null }, is_platform_owner: { data: false, error: null } },
+    // The client belongs to ANOTHER workspace, so authorization refuses.
+    tableExtras: { clients: () => [{ id: FOREIGN_CLIENT, tenant_id: AGENCY, linked_user_id: USER, first_name: "Foreign", last_name: "Person" }] },
+  });
+  const scopeFrames = denied.responseText.split("\n").filter((l) => l.startsWith("data: ") && l.includes("client_scope"));
+  assert(
+    "21.ad CONTROL — a foreign client id really does produce the refusal frame",
+    scopeFrames.length > 0,
+    denied.responseText.slice(0, 400),
+  );
+  assert(
+    "21.ad the refusal frame never carries the rejected client id",
+    !scopeFrames.join("").includes(FOREIGN_CLIENT),
+    scopeFrames.join("").slice(0, 300),
+  );
+  assert(
+    "21.ad ...and the whole transcript never carries it either",
+    !denied.responseText.includes(FOREIGN_CLIENT),
+    denied.responseText.slice(0, 300),
+  );
 }
 
 // ── 21z · The receipt set, asserted on its CONTENTS ──────────────────────────────

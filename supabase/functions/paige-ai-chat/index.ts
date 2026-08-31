@@ -8538,11 +8538,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
             return;
           }
-          // Telemetry is NOT committed here. It is the one DURABLE record this mechanism
-          // writes, so it is deferred until after the last provider byte of the reply has
-          // been forwarded and the scope re-asserted one final time (see the end of the
-          // reply block below). Committing it here would record a retrieval as having
-          // grounded a reply that the drain may still be cancelled out from under.
+          // Telemetry is NOT committed here. It is deferred until after the last provider byte
+          // of the reply has been forwarded and the scope re-asserted one final time (see the
+          // end of the reply block below). Committing it here would record a retrieval as
+          // having grounded a reply that the drain may still be cancelled out from under.
+          //
+          // §13 — this used to say telemetry is "the ONE durable record this mechanism writes."
+          // It is not. A turn touches five durable sinks: `kb_query_telemetry`,
+          // `paige_chat_turns`, `analytics_events`, `record_rail_event` and `paige_llm_trace`.
+          // The first four are gated on the close decision. THE FIFTH IS NOT, and that is a
+          // deliberate judgement rather than an oversight, so it is written down here:
+          //
+          // `gatewayCompat` writes the prompt and the reply to `paige_llm_trace` before
+          // returning, fire-and-forget, stamped with `personaCtx.tenant_id` — so on a protected
+          // turn that row carries the Knowledge, the document text, the memory and the client
+          // file. It is NOT gated, and gating it would be wrong: the prompt was assembled under
+          // valid scope, the call genuinely happened, and the row is attributed to the tenant
+          // that was active WHEN IT WAS MADE. A later switch does not make that attribution
+          // false, and tenant A's evidence never lands in a row attributed to tenant B — there
+          // is no boundary crossed. Suppressing it on a switch would delete an honest record of
+          // an authorised call, which is the opposite of what §34's trace layer is for.
+          //
+          // The ruling's "logs" clause is about UNAUTHORISED content. This content was
+          // authorised when it was written. If the owner reads that clause more broadly, the
+          // change is small and I will make it — but I am not going to quietly widen a
+          // security rule into an observability one and call it a fix.
           // Approvals + confirm cards, then her actual reply.
           //
           // ALL THREE OF THESE ARE PROTECTED CONTENT, not neutral progress, so they go through
