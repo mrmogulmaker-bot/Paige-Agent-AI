@@ -216,7 +216,19 @@ const theme=resolvedTheme==='light'?'light':'dark';
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
 // and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>expandRail();
-const full=route==='paige'||route==='auto'||route==='cal'||route==='settings'||route==='home'||route==='analytics'||route==='market';
+// Surfaces that manage their own internal scroll regions and must fill the
+// frame exactly. Their host is `overflow:hidden` at `height:100%`, so anything
+// they render past the fold is CLIPPED and the shell's own scroll owner never
+// overflows either — there is then nothing to scroll, by wheel or by key.
+//
+// `settings` was in this set and must not be: `.solo-settings` is a document
+// flow (`min-height:100%`, no internal scroller), so under `full` its long tabs
+// — Connections › Calendars most of all — were cut off at the fold with no way
+// to reach the rest of the preset. Integrations only looked healthy because it
+// is short enough to fit. Off this list the screen host is `overflow:auto` and
+// becomes the one deliberate vertical scroll owner, which is what every other
+// document-flow route in this shell already does.
+const full=route==='paige'||route==='auto'||route==='cal'||route==='home'||route==='analytics'||route==='market';
 const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
 const accountEpochKey=activeTenantId??'resolving';
 const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,compass:<TrustCompass/>,auto:null,clients:<SoloClientsRoute openPaige={openPaige}/>,cal:<TenantCanonicalCalendarWorkspace tier="solo" openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2 accountContext={accountContext} accountEpoch={activeTenantId} openPaige={openPaige}/>,market:<Marketplace/>,settings:<SoloSettings/>};
@@ -241,7 +253,7 @@ brandHomeHref={activeTenant?.account_number!=null?branchPath('solo',String(activ
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
 <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
-<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
+<main key={route} data-solo-screen-host style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{route==='paige'?null:screens[route]}</main>
 {studio&&<VibeStudio onBack={closeStudio}/>}</div></div>
 </TenantCommandCenterShell>};
 
