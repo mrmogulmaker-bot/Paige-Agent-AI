@@ -937,6 +937,9 @@ JSON:`;
     let authorizedClientId: string | null = null;
     let memoryScopeRefusal: string | null = null;
     if (payloadClientId) {
+      // UNREACHABLE TODAY, kept as schema-drift defence only: the request schema already
+      // declares `clientId: z.string().uuid()`, so a malformed value is rejected with 400
+      // before this handler runs. Documented as such rather than presented as live coverage.
       if (typeof payloadClientId !== "string" || !UUID_RE.test(payloadClientId)) {
         memoryScopeRefusal = "client context is malformed";
       } else {
