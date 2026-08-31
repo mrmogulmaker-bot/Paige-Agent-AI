@@ -13,6 +13,7 @@ const concurrencyMigration = readFileSync(resolve(process.cwd(), "supabase/migra
 const invariantMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831205000_solo_pipeline_invariant_guards.sql"), "utf8");
 const archiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831210000_solo_pipeline_archive_serialization.sql"), "utf8");
 const visibilityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831211500_solo_pipeline_visibility_guard.sql"), "utf8");
+const directArchiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831213000_solo_pipeline_direct_archive_guard.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
@@ -132,6 +133,10 @@ describe("Solo Campaigns approved contract", () => {
     expect(visibilityMigration).toContain("dc.assigned_coach_user_id=_caller");
     expect(visibilityMigration).toContain("_task_admin or t.user_id=_caller");
     expect(visibilityMigration).toContain("_client_admin or (_is_coach");
+    expect(directArchiveMigration).toContain("_deal_admin:=public.is_platform_owner()");
+    expect(directArchiveMigration).toContain("trg_prevent_occupied_stage_archive");
+    expect(directArchiveMigration).toContain("old.archived_at is null and new.archived_at is not null");
+    expect(directArchiveMigration).toContain("exists(select 1 from public.deals d where d.stage_id=old.id)");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
