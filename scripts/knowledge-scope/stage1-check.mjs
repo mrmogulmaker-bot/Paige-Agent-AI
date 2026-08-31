@@ -117,6 +117,19 @@ function anthropicStream(kind = "text") {
     // ARGUMENTS, which the loop turns into a `paige_confirm` card. `crm_create_contact` is used
     // deliberately: `document_generate`'s summary is a fixed sentence, so a card built from it
     // would carry no model text and the assertion below would pass for the wrong reason.
+    // `crm_create_contact` on its DEDUPLICATION branch. It is a receipt on the success path and
+    // is in the receipt set for that reason — but when a near-match is found it returns
+    // `matches: [...]`, real contact names, emails, phones and lifecycle stages read out of the
+    // tenant's book. A name cannot express "this tool sometimes reads", which is why the receipt
+    // test is now a shape test as well.
+    : kind === "dedup-contact"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "crm_create_contact" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ first_name: "Ada", last_name: "L", email: "ada@example.test" }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
     : kind === "confirm-card"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
@@ -2691,6 +2704,49 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.x every persona-context resolution runs on the JWT client, never service-role",
     personaCalls.every((c) => c.client === "jwt"),
     JSON.stringify(personaCalls.map((c) => c.client)),
+  );
+
+  // 21.y — A RECEIPT-NAMED TOOL THAT COMES BACK WITH RECORDS. `crm_create_contact` is a receipt
+  // on its success path — an id and an echo of the model's own arguments — and genuinely belongs
+  // in the set for that. On its deduplication branch it returns `matches: [...]`: real contact
+  // names, email addresses, phone numbers, lifecycle stages and creation dates, read out of the
+  // tenant's book. A name-based classification cannot express "this tool sometimes reads", and
+  // that is the second time the name half alone was wrong.
+  const dedupOpts = {
+    kbRejects: true,
+    provider: ["dedup-contact", "private-text"],
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+      // The near-match the branch hands back instead of inserting.
+      find_duplicate_contacts: { data: [{ id: "aaaa1111-2222-4333-8444-555566667777", first_name: "Ada", last_name: "Lovelace", email: "ada@example.test", phone: "+15550001111", lifecycle_stage: "client", source: "referral", created_at: "2026-01-01T00:00:00Z", email_exact: true }], error: null },
+    },
+    tableExtras: { user_roles: () => [{ role: "admin" }] },
+  };
+  const dedupClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...dedupOpts,
+  });
+  assert(
+    "21.y CONTROL — the dedup branch really did hand records back to the model",
+    dedupClean.providerCalls.some((c) => JSON.stringify(c).includes("needs_dedup_confirmation")),
+    JSON.stringify(dedupClean.providerCalls).slice(-300),
+  );
+  const dedupTotal = personaCallsOf(dedupClean);
+  assert(
+    "21.y a receipt-named tool that returns RECORDS still protects the turn",
+    dedupTotal > 1,
+    `persona calls: ${dedupTotal} — 1 means the name alone decided it`,
+  );
+  const dedupAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(dedupTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...dedupOpts,
+  });
+  assert(
+    "21.y ...so a failed final check withholds the reply it grounded",
+    !dedupAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    dedupAtGate.responseText.slice(0, 300),
   );
 }
 

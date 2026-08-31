@@ -1726,9 +1726,44 @@ JSON:`;
         JSON.stringify({ reason, already_protected: already }),
       );
     };
-    const markLateRetrievalProtected = (executed: any[], receipts: Set<string>) => {
+    // A RECEIPT IS A SHAPE, NOT A NAME — and the name half alone was wrong twice.
+    //
+    // First `draft_marketing_content`, a write that returns generated copy. Then
+    // `crm_create_contact`, which is a receipt on its success path and NOT on its deduplication
+    // branch: when a near-match is found it returns `matches: [...]` — real contact names, email
+    // addresses, phone numbers, lifecycle stages and creation dates, read out of the tenant's
+    // book. Both were classified by NAME, and a name cannot express "this tool sometimes reads".
+    //
+    // So the name set is now only the FAST PATH, and the result must ALSO look like a receipt.
+    // The structural test is deliberately not another list: a receipt is flat and small — an id,
+    // a boolean, a count, an echo of the model's own arguments — whereas a read-back is a LIST
+    // OF RECORDS. Any nested array of objects, or an oversized payload, is evidence whatever the
+    // tool is called. That catches the dedup branch without anyone having to have thought of it,
+    // which is the property every name-based enumeration on this branch has failed to have.
+    // §13 — THE TWO CRITERIA ARE REDUNDANT ON THE ONE CASE ANY TEST DRIVES, and saying so is
+    // better than implying coverage that does not exist. The dedup payload is both a record list
+    // AND over the size bound, so removing EITHER criterion alone leaves the suite green and only
+    // removing both fails. Measured, not assumed. The size bound is the belt: it catches a large
+    // flat payload — a long free-text field read from storage — that the record-list test would
+    // wave through. Do not delete either on the strength of a green suite.
+    const RECEIPT_MAX_CHARS = 600;
+    const resultIsReceiptShaped = (raw: string | undefined): boolean => {
+      if (typeof raw !== "string" || raw.length > RECEIPT_MAX_CHARS) return false;
+      let out: any;
+      try { out = JSON.parse(raw); } catch { return false; }
+      if (!out || typeof out !== "object" || Array.isArray(out)) return false;
+      return !Object.values(out).some(
+        (v) => Array.isArray(v) && v.some((x) => x && typeof x === "object"),
+      );
+    };
+    const markLateRetrievalProtected = (executed: any[], results: any[], receipts: Set<string>) => {
       if (lateRetrievalProtected) return;
-      const evidence = executed.find((tc) => !receipts.has(tc?.function?.name ?? ""));
+      const evidence = executed.find((tc) => {
+        const name = tc?.function?.name ?? "";
+        if (!receipts.has(name)) return true; // not a receipt by name → evidence
+        const res = results.find((r: any) => r?.tool_call_id === tc?.id);
+        return !resultIsReceiptShaped(res?.content); // named a receipt, but did not come back as one
+      });
       if (!evidence) return;
       markProtectedLate(`tool:${evidence?.function?.name ?? "unknown"}`);
     };
@@ -8439,7 +8474,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // BEFORE the results reach the model, not after. Everything content-bearing is
             // emitted below this loop, so switching here is genuinely "before any protected
             // content can emit" rather than merely usually so.
-            markLateRetrievalProtected(executed, TOOL_RESULT_IS_RECEIPT);
+            markLateRetrievalProtected(executed, toolResults, TOOL_RESULT_IS_RECEIPT);
             convo.push(...toolResults);
             if (overCap || overTime || lastRound) { forcedTermination = true; break; }
             if (!(await revalidateTenantKnowledgeScope())) {
