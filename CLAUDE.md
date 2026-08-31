@@ -2523,3 +2523,47 @@ landed), §5 (compliance officer — the enforcer), §39 (peer-gate — the audi
 the source, never from memory — what stale docs break), §51/§56/§61 (the matrix's existing consumers).
 *Forward-reference:* an SDLC close-out phase is intended to carry this too; the SDLC section is not on
 `main` yet, so no §-number is asserted for it here.
+
+## 70. Never build something the owner cannot USE on his own platform.
+
+> **OWNER-RULED 2026-08-31.** *"I don't want you to EVER design and build something I cannot use
+> myself on my own platform. Do I make myself clear?"* Binding immediately.
+
+**The deliverable is a human completing a task on the live platform — never a code path that
+exists.** A wired handler, a passing unit test, a green build, a rendered screenshot and a
+"structurally correct" reading are all evidence ABOUT the code. None of them is evidence that the
+owner, or a tenant, can sit down and get the job done. When those two disagree, the person who
+cannot use the surface is right and the audit is wrong.
+
+- **"The code is wired, therefore it works" is the same lie as "it compiled, therefore it runs"**
+  (§32), wearing different clothes. §32 caught the build/runtime gap; §70 catches the
+  runtime/USABILITY gap — the surface renders, the handler fires, and a human still cannot finish.
+- **Never report a capability as shipped on the strength of reading the source.** Reading
+  `onChange={set("type", …)}` proves a handler is bound. It proves nothing about whether a person
+  can find that control, understand it, change it, save it, and see the result persist. Prove the
+  ACT, not the wiring.
+- **Proof is the human flow, driven end to end** — first use from a genuinely empty state, the
+  central action, save and re-read, permission refusal, failure and retry, abandonment, and the
+  account switch. A seeded fixture or a mocked success is not proof that a human can complete the
+  flow; it is proof that a double behaved as instructed.
+- **An audit that concludes "mostly already delivered" is a claim requiring MORE proof than a
+  build, not less.** If the owner says he cannot use it and the reading says he can, reproduce
+  before arguing. The reading is the hypothesis; the owner is the measurement.
+- **Unavailable is a per-ITEM verdict, never a per-SURFACE excuse.** One genuinely missing backend
+  contract makes THAT item honestly unavailable with a reason and a recovery path. It never
+  licenses leaving the rest of the experience read-only, static, or "explained" instead of built.
+- **The test, every time:** *"Can the owner open this on his own platform and finish the job —
+  create it, change it, save it, and see it hold — or have I only proven that the code for it
+  exists?"* If it is the second, it is not done, whatever the suite says.
+
+**Anchoring case (2026-08-31, this section's origin).** Told to make Solo Settings → Connections →
+Calendars genuinely usable, CC audited the source, found every required flow bound to a real write
+with tests, and reported the assignment ~90% pre-delivered — offering options instead of building.
+The owner's answer was that he cannot use it on his own platform. Grep proved handlers existed; it
+never proved a human could complete a single flow. The audit was the artifact of the failure, not a
+finding about it.
+
+**Cross-references:** §32 (a green build is not a working render — the parent rule), §13 (honest
+reporting), §31 (never shortchange the request), §36 (intuitiveness — discoverable in five minutes),
+§58 (a shipped capability is never silently removed), §00 (CD owns how it looks; whether a human can
+FINISH is correctness, and that is CC's).
