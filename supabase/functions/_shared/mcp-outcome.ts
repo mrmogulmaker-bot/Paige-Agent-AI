@@ -308,6 +308,7 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
       not_connected: "This workspace has not connected a Zapier account yet.",
       connection_disabled: "This workspace's Zapier connection is turned off.",
       discovery_unavailable: "The connected Zapier account could not be reached just now.",
+      reauthorization_required: "This workspace's Zapier authorization has expired and needs reconnecting. Do not retry.",
       unauthorized: "That action is not available to this caller.",
       forbidden: "That action is not available to this caller.",
     };

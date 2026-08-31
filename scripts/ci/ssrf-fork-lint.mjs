@@ -13,8 +13,8 @@
  * The one grandfathered copy is named below with what it still owes, so it stays visible
  * rather than becoming permanent by silence.
  */
-import { readFileSync } from "node:fs";
-import { globSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const HOME = "supabase/functions/_shared/ssrfGuard.ts";
 
@@ -36,7 +36,24 @@ const GRANDFATHERED = {
 // The internals — not the exported entry points, which callers are supposed to use.
 const FORK_MARKERS = [/function\s+ipv4Private\s*\(/, /function\s+ipUnsafe\s*\(/, /function\s+isPrivateV4\s*\(/];
 
-const files = globSync("{supabase/functions,src,scripts}/**/*.{ts,tsx,mjs}", { exclude: (p) => p.includes("node_modules") });
+/**
+ * A plain recursive walk rather than `fs.globSync`, which does not exist before Node 22.
+ * CI pins Node 20, so the glob version threw there while passing locally — a guard that
+ * only runs on the author's machine is worse than no guard, because it reports success.
+ */
+function walk(dir, out = []) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walk(full, out);
+    else if (/\.(ts|tsx|mjs)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+const files = [...walk("supabase/functions"), ...walk("src"), ...walk("scripts")];
 
 const offenders = [];
 for (const file of files) {

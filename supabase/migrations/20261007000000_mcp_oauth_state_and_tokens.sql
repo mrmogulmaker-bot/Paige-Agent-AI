@@ -124,6 +124,9 @@ BEGIN
 
   RETURN jsonb_build_object(
     'found', true,
+    -- Returned so the caller can compare it in constant time rather than trusting that a
+    -- lookup keyed on it is the same guarantee. It is the value the caller already sent.
+    'state', _row.state,
     'tenant_id', _row.tenant_id,
     'provider', _row.provider,
     'code_verifier', public.platform_decrypt(_row.code_verifier_ct),

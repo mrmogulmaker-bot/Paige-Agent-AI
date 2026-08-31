@@ -22,16 +22,30 @@ ALTER TABLE public.tenant_mcp_connections
 
 -- An array of strings, and nothing else. A malformed value here would be read as an
 -- authorisation decision, so the shape is enforced rather than assumed.
+--
+-- The element check lives in an IMMUTABLE function because Postgres refuses a subquery
+-- inside a CHECK (0A000), and iterating a jsonb array needs one. A function call is
+-- permitted there, so the guarantee is kept rather than downgraded to a bare type check
+-- with the real validation left to whichever caller remembers it.
+CREATE OR REPLACE FUNCTION public._mcp_is_capability_array(_v jsonb)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public', 'pg_catalog'
+AS $$
+  SELECT jsonb_typeof(_v) = 'array'
+     AND NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(_v) e
+        WHERE jsonb_typeof(e) <> 'string'
+           OR length(e #>> '{}') NOT BETWEEN 1 AND 200
+     );
+$$;
+
 ALTER TABLE public.tenant_mcp_connections
   DROP CONSTRAINT IF EXISTS tenant_mcp_connections_approved_caps_chk;
 ALTER TABLE public.tenant_mcp_connections
-  ADD CONSTRAINT tenant_mcp_connections_approved_caps_chk CHECK (
-    jsonb_typeof(approved_capabilities) = 'array'
-    AND NOT EXISTS (
-      SELECT 1 FROM jsonb_array_elements(approved_capabilities) e
-       WHERE jsonb_typeof(e) <> 'string' OR length(e #>> '{}') NOT BETWEEN 1 AND 200
-    )
-  );
+  ADD CONSTRAINT tenant_mcp_connections_approved_caps_chk
+  CHECK (public._mcp_is_capability_array(approved_capabilities));
 
 COMMENT ON COLUMN public.tenant_mcp_connections.approved_capabilities IS
   'Tool names this workspace has approved for Paige to run. Empty means none: a '

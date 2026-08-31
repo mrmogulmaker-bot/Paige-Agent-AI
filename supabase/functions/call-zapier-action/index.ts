@@ -41,6 +41,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
 import { mcpListTools } from "../_shared/mcp-client.ts";
 import { callApprovedCapability, projectDiscovery } from "../_shared/mcp-outcome.ts";
+import { discoverAuthorizationServer, isExpired, refreshTokens } from "../_shared/mcp-oauth.ts";
 
 // The SSRF validator that used to live inline here is now `_shared/ssrfGuard.ts`, reached
 // through `_shared/mcp-client.ts`. It is the same numeric guard, plus the three things
@@ -93,7 +94,37 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "connection_disabled", detail: "This workspace's Zapier/MCP connection is turned off. Re-enable it in Settings → Integrations → Zapier." });
   }
   const serverUrl: string = secret.server_url;
-  const token: string = secret.auth_token;
+  let token: string = secret.auth_token;
+
+  // An access token that has lapsed is refreshed here rather than surfacing as a failed
+  // action. Rotation is stored immediately: a server that issues a new refresh token has
+  // killed the old one, so keeping the old one would work now and break at the next
+  // refresh with nothing to point at.
+  if (secret.auth_kind === "oauth" && isExpired(secret.expires_at) && secret.refresh_token && secret.oauth_issuer) {
+    try {
+      const server = await discoverAuthorizationServer(String(secret.oauth_issuer));
+      const rotated = await refreshTokens({
+        server,
+        clientId: String(secret.oauth_client_id ?? ""),
+        clientSecret: secret.oauth_client_secret ? String(secret.oauth_client_secret) : null,
+        refreshToken: String(secret.refresh_token),
+        resource: serverUrl,
+      });
+      const { error: rErr } = await admin.rpc("rotate_tenant_mcp_tokens", {
+        _tenant_id: tenantId,
+        _provider: "zapier",
+        _access_token: rotated.accessToken,
+        _refresh_token: rotated.refreshToken,
+        _expires_at: rotated.expiresAt,
+      });
+      if (rErr) console.error("[call-zapier-action] token rotation not stored:", rErr.message);
+      token = rotated.accessToken;
+    } catch {
+      // A grant that can no longer be refreshed has been withdrawn or has expired. Saying
+      // so is the honest answer; retrying with the dead token would fail less clearly.
+      return jsonResponse({ ok: false, error: "reauthorization_required", detail: "This workspace's Zapier authorization has expired. Reconnect it in Settings → Integrations → Zapier." });
+    }
+  }
   if (!serverUrl || !token) return jsonResponse({ ok: false, error: "not_connected", detail: "The Zapier/MCP connection is missing its server URL or token. Reconnect it in Settings → Integrations → Zapier." });
 
   // 3. Discovery, reduced to the workspace's OWN approved names. The provider's
