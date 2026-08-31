@@ -56,6 +56,9 @@ describe("Solo Campaigns approved contract", () => {
     expect(routingMigration).toContain("from public.growth_submission_dispatches d");
     expect(routingMigration).toContain("a.autonomy_lane");
     expect(routingMigration).not.toMatch(/limit\s+200/i);
+    expect(adapter).toContain('effective_autonomy_lane === "confirm"');
+    expect(adapter).toContain('effective_autonomy_lane === "off"');
+    expect(adapter).toContain('"Human-only" as const');
     expect(adapter).toContain("if (!current) return");
     expect(adapter).not.toMatch(/\.(insert|update|upsert|delete)\(/);
   });
@@ -84,6 +87,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain("Configure stages");
     expect(source).toContain("Add a stage");
     expect(source).toContain("Focused stage");
+    expect(source).toContain("??workspace.pipelines[0]");
     expect(source).toContain("Routing, approvals, and repair evidence");
     expect(source).not.toMatch(/pipeline.*revenue|pipeline.*ROI|pipeline.*payment/i);
   });
