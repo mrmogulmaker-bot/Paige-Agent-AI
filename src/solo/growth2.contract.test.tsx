@@ -9,6 +9,7 @@ const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260
 const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
 const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
 const taskGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831195500_solo_pipeline_task_tenant_guard.sql"), "utf8");
+const concurrencyMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831203500_solo_pipeline_concurrency_guards.sql"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -61,6 +62,8 @@ describe("Solo Campaigns approved contract", () => {
     expect(adapter).toContain('effective_autonomy_lane === "confirm"');
     expect(adapter).toContain('effective_autonomy_lane === "off"');
     expect(adapter).toContain('"Human-only" as const');
+    expect(adapter).toContain('"Active + approval-gated" as const');
+    expect(adapter).toContain('"Active + approval-gated + human-only" as const');
     expect(adapter).toContain("if (!current) return");
     expect(adapter).not.toMatch(/\.(insert|update|upsert|delete)\(/);
   });
@@ -108,6 +111,8 @@ describe("Solo Campaigns approved contract", () => {
     expect(taskGuardMigration).toContain("t.tenant_id=_tenant");
     expect(taskGuardMigration).toContain("TASK_DEAL_TENANT_MISMATCH");
     expect(taskGuardMigration).toContain("trg_validate_task_deal_tenant_link");
+    expect(concurrencyMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0))");
+    expect(concurrencyMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline::text,0))");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
