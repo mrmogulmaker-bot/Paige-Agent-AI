@@ -37,11 +37,29 @@ serve(async (req) => {
       singleUserId = body?.target_user_id || null;
     } catch { /* no body = bulk */ }
 
-    // Step 1: Find all completed reports
+    // Step 1: Find all completed reports whose extraction is not still WAITING ON A PERSON.
+    //
+    // `analysis_status = 'completed'` means the PDF was parsed, not that anyone approved what came
+    // out of it. Since the chat upload path stopped auto-writing extracted fields, an upload can
+    // sit legitimately parsed with `extraction_review_state = 'awaiting_review'` and zero rows in
+    // `credit_accounts` — because the human has not said yes yet.
+    //
+    // Step 2 below reads exactly that emptiness as "this needs backfilling" and re-runs the
+    // extraction. That costs a model call per unapproved upload every time this runs, and writes an
+    // `extraction_quality_log` row grading data nobody accepted. Worse in principle: it is a second
+    // door into the same auto-population the review gate was built to close.
+    //
+    // HONEST SCOPE (§13): with no matching `credit_accounts` rows the update loop has nothing to
+    // target, so today this leaks spend and misleading quality rows rather than unapproved
+    // *values*. The exclusion is here so that stays true if the loop ever learns to insert.
+    //
+    // NULL is included deliberately — every upload predating the review column has it, and those
+    // are exactly the historical rows this backfill exists to repair.
     let query = supabase
       .from("credit_report_uploads")
-      .select("id, user_id, client_id, file_path, file_name, analysis_status, backfill_status")
-      .in("analysis_status", ["completed", "complete"]);
+      .select("id, user_id, client_id, file_path, file_name, analysis_status, backfill_status, extraction_review_state")
+      .in("analysis_status", ["completed", "complete"])
+      .or("extraction_review_state.is.null,extraction_review_state.neq.awaiting_review");
     
     if (singleUserId) {
       query = query.eq("user_id", singleUserId);

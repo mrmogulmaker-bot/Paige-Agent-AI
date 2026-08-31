@@ -10,6 +10,8 @@ export interface SyncStatus {
   funding_readiness_recalculated?: boolean;
   error?: string;
   step?: string;
+  /** The document was read and a proposal is waiting on a person. Not a failure. */
+  awaiting_review?: boolean;
 }
 
 interface SyncStatusPanelProps {
@@ -30,6 +32,32 @@ export function SyncStatusPanel({ syncStatus, isLoading }: SyncStatusPanelProps)
   }
 
   if (!syncStatus) return null;
+
+  // AN EXTRACTION WAITING ON A PERSON IS NOT A FAILED SYNC, AND MUST NOT BE DRAWN AS ONE.
+  //
+  // This panel's contract is binary: `success` true renders "✅ Profile Sync Complete", false
+  // renders "⚠️ Sync Incomplete" with six red crosses and the message prefixed "Error:". Since the
+  // document path stopped auto-writing extracted fields, there is a third outcome — read
+  // correctly, nothing saved, waiting on you — and it was arriving here as `success: false` and
+  // being shown to the person as a six-way failure of something that had in fact worked.
+  //
+  // `success` stays false, because no sync happened and this panel's other readers are entitled to
+  // that. What changes is only that the failure TREATMENT is not applied to a non-failure. The
+  // sentence still renders, because on the client portal and the floating widget this panel is the
+  // only surface that shows it — dropping it would trade a misleading message for a missing one.
+  //
+  // OWED TO CLAUDE DESIGN: this reuses the neutral container already defined for the loading state
+  // in this file rather than introducing a new one. Whether "waiting on you" deserves its own
+  // treatment — an icon, a colour, an affordance to act on it — is CD's call, not ours; what is
+  // ours is that it must not be drawn as an error.
+  if (syncStatus.awaiting_review) {
+    if (!syncStatus.error) return null;
+    return (
+      <div className="bg-muted/30 border border-border rounded-lg p-3 mt-2">
+        <div className="text-xs text-muted-foreground">{syncStatus.error}</div>
+      </div>
+    );
+  }
 
   const scores = syncStatus.scores_synced;
   const items = [
