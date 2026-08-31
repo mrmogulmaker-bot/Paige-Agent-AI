@@ -190,8 +190,17 @@ psql_file() {   # <tag> <sql> [extra psql flags…]
   # Extra flags are quoted individually rather than pasted in as `$*`. Both
   # callers pass only `-v ON_ERROR_STOP=1` today, so nothing is wrong — but an
   # unquoted `$*` is re-split by bash AND by the `su` shell, which is the very
-  # hop this lane exists to remove, so it is not left as the one place it still
-  # happens.
+  # hop this lane exists to remove, so it is not left as the LAST PLACE AN
+  # UNQUOTED `$*` STILL DID.
+  #
+  # It is NOT the last unquoted expansion on the line below: $PGBIN, $BASE, $TMPD
+  # and $tag are re-split by the `su` shell too. Measured — a cluster base path
+  # containing a space reaches psql truncated at the space. They are left as they
+  # are because they are operator-supplied argv, the sole in-repo caller
+  # (clean-replay.sh) passes them quoted from its own layout, and the failure is
+  # LOUD: it lands as INCONCLUSIVE, never as a pass or a guard finding. Said here
+  # rather than left implied, because a previous revision of this comment claimed
+  # the flags were the last such place and a review measured otherwise.
   local flags="" f
   for f in "$@"; do flags+=" $(printf '%q' "$f")"; done
   PSQL_OUT="$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A$flags -f $TMPD/$tag.sql" 2>"$TMPD/$tag.err")"
