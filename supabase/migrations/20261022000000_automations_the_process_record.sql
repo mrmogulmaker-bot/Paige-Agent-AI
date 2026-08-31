@@ -225,10 +225,54 @@ BEGIN
 END;
 $$;
 
+-- THE POLICIES ARE NOT THE PERMISSION. RLS narrows what a role may reach; it does not grant the
+-- role anything. Without these the tables are readable by nobody through PostgREST, and the §32
+-- proof caught exactly that: every policy above was correct and the first authenticated SELECT
+-- still returned `42501 permission denied`. A process nobody can read is not a process record.
+GRANT SELECT ON public.paige_automation_triggers TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.paige_automations TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.paige_automation_acts TO authenticated;
+GRANT ALL ON public.paige_automation_triggers TO service_role;
+GRANT ALL ON public.paige_automations TO service_role;
+GRANT ALL ON public.paige_automation_acts TO service_role;
+
 DROP TRIGGER IF EXISTS trg_paige_automation_acts_changed ON public.paige_automation_acts;
 CREATE TRIGGER trg_paige_automation_acts_changed
   AFTER INSERT OR UPDATE OR DELETE ON public.paige_automation_acts
   FOR EACH ROW EXECUTE FUNCTION public.paige_automation_acts_changed();
+
+-- ── 6. A STARTER CATALOGUE — ONLY WHAT WAS VERIFIED, NOT THE FULL EIGHTY ──
+--
+-- The design pack declares eighty triggers, fifty-one of which it marks as having a live seam.
+-- Seeding all eighty here would mean asserting `is_live` for seventy-eight rows on the strength of
+-- a document rather than a check, and `is_live` is precisely the field a builder will trust to
+-- decide what it may offer a tenant. A wrong `true` produces a process that a human arms, believes
+-- is running, and which never fires — silence being the one failure mode this column exists to make
+-- impossible. So the full catalogue is slice C, and these four are the ones actually verified
+-- against production on 2026-08-31.
+INSERT INTO public.paige_automation_triggers (key, label, category, description, is_live, dark_reason)
+VALUES
+  -- Live because it needs no seam: a person says run it, or Paige does. It is also what makes a
+  -- process testable before its real trigger exists.
+  ('manual.run_now', 'Run on demand', 'manual',
+   'Someone starts this process themselves, or asks Paige to.', true, NULL),
+
+  -- Live, and the only process the pack marks proven end to end. Verified on prod: fourteen
+  -- triggers on the pipeline tables, `stage_automation_events` present WITH rows already recorded,
+  -- and pg_net installed to carry the dispatch.
+  ('pipeline.stage_changed', 'A deal changes stage', 'pipeline',
+   'A deal moves from one stage to another.', true, NULL),
+
+  -- Dark, with the reason the pack gives. Four triggers wait on this same missing substrate.
+  ('conversation.call_ended', 'A call ends', 'conversations',
+   'A phone call with a client finishes.', false,
+   'Calls are not yet recorded as events anything can listen to, so this could be armed but would never fire.'),
+
+  -- Dark. Three triggers wait on this one field.
+  ('record.lifecycle_moved', 'A record moves lifecycle stage', 'records',
+   'A contact or client moves to a different lifecycle stage.', false,
+   'Records do not carry a lifecycle field yet, so there is no change for this to notice.')
+ON CONFLICT (key) DO NOTHING;
 
 COMMENT ON TABLE public.paige_automations IS
   '§67 — a repeatable PROCESS: a trigger, its conditions, and an ordered chain of acts, with the lane a human granted it. The unit autonomy is actually granted to. Bounded above by the Trust Compass ceiling and below by each act''s own floor; a change to the acts drops an `auto` grant back to `confirm`, because the human granted a specific chain.';
@@ -236,3 +280,41 @@ COMMENT ON TABLE public.paige_automation_acts IS
   '§67 — one act in a process, in order. Names an action kind (carrying the action bus''s executor and its two structural CHECKs) or a tool key (carrying the per-tool floor). Exactly one, so an act has exactly one floor.';
 COMMENT ON TABLE public.paige_automation_triggers IS
   '§67 — the trigger catalogue. `is_live` says whether a seam actually emits this trigger today; `dark_reason` is required exactly when it does not, so a process that can never fire says why instead of failing silently.';
+
+-- ── §32 PROOF — driven against production Postgres inside BEGIN..ROLLBACK, 2026-08-31 ──
+--
+-- Sixteen cases, all passing. One is a NEGATIVE CONTROL, and one corrected a mistaken expectation
+-- of mine rather than a mistake in the code — both are recorded, because a proof that only ever
+-- confirms what its author already believed has not tested anything.
+--
+--   A0  the catalogue seeds live and dark, every dark one with a reason ... 2 live / 2 dark+reason
+--   A1  a LIVE trigger may not carry a dark reason ........................ rejected (23514)
+--   A2  a DARK trigger MUST say why — silence is not allowed .............. rejected (23514)
+--   A3  a process cannot name a trigger that does not exist ............... rejected (23503)
+--   A4  an act naming NEITHER a kind nor a tool is rejected ............... rejected (23514)
+--   A5  an act naming BOTH is rejected — one act, one floor ............... rejected (23514)
+--   A6  auto granted to an EMPTY chain does not survive the chain arriving  confirm
+--   A6b a grant made AFTER the chain exists holds ......................... auto
+--   A6c REORDERING the same acts is a change and drops the grant .......... confirm
+--   A6d REMOVING an act drops the grant .................................. confirm
+--   A7  touching an act WITHOUT changing it keeps the grant ............... auto
+--   A8  CHANGING the chain drops an auto grant back to confirm ............ confirm
+--   A9  off stays off — a change never re-enables what a human turned off . off
+--   A10 NEGATIVE CONTROL — trigger disabled, an auto grant SURVIVES ....... auto
+--   A11 RLS: a caller with no membership sees no processes ................ 0 rows
+--   A12 …but the trigger CATALOGUE is readable, so a builder can offer one  4 rows
+--
+-- A10 is why A8/A6c/A6d mean anything: with `trg_paige_automation_acts_changed` disabled, the same
+-- edit leaves the grant at `auto`. The trigger is doing the work, not some incidental default.
+--
+-- A6 FAILED ON THE FIRST RUN, and the code was right. I had asserted that adding the first act to a
+-- process created at `auto` should keep the grant, reasoning that a NEW chain is not a CHANGED one.
+-- It returned `confirm`. On reflection that is the correct answer and the better rule: a process
+-- with no acts has been granted autonomy over NOTHING, so when the acts arrive the human has not
+-- seen what they are said to have approved. A6b records the sequence that actually holds — build
+-- the chain, then grant it — which is also the order a person or Paige would follow.
+--
+-- THE GRANTS WERE MISSING AND THE PROOF CAUGHT IT. Every policy above was correct and the first
+-- authenticated SELECT still returned `42501 permission denied`, because RLS narrows access it does
+-- not confer. See the GRANT block for why that would have shipped a process record no tenant could
+-- read.
