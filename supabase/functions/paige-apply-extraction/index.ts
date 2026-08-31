@@ -213,9 +213,25 @@ serve(async (req) => {
     // RELEASE THE CLAIM so the person can try again rather than losing the proposal. Without this,
     // a transient sync failure would leave the row `applied` with nothing applied — the worst of
     // both, and unrecoverable from the card.
-    await admin.from("credit_report_uploads")
+    //
+    // TWO THINGS THIS RELEASE HAS TO GET RIGHT, both found by review of the pushed diff.
+    // It reads its own error, because postgrest RESOLVES a rejection rather than throwing — a
+    // release that silently failed would leave exactly the unrecoverable state this exists to
+    // prevent, and say nothing. And it is CONDITIONAL on the row still being `applied`: without
+    // that predicate a concurrent decline would be stomped back to `awaiting_review`, resurrecting
+    // a proposal the person had just dismissed.
+    const { data: released, error: relErr } = await admin.from("credit_report_uploads")
       .update({ extraction_review_state: "awaiting_review" })
-      .eq("id", body.upload_id);
+      .eq("id", body.upload_id)
+      .eq("extraction_review_state", "applied")
+      .select("id").maybeSingle();
+    if (relErr || !released) {
+      console.error("[apply-extraction] CLAIM NOT RELEASED", JSON.stringify({
+        upload_id: body.upload_id,
+        code: relErr?.code ?? null,
+        message: relErr?.message ?? (released ? null : "row was no longer claimed"),
+      }));
+    }
     return json({ error: "I couldn't save those to the profile. Nothing was changed — try again." }, 502);
   }
 

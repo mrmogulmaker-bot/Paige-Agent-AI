@@ -1040,6 +1040,22 @@ claim its approval.
 clamped by the Trust Compass ceiling (`20261021000000`); the token changes only how consent is
 carried, never who may act.
 
+**THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
+earlier commit message said two tools "both default to confirm now"; that is true inside the chat
+function and NOT over MCP. `paige-mcp` performs zero autonomy resolution for ANY tool — this is a
+pre-existing architectural gap, not a regression introduced with the gate — so an MCP caller
+(including the Super Admin connector) reaches `delegate_to_subagent` and every other write governed
+only by its permission scope (`workflows.run`, enforced at `paige-mcp/index.ts:5159`), never by the
+tenant's autonomy setting or the Trust Compass ceiling.
+
+It is recorded here rather than fixed in passing, deliberately. MCP callers have no confirm
+affordance at all, so bolting the lane onto that surface would make every gated MCP write
+permanently un-executable — which is precisely the failure the confirm-gate repair above exists to
+undo, repeated on a second surface. Closing it properly means giving MCP a way to carry consent
+(the proposal token is the obvious candidate, since it needs no UI), and that is its own slice with
+its own §37 producer inventory. Until then the honest statement is the one above: two different
+boundaries, both real, governing different things.
+
 ### PAIGE Chat — repeatable processes (§67 automations), every chat surface
 
 **§66, same commit as the ship.** A tenant can now describe work they do the same way every time
