@@ -1,41 +1,45 @@
-<title>Solo Automations Recovery</title>
+<title>Automations Under Integrations</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 /* ═══════════════════════════════════════════════════════════════════════════
-   FLOW PROTOTYPE — Solo Automations destination + Integrations handoff
+   FLOW PROTOTYPE — Automations as a sub-tab of Settings → Integrations
    Throwaway · read-only · zero production mutation.
 
-   PALETTE PROVENANCE: every --pg-* / --k-* value below is lifted VERBATIM from
-   src/index.css L243–L313 (the shipped Mineral/Obsidian token set). Nothing here
-   is an authored colour. The review harness uses its own --rv-* slate scale,
-   deliberately outside the pack palette, so developer chrome can never be
-   mistaken for product surface (flow-prototype §4).
+   OWNER RULING (2026-08-31): "This is where my menus should be located and NOT
+   changed to what you desire. Make sure they stay like this and you find a sub
+   tab to put in Integrations for Automations or something."
+
+   So: the rail is UNTOUCHED. Six slots in the main rail, the eight-item Settings
+   contextual rail exactly as shipped. The only new structure is a sub-tab strip
+   inside Integrations, copying the pattern Command Center already uses
+   (Systems Check | Mind).
+
+   PALETTE PROVENANCE: every --pg-* / --k-* value is lifted VERBATIM from
+   src/index.css L243–L313 (the shipped Mineral/Obsidian set). No colour here is
+   authored. The review harness uses its own --rv-* slate, deliberately outside
+   the pack palette, so developer chrome can never read as product surface.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  /* Review harness — NOT product tokens. Cool slate, off-palette on purpose. */
   --rv-bg: #eceef1; --rv-panel: #f7f8fa; --rv-edge: #ccd2da; --rv-edge-2: #aab4c0;
   --rv-ink: #1b2027; --rv-ink-2: #48525f; --rv-faint: #6d7885;
-  --rv-live: #1f6f4a; --rv-mock: #8a5a12; --rv-dead: #9a3b30;
-  --rv-focus: #2f6fd0;
+  --rv-live: #1f6f4a; --rv-mock: #8a5a12; --rv-dead: #9a3b30; --rv-focus: #2f6fd0;
   color-scheme: light;
 }
-:root:not([data-theme="light"]) {
-  @media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
     --rv-bg: #14171c; --rv-panel: #1b1f26; --rv-edge: #2e353f; --rv-edge-2: #434c58;
     --rv-ink: #eef1f5; --rv-ink-2: #b3bcc7; --rv-faint: #8b95a2;
-    --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287;
-    --rv-focus: #7aa9ee;
+    --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287; --rv-focus: #7aa9ee;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --rv-bg: #14171c; --rv-panel: #1b1f26; --rv-edge: #2e353f; --rv-edge-2: #434c58;
   --rv-ink: #eef1f5; --rv-ink-2: #b3bcc7; --rv-faint: #8b95a2;
-  --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287;
-  --rv-focus: #7aa9ee;
+  --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287; --rv-focus: #7aa9ee;
   color-scheme: dark;
 }
 
@@ -63,12 +67,10 @@ body {
   --pg-graphite:#b9b2a6; --pg-lift:rgba(45,40,50,.03);
   --pg-violet:#655a96; --pg-positive:#327458; --pg-warning:#986322; --pg-negative:#a5483d;
   --pg-e1:inset 0 1px rgba(255,255,255,.7);
-  --pg-e2:0 1px 2px rgba(45,40,50,.10);
   --pg-e4:0 24px 60px rgba(45,40,50,.16);
   --pg-rim:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(45,40,50,.07);
   --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 1px rgba(45,40,50,.055), 0 4px 10px -4px rgba(45,40,50,.12);
   --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(45,40,50,.07), 0 14px 30px -12px rgba(45,40,50,.17);
-  --pg-lift-3:inset 0 1px 0 #fff, 0 6px 12px rgba(45,40,50,.09), 0 32px 64px -20px rgba(45,40,50,.22);
   --pg-inset:inset 0 1px 2px rgba(45,40,50,.1), inset 0 -1px 0 rgba(255,255,255,.85);
   --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
   --k-automation:#4d6f92; --k-integration:#3f7a5f; --k-skill:#9a7638; --k-agent:#6f5eb0;
@@ -85,12 +87,10 @@ body {
   --pg-graphite:#2a2730; --pg-lift:rgba(255,255,255,.018);
   --pg-violet:#9b8de0; --pg-positive:#8fd1ae; --pg-warning:#edc17f; --pg-negative:#eda093;
   --pg-e1:inset 0 1px rgba(255,255,255,.025);
-  --pg-e2:0 1px 2px rgba(0,0,0,.45);
   --pg-e4:0 28px 70px rgba(0,0,0,.42);
   --pg-rim:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.5);
   --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055), 0 1px 1px rgba(0,0,0,.3), 0 4px 12px -4px rgba(0,0,0,.42);
   --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.32), 0 16px 34px -12px rgba(0,0,0,.52);
-  --pg-lift-3:inset 0 1px 0 rgba(255,255,255,.085), 0 6px 12px rgba(0,0,0,.36), 0 36px 72px -20px rgba(0,0,0,.62);
   --pg-inset:inset 0 1px 2px rgba(0,0,0,.42), inset 0 -1px 0 rgba(255,255,255,.035);
   --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
   --k-automation:#8fa9c4; --k-integration:#8fb9a4; --k-skill:#c7a978; --k-agent:#a99ad6;
@@ -100,8 +100,7 @@ body {
 .rv-bar {
   position: sticky; top: 0; z-index: 60;
   display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
-  padding: 11px 18px; background: var(--rv-panel);
-  border-bottom: 1px solid var(--rv-edge);
+  padding: 11px 18px; background: var(--rv-panel); border-bottom: 1px solid var(--rv-edge);
 }
 .rv-brand { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
 .rv-brand strong { font: 600 14px/1.2 "Schibsted Grotesk", system-ui, sans-serif; letter-spacing: -.01em; }
@@ -116,9 +115,7 @@ body {
 }
 .rv-seg button:hover { background: var(--rv-panel); color: var(--rv-ink); }
 .rv-seg button[aria-pressed="true"] { background: var(--rv-ink); color: var(--rv-panel); }
-.rv-bar :focus-visible, .rv-drawer :focus-visible, .rv-approve :focus-visible {
-  outline: 2px solid var(--rv-focus); outline-offset: 2px;
-}
+.rv-bar :focus-visible, .rv-drawer :focus-visible { outline: 2px solid var(--rv-focus); outline-offset: 2px; }
 
 .rv-note {
   padding: 10px 18px; background: var(--rv-panel); border-bottom: 1px solid var(--rv-edge);
@@ -126,22 +123,18 @@ body {
 }
 .rv-note b { color: var(--rv-ink); font-weight: 600; }
 
-/* Stage */
 .rv-stage { display: grid; place-items: start center; padding: 22px 18px 30px; overflow-x: auto; }
 .rv-frame {
   position: relative; flex: none; overflow: hidden;
   border: 1px solid var(--rv-edge-2); border-radius: 12px;
-  box-shadow: 0 18px 44px -20px rgba(15,20,28,.32);
-  transform-origin: top center;
+  box-shadow: 0 18px 44px -20px rgba(15,20,28,.32); transform-origin: top center;
 }
 .rv-vp-tag {
-  position: absolute; z-index: 3; right: 8px; bottom: 8px;
-  padding: 3px 8px; border-radius: 6px;
+  position: absolute; z-index: 3; right: 8px; bottom: 8px; padding: 3px 8px; border-radius: 6px;
   background: rgba(20,24,30,.82); color: #f2f5f8;
   font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .06em; pointer-events: none;
 }
 
-/* Truth chips — used in BOTH harness and product surfaces */
 .t-chip {
   display: inline-flex; align-items: center; gap: 5px; flex: none;
   padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor;
@@ -162,7 +155,6 @@ body {
 .pg-shell :focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 3px; }
 .pg-shell button { font: inherit; }
 
-/* Rail — vertical only, never a horizontal scroller */
 .pg-rail {
   width: 214px; display: flex; flex-direction: column; overflow: hidden;
   background: var(--pg-nav); border-right: 1px solid var(--pg-line-strong); box-shadow: var(--pg-e1);
@@ -177,10 +169,7 @@ body {
 .pg-brand strong { font: 700 13px/1 var(--pg-font-display); letter-spacing: .18em; }
 .pg-brand span { display: block; margin-top: 4px; font: 500 9.5px/1 var(--pg-font-data); letter-spacing: .1em; color: var(--pg-muted); }
 .pg-navlist { display: flex; flex-direction: column; gap: 2px; padding: 9px 8px; overflow-y: auto; overflow-x: hidden; }
-.pg-navlist .pg-navlabel {
-  margin: 10px 11px 5px; font: 700 9.5px/1 var(--pg-font-ui); letter-spacing: .14em;
-  text-transform: uppercase; color: var(--pg-faint);
-}
+.pg-navlabel { margin: 10px 11px 5px; font: 700 9.5px/1 var(--pg-font-ui); letter-spacing: .14em; text-transform: uppercase; color: var(--pg-faint); }
 .pg-nav-a {
   position: relative; display: flex; align-items: center; gap: 10px;
   min-height: 34px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--pg-r-chip);
@@ -190,14 +179,8 @@ body {
 .pg-nav-a:hover { color: var(--pg-ink); background: var(--pg-lift); border-color: var(--pg-line-soft); }
 .pg-nav-a:active { box-shadow: var(--pg-inset); }
 .pg-nav-a.is-active { color: var(--pg-ink); background: var(--pg-surface); border-color: var(--pg-line); box-shadow: var(--pg-inset); }
-.pg-nav-a.is-active i {
-  position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
-  border-radius: var(--pg-r-pill); background: var(--pg-gold-fill);
-}
+.pg-nav-a.is-active i { position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: var(--pg-r-pill); background: var(--pg-gold-fill); }
 .pg-nav-a svg { flex: none; }
-.pg-nav-a .pg-sub-mark { margin-left: auto; font: 500 9px/1 var(--pg-font-data); color: var(--pg-faint); letter-spacing: .06em; }
-.pg-subnav { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 2px 19px; padding-left: 9px; border-left: 1px solid var(--pg-line-soft); }
-.pg-subnav .pg-nav-a { min-height: 30px; font-size: 12.2px; }
 .pg-rail-foot { margin-top: auto; padding: 9px 10px; border-top: 1px solid var(--pg-line-soft); }
 .pg-seal { display: flex; align-items: center; gap: 9px; padding: 7px 4px; }
 .pg-seal > span {
@@ -205,11 +188,9 @@ body {
   border-radius: var(--pg-r-seal); background: var(--pg-graphite); color: var(--pg-gold-core);
   box-shadow: var(--pg-rim); font: 700 10.5px/1 var(--pg-font-ui);
 }
-.pg-seal div { min-width: 0; }
-.pg-seal strong { display: block; font-size: 12.2px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-seal strong { display: block; font-size: 12.2px; font-weight: 600; }
 .pg-seal small { display: block; font-size: 9.8px; color: var(--pg-muted); }
 
-/* Canvas + spine */
 .pg-canvas { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--pg-canvas); }
 .pg-spine {
   flex: none; display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 18px;
@@ -221,64 +202,71 @@ body {
 .pg-cmd {
   flex: 0 1 380px; margin-inline: auto; display: flex; align-items: center; gap: 8px;
   min-height: 32px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-pill);
-  color: var(--pg-faint); background: transparent; font-size: 12.3px; cursor: default;
+  color: var(--pg-faint); font-size: 12.3px; cursor: default;
 }
 .pg-cmd kbd { margin-left: auto; font: 10px var(--pg-font-data); color: var(--pg-faint); }
-.pg-spine-actions { display: flex; gap: 6px; margin-left: auto; }
 .pg-ibtn {
-  width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer;
+  width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; margin-left: auto;
   border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
   color: var(--pg-muted); background: var(--pg-surface); box-shadow: var(--pg-rim);
   transition: color .14s, background .14s, border-color .14s;
 }
 .pg-ibtn:hover { color: var(--pg-ink); background: var(--pg-raised); border-color: var(--pg-line-strong); }
 
-/* THE single vertical scroll owner */
-.pg-main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
-.pg-page { max-width: 1180px; margin: 0 auto; padding: 20px 26px 44px; display: flex; flex-direction: column; gap: 18px; }
+/* SUB-TAB STRIP — the pattern Command Center already uses (Systems Check | Mind) */
+.pg-substrip {
+  flex: none; display: flex; align-items: stretch; gap: 4px; padding: 0 22px;
+  background: var(--pg-canvas); border-bottom: 1px solid var(--pg-line-soft);
+}
+.pg-subtab {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  padding: 11px 12px 10px; border: 0; background: transparent; cursor: pointer;
+  color: var(--pg-muted); font-size: 13px; transition: color .14s;
+}
+.pg-subtab:hover { color: var(--pg-ink); }
+.pg-subtab[aria-selected="true"] { color: var(--pg-ink); font-weight: 600; }
+.pg-subtab[aria-selected="true"]::after {
+  content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px;
+  border-radius: 2px 2px 0 0; background: var(--pg-gold-fill);
+}
+.pg-subtab svg { flex: none; }
+.pg-subtab-count {
+  font: 500 9.6px/1 var(--pg-font-data); letter-spacing: .06em;
+  padding: 3px 6px; border-radius: 5px; color: var(--pg-faint);
+  border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
+}
 
-/* Page head — compact by rule, never a hero */
+.pg-main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.pg-page { max-width: 1180px; margin: 0 auto; padding: 20px 26px 44px; display: flex; flex-direction: column; gap: 16px; }
+
 .pg-head { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
 .pg-head-copy { min-width: 0; flex: 1 1 340px; }
+.pg-head span.pg-eyebrow { display: block; margin-bottom: 5px; }
 .pg-head h1 { font-size: 20px; font-weight: 600; letter-spacing: -.015em; text-wrap: balance; }
-.pg-head p { margin: 5px 0 0; font-size: 12.9px; color: var(--pg-muted); max-width: 68ch; }
-.pg-head-aside { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 2px; }
+.pg-head p { margin: 5px 0 0; font-size: 12.9px; color: var(--pg-muted); max-width: 70ch; }
 
-/* Plates */
-.pg-plate {
-  border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
-  background: var(--pg-raised); box-shadow: var(--pg-lift-1);
-}
-.pg-plate-hd {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 12px 15px; border-bottom: 1px solid var(--pg-line-soft);
-}
-.pg-plate-hd h2 { font-size: 13.6px; font-weight: 600; letter-spacing: -.005em; }
+.pg-plate { border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate); background: var(--pg-raised); box-shadow: var(--pg-lift-1); }
+.pg-plate-hd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 15px; border-bottom: 1px solid var(--pg-line-soft); }
+.pg-plate-hd h2 { font-size: 13.6px; font-weight: 600; }
 .pg-plate-hd p { margin: 2px 0 0; font-size: 11.8px; color: var(--pg-muted); }
 .pg-plate-hd .pg-hd-copy { min-width: 0; margin-right: auto; }
-
 .pg-eyebrow { font: 500 9.5px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; color: var(--pg-faint); }
 
-/* Truth badge in product voice */
 .pg-truth {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   padding: 4px 9px; border-radius: var(--pg-r-pill);
   border: 1px solid var(--pg-line); background: var(--pg-surface);
-  font: 500 9.8px/1.3 var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--pg-muted);
+  font: 500 9.8px/1.3 var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--pg-muted);
 }
 .pg-truth::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .pg-truth[data-v="live"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 40%, var(--pg-line)); }
 .pg-truth[data-v="held"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 40%, var(--pg-line)); }
-.pg-truth[data-v="none"] { color: var(--pg-muted); }
 
-/* Lane rows — the Automations body */
 .pg-lanes { display: flex; flex-direction: column; }
 .pg-lane {
   display: grid; grid-template-columns: 3px 1fr auto; gap: 0 14px; align-items: start;
   width: 100%; padding: 14px 15px; text-align: left; cursor: pointer;
-  background: transparent; border: 0; border-top: 1px solid var(--pg-line-soft);
-  transition: background .14s;
+  background: transparent; border: 0; border-top: 1px solid var(--pg-line-soft); transition: background .14s;
 }
 .pg-lanes .pg-lane:first-child { border-top: 0; }
 .pg-lane:hover { background: var(--pg-surface); }
@@ -300,37 +288,124 @@ body {
   font: 400 10.6px/1.5 var(--pg-font-data); color: var(--pg-muted);
   padding: 2px 6px; border: 1px solid var(--pg-line-soft); border-radius: 5px; background: var(--pg-surface);
 }
-.pg-lane-end { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex: none; padding-top: 1px; }
-.pg-lane-open { font: 500 11.4px/1 var(--pg-font-ui); color: var(--pg-muted); display: flex; align-items: center; gap: 5px; }
-.pg-lane:hover .pg-lane-open { color: var(--pg-gold-core); }
+.pg-lane-end { display: flex; align-items: center; gap: 5px; flex: none; padding-top: 2px; font: 500 11.4px/1 var(--pg-font-ui); color: var(--pg-muted); }
+.pg-lane:hover .pg-lane-end { color: var(--pg-gold-core); }
 
-/* Honest absence block */
-.pg-absence { padding: 17px 16px; display: flex; flex-direction: column; gap: 8px; }
-.pg-absence h3 { font-size: 14px; font-weight: 600; letter-spacing: -.008em; }
+.pg-absence { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.pg-absence h3 { font-size: 14px; font-weight: 600; }
 .pg-absence p { margin: 0; font-size: 12.6px; color: var(--pg-ink-2); line-height: 1.6; max-width: 74ch; }
-.pg-absence .pg-draft-flag {
+.pg-draft-flag {
   margin-top: 3px; padding: 8px 10px; border-radius: var(--pg-r-chip);
   border: 1px dashed color-mix(in srgb, var(--pg-gold-deep) 45%, var(--pg-line));
   font-size: 11.5px; color: var(--pg-muted); background: color-mix(in srgb, var(--pg-gold-bloom) 22%, transparent);
 }
 
-/* Recovery path */
-.pg-steps { list-style: none; margin: 0; padding: 4px 15px 15px; display: flex; flex-direction: column; gap: 0; counter-reset: s; }
-.pg-steps li {
-  counter-increment: s; display: grid; grid-template-columns: 22px 1fr; gap: 12px;
-  padding: 11px 0; border-top: 1px solid var(--pg-line-soft);
-}
+.pg-steps { list-style: none; margin: 0; padding: 4px 15px 15px; display: flex; flex-direction: column; counter-reset: s; }
+.pg-steps li { counter-increment: s; display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--pg-line-soft); }
 .pg-steps li:first-child { border-top: 0; }
 .pg-steps li::before {
-  content: counter(s); grid-row: 1 / span 2;
-  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
-  border: 1px solid var(--pg-line); color: var(--pg-muted);
-  font: 500 10.5px/1 var(--pg-font-data);
+  content: counter(s); width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid var(--pg-line); color: var(--pg-muted); font: 500 10.5px/1 var(--pg-font-data);
 }
 .pg-steps strong { display: block; font-size: 12.7px; font-weight: 600; }
 .pg-steps span { display: block; margin-top: 3px; font-size: 12.1px; color: var(--pg-muted); line-height: 1.55; }
+.pg-steps code { font: 400 11px/1 var(--pg-font-data); }
 
-/* Integrations */
+/* ── Intended workspace ─────────────────────────────────────────────────── */
+.pg-flowbar {
+  display: flex; align-items: stretch; gap: 0; padding: 0; overflow-x: auto;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
+  background: var(--pg-raised); box-shadow: var(--pg-lift-1);
+}
+.pg-step {
+  position: relative; flex: 1 1 0; min-width: 128px; display: flex; flex-direction: column; gap: 5px;
+  padding: 11px 14px; border: 0; border-left: 1px solid var(--pg-line-soft);
+  background: transparent; cursor: pointer; text-align: left; transition: background .14s;
+}
+.pg-step:first-child { border-left: 0; }
+.pg-step:hover { background: var(--pg-surface); }
+.pg-step[aria-current="step"] { background: var(--pg-surface); }
+.pg-step[aria-current="step"]::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--pg-gold-fill);
+}
+.pg-step-n { display: flex; align-items: center; gap: 7px; }
+.pg-step-n b {
+  width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%;
+  font: 500 9.6px/1 var(--pg-font-data); border: 1px solid var(--pg-line); color: var(--pg-muted);
+}
+.pg-step[aria-current="step"] .pg-step-n b { border-color: var(--pg-gold-fill); color: var(--pg-gold-core); }
+.pg-step-n span { font-size: 12.6px; font-weight: 600; color: var(--pg-ink); }
+.pg-step small { font-size: 10.4px; letter-spacing: .06em; text-transform: uppercase; font-family: var(--pg-font-data); }
+.pg-step small[data-c="real"] { color: var(--pg-positive); }
+.pg-step small[data-c="gap"] { color: var(--pg-warning); }
+
+.pg-two { display: grid; grid-template-columns: minmax(0, 290px) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1180px) { .pg-two { grid-template-columns: 1fr; } }
+
+.pg-rulelist { display: flex; flex-direction: column; }
+.pg-rule {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; width: 100%;
+  padding: 11px 13px; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-top: 1px solid var(--pg-line-soft); transition: background .14s;
+}
+.pg-rulelist .pg-rule:first-child { border-top: 0; }
+.pg-rule:hover { background: var(--pg-surface); }
+.pg-rule[aria-current="true"] { background: var(--pg-surface); box-shadow: inset 2px 0 0 var(--pg-gold-fill); }
+.pg-rule strong { font-size: 12.6px; font-weight: 600; }
+.pg-rule em { grid-column: 1 / -1; font-style: normal; font-size: 11.5px; color: var(--pg-muted); line-height: 1.5; }
+
+.pg-form { display: flex; flex-direction: column; gap: 0; }
+.pg-row { display: grid; grid-template-columns: 92px 1fr; gap: 12px; padding: 13px 15px; border-top: 1px solid var(--pg-line-soft); align-items: start; }
+.pg-form > .pg-row:first-child { border-top: 0; }
+.pg-row > .pg-eyebrow { padding-top: 7px; }
+.pg-row-body { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.pg-ctl {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 11px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  background: var(--pg-surface); color: var(--pg-ink-2); font-size: 12.4px; cursor: pointer;
+  transition: border-color .14s, background .14s, color .14s;
+}
+.pg-ctl:hover { border-color: var(--pg-line-strong); background: var(--pg-raised); color: var(--pg-ink); }
+.pg-ctl[aria-pressed="true"] { border-color: var(--pg-line-authority); background: var(--pg-raised); color: var(--pg-ink); box-shadow: var(--pg-lift-1); font-weight: 500; }
+.pg-ctl[data-missing="true"] { border-style: dashed; color: var(--pg-muted); cursor: not-allowed; }
+.pg-ctlrow { display: flex; gap: 7px; flex-wrap: wrap; }
+.pg-hint { font-size: 11.4px; color: var(--pg-faint); line-height: 1.5; }
+.pg-hint code { font: 400 10.6px/1 var(--pg-font-data); }
+
+.pg-contract {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font: 500 9.4px/1 var(--pg-font-data); letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 5px; border: 1px solid currentColor;
+}
+.pg-contract[data-c="real"] { color: var(--pg-positive); }
+.pg-contract[data-c="gap"] { color: var(--pg-warning); }
+
+.pg-outcome { display: flex; flex-direction: column; gap: 0; }
+.pg-outcome-row { display: grid; grid-template-columns: 15px 1fr auto; gap: 10px; align-items: baseline; padding: 9px 15px; border-top: 1px solid var(--pg-line-soft); }
+.pg-outcome .pg-outcome-row:first-child { border-top: 0; }
+.pg-outcome-row i { width: 7px; height: 7px; border-radius: 50%; background: var(--pg-line-strong); align-self: center; }
+.pg-outcome-row[data-o="pass"] i { background: var(--pg-positive); }
+.pg-outcome-row[data-o="stop"] i { background: var(--pg-negative); }
+.pg-outcome-row[data-o="queue"] i { background: var(--pg-warning); }
+.pg-outcome-row strong { font-size: 12.3px; font-weight: 500; color: var(--pg-ink-2); }
+.pg-outcome-row code { font: 400 10.6px/1 var(--pg-font-data); color: var(--pg-faint); }
+
+.pg-gapcard {
+  display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 13px 15px;
+  border-top: 1px solid var(--pg-line-soft);
+}
+.pg-gapcard:first-of-type { border-top: 0; }
+.pg-gapcard > b {
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--pg-warning) 50%, var(--pg-line));
+  color: var(--pg-warning); font: 500 10.5px/1 var(--pg-font-data);
+}
+.pg-gapcard div { min-width: 0; }
+.pg-gapcard strong { display: block; font-size: 12.7px; font-weight: 600; }
+.pg-gapcard p { margin: 4px 0 0; font-size: 12.1px; color: var(--pg-ink-2); line-height: 1.55; max-width: 76ch; }
+.pg-gapcard p code { font: 400 11px/1 var(--pg-font-data); color: var(--pg-muted); }
+.pg-gapcard .pg-have { margin-top: 6px; font-size: 11.4px; color: var(--pg-faint); }
+
 .pg-filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .pg-filters button {
   padding: 5px 11px; border-radius: var(--pg-r-pill); cursor: pointer;
@@ -352,28 +427,23 @@ body {
 .pg-prov-hd { display: flex; align-items: center; gap: 10px; }
 .pg-prov-mark {
   width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--pg-r-chip);
-  font: 600 10px/1 var(--pg-font-data); letter-spacing: .02em;
+  font: 600 10px/1 var(--pg-font-data);
   color: var(--k-integration); background: color-mix(in srgb, var(--k-integration) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--k-integration) 30%, transparent);
 }
 .pg-prov[data-cat="automation"] .pg-prov-mark { color: var(--k-automation); background: color-mix(in srgb, var(--k-automation) 15%, transparent); border-color: color-mix(in srgb, var(--k-automation) 30%, transparent); }
-.pg-prov[data-cat="skill"] .pg-prov-mark { color: var(--k-skill); background: color-mix(in srgb, var(--k-skill) 15%, transparent); border-color: color-mix(in srgb, var(--k-skill) 30%, transparent); }
-.pg-prov[data-cat="agent"] .pg-prov-mark { color: var(--k-agent); background: color-mix(in srgb, var(--k-agent) 15%, transparent); border-color: color-mix(in srgb, var(--k-agent) 30%, transparent); }
+.pg-prov[data-cat="developer"] .pg-prov-mark { color: var(--k-agent); background: color-mix(in srgb, var(--k-agent) 15%, transparent); border-color: color-mix(in srgb, var(--k-agent) 30%, transparent); }
+.pg-prov[data-cat="financial"] .pg-prov-mark { color: var(--k-skill); background: color-mix(in srgb, var(--k-skill) 15%, transparent); border-color: color-mix(in srgb, var(--k-skill) 30%, transparent); }
 .pg-prov-hd div { min-width: 0; margin-right: auto; }
 .pg-prov-hd strong { display: block; font-size: 13px; font-weight: 600; }
 .pg-prov-hd small { display: block; margin-top: 1px; font-size: 11.2px; color: var(--pg-muted); }
-.pg-prov-state { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-.pg-prov-state div { min-width: 0; }
+.pg-prov-state { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 0; }
 .pg-prov-state dt { font: 500 9.2px/1 var(--pg-font-ui); letter-spacing: .11em; text-transform: uppercase; color: var(--pg-faint); }
 .pg-prov-state dd { margin: 4px 0 0; font-size: 12px; color: var(--pg-ink-2); }
 .pg-prov-foot { display: flex; align-items: center; gap: 8px; padding-top: 9px; border-top: 1px solid var(--pg-line-soft); }
 .pg-prov-foot span { font-size: 11.2px; color: var(--pg-faint); margin-left: auto; }
 
-/* Slide-out */
-.pg-scrim {
-  position: absolute; inset: 0; z-index: 40; background: rgba(10,8,14,.42);
-  opacity: 0; pointer-events: none; transition: opacity .2s;
-}
+.pg-scrim { position: absolute; inset: 0; z-index: 40; background: rgba(10,8,14,.42); opacity: 0; pointer-events: none; transition: opacity .2s; }
 .pg-shell[data-panel="open"] .pg-scrim { opacity: 1; pointer-events: auto; }
 .pg-slide {
   position: absolute; z-index: 41; top: 0; right: 0; bottom: 0; width: min(468px, 82%);
@@ -384,7 +454,7 @@ body {
 .pg-shell[data-panel="open"] .pg-slide { transform: translateX(0); }
 .pg-slide-hd { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px; border-bottom: 1px solid var(--pg-line-soft); }
 .pg-slide-hd div { min-width: 0; margin-right: auto; }
-.pg-slide-hd h2 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.pg-slide-hd h2 { font-size: 15px; font-weight: 600; }
 .pg-slide-hd p { margin: 3px 0 0; font-size: 11.8px; color: var(--pg-muted); }
 .pg-slide-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .pg-field { display: flex; flex-direction: column; gap: 6px; }
@@ -392,94 +462,47 @@ body {
 .pg-evidence {
   padding: 11px 12px; border-radius: var(--pg-r-chip);
   border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
-  font: 400 11.2px/1.65 var(--pg-font-data); color: var(--pg-muted);
-  white-space: pre-wrap; word-break: break-word;
+  font: 400 11.2px/1.65 var(--pg-font-data); color: var(--pg-muted); white-space: pre-wrap; word-break: break-word;
 }
 .pg-slide-foot { flex: none; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--pg-line-soft); background: var(--pg-spine); }
 .pg-btn {
   display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 13px;
   border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); cursor: pointer;
   background: var(--pg-surface); color: var(--pg-ink-2); font-size: 12.3px;
-  transition: background .14s, border-color .14s, color .14s;
 }
-.pg-btn:hover:not(:disabled) { background: var(--pg-raised); border-color: var(--pg-line-strong); color: var(--pg-ink); }
 .pg-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-/* Matrix drawer + approval */
 .rv-drawer { border-top: 1px solid var(--rv-edge); background: var(--rv-panel); }
 .rv-drawer-in { max-width: 1180px; margin: 0 auto; padding: 20px 18px 26px; }
-.rv-drawer h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-.rv-drawer > .rv-drawer-in > p { margin: 0 0 16px; font-size: 12.8px; color: var(--rv-ink-2); max-width: 76ch; }
+.rv-drawer h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.rv-drawer > .rv-drawer-in > p { margin: 0 0 16px; font-size: 12.8px; color: var(--rv-ink-2); max-width: 78ch; }
 .rv-tablewrap { overflow-x: auto; border: 1px solid var(--rv-edge); border-radius: 10px; background: var(--rv-bg); }
 table.rv-matrix { width: 100%; border-collapse: collapse; font-size: 12.3px; min-width: 720px; }
 table.rv-matrix th, table.rv-matrix td { padding: 10px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--rv-edge); }
-table.rv-matrix thead th {
-  border-top: 0; font: 500 9.6px/1.3 "JetBrains Mono", monospace;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--rv-faint); white-space: nowrap;
-}
+table.rv-matrix thead th { border-top: 0; font: 500 9.6px/1.3 "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--rv-faint); white-space: nowrap; }
 table.rv-matrix tbody th { font-weight: 600; color: var(--rv-ink); white-space: nowrap; }
 table.rv-matrix td { color: var(--rv-ink-2); }
 table.rv-matrix code { font: 400 11px/1.5 "JetBrains Mono", monospace; color: var(--rv-faint); }
 
-.rv-approve { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 20px; }
-.rv-approve .rv-field { flex: 1 1 300px; display: flex; flex-direction: column; gap: 6px; }
-.rv-approve label { font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
-.rv-approve textarea {
-  min-height: 62px; resize: vertical; padding: 9px 11px; border-radius: 8px;
-  border: 1px solid var(--rv-edge); background: var(--rv-bg); color: var(--rv-ink);
-  font: 400 12.6px/1.5 "Schibsted Grotesk", system-ui, sans-serif;
-}
-.rv-verdicts { display: flex; gap: 8px; }
-.rv-verdicts button {
-  min-height: 38px; padding: 0 16px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--rv-edge-2); background: var(--rv-bg); color: var(--rv-ink);
-  font: 500 12.6px/1 "Schibsted Grotesk", system-ui, sans-serif;
-  transition: background .14s, border-color .14s;
-}
-.rv-verdicts button:hover { background: var(--rv-panel); border-color: var(--rv-ink-2); }
-.rv-verdicts button[aria-pressed="true"] { background: var(--rv-ink); color: var(--rv-panel); border-color: var(--rv-ink); }
-.rv-echo { margin-top: 12px; font-size: 12.4px; color: var(--rv-ink-2); min-height: 1.5em; }
-
 [hidden] { display: none !important; }
-
-@media (prefers-reduced-motion: reduce) {
-  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-}
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 body[data-motion="reduced"] * { transition-duration: .001ms !important; animation-duration: .001ms !important; }
 </style>
 
-<!-- ══════════════════ REVIEW HARNESS (developer chrome) ══════════════════ -->
 <div class="rv-bar" role="group" aria-label="Prototype review controls">
   <div class="rv-brand">
-    <strong>Solo Automations — recovery prototype</strong>
-    <span>Throwaway · read-only · no production mutation</span>
+    <strong>Automations under Integrations</strong>
+    <span>Menus unchanged · read-only prototype</span>
   </div>
-
   <div class="rv-grp">
-    <label id="lbl-ia">Rail IA</label>
-    <div class="rv-seg" role="group" aria-labelledby="lbl-ia">
-      <button type="button" data-ia="A" aria-pressed="true">A · 7th rail slot</button>
-      <button type="button" data-ia="B" aria-pressed="false">B · under Settings</button>
-    </div>
-  </div>
-
-  <div class="rv-grp">
-    <label id="lbl-screen">Screen</label>
+    <label id="lbl-screen">Surface</label>
     <div class="rv-seg" role="group" aria-labelledby="lbl-screen">
-      <button type="button" data-screen="auto" aria-pressed="true">Automations</button>
-      <button type="button" data-screen="integrations" aria-pressed="false">Integrations</button>
+      <button type="button" data-screen="cmd" aria-pressed="false">Command Center</button>
+      <button type="button" data-screen="catalogue" aria-pressed="false">Integrations · Catalogue</button>
+      <button type="button" data-screen="auto" aria-pressed="false">Automations · today</button>
+      <button type="button" data-screen="intended" aria-pressed="true">Automations · intended</button>
     </div>
   </div>
-
-  <div class="rv-grp">
-    <label id="lbl-state">State</label>
-    <div class="rv-seg" role="group" aria-labelledby="lbl-state">
-      <button type="button" data-state="truth" aria-pressed="true">Truth (today)</button>
-      <button type="button" data-state="loading" aria-pressed="false">Resolving</button>
-      <button type="button" data-state="error" aria-pressed="false">Read failed</button>
-    </div>
-  </div>
-
   <div class="rv-grp">
     <label id="lbl-theme">Theme</label>
     <div class="rv-seg" role="group" aria-labelledby="lbl-theme">
@@ -487,7 +510,6 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
       <button type="button" data-pgtheme="dark" aria-pressed="false">Obsidian</button>
     </div>
   </div>
-
   <div class="rv-grp">
     <label id="lbl-vp">Viewport</label>
     <div class="rv-seg" role="group" aria-labelledby="lbl-vp">
@@ -497,7 +519,6 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
       <button type="button" data-vp="900x1000" aria-pressed="false">900×1000</button>
     </div>
   </div>
-
   <div class="rv-grp">
     <label id="lbl-motion">Motion</label>
     <div class="rv-seg" role="group" aria-labelledby="lbl-motion">
@@ -508,18 +529,15 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
 </div>
 
 <div class="rv-note">
-  <b>Read this first.</b>
-  <span>Every figure inside the frame is either read from the live workspace on 2026-08-31 or declared absent. Nothing is simulated as working. The frame below has no network access and writes nothing — the slide-out actions are inert by design, and say so. The flow matrix under the stage lists each element as real, unavailable, or mocked.</span>
+  <b>Menus untouched.</b>
+  <span>The six-slot rail and the eight-item Settings rail are exactly as they ship — nothing added, nothing renamed, nothing reordered. The only new structure is the sub-tab strip inside Integrations, which copies the strip Command Center already uses. Every figure inside the frame is read from the live workspace or declared absent; nothing is simulated as working.</span>
 </div>
 
-<!-- ══════════════════════════ STAGE ══════════════════════════ -->
 <div class="rv-stage">
   <div class="rv-frame" id="frame">
     <span class="rv-vp-tag" id="vpTag">1536 × 770</span>
-
     <div class="pg-shell" data-pg="light" id="shell" data-panel="closed">
 
-      <!-- RAIL -->
       <nav class="pg-rail" aria-label="Workspace">
         <div class="pg-brand">
           <span class="pg-mark" aria-hidden="true">
@@ -527,9 +545,7 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
           </span>
           <div><strong>PAIGE</strong><span>SOLO</span></div>
         </div>
-
-        <div class="pg-navlist" id="navlist"><!-- built by script --></div>
-
+        <div class="pg-navlist" id="navlist"></div>
         <div class="pg-rail-foot">
           <div class="pg-seal">
             <span aria-hidden="true">FS</span>
@@ -538,112 +554,56 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
         </div>
       </nav>
 
-      <!-- CANVAS -->
       <div class="pg-canvas">
         <header class="pg-spine">
           <div class="pg-context">
-            <span id="ctxKicker">First Sterling Capital</span>
-            <strong id="ctxTitle">Automations</strong>
+            <span id="ctxKicker">FIRST STERLING CAPITAL</span>
+            <strong id="ctxTitle">Settings</strong>
           </div>
           <div class="pg-cmd" aria-hidden="true">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             Direct PAIGE, or press ⌘K <kbd>⌘K</kbd>
           </div>
-          <div class="pg-spine-actions">
-            <button class="pg-ibtn" type="button" aria-label="Notifications">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-            </button>
-          </div>
+          <button class="pg-ibtn" type="button" aria-label="Notifications">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          </button>
         </header>
+
+        <div class="pg-substrip" id="substrip" role="tablist" aria-label="Section"></div>
 
         <main class="pg-main" id="mainScroll" tabindex="-1">
 
-          <!-- ░░ SCREEN: AUTOMATIONS ░░ -->
-          <div class="pg-page" id="screen-auto">
+          <!-- Command Center — included only to show the main rail is untouched -->
+          <div class="pg-page" id="screen-cmd" hidden>
             <div class="pg-head">
               <div class="pg-head-copy">
-                <h1>Automations</h1>
-                <p>Rules that run without you. This workspace has none, and no automation has run here — the four lanes below are the real substrate, each with what it would take to make it work.</p>
+                <h1>Systems Check</h1>
+                <p>Shown here only to demonstrate that the main rail and its sub-tabs are untouched by this change. Nothing on this surface is altered.</p>
               </div>
-              <div class="pg-head-aside"><span class="pg-truth" data-v="none">No automations</span></div>
             </div>
-
-            <!-- Resolving -->
-            <section class="pg-plate" id="autoLoading" hidden>
-              <div class="pg-absence" role="status">
-                <h3>Resolving this workspace…</h3>
-                <p>No automation state is being claimed until the read returns.</p>
+            <section class="pg-plate">
+              <div class="pg-absence">
+                <span class="pg-eyebrow">Not part of this change</span>
+                <h3>Command Center keeps everything it has</h3>
+                <p>Its two sub-tabs, its evidence graph, its coverage read and its decision queue are all unchanged. Automations never appears here, and the Automations URL no longer resolves the rail to this destination.</p>
               </div>
             </section>
-
-            <!-- Read failed -->
-            <section class="pg-plate" id="autoError" hidden>
-              <div class="pg-absence" role="alert">
-                <h3>Couldn’t read automation state</h3>
-                <p>The read did not return. Nothing is being claimed about what runs in this workspace — not that it is empty, and not that it is healthy. Try again, and if it keeps failing the lanes below still describe the substrate accurately.</p>
-                <div><button class="pg-btn" type="button" id="retryBtn">Try again</button></div>
-              </div>
-            </section>
-
-            <div id="autoTruth">
-              <!-- Honest absence -->
-              <section class="pg-plate" style="margin-bottom:18px">
-                <div class="pg-absence">
-                  <span class="pg-eyebrow">The state of this workspace</span>
-                  <h3>Wired, but nothing can reach the end</h3>
-                  <p>Four automation substrates ship. Every one of them stops before it can do work for you: the workflow catalogue is operator-scoped, the pipeline lane has no delivery route configured, form automations are created elsewhere, and the only live record here is Systems Check remediation. No automation run has ever been recorded — for this workspace or any other.</p>
-                  <p>Nothing here is waiting on a decision. Each lane names the seam that is missing.</p>
-                  <div class="pg-draft-flag">
-                    <strong>Draft pending Claude Design.</strong> Absence titles and bodies are surface and belong to CD (<code>absence-copy.md</code>). This wording is a draft to keep the round moving, never a settled default.
-                  </div>
-                </div>
-              </section>
-
-              <!-- Lanes -->
-              <section class="pg-plate">
-                <div class="pg-plate-hd">
-                  <div class="pg-hd-copy">
-                    <h2>The four lanes</h2>
-                    <p>Read live. Open one to see its evidence and what it needs.</p>
-                  </div>
-                  <span class="pg-truth" data-v="none">3 blocked · 1 read-only</span>
-                </div>
-                <div class="pg-lanes" id="lanes"><!-- built by script --></div>
-              </section>
-
-              <!-- Recovery path -->
-              <section class="pg-plate" style="margin-top:18px">
-                <div class="pg-plate-hd">
-                  <div class="pg-hd-copy">
-                    <h2>What makes the first automation possible</h2>
-                    <p>The shortest real path, in dependency order. None of it can be done from this screen today.</p>
-                  </div>
-                </div>
-                <ol class="pg-steps">
-                  <li><strong>Give this workspace a pipeline with stages</strong><span>Stage automations attach to a deal moving between stages. This workspace has no pipeline and no deals, so there is nothing to attach a rule to.</span></li>
-                  <li><strong>Configure a delivery route for automation dispatch</strong><span>The stage trigger fires and logs correctly, but no workspace has a delivery route set and the platform fallback is absent. Until one exists, a rule that fires records <code>skipped_no_webhook</code> instead of doing anything.</span></li>
-                  <li><strong>Author the first rule</strong><span>This is the one lane whose write contract is real and tenant-safe today: an owner may create, edit and deactivate stage rules. It has no home in this shell yet.</span></li>
-                  <li><strong>Then, and only then, show runs</strong><span>Run history, success rate and attention counts become truthful the moment real runs exist. Until then this screen shows none of them.</span></li>
-                </ol>
-              </section>
-            </div>
           </div>
 
-          <!-- ░░ SCREEN: INTEGRATIONS ░░ -->
-          <div class="pg-page" id="screen-integrations" hidden>
+          <!-- Integrations → Catalogue -->
+          <div class="pg-page" id="screen-catalogue" hidden>
             <div class="pg-head">
               <div class="pg-head-copy">
+                <span class="pg-eyebrow">Solo settings</span>
                 <h1>Integrations</h1>
                 <p>External tools, bridges, and safe configuration handoffs. Provider colour identifies the tool — never its readiness or your permission.</p>
               </div>
-              <div class="pg-head-aside"><span class="pg-truth" data-v="held">Partial</span></div>
             </div>
-
             <section class="pg-plate">
               <div class="pg-plate-hd">
                 <div class="pg-hd-copy">
                   <h2>Integration catalogue</h2>
-                  <p>Connections own phone, sending identity and calendars. Marketplace owns Paige capabilities. This surface owns external data and workflow bridges.</p>
+                  <p>Connections own phone, sending identity and calendars. Marketplace owns Paige capabilities.</p>
                 </div>
                 <div class="pg-filters" role="group" aria-label="Filter catalogue" id="catFilters">
                   <button type="button" data-cat="all" aria-pressed="true">All</button>
@@ -654,14 +614,173 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
                   <button type="button" data-cat="developer" aria-pressed="false">Developer</button>
                 </div>
               </div>
-              <div class="pg-grid" id="provGrid"><!-- built by script --></div>
+              <div class="pg-grid" id="provGrid"></div>
+            </section>
+          </div>
+
+          <!-- Integrations → Automations -->
+          <div class="pg-page" id="screen-auto">
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <span class="pg-eyebrow">Solo settings · Integrations</span>
+                <h1>Automations</h1>
+                <p>Rules that run without you. This workspace has none, and no automation has run here — the four lanes below are the real substrate, each with the seam it is missing.</p>
+              </div>
+            </div>
+
+            <section class="pg-plate">
+              <div class="pg-absence">
+                <span class="pg-eyebrow">The state of this workspace</span>
+                <h3>Wired, but nothing can reach the end</h3>
+                <p>Four automation substrates ship. Every one stops before it can do work for you: the workflow catalogue is operator-scoped, the pipeline lane has no delivery route configured, form automations are created elsewhere, and the only live record here is Systems Check remediation. No automation run has ever been recorded — for this workspace or any other.</p>
+                <p>Nothing here is waiting on a decision. Each lane names the seam that is missing.</p>
+                <div class="pg-draft-flag"><strong>Draft pending Claude Design.</strong> Absence titles and bodies are surface and belong to CD (<code>absence-copy.md</code>). This wording is a draft to keep the round moving, never a settled default.</div>
+              </div>
+            </section>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy"><h2>The four lanes</h2><p>Read live. Open one for its evidence and what it needs.</p></div>
+                <span class="pg-truth">3 blocked · 1 read-only</span>
+              </div>
+              <div class="pg-lanes" id="lanes"></div>
+            </section>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy"><h2>What makes the first automation possible</h2><p>The shortest real path, in dependency order. None of it can be done from this screen today.</p></div>
+              </div>
+              <ol class="pg-steps">
+                <li><strong>Give this workspace a pipeline with stages</strong><span>Stage automations attach to a deal moving between stages. This workspace has no pipeline and no deals, so there is nothing to attach a rule to.</span></li>
+                <li><strong>Configure a delivery route for automation dispatch</strong><span>The stage trigger fires and logs correctly, but no workspace has a delivery route set and the platform fallback is absent. Until one exists, a rule that fires records <code>skipped_no_webhook</code> instead of acting.</span></li>
+                <li><strong>Author the first rule</strong><span>The one lane whose write contract is real and tenant-safe today: an owner may create, edit and deactivate stage rules. It has no home in this shell yet.</span></li>
+                <li><strong>Then, and only then, show runs</strong><span>Run history, success rate and attention counts become truthful the moment real runs exist. Until then this screen shows none of them.</span></li>
+              </ol>
+            </section>
+          </div>
+
+          <!-- Integrations → Automations · the intended usable workspace -->
+          <div class="pg-page" id="screen-intended" hidden>
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <span class="pg-eyebrow">Solo settings · Integrations</span>
+                <h1>Automations</h1>
+                <p>Tell Paige what should happen on its own. Every field below is a real column on a contract you can already write to — the gaps are named where they exist, never papered over.</p>
+              </div>
+            </div>
+
+            <nav class="pg-flowbar" aria-label="Automation lifecycle" id="flowbar"></nav>
+
+            <div class="pg-two">
+              <section class="pg-plate">
+                <div class="pg-plate-hd">
+                  <div class="pg-hd-copy"><h2>Your automations</h2><p>None yet — this list is real and empty.</p></div>
+                </div>
+                <div class="pg-rulelist" id="ruleList"></div>
+                <div style="padding:11px 13px;border-top:1px solid var(--pg-line-soft)">
+                  <button class="pg-ctl" type="button" id="newRule" style="width:100%;justify-content:center">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    New automation
+                  </button>
+                </div>
+              </section>
+
+              <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+                <section class="pg-plate">
+                  <div class="pg-plate-hd">
+                    <div class="pg-hd-copy"><h2 id="editorTitle">New automation</h2><p>Draft — nothing is saved from this prototype.</p></div>
+                    <span class="pg-contract" data-c="real">Contract real</span>
+                  </div>
+                  <div class="pg-form">
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">When</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow">
+                          <button class="pg-ctl" type="button" data-missing="true" disabled>Pick a starting stage</button>
+                          <span style="align-self:center;color:var(--pg-faint)">→</span>
+                          <button class="pg-ctl" type="button" data-missing="true" disabled>Pick a destination stage</button>
+                          <span class="pg-contract" data-c="gap" style="align-self:center">Needs a pipeline</span>
+                        </div>
+                        <p class="pg-hint">A rule fires when a deal moves between stages — <code>from_stage_id</code> → <code>to_stage_id</code>. This workspace has no pipeline and no deals, so there is nothing to choose from yet. That is gap 2 below.</p>
+                      </div>
+                    </div>
+
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">Then</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow" id="intentRow" role="group" aria-label="Message intent"></div>
+                        <p class="pg-hint">Real enum on <code>compose_intent</code>. It also sets the consent class the dispatcher enforces: transactional and notification need transactional consent, marketing and nurture need marketing consent.</p>
+                      </div>
+                    </div>
+
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">Voice</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow" id="toneRow" role="group" aria-label="Tone"></div>
+                        <p class="pg-hint">Free text on <code>tone</code>, with an optional <code>template_hint</code>. These are the values the shipped rule editor already writes.</p>
+                      </div>
+                    </div>
+
+                    <div class="pg-row">
+                      <span class="pg-eyebrow">Delivery</span>
+                      <div class="pg-row-body">
+                        <div class="pg-ctlrow" id="modeRow" role="group" aria-label="Delivery mode"></div>
+                        <p class="pg-hint" id="modeHint"></p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="pg-slide-foot" style="border-top:1px solid var(--pg-line-soft)">
+                    <button class="pg-btn" type="button" disabled>Save automation</button>
+                    <button class="pg-btn" type="button" id="sandboxBtn">Test in sandbox</button>
+                    <span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert here — the write contract is real</span>
+                  </div>
+                </section>
+
+                <section class="pg-plate">
+                  <div class="pg-plate-hd">
+                    <div class="pg-hd-copy"><h2>Test in sandbox</h2><p>What would happen to one chosen contact, without sending.</p></div>
+                    <span class="pg-contract" data-c="gap">Contract missing</span>
+                  </div>
+                  <div class="pg-outcome" id="outcomeList"></div>
+                  <div style="padding:12px 15px;border-top:1px solid var(--pg-line-soft)">
+                    <p class="pg-hint">These six outcomes are not invented — they are the exact <code>PreSendOutcome</code> values the shipped pre-send pipeline already returns, in its locked gate order. What is missing is an endpoint that runs those gates for a test contact and reports the result instead of sending. That is gap 3.</p>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy"><h2>The minimum missing contract</h2><p>Everything else this flow needs already ships. These four are what stand between a Solo owner and a working automation.</p></div>
+              </div>
+              <div>
+                <div class="pg-gapcard"><b>1</b><div>
+                  <strong>A step that actually executes the rule</strong>
+                  <p>The stage trigger fires, enforces consent and then <em>POSTs to an external webhook</em>. No code path takes a triggered event plus its rule and produces a draft or a send. This is the one gap that blocks everything: without it an automation can be authored and can fire, but can never do anything.</p>
+                  <p class="pg-have">Already shipping and reusable: <code>pre-send-pipeline</code> (the five legal gates), <code>channel-adapters</code> (outbound send), <code>paige_pending_approvals</code> (the draft lane), <code>railAutomation</code> (telemetry). The missing piece is the function that drives those four.</p>
+                </div></div>
+                <div class="pg-gapcard"><b>2</b><div>
+                  <strong>A trigger that does not require a pipeline</strong>
+                  <p>A rule is keyed on <code>pipeline_id</code> and <code>to_stage_id</code>, so a workspace with no pipeline cannot author a single automation. Either give the workspace a pipeline, or admit a second trigger shape.</p>
+                  <p class="pg-have">Already shipping: the rule table, its RLS, and the deal-stage trigger itself.</p>
+                </div></div>
+                <div class="pg-gapcard"><b>3</b><div>
+                  <strong>A dry-run that reports an outcome without sending</strong>
+                  <p>Nothing can currently answer “what would this do?”. The result shape already exists as <code>PreSendOutcome</code>; what is absent is a callable that evaluates the gates for a test contact and returns which one it lands on.</p>
+                  <p class="pg-have">Already shipping: the gate order, the outcome enum, and consent and suppression reads.</p>
+                </div></div>
+                <div class="pg-gapcard"><b>4</b><div>
+                  <strong>One run history across both engines</strong>
+                  <p>Stage runs land in <code>stage_automation_events</code>, workflow runs in <code>paige_workflow_runs</code>. There is no single read, so “manage” cannot show a person one honest timeline.</p>
+                  <p class="pg-have">Already shipping: both stores, both with real status vocabularies including honest skip reasons.</p>
+                </div></div>
+              </div>
             </section>
           </div>
 
         </main>
       </div>
 
-      <!-- SLIDE-OUT -->
       <div class="pg-scrim" id="scrim"></div>
       <aside class="pg-slide" id="slide" role="dialog" aria-modal="true" aria-labelledby="slideTitle" tabindex="-1" aria-hidden="true">
         <div class="pg-slide-hd">
@@ -673,52 +792,35 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
         <div class="pg-slide-body" id="slideBody"></div>
         <div class="pg-slide-foot" id="slideFoot"></div>
       </aside>
-
     </div>
   </div>
 </div>
 
-<!-- ══════════════════ FLOW MATRIX + APPROVAL ══════════════════ -->
 <div class="rv-drawer">
   <div class="rv-drawer-in">
-    <h2>Flow matrix — what is real, unavailable, and mocked</h2>
-    <p>Every element in the frame, classified. “Real” means it is read from a live contract this workspace can genuinely use. “Unavailable” means the substrate exists but cannot complete, and the surface says so. “Mocked” means the prototype supplies it for review only and it must not ship as-is.</p>
-
+    <h2>Flow matrix — real, unavailable, mocked</h2>
+    <p>“Real” means read from a live contract this workspace can genuinely use. “Unavailable” means the substrate exists but cannot complete, and the surface says so. “Mocked” means the prototype supplies it for review only and it must not ship as-is.</p>
     <div class="rv-tablewrap">
       <table class="rv-matrix">
-        <thead>
-          <tr><th scope="col">Element</th><th scope="col">Class</th><th scope="col">Evidence / reason</th><th scope="col">Contract</th></tr>
-        </thead>
+        <thead><tr><th scope="col">Element</th><th scope="col">Class</th><th scope="col">Evidence / reason</th><th scope="col">Contract</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Automations as a destination</th><td><span class="t-chip" data-t="real">Real</span></td><td>Already a registered Solo branch, <code>group:"main"</code>, with three subtabs. The route resolves today.</td><td><code>tierBranches.ts</code> L141</td></tr>
-          <tr><th scope="row">Rail shows Automations, not Command Center</th><td><span class="t-chip" data-t="real">Real</span></td><td>Fixable in one line: <code>"automations"</code> is currently an alias of the <code>command</code> destination, which is why the rail highlights Command Center at the Automations URL.</td><td><code>tenantShellRoutes.ts</code> L49</td></tr>
-          <tr><th scope="row">Workflow catalogue lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>23 registry rows, all platform-scoped; the trigger seam restricts platform rows to operator authority. 20 of 23 also have no linked workflow.</td><td><code>paige_workflow_registry</code></td></tr>
-          <tr><th scope="row">Pipeline stage lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Real write contract and a working trigger, but no delivery route on any workspace and the platform fallback is absent. This workspace also has no pipeline.</td><td><code>stage_automation_rules</code></td></tr>
+          <tr><th scope="row">Main rail (6 slots)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Not touched by this change. No slot added, renamed or reordered.</td><td><code>tenantShellRoutes.ts</code></td></tr>
+          <tr><th scope="row">Settings rail (8 items)</th><td><span class="t-chip" data-t="real">Unchanged</span></td><td>Setup · Team · Connections · Integrations · Notifications · Security &amp; data · Vault · Billing, exactly as shipped.</td><td><code>SOLO_SETTINGS_DESTINATIONS</code></td></tr>
+          <tr><th scope="row">Integrations sub-tab strip</th><td><span class="t-chip" data-t="mock">New</span></td><td>The one added structure. Copies the strip Command Center already renders (Systems Check | Mind) rather than inventing a pattern.</td><td><code>settings.tsx:543</code></td></tr>
+          <tr><th scope="row">Third URL level</th><td><span class="t-chip" data-t="mock">Needs a hook</span></td><td><code>leafBySlug</code>/<code>leafPath</code> already exist and are tier-generic, but <code>useSubtabRoute</code> reads two levels only. A leaf-aware variant is required.</td><td><code>useSubtabRoute.ts</code></td></tr>
+          <tr><th scope="row">Existing <code>/automations</code> URL</th><td><span class="t-chip" data-t="real">Redirect</span></td><td>Stays resolvable and redirects to the new address rather than 404-ing a shipped route.</td><td><code>SoloApp.tsx</code> LEGACY_SETTINGS</td></tr>
+          <tr><th scope="row">Workflow catalogue lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>23 registry rows, all platform-scoped; the trigger seam restricts those to operator authority. 20 of 23 also have no linked flow.</td><td><code>paige_workflow_registry</code></td></tr>
+          <tr><th scope="row">Pipeline stage lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Real write contract and a working trigger, but no delivery route on any workspace and no platform fallback. This workspace has no pipeline.</td><td><code>stage_automation_rules</code></td></tr>
           <tr><th scope="row">Form automations lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Readable and tenant-scoped; policy forbids every direct write from this surface. None exist here.</td><td><code>growth_form_automations</code></td></tr>
-          <tr><th scope="row">Filed actions lane (13)</th><td><span class="t-chip" data-t="real">Real</span></td><td>Read from the live workspace 2026-08-31: 13 rows, all Systems Check remediation, all filed. Shown read-only; its home stays Command Center.</td><td><code>paige_actions</code></td></tr>
-          <tr><th scope="row">Run counts, success rate, “needs attention”</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. Zero runs exist platform-wide, so every one of these figures would be invented.</td><td>—</td></tr>
-          <tr><th scope="row">Repair actions (repoint / collapse / promote)</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. There is no rule to repair and no contract that performs a repair.</td><td>—</td></tr>
-          <tr><th scope="row">n8n and MCP connection state</th><td><span class="t-chip" data-t="real">Real</span></td><td>Reads two safe status getters that return status only, never credentials. Shown here in its real “Not configured” result.</td><td><code>get_tenant_n8n_connection</code></td></tr>
-          <tr><th scope="row">“Capability: LIVE” on provider cards</th><td><span class="t-chip" data-t="none">Corrected</span></td><td>Currently hardcoded on every card regardless of state, which is why both providers claim LIVE while reading “Not configured”. Derived from real state here.</td><td><code>settings-integrations.tsx</code> L147</td></tr>
-          <tr><th scope="row">Recovered provider cards (6)</th><td><span class="t-chip" data-t="mock">Static</span></td><td>Authored constants, not a registry. They claim no connection, which is honest, but they are not read from anything.</td><td><code>RECOVERED_SURFACES</code></td></tr>
-          <tr><th scope="row">Absence titles and body copy</th><td><span class="t-chip" data-t="mock">Draft</span></td><td>Surface copy belongs to Claude Design. Drafted here to keep the round moving; must not ship as settled wording.</td><td><code>absence-copy.md</code></td></tr>
-          <tr><th scope="row">Slide-out actions</th><td><span class="t-chip" data-t="mock">Inert</span></td><td>Disabled in the prototype and labelled. No prototype control writes anything.</td><td>—</td></tr>
+          <tr><th scope="row">Filed actions lane (13)</th><td><span class="t-chip" data-t="real">Real</span></td><td>Read live 2026-08-31: 13 rows, all Systems Check remediation, all filed. Read-only; its home stays Command Center.</td><td><code>paige_actions</code></td></tr>
+          <tr><th scope="row">Run counts, success rate, “needs attention”</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. Zero runs exist platform-wide, so every figure would be invented.</td><td>—</td></tr>
+          <tr><th scope="row">Repair actions</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. There is no rule to repair and no contract that performs a repair.</td><td>—</td></tr>
+          <tr><th scope="row">“Capability: LIVE” on provider cards</th><td><span class="t-chip" data-t="none">Corrected</span></td><td>Currently hardcoded on every card regardless of state. Derived from real state here.</td><td><code>settings-integrations.tsx:147</code></td></tr>
+          <tr><th scope="row">Absence titles and body copy</th><td><span class="t-chip" data-t="mock">Draft</span></td><td>Surface copy belongs to Claude Design; drafted here to keep the round moving.</td><td><code>absence-copy.md</code></td></tr>
+          <tr><th scope="row">Slide-out actions</th><td><span class="t-chip" data-t="mock">Inert</span></td><td>Disabled and labelled. No prototype control writes anything.</td><td>—</td></tr>
         </tbody>
       </table>
     </div>
-
-    <div class="rv-approve">
-      <div class="rv-field">
-        <label for="notes">Notes / revisions</label>
-        <textarea id="notes" placeholder="What should change before this is built?"></textarea>
-      </div>
-      <div class="rv-verdicts" role="group" aria-label="Decision">
-        <button type="button" data-v="approve" aria-pressed="false">Approve</button>
-        <button type="button" data-v="revise" aria-pressed="false">Revise</button>
-        <button type="button" data-v="reject" aria-pressed="false">Reject</button>
-      </div>
-    </div>
-    <p class="rv-echo" id="echo" role="status"></p>
   </div>
 </div>
 
@@ -727,233 +829,224 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   "use strict";
 
   var ICONS = {
-    home: '<path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 13h6v6h-6z"/>',
-    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 11a3 3 0 1 0-1.6-5.5"/>',
-    mega: '<path d="M4 10v4h3l6 4V6L7 10z"/><path d="M17.5 9.5a4 4 0 0 1 0 5"/>',
-    store: '<path d="M4 8h16l-1 3a3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 12v8h14v-8"/>',
-    chart: '<path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/>',
-    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
-    bolt: '<path d="M12 2 5 13h6l-1 9 8-12h-6z"/>',
-    link: '<path d="M10 13a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7L11.4 6"/><path d="M14 11a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7L12.6 18"/>'
+    home:'<path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 13h6v6h-6z"/>',
+    users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 11a3 3 0 1 0-1.6-5.5"/>',
+    mega:'<path d="M4 10v4h3l6 4V6L7 10z"/><path d="M17.5 9.5a4 4 0 0 1 0 5"/>',
+    store:'<path d="M4 8h16l-1 3a3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 12v8h14v-8"/>',
+    chart:'<path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/>',
+    gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+    bolt:'<path d="M12 2 5 13h6l-1 9 8-12h-6z"/>',
+    link:'<path d="M10 13a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7L11.4 6"/><path d="M14 11a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7L12.6 18"/>',
+    back:'<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
+    build:'<path d="M4 20h16"/><path d="M6 20V9l6-5 6 5v11"/>',
+    bell:'<path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    shield:'<path d="M12 3 5 6v5c0 5 3.5 8.5 7 10 3.5-1.5 7-5 7-10V6z"/>',
+    vault:'<rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="3.4"/>',
+    coin:'<circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10h5M9.5 14h5"/>',
+    pulse:'<path d="M3 12h4l2.5-6 4 12L16 12h5"/>',
+    mind:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/>'
   };
-  function ico(k) {
-    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + '</svg>';
+  function ico(k, s) {
+    return '<svg width="' + (s || 15) + '" height="' + (s || 15) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + "</svg>";
   }
 
-  // ── Lane data. Every figure below was read from the live workspace on
-  //    2026-08-31. Nothing here is estimated or illustrative.
+  /* Rails, transcribed from the shipped surfaces. Neither list is modified. */
+  var MAIN_RAIL = [
+    ["Command Center", "home"], ["Clients", "users"], ["Campaigns", "mega"],
+    ["Marketplace", "store"], ["Analytics", "chart"], ["Settings", "gear"]
+  ];
+  var SETTINGS_RAIL = [
+    ["Setup", "build"], ["Team", "users"], ["Connections", "link"], ["Integrations", "gear"],
+    ["Notifications", "bell"], ["Security & data", "shield"], ["Vault", "vault"], ["Billing", "coin"]
+  ];
+
   var LANES = [
-    {
-      id: "workflow", title: "Workflow catalogue", kind: "Workflows", state: "blocked",
-      truth: "none", truthLabel: "No substrate",
-      why: "Twenty-three workflows exist in the catalogue, and this workspace can run none of them. All twenty-three are platform-scoped, and the trigger seam restricts platform-scoped workflows to operator authority.",
-      src: ["paige_workflow_registry", "paige_workflow_runs"],
-      evidence:
-        "registry rows            23  (all tenant_id IS NULL)\n" +
-        "runnable by this owner    0  (platform rows -> operator only)\n" +
-        "missing a linked flow    20  of 23\n" +
-        "runs ever recorded        0  platform-wide",
-      needs: "Either tenant-scoped catalogue entries this workspace owns, or an explicit grant that lets an owner run a platform workflow. Both are backend decisions, not screen decisions.",
-      note: "The catalogue also contains operator-only and vertical-specific entries. None of them should ever surface as a Solo automation."
-    },
-    {
-      id: "stage", title: "Pipeline stage rules", kind: "Stage rules", state: "authorable",
-      truth: "held", truthLabel: "Authorable, not deliverable",
-      why: "This is the one lane whose write contract is genuinely yours: an owner may create, edit and deactivate rules, and the stage trigger fires and records what happened honestly. It still cannot deliver anything.",
-      src: ["stage_automation_rules", "stage_automation_events"],
-      evidence:
-        "rules authored, all workspaces     0\n" +
-        "trigger events recorded            2   both 'skipped_no_rule'\n" +
-        "workspaces with a delivery route   0\n" +
-        "platform fallback route            absent\n" +
-        "this workspace: pipelines 0 · deals 0",
-      needs: "A pipeline with stages in this workspace, and a delivery route for dispatch. Without the route a rule that fires records skipped_no_webhook rather than acting.",
-      note: "The two recorded events are the proof the trigger works: it fired, found no rule, and said so instead of failing silently."
-    },
-    {
-      id: "form", title: "Form automations", kind: "Form rules", state: "blocked",
-      truth: "none", truthLabel: "Read-only by policy",
-      why: "Form automations are readable here and scoped to this workspace, but policy forbids every direct write from this surface. They are created by the form builder, not from an automations screen.",
-      src: ["growth_form_automations"],
-      evidence:
-        "rows for this workspace   0\n" +
-        "rows, all workspaces      0\n" +
-        "direct write from client  denied by policy",
-      needs: "Nothing on the backend. If these should be authorable here, that is a product decision about where the form builder ends and this screen begins.",
-      note: "Reading them here would be honest. Offering to create one here would not be."
-    },
-    {
-      id: "actions", title: "Filed actions", kind: "Action bus", state: "live",
-      truth: "live", truthLabel: "Live · read-only here",
-      why: "The only automation record with real rows in this workspace. Thirteen actions have been filed, all of them Systems Check remediation. They are shown here for completeness; their home stays Command Center.",
-      src: ["paige_actions"],
-      evidence:
-        "actions in this workspace   13\n" +
-        "kind                        systems.remediate  (all)\n" +
-        "status                      filed  (all)\n" +
-        "read live 2026-08-31",
-      needs: "Nothing. This lane is accurate today.",
-      note: "These were produced by Systems Check, not by a rule you authored. Presenting them as “your automations” would misread what they are."
-    }
+    { id:"workflow", title:"Workflow catalogue", kind:"Workflows", state:"blocked", truth:"", truthLabel:"No substrate",
+      why:"Twenty-three workflows exist in the catalogue, and this workspace can run none of them. All twenty-three are platform-scoped, and the trigger seam restricts platform-scoped workflows to operator authority.",
+      src:["paige_workflow_registry","paige_workflow_runs"],
+      evidence:"registry rows            23  (all tenant_id IS NULL)\nrunnable by this owner    0  (platform rows -> operator only)\nmissing a linked flow    20  of 23\nruns ever recorded        0  platform-wide",
+      needs:"Either tenant-scoped catalogue entries this workspace owns, or an explicit grant letting an owner run a platform workflow. Both are backend decisions, not screen decisions.",
+      note:"The catalogue also holds operator-only and vertical-specific entries. None of them should ever surface as a Solo automation." },
+    { id:"stage", title:"Pipeline stage rules", kind:"Stage rules", state:"authorable", truth:"held", truthLabel:"Authorable, not deliverable",
+      why:"The one lane whose write contract is genuinely yours: an owner may create, edit and deactivate rules, and the stage trigger fires and records what happened honestly. It still cannot deliver anything.",
+      src:["stage_automation_rules","stage_automation_events"],
+      evidence:"rules authored, all workspaces     0\ntrigger events recorded            2   both 'skipped_no_rule'\nworkspaces with a delivery route   0\nplatform fallback route            absent\nthis workspace: pipelines 0 · deals 0",
+      needs:"A pipeline with stages in this workspace, and a delivery route for dispatch. Without the route a rule that fires records skipped_no_webhook rather than acting.",
+      note:"The two recorded events are the proof the trigger works: it fired, found no rule, and said so instead of failing silently." },
+    { id:"form", title:"Form automations", kind:"Form rules", state:"blocked", truth:"", truthLabel:"Read-only by policy",
+      why:"Readable here and scoped to this workspace, but policy forbids every direct write from this surface. They are created by the form builder, not from an automations screen.",
+      src:["growth_form_automations"],
+      evidence:"rows for this workspace   0\nrows, all workspaces      0\ndirect write from client  denied by policy",
+      needs:"Nothing on the backend. If these should be authorable here, that is a product decision about where the form builder ends and this surface begins.",
+      note:"Reading them here would be honest. Offering to create one here would not be." },
+    { id:"actions", title:"Filed actions", kind:"Action bus", state:"live", truth:"live", truthLabel:"Live · read-only here",
+      why:"The only automation record with real rows in this workspace. Thirteen actions have been filed, all Systems Check remediation. Shown for completeness; their home stays Command Center.",
+      src:["paige_actions"],
+      evidence:"actions in this workspace   13\nkind                        systems.remediate  (all)\nstatus                      filed  (all)\nread live 2026-08-31",
+      needs:"Nothing. This lane is accurate today.",
+      note:"These were produced by Systems Check, not by a rule you authored. Presenting them as “your automations” would misread what they are." }
   ];
 
   var PROVIDERS = [
-    { id: "n8n", mark: "n8n", name: "n8n", kind: "Automation", cat: "automation", real: true,
-      config: "Not configured", health: "Not measurable", cap: "none",
-      evidence: "Not reported",
-      body: "Read from a safe status getter that returns connection state only — never credentials or provider payloads. This workspace has not configured it.",
-      handoff: { label: "Open Automations", to: "auto" } },
-    { id: "mcp", mark: "MCP", name: "MCP bridge", kind: "External tool bridge", cat: "developer", real: true,
-      config: "Not configured", health: "Not measurable", cap: "none",
-      evidence: "Not reported",
-      body: "Read from a safe status getter that returns connection state only. No safe configuration handoff exists for a Solo owner yet.",
-      handoff: null },
-    { id: "quickbooks", mark: "QB", name: "QuickBooks", kind: "Financial tools", cat: "financial", real: false,
-      config: "Not established", health: "Not measurable", cap: "partial",
-      evidence: "Version One evidence",
-      body: "Sync seams exist in the codebase, but nothing proves a readiness state for this workspace. No connection is being claimed.",
-      handoff: null },
-    { id: "stripe", mark: "St", name: "Stripe Connect", kind: "Commerce", cat: "financial", real: false,
-      config: "Not established", health: "Not measurable", cap: "partial",
-      evidence: "Version One evidence",
-      body: "Payout-account records exist. They do not prove this workspace is connected, active, or entitled to a capability.",
-      handoff: null },
-    { id: "docusign", mark: "Ds", name: "DocuSign", kind: "Documents", cat: "documents", real: false,
-      config: "Not established", health: "Not measurable", cap: "none",
-      evidence: "Version One evidence",
-      body: "Signature seams exist but have no tenant-safe governed contract.",
-      handoff: null },
-    { id: "apollo", mark: "Ap", name: "Apollo", kind: "Client data", cat: "client-data", real: false,
-      config: "Not established", health: "Not measurable", cap: "none",
-      evidence: "Version One evidence",
-      body: "Enrichment configuration is platform-global and cannot establish this workspace’s connection.",
-      handoff: null },
-    { id: "plaid", mark: "Pl", name: "Plaid", kind: "Financial tools", cat: "financial", real: false,
-      config: "Not established", health: "Not measurable", cap: "none",
-      evidence: "Version One evidence",
-      body: "Bank-link scaffolding does not prove tenant-safe readiness.",
-      handoff: null },
-    { id: "api", mark: "API", name: "Webhooks & direct API", kind: "Developer tools", cat: "developer", real: false,
-      config: "Not established", health: "Not measurable", cap: "none",
-      evidence: "Version One evidence",
-      body: "Platform webhook and API-key records are not a Solo tenant contract.",
-      handoff: null }
+    { id:"n8n", mark:"n8n", name:"n8n", kind:"Automation", cat:"automation", config:"Not configured", health:"Not measurable", cap:"none", evidence:"Not reported",
+      body:"Read from a safe status getter that returns connection state only — never credentials or provider payloads. This workspace has not configured it.", handoff:"Open Automations" },
+    { id:"mcp", mark:"MCP", name:"MCP bridge", kind:"External tool bridge", cat:"developer", config:"Not configured", health:"Not measurable", cap:"none", evidence:"Not reported",
+      body:"Read from a safe status getter that returns connection state only. No safe configuration handoff exists for a Solo owner yet.", handoff:null },
+    { id:"quickbooks", mark:"QB", name:"QuickBooks", kind:"Financial tools", cat:"financial", config:"Not established", health:"Not measurable", cap:"partial", evidence:"Version One evidence",
+      body:"Sync seams exist in the codebase, but nothing proves a readiness state for this workspace. No connection is being claimed.", handoff:null },
+    { id:"stripe", mark:"St", name:"Stripe Connect", kind:"Commerce", cat:"financial", config:"Not established", health:"Not measurable", cap:"partial", evidence:"Version One evidence",
+      body:"Payout-account records exist. They do not prove this workspace is connected, active, or entitled to a capability.", handoff:null },
+    { id:"docusign", mark:"Ds", name:"DocuSign", kind:"Documents", cat:"documents", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
+      body:"Signature seams exist but have no tenant-safe governed contract.", handoff:null },
+    { id:"apollo", mark:"Ap", name:"Apollo", kind:"Client data", cat:"client-data", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
+      body:"Enrichment configuration is platform-global and cannot establish this workspace’s connection.", handoff:null },
+    { id:"plaid", mark:"Pl", name:"Plaid", kind:"Financial tools", cat:"financial", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
+      body:"Bank-link scaffolding does not prove tenant-safe readiness.", handoff:null },
+    { id:"api", mark:"API", name:"Webhooks & direct API", kind:"Developer tools", cat:"developer", config:"Not established", health:"Not measurable", cap:"none", evidence:"Version One evidence",
+      body:"Platform webhook and API-key records are not a Solo tenant contract.", handoff:null }
   ];
 
-  var S = { ia: "A", screen: "auto", state: "truth", theme: "light", vp: "1536x770", cat: "all" };
+  /* The five-step human flow, each labelled with whether its contract exists today. */
+  var FLOW = [
+    ["Create", "real", "stage_automation_rules · RLS write"],
+    ["Edit", "real", "same row · owner may update"],
+    ["Test", "gap", "no dry-run callable exists"],
+    ["Approve", "real", "paige_pending_approvals"],
+    ["Manage", "gap", "no unified run history"]
+  ];
+  /* Real enum values, transcribed from the shipped rule editor — not invented. */
+  var INTENTS = [["transactional","Transactional"],["notification","Notification"],["nurture","Nurture"],["marketing","Marketing"]];
+  var TONES = ["warm","professional","consultative","welcoming","encouraging","celebratory"];
+  var MODES = [
+    ["draft_for_review","Hold it for me","Lands in your approvals queue. Real: this is the shipped approval contract, with realtime and an approval policy per action."],
+    ["auto_send","Send on its own","Fires without you. The consent, suppression, do-not-disturb and quiet-hours gates still run first and can still stop it."]
+  ];
+  /* The exact PreSendOutcome values the shipped pipeline returns, in its locked order. */
+  var OUTCOMES = [
+    ["stop","Client do-not-disturb","blocked_dnd"],
+    ["stop","On the suppression list","blocked_suppressed"],
+    ["stop","No consent for this intent","blocked_no_consent"],
+    ["queue","Workspace auto-send paused","queued_dnd_window"],
+    ["queue","Outside SMS quiet hours","queued_quiet_hours"],
+    ["pass","Clear to send","sent"]
+  ];
 
-  var shell = document.getElementById("shell");
-  var frame = document.getElementById("frame");
-  var navlist = document.getElementById("navlist");
-  var lanesEl = document.getElementById("lanes");
-  var provGrid = document.getElementById("provGrid");
-  var slide = document.getElementById("slide");
-  var lastFocus = null;
+  var S = { screen:"intended", theme:"light", vp:"1536x770", cat:"all", step:0, intent:"nurture", tone:"warm", mode:"draft_for_review" };
+  var shell = document.getElementById("shell"), frame = document.getElementById("frame");
+  var navlist = document.getElementById("navlist"), substrip = document.getElementById("substrip");
+  var lanesEl = document.getElementById("lanes"), provGrid = document.getElementById("provGrid");
+  var slide = document.getElementById("slide"), lastFocus = null;
 
-  function esc(s) {
-    return String(s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+  function isAuto() { return S.screen === "auto" || S.screen === "intended"; }
+  function inSettings() { return S.screen === "catalogue" || isAuto(); }
+
+  function renderIntended() {
+    document.getElementById("flowbar").innerHTML = FLOW.map(function (f, i) {
+      return '<button type="button" class="pg-step" data-step="' + i + '"' +
+        (i === S.step ? ' aria-current="step"' : "") + '>' +
+        '<span class="pg-step-n"><b>' + (i + 1) + "</b><span>" + esc(f[0]) + "</span></span>" +
+        '<small data-c="' + f[1] + '">' + esc(f[2]) + "</small></button>";
+    }).join("");
+
+    document.getElementById("ruleList").innerHTML =
+      '<div style="padding:18px 13px;display:flex;flex-direction:column;gap:5px">' +
+      '<strong style="font-size:12.7px">No automations yet</strong>' +
+      '<span style="font-size:11.9px;color:var(--pg-muted);line-height:1.55">' +
+      'This list reads <code style="font:400 10.8px/1 var(--pg-font-data)">stage_automation_rules</code> for this workspace. ' +
+      'It is genuinely empty — no rule has been authored here, or on any workspace.</span></div>';
+
+    document.getElementById("intentRow").innerHTML = INTENTS.map(function (t) {
+      return '<button type="button" class="pg-ctl" data-intent="' + t[0] + '" aria-pressed="' +
+        (S.intent === t[0] ? "true" : "false") + '">' + esc(t[1]) + "</button>";
+    }).join("");
+
+    document.getElementById("toneRow").innerHTML = TONES.map(function (t) {
+      return '<button type="button" class="pg-ctl" data-tone="' + t + '" aria-pressed="' +
+        (S.tone === t ? "true" : "false") + '">' + esc(t) + "</button>";
+    }).join("");
+
+    document.getElementById("modeRow").innerHTML = MODES.map(function (m) {
+      return '<button type="button" class="pg-ctl" data-mode="' + m[0] + '" aria-pressed="' +
+        (S.mode === m[0] ? "true" : "false") + '">' + esc(m[1]) + "</button>";
+    }).join("");
+    var picked = MODES.filter(function (m) { return m[0] === S.mode; })[0];
+    document.getElementById("modeHint").innerHTML =
+      esc(picked[2]) + ' Real column <code>send_mode</code>.';
+
+    document.getElementById("outcomeList").innerHTML = OUTCOMES.map(function (o) {
+      return '<div class="pg-outcome-row" data-o="' + o[0] + '"><i></i><strong>' + esc(o[1]) +
+        "</strong><code>" + esc(o[2]) + "</code></div>";
+    }).join("");
   }
 
-  /* ── RAIL ─────────────────────────────────────────────────────────────── */
+  function navBtn(label, icon, active) {
+    return '<button type="button" class="pg-nav-a' + (active ? " is-active" : "") + '"' +
+      (active ? ' aria-current="page"' : "") + ">" + (active ? "<i></i>" : "") +
+      ico(icon) + "<span>" + esc(label) + "</span></button>";
+  }
+
   function renderRail() {
-    var autoActive = S.screen === "auto";
-    var intActive = S.screen === "integrations";
     var h = "";
-
-    function item(label, icon, active, sub) {
-      return '<button type="button" class="pg-nav-a' + (active ? " is-active" : "") + '"' +
-        (active ? ' aria-current="page"' : "") + '>' + (active ? "<i></i>" : "") +
-        ico(icon) + "<span>" + esc(label) + "</span>" + (sub || "") + "</button>";
+    if (inSettings()) {
+      // The Settings contextual rail, exactly as shipped.
+      h += navBtn("Back to PAIGE", "back", false);
+      h += '<div class="pg-navlabel">Settings</div>';
+      SETTINGS_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Integrations"); });
+    } else {
+      MAIN_RAIL.forEach(function (r) { h += navBtn(r[0], r[1], r[0] === "Command Center"); });
     }
-
-    h += item("Command Center", "home", false);
-    h += item("Clients", "users", false);
-    h += item("Campaigns", "mega", false);
-
-    if (S.ia === "A") {
-      // Option A — Automations is its own rail slot, a seventh destination.
-      h += item("Automations", "bolt", autoActive);
-    }
-
-    h += item("Marketplace", "store", false);
-    h += item("Analytics", "chart", false);
-
-    // Settings: in Option B it owns Automations as a sub-location and expands.
-    var settingsActive = intActive || (S.ia === "B" && autoActive);
-    h += item("Settings", "gear", settingsActive);
-
-    if (settingsActive) {
-      h += '<div class="pg-subnav">';
-      if (S.ia === "B") {
-        h += '<button type="button" class="pg-nav-a' + (autoActive ? " is-active" : "") + '"' +
-          (autoActive ? ' aria-current="page"' : "") + ">" + (autoActive ? "<i></i>" : "") +
-          ico("bolt") + "<span>Automations</span></button>";
-      }
-      h += '<button type="button" class="pg-nav-a' + (intActive ? " is-active" : "") + '"' +
-        (intActive ? ' aria-current="page"' : "") + ">" + (intActive ? "<i></i>" : "") +
-        ico("link") + "<span>Integrations</span></button>";
-      h += "</div>";
-    }
-
     navlist.innerHTML = h;
   }
 
-  /* ── LANES ────────────────────────────────────────────────────────────── */
+  function renderSubstrip() {
+    var autoKey = S.screen === "intended" ? "intended" : "auto";
+    var tabs = inSettings()
+      ? [["catalogue", "Catalogue", "link"], [autoKey, "Automations", "bolt"]]
+      : [["cmd", "Systems Check", "pulse"], ["cmdmind", "Mind", "mind"]];
+    substrip.innerHTML = tabs.map(function (t) {
+      var on = t[0] === S.screen;
+      return '<button type="button" role="tab" class="pg-subtab" data-sub="' + t[0] + '" aria-selected="' + (on ? "true" : "false") + '">' +
+        ico(t[2], 14) + "<span>" + esc(t[1]) + "</span>" +
+        (isAuto() && t[0] === autoKey ? '<span class="pg-subtab-count">None yet</span>' : "") + "</button>";
+    }).join("");
+  }
+
   function renderLanes() {
     lanesEl.innerHTML = LANES.map(function (l) {
       return '<button type="button" class="pg-lane" data-lane="' + l.id + '" data-state="' + l.state + '">' +
-        '<span class="pg-lane-stripe" aria-hidden="true"></span>' +
-        '<span class="pg-lane-body">' +
-          '<span class="pg-lane-title"><strong>' + esc(l.title) + "</strong>" +
-            '<span class="pg-kind">' + esc(l.kind) + "</span>" +
-            '<span class="pg-truth" data-v="' + l.truth + '">' + esc(l.truthLabel) + "</span></span>" +
-          '<span class="pg-lane-why">' + esc(l.why) + "</span>" +
-          '<span class="pg-lane-src">' + l.src.map(function (s) { return "<code>" + esc(s) + "</code>"; }).join("") + "</span>" +
-        "</span>" +
-        '<span class="pg-lane-end"><span class="pg-lane-open">Evidence' +
-          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>' +
-        "</span></span>" +
-      "</button>";
+        '<span class="pg-lane-stripe" aria-hidden="true"></span><span class="pg-lane-body">' +
+        '<span class="pg-lane-title"><strong>' + esc(l.title) + "</strong>" +
+        '<span class="pg-kind">' + esc(l.kind) + "</span>" +
+        '<span class="pg-truth"' + (l.truth ? ' data-v="' + l.truth + '"' : "") + ">" + esc(l.truthLabel) + "</span></span>" +
+        '<span class="pg-lane-why">' + esc(l.why) + "</span>" +
+        '<span class="pg-lane-src">' + l.src.map(function (s) { return "<code>" + esc(s) + "</code>"; }).join("") + "</span></span>" +
+        '<span class="pg-lane-end">Evidence<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span></button>';
     }).join("");
   }
 
-  /* ── PROVIDERS ────────────────────────────────────────────────────────── */
-  function capLabel(c) { return c === "live" ? "Capability: live" : c === "partial" ? "Capability: partial" : "Capability: none"; }
+  function capLabel(c) { return c === "partial" ? "Capability: partial" : "Capability: none"; }
 
   function renderProviders() {
     var rows = PROVIDERS.filter(function (p) { return S.cat === "all" || p.cat === S.cat; });
-    if (!rows.length) {
-      provGrid.innerHTML = '<p style="font-size:12.4px;color:var(--pg-muted);margin:0">Nothing in this category.</p>';
-      return;
-    }
-    provGrid.innerHTML = rows.map(function (p) {
+    provGrid.innerHTML = rows.length ? rows.map(function (p) {
       return '<button type="button" class="pg-prov" data-prov="' + p.id + '" data-cat="' + p.cat + '">' +
         '<span class="pg-prov-hd"><span class="pg-prov-mark" aria-hidden="true">' + esc(p.mark) + "</span>" +
-          "<div><strong>" + esc(p.name) + "</strong><small>" + esc(p.kind) + "</small></div>" +
-          '<span class="pg-truth" data-v="' + (p.cap === "live" ? "live" : p.cap === "partial" ? "held" : "none") + '">' +
-            esc(capLabel(p.cap)) + "</span></span>" +
-        '<dl class="pg-prov-state">' +
-          "<div><dt>Workspace</dt><dd>" + esc(p.config) + "</dd></div>" +
-          "<div><dt>Health</dt><dd>" + esc(p.health) + "</dd></div>" +
-        "</dl>" +
-        '<span class="pg-prov-foot">' +
-          (p.handoff ? '<span class="pg-btn" style="pointer-events:none">' + esc(p.handoff.label) + "</span>" : "") +
-          "<span>" + esc(p.evidence) + "</span>" +
-        "</span>" +
-      "</button>";
-    }).join("");
+        "<div><strong>" + esc(p.name) + "</strong><small>" + esc(p.kind) + "</small></div>" +
+        '<span class="pg-truth"' + (p.cap === "partial" ? ' data-v="held"' : "") + ">" + esc(capLabel(p.cap)) + "</span></span>" +
+        '<dl class="pg-prov-state"><div><dt>Workspace</dt><dd>' + esc(p.config) + "</dd></div>" +
+        "<div><dt>Health</dt><dd>" + esc(p.health) + "</dd></div></dl>" +
+        '<span class="pg-prov-foot">' + (p.handoff ? '<span class="pg-btn" style="pointer-events:none">' + esc(p.handoff) + "</span>" : "") +
+        "<span>" + esc(p.evidence) + "</span></span></button>";
+    }).join("") : '<p style="font-size:12.4px;color:var(--pg-muted);margin:0">Nothing in this category.</p>';
   }
 
-  /* ── SLIDE-OUT ────────────────────────────────────────────────────────── */
-  function openSlide(title, sub, bodyHtml, footHtml, trigger) {
+  function openSlide(title, sub, body, foot, trigger) {
     lastFocus = trigger || document.activeElement;
     document.getElementById("slideTitle").textContent = title;
     document.getElementById("slideSub").textContent = sub;
-    document.getElementById("slideBody").innerHTML = bodyHtml;
-    document.getElementById("slideFoot").innerHTML = footHtml;
+    document.getElementById("slideBody").innerHTML = body;
+    document.getElementById("slideFoot").innerHTML = foot;
     shell.setAttribute("data-panel", "open");
     slide.setAttribute("aria-hidden", "false");
     slide.focus();
@@ -965,88 +1058,56 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
     lastFocus = null;
   }
 
-  function laneSlide(l, trigger) {
-    var b =
-      '<div class="pg-field"><span class="pg-eyebrow">Why it cannot run</span><p>' + esc(l.why) + "</p></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">Read from the live workspace</span>' +
-        '<div class="pg-evidence">' + esc(l.evidence) + "</div></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">What it would take</span><p>' + esc(l.needs) + "</p></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">Worth knowing</span><p>' + esc(l.note) + "</p></div>";
-    var f = '<button class="pg-btn" type="button" disabled>Author a rule</button>' +
-      '<span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype — no control here writes anything</span>';
-    openSlide(l.title, l.kind + " · " + l.truthLabel, b, f, trigger);
-  }
-
-  function provSlide(p, trigger) {
-    var b =
-      '<div class="pg-field"><span class="pg-eyebrow">What this reads</span><p>' + esc(p.body) + "</p></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">State</span>' +
-        '<div class="pg-evidence">' + esc("workspace   " + p.config + "\nhealth      " + p.health + "\nevidence    " + p.evidence) + "</div></div>" +
-      '<div class="pg-field"><span class="pg-eyebrow">Boundary</span><p>No credentials or provider payloads are shown on this surface, and none are held by it.</p></div>';
-    var f = '<button class="pg-btn" type="button" disabled>' +
-      (p.handoff ? esc(p.handoff.label) : "Setup handoff unavailable") + "</button>" +
-      '<span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype</span>';
-    openSlide(p.name, p.kind, b, f, trigger);
-  }
-
-  /* ── STATE APPLICATION ────────────────────────────────────────────────── */
-  var VP = {
-    "1536x770": [1536, 770], "1366x768": [1366, 768],
-    "1024x768": [1024, 768], "900x1000": [900, 1000]
-  };
-
+  var VP = { "1536x770":[1536,770], "1366x768":[1366,768], "1024x768":[1024,768], "900x1000":[900,1000] };
   function applyViewport() {
-    var d = VP[S.vp], w = d[0], h = d[1];
-    frame.style.width = w + "px";
-    frame.style.height = h + "px";
-    document.getElementById("vpTag").textContent = w + " × " + h;
+    var d = VP[S.vp];
+    frame.style.width = d[0] + "px";
+    frame.style.height = d[1] + "px";
+    document.getElementById("vpTag").textContent = d[0] + " × " + d[1];
     var avail = Math.max(320, document.querySelector(".rv-stage").clientWidth - 36);
-    var scale = Math.min(1, avail / w);
+    var scale = Math.min(1, avail / d[0]);
     frame.style.transform = scale < 1 ? "scale(" + scale + ")" : "";
-    frame.style.marginBottom = scale < 1 ? -(h * (1 - scale)) + "px" : "";
+    frame.style.marginBottom = scale < 1 ? -(d[1] * (1 - scale)) + "px" : "";
   }
 
   function applyAll() {
     shell.setAttribute("data-pg", S.theme);
     document.documentElement.setAttribute("data-theme", S.theme);
-
-    var isAuto = S.screen === "auto";
-    document.getElementById("screen-auto").hidden = !isAuto;
-    document.getElementById("screen-integrations").hidden = isAuto;
-
-    document.getElementById("ctxTitle").textContent = isAuto ? "Automations" : "Integrations";
-    document.getElementById("ctxKicker").textContent =
-      "First Sterling Capital" + (isAuto && S.ia === "B" ? " · Settings" : !isAuto ? " · Settings" : "");
-
-    document.getElementById("autoLoading").hidden = !(isAuto && S.state === "loading");
-    document.getElementById("autoError").hidden = !(isAuto && S.state === "error");
-    document.getElementById("autoTruth").hidden = !(isAuto && S.state === "truth");
-
-    renderRail();
-    renderProviders();
-    applyViewport();
-    closeSlide();
+    document.getElementById("screen-cmd").hidden = S.screen !== "cmd";
+    document.getElementById("screen-catalogue").hidden = S.screen !== "catalogue";
+    document.getElementById("screen-auto").hidden = S.screen !== "auto";
+    document.getElementById("screen-intended").hidden = S.screen !== "intended";
+    document.getElementById("ctxTitle").textContent = inSettings() ? "Settings" : "Command Center";
+    document.getElementById("ctxKicker").textContent = "FIRST STERLING CAPITAL";
+    renderRail(); renderSubstrip(); renderProviders(); renderIntended(); applyViewport(); closeSlide();
     document.getElementById("mainScroll").scrollTop = 0;
   }
 
-  /* ── EVENTS ───────────────────────────────────────────────────────────── */
   function segGroup(attr, onPick) {
     document.querySelectorAll(".rv-seg button[data-" + attr + "]").forEach(function (b) {
       b.addEventListener("click", function () {
-        var scope = b.closest(".rv-seg");
-        scope.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+        b.closest(".rv-seg").querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
         b.setAttribute("aria-pressed", "true");
         onPick(b.getAttribute("data-" + attr));
       });
     });
   }
-
-  segGroup("ia", function (v) { S.ia = v; applyAll(); });
   segGroup("screen", function (v) { S.screen = v; applyAll(); });
-  segGroup("state", function (v) { S.state = v; applyAll(); });
   segGroup("pgtheme", function (v) { S.theme = v; applyAll(); });
   segGroup("vp", function (v) { S.vp = v; applyAll(); });
   segGroup("motion", function (v) { document.body.setAttribute("data-motion", v); });
+
+  substrip.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sub]");
+    if (!b) return;
+    var k = b.getAttribute("data-sub");
+    if (k === "cmdmind") return;
+    S.screen = k;
+    document.querySelectorAll(".rv-seg button[data-screen]").forEach(function (x) {
+      x.setAttribute("aria-pressed", x.getAttribute("data-screen") === k ? "true" : "false");
+    });
+    applyAll();
+  });
 
   document.getElementById("catFilters").addEventListener("click", function (e) {
     var b = e.target.closest("button[data-cat]");
@@ -1058,59 +1119,68 @@ body[data-motion="reduced"] * { transition-duration: .001ms !important; animatio
   });
 
   lanesEl.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-lane]");
-    if (!b) return;
-    var l = LANES.filter(function (x) { return x.id === b.getAttribute("data-lane"); })[0];
-    if (l) laneSlide(l, b);
+    var t = e.target.closest("[data-lane]"); if (!t) return;
+    var l = LANES.filter(function (x) { return x.id === t.getAttribute("data-lane"); })[0]; if (!l) return;
+    openSlide(l.title, l.kind + " · " + l.truthLabel,
+      '<div class="pg-field"><span class="pg-eyebrow">Why it cannot run</span><p>' + esc(l.why) + "</p></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">Read from the live workspace</span><div class="pg-evidence">' + esc(l.evidence) + "</div></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">What it would take</span><p>' + esc(l.needs) + "</p></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">Worth knowing</span><p>' + esc(l.note) + "</p></div>",
+      '<button class="pg-btn" type="button" disabled>Author a rule</button><span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype — nothing here writes</span>', t);
   });
 
   provGrid.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-prov]");
-    if (!b) return;
-    var p = PROVIDERS.filter(function (x) { return x.id === b.getAttribute("data-prov"); })[0];
-    if (p) provSlide(p, b);
+    var t = e.target.closest("[data-prov]"); if (!t) return;
+    var p = PROVIDERS.filter(function (x) { return x.id === t.getAttribute("data-prov"); })[0]; if (!p) return;
+    openSlide(p.name, p.kind,
+      '<div class="pg-field"><span class="pg-eyebrow">What this reads</span><p>' + esc(p.body) + "</p></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">State</span><div class="pg-evidence">' +
+        esc("workspace   " + p.config + "\nhealth      " + p.health + "\nevidence    " + p.evidence) + "</div></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">Boundary</span><p>No credentials or provider payloads are shown on this surface, and none are held by it.</p></div>',
+      '<button class="pg-btn" type="button" disabled>' + esc(p.handoff || "Setup handoff unavailable") +
+        '</button><span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype</span>', t);
+  });
+
+  /* Intended-workspace controls. Every one changes local draft state only. */
+  document.getElementById("screen-intended").addEventListener("click", function (e) {
+    var step = e.target.closest("[data-step]");
+    if (step) { S.step = Number(step.getAttribute("data-step")); renderIntended(); return; }
+    var pick = e.target.closest("[data-intent],[data-tone],[data-mode]");
+    if (!pick || pick.disabled) return;
+    if (pick.hasAttribute("data-intent")) S.intent = pick.getAttribute("data-intent");
+    else if (pick.hasAttribute("data-tone")) S.tone = pick.getAttribute("data-tone");
+    else S.mode = pick.getAttribute("data-mode");
+    renderIntended();
+  });
+
+  document.getElementById("sandboxBtn").addEventListener("click", function () {
+    openSlide("Test in sandbox", "This callable does not exist yet",
+      '<div class="pg-field"><span class="pg-eyebrow">What you would get</span><p>A dry run against one contact you choose: the rule is evaluated, the five legal gates run in their locked order, and you are told exactly which gate the message lands on — without anything being sent.</p></div>' +
+      '<div class="pg-field"><span class="pg-eyebrow">Why it is honest to show this</span><p>The outcome vocabulary is not invented. It is the exact set the shipped pre-send pipeline already returns, and that pipeline already fails closed when a consent or suppression read errors.</p></div>' +
+      '<div class="pg-field"><span class="pg-eyebrow">What is missing</span><div class="pg-evidence">' +
+      esc("have  gate order        locked, shipped\nhave  outcome enum      PreSendOutcome\nhave  consent reads     shipped\nhave  suppression reads shipped\nNEED  a callable that evaluates without dispatching") + "</div></div>",
+      '<button class="pg-btn" type="button" disabled>Run the test</button><span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Disabled — the contract does not exist</span>',
+      this);
+  });
+
+  document.getElementById("newRule").addEventListener("click", function () {
+    S.step = 0; renderIntended();
+    document.getElementById("editorTitle").textContent = "New automation";
   });
 
   document.getElementById("slideClose").addEventListener("click", closeSlide);
   document.getElementById("scrim").addEventListener("click", closeSlide);
-  document.getElementById("retryBtn").addEventListener("click", function () {
-    S.state = "truth";
-    document.querySelectorAll(".rv-seg button[data-state]").forEach(function (x) {
-      x.setAttribute("aria-pressed", x.getAttribute("data-state") === "truth" ? "true" : "false");
-    });
-    applyAll();
-  });
-
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && shell.getAttribute("data-panel") === "open") {
-      e.preventDefault();
-      closeSlide();
-    }
+    if (e.key === "Escape" && shell.getAttribute("data-panel") === "open") { e.preventDefault(); closeSlide(); }
   });
-
-  // Focus containment while the slide-out is open.
   slide.addEventListener("keydown", function (e) {
     if (e.key !== "Tab") return;
-    var f = slide.querySelectorAll("button:not([disabled]), [href], textarea, input, select, [tabindex]:not([tabindex='-1'])");
+    var f = slide.querySelectorAll("button:not([disabled]), [href], textarea, input, [tabindex]:not([tabindex='-1'])");
     if (!f.length) return;
     var first = f[0], last = f[f.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
-
-  document.querySelectorAll(".rv-verdicts button").forEach(function (b) {
-    b.addEventListener("click", function () {
-      document.querySelectorAll(".rv-verdicts button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
-      b.setAttribute("aria-pressed", "true");
-      var notes = document.getElementById("notes").value.trim();
-      var v = b.getAttribute("data-v");
-      document.getElementById("echo").textContent =
-        "Recorded in this page only — " + v.toUpperCase() +
-        (notes ? " · “" + notes + "”" : " · no notes") +
-        ". Nothing is sent anywhere; tell me the verdict directly and I will act on it.";
-    });
-  });
-
   window.addEventListener("resize", applyViewport);
 
   renderLanes();
