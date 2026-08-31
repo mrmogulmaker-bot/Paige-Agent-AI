@@ -11,6 +11,8 @@ const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrati
 const taskGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831195500_solo_pipeline_task_tenant_guard.sql"), "utf8");
 const concurrencyMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831203500_solo_pipeline_concurrency_guards.sql"), "utf8");
 const invariantMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831205000_solo_pipeline_invariant_guards.sql"), "utf8");
+const archiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831210000_solo_pipeline_archive_serialization.sql"), "utf8");
+const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -119,6 +121,10 @@ describe("Solo Campaigns approved contract", () => {
     expect(invariantMigration).toContain("DEAL_STAGE_INVALID_OR_ARCHIVED");
     expect(invariantMigration).toContain("trg_serialize_pipeline_stage_insert");
     expect(invariantMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||new.pipeline_id::text,0))");
+    expect(archiveMigration).toContain("for share");
+    expect(archiveMigration).toContain("where id=_stage_id for update");
+    expect(submissionProcessor).toContain("deal_stage_update_failed");
+    expect(submissionProcessor).toContain("submission_deal_link_failed");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
