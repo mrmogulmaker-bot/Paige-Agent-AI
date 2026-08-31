@@ -40,6 +40,7 @@ import {
 import { CalendarsView } from "./connections-calendars";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BLOCKED_ACTIONS, preparePermission, refusalFor, type PreparePermission, type Refusal } from "./a2pPrepare";
+import { domainOutcomeFor, isSendableDomain, type DomainOutcome } from "./domainActions";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -684,6 +685,146 @@ function usePreparePermission(): PreparePermission {
   return preparePermission({ loading: roles.loading, isStaff: roles.isStaff, isPlatformOwner: owner });
 }
 
+/**
+ * Custom sending domains — the four released verbs, made reachable.
+ *
+ * This card rendered a read-only list. The adapter behind it declared every
+ * write "a separate slice" and the controls stayed disabled — while
+ * `manage-tenant-domain` had already shipped add / refresh / set_default /
+ * remove, tenant-scoped and callable. The deferral was a decision an earlier
+ * session made, not a missing contract, and reading it as a limit left a
+ * supported capability static behind an "unavailable" label.
+ *
+ * THE DNS RECORDS ARE THE FLOW, NOT A DETAIL. Adding a domain does not make it
+ * usable; publishing the returned records at the registrar and then verifying
+ * does. A card that let someone add a domain and never showed them what to
+ * publish would leave them stuck at "pending" forever with nothing to act on —
+ * which is the same dead end as not having the control at all.
+ *
+ * REMOVE IS DESTRUCTIVE AND ASKS FIRST. It deletes the domain at the provider as
+ * well as here, and it cannot be undone from this surface.
+ */
+function SendingDomainsPanel({
+  domains, loading, error, retry, manageDomain, presentation,
+}: {
+  domains: ReturnType<typeof useSoloComms>["domains"];
+  loading: boolean; error: string | null; retry: () => void;
+  manageDomain: ReturnType<typeof useSoloComms>["manageDomain"];
+  presentation: ReturnType<typeof getCustomDomainPresentation>;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [domain, setDomain] = useState("");
+  const [fromName, setFromName] = useState("");
+  const [fromLocal, setFromLocal] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<DomainOutcome | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const invalid = domain.trim() !== "" && !isSendableDomain(domain);
+
+  const run = async (
+    key: string,
+    verb: "add" | "refresh" | "set_default" | "remove",
+    payload: Parameters<typeof manageDomain>[1],
+    onDone?: () => void,
+  ) => {
+    setBusy(key); setOutcome(null);
+    const res = await manageDomain(verb, payload);
+    setBusy(null);
+    if (!res.ok) { setOutcome(domainOutcomeFor(res.error)); return; }
+    onDone?.();
+  };
+
+  return <Card title="Custom sending domains" icon={Globe2} truth={domains.length ? "LIVE" : "PARTIAL"}
+    actions={<Status tone={presentation.tone}>{presentation.accountLabel}</Status>}>
+    {/* Kept from the read-only card this replaces. Dropping it while adding the
+        write controls would have removed a shipped signal in a change nominally
+        about adding one (§58). */}
+    <OrthogonalConnectionState {...presentation}/>
+    <ReadState loading={loading} error={error} retry={retry}>
+      {domains.length ? <div className="ss-list">{domains.map((d) => <div key={d.id} className="ss-domain-row">
+        <span>
+          <strong>{d.domain}</strong>
+          <small>{d.fromEmailLocal}@{d.domain}{d.isDefault ? " · default" : ""}</small>
+        </span>
+        <Status tone={d.status === "verified" ? "ok" : d.status === "failed" ? "bad" : "warn"}>{d.status}</Status>
+        <div className="ss-domain-acts">
+          {d.status !== "verified" && <button type="button" className="ss-act" disabled={busy !== null}
+            onClick={() => void run(d.id, "refresh", { id: d.id })}>
+            {busy === d.id ? "Checking…" : "Check verification"}</button>}
+          {!d.isDefault && <button type="button" className="ss-act" disabled={busy !== null}
+            onClick={() => void run(d.id, "set_default", { id: d.id })}>Make default</button>}
+          {d.dnsRecords.length > 0 && <button type="button" className="ss-act"
+            onClick={() => setExpanded(expanded === d.id ? null : d.id)}>
+            {expanded === d.id ? "Hide DNS records" : "Show DNS records"}</button>}
+          <button type="button" className="ss-act" disabled={busy !== null}
+            onClick={() => setConfirmRemove(d.id)}>Remove</button>
+        </div>
+
+        {expanded === d.id && <div className="ss-dns">
+          <p className="ss-note">Publish these at whoever manages this domain&rsquo;s DNS, then check verification.
+            Until they are published and found, this domain stays unverified and cannot send.</p>
+          <div className="scroll-x"><table className="ss-dns-table">
+            <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+            <tbody>{d.dnsRecords.map((rec, i) => <tr key={i}>
+              <td>{rec.type}</td><td>{rec.name}</td><td className="ss-dns-value">{rec.value}</td></tr>)}</tbody>
+          </table></div>
+        </div>}
+
+        {confirmRemove === d.id && <div className="ss-next" role="status">
+          <strong>Remove {d.domain}?</strong>
+          <p>This deletes it from your email provider as well as from this account, and it cannot be undone here.
+            Anything currently sending from it will stop.</p>
+          <div className="ss-drawer-acts">
+            <button type="button" className="ss-act" onClick={() => setConfirmRemove(null)}>Keep it</button>
+            <button type="button" className="ss-act" disabled={busy !== null}
+              onClick={() => void run(d.id, "remove", { id: d.id }, () => setConfirmRemove(null))}>
+              {busy === d.id ? "Removing…" : "Remove it"}</button>
+          </div>
+        </div>}
+      </div>)}</div>
+      : <div className="ss-empty"><WifiOff/>No custom sending domain yet. Email sends from the platform default until you add one.</div>}
+    </ReadState>
+
+    {outcome && <div className="ss-next ss-read-failure" role="status">
+      <strong>{outcome.title}</strong><p>{outcome.body}</p>
+      {outcome.recovery && <p>{outcome.recovery}</p>}
+    </div>}
+
+    {adding ? <div className="ss-domain-form">
+      <label className="ss-drawer-label" htmlFor="ss-dom">Domain</label>
+      <input id="ss-dom" value={domain} disabled={busy !== null} placeholder="yourbusiness.com"
+        onChange={(e) => { setDomain(e.target.value); setOutcome(null); }}/>
+      {invalid && <p className="ss-note ss-invalid">Enter the bare domain — yourbusiness.com, not a web address or an email address.</p>}
+      <label className="ss-drawer-label" htmlFor="ss-dom-local">Send from</label>
+      <input id="ss-dom-local" value={fromLocal} disabled={busy !== null} placeholder="no-reply"
+        onChange={(e) => setFromLocal(e.target.value)}/>
+      <label className="ss-drawer-label" htmlFor="ss-dom-name">Sender name</label>
+      <input id="ss-dom-name" value={fromName} disabled={busy !== null} placeholder="Notifications"
+        onChange={(e) => setFromName(e.target.value)}/>
+      <p className="ss-note">Adding it registers the domain and gives you the DNS records to publish. It cannot send
+        until those are published and verified.</p>
+      <div className="ss-drawer-acts">
+        <button type="button" className="ss-act ss-act-primary"
+          disabled={busy !== null || !isSendableDomain(domain)}
+          onClick={() => void run("add", "add", {
+            domain: domain.trim().toLowerCase(),
+            from_name: fromName.trim() || undefined,
+            from_email_local: fromLocal.trim() || undefined,
+          }, () => { setAdding(false); setDomain(""); setFromName(""); setFromLocal(""); })}>
+          {busy === "add" ? "Adding…" : "Add domain"}</button>
+        <button type="button" className="ss-act" disabled={busy !== null}
+          onClick={() => { setAdding(false); setOutcome(null); }}>Cancel</button>
+      </div>
+    </div>
+    : <div className="ss-actions-row">
+        <button type="button" className="ss-act ss-act-primary" onClick={() => { setAdding(true); setOutcome(null); }}>
+          Add a sending domain</button>
+      </div>}
+  </Card>;
+}
+
 function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
   const { activeTenantId } = useTenantContext();
   const comms = useSoloComms();
@@ -885,10 +1026,8 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
             <ReadState loading={identity.loading} error={identity.error} retry={identity.retry}>{identity.value ? <div className="ss-fields"><Field label="Sender" value={identity.value.default_email_sender}/><Field label="Domain" value={identity.value.default_email_domain}/><Field label="Kind" value={identity.value.default_email_kind}/><Field label="Persisted status" value={identityStatus}/></div> : <p>No managed sending identity is configured for this account.</p>}</ReadState>
             <p className="ss-note">This is a managed outbound identity. It is not called a mailbox because inbound mailbox behavior is not proven.</p>
           </Card>
-          <Card title="Custom sending domains" icon={Globe2} truth={domainPresentation.capability} capabilityTruth actions={<Status tone={domainPresentation.tone}>{domainPresentation.accountLabel}</Status>}>
-            <OrthogonalConnectionState {...domainPresentation}/>
-            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.domains.length ? <div className="ss-list">{comms.domains.map(domain=><div key={domain.id}><span><strong>{domain.domain}</strong><small>{domain.fromEmailLocal}@{domain.domain}</small></span><Status tone={domain.status === "verified" ? "ok" : "warn"}>{domain.status}</Status></div>)}</div> : <div className="ss-empty"><WifiOff/>No custom sending domain is reported.</div>}</ReadState>
-          </Card>
+          <SendingDomainsPanel domains={comms.domains} loading={comms.loading} error={comms.error}
+            retry={comms.refresh} manageDomain={comms.manageDomain} presentation={domainPresentation}/>
           <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
             <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
             <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>

@@ -12,10 +12,16 @@
  *      parent agency's — we do NOT fetch a plan and report `isSubAccount` so the
  *      caller renders the honest "managed by your agency" empty state.
  *
- * DEFERRED (§13/§38 — NO fake action): every WRITE — add/refresh/set-default/remove
- * a domain, notification toggles, subscribe/checkout (money, §38) — is a separate
- * slice. This adapter exposes NO mutation; the Setup surface renders those controls
- * DISABLED/Preview.
+ * DOMAIN WRITES ARE LIVE (corrected 2026-08-31). This header used to declare every
+ * write "a separate slice" and the surface rendered those controls disabled. But
+ * `manage-tenant-domain` had ALREADY shipped add / refresh / set_default / remove —
+ * released, tenant-scoped, callable — so the deferral was describing a decision an
+ * earlier session made, not a contract that was missing. A stale deferral read as a
+ * limit is how a supported capability ends up static behind an "unavailable" label.
+ * `manageDomain` below exposes those four verbs and nothing else.
+ *
+ * STILL DEFERRED, and genuinely so: notification toggles, and subscribe/checkout —
+ * the latter moves money (§38) and has no seam here.
  *
  * §9: no client-supplied tenant_id — the edge fn + RPCs derive scope from the
  * verified session/RLS. Honest degrade (§13): a failed read surfaces an error and
@@ -25,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
+import { readDnsRecords, type DnsRecord } from "../domainActions";
 
 export interface SoloDomain {
   id: string;
@@ -33,6 +40,10 @@ export interface SoloDomain {
   fromName: string;
   status: string;
   isDefault: boolean;
+  /** What the tenant must publish at their registrar before this can verify.
+   *  Carried because a domain added without them is a dead end — the person has
+   *  no way to finish, and "pending" would never become "verified". */
+  dnsRecords: DnsRecord[];
 }
 
 export interface SoloSendingIdentity {
@@ -63,6 +74,23 @@ export interface SoloCommsData {
   /** Null while loading, for a sub-account (parent-managed), or when unresolved. */
   billing: SoloBillingPlan | null;
   refresh: () => void;
+  /**
+   * The four released sender-domain verbs.
+   *
+   * Resolves to `{ ok: true }` or `{ ok: false, error }` where `error` is the
+   * function's own code — NEVER rendered directly; the caller maps it through
+   * `domainOutcomeFor`, because the 502 arm's error is the upstream provider's
+   * response body. It never throws: a rejected write is an outcome this surface
+   * has to show, not an exception that blanks the card.
+   *
+   * No `tenant_id` is ever sent. The function derives it from the session and
+   * rejects a body value that disagrees, so passing one could only ever be
+   * theatre or an attempt at someone else's account.
+   */
+  manageDomain: (
+    verb: "add" | "refresh" | "set_default" | "remove",
+    payload: { domain?: string; from_name?: string; from_email_local?: string; id?: string },
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
 /* ----- billing helpers (mirrors SetupBilling) --------------------------------- */
@@ -168,6 +196,7 @@ export function useSoloComms(): SoloCommsData {
           fromName: str(r.from_name) ?? "",
           status: str(r.status) ?? "pending",
           isDefault: r.is_default === true,
+          dnsRecords: readDnsRecords(r.dns_records),
         };
       });
       setDomains(parsedDomains);
@@ -251,6 +280,53 @@ export function useSoloComms(): SoloCommsData {
     void load();
   }, [load]);
 
+  /**
+   * Drive one of the four released verbs, then RE-READ.
+   *
+   * The re-read is the point: `add` returns the created row and `set_default`
+   * returns only `{ ok: true }`, so patching local state from the response would
+   * give two different fidelities of truth and drift from the record on the next
+   * verb. Reloading means the card always shows what the account actually holds.
+   *
+   * The invoke is wrapped because `functions.invoke` REJECTS on a non-2xx rather
+   * than returning the body — an unwrapped call would throw out of a click
+   * handler and blank the surface instead of showing the tenant what happened.
+   */
+  const manageDomain = useCallback(
+    async (
+      verb: "add" | "refresh" | "set_default" | "remove",
+      payload: { domain?: string; from_name?: string; from_email_local?: string; id?: string },
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+      try {
+        const { data, error: invokeErr } = await supabase.functions.invoke("manage-tenant-domain", {
+          body: { verb, ...payload },
+        });
+        if (invokeErr) {
+          // The real payload rides on `context`, a Response; the top-level
+          // message is the generic non-2xx sentence and carries no code.
+          const ctx = (invokeErr as { context?: { json?: () => Promise<unknown> } }).context;
+          let code: string | null = null;
+          try {
+            const parsed = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
+            const e = (parsed as { error?: unknown } | null)?.error;
+            if (typeof e === "string") code = e;
+          } catch {
+            code = null;
+          }
+          return { ok: false, error: code ?? "unknown" };
+        }
+        // A 200 can still carry `{ error }` from an arm that returns it directly.
+        const bodyErr = (data as { error?: unknown } | null)?.error;
+        if (typeof bodyErr === "string") return { ok: false, error: bodyErr };
+        await load();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+      }
+    },
+    [load],
+  );
+
   return useMemo(
     () => ({
       loading: loading || tenantLoading || Boolean(tenantId && loadedTenantId !== tenantId),
@@ -260,7 +336,8 @@ export function useSoloComms(): SoloCommsData {
       sending: loadedTenantId === tenantId ? sending : { fromName: null, supportEmail: null, defaultSender: null },
       billing: loadedTenantId === tenantId ? billing : null,
       refresh,
+      manageDomain,
     }),
-    [loading, tenantLoading, tenantId, loadedTenantId, error, isSubAccount, domains, sending, billing, refresh],
+    [loading, tenantLoading, tenantId, loadedTenantId, error, isSubAccount, domains, sending, billing, refresh, manageDomain],
   );
 }
