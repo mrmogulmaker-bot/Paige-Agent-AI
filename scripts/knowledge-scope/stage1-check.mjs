@@ -1396,7 +1396,27 @@ group("once refused, every later revalidation stays refused");
 // an action step's `detail` all streamed the evidence live on a protected turn with 223/223
 // green. "Protected by default" was the claim; "neutral by default if you reuse a key" was the
 // behaviour.
-const PROTECTED_MARKERS = /CHILD-PRIVATE-MARKER|PRIVATE-KB-SOURCE-MARKER|PRIVATE-RAG-SOURCE-MARKER|PRIVATE-SESSION-DOC-MARKER/;
+// EVERY MARKER ANY FIXTURE PLANTS IN PROTECTED EVIDENCE — and the list is DERIVED, not typed.
+// The hand-written version was two markers short of its own fixtures: `PRIVATE-MEMORY-MARKER`
+// and `PRIVATE-PDF-MARKER`, the two the newest and strongest latch sources are built on, were
+// missing. Eight leak mutations therefore streamed real `client_memory` and real funding
+// client-file text live on a protected turn with the whole suite green — including one that
+// mutated the SHIPPED live-neutral channel. A hand-maintained list of what to look for is the
+// same failure as a hand-maintained list of what to protect, one layer down.
+//
+// So it is read out of this file's own source at startup. Add a fixture with a new `*-MARKER`
+// token and it is covered the moment it exists; there is nothing to remember.
+const HARNESS_SOURCE = (await import("node:fs")).readFileSync(new URL(import.meta.url), "utf8");
+const DISCOVERED_MARKERS = [...new Set(HARNESS_SOURCE.match(/\b[A-Z][A-Z0-9-]*MARKER[A-Z0-9-]*\b/g) ?? [])]
+  .filter((m) => !/^(PROTECTED_MARKERS|DISCOVERED_MARKERS)$/.test(m));
+// An EMPTY list would compile to `new RegExp("")`, which matches every string and turns every
+// frame non-neutral — loud, but for the wrong reason. It would equally hide a silent inversion if
+// the pattern were ever written to match nothing. Fail on the spot instead.
+if (DISCOVERED_MARKERS.length < 4) {
+  console.error(`knowledge-scope: marker discovery found only ${DISCOVERED_MARKERS.length} (${DISCOVERED_MARKERS.join(", ")}) — the pattern is wrong, not the fixtures.`);
+  process.exit(1);
+}
+const PROTECTED_MARKERS = new RegExp(DISCOVERED_MARKERS.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"));
 const nonNeutralFrames = (text) => text.split("\n").filter((l) => {
   if (!l.startsWith("data: ")) return false;
   const raw = l.slice(6);
@@ -1417,7 +1437,11 @@ const nonNeutralFrames = (text) => text.split("\n").filter((l) => {
     // detail stays short — the code's claim is "a fixed vocabulary label and a count", and a
     // long detail means that claim has stopped being true.
     if (v?.kind === "thought") return true;
-    return typeof v?.detail === "string" && v.detail.length > 40;
+    // BOTH fields, bounded. The first version checked `detail` and not `label` — the very field
+    // `describeStep`'s department fix exists to keep closed — so a step carrying 300 characters
+    // of tenant memory in its label was classified neutral.
+    if (typeof v?.detail === "string" && v.detail.length > 40) return true;
+    return typeof v?.label === "string" && v.label.length > 60;
   }
   if (k === "paige_phase") return typeof v !== "string" || v.length > 24;
   if (k === "paige_compacting") return Object.keys(v ?? {}).some((x) => x !== "state" && x !== "pct");
@@ -2144,6 +2168,21 @@ group("safety-first streaming: the sources the first enumeration missed");
     fbOrder.done === -1 || fbOrder.content < fbOrder.done,
     `content at ${fbOrder.content}, [DONE] at ${fbOrder.done}`,
   );
+  // AND THE FALLBACK TEXT ITSELF IS BUFFERED, not merely ordered. Ordering alone left a mutation
+  // that forwards the fallback straight to the wire fully green: the sentinel still trailed it,
+  // so wire order was satisfied while the text escaped a refused turn.
+  const fbTotal = personaCallsOf(fallback);
+  const fbAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(fbTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...fallbackOpts,
+  });
+  assert(
+    "21.k a failed final check withholds the couldn't-finish text too",
+    !/couldn't finish that/.test(fbAtGate.responseText),
+    fbAtGate.responseText.slice(0, 300),
+  );
 
   // 21.l — `client_memory`, and it is the strongest of the sources the enumerations missed
   // because it is DURABLE ACROSS SESSIONS. The `report_upload` row persists the very extraction
@@ -2430,6 +2469,200 @@ group("safety-first streaming: the sources the first enumeration missed");
     !draftAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
     draftAtGate.responseText.slice(0, 300),
   );
+
+  // 21.s — THE ROLLING CONVERSATION SUMMARY. The ninth source, and the strongest argument of the
+  // lot: this handler's own close-out comment says a persisted reply is folded into the summary,
+  // so it carries forward — verbatim and durably — exactly the replies this rule buffers. It is
+  // read thousands of lines BELOW the latch, which is what falsified the claim that every source
+  // is read above it, and why the fix is a setter call rather than another list entry.
+  const SUMMARY_THREAD = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const summaryOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    bodyExtras: { threadId: SUMMARY_THREAD },
+    tableExtras: {
+      paige_chat_threads: () => [{ summary: "Earlier we discussed PRIVATE-SUMMARY-MARKER.", studio_session_id: null }],
+    },
+  };
+  const sumClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...summaryOpts,
+  });
+  assert(
+    "21.s CONTROL — the rolling summary really did reach the model prompt",
+    sumClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-SUMMARY-MARKER")),
+    JSON.stringify(sumClean.providerCalls).slice(0, 200),
+  );
+  const sumTotal = personaCallsOf(sumClean);
+  assert(
+    "21.s CONTROL — and a summary-bearing turn is protected",
+    sumTotal >= 2,
+    `persona calls: ${sumTotal} — 1 means the guard short-circuited`,
+  );
+  const sumAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(sumTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...summaryOpts,
+  });
+  assert(
+    "21.s a failed final check withholds a reply grounded in the rolling summary",
+    !sumAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    sumAtGate.responseText.slice(0, 300),
+  );
+
+  // 21.t — THE REQUEST-SUPPLIED CLIENT FILE. Up to 50,000 characters interpolated under
+  // "CLIENT CONTEXT (VERIFIED DATABASE DATA)". On a funding tenant it is incidentally covered by
+  // the client-file source, which is exactly why it needed its own case on a NON-funding one.
+  const ctxOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    bodyExtras: { clientContext: "Current page: Dashboard. PRIVATE-CLIENTCTX-MARKER" },
+  };
+  const ctxClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...ctxOpts,
+  });
+  const ctxTotal = personaCallsOf(ctxClean);
+  assert(
+    "21.t CONTROL — a client-context turn on a NON-funding tenant is protected",
+    ctxTotal >= 2,
+    `persona calls: ${ctxTotal}`,
+  );
+  const ctxAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(ctxTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...ctxOpts,
+  });
+  assert(
+    "21.t a failed final check withholds the client-context reply",
+    !ctxAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    ctxAtGate.responseText.slice(0, 300),
+  );
+
+  // 21.u — `knowledge_base` full-text hits, the one latch source that had NO fixture in either
+  // direction while a commit message claimed all of them were mutation-proven. It only reaches
+  // the funding core, so the funding client file protects the same turn — meaning this case can
+  // only prove the source is WIRED, not that it is independently load-bearing. Said plainly
+  // rather than counted as coverage it does not give.
+  const kbaseOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    fundingEnabled: true,
+    tableExtras: { knowledge_base: () => [{ title: "T", content: "PRIVATE-KBASE-MARKER", summary: null, framework: "f", category: "c" }] },
+  };
+  const kbaseClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...kbaseOpts,
+  });
+  assert(
+    "21.u CONTROL — knowledge_base hits really do reach the funding core prompt",
+    kbaseClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-KBASE-MARKER")),
+    JSON.stringify(kbaseClean.providerCalls).slice(0, 200),
+  );
+  assert(
+    "21.u ...and such a turn is protected (subsumed by the client file — see the note)",
+    personaCallsOf(kbaseClean) >= 2,
+    `persona calls: ${personaCallsOf(kbaseClean)}`,
+  );
+
+  // 21.v — THE LIVE TOKEN-FORWARDING BRANCH. Every at-gate scenario above resolves through
+  // `finalChunks` — the replayed tool-less round — so `emitContent(controller, value)` on the
+  // real streamed closing body, the path an ordinary protected reply's tokens actually flow
+  // through, had no test at all. Reverting it to a direct enqueue left the whole suite green.
+  // Two failing provider rounds force the closing call, and a third supplies its body.
+  const streamOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["two-tools", "fail", "private-text"],
+  };
+  const streamClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...streamOpts,
+  });
+  assert(
+    "21.v CONTROL — the forced-closing shape really does deliver a streamed reply",
+    streamClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    streamClean.responseText.slice(-300),
+  );
+  const streamTotal = personaCallsOf(streamClean);
+  const streamAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(streamTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...streamOpts,
+  });
+  assert(
+    "21.v a failed final check withholds the STREAMED closing body, not just replayed chunks",
+    !streamAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    streamAtGate.responseText.slice(0, 400),
+  );
+}
+
+// ── 22 · The classifier itself ───────────────────────────────────────────────────
+//
+// EVERY CHECK IN GROUPS 20 AND 21 RESTS ON `nonNeutralFrames`, and until now NOTHING TESTED IT.
+// An independent review deleted each of its six branches in turn and the whole suite stayed
+// green — so the instrument the safety property is measured with was itself unmeasured. It is
+// also the third place on this branch where the thing meant to catch a miss had the same miss
+// inside it, which is why it now gets direct positive/negative fixtures instead of being trusted
+// because the assertions built on it pass.
+group("the neutral-frame classifier itself");
+{
+  const f = (o) => `data: ${JSON.stringify(o)}\n\n`;
+  const isNeutral = (line) => nonNeutralFrames(line).length === 0;
+
+  // The count is not pinned to a number: pinning it means every new fixture marker fails this
+  // assertion and gets "fixed" by bumping a literal, which is how a self-maintaining list stops
+  // maintaining itself. What is pinned is that discovery WORKS and that the markers the newest
+  // sources depend on are actually in it — the two that were missing when this was hand-written.
+  assert("22.1 marker discovery found every fixture marker in this file",
+    DISCOVERED_MARKERS.length >= 6 &&
+      ["CHILD-PRIVATE-MARKER", "PRIVATE-MEMORY-MARKER", "PRIVATE-PDF-MARKER", "PRIVATE-SUMMARY-MARKER"]
+        .every((m) => DISCOVERED_MARKERS.includes(m)),
+    DISCOVERED_MARKERS.join(", "));
+
+  // Neutral, and must stay so — otherwise every "no non-neutral frame survives" assertion in
+  // groups 20 and 21 would pass by classifying the whole transcript as a leak.
+  assert("22.2 a plain action step is neutral",
+    isNeutral(f({ paige_step: { kind: "action", label: "Working on that", detail: "3 found" } })), "");
+  assert("22.3 a phase marker is neutral", isNeutral(f({ paige_phase: "writing" })), "");
+  assert("22.4 a compaction frame is neutral", isNeutral(f({ paige_compacting: { state: "folding", pct: 42 } })), "");
+  assert("22.5 the fixed client-scope category is neutral",
+    isNeutral(f({ client_scope: { status: "refused", reason: "client_not_authorized" } })), "");
+  assert("22.6 the refusal sentence is neutral",
+    isNeutral(f({ choices: [{ delta: { content: "Your active workspace changed, so I stopped here." } }] })), "");
+  assert("22.7 the [DONE] sentinel is neutral", isNeutral("data: [DONE]\n\n"), "");
+
+  // Non-neutral. Each of these is a mutation an independent review actually ran against the
+  // shipped code and watched survive 250/0.
+  assert("22.8 a thought step is protected",
+    !isNeutral(f({ paige_step: { kind: "thought", label: "Checking the note" } })), "");
+  assert("22.9 evidence hidden in a phase frame is protected",
+    !isNeutral(f({ paige_phase: "PRIVATE-MEMORY-MARKER" })), "");
+  assert("22.10 evidence hidden in a client_scope reason is protected",
+    !isNeutral(f({ client_scope: { status: "refused", reason: "PRIVATE-PDF-MARKER.pdf" } })), "");
+  assert("22.11 evidence hidden in an action step LABEL is protected",
+    !isNeutral(f({ paige_step: { kind: "action", label: "PRIVATE-MEMORY-MARKER EQ 712 EX 705 TU 698" } })), "");
+  assert("22.12 evidence hidden in an action step DETAIL is protected",
+    !isNeutral(f({ paige_step: { kind: "action", label: "Working on that", detail: "PRIVATE-MEMORY-MARKER EQ 712" } })), "");
+  assert("22.13 evidence smuggled beside the refusal sentence is protected",
+    !isNeutral(f({ choices: [{ delta: { content: "workspace changed PRIVATE-MEMORY-MARKER EQ 712" } }] })), "");
+  // NO MARKER in this one, deliberately. With a marker the frame is caught by the marker scan
+  // instead, and deleting the compaction shape check alone left the suite green — the assertion
+  // passed without ever exercising the branch it names.
+  assert("22.14 a compaction frame growing a third field is protected",
+    !isNeutral(f({ paige_compacting: { state: "folding", pct: 1, note: "anything at all" } })), "");
+  assert("22.15 a second key beside a neutral one is protected",
+    !isNeutral(f({ paige_phase: "writing", choices: [{ delta: { content: "leak" } }] })), "");
+  assert("22.16 an over-long action label is protected even with no marker",
+    !isNeutral(f({ paige_step: { kind: "action", label: "x".repeat(61) } })), "");
+  assert("22.17 an over-long action detail is protected even with no marker",
+    !isNeutral(f({ paige_step: { kind: "action", label: "ok", detail: "y".repeat(41) } })), "");
+  assert("22.18 an over-long phase value is protected even with no marker",
+    !isNeutral(f({ paige_phase: "z".repeat(25) })), "");
+  assert("22.19 an over-long client_scope reason is protected even with no marker",
+    !isNeutral(f({ client_scope: { status: "refused", reason: "w".repeat(65) } })), "");
+  assert("22.20 an unparseable data line is protected",
+    !isNeutral("data: {not json\n\n"), "");
+  assert("22.21 an unknown frame key is protected by default",
+    !isNeutral(f({ some_new_frame: { title: "anything" } })), "");
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

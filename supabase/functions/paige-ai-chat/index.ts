@@ -1571,7 +1571,10 @@ JSON:`;
     // where tokens were already gone by the time the last check ran, and a hold on the document
     // path that engaged only when the KB happened to match.
     //
-    // THE FOUR SOURCES OF PROTECTED EVIDENCE, enumerated rather than assumed:
+    // THE SOURCES OF PROTECTED EVIDENCE THAT ARE KNOWN AT ENTRY. Deliberately not numbered in
+    // this heading: it said FOUR while the list below held eight, inside the very comment block
+    // rewritten for honesty one revision earlier. The list is the list; a count beside it is one
+    // more thing that can be wrong.
     //   1. `tenantKbContext`  — tenant Knowledge chunks.
     //   2. `ragContext`       — titles and body text from `rag_documents`; document-derived.
     //   3. `attachedDocument` — the document itself, whether or not anything matched it. This is
@@ -1599,13 +1602,10 @@ JSON:`;
     // content is emitted only from the reply stage far below. So the latch is settled before
     // anything can emit. That is a positional property, checkable by reading, not a count.
     //
-    // Sealing it as `const` keeps the enumeration honest for a new PROMPT BLOCK: one added below
-    // will not compile until whoever adds it moves the decision deliberately. It does NOT cover
-    // the likelier case — a TOOL in the agentic loop returning tenant or document content into
-    // `convo` and grounding the closing reply. That path never touches this variable, so the
-    // ruling's "a late retrieval must switch the turn into the protected path" is enforced for
-    // it by `markLateRetrievalProtected` below, at the one point tool output enters the model's
-    // context — not by this const, which cannot see it.
+    // Sealing it as `const` keeps THIS LIST honest — a source enumerated here cannot quietly be
+    // reassigned later. It is NOT a claim that the list is complete, and reading it that way is
+    // how the last two revisions went wrong. Several things reach the model from far below this
+    // point, and they are handled by `markProtectedLate`, not by this constant.
     const turnCarriesProtectedContentAtEntry =
       // 1. Tenant Knowledge chunks.
       !!tenantKbContext ||
@@ -1642,7 +1642,13 @@ JSON:`;
       //    message further below. The SAME image arriving as `attachedDocument` is protected by
       //    (3); arriving as an attachment it was not. That is the §58 asymmetry this rule
       //    already removed once, reproduced on an adjacent path.
-      !!(turnAttachments && turnAttachments.length);
+      !!(turnAttachments && turnAttachments.length) ||
+      // 9. The request-supplied client file, up to 50,000 characters, interpolated under
+      //    "=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===". On a funding tenant this is
+      //    incidentally covered by (6) and `sanitizeClientContextForTier` strips the credit
+      //    lines for everyone else — but a non-funding tenant's client-file block still reached
+      //    the model unprotected, and "mostly covered by another source" is not a reason.
+      !!clientContext;
 
     // THE LATE-RETRIEVAL HALF, which the `const` above cannot cover and which the ruling names
     // explicitly: "a late Knowledge/tool retrieval must switch the turn into the protected
@@ -1697,15 +1703,18 @@ JSON:`;
       "content_save", "document_generate", "generate_image",
       "growth_page_save", "growth_page_publish",
     ]);
+    // The general setter. Every below-the-latch source that reaches the model calls this; the
+    // tool seam is one caller among several rather than the only one.
+    const markProtectedLate = (reason: string) => {
+      if (lateRetrievalProtected) return;
+      lateRetrievalProtected = true;
+      console.log("[paige] turn switched to the protected buffered path", JSON.stringify({ reason }));
+    };
     const markLateRetrievalProtected = (executed: any[], receipts: Set<string>) => {
       if (lateRetrievalProtected) return;
       const evidence = executed.find((tc) => !receipts.has(tc?.function?.name ?? ""));
       if (!evidence) return;
-      lateRetrievalProtected = true;
-      console.log(
-        "[paige] turn switched to the protected buffered path by a late tool retrieval",
-        JSON.stringify({ tool: evidence?.function?.name ?? null }),
-      );
+      markProtectedLate(`tool:${evidence?.function?.name ?? "unknown"}`);
     };
 
     // Reuse the same JWT-backed authoritative resolver that selected the Knowledge
@@ -3946,6 +3955,13 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
           }
         }
         if (th?.summary) {
+          // THE ROLLING SUMMARY IS PROTECTED, and it is the strongest case of the lot. This
+          // branch's own close-out comment says a persisted reply is folded into it by
+          // `maybeRefreshSummary` — so it carries forward, verbatim and durably, exactly the
+          // replies this rule buffers. It is read here, thousands of lines below the latch,
+          // which is why the latch alone could never have caught it and why the claim that it
+          // could was wrong.
+          markProtectedLate("thread_rolling_summary");
           // After persona + systemPrompt, before operator/CRM context.
           aiMessages.splice(2, 0, {
             role: "system",
@@ -8526,11 +8542,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           //     text live under exactly this justification.
           //   · phase markers (`paige_phase`) and compaction frames (`{state, pct}`).
           //   · the fixed `client_scope` refusal category — one of six constant strings.
-          //   · the `client_scope_refused` `sync_status`, a fixed category with no payload.
+          //   · the `client_scope_refused` `sync_status` — a fixed category with no payload, and
+          //     the one entry here that is DOCUMENT-path only. It is buffered like every other
+          //     close-out frame on that path; it is listed as neutral because its payload
+          //     carries nothing, not because it goes direct. The earlier wording said it was not
+          //     held, which contradicted the same commit's other hunk.
           // Each names an activity without quoting the evidence, which is what lets the user see
           // progress while a protected answer is still being checked. The `[DONE]` sentinel is
           // NOT on this list any more: it is buffered, because arriving ahead of the released
-          // reply made four of the seven SSE consumers drop the reply entirely.
+          // reply made four of the seven SSE consumers drop the reply entirely. Nor are the two
+          // refusal-path emits — the changed-workspace sentence and its own `[DONE]` — which go
+          // direct by design, after the buffer has been discarded.
           //
           // On an ordinary turn `heldContent` is empty — the reply already streamed live — so
           // the release is a no-op and behaviour is byte-identical to before this rule.
