@@ -1556,6 +1556,16 @@ JSON:`;
     // exact same active account at that moment. Missing, changed, malformed, or
     // revoked scope fails closed before model egress.
     //
+    // SCOPE OF THAT CLAIM, STATED EXACTLY (§13). "Every provider boundary" means every one on
+    // the CHAT TURN's own path: initial egress, each loop continuation, the closing call, tool
+    // dispatch, response emission, and the durable telemetry write. It does NOT cover
+    // `foldThreadSummary` (the rolling-summary compactor, defined below and also invoked
+    // post-turn via `maybeRefreshSummary`). That makes its own `gatewayCompat` call carrying the
+    // thread transcript — text DERIVED from prior-account Knowledge, though not the chunks
+    // themselves — with no revalidation on either invocation. It is a real gap in the general
+    // claim and it is tracked rather than silently widened into this change, because the
+    // compactor is a separate subsystem with its own post-turn/waitUntil lifecycle.
+    //
     // ONCE REFUSED, ALWAYS REFUSED — and this flag is what makes that true. On failure this
     // helper clears `tenantKbContext`/`tenantKbScopeTenantId`, which is exactly the condition
     // the early return below keys on. Without a sticky record of the refusal, the SECOND call
@@ -8168,9 +8178,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
             });
           }
+          // §13 — the wording matters here, and the previous wording was FALSE. Since the tool
+          // dispatch guard became per-tool, a round can abort with earlier tools in the SAME
+          // batch already executed and their effects durable, and the caller breaks before
+          // narrating them. Telling the user "I stopped this request" then claims nothing
+          // happened when a contact may have been created. "I stopped here — anything I'd
+          // already finished is saved" is true whether one tool ran or none did.
           if (tenantKnowledgeScopeInvalidated || !(await revalidateTenantKnowledgeScope())) {
             pendingTenantKbTelemetry = null;
-            const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+            const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
             return;
@@ -8306,6 +8322,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // and post-processing checks complete. This prevents prior-account Knowledge
     // from crossing the response boundary if authority changes mid-stream.
     const directFrames: string[] = [];
+    // THE SNAPSHOT IS LOAD-BEARING — do not turn this into a live read of
+    // `!!tenantKbScopeTenantId`. The revalidation guard CLEARS that variable when it refuses, so
+    // a recomputation at the flush point evaluates FALSE precisely when a revocation has just
+    // happened, and the buffered frames would stream. Captured once, it stays true and keeps
+    // holding, which is the behaviour the refusal path depends on. (§58: this hold is also what
+    // removes live token streaming from Knowledge-carrying document turns — see the capability
+    // call-out in the PR body.)
     const holdDirectFramesForKnowledgeScope = !!tenantKbScopeTenantId;
     // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
     // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
@@ -8335,7 +8358,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         if (done) {
           if (!(await revalidateTenantKnowledgeScope())) {
             pendingTenantKbTelemetry = null;
-            const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+            const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
             controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
             controller.close();
@@ -8388,14 +8411,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // `attachedDocument` again, `tenantKbScopeTenantId` is null on this path and
                 // every call here returns `true` without asking the resolver — the guard goes
                 // quiet rather than failing. The harness asserts a REFUSAL on this exact path
-                // (scripts/knowledge-scope, group 14) so that regression cannot land green.
+                // (scripts/knowledge-scope, group 19) so that regression cannot land green.
+                // NOT group 14: that group calls `runStructuredExtractionAndSync` directly with
+                // its own injected stub, so it can never observe what this real call site passes.
+                // Replacing this argument with `null` left group 14 fully green while producing
+                // unauthorised extraction egress and a service-role sync write.
                 scopedClientId || null,
                 paigeChatUploadId,
                 revalidateTenantKnowledgeScope,
               );
               if (!(await revalidateTenantKnowledgeScope())) {
                 pendingTenantKbTelemetry = null;
-                const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+                const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
                 controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
                 controller.close();
@@ -8488,8 +8515,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // green, and only removing BOTH re-opens the leak. That redundancy is the point, not
             // an oversight: it is a deliberate backstop for a path nobody has thought of yet.
             // Do not delete it as dead code on the strength of a green suite.
-            if (tenantKnowledgeScopeRevoked) {
-              const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+            // Re-RESOLVES here rather than only reading the sticky flag. Reading the flag answers
+            // "was this revoked at some earlier boundary"; calling the resolver answers "is this
+            // still the same account NOW", which is the question the last hop before the bytes
+            // leave should be asking. The gap it closes is small — a telemetry insert and the
+            // analytics regex block sit between the last real check and this one — but it is a
+            // different residual from the drain one documented on the agentic path, and it costs
+            // one RPC on a path that already makes several.
+            if (!(await revalidateTenantKnowledgeScope())) {
+              const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
               controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
             } else {
               for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));

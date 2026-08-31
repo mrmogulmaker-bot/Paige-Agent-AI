@@ -524,6 +524,29 @@ group("active-account changes during the agent loop stop later provider calls");
     !/"id":"0:tool-\d"/.test(r.responseText),
     r.responseText.slice(0, 300),
   );
+  // An in-loop invalidation must reach the pre-emission gate as an ACCOUNT-CHANGE cancellation,
+  // not as the generic could-not-finish fallback — the user is owed the real reason.
+  //
+  // WHAT THESE TWO DO NOT PROVE (§13). External review reported that the
+  // `tenantKnowledgeScopeInvalidated ||` term on that gate is deletable with the suite green,
+  // and inferred a behaviour change. The first half is true; the second is not reproducible.
+  // Driving 21 shape/timing combinations (tool+text, tool+fail+text, tool+tool+text × switch at
+  // persona calls 2..8), dropping that term produces byte-identical output. The reason is that
+  // every site setting the flag does so immediately after the resolver returned false — which,
+  // since the sticky fix, also latches `tenantKnowledgeScopeRevoked`, so the resolver alone
+  // returns false from then on. The term is genuinely redundant now, as a CONSEQUENCE of that
+  // fix. It is kept because it states intent at the gate and costs nothing, not because these
+  // assertions pin it. They pin the message, which is a different and still-worth-having claim.
+  assert(
+    "13.5 an in-loop invalidation reaches the gate as an ACCOUNT-CHANGE cancellation",
+    r.responseText.includes("active workspace changed"),
+    r.responseText.slice(0, 300),
+  );
+  assert(
+    "13.6 ...and not the generic could-not-finish fallback",
+    !r.responseText.includes("couldn't finish"),
+    r.responseText.slice(0, 300),
+  );
   assert(
     "13.4 no later provider payload carries prior-account knowledge",
     !r.providerCalls.slice(1).some((body) => JSON.stringify(body).includes("CHILD-PRIVATE-MARKER")),
@@ -722,6 +745,10 @@ group("tool dispatch re-asserts scope for every tool, not once per round");
     provider: ["two-tools", "private-text"],
   });
 
+  // HONEST NOTE (§13): of the six assertions here, only 16.4 discriminates per-tool from
+  // per-batch — reverting the guard fails 16.4 alone (94/1). The others are controls and
+  // adjacent-boundary coverage. Do not delete 16.4 believing its neighbours cover it; they
+  // do not, and the suite will go green on the regression.
   const stable = await runTools(null);
   assert(
     "16.1 a stable scope dispatches BOTH tools of a two-tool round",
@@ -839,6 +866,13 @@ group("every provider re-entry in the agent loop re-asserts scope on its own");
   //   · 5 pre-closing-call · 6 pre-emission · 7 post-drain)
   // and by counting provider calls, which is the only signal that separates "the next call was
   // never made" from "it was made and its result was later suppressed".
+  //
+  // THE TABLE ABOVE IS ONLY VALID FOR THE FAILED-CONTINUATION SHAPE both assertions below
+  // drive. When the continuation SUCCEEDS there is no closing call, and index 5 is the second
+  // round's post-round check instead of the pre-closing-call one. No assertion here is wrong —
+  // 18.3 proves the failed-continuation path was actually taken — but do not time a new switch
+  // off this table without re-deriving it for the round shape you are driving. Groups 16 and 17
+  // carry their own tables, which are correct for the shapes they drive.
 
   // (a) PRE-CONTINUATION — after a tool round is folded into `convo`, before the next model
   //     call. `convo` carries the Knowledge-grounded system prompt, so a continuation issued
@@ -929,9 +963,17 @@ group("once refused, every later revalidation stays refused");
   assert("19.2 CONTROL — and it really did retrieve Knowledge", !!stable.kbCall, JSON.stringify(stable.kbCall ?? null));
   assert("19.3 CONTROL — and it really did reach sync", stable.syncCalls.length === 1, `sync calls: ${stable.syncCalls.length}`);
 
-  // Every switch timing from the document close-boundary through the extraction stages. Each
-  // one leaked the prior workspace's reply before the sticky flag; each must now withhold it.
-  for (const n of [2, 3, 4, 5, 6]) {
+  // Every switch timing from the document close-boundary through the extraction stages and out
+  // to the caller's OWN post-sync recheck. Each of 2..6 leaked the prior workspace's reply
+  // before the sticky flag; each must now withhold it.
+  //
+  // WHY 7 IS IN THIS LIST, and why leaving it out was a real hole. Timings 2..6 are all
+  // absorbed by the sticky flag set INSIDE the sync helper, so none of them exercises the
+  // outer `revalidateTenantKnowledgeScope()` that runs when the helper returns. With the loop
+  // stopping at 6, that entire outer block could be deleted and the suite stayed at 113/0 —
+  // while a switch landing at 7 leaked the reply AND wrote `kb_query_telemetry`. A boundary no
+  // check can distinguish from its neighbours is one a future edit deletes as redundant.
+  for (const n of [2, 3, 4, 5, 6, 7]) {
     const r = await creditTurn(Array(n).fill(CHILD).concat([AGENCY]), [CHILD, AGENCY]);
     assert(
       `19 switch at persona call ${n}: the prior workspace's reply is never flushed`,
