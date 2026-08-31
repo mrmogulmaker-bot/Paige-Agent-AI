@@ -551,6 +551,23 @@ describe("n8n tool bridge (MCP)", () => {
     expect(section.textContent).not.toContain("Connected");
   });
 
+  it("keeps the transport out of the n8n section's own copy too", async () => {
+    // The Zapier card was cleaned up and this section was renamed with it, which left
+    // "the tool bridge" and "Connect the bridge" pointing at a name no longer on screen.
+    // Same bar, same reason: a workspace is connecting n8n, not a protocol.
+    //
+    // "Transport" and "Bearer" are deliberately NOT in this list. They are the labels
+    // n8n's own settings use for the values being copied across, so here they are the
+    // workspace's vocabulary rather than ours.
+    world({ n8n: { configured: false } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    const copy = mcpSection(host).textContent ?? "";
+    for (const jargon of ["bridge", "MCP", "JSON-RPC"]) {
+      expect(copy).not.toContain(jargon);
+    }
+  });
+
   it("saves and PROVES a connection in one act, and reports the proven state", async () => {
     world();
     const { host } = await render();
@@ -660,11 +677,11 @@ describe("n8n tool bridge (MCP)", () => {
     });
     await type(mcpFields(host)[0], "https://acme.app.n8n.cloud/mcp/x");
     await type(mcpFields(host)[1], "tok");
-    const submitButton = mcpButton(host, "Connect the bridge") as HTMLButtonElement;
+    const submitButton = mcpButton(host, "Connect tool access") as HTMLButtonElement;
     expect(submitButton.disabled).toBe(true);
     // …and becomes possible once the header is named.
     await type(mcpFields(host)[2], "X-N8N-Api-Key");
-    expect((mcpButton(host, "Connect the bridge") as HTMLButtonElement).disabled).toBe(false);
+    expect((mcpButton(host, "Connect tool access") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("lets a non-admin see the state but not change it", async () => {

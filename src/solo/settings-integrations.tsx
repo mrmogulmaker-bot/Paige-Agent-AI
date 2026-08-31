@@ -441,12 +441,12 @@ function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: bo
     return ok;
   }, [onChanged]);
 
-  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking the tool bridge…</p>;
+  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking direct tool access…</p>;
 
   if (m.error) {
     return <div className="ig-state" role="alert">
       <TriangleAlert aria-hidden />
-      <span>The tool bridge could not be read, so nothing is being claimed either way.</span>
+      <span>Direct tool access could not be read, so nothing is being claimed either way.</span>
       <button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button>
     </div>;
   }
@@ -597,13 +597,13 @@ function McpForm({
     <label className="ig-field">
       <span>Name <em>optional</em></span>
       <input
-        type="text" autoComplete="off" placeholder="What you call this bridge"
+        type="text" autoComplete="off" placeholder="What you call this connection"
         value={label} onChange={(event) => setLabel(event.target.value)} disabled={m.saving}
       />
     </label>
     <div className="ig-actions">
       <button type="submit" className="ig-btn" data-primary disabled={!valid || m.saving}>
-        {m.saving ? "Connecting…" : existing ? "Save changes" : "Connect the bridge"}
+        {m.saving ? "Connecting…" : existing ? "Save changes" : "Connect tool access"}
       </button>
       {existing && <button type="button" className="ig-btn" onClick={onDone} disabled={m.saving}>Cancel</button>}
     </div>
