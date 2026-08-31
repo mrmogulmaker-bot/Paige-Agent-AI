@@ -118,8 +118,8 @@ describe("what the surface says about the gap is the measured number", () => {
     }
 
     const invisible = [...gate].filter((k) => !catalogue.has(k));
-    expect(gate.size).toBe(46);
-    expect(catalogue.size).toBe(23);
+    expect(gate.size).toBe(47);
+    expect(catalogue.size).toBe(24);
     expect(invisible).toHaveLength(23);
     // The one that makes it more than bookkeeping: a permanent delete the operator cannot disable.
     expect(invisible).toContain("n8n_delete_workflow");
