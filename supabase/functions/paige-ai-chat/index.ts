@@ -384,6 +384,9 @@ Rules:
 // failure so the caller can still proceed without blocking the user-facing
 // response. Uses Voyage voyage-3 (1024 dims) via embeddingsCompat to match the
 // tenant_knowledge_chunks / rag_documents embedding columns.
+/** A body-supplied client id must look like a UUID before it is used to key any lookup. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 async function embedText(text: string): Promise<number[] | null> {
   try {
     if (!text) return null;
@@ -911,22 +914,78 @@ JSON:`;
     }
 
     // === LOAD CLIENT MEMORY (recent + semantic) ===
+    //
+    // §9 CROSS-CLIENT LEAK, CLOSED HERE.
+    // `payloadClientId` arrives in the REQUEST BODY. Both memory lookups below used it to key
+    // reads made with the SERVICE-ROLE client (`supabase`), for which `auth.uid()` is NULL — so
+    // RLS and every SECURITY DEFINER caller-guard are exempt BY CONSTRUCTION. A caller could
+    // therefore name any client UUID and receive that client's memories, preferences and past
+    // chat snippets, which are then injected verbatim into the prompt.
+    //
+    // The fix reuses the authorization pattern this same handler already applies to the credit
+    // report upload and the general document upload: resolve the id through `supabaseClient`
+    // (the caller's JWT, so RLS applies) and require a row to come back. `.not("tenant_id","is",
+    // null)` is NOT optional — the `clients` table carries a `tenant_isolation` policy whose
+    // predicate includes `OR (tenant_id IS NULL)`, so a NULL-tenant client row is readable by
+    // ANY authenticated user and would sail through an otherwise-correct check.
+    //
+    // Memory is FAIL-CLOSED, which is stricter than the upload sites: those fall back to the
+    // caller's own id, whereas an unauthorized client here yields NO memory at all — no read,
+    // no embedding (a paid provider call), no RPC, nothing in the prompt. Falling back would be
+    // safe for confidentiality but would silently mask a caller probing for other clients.
     let memoryBlock = "";
+    let authorizedClientId: string | null = null;
+    let memoryScopeRefusal: string | null = null;
+    if (payloadClientId) {
+      if (typeof payloadClientId !== "string" || !UUID_RE.test(payloadClientId)) {
+        memoryScopeRefusal = "client context is malformed";
+      } else {
+        const { data: authMemClient, error: authMemErr } = await supabaseClient
+          .from("clients")
+          .select("id")
+          .eq("id", payloadClientId)
+          .not("tenant_id", "is", null)
+          .maybeSingle();
+        if (authMemErr) {
+          // A read failure is UNKNOWN authority, never permission. Fail closed.
+          memoryScopeRefusal = `client authorization read failed: ${authMemErr.message}`;
+        } else if (!authMemClient?.id) {
+          // Foreign, deleted, revoked, or NULL-tenant: RLS returned nothing for this caller.
+          memoryScopeRefusal = "client context is not authorized for this caller";
+        } else {
+          authorizedClientId = authMemClient.id as string;
+        }
+      }
+      if (memoryScopeRefusal) {
+        // §13 — the visible symptom is Paige answering without memory. Log the refusal with the
+        // reason so it is diagnosable, and never echo the rejected id's contents.
+        console.error(
+          "[paige] client memory scope REFUSED — no memory context for this turn",
+          JSON.stringify({ reason: memoryScopeRefusal }),
+        );
+      }
+    }
+
     try {
-      const memoryQuery = payloadClientId
-        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
+      // Refused client context does NO memory work at all: the block below is skipped entirely,
+      // so there is no recent read, no semantic embedding, and no match_paige_memory call.
+      const memoryQuery = memoryScopeRefusal
+        ? null
+        : authorizedClientId
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", authorizedClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
         : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(15);
 
       // Embed the latest user message so we can retrieve semantically-relevant
       // memories and past chat snippets in parallel with the recent-memory pull.
       const lastUserContent = lastUserMessage?.content?.slice(0, 4000) || "";
-      const semanticPromise = lastUserContent
+      const semanticPromise = (lastUserContent && !memoryScopeRefusal)
         ? embedText(lastUserContent).then(async (queryEmbedding) => {
             if (!queryEmbedding) return [] as any[];
             const { data, error } = await supabase.rpc("match_paige_memory", {
               _query_embedding: queryEmbedding,
-              _target_user_id: payloadClientId || user.id,
-              _target_client_id: payloadClientId || null,
+              // AUTHORIZED id only. Never the raw body value.
+              _target_user_id: authorizedClientId || user.id,
+              _target_client_id: authorizedClientId || null,
               _match_threshold: 0.7,
               _memory_count: 5,
               _message_count: 3,
@@ -939,7 +998,11 @@ JSON:`;
           }).catch((e) => { console.error("semantic search failed:", e); return [] as any[]; })
         : Promise.resolve([] as any[]);
 
-      const [{ data: memories }, semanticHits] = await Promise.all([memoryQuery, semanticPromise]);
+      const [memoryResult, semanticHits] = await Promise.all([
+        memoryQuery ?? Promise.resolve({ data: null }),
+        semanticPromise,
+      ]);
+      const memories = (memoryResult as any)?.data ?? null;
 
       if (memories && memories.length > 0) {
         // Always-on: surface user_preference at the top so Paige respects communication style.
