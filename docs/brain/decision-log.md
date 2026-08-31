@@ -8,6 +8,59 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 
 ## Recent PRs (#375 → #543)
 
+- **Calendar PR #642 MERGED, DEPLOYED and VERIFIED LIVE (2026-08-30).** Squash-merged at the
+  authorized head `fca04110` onto `83739ea1`; merge commit **`8ceda26e`**, source branch retained.
+  Production deployed (entry `index-Ui1VrVgZ` → `index-BEVu8cX1`, vendors unchanged) and integrity
+  PROVEN rather than assumed: the deployed lazy chunk `useSoloOwner-BEGRua1Y.js` keeps
+  `sc-board`/`sc-truth` and gained all three #642 markers **0 → 1** ("Calendar may be out of date",
+  "We could not refresh the latest booking changes", "Who is booked") plus `class_session_id` and
+  `class_seat` **0 → 1**; the Calendar CSS chunk is **byte-identical** to the merged build
+  (sha256 `831d2075…`) so the grid-row fix that made Retry clickable shipped too. Method notes worth
+  keeping: production IS reachable headless (an earlier assumption said otherwise), and the Calendar
+  code is in a LAZY chunk — grepping the entry `index-*.js` proves nothing, reading 0 before and
+  after. **OPEN:** a Codex review on `fca0411` was still running when the merge closed the PR;
+  outcome UNKNOWN, being collected — findings become a NEW follow-up PR, never a reopen.
+  **OWED:** the authenticated First Sterling Capital · Solo Calendar drive (credentials unset,
+  surface auth-gated). Deployment integrity is proven; the authenticated render is not.
+- **Calendar PR #642 — DRAFT/OPEN/UNMERGED/UNDEPLOYED, BLOCKED on a GitHub GraphQL rate limit
+  (2026-08-30).** Exact head `fca04110`, tree `c90e0d11`, base `83739ea1`. Exactly **nine**
+  Calendar-owned files. Verify PASS · Security Audit PASS · Vercel Preview READY · Supabase Preview
+  SKIPPED (correct — no Supabase files changed) · mergeability clean · no blocking reviews. The only
+  blocker is the draft→"Ready for review" GraphQL quota: **no ready transition, no merge, no
+  deployment**. An API capability delay, **not** a Calendar defect. **OWED:** authenticated First
+  Sterling Capital · Solo Calendar verification after release — that session held no scoped test
+  credentials and does not claim the drive. Three corrections preserved: (1) a report naming head
+  `587ca463` / 16 files came from the **wrong, older** Calendar worktree and does not describe #642;
+  (2) a local form-fit harness gave a **false green** because a stale server still held its port —
+  stopped, rerun against the correct harness; (3) a dev-only `MODULE_NOT_FOUND` fires only when the
+  harness and the drive start in the **same shell invocation** (three standalone runs clean) — not
+  confirmed product behavior, not a release blocker. **Boundary:** Calendar stays Clients-owned,
+  reuses existing booking/contact references, and must not create a separate Calendar memory,
+  autonomy, or action store.
+- **`main` production baseline = `83739ea1` (2026-08-30)** — includes the released Systems Check
+  accessibility/focus repair, **PR #645, merged, production READY, authenticated First Sterling
+  Capital Systems Check verification PASSED** (owner-reported). Do not reopen #645 unless a new
+  defect is independently confirmed.
+- **Calendar doctrine PR #646 — DRAFT/OPEN/UNMERGED, docs only (2026-08-30).** Documents the
+  Calendar↔spine contract. Does **not** implement or authorize Calendar writes, Trust Compass
+  enforcement, Brain access, or provider changes. Stays **separate** from #642.
+- **Shared rails audit — extend, never fork (2026-08-30, read-only).** Paige already has a real
+  foundation: Context Rail (durable tenant-scoped evidence + provenance) · Action Bus (action,
+  workflow, approval, worker lifecycle) · Trust Compass (**real platform-level safety posture today,
+  but NOT YET a server-enforced tenant/capability clamp** — a stored default autonomy value is not
+  enforcement) · Memory/knowledge (separate substrate; never exposed wholesale as a UI rail) · PAIGE
+  (one governed workspace, safe **opaque references** only — never raw evidence, messages, prompts,
+  payloads or hidden reasoning) · Brain (derived only from proven, tenant-safe records). **Standing
+  rule: reading precedes action.** Every Paige write must be server-authorized for tenant, account,
+  capability, source and scope; durable; auditable; idempotent; recoverable; and **fail closed** on
+  missing, stale, wrong-account, cross-tenant or insufficient-authority conditions. Dependencies:
+  **#643** remains the migration-history replay / Preview dependency for anything needing real
+  Supabase replay or Preview proof. Mind safe rail, Marketplace and Systems Check governed-write work
+  are **not** production-ready merely because their UI/prototypes or local tests are green. Settings
+  owns A2P, business phone, provider readiness, billing and configuration; Conversations consumes only
+  **named, proven** readiness. Analytics binds to real metric sources and evidence contracts — the
+  Context Rail is not a substitute for analytics truth.
+
 - **OWNER RULING — Solo Systems Check Operating Signal approved for draft implementation
   (2026-08-29).** Systems Check is PAIGE's compact business-awareness layer, not an isolated BI
   dashboard. The approved draft reads only persisted tenant-scoped evidence, presents truthful
