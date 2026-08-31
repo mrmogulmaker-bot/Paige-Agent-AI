@@ -8441,8 +8441,28 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             controller.enqueue(new TextEncoder().encode(proposalEvent));
           }
 
+          // THE CLOSE DECISION IS MADE ONCE, HERE, BEFORE ANY DURABLE WRITE — because there are
+          // TWO durable effects at the close of a document turn, not one, and they must agree.
+          // A previous revision moved the telemetry commit behind the flush check and left
+          // persistence in front of it, so a switch landing on this boundary withheld the reply
+          // from the stream and still wrote it permanently into the thread, where a reload
+          // renders it and `maybeRefreshSummary` folds it into the rolling summary. Withholding
+          // a reply from the wire while saving it to the database is not a refusal.
+          //
+          // Returns `true` immediately, with no RPC, on any turn that retrieved no Knowledge, so
+          // this costs nothing on the ordinary path.
+          const scopeHeldAtClose = await revalidateTenantKnowledgeScope();
+
           // Detect Paige's outputs for analytics: entity diagrams + legal flags.
-          try {
+          //
+          // GATED ON THE CLOSE DECISION, because these are DURABLE and RESPONSE-DERIVED, which is
+          // not obvious from the word "analytics". I judged this block scope-free — "event
+          // counters, no Knowledge-derived content" — put that judgement to review rather than
+          // trusting it, and it was wrong: `lender_searched` stores a `lender_name` extracted
+          // from the reply text and feeds an operator dashboard, and `legal_flag_shown` records
+          // that content was shown when it was not. These are fire-and-forget inserts, so nothing
+          // can retract them once started. A turn the user was told was stopped writes no rows.
+          if (scopeHeldAtClose) try {
             if (/"type"\s*:\s*"entity_diagram"/.test(fullAssistantResponse)) {
               void logAnalyticsEvent(supabase, user.id, "entity_diagram_generated", "paige", {});
             }
@@ -8487,17 +8507,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             console.warn("[paige] analytics post-stream detection failed:", (e as Error)?.message);
           }
 
-          // THE CLOSE DECISION IS MADE ONCE, HERE, BEFORE ANY DURABLE WRITE — because there are
-          // TWO durable effects at the close of a document turn, not one, and they must agree.
-          // A previous revision moved the telemetry commit behind the flush check and left
-          // persistence in front of it, so a switch landing on this boundary withheld the reply
-          // from the stream and still wrote it permanently into the thread, where a reload
-          // renders it and `maybeRefreshSummary` folds it into the rolling summary. Withholding
-          // a reply from the wire while saving it to the database is not a refusal.
-          //
-          // Returns `true` immediately, with no RPC, on any turn that retrieved no Knowledge, so
-          // this costs nothing on the ordinary path.
-          const scopeHeldAtClose = await revalidateTenantKnowledgeScope();
 
           // Persist Paige's reply for owner Your-Paige threads (#94). No-op when
           // no threadId (client portal / doc-only calls). Non-agentic path, so no

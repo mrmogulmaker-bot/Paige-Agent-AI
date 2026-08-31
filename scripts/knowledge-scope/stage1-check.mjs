@@ -75,7 +75,13 @@ function embedCalls() { return embedCount; }
 function resetEmbeds() { embedCount = 0; }
 function resetProvider(plan = []) { providerPlan = [...plan]; providerCalls = []; syncCalls = []; }
 function anthropicStream(kind = "text") {
-  const responseText = kind === "private-text" ? "CHILD-PRIVATE-MARKER" : "Scoped response.";
+  const responseText = kind === "private-text"
+    ? "CHILD-PRIVATE-MARKER"
+    // Trips the `lender_searched` extractor AND the not-legal-advice flag, so a check can prove
+    // response-derived analytics really do fire on a healthy turn.
+    : kind === "lender-text"
+    ? "CHILD-PRIVATE-MARKER — consider: Summit Capital. This is not legal advice."
+    : "Scoped response.";
   const events = kind === "tool"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
@@ -955,14 +961,25 @@ group("once refused, every later revalidation stays refused");
   const persisted = (r) => r.rec.rpc.some(
     (c) => c.name === "paige_chat_turn_append" && c.args?.p_role === "assistant",
   );
+  // The THIRD durable effect at the close of a turn, and the one I got wrong by judgement. The
+  // word "analytics" reads as scope-free counters; `lender_searched` actually stores a
+  // `lender_name` lifted out of the reply text and feeds an operator dashboard, and
+  // `legal_flag_shown` records that content was shown when it was withheld. They are
+  // fire-and-forget inserts, so nothing retracts them once started. Asserted on the table
+  // directly — a turn the user was told was stopped writes no rows.
+  const analytics = (r) => r.rec.inserts.filter((i) => i.table === "analytics_events");
   const creditTurn = (personaSequence, memberships, extra = {}) => drive({
     personaTenant: CHILD,
     personaSequence,
     memberships,
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     bodyExtras: { document: pdf, ...extra },
-    // read-check routes to the credit-report branch · the chat reply · the extraction call
-    provider: ["read-check", "private-text", "json-extraction"],
+    // read-check routes to the credit-report branch · the chat reply · the extraction call.
+    // The reply is `lender-text` rather than plain `private-text` so it TRIPS the response-derived
+    // analytics extractors. With a reply that matches none of them, "no analytics row was
+    // written" is true whatever the gate does, and the assertion below proves nothing — which is
+    // exactly how the first version of it passed while the defect was still present.
+    provider: ["read-check", "lender-text", "json-extraction"],
   });
 
   // POSITIVE CONTROL FIRST. Without it, "the marker never appeared" and "the marker was
@@ -980,6 +997,12 @@ group("once refused, every later revalidation stays refused");
   // The persistence control has to be its own run: without a threadId the persist path is a
   // no-op, so asserting "nothing was persisted" on a switched turn would otherwise be true for
   // a reason that has nothing to do with scope.
+  assert(
+    "19.3b CONTROL — an unbroken turn DOES write its response-derived analytics",
+    stable.rec.inserts.some((i) => i.table === "analytics_events"),
+    JSON.stringify(stable.rec.inserts.map((i) => i.table)),
+  );
+
   const stableThread = await creditTurn([CHILD], [CHILD], { threadId: THREAD });
   assert(
     "19.4 CONTROL — an unbroken credit-report turn DOES persist its reply",
@@ -1027,6 +1050,11 @@ group("once refused, every later revalidation stays refused");
       `19 switch at persona call ${n}: the withheld reply is not persisted to the thread either`,
       !persisted(rt),
       JSON.stringify(rt.rec.rpc.map((c) => c.name)),
+    );
+    assert(
+      `19 switch at persona call ${n}: no response-derived analytics row is written`,
+      analytics(r).length === 0,
+      JSON.stringify(analytics(r).map((i) => i.row?.event_name)),
     );
   }
 }
