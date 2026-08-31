@@ -19,12 +19,15 @@
  *     is why "set up your pipeline" is offered as a real next step rather than a
  *     placeholder.
  *
- * WHAT IS NOT REAL, AND WHY THE SURFACE SAYS SO. A saved rule is stored and the
- * deal-stage trigger does fire on it, but the dispatcher only forwards to an
- * external delivery route — no workspace has one configured and there is no
- * platform fallback, so a fired rule records a skip rather than sending. The
- * caller is told this through `deliveryReady: false`; it must never present a
- * saved rule as one that will reach anybody.
+ * WHAT THIS SURFACE MUST NOT CLAIM. A saved rule is stored and the deal-stage
+ * trigger does fire on it. What happens next is decided server-side: the trigger
+ * takes the tenant's own encrypted route, or falls back to a platform one seeded
+ * unconditionally by `20260701174236`. Neither is readable from here, so delivery
+ * readiness is UNKNOWN to this surface and is never asserted in either direction.
+ * An earlier version hardcoded "no route exists" from one look at one environment
+ * and promised the owner nothing could reach a client; that promise is false
+ * wherever migrations replayed. Rules are therefore saved off and cannot be
+ * started from this surface — the guarantee is structural, not a sentence.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -76,7 +79,12 @@ export interface AutomationOutcome {
 /** Plain-language reading of a recorded outcome. Unknown states stay honest. */
 export function outcomeLabel(status: string): string {
   switch (status) {
-    case "sent": return "Sent";
+    // The dispatcher records `dispatched`, and the table's own CHECK constraint
+    // permits exactly: pending, dispatched, failed, skipped_inactive,
+    // skipped_no_webhook, skipped_no_rule, skipped_no_consent. There is no
+    // `sent`. "Handed over" is deliberate: a successful dispatch means it left
+    // here, not that anyone received it.
+    case "dispatched": return "Handed over for sending";
     case "pending": return "Being handled";
     case "skipped_no_rule": return "Nothing set up for that move";
     case "skipped_inactive": return "Skipped — the rule was turned off";
@@ -105,16 +113,23 @@ export interface SoloAutomationsState {
   rules: AutomationRule[];
   pipelines: Pipeline[];
   stages: PipelineStage[];
-  /** Recorded outcomes for this workspace, newest first. Empty means none ever ran. */
+  /** Recorded outcomes for this workspace, newest first. Empty means none ever ran
+   *  — but ONLY when `outcomesUnavailable` is false. */
   outcomes: AutomationOutcome[];
+  /** True when the outcome read failed. The history is then unknown, not empty. */
+  outcomesUnavailable: boolean;
   /** Whether this caller may create or change a rule. Server-derived, never assumed. */
   canWrite: boolean;
   /**
-   * False while no delivery route exists anywhere. A rule can still be saved and
-   * will still be matched — it simply cannot reach anyone yet, and the surface is
-   * required to say so rather than imply a send.
+   * UNKNOWN, deliberately. Whether a delivery route exists is decided server-side
+   * from a tenant secret and a platform fallback, neither of which this surface
+   * may read. An earlier version hardcoded `false` from a one-time look at one
+   * environment and then promised the owner nothing could reach a client — but
+   * `20260701174236` seeds the platform fallback unconditionally, so that promise
+   * is false wherever migrations replayed. The surface must therefore never claim
+   * delivery is impossible, and must not start a rule from here.
    */
-  deliveryReady: boolean;
+  deliveryKnown: false;
   saving: boolean;
   /** Human-readable failure from the last write, or null. */
   writeError: string | null;
@@ -187,8 +202,8 @@ export function useSoloAutomations() {
   // Guards against a slower earlier read landing after a newer one (account switch).
   const epoch = useRef(0);
   const [state, setState] = useState<SoloAutomationsState>({
-    loading: true, error: false, rules: [], pipelines: [], stages: [], outcomes: [],
-    canWrite: false, deliveryReady: false, saving: false, writeError: null,
+    loading: true, error: false, rules: [], pipelines: [], stages: [], outcomes: [], outcomesUnavailable: false,
+    canWrite: false, deliveryKnown: false, saving: false, writeError: null,
   });
 
   const load = useCallback(async () => {
@@ -199,8 +214,8 @@ export function useSoloAutomations() {
     if (!activeTenantId) {
       if (epoch.current === token) {
         setState({
-          loading: false, error: false, rules: [], pipelines: [], stages: [], outcomes: [],
-          canWrite: false, deliveryReady: false, saving: false, writeError: null,
+          loading: false, error: false, rules: [], pipelines: [], stages: [], outcomes: [], outcomesUnavailable: false,
+          canWrite: false, deliveryKnown: false, saving: false, writeError: null,
         });
       }
       return;
@@ -233,8 +248,8 @@ export function useSoloAutomations() {
     const failed = Boolean(rulesRes.error || pipelinesRes.error || stagesRes.error);
     if (failed) {
       setState({
-        loading: false, error: true, rules: [], pipelines: [], stages: [], outcomes: [],
-        canWrite: false, deliveryReady: false, saving: false, writeError: null,
+        loading: false, error: true, rules: [], pipelines: [], stages: [], outcomes: [], outcomesUnavailable: true,
+        canWrite: false, deliveryKnown: false, saving: false, writeError: null,
       });
       return;
     }
@@ -245,13 +260,13 @@ export function useSoloAutomations() {
       rules: asRules(rulesRes.data),
       pipelines: asPipelines(pipelinesRes.data),
       stages: asStages(stagesRes.data),
-      // A failed outcome read degrades to "no record shown", never to a claim
-      // that nothing happened.
+      // A failed outcome read must NOT read as an empty history: that would be
+      // indistinguishable from "nothing ever ran" and could hide real dispatches.
       outcomes: outcomesRes.error ? [] : asOutcomes(outcomesRes.data),
+      outcomesUnavailable: Boolean(outcomesRes.error),
       canWrite: adminRes.error ? false : adminRes.data === true,
-      // No workspace has a delivery route and there is no platform fallback, so
-      // this stays false until that seam exists. It is stated, never inferred.
-      deliveryReady: false,
+      // Never inferred, never claimed. See the field doc.
+      deliveryKnown: false,
       saving: false,
       writeError: null,
     });

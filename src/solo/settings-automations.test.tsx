@@ -127,10 +127,57 @@ describe("Automations sub-tab routing (owned locally by Integrations)", () => {
 });
 
 describe("Automations truth boundary", () => {
-  it("states plainly that a saved rule cannot be delivered yet", async () => {
+  it("makes no promise about delivery it cannot keep, and none about a route it cannot see", async () => {
     const { host } = await render(`${BASE}/automations`);
-    expect(host.textContent).toContain("Nothing is set up yet");
-    expect(host.textContent).toMatch(/cannot deliver the message yet/i);
+    const text = host.textContent ?? "";
+    expect(text).toContain("Nothing is set up yet");
+    // The earlier copy promised a saved rule "cannot deliver" and that "no route
+    // out" existed. That was read off one environment; a platform fallback route
+    // is seeded by migration elsewhere, so the promise was not ours to make.
+    expect(text).not.toMatch(/cannot deliver/i);
+    expect(text).not.toMatch(/no route out/i);
+    expect(text).not.toMatch(/nothing will reach a client/i);
+    // What replaces it is the part this surface actually enforces.
+    expect(text).toMatch(/saved switched\s+off/i);
+    expect(text).toMatch(/nothing on this page switches one on/i);
+  });
+
+  it("offers no control that starts a rule, so the claim above is enforced not asserted", async () => {
+    db.rules = [{
+      id: "r1", pipeline_id: "p1", from_stage_id: "a1", to_stage_id: "a2",
+      compose_intent: "nurture", tone: "warm", template_hint: null,
+      send_mode: "draft_for_review", is_active: false, updated_at: null,
+    }];
+    const { host } = await render(`${BASE}/automations`);
+    const labels = Array.from(host.querySelectorAll("button")).map((b) => b.textContent ?? "");
+    expect(labels.some((l) => /turn on|switch on|activate|enable/i.test(l))).toBe(false);
+  });
+
+  it("never writes is_active when a rule is edited, so saving cannot start one", async () => {
+    db.rules = [{
+      id: "r1", pipeline_id: "p1", from_stage_id: "a1", to_stage_id: "a2",
+      compose_intent: "nurture", tone: "warm", template_hint: null,
+      send_mode: "draft_for_review", is_active: true, updated_at: null,
+    }];
+    db.pipelines = [{ id: "p1", name: "Sales" }];
+    db.stages = [
+      { id: "a1", pipeline_id: "p1", label: "Enquiry", order_index: 0 },
+      { id: "a2", pipeline_id: "p1", label: "Working", order_index: 1 },
+    ];
+    const { host } = await render(`${BASE}/automations`);
+    const change = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Change");
+    await act(async () => change?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    // An active rule being edited must not be told it was saved off — it wasn't.
+    // Scoped to the editor's own note: the page-level caveat says new rules are
+    // saved off, which is true and must stay.
+    const note = host.querySelector(".sa-editor-note")?.textContent ?? "";
+    expect(note).not.toMatch(/saved switched off/i);
+    expect(note).toMatch(/does not switch a rule on or off/i);
+    const save = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Save changes"));
+    await act(async () => save?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const update = db.writes.find((w) => w.op === "update");
+    expect(update).toBeTruthy();
+    expect(Object.keys(update?.values ?? {})).not.toContain("is_active");
   });
 
   it("shows no run count, success rate, health signal or repair action", async () => {
@@ -279,14 +326,14 @@ describe("More than one pipeline (regressions from the exact-head review)", () =
     db.rules = [{
       id: "r1", pipeline_id: "p1", from_stage_id: "a1", to_stage_id: "a2",
       compose_intent: "nurture", tone: "warm", template_hint: null,
-      send_mode: "draft_for_review", is_active: false, updated_at: null,
+      send_mode: "draft_for_review", is_active: true, updated_at: null,
     }];
     const { host } = await render(`${BASE}/automations`);
 
     // The blank happened during the RELOAD that follows a write, not during the
     // write itself — so that is the moment this parks and inspects.
     db.holdReads = true;
-    const toggle = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Turn on");
+    const toggle = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Turn off");
     await act(async () => { toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await act(async () => { await Promise.resolve(); });
 
@@ -303,11 +350,11 @@ describe("More than one pipeline (regressions from the exact-head review)", () =
     db.rules = [{
       id: "r1", pipeline_id: "p1", from_stage_id: "a1", to_stage_id: "a2",
       compose_intent: "nurture", tone: "warm", template_hint: null,
-      send_mode: "draft_for_review", is_active: false, updated_at: null,
+      send_mode: "draft_for_review", is_active: true, updated_at: null,
     }];
     db.failWrite = true;
     const { host } = await render(`${BASE}/automations`);
-    const toggle = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Turn on");
+    const toggle = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Turn off");
     await act(async () => { toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await act(async () => { await Promise.resolve(); });
 
@@ -318,13 +365,32 @@ describe("More than one pipeline (regressions from the exact-head review)", () =
 
 describe("Consumed outcomes stay in owner language", () => {
   it("reads every recorded state without leaking its internal name", () => {
-    for (const status of ["sent", "pending", "skipped_no_rule", "skipped_inactive", "skipped_no_webhook", "skipped_no_consent", "failed"]) {
+    // This list is the table's own CHECK constraint, verbatim. It does not
+    // contain "sent" — the dispatcher writes "dispatched" — so a label keyed on
+    // "sent" would have been a branch that could never run.
+    for (const status of ["pending", "dispatched", "failed", "skipped_inactive", "skipped_no_webhook", "skipped_no_rule", "skipped_no_consent"]) {
       const label = outcomeLabel(status);
       expect(label).not.toContain("_");
       expect(label.length).toBeGreaterThan(0);
     }
-    // An unrecognised state must stay honest rather than guess.
+    // A successful dispatch means it left here, not that anyone received it.
+    expect(outcomeLabel("dispatched")).toBe("Handed over for sending");
+    // An unrecognised state must stay honest rather than guess — and "sent" is
+    // one of those, which is exactly why it must not have its own label.
+    expect(outcomeLabel("sent")).toBe("Recorded");
     expect(outcomeLabel("something_new")).toBe("Recorded");
+  });
+
+  it("does not report an unreadable history as an empty one", async () => {
+    db.failTable = "stage_automation_events";
+    const { host } = await render(`${BASE}/automations`);
+    const text = host.textContent ?? "";
+    // "Nothing has run here" and "could not be read" are different claims, and
+    // only one of them is true when the read failed.
+    expect(text).not.toContain("Nothing has run here");
+    expect(text).toMatch(/could not be read|could not be checked/i);
+    // The rest of the surface must survive: one failed read is not an outage.
+    expect(text).toContain("Nothing is set up yet");
   });
 
   it("says nothing has run when the log is empty, rather than implying success", async () => {

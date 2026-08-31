@@ -134,13 +134,16 @@ export function SoloAutomationsView() {
           you can set up here follows a client through your pipeline.
         </p>
 
-        {/* The single most important truth on this surface, stated before anyone builds
-            anything: a saved rule is matched but cannot yet be delivered. */}
+        {/* This used to promise that no route out existed and nothing could reach a
+            client. That was read off one environment and is not true wherever the
+            platform fallback route was seeded, so the promise is gone. What replaces
+            it is enforced rather than asserted: rules are saved off, and this surface
+            has no control that starts one. */}
         <p className="sa-caveat">
-          <strong>Worth knowing before you build one.</strong> A rule you save is kept, and Paige does
-          notice the moment it describes. She cannot deliver the message yet — there is no route out
-          for it — so a rule that matches will be recorded as held rather than sent. Nothing will
-          reach a client by mistake.
+          <strong>Worth knowing before you build one.</strong> Rules you build here are saved switched
+          off, and nothing on this page switches one on. Building and changing them is safe. Whether a
+          message would actually go out once a rule is running is decided elsewhere and is not settled
+          here — so treat starting one as a separate decision, not a side effect of saving.
         </p>
 
         {!a.hasPipeline && (
@@ -209,15 +212,15 @@ export function SoloAutomationsView() {
                 <div className="sa-rule-controls">
                   {a.canWrite && (
                     <>
-                      <button
-                        type="button"
-                        className="sa-ctl"
-                        aria-pressed={rule.is_active}
-                        disabled={a.saving}
-                        onClick={() => void a.setActive(rule.id, !rule.is_active)}
-                      >
-                        {rule.is_active ? "Turn off" : "Turn on"}
-                      </button>
+                      {/* Off is offered, on is not. Switching a rule off can only ever
+                          reduce what runs; switching one on from here would start
+                          something whose delivery behaviour this surface cannot see. */}
+                      {rule.is_active && (
+                        <button type="button" className="sa-ctl" disabled={a.saving}
+                          onClick={() => void a.setActive(rule.id, false)}>
+                          Turn off
+                        </button>
+                      )}
                       <button type="button" className="sa-ctl" disabled={a.saving} onClick={() => setEditing(rule)}>
                         Change
                       </button>
@@ -264,17 +267,24 @@ export function SoloAutomationsView() {
           <div>
             <h2 id="sa-history-title">What has happened</h2>
             <p>
-              {a.outcomes.length === 0
-                ? "Nothing has run here."
-                : "Newest first. Only the outcome is kept here — never the message itself."}
+              {a.outcomesUnavailable
+                ? "This could not be checked just now."
+                : a.outcomes.length === 0
+                  ? "Nothing has run here."
+                  : "Newest first. Only the outcome is kept here — never the message itself."}
             </p>
           </div>
         </header>
 
-        {a.outcomes.length === 0 ? (
+        {a.outcomesUnavailable ? (
           <p className="sa-empty">
-            Once an automation is on and a client moves, every time it is considered will be listed
-            here — including the times it decided to hold back, and why.
+            The record of what has happened could not be read, so nothing is being claimed either
+            way — not that something ran, and not that nothing did.
+          </p>
+        ) : a.outcomes.length === 0 ? (
+          <p className="sa-empty">
+            Once an automation is running and a client moves, every time it is considered will be
+            listed here — including the times it held back, and why.
           </p>
         ) : (
           <ul className="sa-history">
@@ -379,7 +389,11 @@ function AutomationEditor({
           {saving ? "Saving…" : rule ? "Save changes" : "Save automation"}
         </button>
         <button type="button" className="sa-action" onClick={onCancel} disabled={saving}>Cancel</button>
-        <span className="sa-editor-note">Saved turned off, so nothing starts before you say so.</span>
+        <span className="sa-editor-note">
+          {rule
+            ? "Saving a change does not switch a rule on or off — it stays as it is."
+            : "Saved switched off, so nothing starts on its own."}
+        </span>
       </div>
     </form>
   );
