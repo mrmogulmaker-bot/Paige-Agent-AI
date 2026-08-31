@@ -96,6 +96,46 @@ function anthropicStream(kind = "text") {
     // tool has run and every later tool in the same round still executes on stale scope.
     // Distinct `limit` args make the two dispatches individually identifiable in the RPC
     // recorder — `plan_list` maps straight through to a `plan_list` RPC with `p_limit`.
+    // A round that calls `document_generate` with valid blocks and a real title. That tool
+    // persists via `save_marketing_content` and, outside a Studio session, pushes a
+    // `chatArtifacts` entry whose `title` is the model's own words — so the turn emits a
+    // `paige_artifact` frame carrying model-authored, evidence-derived text. Nothing else in
+    // this harness produces one, and without it an assertion that artifact frames are withheld
+    // would pass against a fixture that never makes one (the group-20 thought-frame lesson).
+    : kind === "doc-artifact"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Writing that up from the private note." } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "document_generate" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ title: "CHILD-PRIVATE-MARKER onboarding guide", doc_type: "guide", confirm: true, blocks: [{ type: "prose", markdown: "Body text." }] }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
+    // A mutating call left UNCONFIRMED. At the default `confirm` lane the tool is not run; it
+    // returns `needs_confirm` + a `confirm_summary` built by interpolating the MODEL'S OWN
+    // ARGUMENTS, which the loop turns into a `paige_confirm` card. `crm_create_contact` is used
+    // deliberately: `document_generate`'s summary is a fixed sentence, so a card built from it
+    // would carry no model text and the assertion below would pass for the wrong reason.
+    : kind === "doc-confirm"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "crm_create_contact" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ first_name: "CHILD-PRIVATE-MARKER", last_name: "FromKnowledge", email: "leak@example.test" }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
+    // `ask_choices` inside a Studio session. This branch is special: the chips frame IS the whole
+    // assistant turn (it sets `finalChunks = []` and breaks), so if it streams unbuffered a
+    // protected turn publishes its entire answer before the final check ever runs.
+    : kind === "ask-choices"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "ask_choices" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ prompt: "CHILD-PRIVATE-MARKER — which direction?", options: [{ label: "One", value: "one" }, { label: "Two", value: "two" }] }) } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
     : kind === "two-tools"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
@@ -216,7 +256,7 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x", provider = ["text"] }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {} }) {
   const logged = [];
   resetEmbeds();
   const origWarn = console.warn;
@@ -243,10 +283,21 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
         kbRejects
           ? { data: null, error: { message: "KB_FORBIDDEN: cross-tenant knowledge search denied", code: "42501" } }
           : { data: [{ source_tier: "tenant", doc_id: "d1", chunk_id: "c1", title: chunkTitle, content: chunkContent, similarity: 0.91 }], error: null },
+      // `rag_documents` retrieval — the platform-wide knowledge base, and the SECOND of the
+      // latch's four sources. It was never configured here, so it resolved to `{data:null}` and
+      // `ragContext` was `""` in every assertion in this file: removing it from the latch left
+      // the whole suite green. An independent review found that, and this stub is what ends it.
+      match_rag_documents: () => (ragHits
+        ? { data: [{ id: "rag-1", title: "Tracked outcomes", summary: "PRIVATE-RAG-SOURCE-MARKER", content: "", similarity: 0.88 }], error: null }
+        : { data: [], error: null }),
+      // Scenario-specific RPCs (e.g. the `save_marketing_content` a `document_generate` tool
+      // call persists through). Last, so a scenario can also override a default above.
+      ...rpcExtras,
     },
     tables: {
       tenant_members: () => memberships.map((t) => ({ tenant_id: t })),
       profiles: () => [{ active_tenant_id: personaTenant }],
+      ...tableExtras,
     },
   });
 
@@ -1275,6 +1326,26 @@ group("once refused, every later revalidation stays refused");
 // final gate and assert nothing protected survives. A turn that streamed content early cannot
 // retract it, so its frames are still in the output; a turn that buffered has nothing to flush.
 // That is the same property, and it cannot pass for the wrong reason.
+// THE COMPLEMENT OF "NEUTRAL", stated as a denylist of the safe frames rather than an
+// allowlist of the unsafe ones. Enumerating what to withhold is how the first version of this
+// rule shipped, and it is why `paige_artifact`, `approval_queued`, `paige_confirm` and
+// `extraction_proposal` all went straight to the wire on a turn whose reply was withheld: each
+// was simply not on the list. Written this way, a frame added later is protected by DEFAULT and
+// has to be argued onto the neutral list, which is the direction the safe error runs in.
+//
+// Neutral, and only these: an action step (fixed-vocabulary label, count detail), a phase
+// marker, the fixed client-scope refusal category, and the refusal sentence itself.
+const nonNeutralFrames = (text) => text.split("\n").filter((l) => {
+  if (!l.startsWith("data: ") || l.includes("[DONE]")) return false;
+  let p;
+  try { p = JSON.parse(l.slice(6)); } catch { return true; }
+  if (p?.paige_step) return p.paige_step.kind === "thought";
+  if (p?.paige_phase || p?.client_scope) return false;
+  if (/workspace changed/.test(l)) return false;
+  return true;
+});
+const personaCallsOf = (r) => r.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
+
 group("safety-first streaming: protected turns buffer, ordinary turns stream");
 {
   const protectedFrames = (text) => text.split("\n").filter((l) => {
@@ -1294,7 +1365,6 @@ group("safety-first streaming: protected turns buffer, ordinary turns stream");
       return (p?.paige_step && p.paige_step.kind !== "thought") || !!p?.paige_phase;
     } catch { return false; }
   });
-  const personaCallsOf = (r) => r.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
 
   const docx = {
     fileName: "notes.docx",
@@ -1370,6 +1440,14 @@ group("safety-first streaming: protected turns buffer, ordinary turns stream");
       `20 ${shape.id}: ...and writes no Knowledge telemetry`,
       !atFinalGate.telemetry,
       JSON.stringify(atFinalGate.telemetry?.row ?? null),
+    );
+    // Not just the reply: NOTHING that is not neutral progress may survive the failed gate.
+    // This is the assertion that would have caught the four ungated frames, and it keeps
+    // catching the next one without anybody remembering to name it.
+    assert(
+      `20 ${shape.id}: ...and no non-neutral frame of any kind survives`,
+      nonNeutralFrames(atFinalGate.responseText).length === 0,
+      JSON.stringify(nonNeutralFrames(atFinalGate.responseText)).slice(0, 300),
     );
   }
 
@@ -1472,6 +1550,376 @@ group("safety-first streaming: protected turns buffer, ordinary turns stream");
     "20.operator a broken resolver withholds the operator's document reply (null is not a match)",
     !operatorBroken.responseText.includes("CHILD-PRIVATE-MARKER"),
     operatorBroken.responseText.slice(0, 250),
+  );
+}
+
+// ── 21 · The protected sources the first enumeration missed ──────────────────────
+//
+// Group 20 proved the rule for the three sources it listed. Two more carry protected content
+// and were reached by neither, which an independent read of the pushed diff found and this
+// group now holds down.
+group("safety-first streaming: the sources the first enumeration missed");
+{
+  const artifactFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("paige_artifact"));
+
+  // 21.a — A FOLLOW-UP QUESTION ABOUT A DOCUMENT READ EARLIER IN THE SESSION. No attachment on
+  // this turn and no Knowledge match, so all three of the original sources are false; the whole
+  // of the evidence is `sessionDocumentContext`, whose filenames and summaries the handler
+  // interpolates into the system prompt. Before the latch counted it, such a turn streamed live
+  // AND the revalidation guard short-circuited to `true` without ever asking the resolver — so
+  // the answer to "what did that contract say?" crossed with no active-account check at all.
+  const sessionDocs = {
+    sessionDocumentContext: [
+      { fileName: "termination-terms.pdf", summary: "PRIVATE-SESSION-DOC-MARKER: 30-day notice required." },
+    ],
+  };
+  const sessionClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    kbRejects: true, bodyExtras: sessionDocs, provider: ["private-text"],
+  });
+  assert(
+    "21.a CONTROL — a session-document follow-up still delivers its reply",
+    sessionClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    sessionClean.responseText.slice(0, 200),
+  );
+  assert(
+    "21.a CONTROL — the turn retrieved no Knowledge, so ONLY the session document protects it",
+    !sessionClean.telemetry && !!sessionClean.logged.find((l) => /KB_FORBIDDEN|REFUSED/.test(l.msg)),
+    JSON.stringify({ tel: !!sessionClean.telemetry }),
+  );
+  const sessionTotal = personaCallsOf(sessionClean);
+  // The discriminator. With the source unenumerated the guard returns `true` with no RPC, so the
+  // turn has exactly the ONE persona call every request makes. A second call is the latch.
+  assert(
+    "21.a CONTROL — the turn is actually gated (the guard asks the resolver, it does not short-circuit)",
+    sessionTotal >= 2,
+    `persona calls: ${sessionTotal}`,
+  );
+  const sessionAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(sessionTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    kbRejects: true, bodyExtras: sessionDocs, provider: ["private-text"],
+  });
+  assert(
+    "21.a a failed final check withholds a reply grounded in an earlier session document",
+    !sessionAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    sessionAtGate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.a ...and the user gets the safe refusal with a recovery path",
+    /workspace changed/.test(sessionAtGate.responseText) && /[Tt]ry again/.test(sessionAtGate.responseText),
+    sessionAtGate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.a ...and no non-neutral frame survives",
+    nonNeutralFrames(sessionAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(sessionAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.b — THE ARTIFACT HANDOFF CARD. `paige_artifact` carries a model-authored `title` written
+  // out of the same Knowledge-bearing prompt as the reply, and it went straight to the wire.
+  // A turn that correctly withheld its answer still put a card on screen naming, in the previous
+  // workspace's words, the document it had just made from that workspace's evidence.
+  const artifactOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["doc-artifact", "private-text"],
+    rpcExtras: {
+      // A real tenant seat: without it the actor resolves to the most-restricted `client` tier
+      // and `document_generate` is refused before it can produce anything to assert about.
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      // §16 lane. The default is `confirm`, which returns a needs_confirm result instead of
+      // running the tool, so no artifact is ever produced to hold or leak.
+      resolve_tool_autonomy: { data: "auto", error: null },
+      save_marketing_content: { data: "content-abc", error: null },
+    },
+    // The creative tools sit behind an admin/coach role gate; without a role the call is
+    // refused and dropped from the trace, so nothing is produced to hold or leak.
+    tableExtras: { user_roles: () => [{ role: "admin" }] },
+  };
+  const artifactClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...artifactOpts,
+  });
+  assert(
+    "21.b CONTROL — the tool shape really does emit an artifact frame when the turn completes",
+    artifactFrames(artifactClean.responseText).length > 0,
+    artifactClean.responseText.slice(0, 400),
+  );
+  assert(
+    "21.b CONTROL — and that frame carries the model-authored title",
+    artifactFrames(artifactClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
+    artifactFrames(artifactClean.responseText).join("").slice(0, 300),
+  );
+  const artifactTotal = personaCallsOf(artifactClean);
+  const artifactAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(artifactTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...artifactOpts,
+  });
+  assert(
+    "21.b a failed final check leaves no artifact frame in the transcript",
+    artifactFrames(artifactAtGate.responseText).length === 0,
+    artifactFrames(artifactAtGate.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.b ...and the artifact TITLE appears nowhere in the transcript",
+    !artifactAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    artifactAtGate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.b ...and no non-neutral frame survives",
+    nonNeutralFrames(artifactAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(artifactAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.c — THE `rag_documents` SOURCE, which had NO COVERAGE AT ALL. `match_rag_documents` was
+  // never configured in the fake, so `ragContext` was empty in all 186 assertions of the
+  // previous revision and deleting it from the latch left the suite green. The latch named it as
+  // "enumerated rather than assumed"; until this case existed it was assumed.
+  const ragClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    kbRejects: true, ragHits: true, provider: ["private-text"],
+  });
+  assert(
+    "21.c CONTROL — a platform-knowledge turn still delivers its reply",
+    ragClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    ragClean.responseText.slice(0, 200),
+  );
+  assert(
+    "21.c CONTROL — tenant Knowledge was refused, so ONLY rag_documents protects it",
+    !ragClean.telemetry && !!ragClean.logged.find((l) => /KB_FORBIDDEN|REFUSED/.test(l.msg)),
+    JSON.stringify({ tel: !!ragClean.telemetry }),
+  );
+  const ragTotal = personaCallsOf(ragClean);
+  assert(
+    "21.c CONTROL — the turn is actually gated (the guard asks the resolver)",
+    ragTotal >= 2,
+    `persona calls: ${ragTotal}`,
+  );
+  const ragAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(ragTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    kbRejects: true, ragHits: true, provider: ["private-text"],
+  });
+  assert(
+    "21.c a failed final check withholds a reply grounded in platform knowledge",
+    !ragAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    ragAtGate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.c ...and no non-neutral frame survives",
+    nonNeutralFrames(ragAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(ragAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.d — A SHAPELESS RESOLVER ROW IS NOT A RESOLUTION. The suite only ever drove the resolver
+  // to an ERROR. A row that comes back present but carrying no `tenant_id` reads as a null
+  // tenant, and for the platform operator — whose turn scope is legitimately null — that
+  // compared equal and released the protected reply. Same class as the errored lookup, a
+  // different failure shape, and it needs its own case because the operator is the only tier
+  // where the two are distinguishable.
+  const emptyRow = { data: [{}], error: null };
+  const docFixture = {
+    fileName: "notes.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    kind: "docx",
+    textContent: "Internal operating notes",
+  };
+  const operatorDegenerate = await drive({
+    personaTenant: null,
+    personaSequence: [null, emptyRow],
+    memberships: [],
+    bodyExtras: { document: docFixture }, provider: ["private-text", "private-text"],
+  });
+  assert(
+    "21.d a resolver row with no tenant_id is not a match — the operator's reply is withheld",
+    !operatorDegenerate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    operatorDegenerate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.d ...and no non-neutral frame survives",
+    nonNeutralFrames(operatorDegenerate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(operatorDegenerate.responseText)).slice(0, 300),
+  );
+
+  // 21.e — THE CONFIRM CARD. `describeConfirm` interpolates the model's own arguments into a
+  // sentence describing what Paige proposes to do, and it went straight to the wire. A turn
+  // whose answer was correctly withheld still showed the user that proposal, written out of the
+  // previous workspace's evidence and naming what it found there.
+  const confirmFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("paige_confirm"));
+  const confirmOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["doc-confirm", "private-text"],
+    // The DEFAULT lane. `auto` would run the tool and produce an artifact instead of a card.
+    rpcExtras: { get_actor_access: { data: { tier: "tenant" }, error: null } },
+    tableExtras: { user_roles: () => [{ role: "admin" }] },
+  };
+  const confirmClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...confirmOpts,
+  });
+  assert(
+    "21.e CONTROL — the shape really does emit a confirm card when the turn completes",
+    confirmFrames(confirmClean.responseText).length > 0,
+    confirmClean.responseText.slice(0, 400),
+  );
+  assert(
+    "21.e CONTROL — and that card carries the model's own words",
+    confirmFrames(confirmClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
+    confirmFrames(confirmClean.responseText).join("").slice(0, 300),
+  );
+  const confirmTotal = personaCallsOf(confirmClean);
+  const confirmAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(confirmTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...confirmOpts,
+  });
+  assert(
+    "21.e a failed final check leaves no confirm card in the transcript",
+    confirmFrames(confirmAtGate.responseText).length === 0,
+    confirmFrames(confirmAtGate.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.e ...and no non-neutral frame survives",
+    nonNeutralFrames(confirmAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(confirmAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.f — THE CHOICE CHIPS, which are the whole assistant turn. `ask_choices` sets
+  // `finalChunks = []` and breaks, so the chips frame is the entire answer. Streaming it live
+  // meant a protected turn published that answer, then discarded an empty buffer at the final
+  // check and printed a refusal underneath an answer already on screen — the worst version of
+  // this defect, because the refusal makes it look handled.
+  const choiceFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("paige_choices"));
+  const STUDIO_THREAD = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const choiceOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["ask-choices"],
+    bodyExtras: { threadId: STUDIO_THREAD },
+    // `ask_choices` is Studio-gated, and studioSessionId is read off the thread row.
+    tableExtras: { paige_chat_threads: () => [{ summary: null, studio_session_id: "studio-sess-1" }] },
+  };
+  const choiceClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...choiceOpts,
+  });
+  assert(
+    "21.f CONTROL — the Studio shape really does emit a choices frame",
+    choiceFrames(choiceClean.responseText).length > 0,
+    choiceClean.responseText.slice(0, 400),
+  );
+  assert(
+    "21.f CONTROL — and the chips prompt is the model's own words",
+    choiceFrames(choiceClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
+    choiceFrames(choiceClean.responseText).join("").slice(0, 300),
+  );
+  const choiceTotal = personaCallsOf(choiceClean);
+  const choiceAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(choiceTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...choiceOpts,
+  });
+  assert(
+    "21.f a failed final check leaves no choices frame in the transcript",
+    choiceFrames(choiceAtGate.responseText).length === 0,
+    choiceFrames(choiceAtGate.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.f ...and no non-neutral frame survives",
+    nonNeutralFrames(choiceAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(choiceAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.g — THE SYNC RESULT ON THE CREDIT-REPORT PATH. `sync_status` carries the three bureau
+  // scores read out of the uploaded PDF, plus the item counts. It was emitted with a direct
+  // enqueue and never entered `directFrames`, so it bypassed the document path's hold entirely:
+  // a turn whose analysis was withheld still put the numbers from that analysis on screen.
+  const syncFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("sync_status"));
+  const pdfFixture = { fileName: "report.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
+  const syncOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: pdfFixture },
+    provider: ["read-check", "private-text", "json-extraction"],
+  };
+  const syncClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...syncOpts,
+  });
+  assert(
+    "21.g CONTROL — a credit-report turn really does emit a sync_status frame",
+    syncFrames(syncClean.responseText).length > 0,
+    syncClean.responseText.slice(-400),
+  );
+  assert(
+    "21.g CONTROL — and that frame carries the scores read out of the document",
+    /"scores_synced"/.test(syncFrames(syncClean.responseText).join("")),
+    syncFrames(syncClean.responseText).join("").slice(0, 300),
+  );
+  const syncTotal = personaCallsOf(syncClean);
+  const syncAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(syncTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...syncOpts,
+  });
+  assert(
+    "21.g a failed final check leaves no sync_status frame in the transcript",
+    syncFrames(syncAtGate.responseText).length === 0,
+    syncFrames(syncAtGate.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.g ...and no non-neutral frame survives",
+    nonNeutralFrames(syncAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(syncAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.h — THE STUDIO CANVAS ARTIFACT. `studioLinked` is the Studio twin of `chatArtifacts` and
+  // is emitted from its own line one above it; the two are mutually exclusive, so 21.b can never
+  // reach this one. Without this case, reverting the Studio line alone left the whole suite
+  // green — a guard on an adjacent line is not a guard on this one.
+  const studioOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["doc-artifact", "private-text"],
+    bodyExtras: { threadId: STUDIO_THREAD },
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      save_marketing_content: { data: "content-studio", error: null },
+    },
+    tableExtras: {
+      user_roles: () => [{ role: "admin" }],
+      paige_chat_threads: () => [{ summary: null, studio_session_id: "studio-sess-1" }],
+    },
+  };
+  const studioClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...studioOpts,
+  });
+  assert(
+    "21.h CONTROL — a Studio turn really does emit a canvas artifact frame",
+    artifactFrames(studioClean.responseText).length > 0,
+    studioClean.responseText.slice(0, 500),
+  );
+  assert(
+    "21.h CONTROL — and that frame carries the model-authored title",
+    artifactFrames(studioClean.responseText).join("").includes("CHILD-PRIVATE-MARKER"),
+    artifactFrames(studioClean.responseText).join("").slice(0, 300),
+  );
+  const studioTotal = personaCallsOf(studioClean);
+  const studioAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(studioTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...studioOpts,
+  });
+  assert(
+    "21.h a failed final check leaves no canvas artifact frame in the transcript",
+    artifactFrames(studioAtGate.responseText).length === 0,
+    artifactFrames(studioAtGate.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.h ...and no non-neutral frame survives",
+    nonNeutralFrames(studioAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(studioAtGate.responseText)).slice(0, 300),
   );
 }
 

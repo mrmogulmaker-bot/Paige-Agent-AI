@@ -1,10 +1,11 @@
 {
-  "baseRef": null,
+  "baseRef": "origin/main",
   "headRef": "HEAD",
-  "baseSha": null,
-  "headSha": null,
-  "runnerCheckout": null,
+  "baseSha": "e9c6f6a56df6c064c4f5d1985ea549ac1681b616",
+  "headSha": "6f1fdfc3642b6f3247cec68672e517204f441a99",
+  "runnerCheckout": "6f1fdfc3642b6f3247cec68672e517204f441a99",
   "changedFiles": [],
   "functions": [],
-  "aborted": "--base <ref> is required"
+  "baseDepFingerprint": "deno.json=absent deno.jsonc=absent import_map.json=absent",
+  "headDepFingerprint": "deno.json=absent deno.jsonc=absent import_map.json=absent"
 }

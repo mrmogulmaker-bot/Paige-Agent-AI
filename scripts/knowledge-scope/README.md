@@ -93,6 +93,39 @@ The decisive ones:
   every later one reported success — and on a credit-report turn, which checks scope twice
   around a slow extraction stage, the buffered prior-workspace reply was flushed to the client
   with the whole suite green.
+- **20** — safety-first streaming. A turn carrying tenant Knowledge or document-derived evidence
+  is **fully buffered** until its final check passes; ordinary chat still streams live. Proven
+  CAUSALLY, not by timing: fail the final gate and assert nothing protected survives. Timing is
+  unobservable from outside — the handler can fill the stream queue before the test reads a byte,
+  which would make a streaming implementation look correctly ordered.
+- **21** — the protected sources and frames the first enumeration MISSED. Every one of these was
+  found by an independent adversarial read of the pushed diff, not by this suite, and every one
+  of them passed 186 green checks first:
+  - **21.a** `sessionDocumentContext` — a follow-up question about a document read earlier in the
+    session. No attachment, KB may miss, so the turn streamed live **and the revalidation guard
+    short-circuited without ever asking the resolver**.
+  - **21.b / 21.h** the artifact handoff card (`chatArtifacts`) and its Studio twin
+    (`studioLinked`). Adjacent lines, mutually exclusive, so each needs its own case — a guard on
+    one line is not a guard on the other, and reverting 21.h's line alone left the suite green.
+  - **21.c** `rag_documents`. `match_rag_documents` was never configured in the fake, so
+    `ragContext` was empty in **all 186** earlier assertions and deleting it from the latch left
+    the suite fully green. One of the three sources the code named as "enumerated rather than
+    assumed" had zero coverage.
+  - **21.d** a resolver row present but carrying no `tenant_id`. Reads as a null tenant, and for
+    the platform operator — whose scope is legitimately null — that compared equal and released
+    the protected reply. Same class as the errored lookup, different failure shape.
+  - **21.e** the confirm card. Targets `crm_create_contact`, not `document_generate`, because the
+    latter's summary is a fixed sentence and a card built from it carries no model text — the
+    assertion would have passed for the wrong reason.
+  - **21.f** the choice chips. `ask_choices` sets `finalChunks = []` and breaks, so the frame IS
+    the whole assistant turn: streamed live, it published the entire answer and then printed a
+    refusal underneath it.
+  - **21.g** `sync_status`, which carries the three bureau scores read out of the uploaded PDF.
+
+  Group 21 also introduces `nonNeutralFrames` — a **denylist of the safe frames** rather than an
+  allowlist of the unsafe ones. Enumerating what to withhold is exactly how these five got out;
+  written this way a frame added later is protected by default and has to be argued onto the
+  neutral list.
 
 ## A trap worth naming
 

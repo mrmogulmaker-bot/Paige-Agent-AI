@@ -1558,23 +1558,35 @@ JSON:`;
     // where tokens were already gone by the time the last check ran, and a hold on the document
     // path that engaged only when the KB happened to match.
     //
-    // THE THREE SOURCES OF PROTECTED EVIDENCE, enumerated rather than assumed:
+    // THE FOUR SOURCES OF PROTECTED EVIDENCE, enumerated rather than assumed:
     //   1. `tenantKbContext`  — tenant Knowledge chunks.
     //   2. `ragContext`       — titles and body text from `rag_documents`; document-derived.
     //   3. `attachedDocument` — the document itself, whether or not anything matched it. This is
     //      the §58 case: such a turn used to stream live when the KB missed.
+    //   4. `sessionDocContext` — filenames and summaries of documents analysed EARLIER in this
+    //      session, interpolated into the system prompt so follow-up questions can be answered
+    //      from them. Enumerating only the first three missed this entirely: "what did that
+    //      contract say about termination?" is answered wholly out of document-derived evidence,
+    //      carried no attachment, and so streamed live and paid no revalidation at all. The
+    //      summaries were produced under the workspace that was active when the document was
+    //      read, which is exactly the authority that may since have changed.
     //
-    // The latch is ONE-WAY. A late retrieval switches the turn onto the buffered path and can
-    // never switch it back, which is what makes "before any protected content can emit" true
-    // rather than merely usual — content is emitted only at the reply stage, after every
-    // retrieval has had its chance to set this.
-    let turnCarriesProtectedContent = !!tenantKbContext || !!ragContext || !!attachedDocument;
-    const markTurnProtected = (reason: string) => {
-      if (turnCarriesProtectedContent) return;
-      turnCarriesProtectedContent = true;
-      console.log("[paige] turn switched to the protected buffered path", JSON.stringify({ reason }));
-    };
-    void markTurnProtected; // called by late-retrieval seams below; kept addressable for new ones.
+    // §13 — WHY THIS IS A `const`, and what the previous revision claimed that was not true.
+    // That revision carried a `markTurnProtected()` setter and a comment saying late retrievals
+    // switch the turn onto the buffered path. NOTHING CALLED IT. An independent read of the
+    // pushed diff found it dead, and deleting it left the suite fully green — so the safety
+    // property was resting on a function that never ran. The property does hold, but for a
+    // different and checkable reason: there are exactly two Knowledge retrieval sites in this
+    // handler (`match_rag_documents` and `match_tenant_knowledge`, both ABOVE this line), the
+    // document sources are read from the request body above them, and protected content is
+    // emitted only from the reply stage far below. The latch is therefore settled before
+    // anything can emit, and a mutable setter bought nothing but the appearance of one.
+    //
+    // Sealing it as `const` is what keeps that honest. A retrieval added BELOW this point can
+    // no longer quietly assume "the latch will pick it up" — it will not compile until whoever
+    // adds it moves the decision or buffers deliberately, which is the conversation that needs
+    // to happen at that moment rather than after a leak.
+    const turnCarriesProtectedContent = !!tenantKbContext || !!ragContext || !!attachedDocument || !!sessionDocContext;
 
     // Reuse the same JWT-backed authoritative resolver that selected the Knowledge
     // tenant. This is deliberately not a second authority store or a browser epoch:
@@ -1631,8 +1643,16 @@ JSON:`;
         const row = Array.isArray(data) ? data[0] : data;
         // A resolution FAILURE is not a match. Requiring the row explicitly stops an errored
         // lookup from reading as "still null, still fine" for a tenant-less operator.
-        const resolved = !error && !!row;
-        const currentTenantId = resolved && typeof row.tenant_id === "string" ? row.tenant_id : null;
+        //
+        // AND A SHAPELESS ROW IS NOT A RESOLUTION EITHER. `!!row` accepts `{}`, which yields a
+        // null tenant — and for the PLATFORM OPERATOR, whose turn scope is legitimately null,
+        // that compares equal and releases the protected reply. Same defect as the errored
+        // lookup above, in a different failure shape: a resolver answering with a row that has
+        // no `tenant_id` is not saying "still null", it is saying nothing. Accept an explicit
+        // null or a string, and nothing else.
+        const tid = row ? (row as any).tenant_id : undefined;
+        const resolved = !error && !!row && (tid === null || typeof tid === "string");
+        const currentTenantId = typeof tid === "string" ? tid : null;
         if (resolved && currentTenantId === turnScopeTenantId) return true;
         console.error(
           "[paige] active account changed after Knowledge retrieval — provider dispatch cancelled",
@@ -8066,6 +8086,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
       // PROTECTED content is held on a protected turn and released only after the final check.
       // On an ordinary turn this is a pass-through, so live token streaming is unchanged.
+      //
+      // TWO COSTS OF THE RULE, written down rather than discovered later (§13). The buffer is
+      // UNBOUNDED, so a long Knowledge-grounded answer is fully resident before it flushes; and
+      // a wall-clock kill mid-turn now loses the WHOLE reply where it previously left a partial
+      // one on screen. Both are direct consequences of the owner ruling — a partial protected
+      // answer is precisely what must not survive — so they are accepted, not defects. Do NOT
+      // "fix" the first by bounding the buffer and streaming the overflow: that reinstates the
+      // leak for every reply past the bound, and it is the shape a future performance edit is
+      // most likely to take.
       const heldContent: Uint8Array[] = [];
       const emitContent = (controller: ReadableStreamDefaultController, chunk: Uint8Array) => {
         if (turnCarriesProtectedContent) heldContent.push(chunk);
@@ -8135,7 +8164,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : [];
               const frame = { prompt: String(a.prompt ?? "").slice(0, 300), options: opts, multi: !!a.multi, allow_other: !!a.allow_other };
               if (frame.options.length >= 2) {
-                controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_choices: frame })}\n\n`));
+                // PROTECTED. `prompt` and every option's label/description are the model's own
+                // words, written from the same Knowledge-bearing prompt as any reply — and on
+                // this branch the frame IS the whole assistant turn (`finalChunks = []` below),
+                // so streaming it direct meant a protected turn published its entire answer
+                // before the final check, then discarded an empty buffer and printed a refusal
+                // underneath an answer already on screen.
+                emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_choices: frame })}\n\n`));
                 finalAssistantText = frame.prompt;
                 forcedTermination = true;
                 // Empty (non-null) finalChunks so the post-loop does NOT fire a second closing
@@ -8259,18 +8294,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // reply block below). Committing it here would record a retrieval as having
           // grounded a reply that the drain may still be cancelled out from under.
           // Approvals + confirm cards, then her actual reply.
-          if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
-          for (const c of confirmTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
+          //
+          // ALL THREE OF THESE ARE PROTECTED CONTENT, not neutral progress, so they go through
+          // `emitContent` rather than straight to the wire. An approval's and a confirm card's
+          // summary is model-authored prose about what Paige is proposing to do, and an
+          // artifact frame carries a model-authored `title`; on a protected turn every one of
+          // them is written out of the Knowledge or document evidence in the prompt. Emitting
+          // them directly meant a turn whose reply was correctly withheld still put a card on
+          // screen reading, in the previous workspace's words, what that workspace's documents
+          // said. A refusal that leaves the summary of the answer visible is not a refusal.
+          //
+          // `emitStep` stays direct, and that distinction is the whole line: a step's label
+          // comes from a fixed vocabulary and its detail is a count, so it names an activity
+          // without ever quoting the evidence.
+          if (queuedApprovals.length) emitContent(controller, enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
+          for (const c of confirmTrace) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
           // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
           // the client opens THIS, never a guessed manifest index). Last visual wins if several built.
-          if (studioLinked.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
+          if (studioLinked.length) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
           // #29 — REGULAR-CHAT handoff cards. Outside a Studio session, emit ONE paige_artifact frame
           // per deliverable the agent persisted this turn so the chat renders a Cowork-style "Created a
           // file" card. Same frame the Studio canvas consumes (backward-compatible: kind/id/title/url +
           // the new artifactType). A turn can produce several (a document AND an image), so each gets its
           // own frame — unlike the Studio path's single last-wins canvas frame above. chatArtifacts is
           // only populated when studioSessionId is null, so this and the studioLinked emit never both fire.
-          for (const a of chatArtifacts) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: a })}\n\n`));
+          for (const a of chatArtifacts) emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_artifact: a })}\n\n`));
           // #11 — mark the transition into the ANSWER: the loop's reasoning (paige_step "thought"
           // frames) is done and the reply text begins now. The client also derives "writing" from
           // the first delta.content, so this is a lightweight explicit confirmation, not a dependency.
@@ -8310,9 +8358,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           }
 
           // ── THE FINAL CHECK, and the only place protected content is released ────────────
-          // On a protected turn nothing content-bearing has reached the client yet: the reply
-          // and every thought line are sitting in `heldContent`. This is where they are either
-          // let go or dropped, and it is the last thing that happens before the durable writes.
+          // On a protected turn nothing content-bearing has reached the client yet. The first
+          // revision of this comment said that while four kinds of frame were still going
+          // straight to the wire beside it, so the list is written out rather than asserted:
+          // the reply, every thought line, the approval and confirm cards, the artifact handoff
+          // frames and the choice chips are all sitting in `heldContent`. This is where they are
+          // either let go or dropped, and it is the last thing before the durable writes.
+          //
+          // What is NOT held, and why: action steps (closed-vocabulary label, count detail),
+          // phase markers, and the fixed `client_scope` refusal category. Those name an activity
+          // without quoting the evidence, which is what lets the user see progress while a
+          // protected answer is still being checked.
           //
           // On an ordinary turn `heldContent` is empty — the reply already streamed live — so
           // the release is a no-op and behaviour is byte-identical to before this rule.
@@ -8450,6 +8506,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
             directSseBuf = "";
           }
+          // The close-out frames below (`sync_status`, `extraction_proposal`) are PROTECTED
+          // CONTENT and take the same buffer the reply takes, released by the same single close
+          // decision. They were going straight to the wire, which meant a turn whose reply was
+          // correctly withheld still showed the user how many negative items were found in the
+          // document and every field name and value extracted from it — the answer, in summary
+          // form, after the answer had been refused. A withheld reply beside a visible summary
+          // of it is the "closing window" trade this rule exists to remove, not an edge case.
+          //
+          // On an ordinary turn this is a pass-through and the frames go out exactly as before.
+          const emitCloseFrame = (frame: string) => {
+            if (holdProtectedContent) directFrames.push(frame);
+            else controller.enqueue(new TextEncoder().encode(frame));
+          };
           // Credit-report PDF path: run structured extraction + sync.
           // §9 — NOT on a refused turn. `runStructuredExtractionAndSync` builds its payload with
           // `target_user_id: callerUserId` and `client_id: scopedClientId || null`, then calls
@@ -8505,17 +8574,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 controller.close();
                 return;
               }
-              const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
-              controller.enqueue(new TextEncoder().encode(syncEvent));
+              emitCloseFrame(`data: ${JSON.stringify({ sync_status: syncResult })}\n\n`);
             } catch (err) {
               console.error("Sync pipeline error:", err);
-              const errorEvent = `data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`;
-              controller.enqueue(new TextEncoder().encode(errorEvent));
+              emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`);
             }
           } else if (extractionProposal && extractionProposal.fields?.length > 0) {
             // General document path: emit extraction proposal for inline confirmation card.
-            const proposalEvent = `data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`;
-            controller.enqueue(new TextEncoder().encode(proposalEvent));
+            emitCloseFrame(`data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`);
           }
 
           // THE CLOSE DECISION IS MADE ONCE, HERE, BEFORE ANY DURABLE WRITE — because there are
@@ -8591,10 +8657,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           //
           // NOT persisted when the close boundary refused: the user is not shown this reply, so
           // saving it would make a reload display something they were explicitly told was
-          // stopped. (The agentic path deliberately does the opposite and persists after its
-          // post-drain check, because there the reply has ALREADY streamed live — persisting
-          // matches what the user actually saw, which is what #94 integrity asks for. The two
-          // paths differ because one withholds the reply and the other does not.)
+          // stopped.
+          //
+          // §13 — this note used to end by explaining an ASYMMETRY: that the agentic path
+          // deliberately persists a reply it has already streamed live, and that "the two paths
+          // differ because one withholds the reply and the other does not." The safety-first
+          // streaming rule removed exactly that difference — a protected turn now withholds on
+          // BOTH paths — so the sentence described neither path any more. The two are the same
+          // rule now: one close decision governs the wire, the thread row and the telemetry row
+          // together, and a reply the user was told was stopped is saved nowhere.
           if (scopeHeldAtClose && payloadThreadId && fullAssistantResponse.trim()) {
             const p = persistAssistantTurn(fullAssistantResponse, { bundleRef: null });
             // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
@@ -8611,11 +8682,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // missed path would become a leak rather than a wrong log line, so it re-checks
             // regardless. Fail closed: withhold the buffered reply and say why.
             //
-            // HONEST NOTE (§13): on every path reachable today this is REDUNDANT with the sticky
-            // flag's early return — mutation-verified, removing either one alone leaves the suite
-            // green, and only removing BOTH re-opens the leak. That redundancy is the point, not
-            // an oversight: it is a deliberate backstop for a path nobody has thought of yet.
-            // Do not delete it as dead code on the strength of a green suite.
+            // §13 — THIS NOTE USED TO SAY THIS BRANCH WAS REDUNDANT, "mutation-verified: removing
+            // either it or the sticky flag alone leaves the suite green". That was measured, and
+            // it is no longer true. With group 20/21 in place, replacing this condition with
+            // `false` fails TWELVE checks; it is the load-bearing flush gate for the document
+            // path, not a backstop. The sticky flag is now the redundant half — clearing it
+            // alone still leaves the suite green, because the latch subsumes what it did.
+            // Recorded rather than quietly rewritten: a comment that states a mutation result
+            // is a claim with a date on it, and this one expired.
             // Consumes the single close decision resolved just above rather than re-resolving.
             // One decision, both durable effects and the wire, so the reply, the thread row and
             // the telemetry row can never disagree about whether this turn happened.
