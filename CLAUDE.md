@@ -2567,3 +2567,39 @@ finding about it.
 reporting), §31 (never shortchange the request), §36 (intuitiveness — discoverable in five minutes),
 §58 (a shipped capability is never silently removed), §00 (CD owns how it looks; whether a human can
 FINISH is correctness, and that is CC's).
+
+### §70.1 — THE USER-USABILITY GATE (acceptance + release gate, every Paige task)
+
+> **OWNER-RULED 2026-08-31.** Non-negotiable. This is the operational checklist form of §70,
+> and it lives here rather than in a session note because a gate stated in chat evaporates on
+> the next context reset — which is precisely how the failures above kept recurring.
+
+**A Paige feature is NOT complete because code compiles, a screen renders, fixtures display, a
+prototype is interactive, or automated tests pass.** For every capability presented as supported,
+prove the owner can personally complete it through the REAL product UI against the REAL durable
+contract on their own authenticated account:
+
+- [ ] **Begin from the actual first-use / empty state** — not a seeded record.
+- [ ] **Create or configure** the supported object.
+- [ ] **Edit it and save it.**
+- [ ] **Reload or revisit, and confirm the durable result** — the value survived, not just the toast.
+- [ ] **Exercise permission, failure/retry, abandonment, and account-switch** paths.
+- [ ] **Distinguish AUTHENTICATED proof** from preview, fixture, mock, or structural-harness evidence.
+
+**None of these count as delivered:** a mocked save · a seeded record · local-only state that dies
+on reload · a static readiness card · a disabled "coming soon" control · or UI that *describes* a
+capability without allowing its supported human flow.
+
+**When a contract genuinely does not exist**, mark THAT EXACT capability honestly unavailable with
+its reason and its recovery path — then keep delivering every other supported flow. An unavailable
+dependency is never a licence to leave a whole surface static or read-only.
+
+**Release rule.** No PR may be called feature-complete, or put forward for Gate 2, until this gate
+is met — or until its remaining gaps are explicitly reported as `UNVERIFIED` / `UNAVAILABLE` and
+EXCLUDED from the claimed deliverable. "Tests pass" is not this gate. "It renders" is not this gate.
+The gate is a person finishing the job.
+
+**Evidence must be separated by class, every time:** automated test · static/build · structural or
+harness render · **authenticated runtime on the real platform** · `UNVERIFIED` with its reason. A
+harness drive against an in-memory double is the third class and must never be reported as the
+fourth.
