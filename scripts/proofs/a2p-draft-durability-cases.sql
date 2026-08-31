@@ -36,7 +36,7 @@ DECLARE
   -- is_platform_owner() before it reads tenant_id. A case run as a tenant admin
   -- would be refused by RLS and would therefore pass with the freeze deleted —
   -- vacuous against the exact defect it claims to cover.
-  uOp uuid := 'ff000000-0000-4000-8000-0000000000f1';
+  uOp uuid := 'ee000000-0000-4000-8000-0000000000e1';   -- NOT ff…f1: the sibling concurrency proof owns that id and COMMITS its fixture
   n bigint; out text := E'\n'; fails int := 0; allowed boolean;
   v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_desc_after text; v_optin_after text; v_hint text;
   SAMPLES constant jsonb := '["Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
@@ -584,10 +584,30 @@ BEGIN
   -- RUN AS THE OPERATOR ON PURPOSE. The same write as a tenant admin is refused by
   -- RLS, so a case written that way would pass with the freeze deleted and prove
   -- nothing about the hole it names.
+  -- CARRIER-LINKED FIRST. Every doc describes the harm as "reassigning a
+  -- carrier-approved registration moves a live messaging_service_sid onto another
+  -- business", but these cases ran against a PENDING row — so the proof did not
+  -- measure the scenario it is cited for. The identity clause is stage-independent
+  -- and fires first, so behaviour is identical; the evidence was the gap.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'approved', brand_sid = 'BN-PROOF-OP', messaging_service_sid = 'MG-PROOF-OP'
+   WHERE tenant_id = tD;
   PERFORM set_config('role','authenticated',true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub',uOp,'role','authenticated')::text, true);
   allowed := false; v_hint := NULL;
   BEGIN
+    -- tA already HOLDS a registration, so a pre-fix write here is refused by the
+    -- unique constraint rather than permitted. That is why the assertion below
+    -- pins the HINT: "refused" alone would pass with this guard deleted.
+    --
+    -- THIS QUALIFIES A CLAIM 20261004060000's HEADER MAKES UNQUALIFIED. That file
+    -- says a platform owner reassigning to a foreign tenant is "ALLOWED"; true only
+    -- when the target has no registration row. The header is NOT corrected in place
+    -- because that migration is already recorded on the preview branch and a
+    -- recorded migration is never edited — even for a comment, because the rule that
+    -- keeps the file and the applied SQL identical is worth more than the nicety.
+    -- The correction lives here, in docs/doctrine/tier-matrix.md, and in
+    -- docs/brain/comms-capability-map.md.
     UPDATE public.tenant_a2p_registrations SET tenant_id = tA WHERE tenant_id = tD;
     allowed := true;
   EXCEPTION WHEN OTHERS THEN
@@ -614,13 +634,20 @@ BEGIN
                      NOT allowed, coalesce(v_hint,'(none)'), E'\n');
   IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
 
+  -- Back to a draft for the governed-seam case below. This one is NOT redundant —
+  -- the carrier-link above is real state that would otherwise make the seam refuse.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'pending', brand_sid = NULL, messaging_service_sid = NULL
+   WHERE tenant_id = tD;
+
   -- NON-VACUITY CONTROL: the operator's row is still THERE and still tD's, so the
   -- two refusals above were refusals and not a silently-missing row.
   SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
   out := out||format('      ...and the row still belongs to tD ........ %s   want 1%s', n, E'\n');
   IF n <> 1 THEN fails := fails + 1; END IF;
 
-  -- Put it back to pending so the governed-seam case below still measures what it says.
+  -- Redundant now (the operator block above already restored it) and kept only as a
+  -- belt-and-braces reset — it must stay a no-op, not become a second source of truth.
   UPDATE public.tenant_a2p_registrations
      SET status = 'pending', brand_sid = NULL
    WHERE tenant_id = tD;

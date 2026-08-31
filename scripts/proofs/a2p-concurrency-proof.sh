@@ -89,6 +89,13 @@ B_OUT=$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c
 \"" 2>&1)
 B_END=$(date +%s%N)
 wait "$A_PID" 2>/dev/null
+# A's status, for the reason T1's is captured. A previous revision fixed D3's two
+# sessions and left THIS one launched identically — `>/dev/null 2>&1 &`, waited with
+# the status discarded — one section higher in the same file. A dead A leaves
+# `final` at pending and `refused` false, so D2 fails either way; but its single
+# generic message is then byte-identical to a genuine immutability regression, and
+# sends the next reader hunting a guard defect that does not exist.
+A_RC=$?
 B_MS=$(( (B_END - B_START) / 1000000 ))
 
 blocked=f; [ "$B_MS" -ge $(( (HOLD_SECONDS - 1) * 1000 )) ] && blocked=t
@@ -96,7 +103,8 @@ refused=f; echo "$B_OUT" | grep -q "REGISTRATION_IMMUTABLE" && refused=t
 final=$(psql_as -c "\"select status||'/'||coalesce(use_case,'')||'/'||coalesce(brand_sid,'') from public.tenant_a2p_registrations where tenant_id='$TEN'\"" 2>/dev/null | tr -d ' ')
 
 echo
-echo "  D2 CONCURRENCY (two real sessions)"
+echo "    session A completed .................. rc=$A_RC   want 0"
+  echo "  D2 CONCURRENCY (two real sessions)"
 echo "    B contended for the row ............. $blocked   want t  (waited ${B_MS}ms, A held ${HOLD_SECONDS}s)"
 echo "    B refused the approved row .......... $refused   want t  (REGISTRATION_IMMUTABLE)"
 echo "    approved row survived intact ........ $final   want approved/APPROVEDCOPY/BN-CONC-LIVE"
@@ -202,8 +210,14 @@ psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2
              delete from public.tenants where id='$TEN2';
              delete from auth.users where id='$USR2';\"" >/dev/null 2>&1
 
+[ "$A_RC" = "0" ] || {
+  echo "  !! D2 CONCURRENCY PROOF INCONCLUSIVE — session A did not complete (rc=$A_RC)."
+  echo "     Every D2 assertion below is about the state A was supposed to leave, so a dead A"
+  echo "     reads exactly like an immutability-guard regression. This is a dead session,"
+  echo "     NOT a guard defect."; exit 1; }
 [ "$blocked" = t ] && [ "$refused" = t ] && [ "$final" = "approved/APPROVEDCOPY/BN-CONC-LIVE" ] || {
-  echo "  !! D2 CONCURRENCY PROOF FAILED"; exit 1; }
+  echo "  !! D2 CONCURRENCY PROOF FAILED (A ran clean, rc=0 — this is a real guard/lock finding)"
+  echo "     blocked=$blocked  refused=$refused  final=$final"; exit 1; }
 [ "$T1_RC" = "0" ] || {
   echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — T1 did not complete (rc=$T1_RC). The copy-survived"
   echo "     assertion below is about T1's OWN values, so a dead T1 makes it read exactly like a"
@@ -219,7 +233,9 @@ psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2
   echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — both sessions ran (T1 rc=$T1_RC, T2 rc=$T2_RC) but the"
   echo "     final row is not T2-then-T1 (mark=$t2mark). The two sessions raced in the other order,"
   echo "     so the preservation this case exists to measure never happened. Re-run; if it recurs,"
-  echo "     the startup skew is larger than the ${HOLD_SECONDS}s hold this case assumes."; exit 1; }
+  echo "     T2 won the lock first. The knob is the 1s gap between the two launches above,"
+  echo "     NOT HOLD_SECONDS — that governs how long T1 HOLDS the lock once it already has"
+  echo "     it, and cannot influence which session gets there first."; exit 1; }
 [ "$race" = "FLOWONE/OPTINONE/STOPONE/HELPONE" ] || {
   echo "  !! D3 FIRST-SAVE RACE FAILED — a concurrent first save destroyed reviewed copy"; exit 1; }
 echo "  D2 + D3 concurrency proofs PASSED"

@@ -87,7 +87,9 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   `is_platform_owner() OR (tenant_id = current_user_tenant_id() AND …)`, whose first branch
   short-circuits before reading the column, and a platform operator over PostgREST runs as
   `authenticated` and is therefore a direct caller by this guard's own definition. A review
-  measured an operator both NULLing and reassigning it. **`20261004060000`** puts `tenant_id`
+  measured an operator both NULLing and reassigning it (the reassign onto a tenant with no
+  registration of its own — onto an occupied one a unique constraint refuses it first, so the
+  proof pins the refusal HINT, not merely that it was refused). **`20261004060000`** puts `tenant_id`
   in the freeze, so reassigning a carrier-approved registration — and the live
   `messaging_service_sid` that `send-message` resolves by `tenant_id` — is refused. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
   `current_user` as its own owner and would allow everything, which the proof caught.

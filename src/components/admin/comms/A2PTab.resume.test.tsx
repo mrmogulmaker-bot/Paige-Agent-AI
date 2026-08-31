@@ -288,7 +288,8 @@ describe("A2P — coming back to a prepared registration", () => {
 
   it("does not leave a permanent skeleton when a read THROWS", async () => {
     // Every setRegLoading(false) sat on a success path or an early return, and
-    // both call sites discard the promise — so a throw (not a returned `{error}`)
+    // two of its three call sites discard the promise (the third awaits it inside
+    // `submit`'s own try) — so a throw (not a returned `{error}`)
     // left the pulse up forever with no message and no console line.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     selectState.row = PREPARED_ROW;

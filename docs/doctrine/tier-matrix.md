@@ -895,7 +895,7 @@ direct caller at **all** stages, after a review executed a rewrite of both on a 
 succeeded, orphaning the audit link. `20261004060000` adds `tenant_id` to that freeze: it had been
 delegated to the update policy, whose `is_platform_owner() OR …` first branch short-circuits before
 reading the column — so an **operator** could NULL or reassign a carrier-approved registration
-(measured, all four cases). That is the one column on which this section's "including a platform
+(measured, all four cases — with one qualification: the reassign is allowed onto a tenant that has no registration row; onto an occupied one the unique constraint refuses it first, which is why the proof pins the refusal HINT rather than the refusal alone). That is the one column on which this section's "including a platform
 operator using PostgREST" claim had not been true. Again: no change to which tiers see the surface —
 only to what a direct PostgREST caller at any tier may write.
 
