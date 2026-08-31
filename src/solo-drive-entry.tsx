@@ -4,7 +4,7 @@
 // solo-drive.html; it is NOT in the production build inputs (vite builds index.html only) and is
 // never a reachable route in the app.
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TenantProvider } from "@/hooks/useTenantContext";
 import SoloApp from "./solo/SoloApp";
@@ -13,6 +13,12 @@ import SoloApp from "./solo/SoloApp";
 // Router ancestor. In production it mounts inside App.tsx's <BrowserRouter>; the bare harness must
 // supply its own so the §32 smoke can mount the real merged shell. MemoryRouter keeps navigation
 // inert (no URL bar) — navigate() targets just no-op here, which is correct for a render smoke.
+//
+// `?route=` seeds the router's initial entry so a drive can land on a §65 3-level address —
+// `?route=/solo/1971670/settings/connections` — and measure a surface the rail alone cannot
+// reach here (this harness's rail still renders legacy /admin hrefs, and SoloApp only becomes
+// url-driven when the address matches the tier tree). Nothing about the app changes: the same
+// merged SoloApp renders, with the same real stylesheets, at the address a tenant would use.
 //
 // The Command Center HOME tab is now wired to REAL data via react-query hooks
 // (useCommandCenter → usePracticeDashboard/usePendingApprovals) + useTenantContext.
@@ -26,8 +32,15 @@ const el = document.getElementById("root");
 if (el) createRoot(el).render(
   <QueryClientProvider client={client}>
     <TenantProvider>
-      <MemoryRouter>
-        <SoloApp />
+      <MemoryRouter initialEntries={[new URLSearchParams(window.location.search).get("route") || "/"]}>
+        {/* The SAME route shape the app registers, because `SoloApp` reads its branch
+            and account out of `useParams()`. Mounted bare it is never url-driven, so a
+            3-level address would render the default screen and a drive would measure
+            the wrong surface. */}
+        <Routes>
+          <Route path="/solo/:account/*" element={<SoloApp />} />
+          <Route path="*" element={<SoloApp />} />
+        </Routes>
       </MemoryRouter>
     </TenantProvider>
   </QueryClientProvider>,

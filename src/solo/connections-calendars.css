@@ -23,6 +23,54 @@
  * prefers-reduced-motion twin at the end of this file.
  */
 
+/* THE CALENDARS SCROLL OWNER.
+ *
+ * The Solo shell's form-fit law — `.paige-solo main{overflow:hidden!important}` in
+ * solo-tokens.css — makes every Solo screen fill the frame exactly and own its own
+ * inner scroll regions. It is correct and it is NOT modified here.
+ *
+ * It also outranks SoloApp's inline `overflow` on the screen host, because an
+ * !important author declaration beats a normal style attribute. Settings is a
+ * document flow with no inner scroller, so on this surface the law leaves ZERO
+ * scroll owners: measured on the real app at 1366x768, the host reports
+ * `overflow-y: hidden`, scrollHeight 1113 against clientHeight 702 — 411px of
+ * Calendars with no way to reach it, and no scrollbar to show it was there.
+ *
+ * `.cc` is the Calendars root and nothing else: one component renders it
+ * (connections-calendars.tsx) and one stylesheet defines it (this file). So
+ * `:has(.cc)` is true only while Calendars is on screen, which makes this the
+ * narrowest correction available — it is inert on Communications, Health,
+ * Available, every other Settings destination, and every other Solo surface.
+ *
+ * It wins on SPECIFICITY, not source order: `.paige-solo main:has(.cc)` is (0,2,1)
+ * against the law's (0,1,1), so it holds whatever order the bundler emits.
+ *
+ * Only `overflow-y` is overridden. The law's shorthand keeps `overflow-x: hidden`,
+ * so this buys a vertical scroll owner and never a sideways one. */
+.paige-solo main:has(.cc) { overflow-y: auto !important; }
+
+/* AND THE SCROLLBAR ITSELF.
+ *
+ * A scroll owner nobody can see is half a repair. `settings.tsx` puts
+ * `.tcs-main--settings-scrollbar-hidden` on that same host, which sets
+ * `scrollbar-width: none` and zeroes the WebKit bar — so with the override above
+ * alone the surface scrolls by wheel but shows no bar and cannot be dragged
+ * (measured: reserved gutter 0px).
+ *
+ * These restore the platform's OWN treatment rather than inventing one: 10px,
+ * transparent track, `--pg-line-strong` thumb, exactly as
+ * `[data-tenant-shell] ::-webkit-scrollbar` already ships in the shell stylesheet.
+ * They only out-specify the hiding rule while Calendars is mounted — the class
+ * still hides the bar on every other Settings destination, untouched.
+ *
+ * `scrollbar-gutter: stable` is what makes it USABLE rather than merely visible:
+ * the track is always laid out, so the bar is a fixed hit target and content does
+ * not jump sideways by 10px when the surface grows past the fold. */
+.paige-solo main:has(.cc) { scrollbar-width: auto !important; scrollbar-gutter: stable; }
+.paige-solo main:has(.cc)::-webkit-scrollbar { width: 10px !important; height: 10px !important; display: block !important; }
+.paige-solo main:has(.cc)::-webkit-scrollbar-track { background: transparent; }
+.paige-solo main:has(.cc)::-webkit-scrollbar-thumb { background: var(--pg-line-strong); border: 3px solid transparent; border-radius: var(--pg-r-pill); background-clip: content-box; }
+
 .cc {
   --cc-ease: cubic-bezier(.32, .72, 0, 1);
   --cc-plate: 14px;
