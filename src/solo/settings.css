@@ -198,3 +198,53 @@
   .ss-sections { gap: 18px; }
   .ss-subsection-head p { margin-left: 0; }
 }
+
+/* ── Acting on this surface ────────────────────────────────────────────────
+   Connections reported accurately and offered nothing to do. These carry the
+   one write it makes (preparing a registration) and the controls it stops
+   short of — shown disabled with their reason rather than hidden, so the
+   ceiling is legible instead of being mistaken for a missing menu. */
+.ss-actions-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; margin-top: 14px; }
+.ss-actions-row > .ss-note { flex: 1 1 100%; margin: 0; }
+
+.ss-act {
+  min-height: 34px; padding: 0 14px; border-radius: 9px;
+  border: 1px solid var(--ss-line, rgba(128,128,128,.32));
+  background: var(--ss-raised, transparent); color: inherit;
+  font: 600 12px/1 inherit; cursor: pointer;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+.ss-act:hover:not(:disabled) { background: var(--ss-lift, rgba(128,128,128,.10)); }
+.ss-act:disabled { opacity: .55; cursor: not-allowed; }
+/* Gold is spent on the act, and only there (§11). */
+.ss-act-primary:not(:disabled) {
+  background: var(--accent, #d4a752); border-color: var(--accent, #d4a752);
+  color: var(--accent-foreground, #20180a); font-weight: 700;
+}
+
+.ss-blocked { display: flex; flex-direction: column; gap: 6px; flex: 1 1 260px; min-width: 0; }
+.ss-blocked .ss-note { margin: 0; }
+
+.ss-scrim { position: fixed; inset: 0; z-index: 70; background: rgba(4,3,6,.55); }
+.ss-drawer {
+  position: fixed; z-index: 71; inset: 0 0 0 auto; width: min(440px, 100%);
+  overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 4px;
+  background: var(--card, #17151c); color: inherit;
+  border-left: 1px solid var(--ss-line, rgba(128,128,128,.32));
+  box-shadow: 0 16px 44px -12px rgba(0,0,0,.55);
+}
+.ss-drawer h3 { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+.ss-drawer-label {
+  display: block; margin: 12px 0 5px;
+  font: 700 9px/1 var(--ss-data, ui-monospace, monospace);
+  letter-spacing: .09em; text-transform: uppercase; opacity: .72;
+}
+.ss-drawer textarea {
+  width: 100%; min-height: 92px; resize: vertical; padding: 9px 11px;
+  border: 1px solid var(--ss-line, rgba(128,128,128,.32)); border-radius: 9px;
+  background: var(--background, transparent); color: inherit; font: 400 12.5px/1.5 inherit;
+}
+.ss-drawer textarea:disabled { opacity: .6; }
+.ss-drawer-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) { .ss-act { transition: none; } }

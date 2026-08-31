@@ -41,6 +41,16 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) =>
       fn === "tenant_comms_readiness" ? rpcState.readiness : { data: null, error: null }),
+    // Connections now reads WHO IS ASKING as well as what the account says, so it
+    // can offer the prepare action to a caller the server would allow and refuse
+    // it — with a reason — to one it would not. These suites double the client, so
+    // the double has to carry the surface the component actually depends on.
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "u1" } }, error: null })),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+    },
+    from: vi.fn(() => ({ select: () => ({ eq: async () => ({ data: [{ role: "admin" }], error: null }) }) })),
+    functions: { invoke: vi.fn(async () => ({ data: null, error: null })) },
   },
 }));
 vi.mock("@/hooks/useTenantContext", () => ({

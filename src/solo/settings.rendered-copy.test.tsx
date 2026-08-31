@@ -12,7 +12,19 @@ const testState = vi.hoisted(() => ({ tab: "team" }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { rpc: vi.fn().mockResolvedValue({ data: null, error: null }) },
+  // Connections now reads WHO IS ASKING as well as what the account says, so the
+  // prepare action can be offered to a caller the server would allow and refused,
+  // with a reason, to one it would not. The double has to carry the client surface
+  // the component actually reaches for, or the mount throws before any copy renders.
+  supabase: {
+    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+    auth: {
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } }, error: null }),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+    },
+    from: vi.fn(() => ({ select: () => ({ eq: async () => ({ data: [], error: null }) }) })),
+    functions: { invoke: vi.fn().mockResolvedValue({ data: null, error: null }) },
+  },
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({

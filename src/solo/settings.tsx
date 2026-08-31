@@ -38,6 +38,8 @@ import {
   type SettingsTruth,
 } from "./settings-contract";
 import { CalendarsView } from "./connections-calendars";
+import { useUserRoles } from "@/hooks/useUserRoles";
+import { BLOCKED_ACTIONS, preparePermission, refusalFor, type PreparePermission, type Refusal } from "./a2pPrepare";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -522,7 +524,168 @@ function requestedSegment(search: string): ConnectionsSegment | undefined {
   return CONNECTIONS_SEGMENTS.find((s) => s === raw);
 }
 
+/**
+ * The refusal codes `comms-a2p-draft` can return, pulled out of whatever shape
+ * the client hands us.
+ *
+ * `supabase.functions.invoke` does NOT reject with the function's JSON body: a
+ * non-2xx surfaces as a FunctionsHttpError whose `message` is the generic
+ * "Edge Function returned a non-2xx status code" and whose real payload sits on
+ * `context`. Reading `error.message` would therefore print that generic sentence
+ * to a tenant and lose the one thing worth having — the stable code. So the body
+ * is dug out and only the CODE is used; the server's message is never rendered.
+ */
+async function refusalFromInvoke(error: unknown): Promise<Refusal> {
+  const ctx = (error as { context?: unknown } | null)?.context as
+    | { body?: unknown; json?: () => Promise<unknown> }
+    | undefined;
+  let payload: unknown = null;
+  try {
+    if (ctx && typeof ctx.json === "function") payload = await ctx.json();
+    else if (typeof ctx?.body === "string") payload = JSON.parse(ctx.body);
+    else if (ctx?.body && typeof ctx.body === "object") payload = ctx.body;
+  } catch {
+    // A body we cannot parse is not a reason to invent one.
+    payload = null;
+  }
+  const code = (payload as { error?: { code?: unknown } } | null)?.error?.code;
+  return refusalFor(typeof code === "string" ? code : null);
+}
+
+type PrepareOutcome = { kind: "saved" } | { kind: "refused"; refusal: Refusal };
+
+/**
+ * Prepare a registration — the drawer, and the only write this surface makes.
+ *
+ * WHAT IT SENDS, AND WHY THAT IS THE WHOLE FORM. `comms-a2p-draft` takes
+ * `{ legal_business_name?, website?, use_case_hint? }` and drafts the regulatory
+ * 10DLC prose from them — the campaign description, the sample messages carriers
+ * require, and the opt-in language. The tenant does not write compliance copy;
+ * that is the point of the seam. So the form asks for the one thing only they
+ * know, in their own words, and Paige writes the rest.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. It never sends a tenant id — the server
+ * derives it and ignores a body value, so sending one would be theatre. It never
+ * calls `comms-a2p-submit`; submission is refused by that function and named as
+ * unbuilt here instead of offered. And a `needs_config` 200 is treated as a
+ * FAILURE, because that response means no draft was written and nothing was
+ * saved — reading it as success is the exact "looks stored, persisted nothing"
+ * defect the drafting function was itself changed to remove.
+ */
+function PrepareRegistrationDrawer({
+  open, busy, refusal, initialHint, onSave, onClose,
+}: {
+  open: boolean; busy: boolean; refusal: Refusal | null; initialHint: string;
+  onSave: (hint: string) => void; onClose: (dirty: boolean) => void;
+}) {
+  const [hint, setHint] = useState(initialHint);
+  const [confirming, setConfirming] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const dirty = hint.trim() !== initialHint.trim();
+
+  // Reset per opening, so a previous attempt's text never appears under a fresh
+  // one — and so a refused attempt KEEPS its text, which is the same rule seen
+  // from both sides: the drawer stays mounted through a refusal.
+  useEffect(() => { if (open) { setHint(initialHint); setConfirming(false); } }, [open, initialHint]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); attemptClose(); } };
+    document.addEventListener("keydown", onKey);
+    dialogRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, dirty, busy]);
+
+  if (!open) return null;
+
+  function attemptClose() {
+    if (busy) return;                       // a save in flight is not abandonable
+    if (dirty && !confirming) { setConfirming(true); return; }
+    onClose(dirty);
+  }
+
+  return <>
+    <div className="ss-scrim" onClick={attemptClose} aria-hidden />
+    <div ref={dialogRef} className="ss-drawer" role="dialog" aria-modal="true"
+         aria-labelledby="ss-prep-title" tabIndex={-1}>
+      <h3 id="ss-prep-title">Prepare messaging registration</h3>
+      <p className="ss-note">
+        Paige writes the registration copy carriers ask for from what you describe here. It is saved on
+        your business as a draft — <strong>preparing is not submitting</strong>, and no carrier sees it.
+      </p>
+
+      <label className="ss-drawer-label" htmlFor="ss-prep-hint">How will you use messaging?</label>
+      <textarea id="ss-prep-hint" value={hint} disabled={busy}
+        placeholder="Appointment reminders and follow-ups for my clients"
+        onChange={(e) => { setHint(e.target.value); setConfirming(false); }} />
+      <p className="ss-note">In your own words. Paige turns it into the description, sample messages and
+        opt-in language the registration needs.</p>
+
+      {refusal && <div className="ss-next ss-read-failure" role="status">
+        <strong>{refusal.title}</strong>
+        <p>{refusal.body}</p>
+        {refusal.recovery && <p>{refusal.recovery}</p>}
+      </div>}
+
+      {confirming && <div className="ss-next" role="status">
+        <strong>Discard your unsaved changes?</strong>
+        <p>What you have written here has not been saved to your business.</p>
+        <div className="ss-drawer-acts">
+          <button type="button" className="ss-retry" onClick={() => setConfirming(false)}>Keep editing</button>
+          <button type="button" className="ss-retry" onClick={() => onClose(true)}>Discard</button>
+        </div>
+      </div>}
+
+      <div className="ss-drawer-acts">
+        <button type="button" className="ss-act ss-act-primary" disabled={busy || !hint.trim()}
+          onClick={() => onSave(hint.trim())}>{busy ? "Saving…" : "Save draft"}</button>
+        <button type="button" className="ss-act" onClick={attemptClose} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  </>;
+}
+
+/**
+ * A control this surface stops short of, rendered rather than hidden.
+ *
+ * Hiding it would leave a tenant unable to tell "this product cannot do that"
+ * from "I have not found where that lives" — and the second is the reading
+ * people default to. So the ceiling is shown, disabled, with its reason and
+ * whatever recovery honestly exists.
+ */
+function BlockedAction({ which }: { which: keyof typeof BLOCKED_ACTIONS }) {
+  const a = BLOCKED_ACTIONS[which];
+  return <div className="ss-blocked">
+    <button type="button" className="ss-act" disabled>{a.label}</button>
+    <p className="ss-note"><strong>{a.reason}</strong>{a.recovery ? ` ${a.recovery}` : ""}</p>
+  </div>;
+}
+
+/**
+ * Can this caller prepare? Mirrors the server so the two do not disagree.
+ *
+ * `is_platform_owner()` is asked for separately because the roles table alone
+ * would deny an operator the server would allow — the drafting function gates on
+ * `is_platform_owner() OR admin OR coach`, and mirroring only half of an OR is
+ * how a surface tells someone they lack access they actually have.
+ */
+function usePreparePermission(): PreparePermission {
+  const roles = useUserRoles();
+  const [owner, setOwner] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    void (supabase as any).rpc("is_platform_owner").then(({ data }: { data: unknown }) => {
+      if (active) setOwner(data === true);
+    }, () => { if (active) setOwner(false); });
+    return () => { active = false; };
+  }, []);
+  return preparePermission({ loading: roles.loading, isStaff: roles.isStaff, isPlatformOwner: owner });
+}
+
 function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
+  const { activeTenantId } = useTenantContext();
   const comms = useSoloComms();
   const identity = useManagedIdentity();
   // The owner-locked Connections shape, from #660: Communications owns whether a
@@ -539,6 +702,45 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
   const readiness = useCommsReadiness();
   const r = readiness.value;
+  const permission = usePreparePermission();
+
+  /**
+   * The prepare attempt.
+   *
+   * `activeTenantId` is in the reset key deliberately: an open drawer, a
+   * half-typed hint and a refusal all belong to the account they were made
+   * against. Carrying them across an account switch would put one business's
+   * words under another business's heading — the same substitution
+   * `useCommsReadiness` clears its value to avoid.
+   */
+  const [prepare, setPrepare] = useState<{ open: boolean; busy: boolean; refusal: Refusal | null; hint: string }>(
+    { open: false, busy: false, refusal: null, hint: "" });
+  useEffect(() => { setPrepare({ open: false, busy: false, refusal: null, hint: "" }); }, [activeTenantId]);
+
+  const savePrepared = useCallback(async (hint: string) => {
+    setPrepare((p) => ({ ...p, busy: true, refusal: null, hint }));
+    // No tenant_id: the server derives it for a JWT caller and IGNORES a body
+    // value, so sending one would suggest an authority this call does not have.
+    const { data, error } = await supabase.functions.invoke("comms-a2p-draft", {
+      body: { use_case_hint: hint },
+    });
+    if (error) {
+      const refusal = await refusalFromInvoke(error);
+      setPrepare((p) => ({ ...p, busy: false, refusal }));
+      return;
+    }
+    // A 200 carrying needs_config means NO draft was written and nothing was
+    // saved. Treating it as success is the "looks stored, persisted nothing"
+    // failure the drafting function was itself corrected to stop returning.
+    if ((data as { needs_config?: boolean } | null)?.needs_config) {
+      setPrepare((p) => ({ ...p, busy: false, refusal: refusalFor("MODEL_UNAVAILABLE") }));
+      return;
+    }
+    setPrepare({ open: false, busy: false, refusal: null, hint: "" });
+    // Re-read rather than assume: the card must report what the record now says,
+    // not what we hoped this call did to it.
+    await readiness.retry();
+  }, [readiness]);
 
   // Integrations is deliberately NOT built as a tab here. It is its own Settings
   // destination, shipped by #657, so Connections does not become a second home
@@ -624,6 +826,13 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
           </Card>
           <PhoneSetupPanel/>
         </div>
+        {/* Named, not offered. Both contact the provider and spend money, which
+            this screen holds no authority to do — and a tenant who cannot see
+            the ceiling cannot tell "we don't do that" from "I can't find it". */}
+        <div className="ss-actions-row">
+          <BlockedAction which="search_number"/>
+          <BlockedAction which="assign_number"/>
+        </div>
       </Subsection>
 
       <Subsection id="ss-sub-registration" title="Messaging registration"
@@ -640,6 +849,21 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
                   prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
               </> : noRecord("registration")}
             </ReadState>
+            {/* The action the copy above promises. It used to promise it and offer
+                nothing — the only caller of the drafting seam was a legacy admin
+                tab this tenant is redirected away from, so the sentence was true
+                of the product and false of the screen printing it. */}
+            {!readFailed && <div className="ss-actions-row">
+              <button type="button" className="ss-act ss-act-primary"
+                disabled={permission.state !== "allowed"}
+                onClick={() => setPrepare({ open: true, busy: false, refusal: null, hint: "" })}>
+                {r?.a2p === "prepared" ? "Revise registration" : "Prepare registration"}
+              </button>
+              {permission.state === "denied" && <p className="ss-note">
+                <strong>{permission.reason}</strong> {permission.recovery}
+              </p>}
+              <BlockedAction which="submit"/>
+            </div>}
           </Card>
           <Card title="Consent and opt-outs" icon={ShieldCheck}
             truth={r ? consentStep(r).truth : "PARTIAL"}
@@ -706,6 +930,11 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
           </Card>
         </div>
       </Subsection>
+
+      <PrepareRegistrationDrawer
+        open={prepare.open} busy={prepare.busy} refusal={prepare.refusal} initialHint={prepare.hint}
+        onSave={(hint) => { void savePrepared(hint); }}
+        onClose={() => setPrepare({ open: false, busy: false, refusal: null, hint: "" })}/>
     </div>}
 
     {view === "health" && <div className="ss-sections">
