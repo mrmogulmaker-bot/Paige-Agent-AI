@@ -1,0 +1,304 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { A2PTab } from "./A2PTab";
+
+/**
+ * The prepared registration a tenant comes BACK to.
+ *
+ * #665 made the prepared draft durable, and an independent review then found the
+ * flow still broken at three points on the return trip. These cover the two that
+ * are visible on this surface; the third (which fields actually reach the row) is
+ * proven in scripts/proofs/a2p-draft-durability-cases.sql, because it is a
+ * database contract rather than a rendering one.
+ *
+ * Both assertions below FAIL against the shipped e7521605 build. That is the point:
+ * a test that passes before the fix is measuring something other than the defect.
+ */
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** A row in exactly the shape a successful draft save leaves behind: prepared, never filed. */
+const PREPARED_ROW = {
+  brand_status: "pending",
+  campaign_status: "pending",
+  status: "pending",
+  brand_sid: null,
+  campaign_sid: null,
+  use_case: "customer care",
+  campaign_description: "Appointment reminders and replies for booked clients.",
+  sample_messages: [
+    "Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
+    "Thanks for booking. Reply STOP to opt out.",
+  ],
+  optin_flow: "Clients tick an SMS consent box on the booking form.",
+  optin_message: "You are subscribed to appointment reminders. Reply STOP to opt out.",
+  optout_message: "You are unsubscribed and will get no further texts.",
+  help_message: "Reply with your question or call the number on your invoice.",
+  submitted_at: null,
+  approved_at: null,
+  messaging_service_sid: null,
+};
+
+const selectState = vi.hoisted(() => ({
+  row: null as unknown,
+  legal: { legal_business_name: "Proof Fixture LLC" } as unknown,
+  invoked: [] as { fn: string; body: Record<string, unknown> }[],
+  filters: [] as { table: string; col: string; val: unknown }[],
+  tenant: { data: "tenant-A" as string | null, error: null as { message: string } | null },
+  // The read could not fail before, so no test could reach the failure path.
+  readError: null as { message: string } | null,
+  // ...and the LEGAL read could not fail either, so its branch was also unreachable.
+  legalError: null as { message: string } | null,
+  // A THROW is a different door from a returned `{ error }`, and supabase-js does
+  // not convert every failure into the latter.
+  throwOnRead: false,
+}));
+
+// Keyed by TABLE, and it RECORDS the tenant filter each read applied. A single shared mock
+// fed the registration row to the legal-profile read as well, which would have made the
+// legal-name assertion pass for the wrong reason.
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    rpc: vi.fn(async (fn: string) =>
+      fn === "current_user_tenant_id" ? selectState.tenant : { data: null, error: null }),
+    from: (table: string) => {
+      const row = () => (table === "tenant_legal_profile" ? selectState.legal : selectState.row);
+      const result = async () => {
+        if (selectState.throwOnRead) throw new Error("client blew up before any response");
+        if (table === "tenant_a2p_registrations" && selectState.readError)
+          return { data: null, error: selectState.readError };
+        if (table === "tenant_legal_profile" && selectState.legalError)
+          return { data: null, error: selectState.legalError };
+        return { data: row(), error: null };
+      };
+      const build = () => ({
+        eq: (col: string, val: unknown) => {
+          selectState.filters.push({ table, col, val });
+          return build();
+        },
+        limit: () => build(),
+        maybeSingle: result,
+      });
+      return { select: () => build() };
+    },
+    functions: {
+      invoke: vi.fn(async (fn: string, opts: { body: Record<string, unknown> }) => {
+        selectState.invoked.push({ fn, body: opts?.body ?? {} });
+        return { data: { saved: true, submitted: false }, error: null };
+      }),
+    },
+  },
+}));
+vi.mock("@/hooks/useUserRoles", () => ({ useUserRoles: () => ({ isAdmin: true, roles: ["admin"], loading: false }) }));
+vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+
+async function mountTab() {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(<MemoryRouter><A2PTab /></MemoryRouter>);
+  });
+  return { host, cleanup: async () => { await act(async () => root.unmount()); host.remove(); } };
+}
+
+describe("A2P — coming back to a prepared registration", () => {
+  beforeEach(() => {
+    selectState.readError = null;
+    selectState.legalError = null;
+    selectState.throwOnRead = false;
+    selectState.row = PREPARED_ROW;
+    selectState.legal = { legal_business_name: "Proof Fixture LLC" };
+    selectState.invoked = [];
+    selectState.filters = [];
+    selectState.tenant = { data: "tenant-A", error: null };
+  });
+
+  it("re-opens the saved copy for editing instead of stranding it", async () => {
+    // The banner tells the owner they "can keep editing it". The editor is mounted
+    // only from in-memory `draft` state, and loadReg calls setReg alone — so after a
+    // refresh the saved copy never returns and the one way forward is another PAID
+    // model generation that overwrites it. A promise the surface cannot keep is the
+    // same class of defect as a fabricated status.
+    const { host, cleanup } = await mountTab();
+    const values = Array.from(host.querySelectorAll("textarea, input")).map(
+      (el) => (el as HTMLInputElement | HTMLTextAreaElement).value,
+    );
+    const joined = values.join("\n");
+
+    expect(joined).toContain("customer care");
+    expect(joined).toContain("Appointment reminders and replies for booked clients.");
+    expect(joined).toContain("Clients tick an SMS consent box on the booking form.");
+    // The three compliance replies are the ones the draft path was dropping entirely.
+    expect(joined).toContain("You are subscribed to appointment reminders.");
+    expect(joined).toContain("You are unsubscribed and will get no further texts.");
+    expect(joined).toContain("Reply with your question or call the number on your invoice.");
+    await cleanup();
+  });
+
+  it("reads only THIS tenant's registration and legal profile", async () => {
+    // Both reads were `.limit(1).maybeSingle()` with no tenant predicate. RLS on
+    // tenant_legal_profile admits any tenant the caller is a member of, and admits ALL of
+    // them for a platform owner — with no ORDER BY, so the row is whichever the planner
+    // returns. On main that was a display leak the code comment knowingly accepted.
+    //
+    // Rehydration changes what that row IS: it is now loaded into an editable, savable
+    // form, and the legal name is posted to a carrier registration whose tenant is derived
+    // server-side. So the leak became a cross-tenant copy transfer and a filing under
+    // another company's legal identity. Latent only because tenant_legal_profile is empty
+    // today; it arms the moment any tenant fills it in.
+    const { cleanup } = await mountTab();
+    for (const table of ["tenant_a2p_registrations", "tenant_legal_profile"]) {
+      const scoped = selectState.filters.find(
+        (f) => f.table === table && f.col === "tenant_id" && f.val === "tenant-A",
+      );
+      expect(scoped, `${table} must be read scoped to the caller's own tenant`).toBeTruthy();
+    }
+    await cleanup();
+  });
+
+  it("does not report 'not registered' about an account it could not identify", async () => {
+    // The commit that added the tenant scoping also added a comment promising that an
+    // unresolvable tenant would "say nothing rather than render a confident negative".
+    // The code set reg=null and returned, and the render branches !reg into the
+    // "Not registered yet" empty state plus the whole onboarding form — the confident
+    // negative, verbatim. The RPC's error was destructured away with no log, which is the
+    // silent swallow §32 exists to forbid.
+    //
+    // The harm is concrete: a transient resolver failure tells a coach their registration
+    // does not exist and invites them into a re-draft, which is a PAID generation that
+    // overwrites reviewed compliance copy.
+    selectState.tenant = { data: null, error: { message: "resolver unavailable" } };
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+
+    expect(text).not.toContain("Not registered yet");
+    expect(text).not.toContain("Draft with Paige");
+    expect(text).toContain("identify your workspace");
+    await cleanup();
+  });
+
+  it("comes back ready to ACT, not just to read", async () => {
+    // Restoring the copy is not resuming the flow. `legalName` is set only by typing or
+    // by the draft response, so on a refresh the editor opened with every reviewed field
+    // populated, the legal-business-name field EMPTY, and the save disabled — leaving
+    // "Re-draft with Paige" (a paid call that overwrites the row) as the only live
+    // control. The value is not unknown: the save seam already reads it, and refuses
+    // without it.
+    const { host, cleanup } = await mountTab();
+    const inputs = Array.from(host.querySelectorAll("input")) as HTMLInputElement[];
+    const legal = inputs.find((el) => (el.value || "").includes("Proof Fixture LLC"));
+    expect(legal, "the legal business name should be restored from the tenant's profile").toBeTruthy();
+
+    const save = Array.from(host.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("Approve & save"),
+    ) as HTMLButtonElement | undefined;
+    expect(save, "the save control should exist").toBeTruthy();
+    expect(save!.disabled, "a resumed draft should be savable without paying to regenerate it").toBe(false);
+    await cleanup();
+  });
+
+  it("sends a CLEARED reply as cleared, not as absent", async () => {
+    // Preserve-on-absent is right for a field the caller never mentioned and wrong for one
+    // the owner deleted. Collapsing "" to undefined makes the two indistinguishable, so a
+    // STOP or HELP reply — carrier-facing compliance copy — could never be removed: the
+    // surface reported "saved" and the deleted text came back on the next read.
+    const { host, cleanup } = await mountTab();
+    const areas = Array.from(host.querySelectorAll("textarea")) as HTMLTextAreaElement[];
+    const help = areas.find((el) => el.value.includes("Reply with your question"));
+    expect(help, "the HELP reply should be restored before we can clear it").toBeTruthy();
+
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(help!, "");
+      help!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const save = Array.from(host.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("Approve & save"),
+    ) as HTMLButtonElement;
+    await act(async () => { save.click(); });
+
+    const submit = selectState.invoked.find((c) => c.fn === "comms-a2p-submit");
+    expect(submit, "submit should have been called").toBeTruthy();
+    expect(submit!.body.help_message, "a cleared reply must reach the seam as an explicit clear").toBe("");
+    await cleanup();
+  });
+
+  it("never says 'Being set up' about a registration it also says was never sent", async () => {
+    // The banner and the two status cards describe the SAME row. One says nothing has
+    // been sent and nothing is queued; the other said work was underway. Both cannot
+    // be true, and "being set up" is the one that implies an external party is acting.
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("nothing has been sent and nothing is queued");
+    expect(text).not.toContain("Being set up");
+    await cleanup();
+  });
+  it("does not report 'not registered' when the READ failed — and offers no paid re-draft", async () => {
+    // The failure this closes is specific and shipped-adjacent. optin_message,
+    // optout_message and help_message are selected by this component and do not
+    // exist until 20261004020000 lands. The frontend and the migrations deploy on
+    // INDEPENDENT pipelines, so a frontend-first deploy returns 42703 "column does
+    // not exist" on every load — and the error was destructured away, so `reg` fell
+    // to null and the tab told a coach WITH a saved registration that they had none,
+    // then offered "Draft with Paige": a paid generation that overwrites the very
+    // compliance copy they had already reviewed.
+    selectState.row = PREPARED_ROW;           // the account DOES have one
+    selectState.readError = { message: 'column tenant_a2p_registrations.optin_message does not exist' };
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("We couldn\u2019t read your registration");
+    expect(text).toContain("Nothing is being claimed about your business");
+    // The two things that made this dangerous rather than merely wrong.
+    expect(text).not.toContain("Not registered yet");
+    expect(Array.from(host.querySelectorAll("button")).some((b) => /Draft with Paige/i.test(b.textContent ?? "")))
+      .toBe(false);
+    // And the raw database diagnostic never reaches the tenant.
+    expect(text).not.toContain("does not exist");
+    await cleanup();
+  });
+
+  it("DOES say 'Not registered yet' when the read SUCCEEDED and there is none (non-vacuity)", async () => {
+    selectState.row = null;
+    selectState.readError = null;
+    const { host, cleanup } = await mountTab();
+    expect(host.textContent ?? "").toContain("Not registered yet");
+    await cleanup();
+  });
+  it("logs a failed legal-profile read instead of swallowing it", async () => {
+    // Same swallow one step further on. Without the stored legal name `canSubmit`
+    // is false, "Approve & save" is disabled, and the paid re-draft is again the
+    // only live control — the exact defect the "comes back ready to ACT" test
+    // exists to close, reached through the sibling read. The code chooses to log
+    // rather than branch here (it does not blank the tab), so what is pinned is
+    // that the cause is REPORTED and not silently dropped.
+    const errors: unknown[][] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => { errors.push(a); });
+    selectState.row = PREPARED_ROW;
+    selectState.legalError = { message: "permission denied for table tenant_legal_profile" };
+    const { cleanup } = await mountTab();
+    expect(errors.some((a) => String(a[0]).includes("could not read the legal business name"))).toBe(true);
+    spy.mockRestore();
+    await cleanup();
+  });
+
+  it("does not leave a permanent skeleton when a read THROWS", async () => {
+    // Every setRegLoading(false) sat on a success path or an early return, and
+    // two of its three call sites discard the promise (the third awaits it inside
+    // `submit`'s own try) — so a throw (not a returned `{error}`)
+    // left the pulse up forever with no message and no console line.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    selectState.row = PREPARED_ROW;
+    selectState.throwOnRead = true;
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+    expect(text).toContain("We couldn\u2019t read your registration");
+    expect(text).not.toContain("Not registered yet");
+    spy.mockRestore();
+    await cleanup();
+  });
+});

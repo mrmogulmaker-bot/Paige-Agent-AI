@@ -31,6 +31,22 @@ DECLARE
   uC uuid := 'cc000000-0000-4000-8000-0000000000c4';
   tD uuid := 'dd000000-0000-4000-8000-0000000000d1';  -- service-role target, untouched by other cases
   uD uuid := 'dd000000-0000-4000-8000-0000000000d2';
+  -- A PLATFORM OPERATOR. Needed because the tenant_id freeze's whole point is the
+  -- tier the update policy does NOT constrain: its WITH CHECK is
+  -- `is_platform_owner() OR (tenant_id = ... AND ...)`, and once is_platform_owner()
+  -- is true the whole expression is true WHATEVER tenant_id holds. That is a
+  -- statement about the truth value, not about evaluation order — PostgreSQL does
+  -- not guarantee that OR evaluates left to right, and the conclusion does not need
+  -- it to. A case run as a tenant admin would be refused by RLS and would therefore
+  -- pass with the freeze deleted — vacuous against the defect it claims to cover.
+  -- Its id must collide with NEITHER fixture the sibling concurrency proof commits.
+  -- That script owns the whole ee… pair (D2: tenant ee…e1, user ee…e2) and the whole
+  -- ff… pair (D3: tenant ff…f1, user ff…f2), and it COMMITS both, so an id shared with
+  -- any of the four is live in another session's table rather than rolled back with
+  -- this block. An earlier revision of this line claimed to be avoiding them and
+  -- named only ff…f1 while sitting exactly on ee…e1 — a comment that asserted the
+  -- opposite of what the value did. dd… is this file's own prefix; d1/d2 are tD/uD.
+  uOp uuid := 'dd000000-0000-4000-8000-0000000000d3';
   n bigint; out text := E'\n'; fails int := 0; allowed boolean;
   v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_desc_after text; v_optin_after text; v_hint text;
   SAMPLES constant jsonb := '["Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
@@ -41,21 +57,35 @@ BEGIN
     (uB,'authenticated','authenticated','a2p-b@t'),
     (uNo,'authenticated','authenticated','a2p-none@t'),
     (uC,'authenticated','authenticated','a2p-c@t'),
-    (uD,'authenticated','authenticated','a2p-d@t');
+    (uD,'authenticated','authenticated','a2p-d@t'),
+    (uOp,'authenticated','authenticated','a2p-op@t');
   INSERT INTO public.tenants (id, slug, name, account_number_prefix, account_number)
   VALUES (tA,'a2p-a','A2P A','A2A','910001'),(tB,'a2p-b','A2P B','A2B','910002'),
          (tC,'a2p-c','A2P C','A2C','910003'),(tD,'a2p-d','A2P D','A2D','910004');
   INSERT INTO public.tenant_members (tenant_id,user_id,status,role) VALUES
     (tA,uA,'active','owner'),(tB,uB,'active','owner'),(tA,uNo,'active','member'),
     (tC,uC,'active','owner'),(tD,uD,'active','owner');
-  INSERT INTO public.user_roles (user_id,role) VALUES (uA,'admin'),(uB,'admin'),(uC,'admin') ON CONFLICT DO NOTHING;
+  -- uD IS IN THIS LIST, and the omission that left it out invalidated four cases.
+  -- `has_any_role` reads public.user_roles and NOTHING else — a tenant_members row is a
+  -- different table and grants no app_role — so uD failed the save seam's own authority
+  -- gate. Cases 15-18 then ran a bare PERFORM with no handler, the FORBIDDEN raise aborted
+  -- the whole DO block at case 15, and the two headline guard assertions never executed
+  -- while the run still looked like it had something to say. The sibling concurrency proof
+  -- got this right for its own second user, which is what makes this an omission rather
+  -- than a misunderstanding.
+  INSERT INTO public.user_roles (user_id,role)
+  VALUES (uA,'admin'),(uB,'admin'),(uC,'admin'),(uD,'admin'),(uOp,'super_admin') ON CONFLICT DO NOTHING;
   DELETE FROM public.user_roles WHERE user_id = uNo;
   INSERT INTO public.tenant_legal_profile (tenant_id, legal_business_name)
   VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC'),(tD,'Headless Fixture LLC');   -- tC deliberately has NONE
 
-  -- 1 ── the seam exists
-  allowed := to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)') IS NOT NULL;
-  out := out||format('  1. save-draft seam exists ...................... %s   want t%s', allowed, E'\n');
+  -- 1 ── the seam exists, at the SEVEN-FIELD signature, and ONLY that one.
+  --      The 5-arg version is dropped rather than left beside the new one: two
+  --      overloads make PostgREST's rpc() call ambiguous and let a caller silently
+  --      reach the version that drops the three reply fields — the defect being fixed.
+  allowed := to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid,text,text,text)') IS NOT NULL
+         AND to_regprocedure('public.tenant_a2p_registration_save_draft(text,text,jsonb,text,uuid)') IS NULL;
+  out := out||format('  1. save-draft seam exists (7-field, no overload) %s   want t%s', allowed, E'\n');
   IF NOT allowed THEN
     RAISE EXCEPTION 'A2P DRAFT PROOF: 1 ASSERTION(S) FAILED — no durable save seam; cases 2-9 unreachable.%', out;
   END IF;
@@ -331,6 +361,351 @@ BEGIN
    WHERE tenant_id <> tD AND use_case IN ('headless','headless care');
   out := out||format('      ...and no other tenant touched ............ %s   want 0%s', n, E'\n');
   IF n <> 0 THEN fails := fails + 1; END IF;
+
+  -- 15 ── THE THREE CARRIER-FACING REPLIES SURVIVE THE CALL.
+  --        comms-a2p-draft generates seven reviewed fields; only four had a column,
+  --        so the durable save silently dropped the opt-in confirmation, the STOP
+  --        reply and the HELP reply. A2PTab worked around it by folding them into
+  --        optin_flow behind labels, which kept the text and destroyed the structure,
+  --        so nothing could read them back. Found by independent review of the
+  --        already-deployed head.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'reply coverage', 'Every reviewed field.', SAMPLES, 'website form', NULL,
+            'OPTIN REPLY', 'STOP REPLY', 'HELP REPLY');
+  RESET role;
+  SELECT optin_message||'/'||optout_message||'/'||help_message INTO v_use
+    FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('  15. three replies persisted ................... %s   want OPTIN REPLY/STOP REPLY/HELP REPLY%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'OPTIN REPLY/STOP REPLY/HELP REPLY' THEN fails := fails + 1; END IF;
+
+  -- ...and an absent reply PRESERVES the stored one, exactly as optin_flow does.
+  -- Blanking reviewed compliance copy while reporting success is the same defect
+  -- in a narrower place.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'reply coverage', 'Second pass.', SAMPLES, NULL, NULL, NULL, NULL, NULL);
+  RESET role;
+  SELECT optin_message||'/'||optout_message||'/'||help_message INTO v_use
+    FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and absent replies preserved ........... %s   want OPTIN REPLY/STOP REPLY/HELP REPLY%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'OPTIN REPLY/STOP REPLY/HELP REPLY' THEN fails := fails + 1; END IF;
+
+  -- ...and the audit row still records only SHAPE. Three more fields is three more
+  -- chances to leak reviewed copy into a log that was never meant to hold it.
+  -- EVERY audit row for this tenant, not just the newest. The second save passes
+  -- NULL replies, so a payload that leaks the TEXT leaks it on the FIRST row — and
+  -- an assertion that reads only the latest row cannot see it. Verified by mutation.
+  SELECT jsonb_agg(payload) INTO v_pay FROM public.paige_audit_log
+   WHERE tenant_id = tD AND action = 'a2p.draft.saved';
+  out := out||format('      ...audit leaks reply text ................. %s   want f%s',
+                     (v_pay::text ILIKE '%%OPTIN REPLY%%'
+                      OR v_pay::text ILIKE '%%STOP REPLY%%'
+                      OR v_pay::text ILIKE '%%HELP REPLY%%'), E'\n');
+  IF v_pay::text ILIKE '%%OPTIN REPLY%%' OR v_pay::text ILIKE '%%STOP REPLY%%'
+     OR v_pay::text ILIKE '%%HELP REPLY%%' THEN fails := fails + 1; END IF;
+
+  -- 16 ── A REVIEWED REPLY THE OWNER DELETES STAYS DELETED.
+  --        Preserve-on-absent is right for a field the caller never mentioned and wrong
+  --        for one a human cleared. Collapsing the two made these columns permanently
+  --        un-clearable: the surface said "saved" and the deleted text came back on the
+  --        next read. These are carrier-facing compliance replies — a wrong number in a
+  --        STOP reply is exactly the thing a business must be able to remove.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'clear coverage', 'Third pass.', SAMPLES, NULL, NULL, '', '', '');
+  RESET role;
+  SELECT coalesce(optin_message,'(null)')||'/'||coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)')
+    INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('  16. cleared replies STAY cleared ............. %s   want (null)/(null)/(null)%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM '(null)/(null)/(null)' THEN fails := fails + 1; END IF;
+
+  -- ...and clearing did not disturb the fields the caller never mentioned.
+  SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and absent fields still preserved ...... %s   want clear coverage%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'clear coverage' THEN fails := fails + 1; END IF;
+
+  -- ...and optin_flow — genuinely optional — clears too, while campaign_description does
+  -- NOT. That asymmetry is deliberate and it is the seam's rule, not an oversight:
+  -- comms-a2p-submit refuses an empty description outright (MISSING_DESCRIPTION) and the
+  -- UI blocks it, so a database that accepted the clear would disagree with every path
+  -- that can reach it. Required fields preserve; optional fields clear.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft('clear coverage', '', SAMPLES, '', NULL);
+  RESET role;
+  SELECT coalesce(campaign_description,'(null)')||'/'||coalesce(optin_flow,'(null)')
+    INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...optin_flow clears, desc preserved ...... %s   want Third pass./(null)%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'Third pass./(null)' THEN fails := fails + 1; END IF;
+
+  -- 17 ── the sample cap is the one 20261004010000 shipped. An earlier revision of the
+  --       corrective migration silently tightened it 1024 -> 320 under a header claiming
+  --       nothing else changed; independent review caught it.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft(
+            'cap coverage', 'Fourth pass.', jsonb_build_array(repeat('x', 900)), NULL, NULL);
+  RESET role;
+  SELECT length(sample_messages->>0) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('  17. a 900-char sample is not truncated ....... %s   want 900%s', n, E'\n');
+  IF n <> 900 THEN fails := fails + 1; END IF;
+
+  -- 18 ── SUBMISSION STATE IS SERVER-OWNED (owner-approved policy repair).
+  --        The RLS update/insert policies are row-scoped with NO column restriction, so a
+  --        tenant admin could reach PostgREST directly and set submitted_at + a brand SID,
+  --        making the surface render "Submitted for review" for something never sent. No
+  --        governed carrier-submission path exists yet, so every direct caller fails closed.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET submitted_at = now(), brand_sid = 'BN-FORGED', status = 'submitted'
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('  18. tenant admin forges submitted state ...... refused=%s hint=%s   want t / SUBMISSION_STATE_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'SUBMISSION_STATE_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...and the row is untouched, not merely the statement refused.
+  SELECT coalesce(submitted_at::text,'(null)')||'/'||coalesce(brand_sid,'(null)')||'/'||status
+    INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and the row is unchanged ............... %s   want (null)/(null)/pending%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM '(null)/(null)/pending' THEN fails := fails + 1; END IF;
+
+  -- ...and a row cannot be BORN submitted either. The insert policy has the same shape.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uC,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    INSERT INTO public.tenant_a2p_registrations (tenant_id, use_case, submitted_at, brand_sid)
+    VALUES (tC, 'forged at birth', now(), 'BN-FORGED-INSERT');
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...and cannot be BORN submitted ........... refused=%s hint=%s   want t / SUBMISSION_STATE_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'SUBMISSION_STATE_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...while ORDINARY DRAFT EDITING through the same direct path still works. A guard that
+  -- also froze the draft copy would have broken the flow it is protecting.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET use_case = 'edited directly', campaign_description = 'still editable'
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN allowed := false; END;
+  RESET role;
+  SELECT use_case INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...draft fields still editable ............ %s / %s   want t / edited directly%s',
+                     allowed, coalesce(v_use,'(none)'), E'\n');
+  IF NOT allowed OR v_use IS DISTINCT FROM 'edited directly' THEN fails := fails + 1; END IF;
+
+  -- ...but ONCE IT HAS LEFT PREPARATION the draft copy freezes too (20261004040000).
+  -- 030000 protected the eight submission columns and left the seven draft columns
+  -- unconditionally editable by a direct caller, so a carrier-APPROVED registration's
+  -- copy of record could be rewritten while the tab said it was locked. This is the
+  -- case that would pass with 040000 deleted, so it is the one that pins it.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'approved', brand_sid = 'BN-PROOF-FROZEN'
+   WHERE tenant_id = tD;                       -- as the governed owner, which is allowed
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET sample_messages = '["rewritten after filing"]'::jsonb
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...filed copy frozen to direct writes ..... refused=%s hint=%s   want t / REGISTRATION_IMMUTABLE%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'REGISTRATION_IMMUTABLE' THEN fails := fails + 1; END IF;
+
+  -- ...and IDENTITY is never client-rewritable, at any stage (20261004050000).
+  -- An independent review PROVED this writable by executing it: on this very row,
+  -- `set id=..., created_at=...` returned UPDATE 1, orphaning the audit link that
+  -- 20261004010000 exists to create — on the row 040000's header calls unalterable.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET id = '00000000-0000-4000-8000-00000000dead'::uuid
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...id is not client-rewritable ............ refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- created_at too, and on a PENDING row — the identity freeze is not conditional
+  -- on having left preparation, unlike the draft-column freeze above.
+  UPDATE public.tenant_a2p_registrations SET status='pending', brand_sid=NULL WHERE tenant_id = tD;
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET created_at = '1999-01-01T00:00:00Z'::timestamptz
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...created_at frozen even while pending ... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...and tenant_id is frozen against the OPERATOR, which is the tier that had
+  -- no guard at all (20261004060000). 050000 delegated this column to the update
+  -- policy on the reasoning that it "refuses a NULL or foreign value" — true of a
+  -- tenant admin, FALSE of a platform operator, because the policy reads
+  -- `is_platform_owner() OR (tenant_id = ... AND ...)`: when is_platform_owner() is
+  -- true the disjunction is true whatever the column holds, so the tenant_id test
+  -- can never refuse the write. That is the truth value, which is all the argument
+  -- needs; PostgreSQL does not promise an OR's evaluation order and this does not
+  -- rest on one. An operator over PostgREST runs as `authenticated`, so the guard's
+  -- governed allow-list does not exempt them.
+  --
+  -- RUN AS THE OPERATOR ON PURPOSE. The same write as a tenant admin is refused by
+  -- RLS, so a case written that way would pass with the freeze deleted and prove
+  -- nothing about the hole it names.
+  -- CARRIER-LINKED FIRST. Every doc describes the harm as "reassigning a
+  -- carrier-approved registration moves a live messaging_service_sid onto another
+  -- business", but these cases ran against a PENDING row — so the proof did not
+  -- measure the scenario it is cited for. The identity clause is stage-independent
+  -- and fires first, so behaviour is identical; the evidence was the gap.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'approved', brand_sid = 'BN-PROOF-OP', messaging_service_sid = 'MG-PROOF-OP'
+   WHERE tenant_id = tD;
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uOp,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    -- tA already HOLDS a registration, so a pre-fix write here is refused by the
+    -- unique constraint rather than permitted. That is why the assertion below
+    -- pins the HINT: "refused" alone would pass with this guard deleted.
+    --
+    -- THIS QUALIFIES A CLAIM 20261004060000's HEADER MAKES UNQUALIFIED. That file
+    -- says a platform owner reassigning to a foreign tenant is "ALLOWED"; true only
+    -- when the target has no registration row. The header is NOT corrected in place
+    -- because that migration is already recorded on the preview branch and a
+    -- recorded migration is never edited — even for a comment, because the rule that
+    -- keeps the file and the applied SQL identical is worth more than the nicety.
+    -- The correction lives here, in docs/doctrine/tier-matrix.md, in
+    -- docs/brain/comms-capability-map.md, and in docs/PAIGE-MASTER-PROJECT-REFERENCE.md.
+    -- All four, because a pointer list that names three of the four surfaces carrying
+    -- the claim leaves the fourth reading as the unqualified original — which is what
+    -- the master doc did until a review found it.
+    --
+    -- AND THEN THE SAME MISS, ONE FILE OVER, IN THE COMMIT THAT WROTE THAT SENTENCE.
+    -- The evaluation-order phrasing ("short-circuits before reading the column") lived
+    -- in FIVE editable places, not four: the two comments in this file, the tier
+    -- matrix, the master doc, and docs/brain/comms-capability-map.md — which was left
+    -- unfixed while the message claimed every editable surface was done and that the
+    -- only remainder was inside 20261004060000. It is fixed now. For the record, that
+    -- recorded migration carries the phrasing TWICE (lines 16 and 81), and neither is
+    -- edited, because a recorded migration is never edited — comment or not.
+    UPDATE public.tenant_a2p_registrations SET tenant_id = tA WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...operator cannot REASSIGN tenant_id ..... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...and cannot NULL it either, which is the variant that makes the owning
+  -- tenant read "Not registered yet" and be offered a paid re-draft.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uOp,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations SET tenant_id = NULL WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...operator cannot NULL tenant_id ......... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- Back to a draft for the governed-seam case below. This one is NOT redundant —
+  -- the carrier-link above is real state that would otherwise make the seam refuse.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'pending', brand_sid = NULL, messaging_service_sid = NULL
+   WHERE tenant_id = tD;
+
+  -- NON-VACUITY CONTROL: the operator's row is still THERE and still tD's, so the
+  -- two refusals above were refusals and not a silently-missing row.
+  SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and the row still belongs to tD ........ %s   want 1%s', n, E'\n');
+  IF n <> 1 THEN fails := fails + 1; END IF;
+
+  -- Redundant now (the operator block above already restored it) and kept only as a
+  -- belt-and-braces reset — it must stay a no-op, not become a second source of truth.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'pending', brand_sid = NULL
+   WHERE tenant_id = tD;
+
+  -- ...and the GOVERNED seam still moves the row, so the guard did not freeze the product.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  PERFORM public.tenant_a2p_registration_save_draft('post guard','Saved through the seam.', SAMPLES, NULL, NULL);
+  RESET role;
+  SELECT use_case||'/'||status INTO v_use FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...governed seam still writes ............. %s   want post guard/pending%s',
+                     coalesce(v_use,'(none)'), E'\n');
+  IF v_use IS DISTINCT FROM 'post guard/pending' THEN fails := fails + 1; END IF;
+
+  -- ...and the canonical resolver STILL reports prepared, never submitted.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  v_a2p := (public.tenant_comms_readiness() ->> 'a2p');
+  RESET role;
+  out := out||format('      ...and readiness still says ............... %s   want prepared%s',
+                     coalesce(v_a2p,'(none)'), E'\n');
+  IF v_a2p IS DISTINCT FROM 'prepared' THEN fails := fails + 1; END IF;
+
+  -- ...and ANON still cannot touch the table at all (the guard is not the only wall).
+  PERFORM set_config('role','anon',true); PERFORM set_config('request.jwt.claims','',true);
+  allowed := false;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations SET use_case = 'anon' WHERE tenant_id = tD;
+    allowed := (SELECT count(*) FROM public.tenant_a2p_registrations WHERE use_case = 'anon') > 0;
+  EXCEPTION WHEN OTHERS THEN allowed := false; END;
+  RESET role;
+  out := out||format('      ...anonymous still denied ................. %s   want f%s', allowed, E'\n');
+  IF allowed THEN fails := fails + 1; END IF;
 
   IF fails = 0 THEN RAISE EXCEPTION 'A2P DRAFT PROOF: ALL ASSERTIONS PASSED (rolled back)%', out;
   ELSE RAISE EXCEPTION 'A2P DRAFT PROOF: % ASSERTION(S) FAILED%', fails, out; END IF;
