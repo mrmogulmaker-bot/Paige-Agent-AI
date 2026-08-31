@@ -68,6 +68,27 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.textContent).toContain("Archive");
   });
 
+  it("prevents overlapping stage creation requests", async () => {
+    let finish: (value: { ok: boolean; message: string }) => void = () => undefined;
+    const pending = new Promise<{ ok: boolean; message: string }>((resolve) => { finish = resolve; });
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    action.mockImplementationOnce(() => pending);
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Configure stages") as HTMLButtonElement).click());
+    const name = host.querySelector(".pipeline-new-stage input") as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Review");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Add stage") as HTMLButtonElement).click());
+    const pendingButton = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Saving…") as HTMLButtonElement;
+    expect(pendingButton.disabled).toBe(true);
+    act(() => pendingButton.click());
+    expect(action).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ ok: true, message: "Stage added" }));
+  });
+
   it("keeps the creation dialog open and surfaces a failed save", async () => {
     (harness.state.pipelineAction as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, message: "Pipeline could not be created" });
     renderAt("/solo/42/growth/pipeline");
