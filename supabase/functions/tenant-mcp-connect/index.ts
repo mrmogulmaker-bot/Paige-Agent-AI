@@ -24,7 +24,7 @@
 // than followed, bounded wall clock, bounded response size, fail-closed on every branch.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
-import { mcpProbe, type McpAuth, type McpErrorCode } from "../_shared/mcp-client.ts";
+import { mcpListToolFingerprints, mcpProbe, type McpAuth, type McpErrorCode } from "../_shared/mcp-client.ts";
 import {
   buildAuthorizationUrl, createPkce, createState, discoverAuthorizationServer,
   discoverProtectedResource, exchangeCode, OAuthError, registerClient, revokeToken,
@@ -123,6 +123,89 @@ Deno.serve(async (req) => {
     const { data: isAdmin } = await userClient.rpc("is_current_user_tenant_admin");
     if (isAdmin !== true) return jsonResponse({ error: "forbidden" }, 403);
     return jsonResponse({ ok: true, ...(await probeAndRecord(admin, tenantId, provider)) });
+  }
+
+  // ── Discovery and approval ──────────────────────────────────────────────────
+  // Connecting a provider is reachability. Approving a capability is authority. They are
+  // separate acts on purpose, and this is the second one.
+
+  if (action === "discover") {
+    const { data: isAdmin } = await userClient.rpc("is_current_user_tenant_admin");
+    if (isAdmin !== true) return jsonResponse({ error: "forbidden" }, 403);
+    const resolved = await resolveConnection(admin, tenantId, provider);
+    if ("error" in resolved) return jsonResponse(resolved.error, resolved.status);
+    try {
+      const tools = await mcpListToolFingerprints({ serverUrl: resolved.serverUrl, auth: resolved.auth });
+      const approved = new Set(resolved.approved);
+      return jsonResponse({
+        ok: true,
+        // For a HUMAN choosing what to approve. The description is provider-written text
+        // and is bounded here; it is deliberately NOT carried on the path that reaches a
+        // model, where provider prose is an instruction surface (_shared/mcp-outcome.ts).
+        // The fingerprint travels so approval can pin the exact contract being approved
+        // — a hash discloses nothing, and re-deriving it later would pin a different
+        // moment than the one the person actually looked at.
+        tools: tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          schema_hash: t.schemaHash,
+          approved: approved.has(t.name),
+        })),
+      });
+    } catch (e) {
+      return jsonResponse({ error: "discovery_failed", code: e instanceof Error ? (e as { code?: string }).code ?? "unknown" : "unknown" }, 502);
+    }
+  }
+
+  if (action === "approve") {
+    // Names and their pins arrive together, from one discovery the person just looked at.
+    const requested = Array.isArray(body.capabilities)
+      ? (body.capabilities as unknown[]).filter((c): c is string => typeof c === "string")
+      : null;
+    if (!requested) return jsonResponse({ error: "missing_capabilities" }, 400);
+    const pins = body.pins && typeof body.pins === "object" && !Array.isArray(body.pins)
+      ? body.pins as Record<string, unknown>
+      : {};
+
+    // A pin from the browser is not trusted: it is re-derived from the provider here, so
+    // approving cannot be used to pin a contract the provider never offered. The client's
+    // pins are used only to detect that the provider changed BETWEEN the person looking
+    // and the person approving — in which case nothing is approved and they look again.
+    const resolved = await resolveConnection(admin, tenantId, provider);
+    if ("error" in resolved) return jsonResponse(resolved.error, resolved.status);
+    let live;
+    try {
+      live = await mcpListToolFingerprints({ serverUrl: resolved.serverUrl, auth: resolved.auth });
+    } catch {
+      return jsonResponse({ error: "discovery_failed" }, 502);
+    }
+    const liveByName = new Map(live.map((t) => [t.name, t.schemaHash]));
+
+    const verified: Record<string, string> = {};
+    const stale: string[] = [];
+    for (const name of requested) {
+      const current = liveByName.get(name);
+      if (!current) { stale.push(name); continue; }
+      const seen = pins[name];
+      if (typeof seen === "string" && seen !== current) { stale.push(name); continue; }
+      verified[name] = current;
+    }
+    if (stale.length) {
+      // Approving a moved target is worse than approving nothing: it records consent to
+      // something nobody read.
+      return jsonResponse({ error: "capabilities_changed", changed: stale.slice(0, 50) }, 409);
+    }
+
+    const { data, error } = await userClient.rpc("set_tenant_mcp_approved_capabilities", {
+      _provider: provider,
+      _capabilities: Object.keys(verified),
+      _pins: verified,
+    });
+    if (error) {
+      const code = writeCode(error.message);
+      return jsonResponse({ error: "write_failed", code }, code === "MCP_FORBIDDEN" ? 403 : 400);
+    }
+    return jsonResponse({ ok: true, ...(data as Record<string, unknown>) });
   }
 
   // ── OAuth ───────────────────────────────────────────────────────────────────
@@ -240,6 +323,38 @@ async function resolveZapierAuthority(): Promise<{ server: AuthorizationServer; 
   // the issuer, so accepting the advertisement is not the same as trusting it.
   const server = await discoverAuthorizationServer(pr.authorizationServers[0]);
   return { server, resource: pr.resource };
+}
+
+/**
+ * The tenant's own connection, decrypted and ready to call. One place, so the auth shape
+ * and the not-configured answers cannot drift between the paths that need them.
+ */
+async function resolveConnection(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  tenantId: string,
+  provider: string,
+): Promise<
+  | { serverUrl: string; auth: McpAuth; approved: string[] }
+  | { error: Record<string, unknown>; status: number }
+> {
+  const { data: secret, error } = await admin.rpc("get_tenant_mcp_secret", {
+    _tenant_id: tenantId,
+    _provider: provider,
+  });
+  if (error) return { error: { error: "secret_lookup_failed" }, status: 500 };
+  if (!secret?.configured) return { error: { ok: false, error: "not_connected" }, status: 200 };
+  if (secret.enabled === false) return { error: { ok: false, error: "connection_disabled" }, status: 200 };
+  if (!secret.server_url || !secret.auth_token) return { error: { ok: false, error: "not_connected" }, status: 200 };
+  return {
+    serverUrl: secret.server_url,
+    auth: secret.auth_kind === "header" && secret.auth_header_name
+      ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
+      : { kind: "bearer", token: secret.auth_token },
+    approved: Array.isArray(secret.approved_capabilities)
+      ? (secret.approved_capabilities as unknown[]).filter((c): c is string => typeof c === "string")
+      : [],
+  };
 }
 
 /**

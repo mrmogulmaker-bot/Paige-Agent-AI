@@ -52,19 +52,41 @@ const bundle = async (entry, name) => {
   return import(pathToFileURL(outfile).href);
 };
 const mcp = await bundle("supabase/functions/_shared/mcp-client.ts", "client.mjs");
-const outcome = BASELINE ? null : await bundle("supabase/functions/_shared/mcp-outcome.ts", "outcome.mjs");
+const outcomeMod = BASELINE ? null : await bundle("supabase/functions/_shared/mcp-outcome.ts", "outcome.mjs");
+// The fingerprint is computed by the SHIPPED hasher, so a pin cannot pass by being
+// derived the same wrong way on both sides of the comparison.
+const outcome = outcomeMod ? { ...outcomeMod, fingerprintOf: mcp.fingerprintSchema } : null;
 
-/** Serves one canned `tools/call` result and returns what would reach the model. */
-function serve(route, resultBody) {
+/**
+ * Serves one canned `tools/call` result — and the `tools/list` the call path now needs,
+ * because a capability is verified against the provider's CURRENT contract before it runs.
+ * `schema` lets a case declare a different live contract than the one that was pinned.
+ */
+function serve(route, resultBody, schema = DEFAULT_SCHEMA) {
+  // The live schema is read at request time, so a case can change what the provider
+  // currently offers without re-registering the route. Reading it from a mutable holder
+  // is what makes the drift cases actually drift — a fixed capture here silently served
+  // the default to every case and made three assertions pass for the wrong reason.
+  const state = { schema };
+  liveSchemas.set(route, state);
   routes.set(route, (req, res) => {
     let raw = "";
     req.on("data", (c) => { raw += c; });
     req.on("end", () => {
+      const body = JSON.parse(raw);
+      const result = body.method === "tools/list"
+        ? { tools: [{ name: CAPABILITY, description: "d", inputSchema: state.schema }] }
+        : resultBody;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: JSON.parse(raw).id, result: resultBody }));
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
     });
   });
 }
+
+const liveSchemas = new Map();
+const DEFAULT_SCHEMA_MARKER = Symbol("default");
+
+const DEFAULT_SCHEMA = { type: "object", properties: { to: { type: "string" } }, required: ["to"] };
 
 const TENANT = "tenant-a";
 const CAPABILITY = "gmail_send_email";
@@ -76,7 +98,9 @@ const CAPABILITY = "gmail_send_email";
  * result. The other branch is the projection. Both are stringified the same way the chat
  * function stringifies them, so the assertions read real egress, not an approximation.
  */
-async function egress(route, { capability = CAPABILITY, approved = [CAPABILITY] } = {}) {
+async function egress(route, { capability = CAPABILITY, approved = [CAPABILITY], pins, schema } = {}) {
+  // What the provider offers RIGHT NOW, for the cases that change it after approval.
+  if (schema !== undefined && liveSchemas.has(route)) liveSchemas.get(route).schema = schema;
   if (BASELINE) {
     // The shipped shape was `{ok:true, result: <the whole JSON-RPC envelope>}`. The
     // envelope accessor it used has been removed along with the path it served, so the
@@ -96,6 +120,7 @@ async function egress(route, { capability = CAPABILITY, approved = [CAPABILITY] 
     provider: "zapier",
     capability,
     approvedCapabilities: approved,
+    capabilityPins: pins ?? { [capability]: await outcome.fingerprintOf(DEFAULT_SCHEMA) },
     tenantId: TENANT,
     args: {},
   });
@@ -257,6 +282,77 @@ if (!BASELINE) {
   const discovery = outcome.projectOutcomeForModel({ ok: true, actions: ["a", "b", 7, { name: "c" }], approved_count: 2, unapproved_count: 5, descriptions: ["provider prose"] });
   check("discovery forwards approved names only, never provider prose",
     JSON.stringify(discovery.actions) === '["a","b"]' && !JSON.stringify(discovery).includes("provider prose"));
+}
+
+// ── 11. The pinned contract ───────────────────────────────────────────────────
+// A tool keeps its name when its inputs change. An approval granted to one contract is
+// not an approval of another, and the name alone cannot tell them apart.
+if (!BASELINE) {
+  console.log("\n— the pinned contract —");
+  serve("/pinned", { content: [{ type: "text", text: "ok" }] });
+
+  const clean = JSON.parse(await egress("/pinned"));
+  check("an unchanged capability runs", clean.status === "ok");
+
+  // Same name, an added input. This is the substitution pinning exists to catch.
+  const drifted = JSON.parse(await egress("/pinned", {
+    pins: { [CAPABILITY]: await outcome.fingerprintOf({ type: "object", properties: { to: { type: "string" } }, required: ["to"] }) },
+    schema: { type: "object", properties: { to: { type: "string" }, bcc: { type: "string" } }, required: ["to"] },
+  }));
+  check("a capability whose inputs changed since approval is refused", drifted.status === "denied");
+  check("...and is reported as no longer authorised", drifted.authorization === "not_approved");
+  check("...and the provider is never asked to run it", !JSON.stringify(drifted).includes("ok"));
+
+  // Key order is not a contract change; treating it as one breaks working integrations.
+  const reordered = JSON.parse(await egress("/pinned", {
+    pins: { [CAPABILITY]: await outcome.fingerprintOf({ required: ["to"], properties: { to: { type: "string" } }, type: "object" }) },
+    schema: { type: "object", properties: { to: { type: "string" } }, required: ["to"] },
+  }));
+  check("a schema serialised in a different key order is NOT drift", reordered.status === "ok");
+
+  // Array order in a schema IS meaningful.
+  const reorderedArray = JSON.parse(await egress("/pinned", {
+    pins: { [CAPABILITY]: await outcome.fingerprintOf({ type: "object", required: ["a", "b"] }) },
+    schema: { type: "object", required: ["b", "a"] },
+  }));
+  check("a reordered `required` array IS drift", reorderedArray.status === "denied");
+
+  // Asserted on the REASON, not only the refusal. An unpinned name also fails the drift
+  // comparison (nothing matches an absent pin), so a status check alone stays green even
+  // when the pin check itself is gone — and a guard that cannot notice its own removal is
+  // not a guard.
+  const unpinned = JSON.parse(await egress("/pinned", { pins: {} }));
+  check("an approved name with NO pin is refused, not waved through", unpinned.status === "denied");
+  check("...for the right reason: no recorded contract, not a changed one",
+    unpinned.summary.includes("without a recorded contract"), unpinned.summary);
+
+  // A capability the provider has stopped offering.
+  routes.set("/gone", (req, res) => {
+    let raw = ""; req.on("data", (c) => { raw += c; });
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id,
+        result: body.method === "tools/list" ? { tools: [] } : { content: [{ type: "text", text: "ok" }] } }));
+    });
+  });
+  const withdrawn = JSON.parse(await egress("/gone"));
+  check("a capability the provider no longer offers is refused", withdrawn.status === "denied");
+
+  // If the contract cannot be established at all, nothing runs.
+  routes.set("/listdown", (req, res) => {
+    let raw = ""; req.on("data", (c) => { raw += c; });
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      if (body.method === "tools/list") { res.writeHead(503).end("down"); return; }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "ok" }] } }));
+    });
+  });
+  const unverifiable = JSON.parse(await egress("/listdown"));
+  check("a capability that cannot be verified is not run", unverifiable.status !== "ok");
+  check("...and the failure says nothing about the provider's own words",
+    !JSON.stringify(unverifiable).includes("down"));
 }
 
 server.close();

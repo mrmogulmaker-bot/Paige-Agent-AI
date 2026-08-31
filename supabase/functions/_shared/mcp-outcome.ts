@@ -27,7 +27,7 @@
 // any request leaves the process, so an unapproved name cannot even be used to probe the
 // provider. An empty approval set therefore denies everything, which is the correct state
 // for a workspace that has not yet approved anything.
-import { McpError, mcpRequest, type McpAuth } from "./mcp-client.ts";
+import { McpError, mcpListToolFingerprints, mcpRequest, type McpAuth } from "./mcp-client.ts";
 
 export type McpProvider = "n8n" | "zapier";
 
@@ -36,7 +36,8 @@ export type McpOutcomeStatus =
   | "ok"
   /** It ran and did not succeed, or answered in a shape we do not accept. */
   | "failed"
-  /** It was never called: the workspace has not approved this capability. */
+  /** It was never called: the workspace has not approved this capability, or the
+   *  capability is no longer the one it approved. */
   | "denied"
   /** It could not be reached at all. */
   | "unavailable";
@@ -173,6 +174,12 @@ export async function callApprovedCapability(opts: {
   /** The capability the caller is asking for. Checked, never trusted. */
   capability: string;
   approvedCapabilities: readonly string[];
+  /**
+   * Approved name → the input-schema fingerprint it had when it was approved. A name with
+   * no entry here is refused: an unverified contract is not a verified one, and treating
+   * a missing pin as "fine" would make the whole mechanism opt-out by accident.
+   */
+  capabilityPins: Readonly<Record<string, string>>;
   /** Used by the caller to scope the evidence record. Never placed in the outcome. */
   tenantId: string;
   args?: Record<string, unknown>;
@@ -186,6 +193,53 @@ export async function callApprovedCapability(opts: {
     return {
       outcome: outcomeOf(provider, capability, "denied",
         "This workspace has not approved that capability, so it was not run.",
+        null, "not_approved"),
+      evidence: null,
+    };
+  }
+
+  const pinned = opts.capabilityPins[capability];
+  if (!pinned) {
+    return {
+      outcome: outcomeOf(provider, capability, "denied",
+        "That capability was approved without a recorded contract, so it cannot be verified. Approve it again.",
+        null, "not_approved"),
+      evidence: null,
+    };
+  }
+
+  // The contract is checked against the provider as it is NOW. A tool keeps its name when
+  // its inputs change, so a name alone cannot tell an approved capability from one that
+  // has been reshaped since — which is the substitution this exists to catch. Any failure
+  // to establish the current contract is a refusal, never a pass: if we cannot tell
+  // whether it drifted, it has not been verified.
+  let live: Awaited<ReturnType<typeof mcpListToolFingerprints>>;
+  try {
+    live = await mcpListToolFingerprints({ serverUrl: opts.serverUrl, auth: opts.auth, timeoutMs: opts.timeoutMs });
+  } catch (e) {
+    const code = e instanceof McpError ? e.code : "request_failed";
+    const transportFailure = code !== "mcp_http_error" && code !== "mcp_protocol_error";
+    return {
+      outcome: outcomeOf(provider, capability, transportFailure ? "unavailable" : "failed",
+        "The capability could not be verified against the provider, so it was not run.",
+        null),
+      evidence: null,
+    };
+  }
+
+  const current = live.find((t) => t.name === capability);
+  if (!current) {
+    return {
+      outcome: outcomeOf(provider, capability, "denied",
+        "That capability is no longer offered by the provider, so it was not run.",
+        null, "not_approved"),
+      evidence: null,
+    };
+  }
+  if (current.schemaHash !== pinned) {
+    return {
+      outcome: outcomeOf(provider, capability, "denied",
+        "That capability has changed since it was approved, so it was not run. Review and approve it again.",
         null, "not_approved"),
       evidence: null,
     };

@@ -135,6 +135,13 @@ Deno.serve(async (req) => {
   const approved: string[] = Array.isArray(secret.approved_capabilities)
     ? (secret.approved_capabilities as unknown[]).filter((c): c is string => typeof c === "string")
     : [];
+  // Missing or malformed pins resolve to an empty map, which refuses everything. That is
+  // the correct reading: no pin means no verified contract.
+  const pins: Record<string, string> =
+    secret.capability_pins && typeof secret.capability_pins === "object" && !Array.isArray(secret.capability_pins)
+      ? Object.fromEntries(Object.entries(secret.capability_pins as Record<string, unknown>)
+          .filter(([, v]) => typeof v === "string")) as Record<string, string>
+      : {};
 
   if (isList) {
     let discovered: Array<{ name: string }> = [];
@@ -165,6 +172,7 @@ Deno.serve(async (req) => {
     provider: "zapier",
     capability: String(body.tool_name),
     approvedCapabilities: approved,
+    capabilityPins: pins,
     tenantId,
     args: (body.arguments ?? {}) as Record<string, unknown>,
   });

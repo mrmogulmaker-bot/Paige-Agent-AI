@@ -105,3 +105,54 @@ BEGIN
     THEN RAISE EXCEPTION 'A NEW CONNECTION DID NOT START WITH AN EMPTY APPROVAL SET'; END IF;
   RAISE NOTICE 'ok: a new connection approves nothing until somebody says so';
 END $$;
+
+-- ── Schema pinning ────────────────────────────────────────────────────────────
+-- Approving a NAME and pinning its CONTRACT are one decision, written together. These
+-- assertions cover what the SQL layer guarantees; the drift comparison itself is driven
+-- in scripts/mcp-egress-smoke.mjs against a real provider.
+DO $$
+DECLARE t uuid := '11111111-1111-4111-8111-111111111111'; r jsonb;
+  h1 text := repeat('a', 64); h2 text := repeat('b', 64);
+BEGIN
+  r := public.set_tenant_mcp_approved_capabilities('zapier', ARRAY['send_email','post_message'], t,
+         jsonb_build_object('send_email', h1, 'post_message', h2));
+  IF (r->>'approved_count')::int <> 2 OR (r->>'pinned_count')::int <> 2
+    THEN RAISE EXCEPTION 'APPROVAL DID NOT PIN BOTH CAPABILITIES'; END IF;
+  RAISE NOTICE 'ok: approving a capability pins its contract in the same act';
+
+  -- A pin for something not being approved must not survive: the pin map may never
+  -- describe a capability the workspace did not approve.
+  r := public.set_tenant_mcp_approved_capabilities('zapier', ARRAY['send_email'], t,
+         jsonb_build_object('send_email', h1, 'delete_everything', h2));
+  IF (r->>'pinned_count')::int <> 1 THEN RAISE EXCEPTION 'A PIN SURVIVED FOR AN UNAPPROVED CAPABILITY'; END IF;
+  IF (SELECT capability_pins ? 'delete_everything' FROM public.tenant_mcp_connections
+       WHERE tenant_id=t AND provider='zapier')
+    THEN RAISE EXCEPTION 'AN UNAPPROVED CAPABILITY WAS PINNED'; END IF;
+  RAISE NOTICE 'ok: a pin for an unapproved capability is dropped, not stored';
+
+  -- Withdrawing an approval must take its pin with it, or a later re-approval could
+  -- inherit a contract nobody looked at.
+  IF (SELECT capability_pins ? 'post_message' FROM public.tenant_mcp_connections
+       WHERE tenant_id=t AND provider='zapier')
+    THEN RAISE EXCEPTION 'A WITHDRAWN CAPABILITY KEPT ITS PIN'; END IF;
+  RAISE NOTICE 'ok: withdrawing an approval removes its pin';
+
+  BEGIN
+    UPDATE public.tenant_mcp_connections SET capability_pins = jsonb_build_object('x', 'not-a-hash')
+     WHERE tenant_id=t AND provider='zapier';
+    RAISE EXCEPTION 'A MALFORMED PIN WAS ACCEPTED';
+  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'ok: a pin that is not a SHA-256 digest is refused';
+  END;
+
+  BEGIN
+    UPDATE public.tenant_mcp_connections SET capability_pins = '[]'::jsonb
+     WHERE tenant_id=t AND provider='zapier';
+    RAISE EXCEPTION 'A NON-OBJECT PIN MAP WAS ACCEPTED';
+  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'ok: a non-object pin map is refused';
+  END;
+
+  r := public.set_tenant_mcp_approved_capabilities('zapier', ARRAY[]::text[], t, NULL);
+  IF (r->>'approved_count')::int <> 0 OR (r->>'pinned_count')::int <> 0
+    THEN RAISE EXCEPTION 'REVOKING EVERYTHING LEFT SOMETHING BEHIND'; END IF;
+  RAISE NOTICE 'ok: approving nothing revokes every capability and every pin';
+END $$;

@@ -158,6 +158,21 @@ function parseEnvelope(body: string, contentType: string): unknown | null {
 export type McpTool = { name: string; description: string };
 
 /**
+ * A discovered tool, with its input schema reduced to a fingerprint.
+ *
+ * The schema itself never leaves this module. What is kept is a hash, which is enough to
+ * answer the only question anyone downstream needs: is this the same tool the workspace
+ * approved, or has it changed since? A tool whose inputs changed after approval is not
+ * the tool that was approved — the name is the same and the contract is not — and that is
+ * exactly the substitution a pinned fingerprint exists to catch.
+ *
+ * `description` is provider-written text. It is bounded here and is safe to show a HUMAN
+ * deciding what to approve; it must never reach a model. That distinction is the caller's
+ * to keep, and `_shared/mcp-outcome.ts` is where it is kept.
+ */
+export type McpToolFingerprint = McpTool & { schemaHash: string };
+
+/**
  * Discovery, reduced to identity and purpose. Input schemas are deliberately dropped
  * here: nothing downstream of this slice is allowed to act on an unpinned schema, and
  * not returning one is a stronger guarantee than returning one nobody reads.
@@ -176,6 +191,61 @@ export async function mcpListTools(opts: {
       name: String(t.name).slice(0, 200),
       description: typeof t.description === "string" ? t.description.slice(0, 500) : "",
     }));
+}
+
+/**
+ * Discovery that also fingerprints each tool's input schema.
+ *
+ * Used at approval time, so the workspace's decision can be pinned to a specific contract,
+ * and at call time, so drift can be detected before anything runs.
+ */
+export async function mcpListToolFingerprints(opts: {
+  serverUrl: string;
+  auth: McpAuth;
+  timeoutMs?: number;
+}): Promise<McpToolFingerprint[]> {
+  const result = await mcpRequest({ ...opts, method: "tools/list" });
+  const tools = (result as { tools?: unknown })?.tools;
+  if (!Array.isArray(tools)) return [];
+  const out: McpToolFingerprint[] = [];
+  for (const raw of tools) {
+    if (!raw || typeof raw !== "object") continue;
+    const t = raw as Record<string, unknown>;
+    if (typeof t.name !== "string" || !t.name) continue;
+    out.push({
+      name: t.name.slice(0, 200),
+      description: typeof t.description === "string" ? t.description.slice(0, 500) : "",
+      schemaHash: await fingerprintSchema(t.inputSchema),
+    });
+  }
+  return out;
+}
+
+/**
+ * A stable hash of a tool's input schema.
+ *
+ * Canonicalised first — object keys sorted, so a provider that serialises the same schema
+ * in a different key order does not read as drift and cause a working integration to fail
+ * closed for no reason. Array order is preserved, because in a schema it is meaningful
+ * (`required`, `enum`) and reordering it IS a contract change.
+ *
+ * An absent schema hashes the empty object rather than being skipped: "this tool declared
+ * no inputs" is itself a contract, and a later tool that grows inputs must register as
+ * changed.
+ */
+export async function fingerprintSchema(schema: unknown): Promise<string> {
+  const canonical = canonicalJson(schema === undefined || schema === null ? {} : schema);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
 }
 
 /**
