@@ -1409,49 +1409,32 @@ group("a document turn withholds its reply at every scope boundary, including a 
     );
   }
 
-  // 19.7 — THE SWITCH-BACK, AND AN HONEST CORRECTION TO WHAT THIS GROUP'S NAME CLAIMS.
+  // §13 — 19.7 WAS ADDED HERE AND IS REMOVED AGAIN IN THE SAME BRANCH. It claimed to close the
+  // gap this group's old name asserted ("once refused, every later revalidation stays refused")
+  // by driving an account that switches AWAY and BACK. It closed nothing, and an independent
+  // reviewer proved that by execution before it had been green for an hour.
   //
-  // The name says "once refused, every later revalidation stays refused." An independent
-  // reviewer showed nothing measured that: every timing above switches to AGENCY and LEAVES it
-  // there, and the fake saturates its persona sequence at the last value, so a guard that
-  // forgets its refusal and a guard that remembers it produce identical transcripts. Deleting
-  // the sticky flag (`tenantKnowledgeScopeRevoked` → `if (false) return false;`) left the suite
-  // fully green.
+  // A TURN TERMINATES AT THE FIRST MISMATCH. So the fourth element of a persona sequence is never
+  // consumed, and `[CHILD, CHILD, AGENCY, CHILD]` — the "switch-back" — is the same drive as
+  // `[CHILD, CHILD, AGENCY]`, which is loop iteration n=2 above. Driven three ways plus a
+  // thrower planted in slot 4 (the fake treats a function as a thrower, so a consumed slot would
+  // have raised):
   //
-  // The distinguishing case is an account that switches AWAY and BACK, which no case had. It is
-  // added below and it passes. §13 — WHAT IT DOES NOT PROVE: it does not restore the group's
-  // title. Driving that same mutation against this new case, and against six switch-back
-  // timings on the AGENTIC path, leaked nothing in any of the seven. So the sticky flag is
-  // NOT the guard holding this property — the per-path latches are (`tenant
-  // KnowledgeScopeInvalidated` on the agent loop, the extraction helper's own per-write
-  // wrapper and the single close decision on the document path). The flag is defence in depth,
-  // and this suite cannot currently tell whether it works.
+  //     back  [C,C,A,C]   persona calls 3   response 185 bytes
+  //     stay  [C,C,A,A]   persona calls 3   response 185 bytes
+  //     n=2   [C,C,A]     persona calls 3   response 185 bytes    identical: true
   //
-  // That is written down rather than smoothed over, because the failure mode is specific: a
-  // future reader sees a green group named "stays refused", assumes the flag is proven, and
-  // deletes it as redundant. It IS redundant today. It is redundant because three other things
-  // happen to hold, and none of them is that flag.
+  // Three assertions that duplicate an existing case are not coverage; they are three more green
+  // lines making the total look bigger. Deleting them is the honest move.
   //
-  // What 19.7 DOES prove is the user-visible property, which had no test at all: an account
-  // that leaves and comes back mid-turn does not silently resume and flush the reply it was
-  // holding.
-  const returned = await creditTurn([CHILD, CHILD, AGENCY, CHILD], [CHILD, AGENCY]);
-  assert(
-    "19.7 a switch AWAY and BACK stays refused — the guard remembers, it does not re-derive",
-    !returned.responseText.includes("CHILD-PRIVATE-MARKER"),
-    returned.responseText.slice(0, 300),
-  );
-  assert(
-    "19.7b ...and reports the cancellation rather than silently resuming",
-    /active workspace changed|ACTIVE_ACCOUNT_CHANGED/.test(returned.responseText),
-    returned.responseText.slice(0, 300),
-  );
-  const returnedThread = await creditTurn([CHILD, CHILD, AGENCY, CHILD], [CHILD, AGENCY], { threadId: THREAD });
-  assert(
-    "19.7c ...and the reply it withheld is not persisted once the account comes back",
-    !persisted(returnedThread),
-    JSON.stringify(returnedThread.rec.rpc.map((c) => c.name)),
-  );
+  // THE STANDING TRUTH, so nobody adds this again: a switch-back is STRUCTURALLY UNREACHABLE on
+  // this harness, on both the document and the agentic path, because the first mismatch ends the
+  // turn. It cannot be written without changing what terminates a turn — which would be changing
+  // the thing under test to suit the test. Consequently the sticky flag
+  // (`tenantKnowledgeScopeRevoked`) is exercised by NOTHING here: deleting it leaves the suite
+  // fully green. It is defence in depth behind the per-path latches, and this suite cannot tell
+  // whether it works. Written down rather than smoothed over, because the failure mode is a
+  // future reader deleting it as redundant on the strength of a green suite.
 }
 
 
@@ -3020,10 +3003,22 @@ group("safety-first streaming: the sources the first enumeration missed");
   // counting only the SSE emits and forgetting that summary mode returns JSON rather than a
   // stream — in a note whose whole subject is not overstating what is covered.
   //
-  // The other three appear UNREACHABLE: `clientScopeDenied` is a `const`, and the branch that
-  // emits this frame returns unconditionally, so every later reference to it — those three emits
-  // and the ELEVEN defensive `if (clientScopeDenied)` branches after it, not the "half a dozen"
-  // previously written — is dominated by that return.
+  // §13 — AND THE REACHABILITY CLAIM WAS ALSO WRONG, in the correction written to fix the count.
+  // It said "the other three appear UNREACHABLE". The summary-mode JSON refusal is INSIDE the
+  // choke-point block, above its return, and it fires: an independent reviewer drove it and got
+  // `{"summary":"","client_scope":{"status":"refused",…}}` at status 200 with zero provider
+  // calls, and `client-memory-authz` check 9.4 already asserts that exact response. So TWO of the
+  // four sites are live (the refusal stream and the summary-mode JSON inside the same block) and
+  // two are dead (the agentic and document stream emits, both below the return).
+  //
+  // The branch count was wrong in the other direction. LITERAL `if (clientScopeDenied)` statements
+  // after the choke point: six. "Half a dozen" — the phrasing this comment replaced — was right,
+  // and the correction replaced a correct number with a wrong one. Eleven is the count of ALL
+  // `clientScopeDenied` REFERENCES after it, which includes the two dead emits, so writing "those
+  // emits AND the eleven branches" asserted more dominated references than exist.
+  //
+  // Six dominated `if` statements; two dead emits among eleven dominated references. Counted by
+  // grep, twice, in a note whose entire subject is having miscounted.
   //
   // Evidence rather than reading: planting the rejected id into the agentic emit and into the
   // document emit each left the suite at 335/0, while planting it here failed 2 checks. A
@@ -3165,6 +3160,73 @@ group("the tool-result receipt set");
 // also the third place on this branch where the thing meant to catch a miss had the same miss
 // inside it, which is why it now gets direct positive/negative fixtures instead of being trusted
 // because the assertions built on it pass.
+// ── 23 · TRACE ATTRIBUTION (§34 observability, §9 attribution) ───────────────────────────────
+// `gatewayCompat` writes the prompt and the reply to `paige_llm_trace` on every call. On a
+// protected turn those rows carry the Knowledge, the document text, the memory and the client
+// file, so WHICH TENANT THEY ARE FILED UNDER is a scope question, not a telemetry one: an
+// untenanted row is a PLATFORM row (`llm-trace.ts` `cleanTenantId`: "NULL = platform/system row"),
+// i.e. tenant evidence sitting outside tenant scope entirely.
+//
+// WHY THIS GROUP EXISTS. Eight of the nine call sites passed no trace context for several
+// releases while a comment asserted they were stamped. That was fixed — and the fix had NO test.
+// An independent reviewer drove six mutations against it, including reverting the exact hazard the
+// fix's own comment names (making `traceFor` take a definition-time snapshot, which re-freezes the
+// nulls), and every one of them left the suite fully green. A repair with no pin is a repair that
+// gets undone.
+//
+// The assertion is the exact MULTISET of (job_kind, attributed?) pairs, not a count and not "some
+// row has a tenant". A count survives a site being mislabelled; "some row" survives seven of eight
+// going null. The multiset fails on: the stamp being deleted, any single site reverting to
+// unstamped, the snapshot regression, and a site being given the wrong job_kind.
+group("every provider call files its trace row under the tenant whose evidence it carries");
+{
+  const traceRows = (r) => r.rec.inserts
+    .filter((i) => i.table === "paige_llm_trace")
+    .map((i) => `${i.row?.job_kind ?? "?"}:${i.row?.tenant_id ? "tenant" : "PLATFORM"}`)
+    .sort();
+
+  // A plain protected chat turn with a tool round: entry call, loop continuation, closing call.
+  const chatTurn = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "CHILD-PRIVATE-MARKER",
+    // TWO tool rounds then text, deliberately: a single round never reaches the CLOSING call, so
+    // `["tool","text"]` pins only two of the three sites and would have let a `chat-close`
+    // regression through. Measured, not assumed — driven across four shapes before choosing this
+    // one, and the one-round shape really does produce only two rows.
+    provider: ["tool", "tool", "text"],
+    rpcExtras: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      resolve_tool_autonomy: { data: "auto", error: null },
+    },
+  });
+  assert(
+    "23.1 CONTROL — a protected chat turn really does write trace rows",
+    traceRows(chatTurn).length > 0,
+    JSON.stringify(chatTurn.rec.inserts.map((i) => i.table)),
+  );
+  assert(
+    "23.2 every trace row on a resolved-tenant chat turn is ATTRIBUTED, and to the right job",
+    JSON.stringify(traceRows(chatTurn)) === JSON.stringify(["chat-close:tenant", "chat-tool-loop:tenant", "chat:tenant"]),
+    JSON.stringify(traceRows(chatTurn)),
+  );
+
+  // A credit-report document turn: the read-check runs BEFORE persona resolution and is therefore
+  // honestly a platform row; the chat call and the extraction run after it and must be attributed.
+  // This pair is the whole point — it pins the split rather than asserting "all rows are stamped",
+  // which would be false, or "some rows are stamped", which would be satisfied by the defect.
+  const docTurn = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: { fileName: "PRIVATE-PDFNAME-MARKER.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" } },
+    provider: ["read-check", "private-text", "json-extraction"],
+  });
+  assert(
+    "23.3 a document turn attributes the post-resolution calls and leaves ONLY the pre-resolution read-check on the platform",
+    JSON.stringify(traceRows(docTurn)) === JSON.stringify(["chat:tenant", "credit-report-extraction:tenant", "document-read-check:PLATFORM"]),
+    JSON.stringify(traceRows(docTurn)),
+  );
+}
+
 group("the neutral-frame classifier itself");
 {
   const f = (o) => `data: ${JSON.stringify(o)}\n\n`;

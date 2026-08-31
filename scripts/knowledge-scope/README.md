@@ -268,3 +268,45 @@ could not fail for the right reason, and that some of the prose asserted things 
   the calls carrying the most evidence wrote untenanted platform rows while a comment asserted they
   were stamped. Fixed in the handler, not in the sentence. Three pre-persona sites remain honestly
   untenanted and say so.
+
+---
+
+## Round 7 — the repairs the independent review of round 6 forced
+
+Round 6's own reviewer ran 39 driven mutations against it. The mechanism held; three of round 6's
+claims did not, and one of its new tests was worthless.
+
+- **19.7 was deleted, one commit after it was added.** It claimed to close the switch-back gap.
+  A turn TERMINATES AT THE FIRST MISMATCH, so the fourth element of a persona sequence is never
+  consumed and `[C,C,A,C]` is byte-identical to loop iteration `n=2`. Confirmed independently here
+  by planting a thrower in slot 4 — the fake treats a function as a thrower, and it never threw:
+  `back 3 calls/185 bytes · stay 3/185 · n=2 3/185 · identical: true`. Three assertions duplicating
+  an existing case are not coverage. **A switch-back is structurally unreachable on this harness,
+  on both paths**, and that is now recorded where the test used to be so nobody adds it again.
+- **The trace-attribution repair had NO test, including for the hazard its own comment names.**
+  Six mutations against it — deleting the tenant stamp, unstamping a site, mislabelling a
+  `job_kind`, and reverting `traceFor` to a definition-time snapshot (which re-freezes exactly the
+  nulls the fix removed) — all left the suite at 343/0. **Group 23** now asserts the exact multiset
+  of `(job_kind, attributed?)` pairs across three provider calls plus a document turn. Re-driven:
+  snapshot 341/2, tenant stamp deleted 341/2, chat-close unstamped 342/1, mislabel 342/1,
+  read-check falsely stamped 342/1.
+- **The instrument could not see the sink.** `paige_llm_trace` rows never reached `rec.inserts`
+  after the first drive, because `traceAdmin()` memoizes one client at module scope and the fake
+  bound its recorder at CREATION time. That is why an attribution defect AND its repair both went
+  unmeasured. `createClient` now hands the client live getters for the active scenario and
+  recorder, which models the real lifetime: one long-lived client, whichever scenario is current
+  when it is used.
+- **Counting, for the ninth time.** "Six attributed, three pre-resolution" was five and four — and
+  the same sentence listed four. The `if (clientScopeDenied)` correction replaced a CORRECT number
+  ("half a dozen", six literal statements) with a wrong one ("eleven", which is all references
+  including the two dead emits). The "other three emits are unreachable" claim is false for the
+  summary-mode JSON refusal, which fires and which `client-memory-authz` 9.4 already asserts.
+- **Six durable sinks were still missing** from a list that said "all named": two storage-object
+  writes (the raw PDF bytes — the heaviest write on the turn), the `credit_report_uploads` INSERT,
+  a second `client_memory` writer on the ordinary chat path, the two RAG-feedback updates, and a
+  second `record_rail_event` that carries a 140-char preview of the user's message.
+
+**Known gap, named rather than implied:** deleting the Studio `agent_id` stamp still leaves the
+suite green, because group 23 drives no Studio turn. The ordering defect behind it — the stamp
+sitting AFTER the pre-flight fold, so one Studio turn filed two folds under two agents — is fixed.
+The assertion is not written.

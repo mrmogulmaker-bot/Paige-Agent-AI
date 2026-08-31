@@ -41,9 +41,9 @@ gets a §37 producer inventory.
 | Client-scope authorization | tenant **equality** not visibility, six fail-closed branches, choke point ends the turn before any model egress — `index.ts:556-694` |
 | Solo account-switch fence | 5 independent layers: key-remount, epoch guard, request fence, late-result rejection, query-key scoping — `SoloApp.tsx:236`, `PaigeAIChat.tsx:84-105,376-399` |
 | Knowledge retrieval scope | JWT client so `match_tenant_knowledge`'s guard engages, deliberately not service-role — `index.ts:1497-1503` |
-| Protected-content buffering (#675) | clean across 100 adversarial mutations, all 10 entry sources load-bearing |
+| Protected-content buffering (#675) | clean across 100 adversarial mutations; **9 of the 10** entry sources individually load-bearing (source 7, `fundingEnabled && relevantKnowledge`, is not — deleting it leaves the suite green, which `stage1-check.mjs` states at its own definition) |
 | Chat owns no OAuth | zero hits for `access_token`/`refresh_token`/`oauth` in the handler |
-| Rail carries no raw payloads | `p_title` is a curated `describeStep` label, `p_summary` hardcoded `null` — `index.ts:8358-8367` |
+| The Rail's TOOL emit carries no raw payloads | `p_title` is a curated `describeStep` label, `p_summary` hardcoded `null`. Scoped to that emit deliberately: the second `record_rail_event`, on the client-message branch, does pass a 140-char preview of the user's own message |
 
 ---
 

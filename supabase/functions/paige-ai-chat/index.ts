@@ -546,14 +546,32 @@ serve(async (req) => {
     // context at the profile read) and passed BY REFERENCE to every call site, so a site that runs
     // after resolution gets the real tenant without re-deriving it (§18 one home).
     //
-    // HONEST BOUND, stated rather than papered over: three call sites run BEFORE persona
-    // resolution and therefore still write platform rows — the three `generateSessionSummary`
-    // folds and the credit-report read-check. That is not an oversight and not a claim of
-    // attribution; those rows are untenanted because at that point in the turn no tenant has been
-    // resolved, and inventing one would be worse than recording none. Moving persona resolution
-    // above them is a real reordering across ~700 lines of turn setup and belongs to its own
-    // change, not to this one. `job_kind` distinguishes them so a reader can tell an untenanted
-    // pre-resolution row from an untenanted bug.
+    // HONEST BOUND — FIVE ATTRIBUTED, FOUR NOT. The first version of this comment said "three run
+    // before persona resolution" and then listed four of them in the same sentence: the THREE
+    // `generateSessionSummary` folds AND the credit-report read-check. Four sites, four platform
+    // rows, five attributed. That miscount was caught by an independent reviewer driving the rows
+    // rather than reading the sentence, and it is recorded here because it is the ninth counting
+    // error on this branch and pretending otherwise is how the tenth happens.
+    //
+    // Attributed (all lexically below the stamp): the entry call, the tool-loop continuation, the
+    // closing call, the rolling-summary fold, the credit-report extraction.
+    // Untenanted (all lexically above it): the three session-summary folds, the document
+    // read-check.
+    //
+    // Those four are not an oversight and not a claim of attribution; they are untenanted because
+    // at that point in the turn no tenant has been resolved, and inventing one would be worse than
+    // recording none. Moving persona resolution above them is a real reordering across ~700 lines
+    // of turn setup and belongs to its own change. `job_kind` distinguishes them so a reader can
+    // tell an untenanted pre-resolution row from an untenanted bug — and group 23 of the
+    // knowledge-scope harness now asserts the exact split, so neither half can drift silently.
+    //
+    // §37 — `job_kind` IS A CONSUMED FIELD, so widening its vocabulary is a contract change. Eight
+    // sites moved off the single value `"chat"`. Consumers walked: `paige_llm_trace.job_kind` has
+    // no CHECK constraint; `usePaigeContribution` only GROUPS by it, so new values appear as new
+    // groups rather than breaking; `paige-eval` filters `.eq("job_kind", jobKind)`, so a saved
+    // eval batch targeting `"chat"` now selects a NARROWER population — the entry call only,
+    // instead of the entry call plus the loop and close. That is a real behavioural change for
+    // saved evals and is named rather than discovered later.
     const traceCtx: {
       tenant_id: string | null;
       working_context_tenant_id: string | null;
@@ -4072,6 +4090,16 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       // the turn continues UNCOMPACTED (§13 never dead-end). The post-turn maybeRefreshSummary still
       // runs as the fallback for threads that trip the budget only after Paige's reply is appended.
       // §9: reads/writes ONLY the caller's own thread — the exact scoping maybeRefreshSummary uses.
+      // The Studio persona is resolved BEFORE the fold, not after, so both this pre-flight fold and
+      // the post-turn one file their trace rows under the same agent. Stamping it after the fold —
+      // which is where it sat when it was first written — made a single Studio turn produce two
+      // `thread-summary-fold` rows under two different agent ids, contradicting the very comment
+      // that says to keep them in step. Found by an independent reviewer driving a Studio turn.
+      {
+        const { data: pre } = await supabaseClient
+          .from("paige_chat_threads").select("studio_session_id").eq("id", payloadThreadId).maybeSingle();
+        if (pre?.studio_session_id) traceCtx.agent_id = "studio-design-agent";
+      }
       await foldThreadSummary(payloadThreadId, {
         emit: (payload) => compactionLeadFrames.push(`data: ${JSON.stringify({ paige_compacting: payload })}\n\n`),
       });
@@ -4084,8 +4112,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         // thread — so the main chat's identity is provably untouched by this branch.
         if (th?.studio_session_id) {
           studioSessionId = String(th.studio_session_id);
-          // Keep the turn's trace agent_id in step with the persona actually driving it, so a
-          // Studio turn's rows are not filed under the main chat agent (§34).
+          // Idempotent with the pre-fold stamp above; kept because this is the branch that
+          // actually establishes the Studio persona, and a reader looking for where the agent id
+          // is decided should find it here too (§34).
           traceCtx.agent_id = "studio-design-agent";
           try {
             let q = supabaseClient
@@ -8686,10 +8715,37 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           //     boundary crossing — but it is the weakest of these and is named rather than
           //     folded into the "gated" column where the previous version of this comment put it.
           //   `audit_logs`, `client_memory`, `credit_report_uploads.analysis_result` — written by
-          //     `runStructuredExtractionAndSync`, each behind that helper's OWN `writeIfScopeCurrent`
-          //     wrapper. A different gate, checked at each write, not this close decision.
+          //     the structured-extraction helper, each behind that helper's OWN
+          //     `writeIfScopeCurrent` wrapper. A different gate, checked at each write, not this
+          //     close decision.
           //   `paige_chat_threads.title` / `.summary` — the rolling-summary fold.
           //   `paige_llm_trace`      — see below.
+          //
+          // AND SIX MORE, found by an INDEPENDENT REVIEWER driving a document turn and reading
+          // back every recorded write — after this list had already been rewritten twice and this
+          // very paragraph claimed "all named". The list was still counting only what it thought
+          // of, which is the failure mode it exists to end. In full:
+          //   Storage object — the raw PDF bytes, into the `credit-report-uploads` bucket. The
+          //     most content-heavy durable write of the whole turn, and it was not on the list at
+          //     all. Ungated by the close decision, and correctly so: the person uploaded the file.
+          //   Storage object — a general (non-credit) PDF, under the `general/` prefix. Same.
+          //   `credit_report_uploads` INSERT — file name, storage path, size, target user. The
+          //     list named only the later UPDATE that stamps `analysis_result`.
+          //   `client_memory` on the ORDINARY chat path — a `user_preference` row carrying the
+          //     user's message. The list attributed `client_memory` solely to the extraction
+          //     helper; this is a second, separate writer.
+          //   `rag_retrieval_log.was_helpful` and `rag_documents.helpful_count` — ungated durable
+          //     updates driven by response-derived feedback.
+          //   A SECOND `record_rail_event`, in the client-message branch, which files a 140-char
+          //     preview of the user's own message. The single sentence given for the Rail sink
+          //     above — "emitted inside the tool loop, as each tool RETURNS" — is true of the tool
+          //     emit and FALSE of this one, and it is also the one place raw user text enters the
+          //     Rail. Both corrections belong here rather than in a footnote.
+          //
+          // THE SCOPE OF THIS LIST, stated so the next rewrite does not have to rediscover it: it
+          // covers durable writes reachable from a chat turn, INCLUDING object storage. It is not
+          // scoped to "table writes in the close block", which is the narrower thing the previous
+          // two versions were actually enumerating while claiming the wider one.
           //
           // `gatewayCompat` writes the prompt and the reply to `paige_llm_trace` fire-and-forget
           // on every call, so on a protected turn those rows carry the Knowledge, the document

@@ -22,15 +22,17 @@ function mkRecorder() {
 }
 
 class QueryBuilder {
-  constructor(table, scenario, recorder) {
+  constructor(table, live) {
     this._table = table;
-    this._scenario = scenario;
-    this._recorder = recorder;
+    this._live = live;
     this._filters = [];
     this._ordered = false;
     this._limit = null;
     this._op = "select";
   }
+  get _scenario() { return this._live.scenario; }
+  get _recorder() { return this._live.recorder; }
+
 
   // Every filter/shape method records itself and chains. Recording the SHAPE (not just
   // the table) is what lets a check prove an unordered LIMIT 1 pick is gone.
@@ -89,15 +91,16 @@ class QueryBuilder {
 }
 
 class FakeClient {
-  constructor(kind, scenario, recorder) {
+  /** `live` exposes `scenario` and `recorder` as GETTERS so a memoized long-lived client keeps
+   *  writing into whichever scenario is current — see the note in `createClient`. */
+  constructor(kind, live) {
     this._kind = kind; // "jwt" | "service"
-    this._scenario = scenario;
-    this._recorder = recorder;
+    this._live = live;
     this.auth = {
-      getUser: async () => scenario.authUser
-        ? { data: { user: scenario.authUser }, error: null }
+      getUser: async () => this._live.scenario.authUser
+        ? { data: { user: this._live.scenario.authUser }, error: null }
         : { data: { user: null }, error: { message: "no user" } },
-      getClaims: async () => ({ data: { claims: { sub: scenario.authUser?.id ?? null } }, error: null }),
+      getClaims: async () => ({ data: { claims: { sub: this._live.scenario.authUser?.id ?? null } }, error: null }),
     };
     this.storage = { from: () => ({ upload: async () => ({ data: null, error: null }), createSignedUrl: async () => ({ data: null, error: null }), download: async () => ({ data: null, error: null }) }) };
     this.functions = { invoke: async () => ({ data: null, error: null }) };
@@ -105,7 +108,10 @@ class FakeClient {
     this.removeChannel = () => {};
   }
 
-  from(table) { return new QueryBuilder(table, this._scenario, this._recorder); }
+  get _scenario() { return this._live.scenario; }
+  get _recorder() { return this._live.recorder; }
+
+  from(table) { return new QueryBuilder(table, this._live); }
 
   async rpc(name, args) {
     this._recorder.rpc.push({ client: this._kind, name, args });
@@ -138,7 +144,18 @@ export function createClient(_url, key, _opts) {
   // The handler builds the JWT client with the ANON key and the service client with the
   // SERVICE_ROLE key. Distinguishing them lets a check prove which client asked what.
   const kind = String(key ?? "").includes("service") ? "service" : "jwt";
-  return new FakeClient(kind, ACTIVE.scenario, ACTIVE.recorder);
+  // LIVE VIEWS OF `ACTIVE`, not the values it holds right now. Some production modules build a
+  // client ONCE at module scope and memoize it — `_shared/llm-trace.ts` `traceAdmin()` is the one
+  // that matters here — so a client created during the first drive was still writing into the
+  // FIRST drive's recorder for the rest of the run. Every `paige_llm_trace` row was therefore
+  // invisible to every check after the first, which is precisely why an attribution defect and
+  // then its repair both went entirely unmeasured. Reading through a getter models the real
+  // lifetime: one long-lived client, whichever scenario is current when it is USED.
+  const live = {
+    get scenario() { return ACTIVE.scenario; },
+    get recorder() { return ACTIVE.recorder; },
+  };
+  return new FakeClient(kind, live, null);
 }
 
 export default { createClient };
