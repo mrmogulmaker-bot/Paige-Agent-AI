@@ -3051,6 +3051,11 @@ group("safety-first streaming: the sources the first enumeration missed");
     kbRejects: true,
     provider: ["private-text"],
     userMessage: "summarise https://example.test/doc for me",
+    // The fetch is now TIER-GATED: a client-portal seat pasting a link no longer makes this server
+    // fetch it. `getActorTier` fails closed to `client`, so without this stub the drive resolves to
+    // a client seat, no fetch happens, and this group's own control fails — which is how the gate
+    // proved load-bearing the moment it landed. An OWNER-tier caller is what these checks are about.
+    rpcExtras: { get_actor_access: { data: { tier: "tenant" }, error: null } },
   };
   const urlClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...urlOpts,
@@ -3060,6 +3065,23 @@ group("safety-first streaming: the sources the first enumeration missed");
     urlClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-FETCHEDURL-MARKER")),
     JSON.stringify(urlClean.providerCalls).slice(0, 200),
   );
+  // 21.ac2 — THE TIER GATE ON THE FETCH ITSELF.
+  //
+  // This ran BEFORE the tier was resolved, so it sat outside the client-seat tool allowlist
+  // entirely: a portal client pasting a link made this server fetch it, on a seat permitted exactly
+  // two tools, neither of which is this. The tier resolves before the fetch now.
+  const urlAsClient = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    kbRejects: true, provider: ["private-text"],
+    userMessage: "summarise https://example.test/doc for me",
+    rpcExtras: { get_actor_access: { data: { tier: "client" }, error: null } },
+  });
+  assert(
+    "21.ac2 a CLIENT seat pasting a link triggers no server-side fetch",
+    !urlAsClient.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-FETCHEDURL-MARKER")),
+    JSON.stringify(urlAsClient.providerCalls).slice(0, 200),
+  );
+
   const urlTotal = personaCallsOf(urlClean);
   assert(
     "21.ac CONTROL — and such a turn is protected",

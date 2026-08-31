@@ -1162,10 +1162,37 @@ JSON:`;
     }
     if (paigeChatGeneralDocPath) console.log(`[Paige] general document stored at ${paigeChatGeneralDocPath}`);
 
-    // Fetch URL content if present
+    // ── URL CONTENT: SERVER-SIDE EGRESS TRIGGERED BY A REGEX ──
+    //
+    // A `https?://` anywhere in the last user message causes this server to fetch that URL. No tool
+    // call, no confirm, no consent — pasting a link IS the trigger. The owner's rule for this
+    // surface is that Chat does not own "unrestricted external actions", and an automatic fetch of
+    // any address a message happens to contain is exactly that.
+    //
+    // §13 — WHAT IS AND IS NOT FIXED HERE. The TIER GATE is fixed. This ran BEFORE `callerTier` was
+    // resolved (~3,100 lines below), so it sat outside the client-seat tool allowlist entirely: a
+    // PORTAL CLIENT pasting a link made this server fetch it, on a seat that is allowed exactly two
+    // tools, neither of which is this. The tier is resolved here now and a client seat triggers no
+    // fetch.
+    //
+    // What is NOT fixed: for an owner-tier caller this is still automatic rather than consented.
+    // Making it a deliberate act changes what the person sees and when, which is a design decision
+    // and not mine to make (§00). Named here rather than left as though the tier gate closed the
+    // whole question.
+    //
+    // Resolved here rather than only at the old site: `getActorTier` is one RPC on the service-role
+    // client and fails CLOSED to the least-privileged value, so an early resolution is cheap and
+    // safe. The later site reuses this value instead of resolving a second time.
+    let callerTier: Tier = "client";
+    try {
+      callerTier = await getActorTier(supabase, { actorUserId: user.id, isPlatform: false, scopes: [] });
+    } catch (e) {
+      console.warn("[paige] actor tier unresolved before URL fetch — treating as client seat:", (e as Error)?.message);
+    }
+
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
     let fetchedUrlContent = "";
-    if (lastUserMessage) {
+    if (lastUserMessage && callerTier !== "client") {
       const urlRegex = /(https?:\/\/[^\s]+)/g;
       const urls = lastUserMessage.content.match(urlRegex);
       if (urls && urls.length > 0) {
@@ -4270,12 +4297,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // GATES tools. A genuine client-portal seat → 'client' (owner-ops tools refused
     // server-side below); an operator (even when focusing a client file) → tenant/
     // agency/god, so operators keep every tool. Fails CLOSED to 'client' on any error.
-    let callerTier: Tier = "tenant";
-    try {
-      callerTier = await getActorTier(supabase, { actorUserId: user.id, isPlatform: false, scopes: [] });
-    } catch {
-      callerTier = "client";
-    }
+    // Already resolved at the URL-fetch gate above, on the same service-role client with the same
+    // fail-closed default. Reused rather than re-resolved: two resolutions of the same fact can
+    // disagree, and a second RPC buys nothing.
 
     if (isOperator) {
       // Who is Paige actually talking to? Load the operator's own profile so she greets

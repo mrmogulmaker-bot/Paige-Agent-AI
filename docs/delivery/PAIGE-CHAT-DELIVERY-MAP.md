@@ -133,7 +133,7 @@ is red.
 | ~~S2~~ | ✅ **Shipped to the branch.** **A switch actually ends the conversation** — focused-client change clears transcript and in-flight work the way an account change already does; the fence stops being opt-in; `paige_chat_turn_append` gets its tenant predicate; the `client_scope` refusal becomes visible, not merely observable | 2 | R3 | foundation for S3–S6 |
 | ~~S3~~ | ✅ **Shipped to the branch.** **Documents propose, never write** — the chat path stops auto-writing extracted fields; the proposal seam is built end to end (server emits → Solo renders → human reviews field by field → the approved write goes through the owning contract); prohibited sensitive categories excluded; uncertainty represented rather than guessed; **NOT** the dead `runGeneralDocumentExtraction` call — still undefined, still one of the 14 baseline `deno check` errors, still filed as its own item. Naming it as resolved here was wrong and is corrected rather than quietly dropped | 7 | R3 | largest |
 | **S4** | **A write is what the human approved** — the approval binds to the exact proposed call; `update_client_data` and `delegate_to_subagent` enter the gate; Trust Compass is consulted server-side; the two silent audit failures fixed; Rail coverage and `ref_id` so an event names its record | 5 | R3 | |
-| **S5** | **The external boundary holds** — provider responses sanitized at the chat seam instead of spread verbatim; URL fetch becomes a consented, tier-gated act rather than an automatic egress | 6 | R2 | |
+| ~~S5~~ | ✅ **Shipped to the branch — and half of it was already done.** **The external boundary holds** — provider responses sanitized at the chat seam instead of spread verbatim; URL fetch becomes a consented, tier-gated act rather than an automatic egress | 6 | R2 | |
 | **S6** | **The workspace is honestly usable** — every advertised affordance either works or stops being advertised; thread management reaches the UI; retry covers HTTP failure; permission-denied has a state; sources and honest unknowns are presented | 1, 3 | R2 | |
 
 **Deferred, named rather than silently dropped:** clause 8 (client-portal parity) is *foundation* work
@@ -142,6 +142,23 @@ project gated on the two-tool client seat allowlist (`actorTier.ts:66-69`). Clau
 awareness) is largely unbuilt and depends on S4's attribution landing first.
 
 ---
+
+### S5 — re-grounded against `main`, and the scope shrank
+
+The discovery tracks read this branch, which was 18 migrations behind `main`. After merging, one of
+S5's two named violations was **already closed**: the raw provider-payload spread
+(`result = { success: true, ...(n8nData as any) }`) is now `projectN8nForModel(n8nData)` /
+`projectOutcomeForModel(zapData)`, and `main` ships `smoke:mcp-egress` (80 assertions) and
+`smoke:n8n-egress` (39) asserting that no provider payload, injection, credential or foreign-tenant
+data reaches the model. Both pass on this branch. Nothing was rebuilt.
+
+That leaves the automatic URL fetch, which was real and is now tier-gated — a portal client pasting
+a link no longer causes server-side egress. **What remains open and is NOT claimed as fixed:** for an
+owner-tier caller the fetch is still automatic rather than consented. Making it deliberate changes
+what the person sees and when, which is CD's call under §00, so it is named rather than decided.
+
+**Also named, not covered:** `paige-mcp` is a second write path that does not consult
+`resolve_tool_autonomy` at all. S4's gate hardens the chat, not the MCP surface.
 
 ## 4. Collision ownership
 
