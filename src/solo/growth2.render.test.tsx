@@ -8,6 +8,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const harness = vi.hoisted(() => ({
   state: {
+    tenantId: "tenant-1",
     phase: "ready",
     campaigns: [{ id: "campaign-1", name: "Grounded campaign", status: "active", activeCount: 2, completedCount: 4, lastActivityAt: "2026-08-28T12:00:00Z" }],
     artifacts: [{ id: "page-1", type: "page", name: "Published page", slug: "published-page", status: "published", updatedAt: "2026-08-28T12:00:00Z", publicHref: "/p/example/published-page", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 } }],
@@ -43,6 +44,7 @@ function LocationProbe() {
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
+  harness.state.tenantId = "tenant-1";
 });
 
 describe("Solo Campaigns rendered flows", () => {
@@ -124,6 +126,15 @@ describe("Solo Campaigns rendered flows", () => {
     act(() => pendingButton.click());
     expect(action).toHaveBeenCalledTimes(1);
     await act(async () => finish({ ok: false, message: "Try again" }));
+  });
+
+  it("closes and clears pipeline creation when the tenant changes", () => {
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    harness.state.tenantId = "tenant-2";
+    act(() => root.render(<MemoryRouter initialEntries={["/solo/42/growth/pipeline"]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("traps keyboard focus in creation and restores the opener on Escape", () => {
