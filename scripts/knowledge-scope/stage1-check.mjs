@@ -58,7 +58,7 @@ globalThis.Deno = {
         SUPABASE_ANON_KEY: "anon-key",
         SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
         VOYAGE_API_KEY: "test-voyage-key",
-        ANTHROPIC_API_KEY: "",
+        ANTHROPIC_API_KEY: "test-anthropic-key",
       })[k] ?? "",
   },
 };
@@ -68,8 +68,34 @@ globalThis.Deno = {
 // other host is refused so a check can never silently depend on the network.
 const realFetch = globalThis.fetch;
 let embedCount = 0;
+let providerPlan = [];
+let providerCalls = [];
+let syncCalls = [];
 function embedCalls() { return embedCount; }
 function resetEmbeds() { embedCount = 0; }
+function resetProvider(plan = []) { providerPlan = [...plan]; providerCalls = []; syncCalls = []; }
+function anthropicStream(kind = "text") {
+  const responseText = kind === "private-text" ? "CHILD-PRIVATE-MARKER" : "Scoped response.";
+  const events = kind === "tool"
+    ? [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "plan_list" } },
+        { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{}" } },
+        { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ]
+    : [
+        { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: responseText } },
+        { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+        { type: "message_stop" },
+      ];
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
 globalThis.fetch = async (url, init) => {
   const href = String(url);
   if (href.includes("voyageai.com")) {
@@ -80,12 +106,36 @@ globalThis.fetch = async (url, init) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+  if (href === "https://api.anthropic.com/v1/messages") {
+    providerCalls.push(JSON.parse(String(init?.body ?? "{}")));
+    const next = providerPlan.shift() ?? "text";
+    if (next === "json-extraction") {
+      const extracted = JSON.stringify({
+        is_credit_report: true,
+        extraction_verified: true,
+        report_type: "consumer",
+        scores: { equifax: 700, experian: 701, transunion: 702 },
+        negative_items: [],
+        positive_accounts: [{ creditor: "Test Bank", account_type: "revolving" }],
+        hard_inquiries: [],
+      });
+      return new Response(JSON.stringify({ content: [{ type: "text", text: extracted }], model: "test", usage: { input_tokens: 1, output_tokens: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return anthropicStream(next);
+  }
+  if (href.endsWith("/functions/v1/sync-credit-report-data")) {
+    syncCalls.push(JSON.parse(String(init?.body ?? "{}")));
+    return new Response(JSON.stringify({ results: {} }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
   throw new Error(`knowledge-scope: unexpected outbound fetch to ${href}`);
 };
 void realFetch;
 
 const fake = await import("./fake-supabase.mjs");
-await import("../../supabase/functions/paige-ai-chat/index.ts");
+const chatModule = await import("../../supabase/functions/paige-ai-chat/index.ts");
 const { capturedHandler } = await import("./stub-serve.mjs");
 const handler = capturedHandler();
 
@@ -96,21 +146,28 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x" }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "Onboarding", chunkContent = "x", provider = ["text"] }) {
   const logged = [];
   resetEmbeds();
   const origWarn = console.warn;
   const origError = console.error;
   console.warn = (...a) => logged.push({ level: "warn", msg: a.join(" ") });
   console.error = (...a) => logged.push({ level: "error", msg: a.join(" ") });
+  resetProvider(provider);
+  let personaCall = 0;
+  const personaStates = personaSequence ?? [personaTenant];
 
   const rec = fake.setScenario({
     authUser: unauthenticated ? null : { id: USER, email: "owner@example.test" },
     rpcs: {
       check_rate_limit: { data: true, error: null },
-      get_paige_persona_context: {
-        data: [{ tenant_id: personaTenant, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }],
-        error: null,
+      get_paige_persona_context: () => {
+        const state = personaStates[Math.min(personaCall++, personaStates.length - 1)];
+        if (state && typeof state === "object" && "error" in state) return state;
+        return {
+          data: [{ tenant_id: state ?? null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }],
+          error: null,
+        };
       },
       match_tenant_knowledge: (args) =>
         kbRejects
@@ -124,6 +181,7 @@ async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras
   });
 
   let status = null;
+  let responseText = "";
   try {
     const headers = { "Content-Type": "application/json" };
     if (!noAuth) headers.Authorization = "Bearer test-jwt";
@@ -140,6 +198,7 @@ async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras
       }),
     );
     status = res?.status ?? null;
+    if (res?.body) responseText = await res.text();
   } catch {
     // A downstream failure (no model key configured) is expected and irrelevant — the
     // retrieval call under test happens well before any model call.
@@ -151,7 +210,7 @@ async function drive({ personaTenant, memberships, kbRejects = false, bodyExtras
   const kbCall = rec.rpc.find((r) => r.name === "match_tenant_knowledge");
   const memberReads = rec.from.filter((f) => f.table === "tenant_members");
   const telemetry = rec.inserts.find((i) => i.table === "kb_query_telemetry");
-  return { rec, kbCall, memberReads, telemetry, logged, status, embeds: embedCalls() };
+  return { rec, kbCall, memberReads, telemetry, logged, status, embeds: embedCalls(), providerCalls: [...providerCalls], responseText, syncCalls: [...syncCalls] };
 }
 
 // ── 1 · Multi-membership active-account resolution ───────────────────────────────
@@ -384,6 +443,140 @@ group("a stale or wrong account's knowledge cannot enter the prompt");
     r.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").length === 1,
     `count: ${r.rec.rpc.filter((x) => x.name === "match_tenant_knowledge").length}`,
   );
+}
+
+// ── 12 · Active-account TOCTOU is closed at every provider boundary ─────────────
+group("active-account changes after retrieval fail closed before provider egress");
+{
+  for (const [label, nextState] of [
+    ["switches to a different account", AGENCY],
+    ["becomes unresolved", null],
+    ["membership is revoked", { data: null, error: { message: "not authorized", code: "42501" } }],
+  ]) {
+    const r = await drive({
+      personaTenant: CHILD,
+      personaSequence: [CHILD, nextState],
+      memberships: [AGENCY, CHILD],
+      chunkContent: "CHILD-PRIVATE-MARKER",
+      provider: ["text"],
+    });
+    assert(`12 ${label}: no provider request is made`, r.providerCalls.length === 0, `provider calls: ${r.providerCalls.length}`);
+    assert(`12 ${label}: no stale telemetry is written`, !r.telemetry, JSON.stringify(r.telemetry?.row ?? null));
+    assert(`12 ${label}: the turn fails closed`, r.status === 409, `status ${r.status}`);
+  }
+}
+
+group("active-account changes during the agent loop stop later provider calls");
+{
+  const r = await drive({
+    personaTenant: CHILD,
+    // initial resolution → initial provider boundary → post-round boundary →
+    // actual tool-dispatch boundary (where the switch occurs)
+    personaSequence: [CHILD, CHILD, CHILD, AGENCY],
+    memberships: [AGENCY, CHILD],
+    chunkContent: "CHILD-PRIVATE-MARKER",
+    provider: ["tool", "text"],
+  });
+  assert("13.1 only the already-authorized first provider round runs", r.providerCalls.length === 1, `provider calls: ${r.providerCalls.length}`);
+  assert("13.2 no stale telemetry is written after invalidation", !r.telemetry, JSON.stringify(r.telemetry?.row ?? null));
+  assert("13.3 the tool proposed from stale Knowledge is never dispatched", !r.rec.rpc.some((call) => call.name === "plan_list"), JSON.stringify(r.rec.rpc.filter((call) => call.name === "plan_list")));
+  assert(
+    "13.4 no later provider payload carries prior-account knowledge",
+    !r.providerCalls.slice(1).some((body) => JSON.stringify(body).includes("CHILD-PRIVATE-MARKER")),
+    JSON.stringify(r.providerCalls.slice(1)),
+  );
+}
+
+// ── 14 · Document post-processing revalidates before provider and sync ──────────
+group("document post-processing fails closed at provider and sync boundaries");
+{
+  async function driveDocumentPostProcess(scopeStates) {
+    resetProvider(["json-extraction"]);
+    let scopeCall = 0;
+    const writes = [];
+    const service = {
+      from(table) {
+        return {
+          insert(row) { writes.push({ table, op: "insert", row }); return Promise.resolve({ data: null, error: null }); },
+          update(row) {
+            writes.push({ table, op: "update", row });
+            return { eq: async () => ({ data: null, error: null }) };
+          },
+        };
+      },
+    };
+    const result = await chatModule.runStructuredExtractionAndSync(
+      "CHILD-PRIVATE-MARKER",
+      "AA==",
+      USER,
+      "Bearer test-jwt",
+      "https://test.supabase.co",
+      "service-role-key",
+      service,
+      null,
+      null,
+      async () => scopeStates[Math.min(scopeCall++, scopeStates.length - 1)],
+    );
+    return { result, writes, providerCalls: [...providerCalls], syncCalls: [...syncCalls] };
+  }
+
+  const valid = await driveDocumentPostProcess([true]);
+  assert("14.1 valid current scope reaches the extraction provider", valid.providerCalls.length === 1, `provider calls: ${valid.providerCalls.length}`);
+  assert("14.2 valid current scope reaches sync", valid.syncCalls.length === 1, `sync calls: ${valid.syncCalls.length}`);
+
+  for (const [label, states] of [
+    ["switch before extraction", [false]],
+    ["unresolved before extraction", [false]],
+    ["revoked while extraction is in flight", [true, false]],
+    ["switch before sync", [true, true, false]],
+  ]) {
+    const r = await driveDocumentPostProcess(states);
+    const providerExpected = states[0] ? 1 : 0;
+    assert(`14 ${label}: no unauthorized extraction provider call`, r.providerCalls.length === providerExpected, `provider calls: ${r.providerCalls.length}`);
+    assert(`14 ${label}: no sync call`, r.syncCalls.length === 0, `sync calls: ${r.syncCalls.length}`);
+    assert(`14 ${label}: no post-processing write`, r.writes.length === 0, JSON.stringify(r.writes));
+    assert(`14 ${label}: reports active-account cancellation`, r.result?.step === "active_account_changed", JSON.stringify(r.result));
+  }
+}
+
+group("real document stream withholds prior-account content until final revalidation");
+{
+  const document = {
+    fileName: "operating-notes.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    kind: "docx",
+    textContent: "Internal operating notes",
+  };
+  const valid = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD],
+    memberships: [CHILD],
+    chunkContent: "CHILD-PRIVATE-MARKER",
+    bodyExtras: { document },
+    // General-field extraction is best-effort and consumes the first test response;
+    // the second is the real streamed chat response under test.
+    provider: ["private-text", "private-text"],
+  });
+  assert("15.1 a valid document turn releases the authorized response", valid.responseText.includes("CHILD-PRIVATE-MARKER"), valid.responseText);
+
+  for (const [label, finalState] of [
+    ["account switch", AGENCY],
+    ["unresolved scope", null],
+    ["membership revocation", { data: null, error: { message: "not authorized", code: "42501" } }],
+  ]) {
+    const r = await drive({
+      personaTenant: CHILD,
+      personaSequence: [CHILD, CHILD, finalState],
+      memberships: [AGENCY, CHILD],
+      chunkContent: "CHILD-PRIVATE-MARKER",
+      bodyExtras: { document },
+      provider: ["private-text", "private-text"],
+    });
+    assert(`15 ${label}: prior-account response text is discarded`, !r.responseText.includes("CHILD-PRIVATE-MARKER"), r.responseText);
+    assert(`15 ${label}: only the cancellation response is released`, r.responseText.includes("active workspace changed"), r.responseText);
+    assert(`15 ${label}: no stale telemetry is written`, !r.telemetry, JSON.stringify(r.telemetry?.row ?? null));
+    assert(`15 ${label}: no sync is attempted`, r.syncCalls.length === 0, `sync calls: ${r.syncCalls.length}`);
+  }
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

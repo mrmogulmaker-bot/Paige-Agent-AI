@@ -40,15 +40,21 @@ Only the module boundary is faked:
 | Deno std `serve` | Node cannot bind Deno's server | `stub-serve.mjs` captures the handler |
 | `@supabase/supabase-js` | no database in CI | `fake-supabase.mjs`, a **recording** client |
 | `zod` | the esm.sh URL is unfetchable | the repo's own zod — real body validation |
-| Voyage embeddings `fetch` | no API key in CI | a fixed 1024-dim vector; every other host throws |
+| Voyage embeddings `fetch` | no API key in CI | a fixed 1024-dim vector |
+| Anthropic streaming `fetch` | provider egress must be observable without sending data | deterministic text/tool SSE with captured request bodies; every other host throws |
 
 Everything else — the tenant resolution, the RPC call, the telemetry write, the error branch —
 is the real code. No check passes on a string match against source text.
 
 ## Failing-first
 
-**14 of the 34 checks fail on the pre-fix handler** at base `66ee5a27`, and all 34 pass after it.
-They were written and run against the defect before the correction existed.
+**14 of the original 34 checks fail on the pre-fix handler** at base `66ee5a27`.
+The current 78-check suite also covers the independently discovered in-flight account-change
+race: active account switch, unresolved scope, membership revocation, and a change between
+agent-loop rounds all fail closed before another provider call and suppress stale telemetry.
+It also proves the actual tool-dispatch boundary and document extraction/sync boundaries stop
+before tools, providers, writes, or telemetry when authority changes. All 78 checks pass after
+both corrections.
 
 The decisive ones:
 
@@ -58,6 +64,15 @@ The decisive ones:
   non-active membership's scope *is* queried, so its chunks *do* reach the prompt.
 - **2.1 and 3.1** — pre-fix, the **same code** returns a *different* tenant depending only on the
   order the membership rows come back in.
+- **12 / 13** — after retrieval, every provider/tool boundary re-resolves the active account
+  through the same JWT-backed persona contract. A switch, unresolved scope, or revocation
+  prevents provider egress, later loop calls, and stale Knowledge telemetry.
+- **14** — document post-processing revalidates before extraction and before sync. Valid scope
+  preserves the path; switched, unresolved, or revoked scope produces no unauthorized provider
+  call, sync, post-processing write, or stale telemetry.
+- **15** — the real attached-document handler buffers streamed provider frames until the final
+  account check. A mid-stream switch, unresolved scope, or revocation discards prior-account
+  response text and releases only the cancellation frame; the valid path still returns normally.
 
 ## A trap worth naming
 

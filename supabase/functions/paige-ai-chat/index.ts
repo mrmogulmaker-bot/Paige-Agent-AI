@@ -1220,6 +1220,8 @@ JSON:`;
     // hybrid match_tenant_knowledge RPC, and logs metadata-only telemetry
     // (hashed query, no raw text or content leaves the tenant boundary).
     let tenantKbContext = "";
+    let tenantKbScopeTenantId: string | null = null;
+    let pendingTenantKbTelemetry: Record<string, unknown> | null = null;
     try {
       // §9/§51 — the ONLY tenant this handler may search is the caller's ACTIVE one,
       // already resolved above by get_paige_persona_context() (migration 20260802133000),
@@ -1292,9 +1294,11 @@ JSON:`;
                 return `[${tier}] ${r.title}\n${(r.content || "").slice(0, 600)}\n---`;
               }).join("\n");
               tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
+              tenantKbScopeTenantId = tkTenantId;
 
-              // Metadata-only telemetry. Hash the query — never persist raw text.
-              // Columns mirror the kb_query_telemetry schema exactly.
+              // Prepare metadata-only telemetry, but DO NOT write it yet. Active-account
+              // authority can change while the request is in flight; the row is committed
+              // only after the final provider boundary revalidation succeeds.
               try {
                 const hashBuf = await crypto.subtle.digest(
                   "SHA-256",
@@ -1304,12 +1308,7 @@ JSON:`;
                   .map((b) => b.toString(16).padStart(2, "0")).join("");
                 const sims = kept.map((r: any) => Number(r.similarity) || 0);
                 const topSim = sims.length ? Math.max(...sims) : 0;
-                // §9 — telemetry is stamped with the SAME authoritative tenant that was
-                // searched, never a separately-derived one, so the audit trail can never
-                // disagree with what actually happened. Written through the service-role
-                // client deliberately: kb_query_telemetry's RLS admits only the tenant's own
-                // members, and this insert is downstream of the validated caller scope above.
-                await supabase.from("kb_query_telemetry").insert({
+                pendingTenantKbTelemetry = {
                   tenant_id: tkTenantId,
                   query_hash: queryHash,
                   query_length: tkQuery.length,
@@ -1318,9 +1317,9 @@ JSON:`;
                   top_similarity: topSim,
                   had_tenant_match: kept.some((r: any) => r.source_tier === "tenant"),
                   had_global_match: kept.some((r: any) => r.source_tier === "global"),
-                });
+                };
               } catch (telErr) {
-                console.warn("[paige] kb telemetry log failed:", telErr);
+                console.warn("[paige] kb telemetry preparation failed:", telErr);
               }
             }
           }
@@ -1329,6 +1328,44 @@ JSON:`;
     } catch (tkErr) {
       console.warn("[paige] tenant KB retrieval failed:", tkErr);
     }
+
+    // Reuse the same JWT-backed authoritative resolver that selected the Knowledge
+    // tenant. This is deliberately not a second authority store or a browser epoch:
+    // every provider boundary carrying private Knowledge must still resolve to the
+    // exact same active account at that moment. Missing, changed, malformed, or
+    // revoked scope fails closed before model egress.
+    const revalidateTenantKnowledgeScope = async (): Promise<boolean> => {
+      if (!tenantKbContext || !tenantKbScopeTenantId) return true;
+      try {
+        const { data, error } = await supabaseClient.rpc("get_paige_persona_context");
+        const row = Array.isArray(data) ? data[0] : data;
+        const currentTenantId = !error && row && typeof row.tenant_id === "string"
+          ? row.tenant_id
+          : null;
+        if (currentTenantId === tenantKbScopeTenantId) return true;
+        console.error(
+          "[paige] active account changed after Knowledge retrieval — provider dispatch cancelled",
+          JSON.stringify({ retrieved_tenant_id: tenantKbScopeTenantId, current_tenant_id: currentTenantId, code: (error as any)?.code ?? null }),
+        );
+      } catch (error) {
+        console.error("[paige] active-account Knowledge revalidation failed — provider dispatch cancelled", (error as Error)?.message);
+      }
+      tenantKbContext = "";
+      tenantKbScopeTenantId = null;
+      pendingTenantKbTelemetry = null;
+      return false;
+    };
+
+    const commitTenantKnowledgeTelemetry = async (): Promise<void> => {
+      if (!pendingTenantKbTelemetry) return;
+      const row = pendingTenantKbTelemetry;
+      pendingTenantKbTelemetry = null;
+      try {
+        await supabase.from("kb_query_telemetry").insert(row);
+      } catch (error) {
+        console.warn("[paige] kb telemetry log failed:", error);
+      }
+    };
 
     // Use the client's local clock when provided so greetings + time-of-day
     // language match what the user sees on their phone — not the server's UTC.
@@ -5413,6 +5450,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     const substantiveTurn =
       !!lastUserMessage && substantiveTurnIntent(String(lastUserMessage.content ?? ""));
 
+    if (!(await revalidateTenantKnowledgeScope())) {
+      return new Response(
+        JSON.stringify({ error: "Active workspace changed. Start this request again in the current workspace.", code: "ACTIVE_ACCOUNT_CHANGED" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -5508,6 +5552,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
       const executed: any[] = [];
+      // Actual dispatch boundary: the account may change after the model round
+      // was consumed but before its proposed tools execute. Abort the entire
+      // batch before approvals, reads, writes, or provider side effects.
+      if (!(await revalidateTenantKnowledgeScope())) {
+        return { toolResults, executed, scopeInvalidated: true };
+      }
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
         executed.push(tc);
@@ -7560,7 +7610,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: `Unknown tool: ${tc.function.name}` }) });
         }
       }
-      return { toolResults, executed };
+      return { toolResults, executed, scopeInvalidated: false };
       };
 
       // Bounded multi-round agentic loop. Round 0 reuses the first call already
@@ -7671,6 +7721,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const seenSignatures = new Set<string>();
       let finalChunks: Uint8Array[] | null = null;
       let forcedTermination = false;
+      let tenantKnowledgeScopeInvalidated = false;
       // Accumulates Paige's final reply text so we can persist the turn (#94).
       let finalAssistantText = "";
 
@@ -7696,6 +7747,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
          try {
           for (let round = 0; round < MAX_ROUNDS; round++) {
             const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
+            // The active account can change while a streamed provider round is in
+            // flight. Re-check before accepting its result or executing any tool it
+            // proposed from tenant Knowledge.
+            if (!(await revalidateTenantKnowledgeScope())) {
+              tenantKnowledgeScopeInvalidated = true;
+              forcedTermination = true;
+              break;
+            }
             if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
             const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
             // #292 — ask_choices is a TURN-ENDER, not a backend call: the design agent is asking the
@@ -7754,7 +7813,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               try { emitStep(controller, ts); } catch { /* client hung up */ }
             }
 
-            const { toolResults, executed } = await executeToolCalls(toolCalls, queuedApprovals);
+            const { toolResults, executed, scopeInvalidated } = await executeToolCalls(toolCalls, queuedApprovals);
+            if (scopeInvalidated) {
+              tenantKnowledgeScopeInvalidated = true;
+              forcedTermination = true;
+              break;
+            }
             totalToolCalls += sumToolCost(executed);
             seenSignatures.add(sig);
             // Emit each executed tool's step LIVE as it resolves (done/error). Derived
@@ -7790,6 +7854,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             convo.push({ role: "assistant", content: content || null, tool_calls: executed });
             convo.push(...toolResults);
             if (overCap || overTime || lastRound) { forcedTermination = true; break; }
+            if (!(await revalidateTenantKnowledgeScope())) {
+              tenantKnowledgeScopeInvalidated = true;
+              forcedTermination = true;
+              break;
+            }
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -7801,13 +7870,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
           // tools-less closing call when we terminated mid-flight.
           let finalStreamResponse: Response | null = null;
-          if (!finalChunks && forcedTermination) {
+          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
+            if (!(await revalidateTenantKnowledgeScope())) {
+              tenantKnowledgeScopeInvalidated = true;
+            }
+          }
+          if (!finalChunks && forcedTermination && !tenantKnowledgeScopeInvalidated) {
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
             });
           }
+          if (tenantKnowledgeScopeInvalidated || !(await revalidateTenantKnowledgeScope())) {
+            pendingTenantKbTelemetry = null;
+            const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+            controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
+            controller.enqueue(enc.encode("data: [DONE]\n\n"));
+            return;
+          }
+          await commitTenantKnowledgeTelemetry();
           // Approvals + confirm cards, then her actual reply.
           if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
           for (const c of confirmTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
@@ -7907,6 +7989,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // Leftover-line buffer across pulls: a `data:` record split over two reads
     // must still contribute its delta to the persisted text (#94 integrity).
     let directSseBuf = "";
+    // Document responses are held until the final active-account revalidation
+    // and post-processing checks complete. This prevents prior-account Knowledge
+    // from crossing the response boundary if authority changes mid-stream.
+    const directFrames: string[] = [];
     // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
     // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
     // the first delta, so this is a lightweight confirmation, not a dependency.
@@ -7922,10 +8008,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
+          if (!(await revalidateTenantKnowledgeScope())) {
+            pendingTenantKbTelemetry = null;
+            const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
+            controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+            controller.close();
+            return;
+          }
           directSseBuf += decoder.decode(); // flush; process any trailing line
           if (directSseBuf) {
             for (const line of directSseBuf.split("\n")) {
               if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+              directFrames.push(`${line}\n\n`);
               try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) fullAssistantResponse += c; } catch { /* skip */ }
             }
             directSseBuf = "";
@@ -7942,8 +8037,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 supabaseServiceKey,
                 supabase,
                 payloadClientId || null,
-                paigeChatUploadId
+                paigeChatUploadId,
+                revalidateTenantKnowledgeScope,
               );
+              if (!(await revalidateTenantKnowledgeScope())) {
+                pendingTenantKbTelemetry = null;
+                const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
+                controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                controller.close();
+                return;
+              }
+              await commitTenantKnowledgeTelemetry();
               const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
               controller.enqueue(new TextEncoder().encode(syncEvent));
             } catch (err) {
@@ -7952,9 +8057,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               controller.enqueue(new TextEncoder().encode(errorEvent));
             }
           } else if (extractionProposal && extractionProposal.fields?.length > 0) {
+            await commitTenantKnowledgeTelemetry();
             // General document path: emit extraction proposal for inline confirmation card.
             const proposalEvent = `data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`;
             controller.enqueue(new TextEncoder().encode(proposalEvent));
+          } else {
+            await commitTenantKnowledgeTelemetry();
           }
 
           // Detect Paige's outputs for analytics: entity diagrams + legal flags.
@@ -8012,28 +8120,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
           }
 
+          if (!sentWritingPhase) {
+            sentWritingPhase = true;
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
+          }
+          for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
           return;
         }
 
-        if (!sentWritingPhase) {
-          sentWritingPhase = true;
-          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
-        }
-        controller.enqueue(value);
         directSseBuf += decoder.decode(value, { stream: true });
         let nl: number;
         while ((nl = directSseBuf.indexOf("\n")) !== -1) {
           const line = directSseBuf.slice(0, nl);
           directSseBuf = directSseBuf.slice(nl + 1);
           if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+          directFrames.push(`${line}\n\n`);
           try {
             const parsed = JSON.parse(line.slice(6));
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) fullAssistantResponse += content;
           } catch { /* skip */ }
         }
+        // Keep the pull loop advancing without exposing buffered provider bytes.
+        controller.enqueue(new Uint8Array());
       },
     });
 
@@ -8205,7 +8316,7 @@ function isScoreInRange(value: unknown) {
 }
 
 // New: Run a second AI call to extract structured JSON from the analysis, then call sync
-async function runStructuredExtractionAndSync(
+export async function runStructuredExtractionAndSync(
   analysisText: string,
   documentBase64: string,
   callerUserId: string,
@@ -8214,12 +8325,17 @@ async function runStructuredExtractionAndSync(
   serviceRoleKey: string,
   supabase: any,
   clientId: string | null = null,
-  uploadRecordId: string | null = null
+  uploadRecordId: string | null = null,
+  revalidateKnowledgeScope: (() => Promise<boolean>) | null = null,
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
   try {
+    const scopeIsCurrent = async () => !revalidateKnowledgeScope || await revalidateKnowledgeScope();
+    const scopeChanged = () => ({ success: false, error: "Active workspace changed", step: "active_account_changed" });
+
     // Step 1: Extract structured JSON from the analysis via a second AI call
+    if (!(await scopeIsCurrent())) return scopeChanged();
     const extractionResponse = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -8240,6 +8356,10 @@ async function runStructuredExtractionAndSync(
         ],
       }),
     });
+
+    // Do not accept provider output, log a failure, or continue toward sync if
+    // the active account changed while extraction was in flight.
+    if (!(await scopeIsCurrent())) return scopeChanged();
 
     if (!extractionResponse.ok) {
       const errorBody = await extractionResponse.text();
@@ -8336,6 +8456,7 @@ async function runStructuredExtractionAndSync(
 
     console.log(`Calling sync-credit-report-data with ${syncPayload.negative_items.length} negatives, ${syncPayload.positive_accounts.length} positives, ${syncPayload.priority_disputes.length} priority disputes`);
 
+    if (!(await scopeIsCurrent())) return scopeChanged();
     const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
       method: "POST",
       headers: { Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
@@ -8351,6 +8472,8 @@ async function runStructuredExtractionAndSync(
     }
 
     console.log("Sync completed successfully:", syncBody);
+
+    if (!(await scopeIsCurrent())) return scopeChanged();
 
     // Step 4: Write memory record
     const scores = structured.scores || {};
@@ -8393,6 +8516,9 @@ async function runStructuredExtractionAndSync(
       sync_details: syncBody.results,
     };
   } catch (err) {
+    if (revalidateKnowledgeScope && !(await revalidateKnowledgeScope())) {
+      return { success: false, error: "Active workspace changed", step: "active_account_changed" };
+    }
     console.error("Structured extraction and sync pipeline failed:", err);
     await logSyncFailure(supabase, callerUserId, err instanceof Error ? err.message : "Unknown pipeline error", null);
     // Mark upload record as failed if we created one
