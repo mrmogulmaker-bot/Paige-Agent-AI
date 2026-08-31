@@ -99,6 +99,11 @@ function anthropicStream(kind = "text") {
     : kind === "two-tools"
     ? [
         { type: "message_start", message: { usage: { input_tokens: 1 } } },
+        // Narration alongside the tool calls, so the round produces a `summarizeThought` line.
+        // Without it `content` is empty, no thought frame is ever emitted, and an assertion that
+        // thoughts are withheld would pass against a fixture that never makes one.
+        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Checking the private note about CHILD-PRIVATE-MARKER before I answer." } },
         { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-1", name: "plan_list" } },
         { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"limit":11}' } },
         { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tool-2", name: "plan_list" } },
@@ -979,15 +984,25 @@ group("Knowledge telemetry commits only after the reply has actually crossed");
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     provider: ["private-text"],
   });
+  // INVERTED BY THE SAFETY-FIRST STREAMING RULING (owner, 2026-08-31), and kept rather than
+  // deleted because the inversion is the point. 17.1 used to assert that the reply had ALREADY
+  // crossed by this boundary — that was true, and it was the residual the ruling closes. On a
+  // protected turn the reply is now held until this same check passes, so the reply and the
+  // telemetry row share ONE decision: at a lapse here, neither survives.
   assert(
-    "17.1 the reply really did cross first (else this is testing an earlier boundary)",
-    atPostDrain.responseText.includes("CHILD-PRIVATE-MARKER"),
+    "17.1 a lapse at the final boundary withholds the REPLY as well (was: reply already crossed)",
+    !atPostDrain.responseText.includes("CHILD-PRIVATE-MARKER"),
     atPostDrain.responseText.slice(0, 300),
   );
   assert(
-    "17.2 no telemetry row is written when scope lapses at the post-drain boundary",
+    "17.2 ...and no telemetry row is written, on the same decision",
     !atPostDrain.telemetry,
     JSON.stringify(atPostDrain.telemetry?.row ?? null),
+  );
+  assert(
+    "17.2b ...and the user gets the safe refusal instead of a truncated answer",
+    /workspace changed/.test(atPostDrain.responseText),
+    atPostDrain.responseText.slice(0, 300),
   );
 
   // The positive half: an unbroken scope must still record its retrieval, or 17.2 could be
@@ -1235,6 +1250,229 @@ group("once refused, every later revalidation stays refused");
       JSON.stringify(analytics(r).map((i) => i.row?.event_name)),
     );
   }
+}
+
+
+// ── 20 · SAFETY-FIRST STREAMING (owner ruling) ────────────────────────────────────
+// Any reply that reads, summarizes, transforms or otherwise carries tenant Knowledge or
+// document-derived content stays FULLY BUFFERED until its final scope and permission checks
+// pass. Ordinary chat that touches no protected evidence keeps live token streaming. This
+// replaces the previous position — a documented "closing window" residual on the chat path and
+// an inconsistent hold on the document path — with one explicit rule.
+//
+// PROTECTED CONTENT, and therefore what must never survive a failed final check:
+//   · the reply's own `choices[].delta.content` tokens
+//   · `paige_step` frames of kind "thought" — `summarizeThought(model output)`, i.e. model prose
+//     generated FROM a prompt containing Knowledge. They read as progress but they are derived
+//     content, and they streamed live before this rule.
+// Neutral progress that MAY still stream on a protected turn: action steps (fixed-vocabulary
+// labels and counts, never source text, titles or snippets), phase frames, compaction frames.
+//
+// HOW THIS IS PROVEN, and why not by timing. Whether a frame was enqueued before or after the
+// gate is not observable from outside: the handler can fill the stream's queue before the test
+// reads a single byte, which would make "all RPCs then all frames" look like correct ordering
+// even from a streaming implementation. So the property is proven CAUSALLY instead — fail the
+// final gate and assert nothing protected survives. A turn that streamed content early cannot
+// retract it, so its frames are still in the output; a turn that buffered has nothing to flush.
+// That is the same property, and it cannot pass for the wrong reason.
+group("safety-first streaming: protected turns buffer, ordinary turns stream");
+{
+  const protectedFrames = (text) => text.split("\n").filter((l) => {
+    if (!l.startsWith("data: ") || l.includes("[DONE]")) return false;
+    try {
+      const p = JSON.parse(l.slice(6));
+      return typeof p?.choices?.[0]?.delta?.content === "string" || p?.paige_step?.kind === "thought";
+    } catch { return false; }
+  });
+  // Everything the reply itself is made of, minus the refusal sentence the gate emits on failure.
+  const replyContent = (text) => protectedFrames(text)
+    .filter((l) => !/workspace changed/.test(l));
+  const neutralFrames = (text) => text.split("\n").filter((l) => {
+    if (!l.startsWith("data: ") || l.includes("[DONE]")) return false;
+    try {
+      const p = JSON.parse(l.slice(6));
+      return (p?.paige_step && p.paige_step.kind !== "thought") || !!p?.paige_phase;
+    } catch { return false; }
+  });
+  const personaCallsOf = (r) => r.rec.rpc.filter((c) => c.name === "get_paige_persona_context").length;
+
+  const docx = {
+    fileName: "notes.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    kind: "docx",
+    textContent: "Internal operating notes",
+  };
+
+  // Each shape is driven twice: once stable (the positive control — it must DELIVER), then once
+  // with the account switching at the shape's LAST gate, derived from the control's own call
+  // count rather than written down, for the reasons group 19 records.
+  const shapes = [
+    {
+      id: "knowledge chat",
+      opts: { chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["private-text"] },
+      protectedTurn: true,
+    },
+    {
+      id: "document + Knowledge",
+      opts: { chunkContent: "PRIVATE-KB-SOURCE-MARKER", bodyExtras: { document: docx }, provider: ["private-text", "private-text"] },
+      protectedTurn: true,
+    },
+    {
+      // THE §58 CASE. Document-derived content is protected on its own, with or without a KB
+      // match. Before this rule such a turn streamed live, and that inconsistency is what the
+      // owner ruling resolves.
+      id: "document, NO Knowledge match",
+      opts: { kbRejects: true, bodyExtras: { document: docx }, provider: ["private-text", "private-text"] },
+      protectedTurn: true,
+    },
+  ];
+
+  for (const shape of shapes) {
+    const stable = await drive({
+      personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...shape.opts,
+    });
+    assert(
+      `20 ${shape.id}: CONTROL — a clean turn still delivers its reply`,
+      stable.responseText.includes("CHILD-PRIVATE-MARKER"),
+      stable.responseText.slice(0, 200),
+    );
+    const total = personaCallsOf(stable);
+    assert(
+      `20 ${shape.id}: CONTROL — enough gates exist for the timing below to mean anything`,
+      total >= 3,
+      `persona calls: ${total}`,
+    );
+
+    // Switch at the LAST gate: everything up to it succeeded, so this isolates the final check.
+    const atFinalGate = await drive({
+      personaTenant: CHILD,
+      personaSequence: Array(total - 1).fill(CHILD).concat([AGENCY]),
+      memberships: [CHILD, AGENCY],
+      ...shape.opts,
+    });
+    assert(
+      `20 ${shape.id}: a failed FINAL check leaves no protected content in the transcript`,
+      replyContent(atFinalGate.responseText).length === 0,
+      JSON.stringify(replyContent(atFinalGate.responseText)).slice(0, 300),
+    );
+    assert(
+      `20 ${shape.id}: ...no fragment of the reply survives`,
+      !atFinalGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+      atFinalGate.responseText.slice(0, 300),
+    );
+    assert(
+      `20 ${shape.id}: ...the user gets a safe refusal with a recovery path`,
+      /workspace changed|ACTIVE_ACCOUNT_CHANGED/.test(atFinalGate.responseText) &&
+        /[Tt]ry again|Start this request again/.test(atFinalGate.responseText),
+      atFinalGate.responseText.slice(0, 300),
+    );
+    assert(
+      `20 ${shape.id}: ...and writes no Knowledge telemetry`,
+      !atFinalGate.telemetry,
+      JSON.stringify(atFinalGate.telemetry?.row ?? null),
+    );
+  }
+
+  // ORDINARY CHAT IS UNAFFECTED. `kbRejects` leaves the turn with no protected evidence, so it
+  // must still deliver — this is what stops the rule being satisfied by "buffer everything".
+  const ordinary = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    kbRejects: true, provider: ["private-text"],
+  });
+  assert(
+    "20.ordinary an unprotected turn still delivers its reply",
+    ordinary.responseText.includes("CHILD-PRIVATE-MARKER"),
+    ordinary.responseText.slice(0, 200),
+  );
+  assert(
+    "20.ordinary ...and retrieved no Knowledge, so it is genuinely unprotected",
+    !ordinary.telemetry && !!ordinary.logged.find((l) => /KB_FORBIDDEN|REFUSED/.test(l.msg)),
+    JSON.stringify({ tel: !!ordinary.telemetry }),
+  );
+
+  // NEUTRAL PROGRESS STILL REACHES THE USER while a protected answer is being checked. The rule
+  // is "buffer the derived content", not "show nothing".
+  const withTools = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["two-tools", "private-text"],
+  });
+  assert(
+    "20.progress a protected turn still emits neutral progress frames",
+    neutralFrames(withTools.responseText).length > 0,
+    JSON.stringify(neutralFrames(withTools.responseText)).slice(0, 200),
+  );
+
+  // THOUGHT FRAMES ARE CONTENT, NOT PROGRESS. `summarizeThought(model output)` is prose the
+  // model wrote from a Knowledge-bearing prompt; it streamed live before this rule and reads
+  // like status, which is exactly why it needs its own assertion. A tool round is required for
+  // one to exist at all — the tool-less shapes above can never produce one, so without this the
+  // "no protected content survives" assertions say nothing about thoughts.
+  const toolTotal = personaCallsOf(withTools);
+  const thoughtsAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(toolTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["two-tools", "private-text"],
+  });
+  assert(
+    "20.thought CONTROL — the tool shape really does produce thought frames when it completes",
+    withTools.responseText.includes('"kind":"thought"'),
+    JSON.stringify(withTools.responseText.slice(0, 200)),
+  );
+  assert(
+    "20.thought a failed final check leaves no model-authored thought line either",
+    !thoughtsAtGate.responseText.includes('"kind":"thought"'),
+    thoughtsAtGate.responseText.slice(0, 300),
+  );
+
+  // AN UNRESOLVABLE SCOPE IS NOT A MATCH. If the resolver errors, the turn must refuse rather
+  // than read "still the same" — otherwise a tenant-less operator, whose scope is legitimately
+  // null, passes the final check on a failed lookup.
+  const rpcError = { data: null, error: { message: "resolver unavailable", code: "57014" } };
+  const unresolvable = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, rpcError],
+    memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["private-text"],
+  });
+  assert(
+    "20.unresolved an unresolvable scope withholds the protected reply",
+    !unresolvable.responseText.includes("CHILD-PRIVATE-MARKER"),
+    unresolvable.responseText.slice(0, 300),
+  );
+  assert(
+    "20.unresolved ...and writes no Knowledge telemetry",
+    !unresolvable.telemetry,
+    JSON.stringify(unresolvable.telemetry?.row ?? null),
+  );
+
+  // THE TENANT-LESS CASE IS WHERE "unresolvable" ACTUALLY BITES. For a tenant-BEARING turn a
+  // failed lookup yields null, which already differs from the turn's scope, so the refusal
+  // happens either way. For the PLATFORM OPERATOR the turn scope is legitimately null — so
+  // comparing without first requiring the lookup to have SUCCEEDED reads a broken resolver as
+  // "still null, still fine" and releases the reply. The operator has no Knowledge (retrieval
+  // needs a tenant) but can absolutely attach a document, so the turn is protected.
+  const operatorDoc = { document: docx };
+  const operatorClean = await drive({
+    personaTenant: null, personaSequence: [null], memberships: [],
+    bodyExtras: operatorDoc, provider: ["private-text", "private-text"],
+  });
+  assert(
+    "20.operator CONTROL — a tenant-less operator's document turn still delivers",
+    operatorClean.responseText.includes("CHILD-PRIVATE-MARKER"),
+    operatorClean.responseText.slice(0, 250),
+  );
+  const operatorBroken = await drive({
+    personaTenant: null,
+    personaSequence: [null, rpcError],
+    memberships: [],
+    bodyExtras: operatorDoc, provider: ["private-text", "private-text"],
+  });
+  assert(
+    "20.operator a broken resolver withholds the operator's document reply (null is not a match)",
+    !operatorBroken.responseText.includes("CHILD-PRIVATE-MARKER"),
+    operatorBroken.responseText.slice(0, 250),
+  );
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);

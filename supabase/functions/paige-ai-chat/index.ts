@@ -1468,7 +1468,7 @@ JSON:`;
       // the same thing that makes the agentic path safe: `revalidateTenantKnowledgeScope()` is
       // re-asserted at each boundary that carries this content further — before the sync's
       // provider egress, after it returns, and at stream close — and the reply is withheld
-      // behind `holdDirectFramesForKnowledgeScope` until the last of those passes.
+      // behind `holdProtectedContent` until the last of those passes.
       if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
@@ -1550,6 +1550,32 @@ JSON:`;
       console.warn("[paige] tenant KB retrieval failed:", tkErr);
     }
 
+    // ── SAFETY-FIRST STREAMING (owner ruling, 2026-08-31) ────────────────────────────
+    // A reply that reads, summarizes, transforms or otherwise carries tenant Knowledge or
+    // document-derived content stays FULLY BUFFERED until its final scope and permission checks
+    // pass. Ordinary chat that touches none of that keeps live token streaming. This replaces
+    // two inconsistent behaviours: a documented "closing window" residual on the chat path,
+    // where tokens were already gone by the time the last check ran, and a hold on the document
+    // path that engaged only when the KB happened to match.
+    //
+    // THE THREE SOURCES OF PROTECTED EVIDENCE, enumerated rather than assumed:
+    //   1. `tenantKbContext`  — tenant Knowledge chunks.
+    //   2. `ragContext`       — titles and body text from `rag_documents`; document-derived.
+    //   3. `attachedDocument` — the document itself, whether or not anything matched it. This is
+    //      the §58 case: such a turn used to stream live when the KB missed.
+    //
+    // The latch is ONE-WAY. A late retrieval switches the turn onto the buffered path and can
+    // never switch it back, which is what makes "before any protected content can emit" true
+    // rather than merely usual — content is emitted only at the reply stage, after every
+    // retrieval has had its chance to set this.
+    let turnCarriesProtectedContent = !!tenantKbContext || !!ragContext || !!attachedDocument;
+    const markTurnProtected = (reason: string) => {
+      if (turnCarriesProtectedContent) return;
+      turnCarriesProtectedContent = true;
+      console.log("[paige] turn switched to the protected buffered path", JSON.stringify({ reason }));
+    };
+    void markTurnProtected; // called by late-retrieval seams below; kept addressable for new ones.
+
     // Reuse the same JWT-backed authoritative resolver that selected the Knowledge
     // tenant. This is deliberately not a second authority store or a browser epoch:
     // every provider boundary carrying private Knowledge must still resolve to the
@@ -1566,7 +1592,16 @@ JSON:`;
     // claim and it is tracked rather than silently widened into this change, because the
     // compactor is a separate subsystem with its own post-turn/waitUntil lifecycle.
     //
-    // ONCE REFUSED, ALWAYS REFUSED — and this flag is what makes that true. On failure this
+    // ONCE REFUSED, ALWAYS REFUSED — and this flag is what makes that true.
+    //
+    // HONEST NOTE (§13): the safety-first streaming rule made this flag REDUNDANT for the case
+    // it was written for. The defect it fixed was that a refusal cleared `tenantKbContext`, the
+    // very value the early return keyed on, so the next call read the absence as "nothing to
+    // protect". The early return now keys on the protected-turn LATCH, which never clears, so a
+    // second call re-resolves and refuses again on its own. Mutation-verified: removing this
+    // flag alone no longer fails the suite. It is kept as a short-circuit and as a guard against
+    // a resolver that flaps, not because it is still load-bearing — and this note exists so the
+    // next reader is not misled by the anchoring case below into thinking it is. On failure this
     // helper clears `tenantKbContext`/`tenantKbScopeTenantId`, which is exactly the condition
     // the early return below keys on. Without a sticky record of the refusal, the SECOND call
     // after a failure takes that early return and reports SUCCESS: the guard erases its own
@@ -1580,16 +1615,25 @@ JSON:`;
     // Knowledge was ever retrieved" (nothing to protect, proceed) and "Knowledge was retrieved
     // and its scope has since been revoked" (refuse, permanently, for the rest of the turn).
     let tenantKnowledgeScopeRevoked = false;
+    // The account this turn is scoped to, captured UNCONDITIONALLY at turn start. It used to be
+    // `tenantKbScopeTenantId`, which only existed when the Knowledge lookup matched — so a
+    // document turn whose KB missed had nothing to compare against and no gate to fail, which is
+    // exactly how document-derived content escaped the check. A protected turn always has a
+    // scope; whether the KB matched is a separate question.
+    const turnScopeTenantId: string | null = personaCtx.tenant_id ?? null;
     const revalidateTenantKnowledgeScope = async (): Promise<boolean> => {
       if (tenantKnowledgeScopeRevoked) return false;
-      if (!tenantKbContext || !tenantKbScopeTenantId) return true;
+      // An ordinary turn carries no protected evidence, so there is nothing to re-check and it
+      // pays no RPC — this is what keeps live streaming free of added latency.
+      if (!turnCarriesProtectedContent) return true;
       try {
         const { data, error } = await supabaseClient.rpc("get_paige_persona_context");
         const row = Array.isArray(data) ? data[0] : data;
-        const currentTenantId = !error && row && typeof row.tenant_id === "string"
-          ? row.tenant_id
-          : null;
-        if (currentTenantId === tenantKbScopeTenantId) return true;
+        // A resolution FAILURE is not a match. Requiring the row explicitly stops an errored
+        // lookup from reading as "still null, still fine" for a tenant-less operator.
+        const resolved = !error && !!row;
+        const currentTenantId = resolved && typeof row.tenant_id === "string" ? row.tenant_id : null;
+        if (resolved && currentTenantId === turnScopeTenantId) return true;
         console.error(
           "[paige] active account changed after Knowledge retrieval — provider dispatch cancelled",
           JSON.stringify({ retrieved_tenant_id: tenantKbScopeTenantId, current_tenant_id: currentTenantId, code: (error as any)?.code ?? null }),
@@ -8015,8 +8059,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // loop, approvals/confirms, then her actual reply. Loop bounds, no-progress
       // guard, convo balance, and persistence are all preserved exactly.
       const enc = new TextEncoder();
+      // NEUTRAL progress goes straight to the wire on every turn. An action step's label comes
+      // from a fixed vocabulary and its detail is a count — never source text, a title or a
+      // snippet — so it is safe to show while a protected answer is still being checked.
       const emitStep = (controller: ReadableStreamDefaultController, s: any) =>
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
+      // PROTECTED content is held on a protected turn and released only after the final check.
+      // On an ordinary turn this is a pass-through, so live token streaming is unchanged.
+      const heldContent: Uint8Array[] = [];
+      const emitContent = (controller: ReadableStreamDefaultController, chunk: Uint8Array) => {
+        if (turnCarriesProtectedContent) heldContent.push(chunk);
+        else controller.enqueue(chunk);
+      };
+      const releaseContent = (controller: ReadableStreamDefaultController) => {
+        for (const c of heldContent) controller.enqueue(c);
+        heldContent.length = 0;
+      };
+      const discardContent = () => { heldContent.length = 0; };
       const finalStream = new ReadableStream({
         async start(controller) {
          // §13/§36 — a client was named but could NOT be authorized, so this turn ran with no
@@ -8106,7 +8165,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 ts: Date.now() - startedAt,
               };
               stepTrace.push(ts);
-              try { emitStep(controller, ts); } catch { /* client hung up */ }
+              // A "thought" is `summarizeThought(model output)` — prose the model wrote FROM a
+              // prompt that may contain Knowledge. It reads like progress but it is derived
+              // content, so on a protected turn it is held with the reply rather than streamed.
+              try { emitContent(controller, enc.encode(`data: ${JSON.stringify({ paige_step: ts })}\n\n`)); } catch { /* client hung up */ }
             }
 
             const { toolResults, executed, scopeInvalidated } = await executeToolCalls(toolCalls, queuedApprovals);
@@ -8214,7 +8276,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // the first delta.content, so this is a lightweight explicit confirmation, not a dependency.
           controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
           if (finalChunks) {
-            for (const c of finalChunks) controller.enqueue(c);
+            for (const c of finalChunks) emitContent(controller, c);
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {
             const up = finalStreamResponse.body.getReader();
             const dec = new TextDecoder();
@@ -8229,7 +8291,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               while (true) {
                 const { done, value } = await up.read();
                 if (done) break;
-                controller.enqueue(value);
+                emitContent(controller, value);
                 capBuf += dec.decode(value, { stream: true });
                 let nl: number;
                 while ((nl = capBuf.indexOf("\n")) !== -1) { capLine(capBuf.slice(0, nl)); capBuf = capBuf.slice(nl + 1); }
@@ -8243,35 +8305,48 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // shows the same thing the user saw (not a question with no reply).
             const fallback = "I gathered what I could but couldn't finish that — mind trying again?";
             finalAssistantText = fallback;
-            controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: fallback } }] })}\n\n`));
+            emitContent(controller, enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: fallback } }] })}\n\n`));
             controller.enqueue(enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
           }
 
-          // FINAL BOUNDARY — asserted after the reply has been forwarded, before the only
-          // durable record this mechanism writes. A closing provider call is issued while the
-          // scope is valid, but its bytes arrive over a window that is not instantaneous, so
-          // this is the last point at which "the account that asked is still the account that
-          // is here" can be established at all.
+          // ── THE FINAL CHECK, and the only place protected content is released ────────────
+          // On a protected turn nothing content-bearing has reached the client yet: the reply
+          // and every thought line are sitting in `heldContent`. This is where they are either
+          // let go or dropped, and it is the last thing that happens before the durable writes.
           //
-          // HONEST RESIDUAL (§13) — state precisely what this does NOT cover. The closing
-          // stream's bytes are forwarded to the caller LIVE as they arrive; an account change
-          // DURING that drain is caught here, after those bytes have already left. Closing
-          // that window would mean buffering the whole reply and flushing it only on success —
-          // exactly what `holdDirectFramesForKnowledgeScope` does on the document path — and on
-          // this path that would remove live token streaming from every turn that carries
-          // Knowledge. That is a product trade, not a security judgement, and it is not taken
-          // unilaterally here. What IS guaranteed: the content was authorised when the call was
-          // made, the caller is the same session throughout, and no durable record of a
-          // stale-scope retrieval is written.
-          if (await revalidateTenantKnowledgeScope()) {
-            await commitTenantKnowledgeTelemetry();
-          } else {
+          // On an ordinary turn `heldContent` is empty — the reply already streamed live — so
+          // the release is a no-op and behaviour is byte-identical to before this rule.
+          const finalCheckHeld = await revalidateTenantKnowledgeScope();
+          if (!finalCheckHeld) {
+            // Redundant today — the `return` below means nothing would flush anyway — and kept
+            // deliberately, mutation-verified as non-load-bearing rather than assumed to be.
+            // It frees the buffer and makes the refusal path's intent explicit, so a later edit
+            // that adds a flush after this point cannot silently release withheld content.
+            discardContent();
             pendingTenantKbTelemetry = null;
+            finalAssistantText = "";
+            const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
+            try {
+              controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
+              controller.enqueue(enc.encode("data: [DONE]\n\n"));
+            } catch { /* client already gone */ }
+            return;
           }
+          releaseContent(controller);
+
+          // The durable record follows that same single decision. It used to sit behind its own
+          // separate revalidation; folding it into the one final check means the row, the
+          // transcript and the wire cannot disagree about whether the turn happened.
+          await commitTenantKnowledgeTelemetry();
 
           // Persist Paige's reply (owner Your-Paige threads only; no-op without a
           // threadId). bundle_ref carries the queued approvals + confirm cards so
           // the UI reconstructs them on reload. waitUntil keeps it alive past close.
+          //
+          // Reached only when the final check passed, on BOTH kinds of turn. Buffering removed
+          // the asymmetry that used to justify persisting an already-streamed reply on a lapsed
+          // scope: the transcript and the wire now always agree, because neither happens unless
+          // the check holds.
           if (payloadThreadId && finalAssistantText.trim()) {
             try {
               const p = persistAssistantTurn(finalAssistantText, {
@@ -8322,14 +8397,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // and post-processing checks complete. This prevents prior-account Knowledge
     // from crossing the response boundary if authority changes mid-stream.
     const directFrames: string[] = [];
-    // THE SNAPSHOT IS LOAD-BEARING — do not turn this into a live read of
-    // `!!tenantKbScopeTenantId`. The revalidation guard CLEARS that variable when it refuses, so
-    // a recomputation at the flush point evaluates FALSE precisely when a revocation has just
-    // happened, and the buffered frames would stream. Captured once, it stays true and keeps
-    // holding, which is the behaviour the refusal path depends on. (§58: this hold is also what
-    // removes live token streaming from Knowledge-carrying document turns — see the capability
-    // call-out in the PR body.)
-    const holdDirectFramesForKnowledgeScope = !!tenantKbScopeTenantId;
+    // Sourced from the ONE-WAY protected-turn latch, not from `!!tenantKbScopeTenantId`. Two
+    // reasons, and the second is the §58 fix:
+    //
+    //   1. The revalidation guard CLEARS `tenantKbScopeTenantId` when it refuses, so keying on
+    //      it evaluates FALSE precisely when a revocation has just happened — the buffered
+    //      frames would stream at the very moment they must not. The latch only ever goes true.
+    //   2. Keying on the KB meant a document turn whose Knowledge lookup MISSED streamed live,
+    //      while the same document with a match was held. Document-derived content is protected
+    //      on its own; every document turn holds now, whatever the KB returned.
+    const holdProtectedContent = turnCarriesProtectedContent;
     // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
     // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
     // the first delta, so this is a lightweight confirmation, not a dependency.
@@ -8368,7 +8445,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (directSseBuf) {
             for (const line of directSseBuf.split("\n")) {
               if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-              if (holdDirectFramesForKnowledgeScope) directFrames.push(`${line}\n\n`);
+              if (holdProtectedContent) directFrames.push(`${line}\n\n`);
               try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) fullAssistantResponse += c; } catch { /* skip */ }
             }
             directSseBuf = "";
@@ -8524,11 +8601,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
           }
 
-          if (holdDirectFramesForKnowledgeScope && !sentWritingPhase) {
+          if (holdProtectedContent && !sentWritingPhase) {
             sentWritingPhase = true;
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
           }
-          if (holdDirectFramesForKnowledgeScope) {
+          if (holdProtectedContent) {
             // Asserted at the boundary the frames actually cross, not only upstream. Every path
             // that reaches here is supposed to have re-checked already; this is the one place a
             // missed path would become a leak rather than a wrong log line, so it re-checks
@@ -8561,7 +8638,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return;
         }
 
-        if (!holdDirectFramesForKnowledgeScope) {
+        if (!holdProtectedContent) {
           if (!sentWritingPhase) {
             sentWritingPhase = true;
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
@@ -8574,7 +8651,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           const line = directSseBuf.slice(0, nl);
           directSseBuf = directSseBuf.slice(nl + 1);
           if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-          if (holdDirectFramesForKnowledgeScope) directFrames.push(`${line}\n\n`);
+          if (holdProtectedContent) directFrames.push(`${line}\n\n`);
           try {
             const parsed = JSON.parse(line.slice(6));
             const content = parsed.choices?.[0]?.delta?.content;
@@ -8582,7 +8659,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           } catch { /* skip */ }
         }
         // Keep the pull loop advancing without exposing buffered provider bytes.
-        if (holdDirectFramesForKnowledgeScope) controller.enqueue(new Uint8Array());
+        if (holdProtectedContent) controller.enqueue(new Uint8Array());
       },
     });
 
