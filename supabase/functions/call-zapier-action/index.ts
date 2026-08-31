@@ -126,7 +126,23 @@ Deno.serve(async (req) => {
         _refresh_token: rotated.refreshToken,
         _expires_at: rotated.expiresAt,
       });
-      if (rErr) console.error("[call-zapier-action] token rotation not stored:", rErr.message);
+      // FAIL CLOSED when the rotation cannot be stored. The provider has already
+      // invalidated the old refresh token by issuing this one, so a database that still
+      // holds the old one can never refresh again: this single request would succeed and
+      // the connection would be permanently unable to renew, discovered days later as an
+      // expiry nobody can explain. Logging and carrying on trades one visible failure now
+      // for an invisible, unrecoverable one later.
+      //
+      // Nothing has been spent at this point — the capability has not run — so refusing
+      // costs one action and keeps the connection repairable by reconnecting.
+      if (rErr) {
+        console.error("[call-zapier-action] token rotation not stored:", rErr.message);
+        return jsonResponse({
+          ok: false,
+          error: "reauthorization_required",
+          detail: "This workspace's Zapier authorization could not be renewed. Reconnect it in Settings → Integrations → Zapier.",
+        });
+      }
       token = rotated.accessToken;
     } catch {
       // A grant that can no longer be refreshed has been withdrawn or has expired. Saying

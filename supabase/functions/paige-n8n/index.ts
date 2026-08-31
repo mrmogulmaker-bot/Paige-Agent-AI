@@ -393,9 +393,16 @@ Deno.serve(async (req) => {
           channels: { sms_sent: sms, email_sent: email, tags_added: tags },
           errors: errs,
           last_node: lastNode,
-          result: lastJson ? JSON.stringify(lastJson).slice(0, 4000) : null,
+          // The failing node's NAME as its own typed field. It used to exist only inside
+          // a formatted string ("Send: SMTP refused"), which no consumer could read a name
+          // out of — the projection tried, got `undefined`, and reported no failing node
+          // on every failed run while claiming in a comment that the name survived.
+          failed_node: nodeError?.name ?? null,
           node_error: nodeError ? `${nodeError.name}: ${nodeError.error}` : (rd?.error?.message ?? null),
-          nodes,
+          // `result` (up to 4000 characters of whatever the last node emitted) and the
+          // per-node `nodes` trace are NOT returned. They are the same arbitrary
+          // third-party text as the webhook body removed elsewhere in this file, and the
+          // typed fields above carry everything a caller acts on.
           verify_hint: status === "running" || status === "waiting"
             ? "Still in flight — delivery not yet knowable. Re-check in a moment."
             : (delivered === true ? "Confirmed from the stored execution — the send went out."
