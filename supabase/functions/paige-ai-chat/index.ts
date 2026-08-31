@@ -8487,10 +8487,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             console.warn("[paige] analytics post-stream detection failed:", (e as Error)?.message);
           }
 
+          // THE CLOSE DECISION IS MADE ONCE, HERE, BEFORE ANY DURABLE WRITE — because there are
+          // TWO durable effects at the close of a document turn, not one, and they must agree.
+          // A previous revision moved the telemetry commit behind the flush check and left
+          // persistence in front of it, so a switch landing on this boundary withheld the reply
+          // from the stream and still wrote it permanently into the thread, where a reload
+          // renders it and `maybeRefreshSummary` folds it into the rolling summary. Withholding
+          // a reply from the wire while saving it to the database is not a refusal.
+          //
+          // Returns `true` immediately, with no RPC, on any turn that retrieved no Knowledge, so
+          // this costs nothing on the ordinary path.
+          const scopeHeldAtClose = await revalidateTenantKnowledgeScope();
+
           // Persist Paige's reply for owner Your-Paige threads (#94). No-op when
           // no threadId (client portal / doc-only calls). Non-agentic path, so no
           // queued approvals/confirm cards to bundle.
-          if (payloadThreadId && fullAssistantResponse.trim()) {
+          //
+          // NOT persisted when the close boundary refused: the user is not shown this reply, so
+          // saving it would make a reload display something they were explicitly told was
+          // stopped. (The agentic path deliberately does the opposite and persists after its
+          // post-drain check, because there the reply has ALREADY streamed live — persisting
+          // matches what the user actually saw, which is what #94 integrity asks for. The two
+          // paths differ because one withholds the reply and the other does not.)
+          if (scopeHeldAtClose && payloadThreadId && fullAssistantResponse.trim()) {
             const p = persistAssistantTurn(fullAssistantResponse, { bundleRef: null });
             // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
             if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
@@ -8511,14 +8530,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // green, and only removing BOTH re-opens the leak. That redundancy is the point, not
             // an oversight: it is a deliberate backstop for a path nobody has thought of yet.
             // Do not delete it as dead code on the strength of a green suite.
-            // Re-RESOLVES here rather than only reading the sticky flag. Reading the flag answers
-            // "was this revoked at some earlier boundary"; calling the resolver answers "is this
-            // still the same account NOW", which is the question the last hop before the bytes
-            // leave should be asking. The gap it closes is small — a telemetry insert and the
-            // analytics regex block sit between the last real check and this one — but it is a
-            // different residual from the drain one documented on the agentic path, and it costs
-            // one RPC on a path that already makes several.
-            if (!(await revalidateTenantKnowledgeScope())) {
+            // Consumes the single close decision resolved just above rather than re-resolving.
+            // One decision, both durable effects and the wire, so the reply, the thread row and
+            // the telemetry row can never disagree about whether this turn happened.
+            if (!scopeHeldAtClose) {
               const changed = "Your active workspace changed, so I stopped here. Anything I'd already finished is saved. Try again in the current workspace.";
               controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
             } else {

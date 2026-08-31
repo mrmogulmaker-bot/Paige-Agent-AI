@@ -941,12 +941,26 @@ group("once refused, every later revalidation stays refused");
   // prior-workspace reply held by `holdDirectFramesForKnowledgeScope` was flushed to the client.
   // The entire suite was green while this was true, which is the whole reason this group exists.
   const pdf = { fileName: "report.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
-  const creditTurn = (personaSequence, memberships) => drive({
+  // Persistence is the OTHER durable effect at the close of a document turn, and it is invisible
+  // to every assertion above — they read the stream and the telemetry table. A revision that
+  // moved the telemetry commit behind the flush check and left `persistAssistantTurn` in FRONT
+  // of it withheld the reply from the wire and still wrote it permanently into the thread, where
+  // a reload renders it and the rolling summary folds it in. Withholding a reply from the wire
+  // while saving it to the database is not a refusal, so `paige_chat_turn_append` is asserted
+  // on directly. A `threadId` is required to reach that path at all.
+  const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  //
+  // Filtered to `p_role === "assistant"`: the same RPC also appends the USER's turn before the
+  // model call, so a bare name match is true on every threaded turn and would assert nothing.
+  const persisted = (r) => r.rec.rpc.some(
+    (c) => c.name === "paige_chat_turn_append" && c.args?.p_role === "assistant",
+  );
+  const creditTurn = (personaSequence, memberships, extra = {}) => drive({
     personaTenant: CHILD,
     personaSequence,
     memberships,
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
-    bodyExtras: { document: pdf },
+    bodyExtras: { document: pdf, ...extra },
     // read-check routes to the credit-report branch · the chat reply · the extraction call
     provider: ["read-check", "private-text", "json-extraction"],
   });
@@ -962,6 +976,16 @@ group("once refused, every later revalidation stays refused");
   );
   assert("19.2 CONTROL — and it really did retrieve Knowledge", !!stable.kbCall, JSON.stringify(stable.kbCall ?? null));
   assert("19.3 CONTROL — and it really did reach sync", stable.syncCalls.length === 1, `sync calls: ${stable.syncCalls.length}`);
+
+  // The persistence control has to be its own run: without a threadId the persist path is a
+  // no-op, so asserting "nothing was persisted" on a switched turn would otherwise be true for
+  // a reason that has nothing to do with scope.
+  const stableThread = await creditTurn([CHILD], [CHILD], { threadId: THREAD });
+  assert(
+    "19.4 CONTROL — an unbroken credit-report turn DOES persist its reply",
+    persisted(stableThread),
+    JSON.stringify(stableThread.rec.rpc.map((c) => c.name)),
+  );
 
   // Every switch timing from the document close-boundary through the extraction stages and out
   // to the caller's OWN post-sync recheck. Each of 2..6 leaked the prior workspace's reply
@@ -997,6 +1021,12 @@ group("once refused, every later revalidation stays refused");
       `19 switch at persona call ${n}: no stale Knowledge telemetry`,
       !r.telemetry,
       JSON.stringify(r.telemetry?.row ?? null),
+    );
+    const rt = await creditTurn(Array(n).fill(CHILD).concat([AGENCY]), [CHILD, AGENCY], { threadId: THREAD });
+    assert(
+      `19 switch at persona call ${n}: the withheld reply is not persisted to the thread either`,
+      !persisted(rt),
+      JSON.stringify(rt.rec.rpc.map((c) => c.name)),
     );
   }
 }
