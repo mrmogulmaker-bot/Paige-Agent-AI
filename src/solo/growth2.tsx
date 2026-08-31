@@ -152,6 +152,7 @@ function PipelineSurface({ data, setDetail }) {
   const stages=selected?workspace.stages.filter((stage)=>stage.pipelineId===selected.id).sort((a,b)=>a.orderIndex-b.orderIndex):[];
   const activeStages=stages.filter((stage)=>!stage.archivedAt);
   const focusId=activeStages.some((stage)=>stage.id===focusedStageId)?focusedStageId:activeStages[0]?.id;
+  React.useEffect(()=>{setCreating(false);setCreatePending(false);setCreateMessage("");setNewPipeline({name:"",description:"",starter:"blank"});},[data.tenantId]);
   React.useEffect(()=>{ if(selected&&selected.id!==selectedId){setSelectedId(selected.id);setFocusedStageId("");setConfiguring(false);} },[selected,selectedId]);
   React.useEffect(()=>{
     if(!creating)return;
