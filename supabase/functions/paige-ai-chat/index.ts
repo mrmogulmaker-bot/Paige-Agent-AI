@@ -1555,7 +1555,23 @@ JSON:`;
     // every provider boundary carrying private Knowledge must still resolve to the
     // exact same active account at that moment. Missing, changed, malformed, or
     // revoked scope fails closed before model egress.
+    //
+    // ONCE REFUSED, ALWAYS REFUSED — and this flag is what makes that true. On failure this
+    // helper clears `tenantKbContext`/`tenantKbScopeTenantId`, which is exactly the condition
+    // the early return below keys on. Without a sticky record of the refusal, the SECOND call
+    // after a failure takes that early return and reports SUCCESS: the guard erases its own
+    // evidence and then reads the absence as "nothing to protect".
+    //
+    // That is not theoretical. On a credit-report document turn the scope is checked twice —
+    // once by the callback handed to `runStructuredExtractionAndSync` and again by this
+    // function's caller when the helper returns. A switch during extraction refused the first
+    // and passed the second, so the buffered prior-workspace reply was flushed to the client
+    // anyway, with the whole suite green. The distinction the flag restores is between "no
+    // Knowledge was ever retrieved" (nothing to protect, proceed) and "Knowledge was retrieved
+    // and its scope has since been revoked" (refuse, permanently, for the rest of the turn).
+    let tenantKnowledgeScopeRevoked = false;
     const revalidateTenantKnowledgeScope = async (): Promise<boolean> => {
+      if (tenantKnowledgeScopeRevoked) return false;
       if (!tenantKbContext || !tenantKbScopeTenantId) return true;
       try {
         const { data, error } = await supabaseClient.rpc("get_paige_persona_context");
@@ -1571,6 +1587,7 @@ JSON:`;
       } catch (error) {
         console.error("[paige] active-account Knowledge revalidation failed — provider dispatch cancelled", (error as Error)?.message);
       }
+      tenantKnowledgeScopeRevoked = true;
       tenantKbContext = "";
       tenantKbScopeTenantId = null;
       pendingTenantKbTelemetry = null;
@@ -8461,7 +8478,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
           }
           if (holdDirectFramesForKnowledgeScope) {
-            for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));
+            // Asserted at the boundary the frames actually cross, not only upstream. Every path
+            // that reaches here is supposed to have re-checked already; this is the one place a
+            // missed path would become a leak rather than a wrong log line, so it re-checks
+            // regardless. Fail closed: withhold the buffered reply and say why.
+            //
+            // HONEST NOTE (§13): on every path reachable today this is REDUNDANT with the sticky
+            // flag's early return — mutation-verified, removing either one alone leaves the suite
+            // green, and only removing BOTH re-opens the leak. That redundancy is the point, not
+            // an oversight: it is a deliberate backstop for a path nobody has thought of yet.
+            // Do not delete it as dead code on the strength of a green suite.
+            if (tenantKnowledgeScopeRevoked) {
+              const changed = "Your active workspace changed, so I stopped this request. Try again in the current workspace.";
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: changed } }] })}\n\n`));
+            } else {
+              for (const frame of directFrames) controller.enqueue(new TextEncoder().encode(frame));
+            }
           }
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();

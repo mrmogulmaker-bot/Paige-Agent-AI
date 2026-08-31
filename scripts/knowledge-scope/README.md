@@ -69,9 +69,30 @@ The decisive ones:
 - **14** — document post-processing revalidates before extraction and before sync. Valid scope
   preserves the path; switched, unresolved, or revoked scope produces no unauthorized provider
   call, sync, post-processing write, or stale telemetry.
-- **15** — attached-document turns fail closed by never injecting tenant Knowledge into their
-  multi-stage provider/sync path. The existing document response remains usable, while no
-  `match_tenant_knowledge` call, Knowledge telemetry, or private KB chunk reaches that path.
+- **15** — attached-document turns **do** retrieve tenant Knowledge, scoped to the active
+  account, and their guard actually fires. A valid document turn queries the active tenant,
+  carries the chunk into the provider payload, and writes telemetry; a switched one withholds
+  the reply and reports the cancellation.
+
+  **This check previously asserted the exact opposite** — that document turns never query
+  Knowledge — and passed green, which is why it is called out here. That was an earlier
+  revision's `&& !attachedDocument` gate on retrieval, and it was wrong twice: `main` grounds
+  document turns in Knowledge, so excluding them silently removed a shipped capability; and the
+  exclusion left `tenantKbScopeTenantId` null on exactly the path the document-side guards
+  protect, so every one of them returned `true` without ever calling the resolver. A guard that
+  cannot fire is not a guard, and a check that certifies the regression is worse than no check.
+- **16** — the tool-dispatch guard is asserted **per tool**, not once per batch. A batch is not
+  instantaneous, so a batch-level check authorises the whole round on the scope that held when
+  the first tool ran.
+- **17** — Knowledge telemetry, the one durable row this mechanism writes, commits only after
+  the reply has actually crossed and the scope has been re-asserted a final time.
+- **18** — each provider re-entry in the agent loop (continuation, closing call) re-asserts
+  scope on its own. Two of these boundaries could previously be deleted with the suite green.
+- **19** — a refusal is **sticky**. The helper clears the very state its own early return reads
+  as "nothing to protect", so before this was fixed the first call after a switch refused and
+  every later one reported success — and on a credit-report turn, which checks scope twice
+  around a slow extraction stage, the buffered prior-workspace reply was flushed to the client
+  with the whole suite green.
 
 ## A trap worth naming
 

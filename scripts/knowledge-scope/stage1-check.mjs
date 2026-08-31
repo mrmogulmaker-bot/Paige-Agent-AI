@@ -139,6 +139,21 @@ globalThis.fetch = async (url, init) => {
         headers: { "Content-Type": "application/json" },
       });
     }
+    // The PDF read-check that decides `isCreditReportPdf`. Satisfying it is what routes a
+    // document turn down the credit-report extraction+sync branch — the only path on which the
+    // sync helper's scope callback AND the caller's own recheck both run, which is what made
+    // the self-erasing-guard defect reachable.
+    if (next === "read-check") {
+      const readCheck = JSON.stringify({
+        can_read_document: true,
+        document_kind: "credit_report",
+        first_five_account_names: ["Test Bank"],
+      });
+      return new Response(JSON.stringify({ content: [{ type: "text", text: readCheck }], model: "test", usage: { input_tokens: 1, output_tokens: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     // A provider round that FAILS. Used to reach the loop's forced-termination path — the
     // branch that issues a tools-less CLOSING call — without needing to exhaust MAX_ROUNDS.
     if (next === "fail") {
@@ -872,6 +887,68 @@ group("every provider re-entry in the agent loop re-asserts scope on its own");
     !atClosingCall.telemetry,
     JSON.stringify(atClosingCall.telemetry?.row ?? null),
   );
+}
+
+
+// ── 19 · A refusal is STICKY — the guard must not erase its own evidence ──────────
+group("once refused, every later revalidation stays refused");
+{
+  // THE DEFECT THIS PINS (found by external review on 4f982d0e9, reproduced here before it was
+  // fixed). `revalidateTenantKnowledgeScope` clears `tenantKbContext` and `tenantKbScopeTenantId`
+  // when it refuses — which is precisely the condition its own early return reads as "no
+  // Knowledge was retrieved, nothing to protect, proceed". So the first call after a switch
+  // returned false and every call after that returned TRUE. The guard destroyed its own
+  // evidence and then took the absence of evidence as permission.
+  //
+  // A credit-report document turn is where that becomes a leak rather than a curiosity, because
+  // it is the one path that checks scope TWICE around a slow stage: once via the callback handed
+  // to `runStructuredExtractionAndSync`, and again in the caller when the helper returns. A
+  // switch during extraction refused the first and passed the second, so the buffered
+  // prior-workspace reply held by `holdDirectFramesForKnowledgeScope` was flushed to the client.
+  // The entire suite was green while this was true, which is the whole reason this group exists.
+  const pdf = { fileName: "report.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
+  const creditTurn = (personaSequence, memberships) => drive({
+    personaTenant: CHILD,
+    personaSequence,
+    memberships,
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    bodyExtras: { document: pdf },
+    // read-check routes to the credit-report branch · the chat reply · the extraction call
+    provider: ["read-check", "private-text", "json-extraction"],
+  });
+
+  // POSITIVE CONTROL FIRST. Without it, "the marker never appeared" and "the marker was
+  // correctly withheld" are indistinguishable, and every assertion below would be satisfied by
+  // a fixture that simply never produces a reply.
+  const stable = await creditTurn([CHILD], [CHILD]);
+  assert(
+    "19.1 CONTROL — an unbroken credit-report turn does deliver its reply",
+    stable.responseText.includes("CHILD-PRIVATE-MARKER"),
+    stable.responseText.slice(0, 300),
+  );
+  assert("19.2 CONTROL — and it really did retrieve Knowledge", !!stable.kbCall, JSON.stringify(stable.kbCall ?? null));
+  assert("19.3 CONTROL — and it really did reach sync", stable.syncCalls.length === 1, `sync calls: ${stable.syncCalls.length}`);
+
+  // Every switch timing from the document close-boundary through the extraction stages. Each
+  // one leaked the prior workspace's reply before the sticky flag; each must now withhold it.
+  for (const n of [2, 3, 4, 5, 6]) {
+    const r = await creditTurn(Array(n).fill(CHILD).concat([AGENCY]), [CHILD, AGENCY]);
+    assert(
+      `19 switch at persona call ${n}: the prior workspace's reply is never flushed`,
+      !r.responseText.includes("CHILD-PRIVATE-MARKER"),
+      r.responseText.slice(0, 300),
+    );
+    assert(
+      `19 switch at persona call ${n}: the cancellation is reported instead`,
+      /active workspace changed|ACTIVE_ACCOUNT_CHANGED/.test(r.responseText),
+      r.responseText.slice(0, 300),
+    );
+    assert(
+      `19 switch at persona call ${n}: no stale Knowledge telemetry`,
+      !r.telemetry,
+      JSON.stringify(r.telemetry?.row ?? null),
+    );
+  }
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);
