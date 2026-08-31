@@ -1068,11 +1068,17 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   **A third time, in the reason given for the last omission.** `050000` left `tenant_id` out
   because the update policy's `WITH CHECK` "already refuses a NULL or foreign value" — true of a
   tenant admin, false of a platform operator, because that policy reads
-  `is_platform_owner() OR (tenant_id = … AND …)` and the first branch short-circuits before it
-  looks at the column. A review measured an operator both NULLing and reassigning a
-  carrier-approved registration, which moves a live `messaging_service_sid` onto another business
-  with no audit row. `20261004060000` closes it. **A delegation is a claim about the thing you
-  delegated to — check that thing, do not restate what you assume it does.**
+  `is_platform_owner() OR (tenant_id = … AND …)`, which is true for an operator whatever the
+  column holds, so the tenant_id test can never refuse their write. That is the disjunction's
+  truth value, not a claim about an evaluation order PostgreSQL does not guarantee. A review
+  measured an operator both NULLing and reassigning a carrier-approved registration, which moves
+  a live `messaging_service_sid` onto another business with no audit row — carrying the same
+  qualification the tier matrix and the capability map carry: the reassign lands only on a tenant
+  that holds no registration of its own, because onto an occupied one the unique constraint
+  refuses the write first. That is why the proof pins the refusal HINT rather than the refusal
+  alone; "refused" by itself would pass with the guard deleted. `20261004060000` closes it.
+  **A delegation is a claim about the thing you delegated to — check that thing, do not restate
+  what you assume it does.**
 
 - **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
   banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for

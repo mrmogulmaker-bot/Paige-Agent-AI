@@ -32,11 +32,21 @@ DECLARE
   tD uuid := 'dd000000-0000-4000-8000-0000000000d1';  -- service-role target, untouched by other cases
   uD uuid := 'dd000000-0000-4000-8000-0000000000d2';
   -- A PLATFORM OPERATOR. Needed because the tenant_id freeze's whole point is the
-  -- tier the update policy does NOT constrain: its WITH CHECK short-circuits on
-  -- is_platform_owner() before it reads tenant_id. A case run as a tenant admin
-  -- would be refused by RLS and would therefore pass with the freeze deleted —
-  -- vacuous against the exact defect it claims to cover.
-  uOp uuid := 'ee000000-0000-4000-8000-0000000000e1';   -- NOT ff…f1: the sibling concurrency proof owns that id and COMMITS its fixture
+  -- tier the update policy does NOT constrain: its WITH CHECK is
+  -- `is_platform_owner() OR (tenant_id = ... AND ...)`, and once is_platform_owner()
+  -- is true the whole expression is true WHATEVER tenant_id holds. That is a
+  -- statement about the truth value, not about evaluation order — PostgreSQL does
+  -- not guarantee that OR evaluates left to right, and the conclusion does not need
+  -- it to. A case run as a tenant admin would be refused by RLS and would therefore
+  -- pass with the freeze deleted — vacuous against the defect it claims to cover.
+  -- Its id must collide with NEITHER fixture the sibling concurrency proof commits.
+  -- That script owns the whole ee… pair (D2: tenant ee…e1, user ee…e2) and the whole
+  -- ff… pair (D3: tenant ff…f1, user ff…f2), and it COMMITS both, so an id shared with
+  -- any of the four is live in another session's table rather than rolled back with
+  -- this block. An earlier revision of this line claimed to be avoiding them and
+  -- named only ff…f1 while sitting exactly on ee…e1 — a comment that asserted the
+  -- opposite of what the value did. dd… is this file's own prefix; d1/d2 are tD/uD.
+  uOp uuid := 'dd000000-0000-4000-8000-0000000000d3';
   n bigint; out text := E'\n'; fails int := 0; allowed boolean;
   v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_desc_after text; v_optin_after text; v_hint text;
   SAMPLES constant jsonb := '["Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
@@ -577,9 +587,12 @@ BEGIN
   -- no guard at all (20261004060000). 050000 delegated this column to the update
   -- policy on the reasoning that it "refuses a NULL or foreign value" — true of a
   -- tenant admin, FALSE of a platform operator, because the policy reads
-  -- `is_platform_owner() OR (tenant_id = ... AND ...)` and the first branch
-  -- short-circuits before it looks at the column. An operator over PostgREST runs
-  -- as `authenticated`, so the guard's governed allow-list does not exempt them.
+  -- `is_platform_owner() OR (tenant_id = ... AND ...)`: when is_platform_owner() is
+  -- true the disjunction is true whatever the column holds, so the tenant_id test
+  -- can never refuse the write. That is the truth value, which is all the argument
+  -- needs; PostgreSQL does not promise an OR's evaluation order and this does not
+  -- rest on one. An operator over PostgREST runs as `authenticated`, so the guard's
+  -- governed allow-list does not exempt them.
   --
   -- RUN AS THE OPERATOR ON PURPOSE. The same write as a tenant admin is refused by
   -- RLS, so a case written that way would pass with the freeze deleted and prove
@@ -606,8 +619,11 @@ BEGIN
     -- because that migration is already recorded on the preview branch and a
     -- recorded migration is never edited — even for a comment, because the rule that
     -- keeps the file and the applied SQL identical is worth more than the nicety.
-    -- The correction lives here, in docs/doctrine/tier-matrix.md, and in
-    -- docs/brain/comms-capability-map.md.
+    -- The correction lives here, in docs/doctrine/tier-matrix.md, in
+    -- docs/brain/comms-capability-map.md, and in docs/PAIGE-MASTER-PROJECT-REFERENCE.md.
+    -- All four, because a pointer list that names three of the four surfaces carrying
+    -- the claim leaves the fourth reading as the unqualified original — which is what
+    -- the master doc did until a review found it.
     UPDATE public.tenant_a2p_registrations SET tenant_id = tA WHERE tenant_id = tD;
     allowed := true;
   EXCEPTION WHEN OTHERS THEN

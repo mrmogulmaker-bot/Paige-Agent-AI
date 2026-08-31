@@ -893,8 +893,9 @@ draft freely, but cannot rewrite the copy of record of a registration that has l
 while the surface tells them it is locked. `20261004050000` freezes `id` and `created_at` for a
 direct caller at **all** stages, after a review executed a rewrite of both on a frozen row and it
 succeeded, orphaning the audit link. `20261004060000` adds `tenant_id` to that freeze: it had been
-delegated to the update policy, whose `is_platform_owner() OR …` first branch short-circuits before
-reading the column — so an **operator** could NULL or reassign a carrier-approved registration
+delegated to the update policy, whose `is_platform_owner() OR (tenant_id = … AND …)` is true for an
+operator whatever the column holds, so the tenant_id test can never refuse their write (a fact about
+the disjunction's truth value, not about an evaluation order PostgreSQL does not guarantee) — so an **operator** could NULL or reassign a carrier-approved registration
 (measured, all four cases — with one qualification: the reassign is allowed onto a tenant that has no registration row; onto an occupied one the unique constraint refuses it first, which is why the proof pins the refusal HINT rather than the refusal alone). That is the one column on which this section's "including a platform
 operator using PostgREST" claim had not been true. Again: no change to which tiers see the surface —
 only to what a direct PostgREST caller at any tier may write.
