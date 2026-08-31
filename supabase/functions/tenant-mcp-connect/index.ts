@@ -39,7 +39,7 @@
 // than followed, bounded wall clock, bounded response size, fail-closed on every branch.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
-import { mcpListToolFingerprints, mcpProbe, type McpAuth, type McpErrorCode } from "../_shared/mcp-client.ts";
+import { mcpListToolFingerprints, mcpProbe, type McpAuth, type McpErrorCode, authFromSecret } from "../_shared/mcp-client.ts";
 import {
   buildAuthorizationUrl, createPkce, createState, discoverAuthorizationServer,
   discoverProtectedResource, exchangeCode, OAuthError, registerClient, revokeToken,
@@ -449,14 +449,13 @@ async function resolveConnection(
   if (error) return { error: { error: "secret_lookup_failed" }, status: 500 };
   if (!secret?.configured) return { error: { ok: false, error: "not_connected" }, status: 200 };
   if (secret.enabled === false) return { error: { ok: false, error: "connection_disabled" }, status: 200 };
-  if (!secret.server_url || !secret.auth_token) return { error: { ok: false, error: "not_connected" }, status: 200 };
+  // One call answers both "can this be used?" and "how". They used to be separate here,
+  // and separate again in probeAndRecord, and they drifted.
+  const auth = authFromSecret(secret);
+  if (!auth) return { error: { ok: false, error: "not_connected" }, status: 200 };
   return {
     serverUrl: secret.server_url,
-    auth: secret.auth_kind === "url"
-      ? { kind: "none" }
-      : secret.auth_kind === "header" && secret.auth_header_name
-      ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
-      : { kind: "bearer", token: secret.auth_token },
+    auth,
     approved: Array.isArray(secret.approved_capabilities)
       ? (secret.approved_capabilities as unknown[]).filter((c): c is string => typeof c === "string")
       : [],
@@ -480,16 +479,14 @@ async function probeAndRecord(
     _tenant_id: tenantId,
     _provider: provider,
   });
-  if (error || !secret?.configured || secret?.enabled === false || !secret?.server_url || !secret?.auth_token) {
+  // Same one call, same reason.
+  const probeAuth = error ? null : authFromSecret(secret);
+  if (error || !secret?.configured || secret?.enabled === false || !probeAuth) {
     await record(admin, tenantId, provider, "error", "connection is missing its address or credential");
     return { status: "error", code: "mcp_protocol_error" };
   }
 
-  const auth: McpAuth = secret.auth_kind === "url"
-    ? { kind: "none" }
-    : secret.auth_kind === "header" && secret.auth_header_name
-    ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
-    : { kind: "bearer", token: secret.auth_token };
+  const auth: McpAuth = probeAuth;
 
   const result = await mcpProbe({ serverUrl: secret.server_url, auth });
 

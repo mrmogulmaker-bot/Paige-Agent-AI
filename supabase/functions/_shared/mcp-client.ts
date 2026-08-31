@@ -67,6 +67,39 @@ const RESERVED_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
 ]);
 
+/** The stored connection's shape, as `get_tenant_mcp_secret` returns it. */
+export type StoredMcpSecret = {
+  server_url?: unknown;
+  auth_token?: unknown;
+  auth_kind?: unknown;
+  auth_header_name?: unknown;
+};
+
+/**
+ * How to authenticate as this stored connection, or null if it cannot be used.
+ *
+ * ONE HOME, because three copies of this drifted apart and shipped. The guard ("does it
+ * have a credential?") and the mapping ("which credential?") were written separately in
+ * `call-zapier-action`, in `resolveConnection` and in `probeAndRecord`. When a 'url'
+ * connection was added, the mapping learned about it in all three and the GUARD learned
+ * about it in one -- so a correctly saved Zapier address was mapped to the right auth and
+ * then rejected before it was used, reported as "not connected" by discovery and recorded
+ * as an error by the probe.
+ *
+ * Answering both questions in one place is what stops that: a caller cannot get the auth
+ * without also getting the verdict, so the two cannot disagree again.
+ */
+export function authFromSecret(secret: StoredMcpSecret | null | undefined): McpAuth | null {
+  if (!secret || typeof secret.server_url !== "string" || !secret.server_url) return null;
+  // The address carries the credential; there is no header to send and no token to want.
+  if (secret.auth_kind === "url") return { kind: "none" };
+  if (typeof secret.auth_token !== "string" || !secret.auth_token) return null;
+  if (secret.auth_kind === "header" && typeof secret.auth_header_name === "string" && secret.auth_header_name) {
+    return { kind: "header", name: secret.auth_header_name, token: secret.auth_token };
+  }
+  return { kind: "bearer", token: secret.auth_token };
+}
+
 function authHeaders(auth: McpAuth): Record<string, string> {
   // A custom header name is tenant-supplied, so it is constrained to the RFC 9110 token
   // grammar. Without this a newline in the name would let a tenant inject headers.
