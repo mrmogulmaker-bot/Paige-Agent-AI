@@ -49,6 +49,11 @@ const selectState = vi.hoisted(() => ({
   tenant: { data: "tenant-A" as string | null, error: null as { message: string } | null },
   // The read could not fail before, so no test could reach the failure path.
   readError: null as { message: string } | null,
+  // ...and the LEGAL read could not fail either, so its branch was also unreachable.
+  legalError: null as { message: string } | null,
+  // A THROW is a different door from a returned `{ error }`, and supabase-js does
+  // not convert every failure into the latter.
+  throwOnRead: false,
 }));
 
 // Keyed by TABLE, and it RECORDS the tenant filter each read applied. A single shared mock
@@ -60,10 +65,14 @@ vi.mock("@/integrations/supabase/client", () => ({
       fn === "current_user_tenant_id" ? selectState.tenant : { data: null, error: null }),
     from: (table: string) => {
       const row = () => (table === "tenant_legal_profile" ? selectState.legal : selectState.row);
-      const result = async () =>
-        table === "tenant_a2p_registrations" && selectState.readError
-          ? { data: null, error: selectState.readError }
-          : { data: row(), error: null };
+      const result = async () => {
+        if (selectState.throwOnRead) throw new Error("client blew up before any response");
+        if (table === "tenant_a2p_registrations" && selectState.readError)
+          return { data: null, error: selectState.readError };
+        if (table === "tenant_legal_profile" && selectState.legalError)
+          return { data: null, error: selectState.legalError };
+        return { data: row(), error: null };
+      };
       const build = () => ({
         eq: (col: string, val: unknown) => {
           selectState.filters.push({ table, col, val });
@@ -98,6 +107,8 @@ async function mountTab() {
 describe("A2P — coming back to a prepared registration", () => {
   beforeEach(() => {
     selectState.readError = null;
+    selectState.legalError = null;
+    selectState.throwOnRead = false;
     selectState.row = PREPARED_ROW;
     selectState.legal = { legal_business_name: "Proof Fixture LLC" };
     selectState.invoked = [];
@@ -256,6 +267,37 @@ describe("A2P — coming back to a prepared registration", () => {
     selectState.readError = null;
     const { host, cleanup } = await mountTab();
     expect(host.textContent ?? "").toContain("Not registered yet");
+    await cleanup();
+  });
+  it("logs a failed legal-profile read instead of swallowing it", async () => {
+    // Same swallow one step further on. Without the stored legal name `canSubmit`
+    // is false, "Approve & save" is disabled, and the paid re-draft is again the
+    // only live control — the exact defect the "comes back ready to ACT" test
+    // exists to close, reached through the sibling read. The code chooses to log
+    // rather than branch here (it does not blank the tab), so what is pinned is
+    // that the cause is REPORTED and not silently dropped.
+    const errors: unknown[][] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => { errors.push(a); });
+    selectState.row = PREPARED_ROW;
+    selectState.legalError = { message: "permission denied for table tenant_legal_profile" };
+    const { cleanup } = await mountTab();
+    expect(errors.some((a) => String(a[0]).includes("could not read the legal business name"))).toBe(true);
+    spy.mockRestore();
+    await cleanup();
+  });
+
+  it("does not leave a permanent skeleton when a read THROWS", async () => {
+    // Every setRegLoading(false) sat on a success path or an early return, and
+    // both call sites discard the promise — so a throw (not a returned `{error}`)
+    // left the pulse up forever with no message and no console line.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    selectState.row = PREPARED_ROW;
+    selectState.throwOnRead = true;
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+    expect(text).toContain("We couldn\u2019t read your registration");
+    expect(text).not.toContain("Not registered yet");
+    spy.mockRestore();
     await cleanup();
   });
 });

@@ -160,14 +160,30 @@ su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c \"
   select public.tenant_a2p_registration_save_draft('race two','Second writer.','[\\\"c\\\",\\\"d\\\"]'::jsonb,
            null, null, null, null, null);
 \"" >/dev/null 2>&1
+T2_RC=$?
 wait "$T1_PID" 2>/dev/null
 
 race=$(psql_as -c "\"select coalesce(optin_flow,'(null)')||'/'||coalesce(optin_message,'(null)')||'/'||
                           coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)')
                      from public.tenant_a2p_registrations where tenant_id='$TEN2'\"" 2>/dev/null | tr -d ' ')
 
+# NON-VACUITY: the assertion above reads ONLY the four columns T1 wrote, so it
+# passes unchanged if T2 never ran at all — and T2's stdout, stderr and exit
+# status were all discarded. A signature change (this RPC has already moved once,
+# 5-arg to 8-arg), a fixture role that silently fails the way uD's did, a lost
+# EXECUTE grant, or a quoting break under a different shell would each have been
+# reported as "a concurrent first save preserved T1's copy" for a run in which no
+# concurrent save occurred.
+#
+# That is the exact defect this branch corrected in the SQL proof (F1), in the
+# script that commit cited as having got it right. So T2 now has to prove it ran:
+# its exit status is captured, and its OWN values must be present in the row.
+t2mark=$(psql_as -c "\"select use_case||'/'||(sample_messages #>> '{0}')
+                     from public.tenant_a2p_registrations where tenant_id='$TEN2'\"" 2>/dev/null | tr -d ' ')
+
 echo
 echo "  D3 FIRST-SAVE RACE (two real sessions, no pre-existing row)"
+echo "    T2 actually ran ...................... rc=$T2_RC mark=$t2mark   want rc=0 / racetwo/c"
 echo "    T1's optional copy survived T2 ..... $race   want FLOWONE/OPTINONE/STOPONE/HELPONE"
 
 psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2';
@@ -179,6 +195,12 @@ psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2
 
 [ "$blocked" = t ] && [ "$refused" = t ] && [ "$final" = "approved/APPROVEDCOPY/BN-CONC-LIVE" ] || {
   echo "  !! D2 CONCURRENCY PROOF FAILED"; exit 1; }
+[ "$T2_RC" = "0" ] || {
+  echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — T2 did not complete (rc=$T2_RC); the copy-survived"
+  echo "     assertion below would have passed vacuously, so this is a FAILURE, not a pass"; exit 1; }
+[ "$t2mark" = "racetwo/c" ] || {
+  echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — T2's own write is absent (mark=$t2mark); no"
+  echo "     concurrent save occurred, so nothing was proven about the race"; exit 1; }
 [ "$race" = "FLOWONE/OPTINONE/STOPONE/HELPONE" ] || {
   echo "  !! D3 FIRST-SAVE RACE FAILED — a concurrent first save destroyed reviewed copy"; exit 1; }
 echo "  D2 + D3 concurrency proofs PASSED"

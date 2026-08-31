@@ -1056,6 +1056,15 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   shipped path does this" is a statement about today's code, not a property of the system —
   if a claim about what cannot happen is load-bearing for honesty, enforce it where the data
   lives.**
+  **And a partial enforcement invites the same mistake one column over.** `030000` protected
+  the eight submission columns and left the seven DRAFT columns unconditionally editable by a
+  direct caller — saying so in its own header — so an approved, carrier-linked registration's
+  `sample_messages` could still be rewritten while the tab said its copy was locked.
+  `20261004040000` freezes those seven once `a2p_registration_is_immutable(old)`. A review
+  then executed a rewrite of `id` and `created_at` on a frozen row and it SUCCEEDED, orphaning
+  the `paige_audit_log.target_id` link; `20261004050000` freezes those at all stages. **Count
+  the columns the guarantee claims to cover, then count the ones the guard names. Twice here
+  the difference was where the hole was.**
 
 - **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
   banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for

@@ -233,6 +233,15 @@ export function A2PTab() {
 
   const loadReg = useCallback(async () => {
     setRegLoading(true);
+    // A THROWN rejection would otherwise leave the skeleton up forever. Every
+    // `setRegLoading(false)` below sits on a success path or an early return, and
+    // both call sites discard the promise (`void loadReg()`), so a client-
+    // construction or auth-layer throw — the kind supabase-js does NOT convert
+    // into `{ error }` — renders the pulse at the bottom of this file with no
+    // message and no console line. That is "the same invisible symptom" the
+    // comment below forbids, reached through the one door branching on `error`
+    // does not close. The catch treats a throw exactly like a failed read.
+    try {
     // BOTH reads below are scoped to the caller's own tenant EXPLICITLY, and the two tables
     // over-admit for DIFFERENT reasons — an earlier version of this comment flattened them
     // into one claim that was only true of the second:
@@ -276,6 +285,11 @@ export function A2PTab() {
       console.error("A2PTab: could not resolve the caller's tenant:", tenantErr?.message ?? "no tenant returned");
       setReg(null);
       setRegUnidentified(true);
+      // Cleared here too. A previous load could have set it, and this path
+      // returns before the reset further down — so both flags would stay true.
+      // Harmless today only because the render tests `regUnidentified` first;
+      // that is one reordering away from being a real defect.
+      setRegUnreadable(false);
       setRegLoading(false);
       return;
     }
@@ -342,6 +356,12 @@ export function A2PTab() {
     // otherwise silently discard their unsaved work.
     setDraft((prev) => prev ?? draftFromRegistration(row));
     setRegLoading(false);
+    } catch (e) {
+      console.error("A2PTab: reading this account's registration threw:", e);
+      setReg(null);
+      setRegUnreadable(true);
+      setRegLoading(false);
+    }
   }, []);
 
   useEffect(() => {

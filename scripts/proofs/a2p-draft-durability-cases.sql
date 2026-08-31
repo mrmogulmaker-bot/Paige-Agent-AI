@@ -527,6 +527,45 @@ BEGIN
                      NOT allowed, coalesce(v_hint,'(none)'), E'\n');
   IF allowed OR v_hint IS DISTINCT FROM 'REGISTRATION_IMMUTABLE' THEN fails := fails + 1; END IF;
 
+  -- ...and IDENTITY is never client-rewritable, at any stage (20261004050000).
+  -- An independent review PROVED this writable by executing it: on this very row,
+  -- `set id=..., created_at=...` returned UPDATE 1, orphaning the audit link that
+  -- 20261004010000 exists to create — on the row 040000's header calls unalterable.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET id = '00000000-0000-4000-8000-00000000dead'::uuid
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...id is not client-rewritable ............ refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- created_at too, and on a PENDING row — the identity freeze is not conditional
+  -- on having left preparation, unlike the draft-column freeze above.
+  UPDATE public.tenant_a2p_registrations SET status='pending', brand_sid=NULL WHERE tenant_id = tD;
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET created_at = '1999-01-01T00:00:00Z'::timestamptz
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...created_at frozen even while pending ... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
   -- Put it back to pending so the governed-seam case below still measures what it says.
   UPDATE public.tenant_a2p_registrations
      SET status = 'pending', brand_sid = NULL

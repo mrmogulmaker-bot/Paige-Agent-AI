@@ -74,8 +74,15 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   `BEFORE INSERT OR UPDATE` trigger now fails closed for every direct caller on the eight
   submission-owned columns — `submitted_at`, `approved_at`, `status`, `brand_status`,
   `campaign_status`, `brand_sid`, `campaign_sid`, `messaging_service_sid`. Only server-side
-  authority (a DEFINER seam running as the table owner, or `service_role`) may move them; draft
-  copy stays freely editable. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
+  authority (a DEFINER seam running as the table owner, or `service_role`) may move them.
+  **`20261004040000`** then froze the seven DRAFT columns too, once
+  `a2p_registration_is_immutable(old)` — the same predicate the save RPC enforces — so a
+  carrier-filed registration's copy of record cannot diverge from what was actually filed.
+  A registration still **pending** stays freely editable; one past preparation does not.
+  **`20261004050000`** froze `id` and `created_at` for a direct caller at ALL stages (a review
+  proved both rewritable, which orphaned the audit link on the very row the guard calls
+  unalterable). `tenant_id` is covered by the update policy's `WITH CHECK` and `updated_at`
+  by its own BEFORE trigger, so neither is restated in the guard. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
   `current_user` as its own owner and would allow everything, which the proof caught.
 
 ### Numbers — search and purchase work, and are unreachable from Solo

@@ -885,6 +885,16 @@ at every tier, including a platform operator using PostgREST. Only server-side a
 move them. This does not change which tiers see the surface; it removes a tenant admin's
 ability to make an unsent registration render as filed.
 
+Two further freezes landed in the same PR, after a review found the first one partial.
+`20261004040000` freezes the seven DRAFT columns (`use_case`, `campaign_description`,
+`sample_messages`, `optin_flow`, and the three reply messages) once
+`a2p_registration_is_immutable(old)` — so a tenant admin at any tier can still edit a **pending**
+draft freely, but cannot rewrite the copy of record of a registration that has left preparation
+while the surface tells them it is locked. `20261004050000` freezes `id` and `created_at` for a
+direct caller at **all** stages, after a review executed a rewrite of both on a frozen row and it
+succeeded, orphaning the audit link. Again: no change to which tiers see the surface — only to
+what a direct PostgREST caller at any tier may write.
+
 **Submission is `—` for every tier, and that is the shipped state, not an omission.** There is no
 carrier integration: `comms-a2p-submit` persists the reviewed copy and returns an explicit
 *prepared, not submitted* refusal. `submitted_at` is never set by any shipped path. A row therefore
