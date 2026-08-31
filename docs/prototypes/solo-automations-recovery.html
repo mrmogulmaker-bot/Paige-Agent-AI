@@ -1,0 +1,1119 @@
+<title>Solo Automations Recovery</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   FLOW PROTOTYPE — Solo Automations destination + Integrations handoff
+   Throwaway · read-only · zero production mutation.
+
+   PALETTE PROVENANCE: every --pg-* / --k-* value below is lifted VERBATIM from
+   src/index.css L243–L313 (the shipped Mineral/Obsidian token set). Nothing here
+   is an authored colour. The review harness uses its own --rv-* slate scale,
+   deliberately outside the pack palette, so developer chrome can never be
+   mistaken for product surface (flow-prototype §4).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  /* Review harness — NOT product tokens. Cool slate, off-palette on purpose. */
+  --rv-bg: #eceef1; --rv-panel: #f7f8fa; --rv-edge: #ccd2da; --rv-edge-2: #aab4c0;
+  --rv-ink: #1b2027; --rv-ink-2: #48525f; --rv-faint: #6d7885;
+  --rv-live: #1f6f4a; --rv-mock: #8a5a12; --rv-dead: #9a3b30;
+  --rv-focus: #2f6fd0;
+  color-scheme: light;
+}
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    --rv-bg: #14171c; --rv-panel: #1b1f26; --rv-edge: #2e353f; --rv-edge-2: #434c58;
+    --rv-ink: #eef1f5; --rv-ink-2: #b3bcc7; --rv-faint: #8b95a2;
+    --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287;
+    --rv-focus: #7aa9ee;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --rv-bg: #14171c; --rv-panel: #1b1f26; --rv-edge: #2e353f; --rv-edge-2: #434c58;
+  --rv-ink: #eef1f5; --rv-ink-2: #b3bcc7; --rv-faint: #8b95a2;
+  --rv-live: #6fc79b; --rv-mock: #e0b268; --rv-dead: #e59287;
+  --rv-focus: #7aa9ee;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0; background: var(--rv-bg); color: var(--rv-ink);
+  font: 400 14px/1.55 "Schibsted Grotesk", "Segoe UI Variable Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── PRODUCT TOKENS — verbatim from src/index.css ─────────────────────────── */
+[data-pg] {
+  --pg-font-display: "Schibsted Grotesk", "Segoe UI Variable Display", system-ui, sans-serif;
+  --pg-font-ui: "Schibsted Grotesk", "Segoe UI Variable Text", system-ui, sans-serif;
+  --pg-font-data: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+[data-pg="light"] {
+  color-scheme: light;
+  --pg-env:#e8e5df; --pg-nav:#f4f1eb; --pg-canvas:#fbf9f5; --pg-spine:#f1eee8;
+  --pg-workspace:#f7f4ee; --pg-surface:#f5f2ec; --pg-raised:#fffdf8; --pg-artifact:#fffdf8;
+  --pg-line-soft:rgba(45,40,50,.105); --pg-line:rgba(45,40,50,.185);
+  --pg-line-strong:rgba(45,40,50,.28); --pg-line-authority:rgba(155,120,60,.44);
+  --pg-ink:#201e23; --pg-ink-2:#3d3941; --pg-muted:#67616b; --pg-faint:#6a646e;
+  --pg-gold-core:#6f5636; --pg-gold:#8b7049; --pg-gold-deep:#7a5c2e;
+  --pg-gold-fill:#c9a96a; --pg-gold-bloom:rgba(201,169,106,.30);
+  --pg-graphite:#b9b2a6; --pg-lift:rgba(45,40,50,.03);
+  --pg-violet:#655a96; --pg-positive:#327458; --pg-warning:#986322; --pg-negative:#a5483d;
+  --pg-e1:inset 0 1px rgba(255,255,255,.7);
+  --pg-e2:0 1px 2px rgba(45,40,50,.10);
+  --pg-e4:0 24px 60px rgba(45,40,50,.16);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(45,40,50,.07);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 1px rgba(45,40,50,.055), 0 4px 10px -4px rgba(45,40,50,.12);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(45,40,50,.07), 0 14px 30px -12px rgba(45,40,50,.17);
+  --pg-lift-3:inset 0 1px 0 #fff, 0 6px 12px rgba(45,40,50,.09), 0 32px 64px -20px rgba(45,40,50,.22);
+  --pg-inset:inset 0 1px 2px rgba(45,40,50,.1), inset 0 -1px 0 rgba(255,255,255,.85);
+  --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
+  --k-automation:#4d6f92; --k-integration:#3f7a5f; --k-skill:#9a7638; --k-agent:#6f5eb0;
+}
+[data-pg="dark"] {
+  color-scheme: dark;
+  --pg-env:#08070b; --pg-nav:#0d0b11; --pg-canvas:#100e14; --pg-spine:#121017;
+  --pg-workspace:#16131a; --pg-surface:#19161e; --pg-raised:#211d27; --pg-artifact:#e9e4da;
+  --pg-line-soft:rgba(244,237,222,.115); --pg-line:rgba(244,237,222,.195);
+  --pg-line-strong:rgba(244,237,222,.30); --pg-line-authority:rgba(234,213,170,.40);
+  --pg-ink:#f6f2ea; --pg-ink-2:#d6d0c9; --pg-muted:#aca69d; --pg-faint:#969089;
+  --pg-gold-core:#fff0cf; --pg-gold:#ead5aa; --pg-gold-deep:#c7a978;
+  --pg-gold-fill:#d4a752; --pg-gold-bloom:rgba(240,200,106,.28);
+  --pg-graphite:#2a2730; --pg-lift:rgba(255,255,255,.018);
+  --pg-violet:#9b8de0; --pg-positive:#8fd1ae; --pg-warning:#edc17f; --pg-negative:#eda093;
+  --pg-e1:inset 0 1px rgba(255,255,255,.025);
+  --pg-e2:0 1px 2px rgba(0,0,0,.45);
+  --pg-e4:0 28px 70px rgba(0,0,0,.42);
+  --pg-rim:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.5);
+  --pg-lift-1:inset 0 1px 0 rgba(255,255,255,.055), 0 1px 1px rgba(0,0,0,.3), 0 4px 12px -4px rgba(0,0,0,.42);
+  --pg-lift-2:inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.32), 0 16px 34px -12px rgba(0,0,0,.52);
+  --pg-lift-3:inset 0 1px 0 rgba(255,255,255,.085), 0 6px 12px rgba(0,0,0,.36), 0 36px 72px -20px rgba(0,0,0,.62);
+  --pg-inset:inset 0 1px 2px rgba(0,0,0,.42), inset 0 -1px 0 rgba(255,255,255,.035);
+  --pg-r-plate:13px; --pg-r-chip:9px; --pg-r-seal:11px; --pg-r-pill:999px;
+  --k-automation:#8fa9c4; --k-integration:#8fb9a4; --k-skill:#c7a978; --k-agent:#a99ad6;
+}
+
+/* ══ REVIEW HARNESS ═══════════════════════════════════════════════════════ */
+.rv-bar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
+  padding: 11px 18px; background: var(--rv-panel);
+  border-bottom: 1px solid var(--rv-edge);
+}
+.rv-brand { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
+.rv-brand strong { font: 600 14px/1.2 "Schibsted Grotesk", system-ui, sans-serif; letter-spacing: -.01em; }
+.rv-brand span { font: 500 10px/1.2 "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--rv-faint); }
+.rv-grp { display: flex; align-items: center; gap: 7px; }
+.rv-grp > label { font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
+.rv-seg { display: flex; background: var(--rv-bg); border: 1px solid var(--rv-edge); border-radius: 8px; padding: 2px; gap: 2px; }
+.rv-seg button {
+  border: 0; background: transparent; color: var(--rv-ink-2); cursor: pointer;
+  font: 500 11.5px/1 "Schibsted Grotesk", system-ui, sans-serif;
+  padding: 6px 10px; border-radius: 6px; transition: background .14s, color .14s;
+}
+.rv-seg button:hover { background: var(--rv-panel); color: var(--rv-ink); }
+.rv-seg button[aria-pressed="true"] { background: var(--rv-ink); color: var(--rv-panel); }
+.rv-bar :focus-visible, .rv-drawer :focus-visible, .rv-approve :focus-visible {
+  outline: 2px solid var(--rv-focus); outline-offset: 2px;
+}
+
+.rv-note {
+  padding: 10px 18px; background: var(--rv-panel); border-bottom: 1px solid var(--rv-edge);
+  font-size: 12.4px; color: var(--rv-ink-2); display: flex; gap: 10px; align-items: baseline;
+}
+.rv-note b { color: var(--rv-ink); font-weight: 600; }
+
+/* Stage */
+.rv-stage { display: grid; place-items: start center; padding: 22px 18px 30px; overflow-x: auto; }
+.rv-frame {
+  position: relative; flex: none; overflow: hidden;
+  border: 1px solid var(--rv-edge-2); border-radius: 12px;
+  box-shadow: 0 18px 44px -20px rgba(15,20,28,.32);
+  transform-origin: top center;
+}
+.rv-vp-tag {
+  position: absolute; z-index: 3; right: 8px; bottom: 8px;
+  padding: 3px 8px; border-radius: 6px;
+  background: rgba(20,24,30,.82); color: #f2f5f8;
+  font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .06em; pointer-events: none;
+}
+
+/* Truth chips — used in BOTH harness and product surfaces */
+.t-chip {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid currentColor;
+  font: 500 10px/1.35 "JetBrains Mono", monospace; letter-spacing: .07em; text-transform: uppercase;
+}
+.t-chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.t-chip[data-t="real"] { color: var(--rv-live); }
+.t-chip[data-t="mock"] { color: var(--rv-mock); }
+.t-chip[data-t="none"] { color: var(--rv-dead); }
+
+/* ══ PRODUCT SHELL ════════════════════════════════════════════════════════ */
+.pg-shell {
+  display: grid; grid-template-columns: auto 1fr; height: 100%;
+  background: var(--pg-env); color: var(--pg-ink);
+  font-family: var(--pg-font-ui); font-size: 14px; line-height: 1.55;
+}
+.pg-shell :is(h1,h2,h3,h4) { font-family: var(--pg-font-display); margin: 0; }
+.pg-shell :focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 3px; }
+.pg-shell button { font: inherit; }
+
+/* Rail — vertical only, never a horizontal scroller */
+.pg-rail {
+  width: 214px; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--pg-nav); border-right: 1px solid var(--pg-line-strong); box-shadow: var(--pg-e1);
+}
+.pg-brand { display: flex; align-items: center; gap: 10px; padding: 13px 12px; border-bottom: 1px solid var(--pg-line-soft); }
+.pg-mark {
+  width: 32px; height: 32px; flex: none; display: grid; place-items: center;
+  border-radius: var(--pg-r-plate); background: var(--pg-artifact);
+  border: 1px solid color-mix(in srgb, var(--pg-gold-deep) 28%, var(--pg-line-strong));
+  color: var(--pg-gold-deep);
+}
+.pg-brand strong { font: 700 13px/1 var(--pg-font-display); letter-spacing: .18em; }
+.pg-brand span { display: block; margin-top: 4px; font: 500 9.5px/1 var(--pg-font-data); letter-spacing: .1em; color: var(--pg-muted); }
+.pg-navlist { display: flex; flex-direction: column; gap: 2px; padding: 9px 8px; overflow-y: auto; overflow-x: hidden; }
+.pg-navlist .pg-navlabel {
+  margin: 10px 11px 5px; font: 700 9.5px/1 var(--pg-font-ui); letter-spacing: .14em;
+  text-transform: uppercase; color: var(--pg-faint);
+}
+.pg-nav-a {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  min-height: 34px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); background: transparent; cursor: pointer; text-align: left;
+  font-size: 12.8px; transition: background .14s, color .14s, border-color .14s;
+}
+.pg-nav-a:hover { color: var(--pg-ink); background: var(--pg-lift); border-color: var(--pg-line-soft); }
+.pg-nav-a:active { box-shadow: var(--pg-inset); }
+.pg-nav-a.is-active { color: var(--pg-ink); background: var(--pg-surface); border-color: var(--pg-line); box-shadow: var(--pg-inset); }
+.pg-nav-a.is-active i {
+  position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+  border-radius: var(--pg-r-pill); background: var(--pg-gold-fill);
+}
+.pg-nav-a svg { flex: none; }
+.pg-nav-a .pg-sub-mark { margin-left: auto; font: 500 9px/1 var(--pg-font-data); color: var(--pg-faint); letter-spacing: .06em; }
+.pg-subnav { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 2px 19px; padding-left: 9px; border-left: 1px solid var(--pg-line-soft); }
+.pg-subnav .pg-nav-a { min-height: 30px; font-size: 12.2px; }
+.pg-rail-foot { margin-top: auto; padding: 9px 10px; border-top: 1px solid var(--pg-line-soft); }
+.pg-seal { display: flex; align-items: center; gap: 9px; padding: 7px 4px; }
+.pg-seal > span {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center;
+  border-radius: var(--pg-r-seal); background: var(--pg-graphite); color: var(--pg-gold-core);
+  box-shadow: var(--pg-rim); font: 700 10.5px/1 var(--pg-font-ui);
+}
+.pg-seal div { min-width: 0; }
+.pg-seal strong { display: block; font-size: 12.2px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-seal small { display: block; font-size: 9.8px; color: var(--pg-muted); }
+
+/* Canvas + spine */
+.pg-canvas { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--pg-canvas); }
+.pg-spine {
+  flex: none; display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 18px;
+  background: var(--pg-spine); border-bottom: 1px solid var(--pg-line-soft); box-shadow: var(--pg-e1);
+}
+.pg-context { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pg-context span { font: 500 9.5px/1.2 var(--pg-font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-muted); }
+.pg-context strong { font: 600 14px/1.25 var(--pg-font-display); }
+.pg-cmd {
+  flex: 0 1 380px; margin-inline: auto; display: flex; align-items: center; gap: 8px;
+  min-height: 32px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-pill);
+  color: var(--pg-faint); background: transparent; font-size: 12.3px; cursor: default;
+}
+.pg-cmd kbd { margin-left: auto; font: 10px var(--pg-font-data); color: var(--pg-faint); }
+.pg-spine-actions { display: flex; gap: 6px; margin-left: auto; }
+.pg-ibtn {
+  width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); background: var(--pg-surface); box-shadow: var(--pg-rim);
+  transition: color .14s, background .14s, border-color .14s;
+}
+.pg-ibtn:hover { color: var(--pg-ink); background: var(--pg-raised); border-color: var(--pg-line-strong); }
+
+/* THE single vertical scroll owner */
+.pg-main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.pg-page { max-width: 1180px; margin: 0 auto; padding: 20px 26px 44px; display: flex; flex-direction: column; gap: 18px; }
+
+/* Page head — compact by rule, never a hero */
+.pg-head { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.pg-head-copy { min-width: 0; flex: 1 1 340px; }
+.pg-head h1 { font-size: 20px; font-weight: 600; letter-spacing: -.015em; text-wrap: balance; }
+.pg-head p { margin: 5px 0 0; font-size: 12.9px; color: var(--pg-muted); max-width: 68ch; }
+.pg-head-aside { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 2px; }
+
+/* Plates */
+.pg-plate {
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
+  background: var(--pg-raised); box-shadow: var(--pg-lift-1);
+}
+.pg-plate-hd {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 15px; border-bottom: 1px solid var(--pg-line-soft);
+}
+.pg-plate-hd h2 { font-size: 13.6px; font-weight: 600; letter-spacing: -.005em; }
+.pg-plate-hd p { margin: 2px 0 0; font-size: 11.8px; color: var(--pg-muted); }
+.pg-plate-hd .pg-hd-copy { min-width: 0; margin-right: auto; }
+
+.pg-eyebrow { font: 500 9.5px/1 var(--pg-font-ui); letter-spacing: .13em; text-transform: uppercase; color: var(--pg-faint); }
+
+/* Truth badge in product voice */
+.pg-truth {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 4px 9px; border-radius: var(--pg-r-pill);
+  border: 1px solid var(--pg-line); background: var(--pg-surface);
+  font: 500 9.8px/1.3 var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--pg-muted);
+}
+.pg-truth::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pg-truth[data-v="live"] { color: var(--pg-positive); border-color: color-mix(in srgb, var(--pg-positive) 40%, var(--pg-line)); }
+.pg-truth[data-v="held"] { color: var(--pg-warning); border-color: color-mix(in srgb, var(--pg-warning) 40%, var(--pg-line)); }
+.pg-truth[data-v="none"] { color: var(--pg-muted); }
+
+/* Lane rows — the Automations body */
+.pg-lanes { display: flex; flex-direction: column; }
+.pg-lane {
+  display: grid; grid-template-columns: 3px 1fr auto; gap: 0 14px; align-items: start;
+  width: 100%; padding: 14px 15px; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-top: 1px solid var(--pg-line-soft);
+  transition: background .14s;
+}
+.pg-lanes .pg-lane:first-child { border-top: 0; }
+.pg-lane:hover { background: var(--pg-surface); }
+.pg-lane:active { background: var(--pg-lift); box-shadow: var(--pg-inset); }
+.pg-lane-stripe { align-self: stretch; border-radius: 2px; background: var(--pg-line-strong); }
+.pg-lane[data-state="authorable"] .pg-lane-stripe { background: var(--k-automation); }
+.pg-lane[data-state="live"] .pg-lane-stripe { background: var(--pg-positive); }
+.pg-lane-body { min-width: 0; }
+.pg-lane-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.pg-lane-title strong { font-size: 13.2px; font-weight: 600; letter-spacing: -.008em; }
+.pg-kind {
+  font: 500 9.6px/1 var(--pg-font-data); letter-spacing: .08em; text-transform: uppercase;
+  padding: 4px 7px; border-radius: 6px;
+  color: var(--k-automation); background: color-mix(in srgb, var(--k-automation) 14%, transparent);
+}
+.pg-lane-why { margin: 6px 0 0; font-size: 12.3px; color: var(--pg-ink-2); line-height: 1.55; max-width: 74ch; }
+.pg-lane-src { margin: 7px 0 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.pg-lane-src code {
+  font: 400 10.6px/1.5 var(--pg-font-data); color: var(--pg-muted);
+  padding: 2px 6px; border: 1px solid var(--pg-line-soft); border-radius: 5px; background: var(--pg-surface);
+}
+.pg-lane-end { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex: none; padding-top: 1px; }
+.pg-lane-open { font: 500 11.4px/1 var(--pg-font-ui); color: var(--pg-muted); display: flex; align-items: center; gap: 5px; }
+.pg-lane:hover .pg-lane-open { color: var(--pg-gold-core); }
+
+/* Honest absence block */
+.pg-absence { padding: 17px 16px; display: flex; flex-direction: column; gap: 8px; }
+.pg-absence h3 { font-size: 14px; font-weight: 600; letter-spacing: -.008em; }
+.pg-absence p { margin: 0; font-size: 12.6px; color: var(--pg-ink-2); line-height: 1.6; max-width: 74ch; }
+.pg-absence .pg-draft-flag {
+  margin-top: 3px; padding: 8px 10px; border-radius: var(--pg-r-chip);
+  border: 1px dashed color-mix(in srgb, var(--pg-gold-deep) 45%, var(--pg-line));
+  font-size: 11.5px; color: var(--pg-muted); background: color-mix(in srgb, var(--pg-gold-bloom) 22%, transparent);
+}
+
+/* Recovery path */
+.pg-steps { list-style: none; margin: 0; padding: 4px 15px 15px; display: flex; flex-direction: column; gap: 0; counter-reset: s; }
+.pg-steps li {
+  counter-increment: s; display: grid; grid-template-columns: 22px 1fr; gap: 12px;
+  padding: 11px 0; border-top: 1px solid var(--pg-line-soft);
+}
+.pg-steps li:first-child { border-top: 0; }
+.pg-steps li::before {
+  content: counter(s); grid-row: 1 / span 2;
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid var(--pg-line); color: var(--pg-muted);
+  font: 500 10.5px/1 var(--pg-font-data);
+}
+.pg-steps strong { display: block; font-size: 12.7px; font-weight: 600; }
+.pg-steps span { display: block; margin-top: 3px; font-size: 12.1px; color: var(--pg-muted); line-height: 1.55; }
+
+/* Integrations */
+.pg-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.pg-filters button {
+  padding: 5px 11px; border-radius: var(--pg-r-pill); cursor: pointer;
+  border: 1px solid var(--pg-line); background: var(--pg-surface); color: var(--pg-muted);
+  font-size: 11.7px; transition: color .14s, background .14s, border-color .14s;
+}
+.pg-filters button:hover { color: var(--pg-ink); border-color: var(--pg-line-strong); }
+.pg-filters button[aria-pressed="true"] { color: var(--pg-ink); background: var(--pg-raised); border-color: var(--pg-line-authority); box-shadow: var(--pg-lift-1); }
+
+.pg-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); padding: 13px 15px 15px; }
+.pg-prov {
+  display: flex; flex-direction: column; gap: 10px; padding: 13px; text-align: left; cursor: pointer;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-plate);
+  background: var(--pg-surface); box-shadow: var(--pg-lift-1);
+  transition: transform .16s cubic-bezier(.32,.72,0,1), box-shadow .16s, border-color .16s, background .16s;
+}
+.pg-prov:hover { transform: translateY(-2px); box-shadow: var(--pg-lift-2); border-color: var(--pg-line-strong); background: var(--pg-raised); }
+.pg-prov:active { transform: translateY(0); box-shadow: var(--pg-inset); }
+.pg-prov-hd { display: flex; align-items: center; gap: 10px; }
+.pg-prov-mark {
+  width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--pg-r-chip);
+  font: 600 10px/1 var(--pg-font-data); letter-spacing: .02em;
+  color: var(--k-integration); background: color-mix(in srgb, var(--k-integration) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--k-integration) 30%, transparent);
+}
+.pg-prov[data-cat="automation"] .pg-prov-mark { color: var(--k-automation); background: color-mix(in srgb, var(--k-automation) 15%, transparent); border-color: color-mix(in srgb, var(--k-automation) 30%, transparent); }
+.pg-prov[data-cat="skill"] .pg-prov-mark { color: var(--k-skill); background: color-mix(in srgb, var(--k-skill) 15%, transparent); border-color: color-mix(in srgb, var(--k-skill) 30%, transparent); }
+.pg-prov[data-cat="agent"] .pg-prov-mark { color: var(--k-agent); background: color-mix(in srgb, var(--k-agent) 15%, transparent); border-color: color-mix(in srgb, var(--k-agent) 30%, transparent); }
+.pg-prov-hd div { min-width: 0; margin-right: auto; }
+.pg-prov-hd strong { display: block; font-size: 13px; font-weight: 600; }
+.pg-prov-hd small { display: block; margin-top: 1px; font-size: 11.2px; color: var(--pg-muted); }
+.pg-prov-state { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.pg-prov-state div { min-width: 0; }
+.pg-prov-state dt { font: 500 9.2px/1 var(--pg-font-ui); letter-spacing: .11em; text-transform: uppercase; color: var(--pg-faint); }
+.pg-prov-state dd { margin: 4px 0 0; font-size: 12px; color: var(--pg-ink-2); }
+.pg-prov-foot { display: flex; align-items: center; gap: 8px; padding-top: 9px; border-top: 1px solid var(--pg-line-soft); }
+.pg-prov-foot span { font-size: 11.2px; color: var(--pg-faint); margin-left: auto; }
+
+/* Slide-out */
+.pg-scrim {
+  position: absolute; inset: 0; z-index: 40; background: rgba(10,8,14,.42);
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.pg-shell[data-panel="open"] .pg-scrim { opacity: 1; pointer-events: auto; }
+.pg-slide {
+  position: absolute; z-index: 41; top: 0; right: 0; bottom: 0; width: min(468px, 82%);
+  display: flex; flex-direction: column; background: var(--pg-workspace);
+  border-left: 1px solid var(--pg-line-strong); box-shadow: var(--pg-e4);
+  transform: translateX(100%); transition: transform .26s cubic-bezier(.32,.72,0,1);
+}
+.pg-shell[data-panel="open"] .pg-slide { transform: translateX(0); }
+.pg-slide-hd { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px; border-bottom: 1px solid var(--pg-line-soft); }
+.pg-slide-hd div { min-width: 0; margin-right: auto; }
+.pg-slide-hd h2 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.pg-slide-hd p { margin: 3px 0 0; font-size: 11.8px; color: var(--pg-muted); }
+.pg-slide-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.pg-field { display: flex; flex-direction: column; gap: 6px; }
+.pg-field p { margin: 0; font-size: 12.4px; color: var(--pg-ink-2); line-height: 1.6; }
+.pg-evidence {
+  padding: 11px 12px; border-radius: var(--pg-r-chip);
+  border: 1px solid var(--pg-line-soft); background: var(--pg-surface);
+  font: 400 11.2px/1.65 var(--pg-font-data); color: var(--pg-muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+.pg-slide-foot { flex: none; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--pg-line-soft); background: var(--pg-spine); }
+.pg-btn {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 13px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); cursor: pointer;
+  background: var(--pg-surface); color: var(--pg-ink-2); font-size: 12.3px;
+  transition: background .14s, border-color .14s, color .14s;
+}
+.pg-btn:hover:not(:disabled) { background: var(--pg-raised); border-color: var(--pg-line-strong); color: var(--pg-ink); }
+.pg-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Matrix drawer + approval */
+.rv-drawer { border-top: 1px solid var(--rv-edge); background: var(--rv-panel); }
+.rv-drawer-in { max-width: 1180px; margin: 0 auto; padding: 20px 18px 26px; }
+.rv-drawer h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.rv-drawer > .rv-drawer-in > p { margin: 0 0 16px; font-size: 12.8px; color: var(--rv-ink-2); max-width: 76ch; }
+.rv-tablewrap { overflow-x: auto; border: 1px solid var(--rv-edge); border-radius: 10px; background: var(--rv-bg); }
+table.rv-matrix { width: 100%; border-collapse: collapse; font-size: 12.3px; min-width: 720px; }
+table.rv-matrix th, table.rv-matrix td { padding: 10px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--rv-edge); }
+table.rv-matrix thead th {
+  border-top: 0; font: 500 9.6px/1.3 "JetBrains Mono", monospace;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--rv-faint); white-space: nowrap;
+}
+table.rv-matrix tbody th { font-weight: 600; color: var(--rv-ink); white-space: nowrap; }
+table.rv-matrix td { color: var(--rv-ink-2); }
+table.rv-matrix code { font: 400 11px/1.5 "JetBrains Mono", monospace; color: var(--rv-faint); }
+
+.rv-approve { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 20px; }
+.rv-approve .rv-field { flex: 1 1 300px; display: flex; flex-direction: column; gap: 6px; }
+.rv-approve label { font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
+.rv-approve textarea {
+  min-height: 62px; resize: vertical; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid var(--rv-edge); background: var(--rv-bg); color: var(--rv-ink);
+  font: 400 12.6px/1.5 "Schibsted Grotesk", system-ui, sans-serif;
+}
+.rv-verdicts { display: flex; gap: 8px; }
+.rv-verdicts button {
+  min-height: 38px; padding: 0 16px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--rv-edge-2); background: var(--rv-bg); color: var(--rv-ink);
+  font: 500 12.6px/1 "Schibsted Grotesk", system-ui, sans-serif;
+  transition: background .14s, border-color .14s;
+}
+.rv-verdicts button:hover { background: var(--rv-panel); border-color: var(--rv-ink-2); }
+.rv-verdicts button[aria-pressed="true"] { background: var(--rv-ink); color: var(--rv-panel); border-color: var(--rv-ink); }
+.rv-echo { margin-top: 12px; font-size: 12.4px; color: var(--rv-ink-2); min-height: 1.5em; }
+
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+body[data-motion="reduced"] * { transition-duration: .001ms !important; animation-duration: .001ms !important; }
+</style>
+
+<!-- ══════════════════ REVIEW HARNESS (developer chrome) ══════════════════ -->
+<div class="rv-bar" role="group" aria-label="Prototype review controls">
+  <div class="rv-brand">
+    <strong>Solo Automations — recovery prototype</strong>
+    <span>Throwaway · read-only · no production mutation</span>
+  </div>
+
+  <div class="rv-grp">
+    <label id="lbl-ia">Rail IA</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-ia">
+      <button type="button" data-ia="A" aria-pressed="true">A · 7th rail slot</button>
+      <button type="button" data-ia="B" aria-pressed="false">B · under Settings</button>
+    </div>
+  </div>
+
+  <div class="rv-grp">
+    <label id="lbl-screen">Screen</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-screen">
+      <button type="button" data-screen="auto" aria-pressed="true">Automations</button>
+      <button type="button" data-screen="integrations" aria-pressed="false">Integrations</button>
+    </div>
+  </div>
+
+  <div class="rv-grp">
+    <label id="lbl-state">State</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-state">
+      <button type="button" data-state="truth" aria-pressed="true">Truth (today)</button>
+      <button type="button" data-state="loading" aria-pressed="false">Resolving</button>
+      <button type="button" data-state="error" aria-pressed="false">Read failed</button>
+    </div>
+  </div>
+
+  <div class="rv-grp">
+    <label id="lbl-theme">Theme</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-theme">
+      <button type="button" data-pgtheme="light" aria-pressed="true">Mineral</button>
+      <button type="button" data-pgtheme="dark" aria-pressed="false">Obsidian</button>
+    </div>
+  </div>
+
+  <div class="rv-grp">
+    <label id="lbl-vp">Viewport</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-vp">
+      <button type="button" data-vp="1536x770" aria-pressed="true">1536×770</button>
+      <button type="button" data-vp="1366x768" aria-pressed="false">1366×768</button>
+      <button type="button" data-vp="1024x768" aria-pressed="false">1024×768</button>
+      <button type="button" data-vp="900x1000" aria-pressed="false">900×1000</button>
+    </div>
+  </div>
+
+  <div class="rv-grp">
+    <label id="lbl-motion">Motion</label>
+    <div class="rv-seg" role="group" aria-labelledby="lbl-motion">
+      <button type="button" data-motion="full" aria-pressed="true">Full</button>
+      <button type="button" data-motion="reduced" aria-pressed="false">Reduced</button>
+    </div>
+  </div>
+</div>
+
+<div class="rv-note">
+  <b>Read this first.</b>
+  <span>Every figure inside the frame is either read from the live workspace on 2026-08-31 or declared absent. Nothing is simulated as working. The frame below has no network access and writes nothing — the slide-out actions are inert by design, and say so. The flow matrix under the stage lists each element as real, unavailable, or mocked.</span>
+</div>
+
+<!-- ══════════════════════════ STAGE ══════════════════════════ -->
+<div class="rv-stage">
+  <div class="rv-frame" id="frame">
+    <span class="rv-vp-tag" id="vpTag">1536 × 770</span>
+
+    <div class="pg-shell" data-pg="light" id="shell" data-panel="closed">
+
+      <!-- RAIL -->
+      <nav class="pg-rail" aria-label="Workspace">
+        <div class="pg-brand">
+          <span class="pg-mark" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 19 12 4l7 15"/><path d="M8.5 13.5h7"/></svg>
+          </span>
+          <div><strong>PAIGE</strong><span>SOLO</span></div>
+        </div>
+
+        <div class="pg-navlist" id="navlist"><!-- built by script --></div>
+
+        <div class="pg-rail-foot">
+          <div class="pg-seal">
+            <span aria-hidden="true">FS</span>
+            <div><strong>First Sterling Capital</strong><small>Owner workspace</small></div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- CANVAS -->
+      <div class="pg-canvas">
+        <header class="pg-spine">
+          <div class="pg-context">
+            <span id="ctxKicker">First Sterling Capital</span>
+            <strong id="ctxTitle">Automations</strong>
+          </div>
+          <div class="pg-cmd" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            Direct PAIGE, or press ⌘K <kbd>⌘K</kbd>
+          </div>
+          <div class="pg-spine-actions">
+            <button class="pg-ibtn" type="button" aria-label="Notifications">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <main class="pg-main" id="mainScroll" tabindex="-1">
+
+          <!-- ░░ SCREEN: AUTOMATIONS ░░ -->
+          <div class="pg-page" id="screen-auto">
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <h1>Automations</h1>
+                <p>Rules that run without you. This workspace has none, and no automation has run here — the four lanes below are the real substrate, each with what it would take to make it work.</p>
+              </div>
+              <div class="pg-head-aside"><span class="pg-truth" data-v="none">No automations</span></div>
+            </div>
+
+            <!-- Resolving -->
+            <section class="pg-plate" id="autoLoading" hidden>
+              <div class="pg-absence" role="status">
+                <h3>Resolving this workspace…</h3>
+                <p>No automation state is being claimed until the read returns.</p>
+              </div>
+            </section>
+
+            <!-- Read failed -->
+            <section class="pg-plate" id="autoError" hidden>
+              <div class="pg-absence" role="alert">
+                <h3>Couldn’t read automation state</h3>
+                <p>The read did not return. Nothing is being claimed about what runs in this workspace — not that it is empty, and not that it is healthy. Try again, and if it keeps failing the lanes below still describe the substrate accurately.</p>
+                <div><button class="pg-btn" type="button" id="retryBtn">Try again</button></div>
+              </div>
+            </section>
+
+            <div id="autoTruth">
+              <!-- Honest absence -->
+              <section class="pg-plate" style="margin-bottom:18px">
+                <div class="pg-absence">
+                  <span class="pg-eyebrow">The state of this workspace</span>
+                  <h3>Wired, but nothing can reach the end</h3>
+                  <p>Four automation substrates ship. Every one of them stops before it can do work for you: the workflow catalogue is operator-scoped, the pipeline lane has no delivery route configured, form automations are created elsewhere, and the only live record here is Systems Check remediation. No automation run has ever been recorded — for this workspace or any other.</p>
+                  <p>Nothing here is waiting on a decision. Each lane names the seam that is missing.</p>
+                  <div class="pg-draft-flag">
+                    <strong>Draft pending Claude Design.</strong> Absence titles and bodies are surface and belong to CD (<code>absence-copy.md</code>). This wording is a draft to keep the round moving, never a settled default.
+                  </div>
+                </div>
+              </section>
+
+              <!-- Lanes -->
+              <section class="pg-plate">
+                <div class="pg-plate-hd">
+                  <div class="pg-hd-copy">
+                    <h2>The four lanes</h2>
+                    <p>Read live. Open one to see its evidence and what it needs.</p>
+                  </div>
+                  <span class="pg-truth" data-v="none">3 blocked · 1 read-only</span>
+                </div>
+                <div class="pg-lanes" id="lanes"><!-- built by script --></div>
+              </section>
+
+              <!-- Recovery path -->
+              <section class="pg-plate" style="margin-top:18px">
+                <div class="pg-plate-hd">
+                  <div class="pg-hd-copy">
+                    <h2>What makes the first automation possible</h2>
+                    <p>The shortest real path, in dependency order. None of it can be done from this screen today.</p>
+                  </div>
+                </div>
+                <ol class="pg-steps">
+                  <li><strong>Give this workspace a pipeline with stages</strong><span>Stage automations attach to a deal moving between stages. This workspace has no pipeline and no deals, so there is nothing to attach a rule to.</span></li>
+                  <li><strong>Configure a delivery route for automation dispatch</strong><span>The stage trigger fires and logs correctly, but no workspace has a delivery route set and the platform fallback is absent. Until one exists, a rule that fires records <code>skipped_no_webhook</code> instead of doing anything.</span></li>
+                  <li><strong>Author the first rule</strong><span>This is the one lane whose write contract is real and tenant-safe today: an owner may create, edit and deactivate stage rules. It has no home in this shell yet.</span></li>
+                  <li><strong>Then, and only then, show runs</strong><span>Run history, success rate and attention counts become truthful the moment real runs exist. Until then this screen shows none of them.</span></li>
+                </ol>
+              </section>
+            </div>
+          </div>
+
+          <!-- ░░ SCREEN: INTEGRATIONS ░░ -->
+          <div class="pg-page" id="screen-integrations" hidden>
+            <div class="pg-head">
+              <div class="pg-head-copy">
+                <h1>Integrations</h1>
+                <p>External tools, bridges, and safe configuration handoffs. Provider colour identifies the tool — never its readiness or your permission.</p>
+              </div>
+              <div class="pg-head-aside"><span class="pg-truth" data-v="held">Partial</span></div>
+            </div>
+
+            <section class="pg-plate">
+              <div class="pg-plate-hd">
+                <div class="pg-hd-copy">
+                  <h2>Integration catalogue</h2>
+                  <p>Connections own phone, sending identity and calendars. Marketplace owns Paige capabilities. This surface owns external data and workflow bridges.</p>
+                </div>
+                <div class="pg-filters" role="group" aria-label="Filter catalogue" id="catFilters">
+                  <button type="button" data-cat="all" aria-pressed="true">All</button>
+                  <button type="button" data-cat="automation" aria-pressed="false">Automation</button>
+                  <button type="button" data-cat="financial" aria-pressed="false">Financial</button>
+                  <button type="button" data-cat="documents" aria-pressed="false">Documents</button>
+                  <button type="button" data-cat="client-data" aria-pressed="false">Client data</button>
+                  <button type="button" data-cat="developer" aria-pressed="false">Developer</button>
+                </div>
+              </div>
+              <div class="pg-grid" id="provGrid"><!-- built by script --></div>
+            </section>
+          </div>
+
+        </main>
+      </div>
+
+      <!-- SLIDE-OUT -->
+      <div class="pg-scrim" id="scrim"></div>
+      <aside class="pg-slide" id="slide" role="dialog" aria-modal="true" aria-labelledby="slideTitle" tabindex="-1" aria-hidden="true">
+        <div class="pg-slide-hd">
+          <div><h2 id="slideTitle">—</h2><p id="slideSub">—</p></div>
+          <button class="pg-ibtn" type="button" id="slideClose" aria-label="Close">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <div class="pg-slide-body" id="slideBody"></div>
+        <div class="pg-slide-foot" id="slideFoot"></div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ FLOW MATRIX + APPROVAL ══════════════════ -->
+<div class="rv-drawer">
+  <div class="rv-drawer-in">
+    <h2>Flow matrix — what is real, unavailable, and mocked</h2>
+    <p>Every element in the frame, classified. “Real” means it is read from a live contract this workspace can genuinely use. “Unavailable” means the substrate exists but cannot complete, and the surface says so. “Mocked” means the prototype supplies it for review only and it must not ship as-is.</p>
+
+    <div class="rv-tablewrap">
+      <table class="rv-matrix">
+        <thead>
+          <tr><th scope="col">Element</th><th scope="col">Class</th><th scope="col">Evidence / reason</th><th scope="col">Contract</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Automations as a destination</th><td><span class="t-chip" data-t="real">Real</span></td><td>Already a registered Solo branch, <code>group:"main"</code>, with three subtabs. The route resolves today.</td><td><code>tierBranches.ts</code> L141</td></tr>
+          <tr><th scope="row">Rail shows Automations, not Command Center</th><td><span class="t-chip" data-t="real">Real</span></td><td>Fixable in one line: <code>"automations"</code> is currently an alias of the <code>command</code> destination, which is why the rail highlights Command Center at the Automations URL.</td><td><code>tenantShellRoutes.ts</code> L49</td></tr>
+          <tr><th scope="row">Workflow catalogue lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>23 registry rows, all platform-scoped; the trigger seam restricts platform rows to operator authority. 20 of 23 also have no linked workflow.</td><td><code>paige_workflow_registry</code></td></tr>
+          <tr><th scope="row">Pipeline stage lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Real write contract and a working trigger, but no delivery route on any workspace and the platform fallback is absent. This workspace also has no pipeline.</td><td><code>stage_automation_rules</code></td></tr>
+          <tr><th scope="row">Form automations lane</th><td><span class="t-chip" data-t="none">Unavailable</span></td><td>Readable and tenant-scoped; policy forbids every direct write from this surface. None exist here.</td><td><code>growth_form_automations</code></td></tr>
+          <tr><th scope="row">Filed actions lane (13)</th><td><span class="t-chip" data-t="real">Real</span></td><td>Read from the live workspace 2026-08-31: 13 rows, all Systems Check remediation, all filed. Shown read-only; its home stays Command Center.</td><td><code>paige_actions</code></td></tr>
+          <tr><th scope="row">Run counts, success rate, “needs attention”</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. Zero runs exist platform-wide, so every one of these figures would be invented.</td><td>—</td></tr>
+          <tr><th scope="row">Repair actions (repoint / collapse / promote)</th><td><span class="t-chip" data-t="none">Removed</span></td><td>Deliberately absent. There is no rule to repair and no contract that performs a repair.</td><td>—</td></tr>
+          <tr><th scope="row">n8n and MCP connection state</th><td><span class="t-chip" data-t="real">Real</span></td><td>Reads two safe status getters that return status only, never credentials. Shown here in its real “Not configured” result.</td><td><code>get_tenant_n8n_connection</code></td></tr>
+          <tr><th scope="row">“Capability: LIVE” on provider cards</th><td><span class="t-chip" data-t="none">Corrected</span></td><td>Currently hardcoded on every card regardless of state, which is why both providers claim LIVE while reading “Not configured”. Derived from real state here.</td><td><code>settings-integrations.tsx</code> L147</td></tr>
+          <tr><th scope="row">Recovered provider cards (6)</th><td><span class="t-chip" data-t="mock">Static</span></td><td>Authored constants, not a registry. They claim no connection, which is honest, but they are not read from anything.</td><td><code>RECOVERED_SURFACES</code></td></tr>
+          <tr><th scope="row">Absence titles and body copy</th><td><span class="t-chip" data-t="mock">Draft</span></td><td>Surface copy belongs to Claude Design. Drafted here to keep the round moving; must not ship as settled wording.</td><td><code>absence-copy.md</code></td></tr>
+          <tr><th scope="row">Slide-out actions</th><td><span class="t-chip" data-t="mock">Inert</span></td><td>Disabled in the prototype and labelled. No prototype control writes anything.</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rv-approve">
+      <div class="rv-field">
+        <label for="notes">Notes / revisions</label>
+        <textarea id="notes" placeholder="What should change before this is built?"></textarea>
+      </div>
+      <div class="rv-verdicts" role="group" aria-label="Decision">
+        <button type="button" data-v="approve" aria-pressed="false">Approve</button>
+        <button type="button" data-v="revise" aria-pressed="false">Revise</button>
+        <button type="button" data-v="reject" aria-pressed="false">Reject</button>
+      </div>
+    </div>
+    <p class="rv-echo" id="echo" role="status"></p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var ICONS = {
+    home: '<path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 13h6v6h-6z"/>',
+    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 11a3 3 0 1 0-1.6-5.5"/>',
+    mega: '<path d="M4 10v4h3l6 4V6L7 10z"/><path d="M17.5 9.5a4 4 0 0 1 0 5"/>',
+    store: '<path d="M4 8h16l-1 3a3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/><path d="M5 12v8h14v-8"/>',
+    chart: '<path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+    bolt: '<path d="M12 2 5 13h6l-1 9 8-12h-6z"/>',
+    link: '<path d="M10 13a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7L11.4 6"/><path d="M14 11a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7L12.6 18"/>'
+  };
+  function ico(k) {
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + '</svg>';
+  }
+
+  // ── Lane data. Every figure below was read from the live workspace on
+  //    2026-08-31. Nothing here is estimated or illustrative.
+  var LANES = [
+    {
+      id: "workflow", title: "Workflow catalogue", kind: "Workflows", state: "blocked",
+      truth: "none", truthLabel: "No substrate",
+      why: "Twenty-three workflows exist in the catalogue, and this workspace can run none of them. All twenty-three are platform-scoped, and the trigger seam restricts platform-scoped workflows to operator authority.",
+      src: ["paige_workflow_registry", "paige_workflow_runs"],
+      evidence:
+        "registry rows            23  (all tenant_id IS NULL)\n" +
+        "runnable by this owner    0  (platform rows -> operator only)\n" +
+        "missing a linked flow    20  of 23\n" +
+        "runs ever recorded        0  platform-wide",
+      needs: "Either tenant-scoped catalogue entries this workspace owns, or an explicit grant that lets an owner run a platform workflow. Both are backend decisions, not screen decisions.",
+      note: "The catalogue also contains operator-only and vertical-specific entries. None of them should ever surface as a Solo automation."
+    },
+    {
+      id: "stage", title: "Pipeline stage rules", kind: "Stage rules", state: "authorable",
+      truth: "held", truthLabel: "Authorable, not deliverable",
+      why: "This is the one lane whose write contract is genuinely yours: an owner may create, edit and deactivate rules, and the stage trigger fires and records what happened honestly. It still cannot deliver anything.",
+      src: ["stage_automation_rules", "stage_automation_events"],
+      evidence:
+        "rules authored, all workspaces     0\n" +
+        "trigger events recorded            2   both 'skipped_no_rule'\n" +
+        "workspaces with a delivery route   0\n" +
+        "platform fallback route            absent\n" +
+        "this workspace: pipelines 0 · deals 0",
+      needs: "A pipeline with stages in this workspace, and a delivery route for dispatch. Without the route a rule that fires records skipped_no_webhook rather than acting.",
+      note: "The two recorded events are the proof the trigger works: it fired, found no rule, and said so instead of failing silently."
+    },
+    {
+      id: "form", title: "Form automations", kind: "Form rules", state: "blocked",
+      truth: "none", truthLabel: "Read-only by policy",
+      why: "Form automations are readable here and scoped to this workspace, but policy forbids every direct write from this surface. They are created by the form builder, not from an automations screen.",
+      src: ["growth_form_automations"],
+      evidence:
+        "rows for this workspace   0\n" +
+        "rows, all workspaces      0\n" +
+        "direct write from client  denied by policy",
+      needs: "Nothing on the backend. If these should be authorable here, that is a product decision about where the form builder ends and this screen begins.",
+      note: "Reading them here would be honest. Offering to create one here would not be."
+    },
+    {
+      id: "actions", title: "Filed actions", kind: "Action bus", state: "live",
+      truth: "live", truthLabel: "Live · read-only here",
+      why: "The only automation record with real rows in this workspace. Thirteen actions have been filed, all of them Systems Check remediation. They are shown here for completeness; their home stays Command Center.",
+      src: ["paige_actions"],
+      evidence:
+        "actions in this workspace   13\n" +
+        "kind                        systems.remediate  (all)\n" +
+        "status                      filed  (all)\n" +
+        "read live 2026-08-31",
+      needs: "Nothing. This lane is accurate today.",
+      note: "These were produced by Systems Check, not by a rule you authored. Presenting them as “your automations” would misread what they are."
+    }
+  ];
+
+  var PROVIDERS = [
+    { id: "n8n", mark: "n8n", name: "n8n", kind: "Automation", cat: "automation", real: true,
+      config: "Not configured", health: "Not measurable", cap: "none",
+      evidence: "Not reported",
+      body: "Read from a safe status getter that returns connection state only — never credentials or provider payloads. This workspace has not configured it.",
+      handoff: { label: "Open Automations", to: "auto" } },
+    { id: "mcp", mark: "MCP", name: "MCP bridge", kind: "External tool bridge", cat: "developer", real: true,
+      config: "Not configured", health: "Not measurable", cap: "none",
+      evidence: "Not reported",
+      body: "Read from a safe status getter that returns connection state only. No safe configuration handoff exists for a Solo owner yet.",
+      handoff: null },
+    { id: "quickbooks", mark: "QB", name: "QuickBooks", kind: "Financial tools", cat: "financial", real: false,
+      config: "Not established", health: "Not measurable", cap: "partial",
+      evidence: "Version One evidence",
+      body: "Sync seams exist in the codebase, but nothing proves a readiness state for this workspace. No connection is being claimed.",
+      handoff: null },
+    { id: "stripe", mark: "St", name: "Stripe Connect", kind: "Commerce", cat: "financial", real: false,
+      config: "Not established", health: "Not measurable", cap: "partial",
+      evidence: "Version One evidence",
+      body: "Payout-account records exist. They do not prove this workspace is connected, active, or entitled to a capability.",
+      handoff: null },
+    { id: "docusign", mark: "Ds", name: "DocuSign", kind: "Documents", cat: "documents", real: false,
+      config: "Not established", health: "Not measurable", cap: "none",
+      evidence: "Version One evidence",
+      body: "Signature seams exist but have no tenant-safe governed contract.",
+      handoff: null },
+    { id: "apollo", mark: "Ap", name: "Apollo", kind: "Client data", cat: "client-data", real: false,
+      config: "Not established", health: "Not measurable", cap: "none",
+      evidence: "Version One evidence",
+      body: "Enrichment configuration is platform-global and cannot establish this workspace’s connection.",
+      handoff: null },
+    { id: "plaid", mark: "Pl", name: "Plaid", kind: "Financial tools", cat: "financial", real: false,
+      config: "Not established", health: "Not measurable", cap: "none",
+      evidence: "Version One evidence",
+      body: "Bank-link scaffolding does not prove tenant-safe readiness.",
+      handoff: null },
+    { id: "api", mark: "API", name: "Webhooks & direct API", kind: "Developer tools", cat: "developer", real: false,
+      config: "Not established", health: "Not measurable", cap: "none",
+      evidence: "Version One evidence",
+      body: "Platform webhook and API-key records are not a Solo tenant contract.",
+      handoff: null }
+  ];
+
+  var S = { ia: "A", screen: "auto", state: "truth", theme: "light", vp: "1536x770", cat: "all" };
+
+  var shell = document.getElementById("shell");
+  var frame = document.getElementById("frame");
+  var navlist = document.getElementById("navlist");
+  var lanesEl = document.getElementById("lanes");
+  var provGrid = document.getElementById("provGrid");
+  var slide = document.getElementById("slide");
+  var lastFocus = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  /* ── RAIL ─────────────────────────────────────────────────────────────── */
+  function renderRail() {
+    var autoActive = S.screen === "auto";
+    var intActive = S.screen === "integrations";
+    var h = "";
+
+    function item(label, icon, active, sub) {
+      return '<button type="button" class="pg-nav-a' + (active ? " is-active" : "") + '"' +
+        (active ? ' aria-current="page"' : "") + '>' + (active ? "<i></i>" : "") +
+        ico(icon) + "<span>" + esc(label) + "</span>" + (sub || "") + "</button>";
+    }
+
+    h += item("Command Center", "home", false);
+    h += item("Clients", "users", false);
+    h += item("Campaigns", "mega", false);
+
+    if (S.ia === "A") {
+      // Option A — Automations is its own rail slot, a seventh destination.
+      h += item("Automations", "bolt", autoActive);
+    }
+
+    h += item("Marketplace", "store", false);
+    h += item("Analytics", "chart", false);
+
+    // Settings: in Option B it owns Automations as a sub-location and expands.
+    var settingsActive = intActive || (S.ia === "B" && autoActive);
+    h += item("Settings", "gear", settingsActive);
+
+    if (settingsActive) {
+      h += '<div class="pg-subnav">';
+      if (S.ia === "B") {
+        h += '<button type="button" class="pg-nav-a' + (autoActive ? " is-active" : "") + '"' +
+          (autoActive ? ' aria-current="page"' : "") + ">" + (autoActive ? "<i></i>" : "") +
+          ico("bolt") + "<span>Automations</span></button>";
+      }
+      h += '<button type="button" class="pg-nav-a' + (intActive ? " is-active" : "") + '"' +
+        (intActive ? ' aria-current="page"' : "") + ">" + (intActive ? "<i></i>" : "") +
+        ico("link") + "<span>Integrations</span></button>";
+      h += "</div>";
+    }
+
+    navlist.innerHTML = h;
+  }
+
+  /* ── LANES ────────────────────────────────────────────────────────────── */
+  function renderLanes() {
+    lanesEl.innerHTML = LANES.map(function (l) {
+      return '<button type="button" class="pg-lane" data-lane="' + l.id + '" data-state="' + l.state + '">' +
+        '<span class="pg-lane-stripe" aria-hidden="true"></span>' +
+        '<span class="pg-lane-body">' +
+          '<span class="pg-lane-title"><strong>' + esc(l.title) + "</strong>" +
+            '<span class="pg-kind">' + esc(l.kind) + "</span>" +
+            '<span class="pg-truth" data-v="' + l.truth + '">' + esc(l.truthLabel) + "</span></span>" +
+          '<span class="pg-lane-why">' + esc(l.why) + "</span>" +
+          '<span class="pg-lane-src">' + l.src.map(function (s) { return "<code>" + esc(s) + "</code>"; }).join("") + "</span>" +
+        "</span>" +
+        '<span class="pg-lane-end"><span class="pg-lane-open">Evidence' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>' +
+        "</span></span>" +
+      "</button>";
+    }).join("");
+  }
+
+  /* ── PROVIDERS ────────────────────────────────────────────────────────── */
+  function capLabel(c) { return c === "live" ? "Capability: live" : c === "partial" ? "Capability: partial" : "Capability: none"; }
+
+  function renderProviders() {
+    var rows = PROVIDERS.filter(function (p) { return S.cat === "all" || p.cat === S.cat; });
+    if (!rows.length) {
+      provGrid.innerHTML = '<p style="font-size:12.4px;color:var(--pg-muted);margin:0">Nothing in this category.</p>';
+      return;
+    }
+    provGrid.innerHTML = rows.map(function (p) {
+      return '<button type="button" class="pg-prov" data-prov="' + p.id + '" data-cat="' + p.cat + '">' +
+        '<span class="pg-prov-hd"><span class="pg-prov-mark" aria-hidden="true">' + esc(p.mark) + "</span>" +
+          "<div><strong>" + esc(p.name) + "</strong><small>" + esc(p.kind) + "</small></div>" +
+          '<span class="pg-truth" data-v="' + (p.cap === "live" ? "live" : p.cap === "partial" ? "held" : "none") + '">' +
+            esc(capLabel(p.cap)) + "</span></span>" +
+        '<dl class="pg-prov-state">' +
+          "<div><dt>Workspace</dt><dd>" + esc(p.config) + "</dd></div>" +
+          "<div><dt>Health</dt><dd>" + esc(p.health) + "</dd></div>" +
+        "</dl>" +
+        '<span class="pg-prov-foot">' +
+          (p.handoff ? '<span class="pg-btn" style="pointer-events:none">' + esc(p.handoff.label) + "</span>" : "") +
+          "<span>" + esc(p.evidence) + "</span>" +
+        "</span>" +
+      "</button>";
+    }).join("");
+  }
+
+  /* ── SLIDE-OUT ────────────────────────────────────────────────────────── */
+  function openSlide(title, sub, bodyHtml, footHtml, trigger) {
+    lastFocus = trigger || document.activeElement;
+    document.getElementById("slideTitle").textContent = title;
+    document.getElementById("slideSub").textContent = sub;
+    document.getElementById("slideBody").innerHTML = bodyHtml;
+    document.getElementById("slideFoot").innerHTML = footHtml;
+    shell.setAttribute("data-panel", "open");
+    slide.setAttribute("aria-hidden", "false");
+    slide.focus();
+  }
+  function closeSlide() {
+    shell.setAttribute("data-panel", "closed");
+    slide.setAttribute("aria-hidden", "true");
+    if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  function laneSlide(l, trigger) {
+    var b =
+      '<div class="pg-field"><span class="pg-eyebrow">Why it cannot run</span><p>' + esc(l.why) + "</p></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">Read from the live workspace</span>' +
+        '<div class="pg-evidence">' + esc(l.evidence) + "</div></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">What it would take</span><p>' + esc(l.needs) + "</p></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">Worth knowing</span><p>' + esc(l.note) + "</p></div>";
+    var f = '<button class="pg-btn" type="button" disabled>Author a rule</button>' +
+      '<span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype — no control here writes anything</span>';
+    openSlide(l.title, l.kind + " · " + l.truthLabel, b, f, trigger);
+  }
+
+  function provSlide(p, trigger) {
+    var b =
+      '<div class="pg-field"><span class="pg-eyebrow">What this reads</span><p>' + esc(p.body) + "</p></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">State</span>' +
+        '<div class="pg-evidence">' + esc("workspace   " + p.config + "\nhealth      " + p.health + "\nevidence    " + p.evidence) + "</div></div>" +
+      '<div class="pg-field"><span class="pg-eyebrow">Boundary</span><p>No credentials or provider payloads are shown on this surface, and none are held by it.</p></div>';
+    var f = '<button class="pg-btn" type="button" disabled>' +
+      (p.handoff ? esc(p.handoff.label) : "Setup handoff unavailable") + "</button>" +
+      '<span style="font-size:11.4px;color:var(--pg-faint);align-self:center">Inert in the prototype</span>';
+    openSlide(p.name, p.kind, b, f, trigger);
+  }
+
+  /* ── STATE APPLICATION ────────────────────────────────────────────────── */
+  var VP = {
+    "1536x770": [1536, 770], "1366x768": [1366, 768],
+    "1024x768": [1024, 768], "900x1000": [900, 1000]
+  };
+
+  function applyViewport() {
+    var d = VP[S.vp], w = d[0], h = d[1];
+    frame.style.width = w + "px";
+    frame.style.height = h + "px";
+    document.getElementById("vpTag").textContent = w + " × " + h;
+    var avail = Math.max(320, document.querySelector(".rv-stage").clientWidth - 36);
+    var scale = Math.min(1, avail / w);
+    frame.style.transform = scale < 1 ? "scale(" + scale + ")" : "";
+    frame.style.marginBottom = scale < 1 ? -(h * (1 - scale)) + "px" : "";
+  }
+
+  function applyAll() {
+    shell.setAttribute("data-pg", S.theme);
+    document.documentElement.setAttribute("data-theme", S.theme);
+
+    var isAuto = S.screen === "auto";
+    document.getElementById("screen-auto").hidden = !isAuto;
+    document.getElementById("screen-integrations").hidden = isAuto;
+
+    document.getElementById("ctxTitle").textContent = isAuto ? "Automations" : "Integrations";
+    document.getElementById("ctxKicker").textContent =
+      "First Sterling Capital" + (isAuto && S.ia === "B" ? " · Settings" : !isAuto ? " · Settings" : "");
+
+    document.getElementById("autoLoading").hidden = !(isAuto && S.state === "loading");
+    document.getElementById("autoError").hidden = !(isAuto && S.state === "error");
+    document.getElementById("autoTruth").hidden = !(isAuto && S.state === "truth");
+
+    renderRail();
+    renderProviders();
+    applyViewport();
+    closeSlide();
+    document.getElementById("mainScroll").scrollTop = 0;
+  }
+
+  /* ── EVENTS ───────────────────────────────────────────────────────────── */
+  function segGroup(attr, onPick) {
+    document.querySelectorAll(".rv-seg button[data-" + attr + "]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var scope = b.closest(".rv-seg");
+        scope.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", "true");
+        onPick(b.getAttribute("data-" + attr));
+      });
+    });
+  }
+
+  segGroup("ia", function (v) { S.ia = v; applyAll(); });
+  segGroup("screen", function (v) { S.screen = v; applyAll(); });
+  segGroup("state", function (v) { S.state = v; applyAll(); });
+  segGroup("pgtheme", function (v) { S.theme = v; applyAll(); });
+  segGroup("vp", function (v) { S.vp = v; applyAll(); });
+  segGroup("motion", function (v) { document.body.setAttribute("data-motion", v); });
+
+  document.getElementById("catFilters").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-cat]");
+    if (!b) return;
+    this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+    b.setAttribute("aria-pressed", "true");
+    S.cat = b.getAttribute("data-cat");
+    renderProviders();
+  });
+
+  lanesEl.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-lane]");
+    if (!b) return;
+    var l = LANES.filter(function (x) { return x.id === b.getAttribute("data-lane"); })[0];
+    if (l) laneSlide(l, b);
+  });
+
+  provGrid.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-prov]");
+    if (!b) return;
+    var p = PROVIDERS.filter(function (x) { return x.id === b.getAttribute("data-prov"); })[0];
+    if (p) provSlide(p, b);
+  });
+
+  document.getElementById("slideClose").addEventListener("click", closeSlide);
+  document.getElementById("scrim").addEventListener("click", closeSlide);
+  document.getElementById("retryBtn").addEventListener("click", function () {
+    S.state = "truth";
+    document.querySelectorAll(".rv-seg button[data-state]").forEach(function (x) {
+      x.setAttribute("aria-pressed", x.getAttribute("data-state") === "truth" ? "true" : "false");
+    });
+    applyAll();
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && shell.getAttribute("data-panel") === "open") {
+      e.preventDefault();
+      closeSlide();
+    }
+  });
+
+  // Focus containment while the slide-out is open.
+  slide.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab") return;
+    var f = slide.querySelectorAll("button:not([disabled]), [href], textarea, input, select, [tabindex]:not([tabindex='-1'])");
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+
+  document.querySelectorAll(".rv-verdicts button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".rv-verdicts button").forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+      b.setAttribute("aria-pressed", "true");
+      var notes = document.getElementById("notes").value.trim();
+      var v = b.getAttribute("data-v");
+      document.getElementById("echo").textContent =
+        "Recorded in this page only — " + v.toUpperCase() +
+        (notes ? " · “" + notes + "”" : " · no notes") +
+        ". Nothing is sent anywhere; tell me the verdict directly and I will act on it.";
+    });
+  });
+
+  window.addEventListener("resize", applyViewport);
+
+  renderLanes();
+  applyAll();
+})();
+</script>
