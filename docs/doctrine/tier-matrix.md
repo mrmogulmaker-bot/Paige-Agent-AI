@@ -963,6 +963,34 @@ four `comms_configured` seams and never asserted here, and it is only readable f
 tenant — an operator or agency acting as another account gets `outOfScope`, which the surface states
 as "not readable from here" rather than as a negative.
 
+### PAIGE Chat — the document proposal seam, `/solo/{account}/paige/chat`
+
+**§66, same commit as the ship.** A document dropped into PAIGE Chat now ends in a PROPOSAL a
+person approves, not a write that already happened.
+
+| Surface | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Document upload in chat | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Credit-report auto-write on upload | — | — | — | — | — | — | 403 |
+| `extraction_proposal` card rendered | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (portal, pre-existing) | 403 |
+| `paige-apply-extraction` (approval writes) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+
+**§58 — A SHIPPED CAPABILITY WAS DELIBERATELY REMOVED, and this row is the explicit call-out the
+section requires.** Until this change, a credit-report PDF dropped into chat caused
+`sync-credit-report-data` to write eight tables immediately: three FICO columns on `profiles`,
+`credit_negative_items`, `credit_accounts`, `credit_inquiries`, `credit_factor_scores`,
+`funding_readiness_scores`, and two further `profiles` columns. That path is gone from chat. It is
+not a regression to repair — it is the owner's ruling ("never auto-write extracted fields")
+applied — but it IS a behaviour a tenant could previously rely on, so it is named here rather than
+left to be discovered, and it needs owner sign-off at Gate 2 like any other removal.
+
+**What is NOT changed (§37).** `sync-credit-report-data` itself, and its four non-chat producers —
+`CreditReportUploader`, `ReportUploadTab`, `CreditIntelligence`, and `analyze-credit-report`. Those
+surfaces keep their existing behaviour. Only the chat caller stops writing without asking.
+
+**Gating.** No new tier flag. Document upload is not tier-gated today and this slice does not
+introduce a gate; the proposal follows the document wherever the document is already allowed.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

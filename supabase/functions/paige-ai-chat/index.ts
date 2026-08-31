@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
+import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectN8nForModel, projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
@@ -9083,10 +9084,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 controller.close();
                 return;
               }
-              emitCloseFrame(`data: ${JSON.stringify({ sync_status: syncResult })}\n\n`);
+              // A credit report now ends in a PROPOSAL, not a write. The proposal frame is what
+              // a person acts on; `sync_status` stays for the failure and workspace-changed cases
+              // so the existing consumers on the portal surfaces keep working unchanged (§58).
+              //
+              // The Solo surface never parsed `sync_status` at all — which is how eight tables
+              // used to be rewritten there with no visible confirmation of any kind. It parses
+              // `extraction_proposal`, so the frame a person needs is the frame they now get.
+              if (syncResult?.awaiting_review && syncResult?.proposal?.fields?.length > 0) {
+                emitCloseFrame(`data: ${JSON.stringify({ extraction_proposal: syncResult.proposal })}\n\n`);
+              } else if (syncResult?.awaiting_review) {
+                // Read successfully, but nothing survived the "only what was actually read"
+                // filter — no plausible score, no items. There is nothing to approve, and saying
+                // so is better than an empty card (§13/§70).
+                emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: true, awaiting_review: true, nothing_to_propose: true } })}\n\n`);
+              } else {
+                emitCloseFrame(`data: ${JSON.stringify({ sync_status: syncResult })}\n\n`);
+              }
             } catch (err) {
-              console.error("Sync pipeline error:", err);
-              emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`);
+              console.error("Extraction pipeline error:", err);
+              emitCloseFrame(`data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown extraction error" } })}\n\n`);
             }
           } else if (extractionProposal && extractionProposal.fields?.length > 0) {
             // General document path: emit extraction proposal for inline confirmation card.
@@ -9528,73 +9545,32 @@ export async function runStructuredExtractionAndSync(
       return await failAfterLogging(`Validation failed: ${validationErrors.join("; ")}`, structured, { success: false, error: `Validation failed: ${validationErrors.join("; ")}`, step: "validation", validationErrors });
     }
 
-    // Step 3: Build sync payload and call sync-credit-report-data
-    const syncPayload: any = {
-      target_user_id: callerUserId,
-      client_id: clientId || null,
-      report_type: structured.report_type || "consumer",
-      scores: structured.scores,
-      negative_items: (structured.negative_items || []).map((n: any) => ({
-        creditor_name: n.creditor_name || n.account_name || "Unknown",
-        account_number_masked: n.account_number_masked || n.account_number || null,
-        bureau: n.bureau || "TransUnion",
-        item_type: n.item_type || "other",
-        amount: n.amount || n.balance || null,
-        date_of_occurrence: n.date_of_occurrence || n.date_of_last_activity || null,
-        date_reported: n.date_reported || null,
-        dispute_basis: n.dispute_basis || null,
-        estimated_score_impact: n.estimated_score_impact || null,
-        status: n.status || "active",
-        is_cross_bureau_discrepancy: n.is_cross_bureau_discrepancy || false,
-      })),
-      hard_inquiries: (structured.hard_inquiries || []).map((i: any) => ({
-        creditor_name: i.creditor_name,
-        inquiry_date: i.inquiry_date,
-        bureau: i.bureau,
-        is_authorized: i.is_authorized ?? true,
-      })),
-      positive_accounts: (structured.positive_accounts || []).map((a: any) => ({
-        creditor: a.creditor || a.account_name || "Unknown",
-        account_type: a.account_type || "revolving",
-        balance: a.balance || a.current_balance || null,
-        credit_limit: a.credit_limit || null,
-        utilization: a.utilization || null,
-        status: a.status || "current",
-        account_open_date: a.account_open_date || a.date_opened || null,
-        is_open: a.is_open ?? true,
-        payment_status: a.payment_status || null,
-        account_number_masked: a.account_number_masked || a.account_number || null,
-      })),
-      average_account_age_months: structured.average_account_age_months || null,
-      oldest_account_age_months: structured.oldest_account_age_months || null,
-      oldest_account_date: structured.oldest_account_date || null,
-      discrepancies: structured.discrepancies || [],
-      priority_disputes: (structured.priority_disputes || []).map((d: any) => ({
-        account_name: d.account_name,
-        bureau: d.bureau,
-        dispute_basis: d.dispute_basis,
-      })),
-      fraud_alerts: structured.fraud_alerts || [],
-      security_freezes: structured.security_freezes || [],
-    };
+    // Step 3: build the sync payload — and STOP. Nothing is written here.
+    //
+    // Owner ruling: "any profile/client update is a clear human-reviewed proposal. Never auto-write
+    // extracted fields."
+    //
+    // WHAT USED TO HAPPEN AT THIS LINE. `sync-credit-report-data` was called with the service-role
+    // key and it wrote three FICO columns on `profiles`, plus `credit_negative_items`,
+    // `credit_accounts`, `credit_inquiries`, `credit_factor_scores`, `funding_readiness_scores` and
+    // two more `profiles` columns — EIGHT tables — because someone dropped a PDF into a chat. The
+    // only gates were scope re-checks and the model grading its own extraction. No person was ever
+    // asked. On the Solo surface the `sync_status` frame is not even parsed, so those writes landed
+    // with no visible confirmation of any kind.
+    //
+    // The payload is still built, because the payload IS the proposal and because the approval path
+    // must write the same shape this path would have written. It is simply not sent anywhere until
+    // a human says so. The mapping moved to `_shared/credit-extraction-payload.ts` so the side that
+    // PROPOSES and the side that WRITES cannot drift — if they could, a person would approve a
+    // summary derived from one mapping while a different mapping decided the rows.
+    //
+    // §37 — `sync-credit-report-data` IS NOT CHANGED, and neither are its four other producers
+    // (`CreditReportUploader`, `ReportUploadTab`, `CreditIntelligence`, `analyze-credit-report`).
+    // They keep their behaviour on their own surfaces. Only the CHAT caller stops writing without
+    // asking, because the chat is where the person had no idea it was happening.
+    const syncPayload = buildCreditSyncPayload(structured, callerUserId, clientId);
 
-    console.log(`Calling sync-credit-report-data with ${syncPayload.negative_items.length} negatives, ${syncPayload.positive_accounts.length} positives, ${syncPayload.priority_disputes.length} priority disputes`);
-
-    if (!(await scopeIsCurrent())) return scopeChanged();
-    const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(syncPayload),
-    });
-
-    const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
-
-    if (!syncResponse.ok) {
-      console.error("Sync failed:", syncResponse.status, syncBody);
-      return await failAfterLogging(`Sync returned ${syncResponse.status}: ${JSON.stringify(syncBody)}`, syncPayload, { success: false, error: `Sync failed: ${syncBody.error || syncResponse.status}`, step: "sync_call", details: syncBody });
-    }
-
-    console.log("Sync completed successfully:", syncBody);
+    console.log(`Proposal built: ${syncPayload.negative_items.length} negatives, ${syncPayload.positive_accounts.length} positives, ${syncPayload.hard_inquiries.length} inquiries — awaiting review, nothing written`);
 
     if (!(await scopeIsCurrent())) return scopeChanged();
 
@@ -9610,37 +9586,43 @@ export async function runStructuredExtractionAndSync(
     if (clientId) memoryInsert.client_id = clientId;
     if (!(await writeIfScopeCurrent("client_memory", () => supabase.from("client_memory").insert(memoryInsert)))) return scopeChanged();
 
-    // Step 5: Update the credit_report_uploads record if we created one
-    if (uploadRecordId) {
-      const bureauDetected = structured.bureau_detected || null;
-      // Its OWN assertion, not the one the memory insert passed. The insert above is an awaited
-      // round-trip; the account can change while it is in flight, and this write stamps the
-      // entire extracted report into the row.
-      const stamped = await writeIfScopeCurrent("credit_report_uploads", () => supabase.from("credit_report_uploads").update({
-        analysis_status: "completed",
-        report_type: structured.report_type || "consumer",
-        bureau_detected: bureauDetected,
-        analysis_result: structured,
-        negative_items_extracted: structured.negative_items || [],
-        positive_accounts_extracted: structured.positive_accounts || [],
-        profile_summary: structured.profile_summary || null,
-        estimated_score_impact: structured.estimated_total_score_impact || 0,
-        last_analyzed_at: new Date().toISOString(),
-        error_message: null,
-      }).eq("id", uploadRecordId));
-      if (!stamped) return scopeChanged();
-      console.log("[Paige] Updated credit_report_uploads record:", uploadRecordId);
+    // Step 5: stamp the upload row. THIS IS THE DOCUMENT'S OWN RECORD, not a profile field, so it
+    // is written without asking — the person uploaded this file and this row is what became of it.
+    // `analysis_result` doubles as the durable proposal that `paige-apply-extraction` re-reads on
+    // approval, which is why approval carries an ID and a list of field keys rather than values:
+    // if approval carried the VALUES, the browser would be deciding what gets written to a credit
+    // profile, and the human would approve one thing while the server wrote whatever came back.
+    //
+    // The status is `awaiting_review`, not `completed`. Nothing has been applied, and calling it
+    // completed would be the same lie the auto-write was.
+    if (!uploadRecordId) {
+      // No upload row means nothing for approval to reference, so a proposal here would render an
+      // Approve button that cannot work. Say so instead (§13, §70 — never ship a control that
+      // cannot finish its job).
+      return { success: false, error: "I read the document, but I couldn't attach it to a record, so there's nothing for you to approve yet.", step: "no_upload_record" };
     }
+    const stamped = await writeIfScopeCurrent("credit_report_uploads", () => supabase.from("credit_report_uploads").update({
+      analysis_status: "awaiting_review",
+      report_type: structured.report_type || "consumer",
+      bureau_detected: structured.bureau_detected || null,
+      analysis_result: structured,
+      negative_items_extracted: structured.negative_items || [],
+      positive_accounts_extracted: structured.positive_accounts || [],
+      profile_summary: structured.profile_summary || null,
+      estimated_score_impact: structured.estimated_total_score_impact || 0,
+      last_analyzed_at: new Date().toISOString(),
+      error_message: null,
+    }).eq("id", uploadRecordId));
+    if (!stamped) return scopeChanged();
+    console.log("[Paige] credit_report_uploads awaiting review:", uploadRecordId);
 
     return {
       success: true,
-      scores_synced: scores,
-      negative_items_synced: negCount,
-      positive_accounts_synced: posCount,
-      disputes_created: syncBody.results?.disputes_auto_created || 0,
-      credit_factors_recalculated: syncBody.results?.credit_factors_recalculated || false,
-      funding_readiness_recalculated: syncBody.results?.funding_readiness_recalculated || false,
-      sync_details: syncBody.results,
+      awaiting_review: true,
+      upload_id: uploadRecordId,
+      negative_items_found: negCount,
+      positive_accounts_found: posCount,
+      proposal: buildCreditProposal(uploadRecordId, structured, syncPayload),
     };
   } catch (err) {
     if (revalidateKnowledgeScope && !(await revalidateKnowledgeScope())) {

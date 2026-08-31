@@ -761,10 +761,25 @@ group("document post-processing fails closed at provider and sync boundaries");
     syncThrows = throwOnSync;
     let scopeCall = 0;
     const writes = [];
+    // §13 — WHERE THE THROW HAD TO MOVE, AND WHY. `throwOnSync` used to throw from the
+    // `sync-credit-report-data` fetch, which was the one place that reached the helper's catch
+    // block (the provider path can't: `gatewayCompat` catches its own transport errors and returns
+    // a non-ok response, which the helper handles as an extraction failure instead). That fetch NO
+    // LONGER HAPPENS — a chat document turn proposes rather than writes — so the old trigger fires
+    // never, and 14b.7/14b.8 would have gone quietly green while measuring nothing.
+    //
+    // The catch block still exists and still has two writes that each need their own scope
+    // assertion, so the trigger moves to the `client_memory` insert: the first awaited durable
+    // write after extraction, and still upstream of both catch writes. Same catch, same two
+    // assertions, a throw that actually happens.
     const service = {
       from(table) {
         return {
-          insert(row) { writes.push({ table, op: "insert", row }); return Promise.resolve({ data: null, error: null }); },
+          insert(row) {
+            if (throwOnSync && table === "client_memory") throw new Error("simulated durable-write failure");
+            writes.push({ table, op: "insert", row });
+            return Promise.resolve({ data: null, error: null });
+          },
           update(row) {
             writes.push({ table, op: "update", row });
             return { eq: async () => ({ data: null, error: null }) };
@@ -788,9 +803,36 @@ group("document post-processing fails closed at provider and sync boundaries");
     return { result, writes, providerCalls: [...providerCalls], syncCalls: [...syncCalls] };
   }
 
-  const valid = await driveDocumentPostProcess([true]);
+  // An upload id is now REQUIRED for the happy path, because a proposal is referenced by the
+  // upload row it belongs to — approval carries that id, never the values. A run with no upload
+  // row therefore has nothing to approve, and 14.0 below pins that it says so rather than
+  // silently succeeding.
+  const valid = await driveDocumentPostProcess([true], { uploadId: "upload-1" });
+  const noRecord = await driveDocumentPostProcess([true], { uploadId: null });
+  assert(
+    "14.0 with no upload record there is nothing to approve, and it SAYS so instead of half-succeeding",
+    noRecord.result?.success === false && noRecord.result?.step === "no_upload_record" && noRecord.syncCalls.length === 0,
+    JSON.stringify(noRecord.result),
+  );
   assert("14.1 valid current scope reaches the extraction provider", valid.providerCalls.length === 1, `provider calls: ${valid.providerCalls.length}`);
-  assert("14.2 valid current scope reaches sync", valid.syncCalls.length === 1, `sync calls: ${valid.syncCalls.length}`);
+  // §13 — THIS ASSERTION WAS INVERTED, DELIBERATELY, AND THAT IS THE POINT OF THE SLICE.
+  // It used to read "14.2 valid current scope reaches sync — syncCalls.length === 1", because a
+  // credit report dropped into chat called `sync-credit-report-data` with the service-role key and
+  // wrote EIGHT tables (three `profiles` FICO columns, `credit_negative_items`, `credit_accounts`,
+  // `credit_inquiries`, `credit_factor_scores`, `funding_readiness_scores`, plus two more
+  // `profiles` columns) with no person asked. The owner's rule is "never auto-write extracted
+  // fields", so the correct number of sync calls from this path is ZERO, always — including on the
+  // fully-authorized happy path, which is the ONE case the old assertion covered.
+  //
+  // Not deleted, inverted: a deleted assertion proves nothing, while an inverted one fails loudly
+  // the moment anyone restores the write. Paired with 14.2b so "zero syncs" cannot be satisfied by
+  // a path that also did nothing else.
+  assert("14.2 an authorized document turn makes ZERO sync calls — it proposes, it does not write", valid.syncCalls.length === 0, `sync calls: ${valid.syncCalls.length}`);
+  assert(
+    "14.2b ...and it really did produce a proposal to approve, so 'zero syncs' is not just 'nothing happened'",
+    valid.result?.awaiting_review === true && (valid.result?.proposal?.fields?.length ?? 0) > 0,
+    JSON.stringify(valid.result),
+  );
 
   for (const [label, states] of [
     ["switch before extraction", [false]],
@@ -846,7 +888,10 @@ group("document post-processing fails closed at provider and sync boundaries");
     wrote(validPost, "client_memory") && wrote(validPost, "credit_report_uploads"),
     JSON.stringify(validPost.writes.map((w) => w.table)),
   );
-  const stalePost = await driveDocumentPostProcess([true, true, true, true, true, false], { uploadId: "upload-1" });
+  // Re-derived by driving n=1..8, not adjusted by guesswork: removing the pre-sync scope check
+  // (the sync no longer happens) moved every index below it by one. n=4 is the boundary where the
+  // memory insert has landed and the upload stamp has not — n=3 refuses both, n=5 writes both.
+  const stalePost = await driveDocumentPostProcess([true, true, true, true, false], { uploadId: "upload-1" });
   assert(
     "14b.5 the memory row is written but the report stamp is refused on its own check",
     wrote(stalePost, "client_memory") && !wrote(stalePost, "credit_report_uploads"),
@@ -868,10 +913,13 @@ group("document post-processing fails closed at provider and sync boundaries");
     wrote(validThrow, "audit_logs") && wrote(validThrow, "credit_report_uploads"),
     JSON.stringify(validThrow.writes.map((w) => w.table)),
   );
-  // Scope-call order once the sync fetch throws: pre-extraction, post-extraction, pre-sync, the
-  // catch's own revalidation, the failure log, the failed-upload stamp. Derived by driving it,
-  // not assumed — see the control above for why assuming was wrong the first time.
-  const catchCalls = 6;
+  // Scope-call order once the memory insert throws: pre-extraction, post-extraction, the two
+  // remaining pre-write checks, the catch's own revalidation, the failure log, the failed-upload
+  // stamp. Re-derived by driving n=1..8 — n=6 is where `audit_logs` has landed and the upload
+  // stamp has not. Derived, not assumed; the control above exists because assuming was wrong the
+  // first time, and the trigger moving off the deleted sync fetch is exactly the kind of change
+  // that would have slid this boundary silently.
+  const catchCalls = 7;
   const staleStamp = await driveDocumentPostProcess(Array(catchCalls - 1).fill(true).concat([false]), throwOpts);
   assert(
     "14b.8 a switch between the two catch writes logs the failure but refuses the upload stamp",
@@ -1302,6 +1350,14 @@ group("a document turn withholds its reply at every scope boundary, including a 
     // written" is true whatever the gate does, and the assertion below proves nothing — which is
     // exactly how the first version of it passed while the defect was still present.
     provider: ["read-check", "lender-text", "json-extraction"],
+    // AN UPLOAD ROW, or this whole group silently tests a weaker turn than it was written for.
+    // A credit report now ends in a proposal that is REFERENCED BY the upload row it belongs to,
+    // so without one the pipeline stops early at "nothing for you to approve" — a real and correct
+    // behaviour, and the wrong one for forty assertions about what a full document turn withholds
+    // at each scope boundary. Caught by probing which close frame the control actually produced
+    // rather than trusting that it still produced the right one; every check below was green while
+    // exercising the degraded path.
+    tableExtras: { credit_report_uploads: () => [{ id: "upload-1" }] },
   });
 
   // POSITIVE CONTROL FIRST. Without it, "the marker never appeared" and "the marker was
@@ -1314,7 +1370,16 @@ group("a document turn withholds its reply at every scope boundary, including a 
     stable.responseText.slice(0, 300),
   );
   assert("19.2 CONTROL — and it really did retrieve Knowledge", !!stable.kbCall, JSON.stringify(stable.kbCall ?? null));
-  assert("19.3 CONTROL — and it really did reach sync", stable.syncCalls.length === 1, `sync calls: ${stable.syncCalls.length}`);
+  // §13 — INVERTED WITH THE SLICE, NOT DELETED. This used to assert `syncCalls.length === 1`,
+  // because a credit report dropped into chat wrote eight tables without asking. The owner's rule
+  // is "never auto-write extracted fields", so the right number is zero — and a deleted assertion
+  // would let anyone restore the write in silence, which is exactly what this file exists to stop.
+  assert("19.3 CONTROL — an authorized credit-report turn makes ZERO sync calls", stable.syncCalls.length === 0, `sync calls: ${stable.syncCalls.length}`);
+  assert(
+    "19.3b CONTROL — and it really did produce a PROPOSAL, so 'zero syncs' is not 'nothing happened'",
+    /"extraction_proposal"/.test(stable.responseText),
+    stable.responseText.split("\n").filter((l) => l.includes("sync_status") || l.includes("extraction_proposal")).join("").slice(0, 300),
+  );
 
   // The persistence control has to be its own run: without a threadId the persist path is a
   // no-op, so asserting "nothing was persisted" on a switched turn would otherwise be true for
@@ -1368,6 +1433,14 @@ group("a document turn withholds its reply at every scope boundary, including a 
   // Both halves are now stated: the derived bound keeps the timings aimed, the exact count
   // catches a boundary being removed. If this fails, do NOT just bump the number — find which
   // scope check was added or removed, and re-derive what the loop is now testing.
+  // Re-derived twice, and the round trip is worth recording because it is what the pin is FOR.
+  // Removing the `sync-credit-report-data` call removed the pre-sync scope check with it, and the
+  // count dropped to 9. Then giving the control a real upload row — without which the whole group
+  // was silently exercising the degraded "nothing to approve" path — restored the upload stamp's
+  // own check, and the count came back to 10. Two boundaries moved in opposite directions and the
+  // total happens to land where it started; a pin that only watched the total would have shown
+  // green through both. It did not, because it failed at 9 and made the missing upload row
+  // visible. NOT "bumped because the test failed": each change was found, named and driven.
   const DOC_TURN_PERSONA_CALLS = 10;
   assert(
     "19.0 the control run makes enough persona calls for these timings to mean anything",
@@ -2046,28 +2119,44 @@ group("safety-first streaming: the sources the first enumeration missed");
     JSON.stringify(nonNeutralFrames(choiceAtGate.responseText)).slice(0, 300),
   );
 
-  // 21.g — THE SYNC RESULT ON THE CREDIT-REPORT PATH. `sync_status` carries the three bureau
-  // scores read out of the uploaded PDF, plus the item counts. It was emitted with a direct
-  // enqueue and never entered `directFrames`, so it bypassed the document path's hold entirely:
-  // a turn whose analysis was withheld still put the numbers from that analysis on screen.
-  const syncFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && l.includes("sync_status"));
+  // 21.g — THE CLOSE FRAME ON THE CREDIT-REPORT PATH. It carries the three bureau scores read out
+  // of the uploaded PDF, plus the item counts. It was once emitted with a direct enqueue and never
+  // entered `directFrames`, so it bypassed the document path's hold entirely: a turn whose
+  // analysis was withheld still put the numbers from that analysis on screen.
+  //
+  // THE FRAME CHANGED KEY, AND THE PROPERTY DID NOT. A credit report now ends in an
+  // `extraction_proposal` a human approves, not a `sync_status` reporting eight tables already
+  // written. The scores are still in it — they are the whole point of the card — so the hold still
+  // has to cover it. Matching on either key is deliberate: `sync_status` remains the frame for the
+  // failure and nothing-to-propose cases, and both must be held for the same reason.
+  const syncFrames = (text) => text.split("\n").filter((l) => l.startsWith("data: ") && (l.includes("sync_status") || l.includes("extraction_proposal")));
   const pdfFixture = { fileName: "PRIVATE-PDFNAME-MARKER.pdf", mimeType: "application/pdf", kind: "pdf", base64: "AA==" };
   const syncOpts = {
     chunkContent: "PRIVATE-KB-SOURCE-MARKER",
     bodyExtras: { document: pdfFixture },
     provider: ["read-check", "private-text", "json-extraction"],
+    // The credit branch inserts an upload row and reads its id back. Without a row the pipeline
+    // now stops at "nothing for you to approve", which is correct behaviour and the wrong thing to
+    // be measuring here — this group is about whether a document turn's close frames are HELD.
+    tableExtras: { credit_report_uploads: () => [{ id: "upload-1" }] },
   };
   const syncClean = await drive({
     personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...syncOpts,
   });
   assert(
-    "21.g CONTROL — a credit-report turn really does emit a sync_status frame",
+    "21.g CONTROL — a credit-report turn really does emit a close frame",
     syncFrames(syncClean.responseText).length > 0,
     syncClean.responseText.slice(-400),
   );
   assert(
     "21.g CONTROL — and that frame carries the scores read out of the document",
-    /"scores_synced"/.test(syncFrames(syncClean.responseText).join("")),
+    /"credit_score_(equifax|experian|transunion)"/.test(syncFrames(syncClean.responseText).join("")),
+    syncFrames(syncClean.responseText).join("").slice(0, 300),
+  );
+  assert(
+    "21.g CONTROL — and it is a PROPOSAL, not a report of writes already made",
+    /"extraction_proposal"/.test(syncFrames(syncClean.responseText).join("")) &&
+      !/"scores_synced"/.test(syncClean.responseText),
     syncFrames(syncClean.responseText).join("").slice(0, 300),
   );
   const syncTotal = personaCallsOf(syncClean);
@@ -2078,7 +2167,7 @@ group("safety-first streaming: the sources the first enumeration missed");
     ...syncOpts,
   });
   assert(
-    "21.g a failed final check leaves no sync_status frame in the transcript",
+    "21.g a failed final check leaves no close frame in the transcript",
     syncFrames(syncAtGate.responseText).length === 0,
     syncFrames(syncAtGate.responseText).join("").slice(0, 300),
   );

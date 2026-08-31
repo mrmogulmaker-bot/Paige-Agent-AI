@@ -32,6 +32,7 @@ import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MessageAudioButton } from "@/components/chat/MessageAudioButton";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
+import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
@@ -57,6 +58,11 @@ type Message = {
    *  `paige_artifact` frames and rendered as inline handoff cards. Live-turn only;
    *  the card re-hydrates from marketing_content by id, so it isn't persisted. */
   artifacts?: PaigeArtifact[];
+  /** A document Paige read produced fields she is PROPOSING to record. Nothing has been written
+   *  when this arrives — the card is where a person picks what to keep. Live-turn only: once
+   *  applied or declined the proposal is settled server-side, so a rehydrated turn must not
+   *  re-offer it (§15 — never re-fire a past action). */
+  extractionProposal?: ExtractionProposal;
 };
 
 // crypto.randomUUID is undefined in some insecure-context / older webviews — guard
@@ -763,6 +769,9 @@ const PaigeAIChatInner = ({
       // #29 — deliverables (document/image) Paige persisted this turn, streamed as
       // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
       const artifactsThisTurn: PaigeArtifact[] = [];
+      // The document proposal, if this turn produced one. At most one per turn — a turn carries at
+      // most one attached document — so a variable rather than a list.
+      let proposalThisTurn: ExtractionProposal | null = null;
       let textBuffer = "";
       let streamDone = false;
 
@@ -812,6 +821,24 @@ const PaigeAIChatInner = ({
             // surface that owns focus is told to let it go. `reason` is one of the handler's fixed
             // refusal categories — never an identifier for the client that was refused, which is
             // the whole point of the backend not echoing it.
+            // A document Paige read produced fields she is PROPOSING. NOTHING HAS BEEN WRITTEN.
+            //
+            // This frame existed for several releases with no consumer anywhere in the app, while
+            // the credit-report path wrote eight tables — three FICO columns on `profiles`,
+            // negative items, accounts, inquiries, factor scores, funding readiness — the moment a
+            // PDF was dropped in, and this surface did not even parse the `sync_status` that
+            // reported it. So the write was invisible AND unasked. Now the write waits for the
+            // card below.
+            if (parsed.extraction_proposal?.id && Array.isArray(parsed.extraction_proposal.fields)) {
+              proposalThisTurn = parsed.extraction_proposal as ExtractionProposal;
+              // Committed HERE, not left for a later delta to carry. This frame is emitted at the
+              // CLOSE of the turn, after the last reply token, so no subsequent `setMessages` runs
+              // — a proposal parked in a local and never committed would simply never appear, and
+              // the person would be left with a document Paige said she read and nothing to do
+              // about it. Same shape as the approval and confirm frames above, for the same reason.
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn }]);
+              continue;
+            }
             if (parsed.client_scope?.status === "refused") {
               pendingScopeNoticeRef.current =
                 "I couldn't confirm that client belongs to your workspace, so I've let go of that focus. Nothing was saved. Reopen them from your client list if you think that's wrong.";
@@ -826,13 +853,13 @@ const PaigeAIChatInner = ({
               // #29 §39 — carry artifacts here too so the invariant "the card survives every rebuild"
               // never depends on the backend's frame ORDER (today approval_queued precedes paige_artifact,
               // but a reorder or a second approval_queued after an artifact must not wipe the card).
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
               continue;
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
               confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) });
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
               continue;
             }
             // #29 — Paige handed the user a deliverable (document/image) → attach an inline handoff card.
@@ -851,7 +878,7 @@ const PaigeAIChatInner = ({
             if (content) {
               if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -892,6 +919,43 @@ const PaigeAIChatInner = ({
     } finally {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
     }
+  };
+
+  /**
+   * Applies exactly what the person ticked — BY KEY, never by value.
+   *
+   * The request carries the upload id and the selected field keys. It does NOT carry the numbers.
+   * The server re-reads its own stored extraction and writes from that, so the human approves and
+   * the server writes the same thing by construction. If the values travelled through the browser,
+   * this surface would be deciding what lands on a credit profile, and "approved" would mean
+   * "posted a form" rather than "agreed to what I was shown".
+   *
+   * An empty selection is a real answer — Skip — not a no-op: it tells the server the person
+   * declined, so the proposal settles instead of sitting open forever.
+   */
+  const applyExtraction = async (proposal: ExtractionProposal, selectedKeys: string[]) => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      toast({ title: "Please sign in", description: "Your session expired. Sign in and try again.", variant: "destructive" });
+      throw new Error("no session");
+    }
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-apply-extraction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ upload_id: proposal.id, approved_keys: selectedKeys }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // The card renders its own error state from a thrown promise. Surfacing the server's
+      // sentence rather than a generic one, because it is the one that says whether anything was
+      // written (§13 — it says "Nothing was changed" when nothing was).
+      toast({ title: "Couldn't save those", description: String(body?.error ?? "Try again in a moment."), variant: "destructive" });
+      throw new Error(String(body?.error ?? "apply failed"));
+    }
+    // Mark the turn settled so a re-render — or a history rehydrate — never re-offers a decision
+    // the person has already made (§15).
+    setMessages((prev) => prev.map((m) => (m.extractionProposal?.id === proposal.id ? { ...m, confirmResolved: true } : m)));
   };
 
   const handleSend = async (overrideText?: string) => {
@@ -1263,6 +1327,21 @@ const PaigeAIChatInner = ({
                                 }}
                               />
                             ))}
+                          </div>
+                        )}
+                        {/* A document Paige read produced fields she is PROPOSING. Nothing has been
+                            written yet; this card is where a person decides what gets recorded. The
+                            same component the client portal already ships — this is a port, not a
+                            new interaction (§00: CD owns how it looks, and it already ruled on
+                            this one). Live-turn only: a rehydrated turn must never re-offer a
+                            proposal that has already been applied or declined server-side. */}
+                        {message.extractionProposal && !message.confirmResolved && (
+                          <div className="mt-2">
+                            <ExtractionProposalCard
+                              proposal={message.extractionProposal}
+                              onConfirm={(selectedKeys) => applyExtraction(message.extractionProposal!, selectedKeys)}
+                              onSkip={() => void applyExtraction(message.extractionProposal!, [])}
+                            />
                           </div>
                         )}
                       </>
