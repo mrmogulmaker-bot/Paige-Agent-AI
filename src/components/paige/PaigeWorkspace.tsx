@@ -180,6 +180,10 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
               greeting="What are we working on today? Point me at a client, or tell me the part of the business you want to move — pipeline, follow-ups, a campaign, a client's file — and I'll take it from there."
               clientId={focusedClient?.id ?? null}
               clientContext={focusProse}
+              // The server refused this client — it is not in this workspace. Release the focus
+              // rather than keep the banner asserting a scope that was denied. The chat parks its
+              // own explanation across the reset this causes, so the person is still told why.
+              onClientScopeRefused={clearFocus}
               focusBanner={focusedClient ? <FocusBanner client={focusedClient} onClear={clearFocus} /> : undefined}
               chips={quickChips}
               onTrace={handleTrace}

@@ -305,7 +305,13 @@ describe("Solo PAIGE workspace contract", () => {
   it("clears account-authored UI before the next account hydrates", () => {
     const chat = source("src/components/dashboard/PaigeAIChat.tsx");
     const app = source("src/solo/SoloApp.tsx");
-    expect(chat).toMatch(/acceptedEpochRef\.current = activeTenantId;[\s\S]*requestFenceRef\.current\.invalidate\(\);/);
+    // The epoch is now COMPOSITE — the active workspace AND the client in focus — because a
+    // client switch has to end the conversation for the same reason an account switch does:
+    // this component re-POSTs its whole transcript, so the previous client's answers would
+    // otherwise ship under the new scope. The ordering this line exists to pin (accept the new
+    // epoch, THEN invalidate, THEN clear) is unchanged; only the value it keys on widened.
+    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}`;");
+    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;[\s\S]*requestFenceRef\.current\.invalidate\(\);/);
     expect(chat).toContain("setMessages([mkMsg({ role: \"assistant\", content: openingGreeting })])");
     expect(chat).toContain('setInput("")');
     expect(chat).toContain("setAttachedDoc(null)");

@@ -114,6 +114,11 @@ export interface PaigeAIChatProps {
   clientId?: string | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
+  /** The server refused the focused client — it does not belong to this workspace. The surface
+   *  that OWNS focus must let it go; a UI that keeps asserting a scope the server denied is
+   *  telling the person something untrue. Carries the server's refusal category, never a client
+   *  identifier. */
+  onClientScopeRefused?: (reason: string) => void;
   /** Sticky strip above the message list, shown only when a customer is focused. */
   focusBanner?: React.ReactNode;
   /** Quick-action chips above the composer. */
@@ -205,6 +210,7 @@ const PaigeAIChatInner = ({
   fill = false,
   clientId = null,
   clientContext,
+  onClientScopeRefused,
   focusBanner,
   chips,
   greeting,
@@ -310,7 +316,32 @@ const PaigeAIChatInner = ({
   const [traceOpen, setTraceOpen] = useState(false);
   const openingGreeting = greeting ?? "Hey, how can I help?";
   const requestFenceRef = useRef(createPaigeRequestFence());
-  const acceptedEpochRef = useRef<string | null>(activeTenantId);
+  // === THE TURN'S SCOPE, AS ONE VALUE (§9, purpose clause 2) ===
+  // A turn is scoped by TWO things, not one: the active workspace, and the client in focus. The
+  // fence, the reset and the dictation epoch were all keyed on the tenant alone, so an account
+  // change ended the conversation correctly and a CLIENT change did not end it at all.
+  //
+  // That mattered because this component re-POSTs its entire local `messages` array on every
+  // turn. Focusing a different client — or clearing focus — left the previous client's answers
+  // in that array, and the next request shipped them to the model under the new scope. The
+  // backend's client-scope guard authorizes the client NAMED in the body; it has no way to know
+  // that the prose already in the transcript is about someone else. So the isolation had to be
+  // here, on the surface that owns the array.
+  //
+  // Composite rather than a second parallel epoch (§18): every mechanism that already keyed on
+  // the tenant now keys on this, and there is one definition of "the scope changed" instead of
+  // two that can disagree.
+  //
+  // Surfaces that never focus a client (Solo, the operator desk) pass no `clientId`, so their
+  // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
+  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}`;
+  // A refusal releases focus, which CHANGES this epoch, which resets the transcript — so a naive
+  // "clear focus on refusal" deletes the very sentence the person needs to read. The notice is
+  // parked here on the way out and adopted as the opening message on the way back in, so the
+  // explanation survives its own consequence. A ref rather than state: the reset effect has to
+  // read it in the same pass the refusal triggers, without scheduling another render.
+  const pendingScopeNoticeRef = useRef<string | null>(null);
+  const acceptedEpochRef = useRef<string>(scopeEpoch);
   const dictationGenerationRef = useRef(0);
   const [cancelled, setCancelled] = useState(false);
   const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | null>(null);
@@ -369,19 +400,36 @@ const PaigeAIChatInner = ({
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
-  // Account changes are a hard frontend isolation boundary. Invalidate first, then
-  // clear every account-derived or account-authored state before the new query can
-  // hydrate. The key on SoloPaigeWorkspace also remounts this tree synchronously;
-  // this engine-level guard rejects work that outlives that presentation boundary.
+  // SCOPE changes — the workspace or the client in focus — are a hard frontend isolation
+  // boundary. Invalidate first, then clear every scope-derived or scope-authored state before
+  // the new query can hydrate. The key on SoloPaigeWorkspace also remounts this tree
+  // synchronously; this engine-level guard rejects work that outlives that boundary.
+  //
+  // §13 — THIS IS NO LONGER GATED ON `soloTenantSafety`, and the removal is deliberate. That
+  // prop conflates two unrelated things: Solo's presentation extras (the offline banner, the
+  // cancel affordance, the tenant-required composer block) and this isolation fence. Only the
+  // first is a Solo choice. Carrying one workspace's transcript into another is a defect on
+  // every surface that mounts this component, and it was live on the shared workspace mount —
+  // which is the ONE surface that focuses clients — precisely because the fence was opt-in.
+  //
+  // The tenant-required blocking stays behind the flag, because it is genuinely Solo-only: the
+  // operator desk is legitimately tenant-less, and un-gating `!activeTenantId` would block its
+  // composer permanently. Un-gating the RESET is safe there for the same reason it is a no-op:
+  // a tenant-less, client-less surface has the constant epoch `"|"`, so this never fires.
   useEffect(() => {
-    if (!soloTenantSafety || acceptedEpochRef.current === activeTenantId) return;
-    acceptedEpochRef.current = activeTenantId;
+    if (acceptedEpochRef.current === scopeEpoch) return;
+    acceptedEpochRef.current = scopeEpoch;
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
     requestFenceRef.current.invalidate();
     hydratedFromRef.current = null;
     setActiveThreadId(null);
-    setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
+    // A refusal parked a notice on its way out; adopt it as the opening message so the
+    // explanation survives the reset it caused. Cleared on read — it is a one-shot handoff, not
+    // sticky state, and a stale notice greeting an unrelated switch would be its own lie.
+    const scopeNotice = pendingScopeNoticeRef.current;
+    pendingScopeNoticeRef.current = null;
+    setMessages([mkMsg({ role: "assistant", content: scopeNotice ?? openingGreeting })]);
     setInput("");
     setAttachedDoc(null);
     setIsLoading(false);
@@ -396,7 +444,7 @@ const PaigeAIChatInner = ({
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
     resetTranscriptFollow();
-  }, [activeTenantId, openingGreeting, resetTranscriptFollow, setActiveThreadId, setAttachedDoc, soloTenantSafety]);
+  }, [scopeEpoch, openingGreeting, resetTranscriptFollow, setActiveThreadId, setAttachedDoc]);
 
   useEffect(() => {
     if (!soloTenantSafety) return;
@@ -485,7 +533,7 @@ const PaigeAIChatInner = ({
     }
     const previousTranscriptThreadId = hydratedFromRef.current;
     const requestTicket = soloTenantSafety
-      ? requestFenceRef.current.begin(activeTenantId)
+      ? requestFenceRef.current.begin(scopeEpoch)
       : null;
     if (soloTenantSafety) {
       resetTranscriptFollow();
@@ -591,7 +639,7 @@ const PaigeAIChatInner = ({
     }
     const newMessages = base;
     const requestTicket = soloTenantSafety
-      ? requestFenceRef.current.begin(activeTenantId)
+      ? requestFenceRef.current.begin(scopeEpoch)
       : null;
     setIsLoading(true);
     setCancelled(false);
@@ -753,6 +801,23 @@ const PaigeAIChatInner = ({
             // #11 — the server confirmed the transition into the reply. A lightweight signal; the
             // client also derives "writing" from the first content delta below, so this is belt-and-braces.
             if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
+            // The server refused the focused client — that client does not belong to this
+            // workspace. This frame shipped for several releases with NO consumer anywhere in the
+            // app (zero hits repo-wide), which the handler's own comment described as "an
+            // advisory signal is not a control": the refusal reached the transcript as prose while
+            // the surface went on asserting a focus the server had denied.
+            //
+            // Two things happen, in this order. The refusal SENTENCE the server streams is parked
+            // so it survives the transcript reset that releasing focus is about to cause; then the
+            // surface that owns focus is told to let it go. `reason` is one of the handler's fixed
+            // refusal categories — never an identifier for the client that was refused, which is
+            // the whole point of the backend not echoing it.
+            if (parsed.client_scope?.status === "refused") {
+              pendingScopeNoticeRef.current =
+                "I couldn't confirm that client belongs to your workspace, so I've let go of that focus. Nothing was saved. Reopen them from your client list if you think that's wrong.";
+              onClientScopeRefused?.(String(parsed.client_scope.reason ?? "client scope refused"));
+              continue;
+            }
             // #12 — conversation-compacting lifecycle (approaching/start/progress/done/skipped).
             if (parsed.paige_compacting) { setCompacting(parsed.paige_compacting as CompactingSignal); continue; }
             // Structured event: Paige queued an action to the approvals desk.
@@ -975,7 +1040,11 @@ const PaigeAIChatInner = ({
   /* Hold-to-dictate — neutral/indigo mic, never gold. Dictated words append into
      the composer; the operator edits before sending. The callback closes over the
      authenticated epoch so a late prior-account final cannot enter the new composer. */
-  const dictationEpoch = activeTenantId;
+  // The dictation epoch is the SAME scope value the fence and the reset use. It was
+  // `activeTenantId`, which stopped matching `acceptedEpochRef` the moment that ref became
+  // composite — and the guard below compares the two, so every dictated segment was silently
+  // dropped. Caught by the existing contract suite, which is what it is for.
+  const dictationEpoch = scopeEpoch;
   const micButton = (
     <DictationMicButton
       key={soloTenantSafety ? `${dictationEpoch ?? "resolving"}:${dictationGeneration}` : "shared"}
