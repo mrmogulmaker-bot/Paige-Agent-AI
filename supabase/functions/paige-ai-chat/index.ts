@@ -1241,11 +1241,66 @@ JSON:`;
       // fallback here; if this value is wrong, the persona resolver is the thing to fix.
       const tkTenantId = personaCtx.tenant_id;
 
-      // Unresolved authoritative scope does NO tenant work: no embedding (a paid call), no
-      // retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator — must
-      // never be handed some arbitrary account's knowledge, and `null` is not a scope to
-      // search. Fail closed and silent rather than substituting anything (§9/§13).
-      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId) {
+      // THE FALLBACK THIS BLOCK MUST NOT INHERIT.
+      // current_user_tenant_id() — which get_paige_persona_context() delegates to — is:
+      //     COALESCE( <active_tenant_id, entitlement-validated>,
+      //               (SELECT tenant_id FROM tenant_members
+      //                  WHERE user_id = auth.uid() AND status='active'
+      //                  ORDER BY joined_at ASC LIMIT 1) )
+      // The first branch is correctly validated. The SECOND is an oldest-membership pick that
+      // fires whenever the active context is MISSING, STALE, or UNAUTHORIZED — so deferring to
+      // the persona tenant alone still lets "first membership" govern Knowledge, one layer
+      // down. The RPC's own guard cannot catch it either: that guard compares p_tenant_id
+      // against the SAME resolver, so it accepts the fallback as authoritative.
+      //
+      // Knowledge is confidential per-workspace content, so it gets the STRICTER rule: search
+      // ONLY a scope the caller has positively declared as active. This CONFIRMS, it does not
+      // re-resolve — there is no second resolver, no helper, and no fallback here (§18). A
+      // mismatch means the value came from the fallback, and we fail closed.
+      //
+      // Deliberately NOT fixed by changing current_user_tenant_id(): every RLS policy in the
+      // platform depends on it, so that is a platform-wide change, not Knowledge isolation.
+      let tkScopeOk = false;
+      let tkScopeRefusal: string | null = null;
+      if (tkTenantId) {
+        // The caller's OWN profile row, through the caller's JWT client. RLS policy
+        // "Users can view own profile" is USING (auth.uid() = user_id) — note user_id, the
+        // column #588 got wrong. No tenant identifier from the body, URL, or browser is used.
+        const { data: activeRow, error: activeErr } = await supabaseClient
+          .from("profiles")
+          .select("active_tenant_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const declaredActive = (activeRow as any)?.active_tenant_id ?? null;
+        if (activeErr) {
+          tkScopeRefusal = `active-scope read failed: ${activeErr.message}`;
+        } else if (declaredActive == null) {
+          // Missing context. Includes a client-tier caller, whose scope comes from `clients`
+          // rather than `profiles`: that tier is failed closed here by design and named in the
+          // log, rather than silently inheriting whichever membership happens to be oldest.
+          tkScopeRefusal = "no active workspace is set for this caller";
+        } else if (declaredActive !== tkTenantId) {
+          // Stale, unauthorized, or cross-account: the validated branch declined and the
+          // resolver fell back to a DIFFERENT workspace. Never search it.
+          tkScopeRefusal = "resolved scope is not the caller's declared active workspace";
+        } else {
+          tkScopeOk = true;
+        }
+        if (!tkScopeOk) {
+          // §13 — loud, with the reason, never a silent no-op. The visible symptom is Paige
+          // answering without knowledge, so the log is the only way this is diagnosable.
+          console.error(
+            "[paige] knowledge scope REFUSED — no knowledge context for this turn",
+            JSON.stringify({ reason: tkScopeRefusal, resolved_tenant_id: tkTenantId }),
+          );
+        }
+      }
+
+      // Unresolved or unconfirmed authoritative scope does NO tenant work: no embedding (a paid
+      // call), no retrieval, no tenant telemetry. A tenant-less caller — the Platform Operator —
+      // must never be handed some arbitrary account's knowledge, and `null` is not a scope to
+      // search. Fail closed rather than substituting anything (§9/§13).
+      if (lastUserMessage && lastUserMessage.content?.trim() && tkTenantId && tkScopeOk) {
         const tkQuery = lastUserMessage.content.trim();
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
