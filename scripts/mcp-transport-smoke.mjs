@@ -219,6 +219,12 @@ const TOOLS = [
 const SESSION_ID = "sess-abc-123";
 function lifecycleServer(resultFor) {
   return (req, res) => {
+    // Terminating a session is a DELETE carrying no body; parsing one as JSON throws.
+    if (req.method === "DELETE") {
+      deleted.push(req.headers["mcp-session-id"] ?? null);
+      res.writeHead(204).end();
+      return;
+    }
     let raw = "";
     req.on("data", (c) => { raw += c; });
     req.on("end", () => {
@@ -263,6 +269,7 @@ routes.set("/mcp-json", lifecycleServer(() => ({ tools: TOOLS })));
 let lastRequest = null;
 let initialized = false;
 let exchange = [];
+let deleted = [];
 
 const bearer = { kind: "bearer", token: "super-secret-token-1234" };
 {
@@ -297,6 +304,10 @@ const bearer = { kind: "bearer", token: "super-secret-token-1234" };
     exchange.slice(1).every((e) => e.headers["mcp-session-id"] === SESSION_ID));
   check("the credential is sent on the handshake too, not only on the request",
     exchange.every((e) => e.headers.authorization === `Bearer ${bearer.token}`));
+  // A stateful server allocates a session per initialize and expects it back; without the
+  // DELETE every probe, discovery and action leaks one until the provider expires it.
+  check("the session is released when the work is done", deleted.includes(SESSION_ID),
+    JSON.stringify(deleted));
 }
 
 // A provider may answer the same request as an event stream.

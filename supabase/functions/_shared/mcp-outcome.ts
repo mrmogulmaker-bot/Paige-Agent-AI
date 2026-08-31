@@ -27,7 +27,7 @@
 // any request leaves the process, so an unapproved name cannot even be used to probe the
 // provider. An empty approval set therefore denies everything, which is the correct state
 // for a workspace that has not yet approved anything.
-import { McpError, mcpListToolFingerprints, mcpRequest, type McpAuth } from "./mcp-client.ts";
+import { McpError, withApprovedCapabilitySession, type McpAuth } from "./mcp-client.ts";
 
 export type McpProvider = "n8n" | "zapier";
 
@@ -231,47 +231,40 @@ export async function callApprovedCapability(opts: {
   // has been reshaped since — which is the substitution this exists to catch. Any failure
   // to establish the current contract is a refusal, never a pass: if we cannot tell
   // whether it drifted, it has not been verified.
-  let live: Awaited<ReturnType<typeof mcpListToolFingerprints>>;
-  try {
-    live = await mcpListToolFingerprints({ serverUrl: opts.serverUrl, auth: opts.auth, timeoutMs: opts.timeoutMs });
-  } catch (e) {
-    const code = e instanceof McpError ? e.code : "request_failed";
-    const transportFailure = code !== "mcp_http_error" && code !== "mcp_protocol_error";
-    return {
-      outcome: outcomeOf(provider, capability, transportFailure ? "unavailable" : "failed",
-        "The capability could not be verified against the provider, so it was not run.",
-        null),
-      evidence: null,
-    };
-  }
-
-  const current = live.find((t) => t.name === capability);
-  if (!current) {
-    return {
-      outcome: outcomeOf(provider, capability, "denied",
-        "That capability is no longer offered by the provider, so it was not run.",
-        null, "not_approved", "no_longer_offered"),
-      evidence: null,
-    };
-  }
-  if (current.schemaHash !== pinned) {
-    return {
-      outcome: outcomeOf(provider, capability, "denied",
-        "That capability has changed since it was approved, so it was not run. Review and approve it again.",
-        null, "not_approved", "contract_changed"),
-      evidence: null,
-    };
-  }
-
+  //
+  // BOTH HALVES HAPPEN IN ONE SESSION. Listing and calling used to be separate sessions,
+  // which put a window between the check and the act: a provider mid-deployment, or one
+  // whose catalogue is session-scoped, could show the pinned contract to the first and
+  // execute a changed one in the second. A drift check with a race in it is worse than
+  // none, because it reports that it verified something.
   let raw: unknown;
+  let denial: CapabilityCallResult | null = null;
   try {
-    raw = await mcpRequest({
-      serverUrl: opts.serverUrl,
-      auth: opts.auth,
-      method: "tools/call",
-      params: { name: capability, arguments: opts.args ?? {} },
-      timeoutMs: opts.timeoutMs,
-    });
+    raw = await withApprovedCapabilitySession(
+      { serverUrl: opts.serverUrl, auth: opts.auth, timeoutMs: opts.timeoutMs },
+      async ({ tools, call }) => {
+        const current = tools.find((t) => t.name === capability);
+        if (!current) {
+          denial = {
+            outcome: outcomeOf(provider, capability, "denied",
+              "That capability is no longer offered by the provider, so it was not run.",
+              null, "not_approved", "no_longer_offered"),
+            evidence: null,
+          };
+          return undefined;
+        }
+        if (current.schemaHash !== pinned) {
+          denial = {
+            outcome: outcomeOf(provider, capability, "denied",
+              "That capability has changed since it was approved, so it was not run. Review and approve it again.",
+              null, "not_approved", "contract_changed"),
+            evidence: null,
+          };
+          return undefined;
+        }
+        return await call(capability, opts.args ?? {});
+      },
+    );
   } catch (e) {
     // The provider's own error text is not carried. It is provider-controlled prose and
     // has, in practice, contained internal paths, addresses and rejected credentials.
@@ -286,6 +279,7 @@ export async function callApprovedCapability(opts: {
       evidence: null,
     };
   }
+  if (denial) return denial;
 
   const validated = validateResult(raw);
   const ref = crypto.randomUUID();

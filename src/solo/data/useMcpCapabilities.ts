@@ -117,6 +117,13 @@ export function useMcpCapabilities(provider: McpProvider) {
    * with an approval nobody can see in the list they just looked at.
    */
   const approve = useCallback(async (names: string[]): Promise<boolean> => {
+    // Gated for the same reason `discover` is, and it was missed here because the two were
+    // fixed one at a time. `expected_tenant_id` already confines the WRITE to the workspace
+    // the request started in — but a response landing after a switch still ran this
+    // callback, which maps the names it approved onto whatever tools are now on screen and
+    // clears a draft the admin may have started for the workspace they moved to. The
+    // database was right and the screen was wrong.
+    const token = gate.current.begin();
     setState((prev) => ({ ...prev, saving: true, error: null }));
     const pins: Record<string, string> = {};
     for (const tool of state.tools ?? []) if (names.includes(tool.name) && tool.schemaHash) pins[tool.name] = tool.schemaHash;
@@ -124,6 +131,7 @@ export function useMcpCapabilities(provider: McpProvider) {
     const { data, error } = await supabase.functions.invoke("tenant-mcp-connect", {
       body: { provider, action: "approve", capabilities: names, pins, expected_tenant_id: activeTenantId },
     });
+    if (!gate.current.isCurrent(token)) return false;
     const failure = (await readFunctionErrorBody(error, data))?.error as string | undefined;
     if (error || failure) {
       setState((prev) => ({ ...prev, saving: false, error: describe(failure, "That did not save, and nothing was changed.") }));

@@ -77,13 +77,16 @@ function authHeaders(auth: McpAuth): Record<string, string> {
   return { Authorization: `Bearer ${auth.token}` };
 }
 
-export type McpRequestOptions = {
+export type McpSessionOptions = {
   serverUrl: string;
   auth: McpAuth;
-  method: string;
-  params?: Record<string, unknown>;
   timeoutMs?: number;
   maxBytes?: number;
+};
+
+export type McpRequestOptions = McpSessionOptions & {
+  method: string;
+  params?: Record<string, unknown>;
 };
 
 /**
@@ -97,7 +100,7 @@ export type McpRequestOptions = {
  */
 /** One POST to the endpoint. No lifecycle opinion — the caller supplies the frame. */
 async function post(
-  opts: McpRequestOptions,
+  opts: McpSessionOptions,
   payload: Record<string, unknown>,
   sessionId: string | null,
 ): Promise<Awaited<ReturnType<typeof safeFetch>>> {
@@ -156,24 +159,30 @@ function resultOf(res: Awaited<ReturnType<typeof safeFetch>>): unknown {
   return e.result;
 }
 
-export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
-  // THE LIFECYCLE, WHICH THIS CLIENT USED TO SKIP ENTIRELY.
-  //
+/**
+ * One MCP session, opened and closed around whatever the caller needs to do inside it.
+ *
+ * WHY A SESSION AND NOT A REQUEST
+ *
+ * Verification and invocation have to happen in the SAME session. `callApprovedCapability`
+ * reads the provider's current contract and then, only if it matches what was approved,
+ * runs the tool. With a session per call those are two different sessions, so a provider
+ * mid-deployment — or one whose catalogue is session-scoped — could show the pinned
+ * contract to the first and execute a changed one in the second. That is a race on the
+ * exact check that exists to fail closed, which makes it worse than no check at all.
+ *
+ * The session is also CLOSED. A stateful server allocates one per initialize and expects a
+ * DELETE to release it; without that, every probe, discovery and action leaked one until
+ * the provider expired it or refused new ones. Servers that keep no state answer 405, which
+ * is a normal answer and not a failure.
+ */
+async function withMcpSession<T>(
+  opts: McpSessionOptions,
+  body: (call: (method: string, params?: Record<string, unknown>) => Promise<unknown>) => Promise<T>,
+): Promise<T> {
   // MCP requires `initialize`, then the `notifications/initialized` notification, before
-  // any normal operation. This client sent `tools/list` as its very first request, so a
-  // server that enforces the lifecycle — which a compliant one does — could reject every
-  // probe, every discovery and every action, with valid credentials and a correct address.
-  // The repository's own `paige-mcp-smoke` has always done the handshake; this client was
-  // written without it and nothing compared the two.
-  //
-  // It was invisible because the test server answered `tools/list` unconditionally. A stub
-  // more permissive than the thing it stands in for proves the code works against the
-  // stub, which is the third time that has cost this change a defect.
-  //
-  // A stateful server may return `Mcp-Session-Id` on initialize; every later request in
-  // this exchange carries it. No session is cached between calls: an edge invocation is
-  // short-lived, a cache would be a second source of truth about a connection this code
-  // does not own, and three round trips is the honest price of correctness here.
+  // any normal operation. This client used to send `tools/list` first and nothing else,
+  // which a compliant server rejects outright.
   const initRes = await post(opts, {
     jsonrpc: "2.0",
     id: crypto.randomUUID(),
@@ -191,21 +200,66 @@ export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
 
   // A notification has no id and expects no result. A server answering 202 with an empty
   // body is the normal case, so its response is not parsed as an envelope.
-  const ackRes = await post(opts, {
-    jsonrpc: "2.0",
-    method: "notifications/initialized",
-  }, sessionId);
+  const ackRes = await post(opts, { jsonrpc: "2.0", method: "notifications/initialized" }, sessionId);
   if (ackRes.status < 200 || ackRes.status >= 300) {
     throw new McpError("mcp_http_error", undefined, ackRes.status);
   }
 
-  const res = await post(opts, {
-    jsonrpc: "2.0",
-    id: crypto.randomUUID(),
-    method: opts.method,
-    params: opts.params ?? {},
-  }, sessionId);
-  return resultOf(res);
+  try {
+    return await body(async (method, params) => resultOf(await post(opts, {
+      jsonrpc: "2.0",
+      id: crypto.randomUUID(),
+      method,
+      params: params ?? {},
+    }, sessionId)));
+  } finally {
+    // Best effort, and deliberately silent. Failing to release a session is not a reason
+    // to turn a completed action into a reported failure, and a stateless server has
+    // nothing to release.
+    if (sessionId) {
+      try {
+        await safeFetch(opts.serverUrl, {
+          method: "DELETE",
+          headers: {
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+            "Mcp-Session-Id": sessionId,
+            ...authHeaders(opts.auth),
+          },
+        }, { timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, maxBytes: 4096 });
+      } catch { /* 405, a closed socket, an expired session — none of it changes the result */ }
+    }
+  }
+}
+
+/**
+ * One MCP request in its own session. For a caller that needs exactly one operation.
+ *
+ * A caller that needs its verification and its call to agree must use
+ * {@link withApprovedCapabilitySession} instead — two `mcpRequest`s are two sessions.
+ */
+export async function mcpRequest(opts: McpRequestOptions): Promise<unknown> {
+  return await withMcpSession(opts, (call) => call(opts.method, opts.params));
+}
+
+/**
+ * Lists the provider's tools and then, inside the SAME session, hands the caller a way to
+ * run one. This is the shape the governed path needs: what was verified and what runs are
+ * the same catalogue, on the same session, with no window between them.
+ */
+export async function withApprovedCapabilitySession<T>(
+  opts: McpSessionOptions,
+  body: (session: {
+    tools: McpToolFingerprint[];
+    call: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  }) => Promise<T>,
+): Promise<T> {
+  return await withMcpSession(opts, async (call) => {
+    const tools = await fingerprintsOf(await call("tools/list"));
+    return await body({
+      tools,
+      call: (name, args) => call("tools/call", { name, arguments: args }),
+    });
+  });
 }
 
 /**
@@ -284,7 +338,11 @@ export async function mcpListToolFingerprints(opts: {
   auth: McpAuth;
   timeoutMs?: number;
 }): Promise<McpToolFingerprint[]> {
-  const result = await mcpRequest({ ...opts, method: "tools/list" });
+  return await fingerprintsOf(await mcpRequest({ ...opts, method: "tools/list" }));
+}
+
+/** The shared reading of a `tools/list` result, used inside and outside a session. */
+async function fingerprintsOf(result: unknown): Promise<McpToolFingerprint[]> {
   const tools = (result as { tools?: unknown })?.tools;
   if (!Array.isArray(tools)) return [];
   const out: McpToolFingerprint[] = [];

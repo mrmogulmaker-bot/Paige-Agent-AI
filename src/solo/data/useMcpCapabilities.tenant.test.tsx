@@ -117,6 +117,35 @@ describe("capability discovery across a workspace switch", () => {
     expect(approve?.[1]?.body?.expected_tenant_id).toBe("tenant-a");
   });
 
+  it("ignores an approval that lands after the workspace changed", async () => {
+    harness.invoke.mockResolvedValueOnce(tools(["gmail_send_email"]));
+    mount();
+    await act(async () => { await latest().discover(); });
+
+    // Started for tenant-a and left in flight. Not wrapped in `act`: the point is that it
+    // is still outstanding while other work happens, and nesting act scopes around it
+    // makes the interleaving the test is about impossible to arrange.
+    let land!: (v: unknown) => void;
+    harness.invoke.mockReturnValueOnce(new Promise((r) => { land = r; }));
+    const saving = latest().approve(["gmail_send_email"]);
+
+    // Tenant B is switched to AND has loaded its own list before A's approval returns.
+    // Without this, the reset alone satisfies the assertion — tools are null either way —
+    // and the gate passes for free.
+    switchWorkspaceTo("tenant-b");
+    harness.invoke.mockResolvedValueOnce(tools(["gmail_send_email", "slack_post"]));
+    await act(async () => { await latest().discover(); });
+    expect(latest().tools?.map((t) => t.name)).toEqual(["gmail_send_email", "slack_post"]);
+
+    land({ data: { ok: true }, error: null });
+    await act(async () => { await saving; });
+
+    // The write was confined to tenant-a by `expected_tenant_id`. The SCREEN must not now
+    // show tenant-a's approval applied to tenant-b's list.
+    expect(latest().tools?.map((t) => t.name)).toEqual(["gmail_send_email", "slack_post"]);
+    expect(latest().tools?.every((t) => t.approved === false)).toBe(true);
+  });
+
   // The case the reset alone cannot cover, and therefore the one that proves the gate is
   // load-bearing rather than decorative: two discoveries in flight for the SAME workspace,
   // the OLDER one answering last. No tenant changes, so nothing clears state — only the

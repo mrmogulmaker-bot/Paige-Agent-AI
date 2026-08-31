@@ -70,10 +70,42 @@ function serve(route, resultBody, schema = DEFAULT_SCHEMA) {
   const state = { schema };
   liveSchemas.set(route, state);
   routes.set(route, (req, res) => {
+    // Terminating a session is a DELETE with no body.
+    if (req.method === "DELETE") {
+      sessionLog.push({ method: "DELETE", session: req.headers["mcp-session-id"] ?? null });
+      res.writeHead(204).end();
+      return;
+    }
     let raw = "";
     req.on("data", (c) => { raw += c; });
     req.on("end", () => {
       const body = JSON.parse(raw);
+
+      // The lifecycle, ENFORCED. A stub that answers `tools/list` to a client which never
+      // initialized proves the client works against the stub and nothing about a real
+      // provider — which is how the missing handshake survived this far.
+      if (body.method === "initialize") {
+        sessionCounter += 1;
+        const id = `sess-${sessionCounter}`;
+        openSessions.add(id);
+        sessionLog.push({ method: "initialize", session: id });
+        res.writeHead(200, { "Content-Type": "application/json", "Mcp-Session-Id": id });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: body.params?.protocolVersion, capabilities: {} } }));
+        return;
+      }
+      const session = req.headers["mcp-session-id"] ?? null;
+      if (body.method === "notifications/initialized") {
+        sessionLog.push({ method: body.method, session });
+        res.writeHead(202).end();
+        return;
+      }
+      if (!session || !openSessions.has(session)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id ?? null, error: { code: -32002, message: "server not initialized" } }));
+        return;
+      }
+      sessionLog.push({ method: body.method, session });
+
       const result = body.method === "tools/list"
         ? { tools: [{ name: CAPABILITY, description: "d", inputSchema: state.schema }] }
         : resultBody;
@@ -82,6 +114,11 @@ function serve(route, resultBody, schema = DEFAULT_SCHEMA) {
     });
   });
 }
+
+/** Every framed message the provider saw, with the session it arrived on. */
+let sessionLog = [];
+let openSessions = new Set();
+let sessionCounter = 0;
 
 const liveSchemas = new Map();
 const DEFAULT_SCHEMA_MARKER = Symbol("default");
@@ -376,8 +413,26 @@ if (!BASELINE) {
   console.log("\n— the pinned contract —");
   serve("/pinned", { content: [{ type: "text", text: "ok" }] });
 
+  sessionLog = [];
   const clean = JSON.parse(await egress("/pinned"));
   check("an unchanged capability runs", clean.status === "ok");
+
+  // The check and the act must be the SAME session. Verifying the contract in one and
+  // running the tool in another leaves a window where a provider mid-deployment can show
+  // the pinned contract to the first and execute a changed one in the second — a race on
+  // the very check that exists to fail closed, which is worse than not checking, because
+  // it reports that it verified something.
+  const listed = sessionLog.find((e) => e.method === "tools/list");
+  const called = sessionLog.find((e) => e.method === "tools/call");
+  check("the contract is verified and the tool is run in one session",
+    !!listed && !!called && listed.session === called.session,
+    JSON.stringify(sessionLog));
+  check("...and the handshake happens once, not once per request",
+    sessionLog.filter((e) => e.method === "initialize").length === 1, JSON.stringify(sessionLog));
+  // A stateful server allocates a session per initialize and expects it back.
+  check("...and the session is closed when the work is done",
+    sessionLog.some((e) => e.method === "DELETE" && e.session === listed?.session),
+    JSON.stringify(sessionLog));
 
   // Same name, an added input. This is the substitution pinning exists to catch.
   const drifted = JSON.parse(await egress("/pinned", {
