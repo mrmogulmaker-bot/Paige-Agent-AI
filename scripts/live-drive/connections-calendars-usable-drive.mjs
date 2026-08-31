@@ -70,7 +70,10 @@ function startVite() {
   const child = spawn(
     "npx",
     ["vite", "--config", "scripts/live-drive/harness/connections-mount/vite.config.ts"],
-    { cwd: REPO, stdio: ["ignore", "pipe", "pipe"] },
+    // Own process group. `npx` forks the real `vite`, so without this the
+    // teardown kills the wrapper and leaves the server holding 5201 — the exact
+    // condition `assertPortFree` now refuses to run against.
+    { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true },
   );
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("vite did not start in 90s")), 90_000);
