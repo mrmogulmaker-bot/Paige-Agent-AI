@@ -506,7 +506,7 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
   home, so three carrier-facing compliance replies were silently dropped. The save seam is
   now the 8-argument `tenant_a2p_registration_save_draft`; the 5-argument signature is
   DROPPED so no caller can reach the version that loses them. Absent preserves a field,
-  an EMPTY STRING clears it — an owner must be able to delete a wrong STOP or HELP reply. **Carrier submission does not
+  an EMPTY STRING clears it — an owner must be able to delete a wrong STOP or HELP reply. `campaign_description` is the ONE exception and PRESERVES on empty; the flat rule was stated without it, which is exactly the sentence a later session would answer “how does the merge work?” from. **Carrier submission does not
   exist:** `comms-a2p-submit` performs no provider call and returns an explicit *prepared, not
   submitted* refusal, and no shipped path sets `submitted_at`. Do not read a `pending` row as a
   filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production

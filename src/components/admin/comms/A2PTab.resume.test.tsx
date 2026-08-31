@@ -47,6 +47,8 @@ const selectState = vi.hoisted(() => ({
   invoked: [] as { fn: string; body: Record<string, unknown> }[],
   filters: [] as { table: string; col: string; val: unknown }[],
   tenant: { data: "tenant-A" as string | null, error: null as { message: string } | null },
+  // The read could not fail before, so no test could reach the failure path.
+  readError: null as { message: string } | null,
 }));
 
 // Keyed by TABLE, and it RECORDS the tenant filter each read applied. A single shared mock
@@ -58,7 +60,10 @@ vi.mock("@/integrations/supabase/client", () => ({
       fn === "current_user_tenant_id" ? selectState.tenant : { data: null, error: null }),
     from: (table: string) => {
       const row = () => (table === "tenant_legal_profile" ? selectState.legal : selectState.row);
-      const result = async () => ({ data: row(), error: null });
+      const result = async () =>
+        table === "tenant_a2p_registrations" && selectState.readError
+          ? { data: null, error: selectState.readError }
+          : { data: row(), error: null };
       const build = () => ({
         eq: (col: string, val: unknown) => {
           selectState.filters.push({ table, col, val });
@@ -92,6 +97,7 @@ async function mountTab() {
 
 describe("A2P — coming back to a prepared registration", () => {
   beforeEach(() => {
+    selectState.readError = null;
     selectState.row = PREPARED_ROW;
     selectState.legal = { legal_business_name: "Proof Fixture LLC" };
     selectState.invoked = [];
@@ -218,6 +224,38 @@ describe("A2P — coming back to a prepared registration", () => {
 
     expect(text).toContain("nothing has been sent and nothing is queued");
     expect(text).not.toContain("Being set up");
+    await cleanup();
+  });
+  it("does not report 'not registered' when the READ failed — and offers no paid re-draft", async () => {
+    // The failure this closes is specific and shipped-adjacent. optin_message,
+    // optout_message and help_message are selected by this component and do not
+    // exist until 20261004020000 lands. The frontend and the migrations deploy on
+    // INDEPENDENT pipelines, so a frontend-first deploy returns 42703 "column does
+    // not exist" on every load — and the error was destructured away, so `reg` fell
+    // to null and the tab told a coach WITH a saved registration that they had none,
+    // then offered "Draft with Paige": a paid generation that overwrites the very
+    // compliance copy they had already reviewed.
+    selectState.row = PREPARED_ROW;           // the account DOES have one
+    selectState.readError = { message: 'column tenant_a2p_registrations.optin_message does not exist' };
+    const { host, cleanup } = await mountTab();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("We couldn\u2019t read your registration");
+    expect(text).toContain("Nothing is being claimed about your business");
+    // The two things that made this dangerous rather than merely wrong.
+    expect(text).not.toContain("Not registered yet");
+    expect(Array.from(host.querySelectorAll("button")).some((b) => /Draft with Paige/i.test(b.textContent ?? "")))
+      .toBe(false);
+    // And the raw database diagnostic never reaches the tenant.
+    expect(text).not.toContain("does not exist");
+    await cleanup();
+  });
+
+  it("DOES say 'Not registered yet' when the read SUCCEEDED and there is none (non-vacuity)", async () => {
+    selectState.row = null;
+    selectState.readError = null;
+    const { host, cleanup } = await mountTab();
+    expect(host.textContent ?? "").toContain("Not registered yet");
     await cleanup();
   });
 });

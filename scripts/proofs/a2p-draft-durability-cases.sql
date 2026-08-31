@@ -48,7 +48,16 @@ BEGIN
   INSERT INTO public.tenant_members (tenant_id,user_id,status,role) VALUES
     (tA,uA,'active','owner'),(tB,uB,'active','owner'),(tA,uNo,'active','member'),
     (tC,uC,'active','owner'),(tD,uD,'active','owner');
-  INSERT INTO public.user_roles (user_id,role) VALUES (uA,'admin'),(uB,'admin'),(uC,'admin') ON CONFLICT DO NOTHING;
+  -- uD IS IN THIS LIST, and the omission that left it out invalidated four cases.
+  -- `has_any_role` reads public.user_roles and NOTHING else — a tenant_members row is a
+  -- different table and grants no app_role — so uD failed the save seam's own authority
+  -- gate. Cases 15-18 then ran a bare PERFORM with no handler, the FORBIDDEN raise aborted
+  -- the whole DO block at case 15, and the two headline guard assertions never executed
+  -- while the run still looked like it had something to say. The sibling concurrency proof
+  -- got this right for its own second user, which is what makes this an omission rather
+  -- than a misunderstanding.
+  INSERT INTO public.user_roles (user_id,role)
+  VALUES (uA,'admin'),(uB,'admin'),(uC,'admin'),(uD,'admin') ON CONFLICT DO NOTHING;
   DELETE FROM public.user_roles WHERE user_id = uNo;
   INSERT INTO public.tenant_legal_profile (tenant_id, legal_business_name)
   VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC'),(tD,'Headless Fixture LLC');   -- tC deliberately has NONE
@@ -493,6 +502,35 @@ BEGIN
   out := out||format('      ...draft fields still editable ............ %s / %s   want t / edited directly%s',
                      allowed, coalesce(v_use,'(none)'), E'\n');
   IF NOT allowed OR v_use IS DISTINCT FROM 'edited directly' THEN fails := fails + 1; END IF;
+
+  -- ...but ONCE IT HAS LEFT PREPARATION the draft copy freezes too (20261004040000).
+  -- 030000 protected the eight submission columns and left the seven draft columns
+  -- unconditionally editable by a direct caller, so a carrier-APPROVED registration's
+  -- copy of record could be rewritten while the tab said it was locked. This is the
+  -- case that would pass with 040000 deleted, so it is the one that pins it.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'approved', brand_sid = 'BN-PROOF-FROZEN'
+   WHERE tenant_id = tD;                       -- as the governed owner, which is allowed
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uD,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations
+       SET sample_messages = '["rewritten after filing"]'::jsonb
+     WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...filed copy frozen to direct writes ..... refused=%s hint=%s   want t / REGISTRATION_IMMUTABLE%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'REGISTRATION_IMMUTABLE' THEN fails := fails + 1; END IF;
+
+  -- Put it back to pending so the governed-seam case below still measures what it says.
+  UPDATE public.tenant_a2p_registrations
+     SET status = 'pending', brand_sid = NULL
+   WHERE tenant_id = tD;
 
   -- ...and the GOVERNED seam still moves the row, so the guard did not freeze the product.
   PERFORM set_config('role','authenticated',true);

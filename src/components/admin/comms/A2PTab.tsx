@@ -220,6 +220,9 @@ export function A2PTab() {
   // look identical to a reader and mean opposite things — one invites a re-draft, the
   // other means we should not be saying anything about the account at all.
   const [regUnidentified, setRegUnidentified] = useState(false);
+  // FOUR states, not three. A read that FAILED is not an account with no registration,
+  // and the difference decides whether we invite a paid re-draft over reviewed copy.
+  const [regUnreadable, setRegUnreadable] = useState(false);
   const [needsLegalProfile, setNeedsLegalProfile] = useState(false);
   // Who can actually FIX a missing legal business name. /admin/setup/legal is AdminOnly,
   // while the route that mounts this tab has no gate and comms-a2p-draft admits `coach` —
@@ -277,7 +280,7 @@ export function A2PTab() {
       return;
     }
     setRegUnidentified(false);
-    const { data } = await untyped
+    const { data, error: regErr } = await untyped
       .from("tenant_a2p_registrations")
       .select(
         "brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at",
@@ -285,6 +288,31 @@ export function A2PTab() {
       .eq("tenant_id", tenantId)
       .limit(1)
       .maybeSingle();
+    // A FAILED READ IS NOT AN EMPTY ACCOUNT, and this is the third time that
+    // distinction has had to be made on this surface.
+    //
+    // `error` was destructured away here, three lines under a comment saying a
+    // degrade that swallows its cause turns every failure into the same invisible
+    // symptom. It did exactly that: any failure left `data` undefined, `reg` null,
+    // and the render fell to "Not registered yet" plus the onboarding form — whose
+    // only live control is a PAID generation that overwrites reviewed compliance
+    // copy. Told to a coach who HAS a registration.
+    //
+    // And this change hands that path a brand-new way to fire. optin_message,
+    // optout_message and help_message are selected above and do not exist until
+    // 20261004020000 lands. The frontend (Vercel) and the migrations (a GitHub
+    // Actions job with its own gate and a non-cancelling concurrency group) deploy
+    // on INDEPENDENT pipelines, so a frontend-first deploy — or a migration job
+    // that fails, a mode its own header documents — returns 42703 "column does not
+    // exist" on every load of this tab.
+    if (regErr) {
+      console.error("A2PTab: could not read this account's registration:", regErr.message);
+      setReg(null);
+      setRegUnreadable(true);
+      setRegLoading(false);
+      return;
+    }
+    setRegUnreadable(false);
     const row = (data as A2PRegistration) ?? null;
     setReg(row);
     // The legal business name lives on tenant_legal_profile and is a HARD precondition of
@@ -292,12 +320,17 @@ export function A2PTab() {
     // with every reviewed field populated and the save disabled — so the only live control
     // was another paid generation that overwrites the row. Reopening the copy is not
     // resuming the flow unless the owner can act on it.
-    const { data: lp } = await untyped
+    const { data: lp, error: lpErr } = await untyped
       .from("tenant_legal_profile")
       .select("legal_business_name")
       .eq("tenant_id", tenantId)
       .limit(1)
       .maybeSingle();
+    // Same swallow, same consequence one step further on: without the stored legal
+    // name `canSubmit` is false, the save is disabled, and the paid re-draft is
+    // again the only live control — which is the exact defect the resume work was
+    // written to remove. It does not blank the tab, so it logs rather than branching.
+    if (lpErr) console.error("A2PTab: could not read the legal business name:", lpErr.message);
     const storedLegal = (lp as { legal_business_name?: string } | null)?.legal_business_name;
     // `prev || stored`, deliberately, and NOT `prev ?? stored`: the field initialises to ""
     // and `??` would therefore never fill it. The cost is that it also refills a field the
@@ -484,6 +517,12 @@ export function A2PTab() {
             title="We couldn&rsquo;t identify your workspace"
             description="Nothing is wrong with your registration — we just couldn't tell which account this is, so we're not going to guess. Reload the page, or switch back into the workspace you want, and this will fill in."
           />
+        ) : regUnreadable ? (
+          <EmptyState
+            icon={ShieldCheck}
+            title="We couldn&rsquo;t read your registration"
+            description="Nothing is being claimed about your business until this succeeds, and nothing has changed. Reload the page in a moment and this will fill in."
+          />
         ) : !reg ? (
           <EmptyState
             icon={ShieldCheck}
@@ -551,7 +590,7 @@ export function A2PTab() {
           PAID frontier generation that writes to whichever tenant the server resolves, so
           offering it while we do not know which account this is would be inviting a spend
           against an unknown target. ── */}
-      {!regUnidentified && (
+      {!regUnidentified && !regUnreadable && (
       <SectionCard
         title={reg ? "Update your registration" : "Register with Paige"}
         description="Tell Paige your business name and what you text clients about. She writes the carrier copy; you approve it — no portals, no compliance forms."

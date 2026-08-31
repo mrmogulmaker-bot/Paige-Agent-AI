@@ -62,7 +62,7 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   destroyed, unreadable back. They now have their own columns and the fold is deleted.
   `loadReg` also rehydrates the editor (`a2pDraftResume.ts`) AND the legal business name,
   because restoring copy the owner cannot save is not resuming the flow. Absent preserves a
-  field; an empty string clears it, so a wrong STOP/HELP reply can actually be removed.
+  field; an empty string clears it, so a wrong STOP/HELP reply can actually be removed. ONE exception: `campaign_description` preserves on empty rather than clearing.
 - **`submitted_at` is the only honest discriminator.** No shipped path sets it. A2PTab's banner and
   pills key on it rather than on "a row exists with no SID" — that older test matched exactly what a
   durable draft save writes, and would have rendered "Submitted for review" over a registration
