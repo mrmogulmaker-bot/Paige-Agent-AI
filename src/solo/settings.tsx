@@ -637,6 +637,13 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
               {r ? <>
                 <p>{registrationStep(r).detail}</p>
                 <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
+                {/* The step above GRADES these three fields. Editing them right
+                    underneath it is the point: it used to report a missing
+                    business name and offer nowhere to supply one, which is a
+                    description of a problem rather than a way out of it. Both
+                    read the same `tenants.brand` keys, so the grade re-reads
+                    itself the moment this saves. */}
+                <BusinessDetailsPanel comms={comms} onSaved={readiness.retry}/>
                 <p className="ss-note">Filing with a carrier is not something this surface can do. A registration can be
                   prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
               </> : noRecord("registration")}
@@ -664,11 +671,20 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
           </Card>
           <Card title="Custom sending domains" icon={Globe2} truth={domainPresentation.capability} capabilityTruth actions={<Status tone={domainPresentation.tone}>{domainPresentation.accountLabel}</Status>}>
             <OrthogonalConnectionState {...domainPresentation}/>
-            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.domains.length ? <div className="ss-list">{comms.domains.map(domain=><div key={domain.id}><span><strong>{domain.domain}</strong><small>{domain.fromEmailLocal}@{domain.domain}</small></span><Status tone={domain.status === "verified" ? "ok" : "warn"}>{domain.status}</Status></div>)}</div> : <div className="ss-empty"><WifiOff/>No custom sending domain is reported.</div>}</ReadState>
+            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}><SendingDomainsPanel comms={comms}/></ReadState>
           </Card>
-          <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
-            <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
-            <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>
+          {/* SENDING ACCOUNT, not "mailbox". The scope granted is `gmail.send`
+              only, so inbound remains genuinely unproven — but the outbound half
+              is live, and reporting the whole card UNAVAILABLE hid a capability
+              that had already shipped. Outlook has no function in this repo at
+              all, so it is named as absent rather than implied as coming. */}
+          <Card title="Connected sending account" icon={Mail}
+            truth={comms.mailbox?.connected ? "LIVE" : "PARTIAL"} capabilityTruth
+            actions={<Status tone={comms.mailbox?.connected ? "ok" : "neutral"}>{comms.mailbox?.connected ? "Connected" : "Not connected"}</Status>}>
+            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>
+              <GoogleSendingAccountPanel comms={comms}/>
+            </ReadState>
+            <p className="ss-note">Google only. There is no Outlook connection on this platform yet, and none is implied here.</p>
           </Card>
         </div>
       </Subsection>
@@ -773,6 +789,241 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
  * one card inside the Business phone subsection, and it still states its own
  * ceiling: no provider search runs from here.
  */
+/* ---------------------------------------------------------------------------
+ * Editable Connections controls.
+ *
+ * These three panels exist because the cards above them used to REPORT a state
+ * and offer no way to change it — "business name still missing" with no field,
+ * "Not configured" with no control, "Unavailable" for a capability whose backend
+ * had shipped. Describing a capability is not providing it (§70).
+ *
+ * Each takes the ALREADY-MOUNTED `useSoloComms()` value as a prop. Calling the
+ * hook again inside a panel would create a second copy of this surface's state
+ * and a second set of network reads, so a save in one place would leave the
+ * other showing a stale answer.
+ *
+ * Shared contract, all three: the control is disabled while a write is in
+ * flight, the outcome states what actually happened, and the adapter re-reads
+ * afterwards so what appears is the PERSISTED value rather than what was typed
+ * (§70.1 — a toast is not persistence).
+ * ------------------------------------------------------------------------- */
+
+type WriteState = { tone: "ok" | "bad"; message: string } | null;
+
+function Outcome({ state }: { state: WriteState }) {
+  if (!state) return null;
+  return <div className="ss-outcome" data-tone={state.tone} role="status" aria-live="polite">
+    {state.tone === "ok" ? <CheckCircle2 aria-hidden/> : <TriangleAlert aria-hidden/>}
+    <span>{state.message}</span>
+  </div>;
+}
+
+/** Shown in place of the controls when the caller may not write here (§9). */
+function NotYours({ what }: { what: string }) {
+  return <p className="ss-note">Only a workspace admin can change {what}. Your access here is read-only.</p>;
+}
+
+function BusinessDetailsPanel({ comms, onSaved }: { comms: ReturnType<typeof useSoloComms>; onSaved: () => void }) {
+  const [draft, setDraft] = useState(comms.business);
+  const [saving, setSaving] = useState(false);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+  const [dirty, setDirty] = useState(false);
+
+  // Adopt the persisted record whenever it changes UNDER an untouched form —
+  // the first load arrives after mount, and the account can switch beneath us.
+  // A dirty form is never overwritten: losing something half-typed to a
+  // background refresh is its own defect.
+  useEffect(() => { if (!dirty) setDraft(comms.business); }, [comms.business, dirty]);
+
+  const set = (k: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDirty(true); setOutcome(null);
+    setDraft((d) => ({ ...d, [k]: e.target.value }));
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setOutcome(null);
+    const res = await comms.saveBusiness(draft);
+    setSaving(false);
+    if (res.ok) {
+      setDirty(false);
+      setOutcome({ tone: "ok", message: "Saved. Carrier registration reads these three fields." });
+      // The readiness ladder is a SEPARATE read (`tenant_comms_readiness()`), and
+      // it is what grades these exact fields. Without this the person saves a
+      // business name and the step above still says "Partly filled in" until a
+      // reload — a save that does not visibly land reads as a save that failed.
+      onSaved();
+    } else setOutcome({ tone: "bad", message: res.error ?? "That didn't save." });
+  };
+
+  if (!comms.canManage) return <NotYours what="your business details"/>;
+
+  return <form className="ss-form" onSubmit={save}>
+    <div className="ss-form-row">
+      <label><span>Legal business name</span>
+        <input value={draft.name} onChange={set("name")} placeholder="As registered" autoComplete="organization" disabled={saving}/></label>
+      <label><span>Website</span>
+        <input value={draft.website} onChange={set("website")} placeholder="https://…" autoComplete="url" inputMode="url" disabled={saving}/></label>
+      <label><span>Business phone</span>
+        <input value={draft.phone} onChange={set("phone")} placeholder="+1…" autoComplete="tel" inputMode="tel" disabled={saving}/></label>
+    </div>
+    <div className="ss-form-actions">
+      <button type="submit" className="ss-btn" disabled={saving || !dirty}>
+        {saving ? <RefreshCw className="ss-spin" aria-hidden/> : <CheckCircle2 aria-hidden/>}
+        {saving ? "Saving…" : "Save business details"}
+      </button>
+    </div>
+    <Outcome state={outcome}/>
+  </form>;
+}
+
+function SendingDomainsPanel({ comms }: { comms: ReturnType<typeof useSoloComms> }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ domain: "", fromEmailLocal: "no-reply", fromName: "" });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+
+  const run = async (key: string, fn: () => Promise<{ ok: boolean; error: string | null }>, okMessage: string) => {
+    setBusy(key); setOutcome(null);
+    const res = await fn();
+    setBusy(null);
+    setOutcome(res.ok ? { tone: "ok", message: okMessage } : { tone: "bad", message: res.error ?? "That didn't work." });
+    return res.ok;
+  };
+
+  if (!comms.canManage) return <NotYours what="sending domains"/>;
+
+  return <>
+    {comms.domains.length > 0 && <div className="ss-list">
+      {comms.domains.map((d) => <div key={d.id}>
+        <span>
+          <strong>{d.domain}{d.isDefault ? " · default" : ""}</strong>
+          <small>{d.fromEmailLocal}@{d.domain}</small>
+        </span>
+        <Status tone={d.status === "verified" ? "ok" : "warn"}>{d.status}</Status>
+        <div className="ss-row-actions">
+          {/* "Check DNS" rather than "Verify": this asks the provider what the
+              records currently say. It cannot make an unpublished record exist,
+              and a button that implied otherwise would promise a result the
+              person has to produce at their registrar. */}
+          <button type="button" className="ss-btn ss-btn--quiet ss-btn--sm" disabled={busy !== null}
+            onClick={() => run(`refresh:${d.id}`, () => comms.refreshDomain(d.id), `Re-read the DNS records for ${d.domain}.`)}>
+            {busy === `refresh:${d.id}` ? <RefreshCw className="ss-spin" aria-hidden/> : <RefreshCw aria-hidden/>}Check DNS
+          </button>
+          {!d.isDefault && d.status === "verified" && <button type="button" className="ss-btn ss-btn--quiet ss-btn--sm" disabled={busy !== null}
+            onClick={() => run(`default:${d.id}`, () => comms.setDefaultDomain(d.id), `${d.domain} is now the default sender.`)}>
+            Make default
+          </button>}
+          <button type="button" className="ss-btn ss-btn--danger ss-btn--sm" disabled={busy !== null}
+            onClick={() => { if (window.confirm(`Remove ${d.domain}? Mail already sent is unaffected, but this domain stops being available as a sender.`)) void run(`remove:${d.id}`, () => comms.removeDomain(d.id), `${d.domain} removed.`); }}>
+            Remove
+          </button>
+        </div>
+      </div>)}
+    </div>}
+
+    {comms.domains.length === 0 && <div className="ss-empty"><WifiOff aria-hidden/>No custom sending domain yet — mail goes out on the PAIGE-managed identity above.</div>}
+
+    {!showAdd && <div className="ss-form-actions" style={{ marginTop: 11 }}>
+      <button type="button" className="ss-btn" onClick={() => { setShowAdd(true); setOutcome(null); }}>
+        <Globe2 aria-hidden/>Add a domain
+      </button>
+    </div>}
+
+    {showAdd && <form className="ss-form" onSubmit={async (e) => {
+      e.preventDefault();
+      if (!form.domain.trim() || !form.fromName.trim()) { setOutcome({ tone: "bad", message: "A domain and a From name are both required." }); return; }
+      const ok = await run("add", () => comms.addDomain(form), "Registered. Publish the DNS records it returns, then Check DNS.");
+      if (ok) { setShowAdd(false); setForm({ domain: "", fromEmailLocal: "no-reply", fromName: "" }); }
+    }}>
+      <div className="ss-form-row">
+        <label><span>Domain</span>
+          <input value={form.domain} onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value }))} placeholder="mail.yourbusiness.com" disabled={busy !== null} autoFocus/></label>
+        <label><span>Sends from</span>
+          <input value={form.fromEmailLocal} onChange={(e) => setForm((f) => ({ ...f, fromEmailLocal: e.target.value }))} placeholder="no-reply" disabled={busy !== null}/></label>
+        <label><span>From name</span>
+          <input value={form.fromName} onChange={(e) => setForm((f) => ({ ...f, fromName: e.target.value }))} placeholder="Your business" disabled={busy !== null}/></label>
+      </div>
+      <div className="ss-form-actions">
+        <button type="submit" className="ss-btn" disabled={busy !== null}>
+          {busy === "add" ? <RefreshCw className="ss-spin" aria-hidden/> : <CheckCircle2 aria-hidden/>}
+          {busy === "add" ? "Registering…" : "Register domain"}
+        </button>
+        <button type="button" className="ss-btn ss-btn--quiet" disabled={busy !== null} onClick={() => { setShowAdd(false); setOutcome(null); }}>Cancel</button>
+      </div>
+      <p className="ss-note">Registering a domain creates it at the email provider and returns DNS records for you to publish. It does not send anything.</p>
+    </form>}
+
+    <Outcome state={outcome}/>
+  </>;
+}
+
+/**
+ * The Google sending account.
+ *
+ * Called a SENDING ACCOUNT, never a mailbox: `gmail-oauth-start` requests
+ * `gmail.send` and `userinfo.email` and nothing else, so no inbound scope is
+ * granted and nothing here proves mail is read. The card this replaced said
+ * "no Settings read proves a connected mailbox" — true about inbound, and it
+ * had been reading as though the whole capability were missing when the
+ * outbound half had shipped and simply was not wired to a read.
+ */
+function GoogleSendingAccountPanel({ comms }: { comms: ReturnType<typeof useSoloComms> }) {
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+
+  if (!comms.canManage) return <NotYours what="the connected sending account"/>;
+
+  if (comms.mailbox === null) {
+    // Distinct from "not connected": the read itself did not come back.
+    return <p className="ss-note">The connected-account record could not be read, so this is unknown rather than empty. Reload to try again.</p>;
+  }
+
+  if (comms.mailbox.connected) {
+    return <>
+      <div className="ss-fields">
+        <Field label="Google account" value={comms.mailbox.address}/>
+        <Field label="Status" value={comms.mailbox.status}/>
+      </div>
+      <div className="ss-form-actions" style={{ marginTop: 11 }}>
+        <button type="button" className="ss-btn ss-btn--danger" disabled={busy}
+          onClick={async () => {
+            if (!window.confirm("Disconnect this Google account? PAIGE stops sending as it, and the stored token is revoked.")) return;
+            setBusy(true); setOutcome(null);
+            const res = await comms.disconnectGmail();
+            setBusy(false);
+            setOutcome(res.ok ? { tone: "ok", message: "Disconnected." } : { tone: "bad", message: res.error ?? "That didn't work." });
+          }}>
+          {busy ? <RefreshCw className="ss-spin" aria-hidden/> : null}{busy ? "Disconnecting…" : "Disconnect"}
+        </button>
+      </div>
+      <p className="ss-note">This account is authorised to SEND only. Reading incoming mail is a separate permission this connection does not request.</p>
+      <Outcome state={outcome}/>
+    </>;
+  }
+
+  return <>
+    <p>Connect a Google account so PAIGE can send email as you, rather than from the managed identity.</p>
+    <div className="ss-form-actions" style={{ marginTop: 11 }}>
+      <button type="button" className="ss-btn" disabled={busy}
+        onClick={async () => {
+          setBusy(true); setOutcome(null);
+          const { url, error } = await comms.startGmailConnect();
+          setBusy(false);
+          if (!url) { setOutcome({ tone: "bad", message: error ?? "Couldn't start the Google sign-in." }); return; }
+          // Opened, never auto-redirected: the consent screen is something the
+          // person chose to go to, in a window they can close (§38).
+          window.location.assign(url);
+        }}>
+        {busy ? <RefreshCw className="ss-spin" aria-hidden/> : <ExternalLink aria-hidden/>}
+        {busy ? "Opening Google…" : "Connect a Google account"}
+      </button>
+    </div>
+    <p className="ss-note">You'll sign in at Google and grant permission to send. PAIGE never sees your password, and asks for send permission only.</p>
+    <Outcome state={outcome}/>
+  </>;
+}
+
 function PhoneSetupPanel() {
   const [searchAttempted, setSearchAttempted] = useState(false);
   return <section className="ss-card" aria-labelledby="ss-phone-title">
