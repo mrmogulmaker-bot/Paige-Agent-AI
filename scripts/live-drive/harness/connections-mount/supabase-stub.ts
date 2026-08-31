@@ -251,6 +251,15 @@ function chain(table: string) {
   return self;
 }
 
+/**
+ * Harness-only window hook, so a drive can read what the store ACTUALLY holds
+ * instead of inferring it from the rendered surface. Diagnosing a save that
+ * reports success and does not persist is impossible from the DOM alone.
+ */
+try {
+  (window as unknown as Record<string, unknown>).__harnessStore = db;
+} catch { /* not a browser — ignore */ }
+
 export const supabase = {
   from: (table: string) => chain(table),
   rpc: (name: string) => {

@@ -2603,3 +2603,36 @@ The gate is a person finishing the job.
 harness render · **authenticated runtime on the real platform** · `UNVERIFIED` with its reason. A
 harness drive against an in-memory double is the third class and must never be reported as the
 fourth.
+
+### §70.2 — THE OWNER-INTENT GATE (runs BEFORE planning, editing, or declaring done)
+
+> **OWNER-RULED 2026-08-31.** Mandatory. Sits in front of §70.1: §70.2 asks *what outcome was
+> asked for*, §70.1 asks *can a human actually reach it*.
+
+**Before planning, editing, or declaring a flow complete**, identify the current owner's INTENDED
+USABLE OUTCOME from their active instruction and their approved decisions. Carry that outcome
+through the flow contract, and compare it against the **actual rendered or executed result** before
+calling anything complete.
+
+**Nothing below overrides that intent:** a green test suite · a fixture · a prototype · a static
+status view · a PRIOR AGENT'S REPORT · or existing runtime behaviour. Each is evidence about the
+system; none is evidence that the owner got what they asked for. Existing behaviour is especially
+treacherous — it is the thing being complained about, so "it already works this way" is a
+description of the defect, not a defence against it.
+
+**Never report a capability as delivered** unless the supported human or system flow the owner
+asked for actually works through its durable contract.
+
+**When product evidence conflicts with the intended outcome:** preserve safety and authority
+boundaries, name the EXACT missing contract, and complete every proven usable part. Do not
+substitute a static representation for a usable feature, and do not let one missing contract
+justify leaving the rest of the surface inert (§70.1).
+
+**The test, every time:** *"What did the owner actually ask to be able to DO — and does the thing
+in front of me now do it? Or am I about to hand back an artifact that describes it?"*
+
+**Anchoring case (2026-08-31).** Asked to make Calendars usable, CC read the source, found every
+flow bound to a real write with tests, and reported the work ~90% pre-delivered. The owner's
+intended outcome — *I can use this on my own platform* — was never checked against a rendered
+result. Driven, four flows failed, including a save that reports "Saved." and discards the write.
+The prior report was the artifact of the miss, not a finding about it.

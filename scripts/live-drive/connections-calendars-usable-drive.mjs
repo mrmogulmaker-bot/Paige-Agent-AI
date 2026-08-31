@@ -58,6 +58,14 @@ function startVite() {
   });
 }
 
+const peek = (page) => page.evaluate(() => {
+  const db = window.__harnessStore;
+  if (!db) return { hook: typeof window.__harnessStore, keys: Object.keys(window).filter((k) => k.startsWith("__")) };
+  const c = (db.calendars || [])[0];
+  const ss = (() => { try { return Object.keys(sessionStorage).filter((k) => k.includes("harness")); } catch { return "blocked"; } })();
+  return c ? { id: c.id, title: c.title, type: c.type, buf: c.buffer_before_min, ss } : { rows: (db.calendars || []).length, ss };
+});
+
 const results = [];
 const record = (flow, ok, detail) => {
   results.push({ flow, ok, detail });
@@ -130,7 +138,9 @@ async function flowEditPersists(page) {
   const actDisabled = await page.locator(".cc-bar button", { hasText: /^\s*Save/ }).first()
     .isDisabled().catch(() => "<no save button>");
   console.log(`      diag: before="${before}" after="${after}" saveBar=${barSeen} saveDisabled=${actDisabled}`);
+  console.log(`      store BEFORE save: ${JSON.stringify(await peek(page))}`);
   const s = await save(page);
+  console.log(`      store AFTER  save: ${JSON.stringify(await peek(page))}`);
   const noticeAfter = (await page.locator(".cc-notice").allInnerTexts().catch(() => [])).join(" | ");
   console.log(`      diag: notice after save = "${noticeAfter.slice(0, 120)}"`);
   if (!s.pressed) return record("2 · edit an existing preset and save", false, `save unavailable (${JSON.stringify(s)})`);
@@ -138,9 +148,12 @@ async function flowEditPersists(page) {
   // Re-open the surface from scratch. A value that only lived in React state
   // disappears here, which is exactly the failure this flow exists to catch.
   await open(page);
-  const survived = await page.getByText(fresh).count();
-  record("2 · edit an existing preset and save", survived > 0,
-    survived > 0 ? `"${fresh}" survived a reload` : `"${fresh}" did NOT survive a reload`);
+  console.log(`      store AFTER reload: ${JSON.stringify(await peek(page))}`);
+  const back = await openArea(page, "Details");
+  const persisted = await back.locator(".cc-area-b input.cc-in").first().inputValue().catch(() => "<none>");
+  const alsoOnCard = await page.getByText(fresh).count();
+  record("2 · edit an existing preset and save", persisted === fresh,
+    `input after reload="${persisted}" (wanted "${fresh}") cardText=${alsoOnCard}`);
 }
 
 /** 3 · Individual vs round-robin is a choice a person can actually make. */
@@ -150,11 +163,13 @@ async function flowRoundRobin(page) {
   const sel = page.locator(".cc-area-b select.cc-sel").first();
   if (!(await sel.count())) return record("3 · choose individual or round-robin", false, "no type control");
   const options = await sel.locator("option").allTextContents();
-  await sel.selectOption({ label: /Round-robin/i }).catch(() => sel.selectOption("round_robin"));
-  await save(page);
+  const picked = await sel.selectOption("round_robin").then(() => "by-value").catch((e) => `FAILED:${e.message.slice(0,60)}`);
+  const afterPick = await sel.inputValue();
+  const s2 = await save(page);
+  console.log(`      diag: pick=${picked} valueAfterPick=${afterPick} save=${JSON.stringify(s2)}`);
   await open(page);
-  await openArea(page, "Details");
-  const now = await page.locator(".cc-area-b select.cc-sel").first().inputValue();
+  const d2 = await openArea(page, "Details");
+  const now = await d2.locator(".cc-area-b select.cc-sel").first().inputValue();
   record("3 · choose individual or round-robin", now === "round_robin",
     `options=[${options.join("|")}] persisted=${now}`);
 }
