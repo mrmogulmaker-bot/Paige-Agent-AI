@@ -25,7 +25,7 @@ function mkRecorder() {
 }
 
 class QueryBuilder {
-  constructor(table, scenario, recorder, kind, authorization = null) {
+  constructor(table, liveRef, kind, authorization = null) {
     this._table = table;
     // WHICH CLIENT asked. Without this the recorder captured table/op/filters only, so a check
     // could assert the SHAPE of an authorization query but never its AUTHORITY — and swapping
@@ -34,8 +34,7 @@ class QueryBuilder {
     // property this fix depends on witnessable at all.
     this._kind = kind;
     this._authorization = authorization;
-    this._scenario = scenario;
-    this._recorder = recorder;
+    this._live = liveRef;
     this._filters = [];
     this._ordered = false;
     this._limit = null;
@@ -45,9 +44,9 @@ class QueryBuilder {
   // Every filter/shape method records itself and chains. Recording the SHAPE (not just
   // the table) is what lets a check prove an unordered LIMIT 1 pick is gone.
   select(...a) { this._filters.push(["select", a[0]]); return this; }
-  insert(row) { this._op = "insert"; this._recorder.inserts.push({ table: this._table, row }); return this; }
-  update(row) { this._op = "update"; this._recorder.inserts.push({ table: this._table, row, update: true }); return this; }
-  upsert(row) { this._op = "upsert"; this._recorder.inserts.push({ table: this._table, row, upsert: true }); return this; }
+  insert(row) { this._op = "insert"; this._live().recorder.inserts.push({ table: this._table, row }); return this; }
+  update(row) { this._op = "update"; this._live().recorder.inserts.push({ table: this._table, row, update: true }); return this; }
+  upsert(row) { this._op = "upsert"; this._live().recorder.inserts.push({ table: this._table, row, upsert: true }); return this; }
   delete() { this._op = "delete"; return this; }
   eq(c, v) { this._filters.push(["eq", c, v]); return this; }
   neq(c, v) { this._filters.push(["neq", c, v]); return this; }
@@ -68,18 +67,18 @@ class QueryBuilder {
   limit(n) { this._limit = n; this._filters.push(["limit", n]); return this; }
 
   _rows() {
-    const svc = this._scenario.serviceTables?.[this._table];
+    const svc = this._live().scenario.serviceTables?.[this._table];
     if (this._kind === "service" && svc !== undefined) {
       return (typeof svc === "function" ? svc(this._filters) : svc) ?? [];
     }
-    const fn = this._scenario.tables?.[this._table];
+    const fn = this._live().scenario.tables?.[this._table];
     if (typeof fn === "function") return fn(this._filters) ?? [];
     if (Array.isArray(fn)) return fn;
     return [];
   }
 
   _record(single) {
-    this._recorder.from.push({
+    this._live().recorder.from.push({
       client: this._kind,
       authorization: this._authorization,
       table: this._table,
@@ -94,7 +93,7 @@ class QueryBuilder {
   maybeSingle() {
     this._record(true);
     const rows = this._rows();
-    const injected = this._scenario.tableErrors?.[this._table];
+    const injected = this._live().scenario.tableErrors?.[this._table];
     if (injected) return Promise.resolve({ data: null, error: injected });
     return Promise.resolve({ data: rows[0] ?? null, error: null });
   }
@@ -102,23 +101,22 @@ class QueryBuilder {
 
   then(res, rej) {
     this._record(false);
-    const injectedThen = this._scenario.tableErrors?.[this._table];
+    const injectedThen = this._live().scenario.tableErrors?.[this._table];
     if (injectedThen) return Promise.resolve({ data: null, error: injectedThen, count: 0 }).then(res, rej);
     return Promise.resolve({ data: this._rows(), error: null, count: this._rows().length }).then(res, rej);
   }
 }
 
 class FakeClient {
-  constructor(kind, scenario, recorder, authorization = null) {
+  constructor(kind, liveRef, authorization = null) {
     this._kind = kind; // "jwt" | "service"
-    this._scenario = scenario;
-    this._recorder = recorder;
+    this._live = liveRef;
     this._authorization = authorization;
     this.auth = {
-      getUser: async () => scenario.authUser
-        ? { data: { user: scenario.authUser }, error: null }
+      getUser: async () => this._live().scenario.authUser
+        ? { data: { user: this._live().scenario.authUser }, error: null }
         : { data: { user: null }, error: { message: "no user" } },
-      getClaims: async () => ({ data: { claims: { sub: scenario.authUser?.id ?? null } }, error: null }),
+      getClaims: async () => ({ data: { claims: { sub: this._live().scenario.authUser?.id ?? null } }, error: null }),
     };
     // Record the upload PATH. A document is written to `${targetUserId}/…`, so the target is a
     // cross-tenant WRITE surface, not merely a read. Without recording it, reverting the upload
@@ -127,7 +125,7 @@ class FakeClient {
     this.storage = {
       from: (bucket) => ({
         upload: async (path, body, opts) => {
-          this._recorder.uploads.push({ bucket, path, client: this._kind });
+          this._live().recorder.uploads.push({ bucket, path, client: this._kind });
           void body; void opts;
           return { data: { path }, error: null };
         },
@@ -140,11 +138,11 @@ class FakeClient {
     this.removeChannel = () => {};
   }
 
-  from(table) { return new QueryBuilder(table, this._scenario, this._recorder, this._kind, this._authorization); }
+  from(table) { return new QueryBuilder(table, this._live, this._kind, this._authorization); }
 
   async rpc(name, args) {
-    this._recorder.rpc.push({ client: this._kind, name, args, authorization: this._authorization });
-    const configured = this._scenario.rpcs?.[name];
+    this._live().recorder.rpc.push({ client: this._kind, name, args, authorization: this._authorization });
+    const configured = this._live().scenario.rpcs?.[name];
     // A scenario value is ALWAYS the full PostgREST result — `{ data, error }` — or a
     // function returning one. Never a bare payload that this fake then wraps: wrapping
     // silently produced `{ data: { data: … } }`, which the handler read as null and which
@@ -169,6 +167,16 @@ export function setScenario(scenario) {
 }
 export function recorder() { return ACTIVE.recorder; }
 
+/**
+ * Resolved LIVE, never captured at construction. Production code memoizes clients — the LLM
+ * trace admin is built once and reused for the whole process — so a client captured with the
+ * FIRST scenario's recorder keeps writing into it for every later scenario. That silently made
+ * every "this turn wrote nothing" assertion blind to memoized-client writes (including the
+ * trace row, which carries the prompt), and made the suite order-dependent: move a scenario and
+ * a later turn's rows land in an earlier turn's recorder.
+ */
+function live() { return ACTIVE; }
+
 export function createClient(_url, key, _opts) {
   // The handler builds the JWT client with the ANON key and the service client with the
   // SERVICE_ROLE key. Distinguishing them lets a check prove which client asked what.
@@ -180,7 +188,7 @@ export function createClient(_url, key, _opts) {
   // real caller identity, not merely with the right key.
   const authorization = _opts?.global?.headers?.Authorization ?? _opts?.global?.headers?.authorization ?? null;
   ACTIVE.recorder.clients.push({ kind, authorization });
-  return new FakeClient(kind, ACTIVE.scenario, ACTIVE.recorder, authorization);
+  return new FakeClient(kind, live, authorization);
 }
 
 export default { createClient };

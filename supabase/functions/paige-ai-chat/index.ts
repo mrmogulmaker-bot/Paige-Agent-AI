@@ -830,8 +830,16 @@ JSON:`;
         }
       }
 
+      // The summary mode returns plain JSON, not a stream, so the `client_scope` frame the two
+      // streaming paths carry cannot reach it. Without this, a refused summary turn returned a
+      // clean 200 while filing the summary of a session the caller believed was about their
+      // focused client into the CALLER's own memory instead — the same silent-wrong-behaviour
+      // the frames exist to end. Additive: existing consumers read `summary` and ignore the rest.
       return new Response(
-        JSON.stringify({ summary: summaryContent.trim() }),
+        JSON.stringify({
+          summary: summaryContent.trim(),
+          ...(clientScopeDenied ? { client_scope: { status: "refused", reason: clientScopeRefusal } } : {}),
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

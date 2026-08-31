@@ -319,9 +319,22 @@ console.log("\na refused client turn WRITES nothing, anywhere");
   assert("5.0 the write path IS reachable in this harness (guards the check itself)",
     (ownWrite.rec.inserts ?? []).some((i) => i.table === "client_memory"),
     "an authorized turn must actually write, or 5.1 proves nothing");
-  assert("5.1 a refused turn performs NO inserts of any kind",
-    (foreignWrite.rec.inserts ?? []).length === 0,
-    JSON.stringify((foreignWrite.rec.inserts ?? []).map((i) => i.table)));
+  // NOT "no inserts of any kind" — that was literally false and only appeared true while the
+  // recorder was blind to memoized clients. The LLM trace admin is built once and reused for the
+  // process, so a refused turn still writes its observability row. What must be true is that no
+  // CLIENT-SCOPED row is written, and that the trace row carries neither the refused id nor the
+  // named client's data (asserted explicitly below rather than exempted).
+  const OBSERVABILITY_TABLES = new Set(["paige_llm_trace"]);
+  const refusedBusinessWrites = (foreignWrite.rec.inserts ?? []).filter((i) => !OBSERVABILITY_TABLES.has(i.table));
+  assert("5.1 a refused turn writes NO client-scoped row",
+    refusedBusinessWrites.length === 0,
+    JSON.stringify(refusedBusinessWrites.map((i) => i.table)));
+  assert("5.1b …and the observability row it does write leaks neither the id nor the client's data",
+    (foreignWrite.rec.inserts ?? [])
+      .filter((i) => OBSERVABILITY_TABLES.has(i.table))
+      .every((i) => !JSON.stringify(i.row ?? {}).includes(FOREIGN)
+        && !JSON.stringify(i.row ?? {}).includes(MEMORY_TEXT)),
+    JSON.stringify((foreignWrite.rec.inserts ?? []).filter((i) => OBSERVABILITY_TABLES.has(i.table)).map((i) => i.table)));
   assert("5.2 …and no insert anywhere carries the refused id",
     !JSON.stringify(foreignWrite.rec.inserts ?? []).includes(FOREIGN),
     JSON.stringify(foreignWrite.rec.inserts ?? []));
@@ -514,12 +527,21 @@ console.log("\nthe SESSION-SUMMARY branch is bound to the same decision");
     JSON.stringify(ownSum.rec.inserts.filter((i) => i.table === "client_memory").map((i) => i.row)));
 
   const refusedSum = await drive({ clientId: FOREIGN, stream: true, extraBody: sessionBody });
+  assert("9.4 a REFUSED summary turn announces the refusal in its JSON response",
+    (() => { try { return JSON.parse(refusedSum.bodyText)?.client_scope?.status === "refused"; } catch { return false; } })(),
+    refusedSum.bodyText.slice(0, 200));
+  assert("9.5 …and an AUTHORIZED summary turn carries no such marker (9.4 is not vacuous)",
+    (() => { try { return JSON.parse(ownSum.bodyText)?.client_scope === undefined; } catch { return false; } })(),
+    ownSum.bodyText.slice(0, 200));
+  assert("9.6 …and the marker never carries the rejected identifier",
+    !refusedSum.bodyText.includes(FOREIGN), "the refused id appeared in the summary response");
   assert("9.2 a REFUSED summary turn writes nothing carrying the refused id",
     !JSON.stringify(refusedSum.rec.inserts ?? []).includes(FOREIGN),
     JSON.stringify(refusedSum.rec.inserts ?? []));
   assert("9.3 …it is filed against the CALLER instead, with no client_id",
-    refusedSum.rec.inserts.filter((i) => i.table === "client_memory")
-      .every((i) => (i.row?.client_user_id ?? null) === USER && !i.row?.client_id),
+    refusedSum.rec.inserts.filter((i) => i.table === "client_memory").length > 0
+      && refusedSum.rec.inserts.filter((i) => i.table === "client_memory")
+        .every((i) => (i.row?.client_user_id ?? null) === USER && !i.row?.client_id),
     JSON.stringify(refusedSum.rec.inserts.filter((i) => i.table === "client_memory").map((i) => i.row)));
 }
 
@@ -537,12 +559,20 @@ console.log("\nthe CREDIT-REPORT upload branch is bound to the same decision");
   };
 
   const ownCredit = await drive({ clientId: OWN, stream: true, document: creditDoc, readCheck: readsAsCreditReport });
+  // The `credit_report_uploads` INSERT is the only signal unique to this branch. Bucket
+  // membership is NOT: the general-document path writes to the SAME bucket under a `general/`
+  // prefix, so a bucket-or-insert disjunct was satisfied by any stored PDF — which meant that
+  // if the branch went dark (a reworded read-check prompt, a flipped flag) this "guard" still
+  // passed AND 10.1-10.3 passed vacuously over empty arrays, letting a revert of the
+  // cross-tenant service-role write in this very branch ship green through CI.
   assert("10.0 the credit-report branch IS reached (guards this section)",
-    ownCredit.rec.uploads.some((u) => u.bucket === "credit-report-uploads")
-      || ownCredit.rec.inserts.some((i) => i.table === "credit_report_uploads"),
+    ownCredit.rec.inserts.some((i) => i.table === "credit_report_uploads")
+      && ownCredit.rec.uploads.some((u) => u.bucket === "credit-report-uploads" && !u.path.includes("/general/")),
     JSON.stringify({ uploads: ownCredit.rec.uploads, inserts: ownCredit.rec.inserts.map((i) => i.table) }));
   assert("10.1 an authorized credit report is stored against the AUTHORIZED client",
-    ownCredit.rec.uploads.filter((u) => u.bucket === "credit-report-uploads").every((u) => u.path.startsWith(`${OWN}/`))
+    ownCredit.rec.uploads.filter((u) => u.bucket === "credit-report-uploads" && !u.path.includes("/general/"))
+      .every((u) => u.path.startsWith(`${OWN}/`))
+      && ownCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").length > 0
       && ownCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").every((i) => i.row?.user_id === OWN),
     JSON.stringify({
       uploads: ownCredit.rec.uploads.filter((u) => u.bucket === "credit-report-uploads").map((u) => u.path),
