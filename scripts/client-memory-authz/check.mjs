@@ -387,9 +387,13 @@ console.log("\nno read of ANY table carries a refused client id");
   assert("6.1 no table read outside the authorization lookup carries the refused id",
     leaked.length === 0,
     JSON.stringify(leaked.map((f) => `${f.client}:${f.table}`)));
-  assert("6.2 the caller's own id is used instead, so the turn still works",
-    foreignAll.rec.from.some((f) => JSON.stringify(f.filters).includes(USER)),
-    "no caller-scoped read observed");
+  // NOT "the caller's own id is used instead". That asserted the fallback READ as correct, and
+  // it is the same mistake 8.2c/9.3/10.3 made on the write side: the conversation and the UI
+  // still name the client, so answering from the caller's profile answers "what is their score?"
+  // with the WRONG person's figures. A refused focused turn now ends before any of it.
+  assert("6.2 a refused focused turn does not substitute the caller as the subject",
+    !foreignAll.rec.from.some((f) => f.table === "profiles" || f.table === "user_subscriptions" || f.table === "documents"),
+    JSON.stringify(foreignAll.rec.from.map((f) => f.table)));
 }
 
 console.log("\nthe caller cannot reach another client's memory by any body-supplied route");
@@ -480,14 +484,20 @@ console.log("\na refused turn does not blend the named client's context with the
   // Assert on what actually LEAVES for the model. Checking the RESPONSE body here would be
   // vacuous: a system prompt is egress, never reply, so that assertion passes whether or not
   // the block is injected. This is the difference between testing the guard and testing nothing.
-  assert("7.0 the harness observed real model egress (guards the check itself)",
-    denied.modelEgress.length > 0, "no model request was captured");
-  assert("7.1 the request-supplied client context is not injected on a refused turn",
+  // Stronger than "the context block is absent": a refused focused turn reaches the model AT
+  // ALL only if the choke point failed. There is no prompt to inspect because no prompt is sent.
+  assert("7.0 a refused turn performs NO model egress whatsoever",
+    denied.modelEgress.length === 0,
+    JSON.stringify(denied.modelEgress.map((b) => b.slice(0, 120))));
+  assert("7.1 …so neither the named client's context block nor any prompt leaves at all",
     !denied.modelEgress.some((b) => b.includes("CLIENT CONTEXT (VERIFIED DATABASE DATA)")),
     "the named client's context block reached the model after a refusal");
   assert("7.1b …and the refused id never reaches the model either",
     !denied.modelEgress.some((b) => b.includes(FOREIGN)),
     "the refused id reached the model");
+  assert("7.1d …and the caller is told plainly, rather than being answered as the wrong subject",
+    denied.bodyText.includes("couldn't confirm that this client belongs to your workspace"),
+    denied.bodyText.slice(0, 300));
 
   // Surfacing the refusal is what stops it being a silent wrong behaviour the owner finds live.
   const allowed = await drive({ clientId: OWN, stream: true, clientContext: CLIENT_CTX });
@@ -634,10 +644,12 @@ console.log("\nthe CREDIT-REPORT upload branch is bound to the same decision");
       uploads: refusedCredit.rec.uploads.map((u) => u.path),
       rows: refusedCredit.rec.inserts.filter((i) => i.table === "credit_report_uploads").map((i) => i.row?.user_id),
     }));
-  assert("10.4 a REFUSED credit report is NOT extracted and synced into the caller's records",
-    refusedCredit.bodyText.includes("client_scope_refused")
-      && !refusedCredit.modelEgress.some((b) => b.includes("Extract structured")),
-    refusedCredit.bodyText.slice(0, 300));
+  // The turn no longer reaches the credit branch at all, so there is nothing to skip: no
+  // extraction call, no sync, no model egress of any kind.
+  assert("10.4 a REFUSED credit report is never extracted or synced",
+    refusedCredit.modelEgress.length === 0
+      && !refusedCredit.outboundCalls.some((c) => c.url.includes("sync-credit-report-data")),
+    JSON.stringify({ egress: refusedCredit.modelEgress.length, out: refusedCredit.outboundCalls.map((c) => c.url) }));
   assert("10.5 …while an AUTHORIZED one still syncs (10.4 is not vacuous)",
     ownCredit.bodyText.includes("sync_status") && !ownCredit.bodyText.includes("client_scope_refused"),
     ownCredit.bodyText.slice(0, 300));
@@ -685,6 +697,27 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
     allowedTool.outboundCalls.filter((c) => c.url.includes("paige-write-back"))
       .every((c) => c.body.includes(OWN) && !c.body.includes(`"target_user_id":"${USER}"`)),
     JSON.stringify(allowedTool.outboundCalls.filter((c) => c.url.includes("paige-write-back")).map((c) => c.body)));
+
+  // The review's point was that gating ONE tool leaves every other mutating branch open —
+  // `crm_create_task` service-role-inserts the model's subject-specific title into the caller's
+  // tenant, `propose_action` persists an outbound draft. Rather than enumerate them, the turn
+  // now ends before the tool loop exists. Drive a DIFFERENT mutating tool to prove the choke
+  // point holds generally, not just for the one tool that was gated by hand.
+  const refusedTask = await drive({
+    clientId: FOREIGN,
+    stream: true,
+    toolCall: { name: "crm_create_task", args: { title: "Call about their charge-off", description: "subject-specific" } },
+  });
+  assert("12.4 a refused turn runs NO mutating tool, not merely the one that was gated",
+    refusedTask.rec.inserts.filter((i) => !["paige_llm_trace"].includes(i.table)).length === 0
+      && refusedTask.outboundCalls.length === 0,
+    JSON.stringify({
+      inserts: refusedTask.rec.inserts.map((i) => i.table),
+      outbound: refusedTask.outboundCalls.map((c) => c.url),
+    }));
+  assert("12.5 …because the tool loop is never reached — no model round happens at all",
+    refusedTask.modelEgress.length === 0,
+    JSON.stringify(refusedTask.modelEgress.length));
 
   const refusedTool = await drive({ clientId: FOREIGN, stream: true, toolCall: upd });
   assert("12.1 a REFUSED turn makes NO write-back call at all",

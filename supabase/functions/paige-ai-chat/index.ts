@@ -634,6 +634,48 @@ serve(async (req) => {
      */
     const clientContext = clientScopeDenied ? undefined : rawClientContext;
 
+    // ── §9 CHOKE POINT — a refused focused turn ends HERE, before anything else runs.
+    //
+    // Everything below this line assumes a resolved subject: `buildUserContext` loads a
+    // profile, scores, banking, documents and tasks; the agentic loop can call mutating tools;
+    // the model is asked to answer as if the named client were in scope. Gating those one site
+    // at a time was the wrong shape, and it kept leaving holes — each review round found
+    // another (credit sync, summary memory, document persistence, `update_client_data`, then
+    // every OTHER mutating tool). The choke point is here.
+    //
+    // Two things made the per-site approach unsafe even where the writes were closed:
+    //   - `contextUserId` fell back to the CALLER, so a turn whose UI still says "Focused on
+    //     <name>" would answer "what is their score?" with the CALLER's figures.
+    //   - The `client_scope` frame does not prevent that: no surface consumes it yet, so the
+    //     focus indicator stays put. An advisory signal is not a control.
+    //
+    // This is what the original brief asked for — fail closed BEFORE any prompt/model egress
+    // or later-loop use — and it is strictly safer than answering with the wrong subject.
+    // The no-client path is untouched: it sends no `clientId`, so `clientScopeDenied` is false.
+    if (clientScopeDenied) {
+      const refusalText = "I couldn't confirm that this client belongs to your workspace, so I'm not able to pull anything from their file or act on their record in this conversation. Nothing has been saved. If you think this is wrong, reopen the client from your list and try again.";
+      const scopeFrame = { client_scope: { status: "refused", reason: clientScopeRefusal } };
+
+      if (generateSessionSummary) {
+        return new Response(JSON.stringify({ summary: "", ...scopeFrame }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const enc = new TextEncoder();
+      const refusalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(scopeFrame)}\n\n`));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: refusalText } }] })}\n\n`));
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(refusalStream, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
+    }
+
     // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
     // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
     // client's own live feed both see it in real time (§7/§8 two-way loop). This is
