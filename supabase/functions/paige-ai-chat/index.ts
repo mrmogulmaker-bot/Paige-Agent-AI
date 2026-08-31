@@ -384,9 +384,6 @@ Rules:
 // failure so the caller can still proceed without blocking the user-facing
 // response. Uses Voyage voyage-3 (1024 dims) via embeddingsCompat to match the
 // tenant_knowledge_chunks / rag_documents embedding columns.
-/** A body-supplied client id must look like a UUID before it is used to key any lookup. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 async function embedText(text: string): Promise<number[] | null> {
   try {
     if (!text) return null;
@@ -541,7 +538,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
 
     // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
     //
@@ -567,14 +564,29 @@ serve(async (req) => {
     let clientScopeRefusal: string | null = null;
     if (payloadClientId) {
       try {
-        const [{ data: callerTenantRaw, error: tenantErr }, { data: operatorRaw }] = await Promise.all([
+        // §53 COUPLING — deliberately `is_platform_owner()` (super_admin), NOT
+        // `is_platform_operator()`. This bypass is only ever REACHABLE when the `clients` read
+        // below returns a foreign row, and the RESTRICTIVE `tenant_isolation` policy on `clients`
+        // admits cross-tenant reads on `is_platform_owner()` alone. Gating the bypass on the
+        // WIDER helper would be dead code today AND would silently widen to `platform_admin` the
+        // moment that policy migrates per §53 — cross-tenant client-memory read AND write, with
+        // no further gate here. The guard's predicate therefore tracks the policy it depends on.
+        // If that policy is ever widened, widening this is a SEPARATE, deliberate decision.
+        const [{ data: callerTenantRaw, error: tenantErr }, { data: ownerRaw, error: ownerErr }] = await Promise.all([
           supabaseClient.rpc("current_user_tenant_id"),
-          supabaseClient.rpc("is_platform_operator"),
+          supabaseClient.rpc("is_platform_owner"),
         ]);
         const callerTenantId = (callerTenantRaw ?? null) as string | null;
-        const isOperator = operatorRaw === true;
+        // Strict `=== true`: a null/undefined/non-boolean result is NOT operator authority.
+        const isOperator = ownerRaw === true;
         if (tenantErr) {
           clientScopeRefusal = "caller workspace could not be resolved";
+        } else if (ownerErr) {
+          // The operator check is the ONLY unbounded bypass in this guard. If we cannot
+          // establish it, we do not know the caller's authority — that is UNKNOWN, never
+          // "not an operator", because a later change to this branch ordering would then
+          // silently fail OPEN. Refuse.
+          clientScopeRefusal = "caller authority could not be resolved";
         } else {
           const { data: authClientRow, error: authClientErr } = await supabaseClient
             .from("clients")
@@ -610,6 +622,17 @@ serve(async (req) => {
     const scopedClientId: string | null = authorizedClientId;
     /** True when a client was named but could not be authorized: do NO client-scoped work. */
     const clientScopeDenied: boolean = clientScopeRefusal !== null;
+    /**
+     * The request body also carries a pre-rendered `clientContext` block, built CLIENT-SIDE from
+     * the NAMED client's file. On a refusal the rest of this handler falls back to the CALLER's
+     * own scope (`contextUserId = scopedClientId || user.id`), so leaving this block in would
+     * blend two identities inside one prompt — the named client's context under a header that
+     * says "VERIFIED DATABASE DATA … always reference this data", alongside the caller's own
+     * profile, subscriptions and documents, with nothing marking which is which. Paige would
+     * then state one person's numbers as the other's. Rebinding the name here (rather than
+     * patching each use) means EVERY downstream consumer is gated, including ones added later.
+     */
+    const clientContext = clientScopeDenied ? undefined : rawClientContext;
 
     // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
     // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
@@ -861,16 +884,11 @@ JSON:`;
           // arbitrary tenant's client. Validate through the JWT-scoped `supabaseClient` (RLS), and
           // exclude NULL-tenant client rows (the clients RLS policy admits tenant_id IS NULL); a
           // foreign/NULL-tenant clientId resolves to nothing and falls back to the caller's own id.
-          let targetUserId = user.id;
-          if (payloadClientId) {
-            const { data: authCreditClient } = await supabaseClient
-              .from("clients")
-              .select("id")
-              .eq("id", payloadClientId)
-              .not("tenant_id", "is", null)
-              .maybeSingle();
-            if (authCreditClient?.id && scopedClientId) targetUserId = scopedClientId;
-          }
+          // `scopedClientId` is ALREADY the authorized-or-null decision (made once, above, on the
+          // JWT-scoped client and bound to the caller's tenant). Re-reading `clients` with the RAW
+          // body id here was a redundant round-trip on every PDF turn whose result was ANDed away,
+          // and it left the exact raw-id pattern in the file for the next reader to copy.
+          const targetUserId = scopedClientId ?? user.id;
           const timestamp = Date.now();
           const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
           const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
@@ -927,16 +945,8 @@ JSON:`;
         // used later in this handler (a foreign clientId simply resolves to nothing under RLS).
         if (docKind === "pdf" && attachedDocument.base64) {
           try {
-            let generalTargetUserId = user.id;
-            if (payloadClientId) {
-              const { data: authClient } = await supabaseClient
-                .from("clients")
-                .select("id")
-                .eq("id", payloadClientId)
-                .not("tenant_id", "is", null)
-                .maybeSingle();
-              if (authClient?.id && scopedClientId) generalTargetUserId = scopedClientId;
-            }
+            // Same as the credit-report path above: the authorization decision is already made.
+            const generalTargetUserId = scopedClientId ?? user.id;
             const timestamp = Date.now();
             const safeName = (attachedDocument.fileName || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
             const generalPath = `${generalTargetUserId}/general/${timestamp}_paige_${safeName}`;
@@ -7762,6 +7772,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
       const finalStream = new ReadableStream({
         async start(controller) {
+         // §13/§36 — a client was named but could NOT be authorized, so this turn ran with no
+         // client scope at all. Without a signal the surface keeps saying "Focused on <name>"
+         // while Paige silently has no memory, no rail and no client file — a silent wrong
+         // behaviour the owner would have to catch live. Announce it, WITHOUT the rejected id or
+         // any client field (the reason is a fixed category string, same as the server log).
+         // Consumers ignore frames they don't know (each parser is an `if (parsed.X)` chain
+         // falling through to `choices[0].delta.content`), so this is additive for all of them.
+         if (clientScopeDenied) {
+           controller.enqueue(enc.encode(`data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`));
+         }
          // #12 — flush any PRE-FLIGHT compaction frames FIRST, so the compacting card renders
          // before Paige's reasoning/answer streams. Empty (no-op) on every turn that didn't fold.
          for (const f of compactionLeadFrames) controller.enqueue(enc.encode(f));

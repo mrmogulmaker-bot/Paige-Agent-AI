@@ -21,11 +21,11 @@
 
 /** One recorded call, in order. */
 function mkRecorder() {
-  return { rpc: [], from: [], inserts: [] };
+  return { rpc: [], from: [], inserts: [], clients: [], uploads: [] };
 }
 
 class QueryBuilder {
-  constructor(table, scenario, recorder, kind) {
+  constructor(table, scenario, recorder, kind, authorization = null) {
     this._table = table;
     // WHICH CLIENT asked. Without this the recorder captured table/op/filters only, so a check
     // could assert the SHAPE of an authorization query but never its AUTHORITY — and swapping
@@ -33,6 +33,7 @@ class QueryBuilder {
     // vulnerability) left the whole suite green. Recording the caller is what makes the one
     // property this fix depends on witnessable at all.
     this._kind = kind;
+    this._authorization = authorization;
     this._scenario = scenario;
     this._recorder = recorder;
     this._filters = [];
@@ -80,6 +81,7 @@ class QueryBuilder {
   _record(single) {
     this._recorder.from.push({
       client: this._kind,
+      authorization: this._authorization,
       table: this._table,
       op: this._op,
       filters: this._filters,
@@ -107,26 +109,41 @@ class QueryBuilder {
 }
 
 class FakeClient {
-  constructor(kind, scenario, recorder) {
+  constructor(kind, scenario, recorder, authorization = null) {
     this._kind = kind; // "jwt" | "service"
     this._scenario = scenario;
     this._recorder = recorder;
+    this._authorization = authorization;
     this.auth = {
       getUser: async () => scenario.authUser
         ? { data: { user: scenario.authUser }, error: null }
         : { data: { user: null }, error: { message: "no user" } },
       getClaims: async () => ({ data: { claims: { sub: scenario.authUser?.id ?? null } }, error: null }),
     };
-    this.storage = { from: () => ({ upload: async () => ({ data: null, error: null }), createSignedUrl: async () => ({ data: null, error: null }), download: async () => ({ data: null, error: null }) }) };
+    // Record the upload PATH. A document is written to `${targetUserId}/…`, so the target is a
+    // cross-tenant WRITE surface, not merely a read. Without recording it, reverting the upload
+    // target to the raw body id left the whole suite green — the write went to another client's
+    // folder and nothing observed it.
+    this.storage = {
+      from: (bucket) => ({
+        upload: async (path, body, opts) => {
+          this._recorder.uploads.push({ bucket, path, client: this._kind });
+          void body; void opts;
+          return { data: { path }, error: null };
+        },
+        createSignedUrl: async () => ({ data: null, error: null }),
+        download: async () => ({ data: null, error: null }),
+      }),
+    };
     this.functions = { invoke: async () => ({ data: null, error: null }) };
     this.channel = () => ({ send: async () => {}, subscribe: () => ({}), on: function () { return this; } });
     this.removeChannel = () => {};
   }
 
-  from(table) { return new QueryBuilder(table, this._scenario, this._recorder, this._kind); }
+  from(table) { return new QueryBuilder(table, this._scenario, this._recorder, this._kind, this._authorization); }
 
   async rpc(name, args) {
-    this._recorder.rpc.push({ client: this._kind, name, args });
+    this._recorder.rpc.push({ client: this._kind, name, args, authorization: this._authorization });
     const configured = this._scenario.rpcs?.[name];
     // A scenario value is ALWAYS the full PostgREST result — `{ data, error }` — or a
     // function returning one. Never a bare payload that this fake then wraps: wrapping
@@ -156,7 +173,14 @@ export function createClient(_url, key, _opts) {
   // The handler builds the JWT client with the ANON key and the service client with the
   // SERVICE_ROLE key. Distinguishing them lets a check prove which client asked what.
   const kind = String(key ?? "").includes("service") ? "service" : "jwt";
-  return new FakeClient(kind, ACTIVE.scenario, ACTIVE.recorder);
+  // KEY CHOICE IS NOT CALLER AUTHORITY. The anon key alone carries no user: without the
+  // caller's JWT forwarded as an Authorization header, `auth.uid()` is NULL in Postgres, RLS
+  // and every SECURITY DEFINER caller-guard are exempt, and a "JWT client" is really an anon
+  // client. Record the header so a check can assert the authorization read was made with a
+  // real caller identity, not merely with the right key.
+  const authorization = _opts?.global?.headers?.Authorization ?? _opts?.global?.headers?.authorization ?? null;
+  ACTIVE.recorder.clients.push({ kind, authorization });
+  return new FakeClient(kind, ACTIVE.scenario, ACTIVE.recorder, authorization);
 }
 
 export default { createClient };

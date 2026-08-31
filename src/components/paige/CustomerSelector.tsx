@@ -57,9 +57,16 @@ export function CustomerSelector({ onSelect, onRequestCreate }: Props) {
     const id = ++reqId.current;
     setLoading(true);
     const handle = setTimeout(async () => {
+      // §58 — do not offer a row the server will refuse. `paige-ai-chat` authorizes a focused
+      // client by TENANT EQUALITY and excludes `tenant_id IS NULL`, but the `clients`
+      // `tenant_isolation` policy admits NULL-tenant rows to ANY authenticated user and there is
+      // no NOT NULL constraint on the column. Without this filter a NULL-tenant row would be
+      // pickable here and then silently unusable in chat. (Zero such rows exist in production
+      // today — this keeps the picker and the guard from drifting apart.)
       let q = supabase
         .from("clients")
         .select("id, first_name, last_name, entity_name, email, lifecycle_stage")
+        .not("tenant_id", "is", null)
         .order("created_at", { ascending: false })
         .limit(50);
 

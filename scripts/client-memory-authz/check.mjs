@@ -22,6 +22,10 @@ const OTHERTEN = "88888888-8888-4888-8888-888888888888"; // visible via a non-te
 const CALLER_TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_TENANT  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
+/** Tenant-neutral on purpose: survives `sanitizeClientContextForTier` for a non-funding tenant,
+ *  so a missing block means the GUARD dropped it, not the sanitizer. */
+const CLIENT_CTX = "Focused client file: current stage is onboarding, last review 12 days ago.";
+
 const VECTOR = Array.from({ length: 1024 }, (_, i) => (i % 7) / 10);
 
 let failures = 0, checks = 0;
@@ -35,18 +39,49 @@ globalThis.Deno = {
   env: { get: (k) => ({
     SUPABASE_URL: "https://test.supabase.co", SUPABASE_ANON_KEY: "anon-key",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key", VOYAGE_API_KEY: "test-voyage-key",
-    ANTHROPIC_API_KEY: "",
+    ANTHROPIC_API_KEY: "test-anthropic-key",
   })[k] ?? "" },
 };
 
 let embedCount = 0;
-globalThis.fetch = async (url) => {
+/**
+ * OFF by default. With no model stub every turn 500s before the response stream is built, so
+ * anything the handler EMITS to the caller is unobservable — which is why the refusal signal
+ * could not be witnessed at first. Turning it on per-scenario keeps every existing check
+ * driving the exact same path it drove before, while making the stream itself drivable.
+ */
+let modelStub = false;
+/** Every request body sent to the model this turn — the real prompt/model EGRESS surface. */
+let modelEgress = [];
+const sseModelReply = (text) =>
+  new Response(
+    [
+      `data: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 1, output_tokens: 1 } } })}\n\n`,
+      `data: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text } })}\n\n`,
+      `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" } })}\n\n`,
+      `data: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    ].join(""),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  );
+
+globalThis.fetch = async (url, init) => {
   const href = String(url);
   if (href.includes("voyageai.com")) {
     embedCount += 1;
     return new Response(JSON.stringify({ data: [{ index: 0, embedding: VECTOR }] }), {
       status: 200, headers: { "Content-Type": "application/json" },
     });
+  }
+  if (href.includes("anthropic.com")) modelEgress.push(String(init?.body ?? ""));
+  if (modelStub && href.includes("anthropic.com")) {
+    const wantsStream = (() => {
+      try { return JSON.parse(String(init?.body ?? "{}")).stream === true; } catch { return false; }
+    })();
+    if (wantsStream) return sseModelReply("ok");
+    return new Response(
+      JSON.stringify({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
   }
   throw new Error(`client-memory-authz: unexpected outbound fetch to ${href}`);
 };
@@ -64,9 +99,22 @@ const MEMORY_TEXT = "SECRET-CLIENT-MEMORY-CONTENT";
  * admits `tenant_id IS NULL` to ANY authenticated user — which is exactly why the handler
  * must exclude it), FOREIGN is invisible.
  */
-async function drive({ clientId, clientsError = null, memoryReadError = null, text = "what do you know about me?" }) {
+async function drive({
+  clientId,
+  clientsError = null,
+  memoryReadError = null,
+  text = "what do you know about me?",
+  // The cross-tenant bypass. `undefined` keeps the default non-operator result; pass a full
+  // `{ data, error }` to model an operator, or an errored authority check.
+  ownerRpc = { data: false, error: null },
+  document = undefined,
+  stream = false,
+  clientContext = undefined,
+}) {
   const logged = [];
   embedCount = 0;
+  modelEgress = [];
+  modelStub = stream;
   const origError = console.error, origWarn = console.warn;
   console.error = (...a) => logged.push({ level: "error", msg: a.join(" ") });
   console.warn = (...a) => logged.push({ level: "warn", msg: a.join(" ") });
@@ -77,6 +125,7 @@ async function drive({ clientId, clientsError = null, memoryReadError = null, te
       check_rate_limit: { data: true, error: null },
       current_user_tenant_id: { data: CALLER_TENANT, error: null },
       is_platform_operator: { data: false, error: null },
+      is_platform_owner: ownerRpc,
       get_paige_persona_context: { data: [{ tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
       match_paige_memory: { data: [{ source: "memory", memory_type: "user_preference", content: MEMORY_TEXT, similarity: 0.95 }], error: null },
     },
@@ -120,16 +169,22 @@ async function drive({ clientId, clientsError = null, memoryReadError = null, te
     const res = await handler(new Request("http://local/paige-ai-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-      body: JSON.stringify({ messages: [{ role: "user", content: text }], ...(clientId !== undefined ? { clientId } : {}) }),
+      body: JSON.stringify({
+        messages: [{ role: "user", content: text }],
+        ...(clientId !== undefined ? { clientId } : {}),
+        ...(document !== undefined ? { document } : {}),
+        ...(clientContext !== undefined ? { clientContext } : {}),
+      }),
     }));
     status = res.status;
     try { bodyText = await res.text(); } catch { /* streamed */ }
   } catch (e) { status = "throw:" + (e?.message ?? e); }
+  modelStub = false;
 
   console.error = origError; console.warn = origWarn;
   const memoryReads = rec.from.filter((f) => f.table === "client_memory" && f.op === "select");
   const memoryRpc = rec.rpc.filter((r) => r.name === "match_paige_memory");
-  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc };
+  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress] };
 }
 
 console.log("\nauthorized paths still work (no regression)");
@@ -191,8 +246,10 @@ console.log("\nunauthorized client context fails closed BEFORE any memory is rea
   const malformed = await drive({ clientId: "not-a-uuid" });
   // MALFORMED is rejected UPSTREAM by the request schema (`clientId: z.string().uuid()`), which
   // 400s the whole request before any handler logic runs — stronger than an in-handler refusal.
-  // This asserts the REAL behaviour, not the behaviour I first assumed; the in-handler UUID
-  // guard is unreachable today and is documented in the source as schema-drift defence only.
+  // This asserts the REAL behaviour, not the behaviour I first assumed. There is NO in-handler
+  // UUID guard: an earlier draft added a `UUID_RE` constant that was never referenced, and this
+  // comment used to claim it existed and was "documented as schema-drift defence" — a §13 drift
+  // between the proof and the code. The dead constant is deleted; the schema is the whole guard.
   assert("2.8 a MALFORMED client id is rejected by the request schema with 400",
     malformed.status === 400, `status: ${malformed.status}`);
   assert("2.9 …and no memory work of any kind is performed",
@@ -279,6 +336,138 @@ console.log("\nthe caller cannot reach another client's memory by any body-suppl
   assert("3.2 no RPC anywhere is passed the foreign id as a memory target",
     !foreign.rec.rpc.some((r) => JSON.stringify(r.args ?? {}).includes(FOREIGN)),
     JSON.stringify(foreign.rec.rpc.map((r) => r.name)));
+}
+
+console.log("\nthe authorization read is made with a real CALLER IDENTITY, not just the right key");
+{
+  // Choosing the anon key is NOT the same as acting as the caller. Without the caller's JWT
+  // forwarded as an Authorization header, `auth.uid()` is NULL, RLS and every SECURITY DEFINER
+  // caller-guard are exempt, and the "JWT client" is an anon client wearing the name. The suite
+  // previously proved only KEY CHOICE, so deleting the forwarded header left it fully green
+  // while making the guard vacuous in production. This is the missing axis.
+  const own = await drive({ clientId: OWN });
+  const authzRead = own.rec.from.find((f) => f.table === "clients" && f.op === "select");
+  assert("4.5 the authorization read carries the caller's forwarded Authorization header",
+    !!authzRead && typeof authzRead.authorization === "string" && authzRead.authorization.length > 0,
+    JSON.stringify({ authorization: authzRead?.authorization ?? null }));
+  assert("4.6 …and so do the authority RPCs it depends on",
+    own.rec.rpc.filter((r) => r.name === "current_user_tenant_id" || r.name === "is_platform_owner")
+      .every((r) => typeof r.authorization === "string" && r.authorization.length > 0),
+    JSON.stringify(own.rec.rpc.filter((r) => r.name === "is_platform_owner").map((r) => r.authorization)));
+}
+
+console.log("\nthe OPERATOR bypass — the only unbounded one — is bounded and fails closed");
+{
+  // The bypass skips tenant equality entirely, so every one of its edges must be witnessed.
+  // Untested, it was a single token from being a total authorization bypass: `=== true`
+  // relaxed to `!== false` made every caller whose authority check errored an operator, and
+  // the whole suite stayed green because no scenario ever varied this RPC.
+  const opForeign = await drive({ clientId: OTHERTEN, ownerRpc: { data: true, error: null } });
+  assert("4.7 a genuine platform owner MAY read a client in another workspace",
+    opForeign.rec.from.some((f) => f.table === "client_memory" && JSON.stringify(f.filters).includes(OTHERTEN))
+      || opForeign.memoryRpc.some((r) => JSON.stringify(r.args ?? {}).includes(OTHERTEN)),
+    JSON.stringify({ reads: opForeign.memoryReads.map((r) => r.filters), rpc: opForeign.memoryRpc.map((r) => r.args) }));
+
+  // Operator authority is not a licence to read a row the tenant predicate excludes for
+  // everyone. A NULL-tenant row is unowned, so it is refused even for an owner — this is the
+  // ONLY check that puts real load on `.not("tenant_id","is",null)`, whose behavioural effect
+  // is otherwise masked by the tenant-equality clause rejecting a null tenant anyway.
+  const opNull = await drive({ clientId: NULLTEN, ownerRpc: { data: true, error: null } });
+  assert("4.8 …but an unowned (NULL-tenant) client is refused even for an owner",
+    !opNull.rec.from.some((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(NULLTEN))
+      && !opNull.rec.rpc.some((r) => JSON.stringify(r.args ?? {}).includes(NULLTEN)),
+    JSON.stringify(opNull.rec.from.filter((f) => JSON.stringify(f.filters).includes(NULLTEN)).map((f) => f.table)));
+
+  // UNKNOWN authority is never "not an operator" — it is a refusal. Reading a failed authority
+  // check as a negative is what lets a later reordering fail open silently.
+  const opErr = await drive({ clientId: OTHERTEN, ownerRpc: { data: null, error: { message: "rpc down", code: "57014" } } });
+  assert("4.9 an ERRORED authority check refuses rather than assuming non-operator",
+    !opErr.rec.from.some((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(OTHERTEN))
+      && !opErr.rec.rpc.some((r) => JSON.stringify(r.args ?? {}).includes(OTHERTEN)),
+    JSON.stringify(opErr.rec.from.filter((f) => JSON.stringify(f.filters).includes(OTHERTEN)).map((f) => f.table)));
+  assert("4.10 …and says so as authority, not as a workspace mismatch",
+    opErr.logged.some((l) => l.msg.includes("REFUSED") && l.msg.includes("authority")),
+    JSON.stringify(opErr.logged.filter((l) => l.msg.includes("REFUSED")).map((l) => l.msg)));
+
+  // A non-boolean must never be truthy-read into operator authority.
+  const opJunk = await drive({ clientId: OTHERTEN, ownerRpc: { data: "true", error: null } });
+  assert("4.11 a non-boolean authority result does NOT confer operator authority",
+    !opJunk.rec.from.some((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(OTHERTEN)),
+    JSON.stringify(opJunk.rec.from.filter((f) => JSON.stringify(f.filters).includes(OTHERTEN)).map((f) => f.table)));
+}
+
+console.log("\na refused turn does not blend the named client's context with the caller's own");
+{
+  // On refusal the handler falls back to the CALLER's scope, while the body still carries a
+  // pre-rendered block built from the NAMED client's file, under a header telling the model it
+  // is verified data to always reference. Shipping both puts two identities in one prompt with
+  // nothing marking which is which — a defect the fix itself introduced by adding the fallback.
+  const denied = await drive({
+    clientId: FOREIGN,
+    stream: true,
+    // Send one, and send TENANT-NEUTRAL text. Asserting that a refused turn drops the block is
+    // meaningless if the scenario never supplied a block to drop. A first draft used
+    // finance-heavy wording ("FICO", "Chase"), which `sanitizeClientContextForTier` strips for a
+    // non-funding tenant — so the block vanished for a reason unrelated to this guard and the
+    // check passed with the guard REMOVED. The fixture must isolate the property under test.
+    clientContext: CLIENT_CTX,
+  });
+  // Assert on what actually LEAVES for the model. Checking the RESPONSE body here would be
+  // vacuous: a system prompt is egress, never reply, so that assertion passes whether or not
+  // the block is injected. This is the difference between testing the guard and testing nothing.
+  assert("7.0 the harness observed real model egress (guards the check itself)",
+    denied.modelEgress.length > 0, "no model request was captured");
+  assert("7.1 the request-supplied client context is not injected on a refused turn",
+    !denied.modelEgress.some((b) => b.includes("CLIENT CONTEXT (VERIFIED DATABASE DATA)")),
+    "the named client's context block reached the model after a refusal");
+  assert("7.1b …and the refused id never reaches the model either",
+    !denied.modelEgress.some((b) => b.includes(FOREIGN)),
+    "the refused id reached the model");
+
+  // Surfacing the refusal is what stops it being a silent wrong behaviour the owner finds live.
+  const allowed = await drive({ clientId: OWN, stream: true, clientContext: CLIENT_CTX });
+  assert("7.1c an AUTHORIZED turn still delivers the client context (7.1 is not vacuous)",
+    allowed.modelEgress.some((b) => b.includes("CLIENT CONTEXT (VERIFIED DATABASE DATA)")),
+    "the authorized turn lost its client context — the gate is over-broad");
+
+  assert("7.2 the refusal is announced to the caller as a non-identifying signal",
+    denied.bodyText.includes("client_scope") && denied.bodyText.includes("refused"),
+    denied.bodyText.slice(0, 400));
+  assert("7.3 …and that signal never carries the rejected identifier",
+    !denied.bodyText.includes(FOREIGN),
+    "the refused id appeared in the response body");
+}
+
+console.log("\nthe DOCUMENT-upload path is bound to the same decision");
+{
+  // ~100 lines of upload targeting were never exercised: `drive()` sent no document, so two
+  // raw-body-id lookups sat there passing green. A file is written to `${targetUserId}/…`, so
+  // a wrong target is a cross-tenant WRITE, not merely a wrong read.
+  const doc = { fileName: "statement.pdf", base64: "JVBERi0xLjQK", mimeType: "application/pdf" };
+  const ownDoc = await drive({ clientId: OWN, document: doc, text: "here is my statement" });
+  assert("8.1 an authorized document turn still reaches the upload path",
+    ownDoc.status !== 400 && ownDoc.status !== "throw:undefined",
+    `status: ${ownDoc.status}`);
+
+  const foreignDoc = await drive({ clientId: FOREIGN, document: doc, text: "here is my statement" });
+  assert("8.2 a refused document turn never reads clients with the raw body id outside the guard",
+    foreignDoc.rec.from.filter((f) => f.table === "clients").length <= 1,
+    JSON.stringify(foreignDoc.rec.from.filter((f) => f.table === "clients").map((f) => f.filters)));
+  assert("8.2b the authorized turn writes into the AUTHORIZED client's folder",
+    ownDoc.rec.uploads.length > 0 && ownDoc.rec.uploads.every((u) => u.path.startsWith(`${OWN}/`)),
+    JSON.stringify(ownDoc.rec.uploads.map((u) => u.path)));
+  assert("8.2c a REFUSED turn writes into the CALLER's own folder, never the named client's",
+    foreignDoc.rec.uploads.length > 0
+      && foreignDoc.rec.uploads.every((u) => u.path.startsWith(`${USER}/`))
+      && !foreignDoc.rec.uploads.some((u) => u.path.includes(FOREIGN)),
+    JSON.stringify(foreignDoc.rec.uploads.map((u) => u.path)));
+  assert("8.3 …and no table read or write anywhere carries the refused id",
+    !foreignDoc.rec.from.some((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(FOREIGN))
+      && !foreignDoc.rec.inserts.some((i) => JSON.stringify(i.row ?? {}).includes(FOREIGN)),
+    JSON.stringify({
+      reads: foreignDoc.rec.from.filter((f) => f.table !== "clients" && JSON.stringify(f.filters).includes(FOREIGN)).map((f) => f.table),
+      writes: foreignDoc.rec.inserts.filter((i) => JSON.stringify(i.row ?? {}).includes(FOREIGN)).map((i) => i.table),
+    }));
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);
