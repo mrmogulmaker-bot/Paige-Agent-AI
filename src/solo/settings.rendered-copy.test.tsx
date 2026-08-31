@@ -270,6 +270,65 @@ describe("Solo Settings rendered customer copy", () => {
     expect(css).toMatch(/\.ss-subnav\s*\{[^}]*background:\s*var\(--pg-canvas\)/);
   });
 
+  it("dresses and resets the element that actually scrolls, not the one above it", async () => {
+    // SoloApp nests a screen host inside the shell's `#tenant-shell-main`, and
+    // that host is what scrolls Settings. Adding the scrollbar-hiding class to the
+    // outer main left the VISIBLE scrollbar undressed. And because one host serves
+    // the whole route, its scroll position outlived a tab change — opening a short
+    // destination after a long one landed part-way down its content.
+    testState.tab = "connections";
+    const shellMain = document.createElement("main");
+    shellMain.id = "tenant-shell-main";
+    const screenHost = document.createElement("main");
+    screenHost.setAttribute("data-solo-screen-host", "");
+    const host = document.createElement("div");
+    screenHost.append(host);
+    shellMain.append(screenHost);
+    document.body.append(shellMain);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/1971670/settings/connections"]}>
+          <Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes>
+        </MemoryRouter>,
+      );
+    });
+
+    expect(screenHost.classList.contains("tcs-main--settings-scrollbar-hidden")).toBe(true);
+    expect(shellMain.classList.contains("tcs-main--settings-scrollbar-hidden")).toBe(false);
+
+    screenHost.scrollTop = 900;
+    testState.tab = "notifications";
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/solo/1971670/settings/notifications"]}>
+          <Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes>
+        </MemoryRouter>,
+      );
+    });
+    expect(screenHost.scrollTop).toBe(0);
+
+    await act(async () => root.unmount());
+    expect(screenHost.classList.contains("tcs-main--settings-scrollbar-hidden")).toBe(false);
+    shellMain.remove();
+  });
+
+  it("keeps Settings off SoloApp's clipped-host list, so its long tabs can be scrolled", () => {
+    // The regression this exists for: `settings` was in SoloApp's `full` set, so
+    // the screen host rendered `overflow:hidden` at `height:100%`. The Calendars
+    // tab — the longest surface in Settings — was cut off at the fold, and the
+    // shell's own scroll owner never overflowed either, so there was nothing to
+    // scroll by wheel, key or scrollbar. `.solo-settings` is a document flow with
+    // no internal scroller; its host must be the one that scrolls.
+    const app = readFileSync(path.resolve(process.cwd(), "src/solo/SoloApp.tsx"), "utf8");
+    const full = app.match(/const full=([^;]+);/)?.[1] ?? "";
+    expect(full).not.toBe("");
+    expect(full).not.toContain("'settings'");
+    // The host itself still switches on `full` — that is what makes the list load-bearing.
+    expect(app).toMatch(/overflow:full\?'hidden':'auto'/);
+  });
+
   it("hides Settings scrollbar chrome without disabling scrolling", () => {
     const css = readFileSync(path.resolve(process.cwd(), "src/solo/settings.css"), "utf8");
     expect(css).toContain(".tcs-main--settings-scrollbar-hidden");

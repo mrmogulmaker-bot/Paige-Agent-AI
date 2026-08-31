@@ -872,6 +872,34 @@ service-role caller (Paige headless, §10) is the only caller that may name a te
 | Prepare / save a draft | ✓ | ✓ admin·coach | ✓ admin·coach | ✓ admin·coach | ✓ admin·coach | 403 | 403 |
 | Submit to a carrier | — | — | — | — | — | — | — |
 
+**Updated 2026-08-30 (PR #672), §66 paid in the same commit.** The prepared draft now keeps
+all seven reviewed fields (three new nullable columns) and can be REOPENED for editing on a
+return visit — #665 persisted four fields and could not reopen any of them, so the surface
+promised an edit it could not deliver. Tier rows below are unchanged: this changes what the
+surface can do for the tiers that already had it, not which tiers see it.
+
+**Submission-owned state is now enforced by the database, not just by code paths (PR #672).**
+Eight columns — `submitted_at`, `approved_at`, `status`, `brand_status`, `campaign_status`,
+`brand_sid`, `campaign_sid`, `messaging_service_sid` — refuse a write from any direct caller
+at every tier, including a platform operator using PostgREST. Only server-side authority may
+move them. This does not change which tiers see the surface; it removes a tenant admin's
+ability to make an unsent registration render as filed.
+
+Two further freezes landed in the same PR, after a review found the first one partial.
+`20261004040000` freezes the seven DRAFT columns (`use_case`, `campaign_description`,
+`sample_messages`, `optin_flow`, and the three reply messages) once
+`a2p_registration_is_immutable(old)` — so a tenant admin at any tier can still edit a **pending**
+draft freely, but cannot rewrite the copy of record of a registration that has left preparation
+while the surface tells them it is locked. `20261004050000` freezes `id` and `created_at` for a
+direct caller at **all** stages, after a review executed a rewrite of both on a frozen row and it
+succeeded, orphaning the audit link. `20261004060000` adds `tenant_id` to that freeze: it had been
+delegated to the update policy, whose `is_platform_owner() OR (tenant_id = … AND …)` is true for an
+operator whatever the column holds, so the tenant_id test can never refuse their write (a fact about
+the disjunction's truth value, not about an evaluation order PostgreSQL does not guarantee) — so an **operator** could NULL or reassign a carrier-approved registration
+(measured, all four cases — with one qualification: the reassign is allowed onto a tenant that has no registration row; onto an occupied one the unique constraint refuses it first, which is why the proof pins the refusal HINT rather than the refusal alone). That is the one column on which this section's "including a platform
+operator using PostgREST" claim had not been true. Again: no change to which tiers see the surface —
+only to what a direct PostgREST caller at any tier may write.
+
 **Submission is `—` for every tier, and that is the shipped state, not an omission.** There is no
 carrier integration: `comms-a2p-submit` persists the reviewed copy and returns an explicit
 *prepared, not submitted* refusal. `submitted_at` is never set by any shipped path. A row therefore
@@ -914,7 +942,19 @@ the real `--pg` tokens at 1440/1024/720 in both themes and checks that the docum
 sideways, that no element inside the surface owns a scrollbar, that no control is clipped past the
 surface edge, that all ten areas collapse and expand, that a closed area still answers, and that the
 sub-navigation actually pins. It does NOT prove production behaviour: the rows are synthetic and the
-render is local. **The authenticated live drive of the DEPLOYED surface is owed to a session that
+render is local.
+
+**REACHABILITY is a separate proof from geometry, and it needs the REAL component tree.**
+`scripts/live-drive/calendar-settings-usable-drive.mjs` drives the surface inside the REAL merged
+`SoloApp` — not a reproduction of the shell — at 1536×770, 1366×768, 1024×768 and 900×1000 in both
+themes, with every area open, and asserts the final actionable control is reached by wheel, trackpad,
+touch, keyboard from the real arrival state, and sequential Tab, with the scrollbar unsuppressed in
+both the `scrollbar-width` and `::-webkit-scrollbar` lanes. It exists because a harness that
+REPRODUCES the chain can pass while the surface is unusable: two separate harnesses returned green on
+this surface while `.paige-solo main{overflow:hidden!important}` was beating `SoloApp`'s inline
+`overflow:auto` on its own screen host, leaving Settings with ZERO scroll owners. One omitted the
+screen host; the other omitted `solo-tokens.css`. Mounting the real `SoloApp` makes the chain shipped
+by construction rather than by claim. **The authenticated live drive of the DEPLOYED surface is owed to a session that
 holds credentials** — these headless sessions hold none (§32.c).
 
 **Write authority is `is_current_user_tenant_admin()`.** A caller without it reads the whole

@@ -36,6 +36,9 @@
 //       campaign_description: string,  // REQUIRED
 //       sample_messages: string[],     // REQUIRED — 1..5 real messages
 //       optin_flow?: string,
+//       optin_message?: string,        // the three carrier-facing replies, each in
+//       optout_message?: string,       // its own field. Not folded into optin_flow —
+//       help_message?: string,         // that workaround made them unreadable back.
 //       tenant_id?: string             // SERVICE-ROLE CALLERS ONLY (UUID). Ignored for JWT callers.
 //     }
 //
@@ -148,7 +151,21 @@ Deno.serve(async (req: Request) => {
     const ein = str(body?.ein).trim().slice(0, 32); // never logged
     const useCase = str(body?.use_case).trim().slice(0, 160);
     const campaignDescription = str(body?.campaign_description).trim().slice(0, 2000);
-    const optinFlow = str(body?.optin_flow).trim().slice(0, 2000);
+    // undefined => not mentioned (preserve). "" => cleared. Same rule as the replies.
+    const optinFlow = body?.optin_flow === undefined || body?.optin_flow === null
+      ? undefined
+      : str(body?.optin_flow).trim().slice(0, 2000);
+    // Accepted as their own fields rather than folded into optin_flow. A2PTab used
+    // to concatenate them behind labels because there was nowhere else to put them;
+    // that kept the text but destroyed its structure, so nothing could read it back.
+    // Three states, matching the RPC exactly: undefined OR null => not mentioned (preserve);
+    // "" => cleared; text => replace. Mapping JSON null to "" would have made a caller that
+    // serialises empty optionals as null silently DELETE carrier copy it meant to leave alone.
+    const reply = (v: unknown): string | undefined =>
+      v === undefined || v === null ? undefined : str(v).trim().slice(0, 320);
+    const optinMessage = reply(body?.optin_message);
+    const optoutMessage = reply(body?.optout_message);
+    const helpMessage = reply(body?.help_message);
     const sampleMessages = (Array.isArray(body?.sample_messages) ? (body!.sample_messages as unknown[]) : [])
       .map((s) => str(s).trim().slice(0, 320))
       .filter(Boolean)
@@ -227,7 +244,11 @@ Deno.serve(async (req: Request) => {
       p_use_case: useCase,
       p_campaign_description: campaignDescription,
       p_sample_messages: sampleMessages,
-      p_optin_flow: optinFlow || null,
+      p_optin_flow: optinFlow ?? null,
+      // `?? null`, never `|| null` — see comms-a2p-draft. An empty string is a delete.
+      p_optin_message: optinMessage ?? null,
+      p_optout_message: optoutMessage ?? null,
+      p_help_message: helpMessage ?? null,
       ...(isServiceRole ? { p_tenant_id: tenantId } : {}),
     });
     if (saveErr) {

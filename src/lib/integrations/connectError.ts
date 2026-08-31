@@ -82,17 +82,25 @@ const SMTP_COPY: Record<string, string> = {
 const PERMISSION_CODES = new Set(["unauthorized", "forbidden"]);
 
 /**
- * Pull the honest machine code out of an invoke() result, handling BOTH shapes:
+ * Pull the honest JSON BODY out of an invoke() result, handling BOTH shapes:
  *  (a) 2xx-with-error: the code sits on `data.error`.
  *  (b) non-2xx: `data` is null and the code is in the `FunctionsHttpError`'s
  *      `.context` Response body — read it with a guarded `.json()`.
  * Also tolerates `.context` already being a parsed object (version differences).
+ *
+ * The BODY rather than one field, because a function that answers
+ * `{ error: "write_failed", code: "MCP_FORBIDDEN" }` puts the part a caller needs in the
+ * second key, and a reader that only ever returned `error` made those callers unreachable
+ * on exactly the responses they were written for.
  */
-async function extractCode(error: unknown, data: unknown): Promise<string | null> {
+export async function readFunctionErrorBody(
+  error: unknown,
+  data: unknown,
+): Promise<Record<string, unknown> | null> {
   // Shape (a): a JSON body was returned on a 2xx (or the client parsed it onto data).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dataCode = (data as any)?.error;
-  if (typeof dataCode === "string" && dataCode.length > 0) return dataCode;
+  if (data && typeof data === "object" && typeof (data as Record<string, unknown>).error === "string") {
+    return data as Record<string, unknown>;
+  }
 
   // Shape (b): non-2xx → the body lives on FunctionsHttpError.context (the Response).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,8 +112,7 @@ async function extractCode(error: unknown, data: unknown): Promise<string | null
   if (typeof context.json === "function") {
     try {
       const body = await context.json();
-      const code = body?.error;
-      return typeof code === "string" && code.length > 0 ? code : null;
+      return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
     } catch {
       // Non-JSON body (HTML error page, empty, already-consumed) — do NOT throw.
       return null;
@@ -113,11 +120,15 @@ async function extractCode(error: unknown, data: unknown): Promise<string | null
   }
 
   // Some versions expose an already-parsed object on .context.
-  if (typeof context === "object" && typeof context.error === "string" && context.error.length > 0) {
-    return context.error;
-  }
+  if (typeof context === "object") return context as Record<string, unknown>;
 
   return null;
+}
+
+async function extractCode(error: unknown, data: unknown): Promise<string | null> {
+  const body = await readFunctionErrorBody(error, data);
+  const code = body?.error;
+  return typeof code === "string" && code.length > 0 ? code : null;
 }
 
 /**

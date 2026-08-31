@@ -15,7 +15,10 @@
 //                                 optin_flow, optin_message, optout_message, help_message },
 //                        legal_business_name, website } | { needs_config, error }
 //   comms-a2p-submit ← { legal_business_name, website?, ein?, use_case,
-//                        campaign_description, sample_messages[], optin_flow? }
+//                        campaign_description, sample_messages[], optin_flow?,
+//                        optin_message, optout_message, help_message }
+//   The three replies are sent as themselves — and sent EVEN WHEN EMPTY, because ""
+//   means the owner deleted that reply and omitting the key would preserve it instead.
 //                    → { saved, submitted, a2p_submit_wired, needs_config?, state,
 //                        status, brand_sid, campaign_sid, message }
 //   A non-2xx from either carries { error: { code, message } }, where `code` is the save
@@ -38,6 +41,7 @@
 // §2: A2P copy is coaching-generic (produced by comms-a2p-draft); this tab adds no
 // finance wording. §11: gold is spent ONLY on the one act button; rings stay indigo.
 import { Link } from "react-router-dom";
+import { draftFromRegistration, hasLeftPreparation } from "./a2pDraftResume";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Sparkles, MessageSquareText, Plus, Trash2, Building2 } from "lucide-react";
@@ -71,7 +75,7 @@ interface SampleRow {
   text: string;
 }
 /** The coach-editable draft held in component state — samples carry stable ids. */
-interface EditDraft {
+export interface EditDraft {
   use_case: string;
   campaign_description: string;
   samples: SampleRow[];
@@ -81,7 +85,7 @@ interface EditDraft {
   help_message: string;
 }
 /** The persisted registration row (tenant_a2p_registrations) — not in generated types. */
-interface A2PRegistration {
+export interface A2PRegistration {
   brand_status: string;
   campaign_status: string;
   status: string;
@@ -91,6 +95,11 @@ interface A2PRegistration {
   campaign_description: string | null;
   sample_messages: string[] | null;
   optin_flow: string | null;
+  optin_message: string | null;
+  optout_message: string | null;
+  help_message: string | null;
+  messaging_service_sid: string | null;
+  approved_at: string | null;
   submitted_at: string | null;
 }
 
@@ -140,8 +149,9 @@ function isSubmittedToCarrier(reg: A2PRegistration): boolean {
 
 /** Prepared and sitting here: a row exists, but nothing has been filed anywhere. */
 function isPreparedOnly(reg: A2PRegistration): boolean {
-  return !reg.submitted_at && !reg.brand_sid && !reg.campaign_sid
-      && reg.status !== "approved" && reg.status !== "rejected";
+  // The SAME predicate the editor uses, so the banner can never promise an edit the
+  // editor will not offer — and neither can drift from the server's eight conditions.
+  return !hasLeftPreparation(reg);
 }
 
 /**
@@ -206,6 +216,13 @@ export function A2PTab() {
   // A refusal the owner can ACT on is different from one they cannot. The draft
   // seam returns a stable code; LEGAL_PROFILE_REQUIRED names a missing business
   // record and has a real place to go and fix it.
+  // Three states, not two. "No registration" and "we could not identify this account"
+  // look identical to a reader and mean opposite things — one invites a re-draft, the
+  // other means we should not be saying anything about the account at all.
+  const [regUnidentified, setRegUnidentified] = useState(false);
+  // FOUR states, not three. A read that FAILED is not an account with no registration,
+  // and the difference decides whether we invite a paid re-draft over reviewed copy.
+  const [regUnreadable, setRegUnreadable] = useState(false);
   const [needsLegalProfile, setNeedsLegalProfile] = useState(false);
   // Who can actually FIX a missing legal business name. /admin/setup/legal is AdminOnly,
   // while the route that mounts this tab has no gate and comms-a2p-draft admits `coach` —
@@ -216,20 +233,143 @@ export function A2PTab() {
 
   const loadReg = useCallback(async () => {
     setRegLoading(true);
-    // tenant_a2p_registrations isn't in the generated types; RLS scopes the read to the
-    // caller's own tenant (§9), so no tenant filter is needed here. .limit(1) guards the one
-    // case where RLS returns >1 row — a platform owner, whose select policy spans all tenants —
-    // so maybeSingle() degrades to the first row instead of erroring into a false "Not registered".
+    // A THROWN rejection would otherwise leave the skeleton up forever. Every
+    // `setRegLoading(false)` below sits on a success path or an early return, and
+    // two of its three call sites discard the promise (`void loadReg()` at mount
+    // and after a draft; the third awaits it inside `submit`'s own try), so a client-
+    // construction or auth-layer throw — the kind supabase-js does NOT convert
+    // into `{ error }` — renders the pulse at the bottom of this file with no
+    // message and no console line. That is "the same invisible symptom" the
+    // comment below forbids, reached through the one door branching on `error`
+    // does not close. The catch treats a throw exactly like a failed read.
+    try {
+    // BOTH reads below are scoped to the caller's own tenant EXPLICITLY, and the two tables
+    // over-admit for DIFFERENT reasons — an earlier version of this comment flattened them
+    // into one claim that was only true of the second:
+    //   · tenant_a2p_registrations  — `is_platform_owner() OR (tenant_id = current_user_tenant_id()
+    //     AND admin/coach)`. The tenant clause resolves to exactly one uuid, so the only
+    //     over-admitting branch is the platform owner.
+    //   · tenant_legal_profile      — `EXISTS (tenant_members WHERE user_id = auth.uid()) OR
+    //     is_platform_owner()`. That admits EVERY tenant the caller belongs to, so an
+    //     ordinary multi-tenant coach is exposed here too.
+    // Neither read carries an ORDER BY, so `.limit(1)` returns whichever row the planner
+    // happens to produce.
+    //
+    // That was a knowingly-accepted display quirk until this surface started REHYDRATING.
+    // Now the row becomes an editable, savable draft and the legal name is posted to a
+    // carrier registration whose tenant is derived server-side — so an arbitrary row means
+    // another business's reviewed copy in this editor, and a filing under another
+    // business's legal identity. Same shape as the #588 nondeterministic-resolver defect,
+    // in a compliance field.
+    //
+    // The tenant comes from the `current_user_tenant_id` RPC rather than useTenantContext's
+    // `activeTenantId`, which is what useCalendarConnections.ts uses. That is deliberate,
+    // not an oversight: this surface WRITES through a seam that resolves the tenant with the
+    // same RPC server-side, so reading through anything else would let the row on screen and
+    // the row being written disagree. The cost is one round-trip per load and an error path
+    // that must be handled — see the unresolved branch below.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
+    const untyped = supabase as any;
+    const { data: resolvedTenant, error: tenantErr } = await untyped.rpc("current_user_tenant_id");
+    const tenantId = typeof resolvedTenant === "string" ? resolvedTenant : null;
+    if (!tenantId) {
+      // An earlier revision set reg=null here under a comment claiming it would "say nothing
+      // rather than render a confident negative". It rendered exactly that negative: !reg
+      // branches to "Not registered yet" plus the whole onboarding form. A transient
+      // resolver failure — an RPC error, a session-refresh race, an unset
+      // profiles.active_tenant_id — therefore told a coach their registration did not exist
+      // and invited them into a re-draft, which is a PAID generation that overwrites
+      // reviewed compliance copy.
+      //
+      // The error is LOGGED rather than destructured away (§32: a degrade that swallows its
+      // cause turns every failure into the same invisible symptom).
+      console.error("A2PTab: could not resolve the caller's tenant:", tenantErr?.message ?? "no tenant returned");
+      setReg(null);
+      setRegUnidentified(true);
+      // Cleared here too. A previous load could have set it, and this path
+      // returns before the reset further down — so both flags would stay true.
+      // Harmless today only because the render tests `regUnidentified` first;
+      // that is one reordering away from being a real defect.
+      setRegUnreadable(false);
+      setRegLoading(false);
+      return;
+    }
+    setRegUnidentified(false);
+    const { data, error: regErr } = await untyped
       .from("tenant_a2p_registrations")
       .select(
-        "brand_status, campaign_status, status, brand_sid, campaign_sid, use_case, campaign_description, sample_messages, optin_flow, submitted_at",
+        "brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at",
       )
+      .eq("tenant_id", tenantId)
       .limit(1)
       .maybeSingle();
-    setReg((data as A2PRegistration) ?? null);
+    // A FAILED READ IS NOT AN EMPTY ACCOUNT, and this is the third time that
+    // distinction has had to be made on this surface.
+    //
+    // `error` was destructured away here, three lines under a comment saying a
+    // degrade that swallows its cause turns every failure into the same invisible
+    // symptom. It did exactly that: any failure left `data` undefined, `reg` null,
+    // and the render fell to "Not registered yet" plus the onboarding form — whose
+    // only live control is a PAID generation that overwrites reviewed compliance
+    // copy. Told to a coach who HAS a registration.
+    //
+    // And this change hands that path a brand-new way to fire. optin_message,
+    // optout_message and help_message are selected above and do not exist until
+    // 20261004020000 lands. The frontend (Vercel) and the migrations (a GitHub
+    // Actions job with its own gate and a non-cancelling concurrency group) deploy
+    // on INDEPENDENT pipelines, so a frontend-first deploy — or a migration job
+    // that fails, a mode its own header documents — returns 42703 "column does not
+    // exist" on every load of this tab.
+    if (regErr) {
+      console.error("A2PTab: could not read this account's registration:", regErr.message);
+      setReg(null);
+      setRegUnreadable(true);
+      setRegLoading(false);
+      return;
+    }
+    setRegUnreadable(false);
+    const row = (data as A2PRegistration) ?? null;
+    setReg(row);
+    // The legal business name lives on tenant_legal_profile and is a HARD precondition of
+    // the save seam (LEGAL_PROFILE_REQUIRED). Without restoring it, a resumed draft opened
+    // with every reviewed field populated and the save disabled — so the only live control
+    // was another paid generation that overwrites the row. Reopening the copy is not
+    // resuming the flow unless the owner can act on it.
+    const { data: lp, error: lpErr } = await untyped
+      .from("tenant_legal_profile")
+      .select("legal_business_name")
+      .eq("tenant_id", tenantId)
+      .limit(1)
+      .maybeSingle();
+    // Same swallow, same consequence one step further on: without the stored legal
+    // name `canSubmit` is false, the save is disabled, and the paid re-draft is
+    // again the only live control — which is the exact defect the resume work was
+    // written to remove. It does not blank the tab, so it logs rather than branching.
+    if (lpErr) console.error("A2PTab: could not read the legal business name:", lpErr.message);
+    const storedLegal = (lp as { legal_business_name?: string } | null)?.legal_business_name;
+    // `prev || stored`, deliberately, and NOT `prev ?? stored`: the field initialises to ""
+    // and `??` would therefore never fill it. The cost is that it also refills a field the
+    // owner has deliberately emptied — acceptable here because the save refuses without it
+    // anyway, so an empty legal name is never a state worth preserving.
+    if (storedLegal) setLegalName((prev) => prev || storedLegal);
+    // Re-open the saved copy. `prev ?? ...` so a draft the owner is CURRENTLY editing
+    // is never replaced by the stored one — a reload behind an in-progress edit would
+    // otherwise silently discard their unsaved work.
+    setDraft((prev) => prev ?? draftFromRegistration(row));
     setRegLoading(false);
+    } catch (e) {
+      console.error("A2PTab: reading this account's registration threw:", e);
+      setReg(null);
+      setRegUnreadable(true);
+      // ...and `regUnidentified` is cleared here for the SAME reason the
+      // unidentified path clears `regUnreadable`. `setRegUnidentified(false)`
+      // sits after the awaited tenant RPC, so a throw from that await skips it
+      // and both flags stay true. Unreachable today — every later call site is
+      // inside a gate that requires both to be false — which is exactly how
+      // harmless the mirror case was when it got fixed one commit ago.
+      setRegUnidentified(false);
+      setRegLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -267,6 +407,9 @@ export function A2PTab() {
       if (payload.legal_business_name && !legalName) setLegalName(payload.legal_business_name);
       const d = payload.draft;
       const texts = (d.sample_messages ?? []).length ? d.sample_messages : ["", ""];
+      // The draft call PERSISTS. Without refreshing, the status panel kept rendering
+      // "Not registered yet" over a registration that now exists.
+      void loadReg();
       setDraft({
         use_case: d.use_case ?? "",
         campaign_description: d.campaign_description ?? "",
@@ -320,18 +463,10 @@ export function A2PTab() {
     if (!draft) return;
     setSubmitting(true);
     try {
-      // The backend persists use_case, campaign_description, sample_messages, optin_flow.
-      // The opt-in confirmation / STOP / HELP replies the coach reviewed are folded into
-      // optin_flow so NOTHING reviewed is silently dropped (§13) — they persist as labeled
-      // lines and travel with the registration once carrier submit is wired.
-      const optinCombined = [
-        draft.optin_flow.trim(),
-        draft.optin_message.trim() && `Opt-in confirmation reply: ${draft.optin_message.trim()}`,
-        draft.optout_message.trim() && `STOP reply: ${draft.optout_message.trim()}`,
-        draft.help_message.trim() && `HELP reply: ${draft.help_message.trim()}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      // Each reviewed field is sent as itself. This used to concatenate the three
+      // replies into optin_flow behind labels, because the table had no column for
+      // them — text preserved, structure destroyed, and nothing could read them back
+      // into the editor. 20261004020000 gave them a home, so the workaround is gone.
 
       const { data, error } = await supabase.functions.invoke("comms-a2p-submit", {
         body: {
@@ -341,7 +476,14 @@ export function A2PTab() {
           use_case: draft.use_case.trim(),
           campaign_description: draft.campaign_description.trim(),
           sample_messages: cleanSamples,
-          optin_flow: optinCombined || undefined,
+          // Sent even when empty, same rule as the three replies below.
+          optin_flow: draft.optin_flow.trim(),
+          // Sent even when empty. `|| undefined` dropped the key, the seam read that as
+          // "not mentioned" and preserved the old text — so a reply the owner deleted
+          // came back while the surface said the copy had saved.
+          optin_message: draft.optin_message.trim(),
+          optout_message: draft.optout_message.trim(),
+          help_message: draft.help_message.trim(),
         },
       });
       if (error) {
@@ -397,6 +539,18 @@ export function A2PTab() {
             <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
             <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
           </div>
+        ) : regUnidentified ? (
+          <EmptyState
+            icon={ShieldCheck}
+            title="We couldn&rsquo;t identify your workspace"
+            description="Nothing is wrong with your registration — we just couldn't tell which account this is, so we're not going to guess. Reload the page, or switch back into the workspace you want, and this will fill in."
+          />
+        ) : regUnreadable ? (
+          <EmptyState
+            icon={ShieldCheck}
+            title="We couldn&rsquo;t read your registration"
+            description="Nothing is being claimed about your business until this succeeds, and nothing has changed. Reload the page in a moment and this will fill in."
+          />
         ) : !reg ? (
           <EmptyState
             icon={ShieldCheck}
@@ -436,7 +590,12 @@ export function A2PTab() {
                       {sid ? (
                         <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{sid}</div>
                       ) : (
-                        <div className="mt-0.5 text-xs text-muted-foreground">Being set up</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {/* "Being set up" implied someone was working it. For a prepared
+                              row nobody is, and the banner directly above says nothing has
+                              been sent — the two cannot both be true (§13). */}
+                          {reg.submitted_at ? "Being set up" : "Not filed yet"}
+                        </div>
                       )}
                     </div>
                     <StatePill state={pill.state}>{pill.label}</StatePill>
@@ -454,7 +613,12 @@ export function A2PTab() {
         )}
       </SectionCard>
 
-      {/* ── The registration flow — short form → Paige drafts → review → approve. ── */}
+      {/* ── The registration flow — short form → Paige drafts → review → approve. ──
+          Hidden entirely when the workspace could not be identified: "Draft with Paige" is a
+          PAID frontier generation that writes to whichever tenant the server resolves, so
+          offering it while we do not know which account this is would be inviting a spend
+          against an unknown target. ── */}
+      {!regUnidentified && !regUnreadable && (
       <SectionCard
         title={reg ? "Update your registration" : "Register with Paige"}
         description="Tell Paige your business name and what you text clients about. She writes the carrier copy; you approve it — no portals, no compliance forms."
@@ -620,7 +784,7 @@ export function A2PTab() {
               </div>
 
               {/* The three auto-replies Paige drafted — editable; they travel with the
-                  registration (folded into the opt-in language on submit, §13 nothing dropped). */}
+                  registration in their own columns — the fold into optin_flow is gone (§18). */}
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="a2p-optin-msg">Opt-in reply</Label>
@@ -668,6 +832,7 @@ export function A2PTab() {
           )}
         </div>
       </SectionCard>
+      )}
     </div>
   );
 }

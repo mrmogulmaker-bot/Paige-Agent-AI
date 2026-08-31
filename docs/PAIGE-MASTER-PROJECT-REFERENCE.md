@@ -499,7 +499,14 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
   carrier registration now DURABLY SAVES: `comms-a2p-draft` previously did two reads and no write, so
   the prepared draft died with the HTTP response. It persists through
   `tenant_a2p_registration_save_draft` (migration `20261004010000`) into the existing
-  `tenant_a2p_registrations` — no new table, column, or parallel store. **Carrier submission does not
+  `tenant_a2p_registrations`. **Corrected 2026-08-30 (PR #672):** the first version of this
+  entry read "no new table, column, or parallel store". That was true of #665 and is no
+  longer true — #672 adds three nullable columns (`optin_message`, `optout_message`,
+  `help_message`) because the draft generates seven reviewed fields and only four had a
+  home, so three carrier-facing compliance replies were silently dropped. The save seam is
+  now the 8-argument `tenant_a2p_registration_save_draft`; the 5-argument signature is
+  DROPPED so no caller can reach the version that loses them. Absent preserves a field,
+  an EMPTY STRING clears it — an owner must be able to delete a wrong STOP or HELP reply. `campaign_description` is the ONE exception and PRESERVES on empty; the flat rule was stated without it, which is exactly the sentence a later session would answer “how does the merge work?” from. **Carrier submission does not
   exist:** `comms-a2p-submit` performs no provider call and returns an explicit *prepared, not
   submitted* refusal, and no shipped path sets `submitted_at`. Do not read a `pending` row as a
   filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production
@@ -1036,6 +1043,42 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-08-30 — the honesty of a compliance surface rested on nobody exercising a policy
+  (PR #672, owner-approved).** `tenant_a2p_registrations`' RLS UPDATE and INSERT policies are
+  row-scoped with **no column restriction**, so a tenant admin could set `submitted_at` and a
+  brand SID straight through PostgREST and make the surface render *"Submitted for review —
+  you'll be notified the moment it's approved"* for a registration nothing was ever sent for.
+  An earlier commit of mine called `submitted_at` "the discriminator only a real submission
+  path may set"; that was true of every shipped code path and **not enforced by the database**.
+  `20261004030000` closes it: a SECURITY INVOKER trigger fails closed for every direct caller
+  on the eight submission-owned columns, INSERT as well as UPDATE. **The general lesson: "no
+  shipped path does this" is a statement about today's code, not a property of the system —
+  if a claim about what cannot happen is load-bearing for honesty, enforce it where the data
+  lives.**
+  **And a partial enforcement invites the same mistake one column over.** `030000` protected
+  the eight submission columns and left the seven DRAFT columns unconditionally editable by a
+  direct caller — saying so in its own header — so an approved, carrier-linked registration's
+  `sample_messages` could still be rewritten while the tab said its copy was locked.
+  `20261004040000` freezes those seven once `a2p_registration_is_immutable(old)`. A review
+  then executed a rewrite of `id` and `created_at` on a frozen row and it SUCCEEDED, orphaning
+  the `paige_audit_log.target_id` link; `20261004050000` freezes those at all stages. **Count
+  the columns the guarantee claims to cover, then count the ones the guard names. Twice here
+  the difference was where the hole was.**
+  **A third time, in the reason given for the last omission.** `050000` left `tenant_id` out
+  because the update policy's `WITH CHECK` "already refuses a NULL or foreign value" — true of a
+  tenant admin, false of a platform operator, because that policy reads
+  `is_platform_owner() OR (tenant_id = … AND …)`, which is true for an operator whatever the
+  column holds, so the tenant_id test can never refuse their write. That is the disjunction's
+  truth value, not a claim about an evaluation order PostgreSQL does not guarantee. A review
+  measured an operator both NULLing and reassigning a carrier-approved registration, which moves
+  a live `messaging_service_sid` onto another business with no audit row — carrying the same
+  qualification the tier matrix and the capability map carry: the reassign lands only on a tenant
+  that holds no registration of its own, because onto an occupied one the unique constraint
+  refuses the write first. That is why the proof pins the refusal HINT rather than the refusal
+  alone; "refused" by itself would pass with the guard deleted. `20261004060000` closes it.
+  **A delegation is a claim about the thing you delegated to — check that thing, do not restate
+  what you assume it does.**
 
 - **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
   banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for

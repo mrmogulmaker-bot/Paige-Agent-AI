@@ -1,0 +1,22 @@
+/* The consent landing page. Deliberately plain: it exists for a few seconds while a
+   token exchange completes, and it is the only thing on screen. It reuses the same
+   tokens as the rest of the product so it is not a different-looking page. */
+.mcp-cb { display: grid; place-items: center; min-height: 100svh; padding: 24px; background: var(--pg-workspace); }
+
+.mcp-cb-card {
+  width: 100%; max-width: 420px; padding: 22px;
+  border: 1px solid var(--pg-line-soft); border-radius: var(--pg-r-plate, 12px);
+  background: var(--pg-surface); box-shadow: var(--pg-e2), var(--pg-rim); text-align: left;
+}
+.mcp-cb-card h1 { margin: 0 0 8px; color: var(--pg-ink); font: 700 16px/1.25 var(--pg-font-ui); letter-spacing: -.01em; }
+.mcp-cb-card p { margin: 0; color: var(--pg-muted); font: 400 12px/1.5 var(--pg-font-ui); }
+
+.mcp-cb-btn {
+  margin-top: 14px; min-height: 30px; padding: 0 12px;
+  border: 1px solid var(--pg-line); border-radius: 8px;
+  color: var(--pg-ink-2); background: var(--pg-lift-1);
+  font: 650 11px/1 var(--pg-font-ui); cursor: pointer;
+  transition: border-color .14s ease, background .14s ease;
+}
+.mcp-cb-btn:hover { border-color: var(--pg-line-strong); background: var(--pg-lift-2); }
+.mcp-cb-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
