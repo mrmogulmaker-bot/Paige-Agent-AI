@@ -478,6 +478,48 @@ function ReadinessLadder({ r }: { r: CommsReadiness }) {
   return <StepRows steps={readinessSteps(r)}/>;
 }
 
+/**
+ * A collapsible area of the Communications surface.
+ *
+ * WHY THIS IS A FOLD AND NOT A STACK OF CARDS. Every area rendered permanently
+ * expanded, so the surface was four subsections, seven cards and thirteen
+ * paragraphs of prose before a tenant reached the one thing they came to do. The
+ * whole state of the account is knowable in five lines; the detail behind each is
+ * what needs a click, not what needs a scroll (§11 — collapse to accordions
+ * rather than build a scroll-wall).
+ *
+ * THE AT-REST LINE IS THE POINT, AND IT IS REAL. It carries the same string the
+ * ladder step carries — `phoneStep(r).state`, `registrationStep(r).state` — so a
+ * collapsed fold reports what the RECORD says, never a summary invented for the
+ * header. A fold that summarised optimistically would hide exactly the thing this
+ * surface exists to state honestly (§13). While the read is in flight or has
+ * failed, callers pass the honest line for that case rather than a stale one.
+ *
+ * `<details>`/`<summary>`, deliberately: it is keyboard- and screen-reader-
+ * operable natively, it survives with JavaScript disabled, and the open/closed
+ * state is the element's own — no parallel state to drift out of sync.
+ */
+function Fold({
+  id, title, blurb, atRest, tone, defaultOpen = false, children,
+}: {
+  id: string; title: string; blurb: string;
+  atRest: string; tone: "ok" | "warn" | "bad" | "neutral";
+  defaultOpen?: boolean; children: ReactNode;
+}) {
+  return <details className="ss-fold" data-tone={tone} open={defaultOpen}>
+    <summary className="ss-fold-summary">
+      <span className="ss-fold-title">
+        <h3 id={id}>{title}</h3>
+        <span className="ss-fold-blurb">{blurb}</span>
+      </span>
+      <span className="ss-fold-rest">{atRest}</span>
+      <span className="ss-fold-chevron" aria-hidden>&rsaquo;</span>
+    </summary>
+    <div className="ss-fold-body">{children}</div>
+  </details>;
+}
+
+/** Retained for the Health view, which is a single area and needs no fold. */
 function Subsection({ id, title, blurb, children }: { id: string; title: string; blurb: string; children: ReactNode }) {
   return <section className="ss-subsection" aria-labelledby={id}>
     <div className="ss-subsection-head">
@@ -750,15 +792,15 @@ function SendingDomainsPanel({
         </span>
         <Status tone={d.status === "verified" ? "ok" : d.status === "failed" ? "bad" : "warn"}>{d.status}</Status>
         <div className="ss-domain-acts">
-          {d.status !== "verified" && <button type="button" className="ss-act" disabled={busy !== null}
+          {d.status !== "verified" && <button type="button" className="ss-act ss-act-go" disabled={busy !== null}
             onClick={() => void run(d.id, "refresh", { id: d.id })}>
             {busy === d.id ? "Checking…" : "Check verification"}</button>}
-          {!d.isDefault && <button type="button" className="ss-act" disabled={busy !== null}
+          {!d.isDefault && <button type="button" className="ss-act ss-act-go" disabled={busy !== null}
             onClick={() => void run(d.id, "set_default", { id: d.id })}>Make default</button>}
           {d.dnsRecords.length > 0 && <button type="button" className="ss-act"
             onClick={() => setExpanded(expanded === d.id ? null : d.id)}>
             {expanded === d.id ? "Hide DNS records" : "Show DNS records"}</button>}
-          <button type="button" className="ss-act" disabled={busy !== null}
+          <button type="button" className="ss-act ss-act-danger" disabled={busy !== null}
             onClick={() => setConfirmRemove(d.id)}>Remove</button>
         </div>
 
@@ -778,7 +820,7 @@ function SendingDomainsPanel({
             Anything currently sending from it will stop.</p>
           <div className="ss-drawer-acts">
             <button type="button" className="ss-act" onClick={() => setConfirmRemove(null)}>Keep it</button>
-            <button type="button" className="ss-act" disabled={busy !== null}
+            <button type="button" className="ss-act ss-act-danger" disabled={busy !== null}
               onClick={() => void run(d.id, "remove", { id: d.id }, () => setConfirmRemove(null))}>
               {busy === d.id ? "Removing…" : "Remove it"}</button>
           </div>
@@ -927,6 +969,25 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
     readFailed
       ? <p>We couldn&rsquo;t read this account&rsquo;s setup just now, so nothing is being claimed about its {what}.</p>
       : <p>No {what} record has been read for this account yet.</p>;
+  /**
+   * The collapsed line for a fold, and the three cases it must tell apart.
+   *
+   * A fold is closed by default, so this line is often the ONLY thing a tenant
+   * reads about that area. It therefore has to distinguish "we haven't read yet"
+   * from "the read failed" from "here is what the record says" — the same
+   * distinction the cards inside make, made once more at the summary level. A
+   * single fallback string for all three would reintroduce, in the header, the
+   * exact confident-negative this surface was corrected for.
+   */
+  const rest = (fromRecord: () => { state: string; tone: "ok" | "warn" | "bad" | "neutral" }):
+    { atRest: string; tone: "ok" | "warn" | "bad" | "neutral" } => {
+    if (readiness.loading) return { atRest: "Reading this account…", tone: "neutral" };
+    if (readFailed) return { atRest: "Couldn’t be read", tone: "neutral" };
+    if (!r) return { atRest: "Nothing read yet", tone: "neutral" };
+    const st = fromRecord();
+    return { atRest: st.state, tone: st.tone };
+  };
+
   const readFailureNotice = readFailed
     ? <div className="ss-next ss-read-failure" role="status">
         <strong>We couldn&rsquo;t read this account&rsquo;s setup</strong>
@@ -953,8 +1014,9 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
 
     {view === "communications" && <div className="ss-sections">
       {readFailureNotice}
-      <Subsection id="ss-sub-phone" title="Business phone"
-        blurb="The number this business texts and calls from.">
+      <Fold id="ss-sub-phone" title="Business phone"
+        blurb="The number this business texts and calls from."
+        {...rest(() => phoneStep(r!))}>
         <div className="ss-grid">
           <Card title="Number on this business" icon={Smartphone}
             truth={r ? phoneStep(r).truth : "PARTIAL"}
@@ -974,10 +1036,16 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
           <BlockedAction which="search_number"/>
           <BlockedAction which="assign_number"/>
         </div>
-      </Subsection>
+      </Fold>
 
-      <Subsection id="ss-sub-registration" title="Messaging registration"
-        blurb="Carriers require a registered business, and a recorded agreement from each person, before any text can send.">
+      {/* The one fold that opens itself, and only when the record says this is the
+          step in the way. Opening every fold defeats the point; opening none makes a
+          tenant hunt for the thing they were just told is blocking them. */}
+      <Fold id="ss-sub-registration" title="Messaging registration"
+        blurb="Carriers require a registered business, and a recorded agreement from each person, before any text can send."
+        defaultOpen={!readiness.loading && !readFailed && !!r &&
+          (r.blocked_reason === "registration_absent" || r.blocked_reason === "registration_not_approved")}
+        {...rest(() => registrationStep(r!))}>
         <div className="ss-grid">
           <Card title="Carrier registration" icon={Webhook}
             truth={r ? registrationStep(r).truth : "PARTIAL"}
@@ -1016,10 +1084,14 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
             <p className="ss-note">Consent is recorded when a person replies to confirm. Nothing else on this account writes it.</p>
           </Card>
         </div>
-      </Subsection>
+      </Fold>
 
-      <Subsection id="ss-sub-identity" title="Sending identity"
-        blurb="What email sends from. Separate from the phone number and from texting.">
+      <Fold id="ss-sub-identity" title="Sending identity"
+        blurb="What email sends from. Separate from the phone number and from texting."
+        atRest={identity.loading ? "Reading this account…"
+          : identity.error ? "Couldn’t be read"
+          : identityPresentation.accountLabel}
+        tone={identity.loading || identity.error ? "neutral" : identityPresentation.tone as "ok" | "warn" | "bad" | "neutral"}>
         <div className="ss-grid">
           <Card title="PAIGE-managed sending identity" icon={Mail} truth={identityPresentation.capability} capabilityTruth actions={<Status tone={identityPresentation.tone}>{identityPresentation.accountLabel}</Status>}>
             <OrthogonalConnectionState {...identityPresentation}/>
@@ -1033,10 +1105,11 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
             <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>
           </Card>
         </div>
-      </Subsection>
+      </Fold>
 
-      <Subsection id="ss-sub-delivery" title="Delivery health"
-        blurb="Counted from delivery receipts only. Nothing here is inferred.">
+      <Fold id="ss-sub-delivery" title="Delivery health"
+        blurb="Counted from delivery receipts only. Nothing here is inferred."
+        {...rest(() => deliveryStep(r!))}>
         <div className="ss-grid">
           <Card title="Delivery" icon={TriangleAlert}
             truth={r ? deliveryStep(r).truth : "PARTIAL"}
@@ -1068,7 +1141,7 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
               Settings → Billing, not by Connections.</p>
           </Card>
         </div>
-      </Subsection>
+      </Fold>
 
       <PrepareRegistrationDrawer
         open={prepare.open} busy={prepare.busy} refusal={prepare.refusal} initialHint={prepare.hint}

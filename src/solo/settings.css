@@ -22,7 +22,10 @@
 .ss-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; max-width: 1180px; margin: 0 auto 18px; }
 .ss-page-head > div { min-width: 0; }
 .ss-page-head span:first-child { color: var(--pg-gold-core); font-size: 10px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
-.ss-page-head h1 { margin: 3px 0 2px; font: 650 clamp(25px, 3cqw, 34px)/1.08 var(--pg-font-display); letter-spacing: -.035em; }
+/* Approved 2026-08-31: the destination heading is a label, not a hero — it was
+   25-34px above a surface whose own section titles are 11.5px. The eyebrow above
+   it already says where you are. */
+.ss-page-head h1 { margin: 3px 0 2px; font: 650 clamp(17px, 1.9cqw, 21px)/1.15 var(--pg-font-display); letter-spacing: -.02em; }
 .ss-page-head p, .ss-card p { margin: 0; color: var(--pg-muted); font-size: 12px; }
 .ss-content { max-width: 1180px; margin: 0 auto; }
 .ss-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
@@ -207,15 +210,52 @@
 .ss-actions-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; margin-top: 14px; }
 .ss-actions-row > .ss-note { flex: 1 1 100%; margin: 0; }
 
+/* A control's COLOUR IS ITS CONSEQUENCE, and nothing else.
+   gold = the act this surface exists for · green = verify or promote, safe and
+   repeatable · red = destroys something at the provider · plain = a ceiling this
+   screen cannot cross. That is four meanings a person can learn once.
+
+   These are consequence colours, NOT status: they never encode LIVE / PARTIAL /
+   UNAVAILABLE / PROPOSED (the `.ss-truth` pill owns those) and never encode a
+   provider's brand. A disabled control drops to the neutral ink deliberately, so
+   "you cannot do this here" never wears the colour of "this failed". */
 .ss-act {
-  min-height: 34px; padding: 0 14px; border-radius: 9px;
-  border: 1px solid var(--ss-line, rgba(128,128,128,.32));
-  background: var(--ss-raised, transparent); color: inherit;
-  font: 600 12px/1 inherit; cursor: pointer;
-  transition: background 160ms ease, opacity 160ms ease;
+  min-height: 30px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--act-line, var(--pg-line-strong, rgba(128,128,128,.32)));
+  background: var(--act-bg, var(--pg-raised, transparent));
+  color: var(--act-ink, inherit);
+  font: 600 11.5px/1 inherit;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
-.ss-act:hover:not(:disabled) { background: var(--ss-lift, rgba(128,128,128,.10)); }
-.ss-act:disabled { opacity: .55; cursor: not-allowed; }
+.ss-act:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--act-bg-h, color-mix(in srgb, var(--pg-violet, #9b8de0) 12%, var(--pg-raised)));
+  border-color: var(--act-line-h, color-mix(in srgb, var(--pg-violet, #9b8de0) 45%, var(--pg-line-strong)));
+  box-shadow: 0 2px 8px -3px color-mix(in srgb, var(--act-glow, var(--pg-violet, #9b8de0)) 60%, transparent);
+}
+.ss-act:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.ss-act:focus-visible { outline: 2px solid var(--act-glow, var(--ring)); outline-offset: 2px; }
+
+.ss-act-primary {
+  --act-bg: var(--accent, #d4a752); --act-line: var(--pg-gold-deep, #c7a978);
+  --act-ink: var(--accent-foreground, #20180a); --act-glow: var(--accent, #d4a752);
+  --act-bg-h: color-mix(in srgb, var(--accent, #d4a752) 82%, #fff);
+  --act-line-h: var(--pg-gold-deep, #c7a978);
+  font-weight: 700;
+}
+.ss-act-go {
+  --act-ink: var(--success); --act-glow: var(--success);
+  --act-line: color-mix(in srgb, var(--success) 45%, var(--pg-line));
+  --act-bg-h: color-mix(in srgb, var(--success) 14%, var(--pg-raised));
+  --act-line-h: var(--success);
+}
+.ss-act-danger {
+  --act-ink: var(--destructive); --act-glow: var(--destructive);
+  --act-line: color-mix(in srgb, var(--destructive) 45%, var(--pg-line));
+  --act-bg-h: color-mix(in srgb, var(--destructive) 14%, var(--pg-raised));
+  --act-line-h: var(--destructive);
+}
+.ss-act:disabled { opacity: .5; cursor: not-allowed; --act-ink: var(--pg-faint); }
 /* Gold is spent on the act, and only there (§11). */
 .ss-act-primary:not(:disabled) {
   background: var(--accent, #d4a752); border-color: var(--accent, #d4a752);
@@ -278,3 +318,102 @@
 .ss-dns-table th { font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 9px; opacity: .72; }
 .ss-dns-value { font-family: var(--ss-data, ui-monospace, monospace); word-break: break-all; }
 .scroll-x { overflow-x: auto; }
+
+/* ── Collapsible areas ──────────────────────────────────────────────────────
+   The surface rendered four areas, seven cards and thirteen paragraphs
+   permanently expanded, so the whole account had to be scrolled before the one
+   actionable thing was reachable. Folded, the state is four readable lines and
+   the detail is one click (§11 — collapse rather than build a scroll-wall).
+
+   COLOUR HERE IS STATUS, NEVER DECORATION, AND NEVER A TRUTH VERDICT.
+   Every hue below is derived from the readiness record via the step functions'
+   own `tone` — the same value the ladder row uses — so a fold cannot disagree
+   with the row inside it. It is deliberately NOT the §13 truth taxonomy: LIVE /
+   PARTIAL / UNAVAILABLE / PROPOSED remain the `.ss-truth` pill's job alone, and
+   nothing here may be read as one of them. `neutral` is violet precisely because
+   violet is absent from both the truth palette and the semantic status palette —
+   an unread or unreadable area must look like "not known", not like "unavailable".
+   No provider, brand or ornamental colour enters this scale. */
+.ss-fold {
+  position: relative; margin: 0; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--fold-line, var(--pg-line));
+  background: var(--fold-bg, var(--pg-surface));
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.ss-fold + .ss-fold { margin-top: 6px; }
+.ss-fold::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: var(--spine, var(--pg-line-strong));
+}
+/* One token drives the spine, the hairline, the ground tint and the summary
+   value, so an area reads at a glance before it is opened. */
+.ss-fold[data-tone="ok"] {
+  --spine: var(--success); --fold-ink: var(--success);
+  --fold-line: color-mix(in srgb, var(--success) 32%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--success) 6%, var(--pg-surface));
+}
+.ss-fold[data-tone="warn"] {
+  --spine: var(--warning); --fold-ink: var(--warning);
+  --fold-line: color-mix(in srgb, var(--warning) 32%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--warning) 7%, var(--pg-surface));
+}
+.ss-fold[data-tone="bad"] {
+  --spine: var(--destructive); --fold-ink: var(--destructive);
+  --fold-line: color-mix(in srgb, var(--destructive) 34%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--destructive) 7%, var(--pg-surface));
+}
+.ss-fold[data-tone="neutral"] {
+  --spine: var(--pg-violet, #9b8de0); --fold-ink: var(--pg-violet, #9b8de0);
+  --fold-line: color-mix(in srgb, var(--pg-violet, #9b8de0) 26%, var(--pg-line));
+  --fold-bg: color-mix(in srgb, var(--pg-violet, #9b8de0) 5%, var(--pg-surface));
+}
+.ss-fold:hover { border-color: color-mix(in srgb, var(--spine) 55%, var(--pg-line)); transform: translateY(-1px); }
+/* Open drops the tint: the ground must not compete with the content it reveals. */
+.ss-fold[open] { --fold-bg: var(--pg-surface); }
+
+.ss-fold-summary {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 11px 7px 14px; cursor: pointer; list-style: none;
+  transition: background 150ms ease;
+}
+.ss-fold-summary::-webkit-details-marker { display: none; }
+.ss-fold-summary:hover { background: color-mix(in srgb, var(--spine) 10%, transparent); }
+.ss-fold-summary:focus-visible { outline: 2px solid var(--spine); outline-offset: -2px; }
+.ss-fold-summary:active { background: color-mix(in srgb, var(--spine) 16%, transparent); }
+
+.ss-fold-title { display: flex; flex-direction: column; gap: 0; flex: 0 1 auto; min-width: 0; }
+.ss-fold-title h3 {
+  margin: 0; font: 650 11.5px/1.25 var(--pg-font-display); letter-spacing: -.008em; color: var(--pg-ink);
+}
+.ss-fold-blurb {
+  font-size: 10px; color: var(--pg-muted); max-width: 58ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* The collapsed value is often the ONLY thing read about an area, so it takes
+   the slack and truncates last. */
+.ss-fold-rest {
+  flex: 1 1 auto; min-width: 0; text-align: right;
+  font: 600 11px var(--pg-font-display); color: var(--fold-ink, var(--pg-ink-2));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ss-fold-chevron {
+  flex: none; color: var(--fold-ink, var(--pg-faint)); font-size: 14px; line-height: 1;
+  transition: transform 160ms cubic-bezier(.2,.7,.3,1);
+}
+.ss-fold[open] .ss-fold-chevron { transform: rotate(90deg); }
+.ss-fold-summary:hover .ss-fold-chevron { transform: translateX(2px); }
+.ss-fold[open] .ss-fold-summary:hover .ss-fold-chevron { transform: rotate(90deg) translateX(2px); }
+.ss-fold-body { padding: 2px 11px 11px 14px; border-top: 1px solid var(--pg-line-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-fold, .ss-fold-summary, .ss-fold-chevron, .ss-act { transition: none !important; }
+  .ss-fold:hover, .ss-act:hover:not(:disabled) { transform: none; }
+}
+
+/* On a narrow column the blurb goes first — the title and the value are what the
+   summary exists for. */
+@container (max-width: 560px) {
+  .ss-fold-blurb { display: none; }
+  .ss-fold-rest { font-size: 11.5px; }
+}
