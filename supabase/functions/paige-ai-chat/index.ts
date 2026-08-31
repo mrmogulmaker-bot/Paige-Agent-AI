@@ -5670,6 +5670,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
         if (tc.function.name === "update_client_data") {
           try {
+            // §9 — same class as the credit-sync and summary-memory findings: falling back to
+            // the caller is right for READING their own context and wrong for WRITING a named
+            // subject's data. The model called this believing it was acting on the focused
+            // client; on a refused turn `scopedClientId` is null and the fallback would apply
+            // those updates to the CALLER's own record instead. RLS keeps it in-tenant, so this
+            // is not a cross-tenant leak — but it is still one person's data written onto
+            // another's. Refuse, and tell the model plainly so it does not retry.
+            if (clientScopeDenied) {
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify({
+                  success: false,
+                  error: "The client context for this conversation could not be authorized, so no client record can be updated. Tell the operator you cannot act on that client right now, and do not retry.",
+                }),
+              });
+              continue;
+            }
             const args = JSON.parse(tc.function.arguments);
             const writeBackPayload = {
               updates: args.updates,

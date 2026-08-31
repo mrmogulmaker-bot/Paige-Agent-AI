@@ -53,8 +53,30 @@ let embedCount = 0;
 let modelStub = false;
 /** What `runDocumentReadCheck` should answer. Set per scenario to reach the credit-report branch. */
 let readCheckReply = { can_read_document: false, document_kind: "other", first_five_account_names: [] };
+/** When set, the FIRST streamed round emits a tool call instead of an answer. */
+let toolCallOnce = false;
+let toolCallSpec = { name: "update_client_data", args: {} };
 /** Every request body sent to the model this turn — the real prompt/model EGRESS surface. */
 let modelEgress = [];
+/** Every non-model outbound call this turn — the sibling-function surface (write-back, sync). */
+let outboundCalls = [];
+/**
+ * An Anthropic-native tool_use stream. `gatewayCompat` converts it to OpenAI-compat deltas, so
+ * the handler's agentic loop sees a real tool call. Without this the whole tool loop — where
+ * Paige acts on the focused client — was unreachable by any check.
+ */
+const sseToolCallReply = (name, args) =>
+  new Response(
+    [
+      `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 1, output_tokens: 1 } } })}\n\n`,
+      `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "toolu_test", name } })}\n\n`,
+      `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(args) } })}\n\n`,
+      `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" } })}\n\n`,
+      `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+    ].join(""),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  );
+
 const sseModelReply = (text) =>
   new Response(
     [
@@ -75,11 +97,18 @@ globalThis.fetch = async (url, init) => {
     });
   }
   if (href.includes("anthropic.com")) modelEgress.push(String(init?.body ?? ""));
+  else if (!href.includes("voyageai.com")) {
+    outboundCalls.push({ url: href, body: String(init?.body ?? "") });
+    return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
   if (modelStub && href.includes("anthropic.com")) {
     const wantsStream = (() => {
       try { return JSON.parse(String(init?.body ?? "{}")).stream === true; } catch { return false; }
     })();
-    if (wantsStream) return sseModelReply("ok");
+    if (wantsStream) {
+      if (toolCallOnce) { toolCallOnce = false; return sseToolCallReply(toolCallSpec.name, toolCallSpec.args); }
+      return sseModelReply("ok");
+    }
     // Answer the document READ-CHECK with the JSON it expects, so `isCreditReportPdf` can be
     // true and the credit-report upload branch is reachable at all. Match on the outbound body:
     // `gatewayCompat` reshapes the request to Anthropic-native before it reaches fetch, so the
@@ -126,12 +155,16 @@ async function drive({
   clientContext = undefined,
   readCheck = { can_read_document: false, document_kind: "other", first_five_account_names: [] },
   extraBody = undefined,
+  toolCall = undefined,
 }) {
   const logged = [];
   embedCount = 0;
   modelEgress = [];
+  outboundCalls = [];
   modelStub = stream;
   readCheckReply = readCheck;
+  toolCallOnce = !!toolCall;
+  if (toolCall) toolCallSpec = toolCall;
   const origError = console.error, origWarn = console.warn;
   console.error = (...a) => logged.push({ level: "error", msg: a.join(" ") });
   console.warn = (...a) => logged.push({ level: "warn", msg: a.join(" ") });
@@ -198,11 +231,12 @@ async function drive({
     try { bodyText = await res.text(); } catch { /* streamed */ }
   } catch (e) { status = "throw:" + (e?.message ?? e); }
   modelStub = false;
+  toolCallOnce = false;
 
   console.error = origError; console.warn = origWarn;
   const memoryReads = rec.from.filter((f) => f.table === "client_memory" && f.op === "select");
   const memoryRpc = rec.rpc.filter((r) => r.name === "match_paige_memory");
-  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress] };
+  return { rec, status, bodyText, logged, embeds: embedCount, memoryReads, memoryRpc, modelEgress: [...modelEgress], outboundCalls: [...outboundCalls] };
 }
 
 console.log("\nauthorized paths still work (no regression)");
@@ -619,6 +653,37 @@ console.log("\nthe refusal is announced on BOTH response paths, not just the age
   assert("11.2 …and still never carries the rejected identifier",
     !refusedDoc.bodyText.includes(FOREIGN),
     "the refused id appeared in the document-path response");
+}
+
+console.log("\nthe TOOL loop does not retarget a refused subject at the caller");
+{
+  // The generalisation behind the two review findings: falling back to the caller is right for
+  // READING their own context and wrong for WRITING a named subject's data. `update_client_data`
+  // was the third instance — the model calls it believing it is acting on the focused client, and
+  // on a refusal the fallback applied those updates to the CALLER's own record. RLS keeps it
+  // in-tenant, so it is not a cross-tenant leak; it is still one person's data written onto
+  // another's, and no check reached the tool loop at all before this.
+  const upd = { name: "update_client_data", args: { updates: { first_name: "Renamed", monthly_revenue: 99999 } } };
+
+  const allowedTool = await drive({ clientId: OWN, stream: true, toolCall: upd });
+  assert("12.0 the tool loop IS reachable and an AUTHORIZED turn calls write-back (guards this section)",
+    allowedTool.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+    JSON.stringify(allowedTool.outboundCalls.map((c) => c.url)));
+  assert("12.0b …targeting the AUTHORIZED client, never the caller",
+    allowedTool.outboundCalls.filter((c) => c.url.includes("paige-write-back"))
+      .every((c) => c.body.includes(OWN) && !c.body.includes(`"target_user_id":"${USER}"`)),
+    JSON.stringify(allowedTool.outboundCalls.filter((c) => c.url.includes("paige-write-back")).map((c) => c.body)));
+
+  const refusedTool = await drive({ clientId: FOREIGN, stream: true, toolCall: upd });
+  assert("12.1 a REFUSED turn makes NO write-back call at all",
+    !refusedTool.outboundCalls.some((c) => c.url.includes("paige-write-back")),
+    JSON.stringify(refusedTool.outboundCalls.map((c) => c.url)));
+  assert("12.2 …so the named client's updates never land on the caller's own record",
+    !refusedTool.outboundCalls.some((c) => c.body.includes(`"target_user_id":"${USER}"`)),
+    JSON.stringify(refusedTool.outboundCalls.map((c) => c.body)));
+  assert("12.3 …and no outbound call carries the refused id",
+    !refusedTool.outboundCalls.some((c) => c.body.includes(FOREIGN) || c.url.includes(FOREIGN)),
+    JSON.stringify(refusedTool.outboundCalls.map((c) => c.url)));
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);
