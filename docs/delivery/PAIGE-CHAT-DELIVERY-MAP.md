@@ -220,5 +220,33 @@ the authenticated Solo surface. Every §70.1 gate item that requires a person co
 live platform is owed to a capable session and is reported as owed, never as met.
 
 **Gate 1 (foundation structure):** N/A — existing product, not a new foundation.
-**Gate 5 (installation):** PASS — `flow-by-flow` + `flow-prototype` both present at 2.0.1 with every
-routed reference.
+
+**Gate 5 (installation): PASS, with a §13 correction to an earlier reading.** Both skills are present
+at 2.0.1. An earlier pass here recorded "every routed reference" as present; on re-checking, the
+installed bundle contains `SKILL.md` ONLY — there is no `references/` directory on disk. The
+references are INLINED in `SKILL.md` (it says so itself, under "Inlined references"), so nothing is
+missing and the gate still passes — but the earlier wording described a file layout that does not
+exist, and a session that went looking for `references/orchestration.md` would have found nothing and
+had to guess. Recorded rather than quietly reworded.
+
+---
+
+## 6. The autonomy wave (§67/§68) — added after the six slices
+
+Not in the original map. The owner's direction after S1–S6 was to take Paige's autonomy to where it
+was meant to be, so the work continued into the three slices the architecture doc specifies as the
+substrate. Its own §-doctrine is `docs/doctrine/autonomy-architecture.md`; the tier consequences are
+in `docs/doctrine/tier-matrix.md` per §66.
+
+| Slice | What it is | Proof |
+|---|---|---|
+| **R1 — the gate is reachable** | The confirm gate had been made unusable: five of six chat surfaces cannot echo a fingerprint, the client seat lost its only write, 45 of 48 gated tools never declared an approval parameter, and free-text tools livelocked. The proposed call is now persisted and approval carries a token; the STORED arguments execute. | 12-case prod proof (2 negative controls, 1 case corrected the RLS policy) · 13 harness checks · 8 mutations driven, all red |
+| **A — the process record** | `paige_automations` + acts + trigger catalogue. A grant is fingerprinted over the chain, so changing the chain drops an `auto` grant to `confirm`. | 16-case prod proof (1 negative control; found the missing GRANTs and one wrong expectation of mine) |
+| **B — the resolver** | `resolve_automation_autonomy` = min(grant, act floor, ceiling), returning `capped_by` and `dark` separately. | 11-case prod proof, each bound driven independently with its own negative control |
+| **C — the chat seam** | Five tools. Paige builds a process; she can never grant herself one. | 8 harness checks · 4 mutations driven, all red |
+
+**What the autonomy wave does NOT claim.** Triggers do not yet EMIT — slice D in the architecture doc.
+Four trigger rows are seeded, not the eighty the pack declares, because `is_live` is the field a
+builder trusts and only what was verified against production is claimed live. `paige-mcp` performs no
+autonomy resolution for any tool (pre-existing); it is scope-enforced, not lane-enforced, and the tier
+matrix says so rather than letting the stronger claim be assumed.
