@@ -222,7 +222,7 @@ describe("Truth boundary", () => {
     // The registry is provider-scoped. With BOTH connected and in deliberately
     // DIFFERENT states, a card that picked an arbitrary row would show the wrong
     // one — the frontend half of the same nondeterminism fixed in the systems
-    // check. The MCP bridge card reports Zapier; n8n's MCP state is not its own.
+    // check. The Zapier card reports Zapier; n8n's registry state is not its own.
     world({
       mcp: {
         zapier: { configured: true, status: "error", server_url_host: "https://mcp.zapier.com/x" },

@@ -406,11 +406,16 @@ export function projectOutcomeForModel(raw: unknown): Record<string, unknown> {
 
 /** Caps and cleans one provider-authored string. Control characters go -- they are how a
  *  value gets to look like a new line, a new speaker, or a new instruction once it is
- *  serialised into a transcript. Everything else is kept as-is and simply bounded: the
- *  alternative is pattern-matching for injection phrasing, which cannot be made to work. */
+ *  serialised into a transcript. Zero-width and bidirectional-override characters go with
+ *  them: they are invisible where the string is finally read, so what a person approves and
+ *  what is actually stored can differ with nothing on screen to say so.
+ *
+ *  Everything else is kept as-is and simply bounded. The alternative is pattern-matching
+ *  for injection phrasing, which cannot be made to work -- an attacker rephrases and a
+ *  legitimate error message about "instructions" gets mangled. */
 function providerText(v: unknown, cap: number): string | null {
   if (typeof v !== "string") return null;
-  const cleaned = v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim();
+  const cleaned = v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]+/g, " ").trim();
   return cleaned ? cleaned.slice(0, cap) : null;
 }
 
@@ -430,7 +435,9 @@ const numOrNull = (v: unknown): number | null => (typeof v === "number" && Numbe
 /** An id is provider-chosen but must not be prose: anything outside this grammar is dropped
  *  rather than truncated, because a "workflow id" carrying a sentence is not an id. */
 const idOrNull = (v: unknown): string | null => {
-  const s = typeof v === "string" ? v : typeof v === "number" ? String(v) : null;
+  // `Number.isFinite` because `String(NaN)` is "NaN", which satisfies the grammar below
+  // and would be handed back as though it were an identifier.
+  const s = typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : null;
   return s && /^[A-Za-z0-9_.:-]{1,64}$/.test(s) ? s : null;
 };
 
@@ -473,9 +480,18 @@ export function projectN8nForModel(raw: unknown): Record<string, unknown> {
       nothing_to_update: "That call changed nothing.",
       name_and_nodes_required: "That call needs a name and a set of nodes.",
     };
+    // `invalid_workflow` is the one failure whose detail is OURS. The workflow being
+    // validated is the one Paige just composed, and the findings come from this repo's
+    // validator, not from n8n -- so withholding them tells the model only that its own
+    // draft was rejected, with no way to fix it. Everything else in this branch is
+    // provider-shaped and stays out.
+    const ourFindings = code === "invalid_workflow"
+      ? providerTextList((d.validation as Record<string, unknown> | undefined)?.errors, 200, 25)
+      : [];
     return {
       success: false,
       error: code,
+      ...(ourFindings.length ? { validation_errors: ourFindings } : {}),
       // `n8n_502` and friends are generated from a status code, so they are ours, but the
       // body that came with them is not and is gone by here.
       detail: known[code] ?? (/^n8n_\d{3}$/.test(code)

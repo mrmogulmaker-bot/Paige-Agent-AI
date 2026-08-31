@@ -13,10 +13,17 @@
  * in `toolResults` and therefore in a model's context verbatim: the whole webhook body up
  * to 4000 characters, every provider error body, and a whole workflow definition.
  *
- * FAILING FIRST. `--baseline` bundles and drives the n8n function AS IT IS AT HEAD, with
- * the old spread-the-response adapter, against the same hostile instance. It is the real
- * previous code, not a reconstruction of it, so the failures below are the defect rather
- * than a description of one.
+ * FAILING FIRST. `--baseline` bundles and drives the n8n function AS IT WAS BEFORE this
+ * change, with the old spread-the-response adapter, against the same hostile instance. It
+ * is the real previous code, not a reconstruction of it, so the failures below are the
+ * defect rather than a description of one.
+ *
+ * The ref is PINNED. It was `HEAD` for one run, and the moment the fix was committed HEAD
+ * became the fixed code: four assertions went from failing-in-baseline to passing, and the
+ * proof quietly stopped proving anything while still printing a number. A baseline that
+ * moves with the branch is not a baseline. The guard below refuses to run if the pinned
+ * source has lost the egress it is supposed to demonstrate, so this cannot rot silently a
+ * second time -- if that commit is ever unreachable, the smoke says so instead of passing.
  *
  * WHAT IS REAL HERE: the shipped `paige-n8n` handler, its routing and both of its outbound
  * call sites; the shipped `projectN8nForModel`; a genuine HTTP server answering as a
@@ -86,10 +93,30 @@ const remoteStub = {
     b.onLoad({ filter: /.*/, namespace: "remote-stub" }, () => ({ contents: stubSrc, loader: "js" }));
   },
 };
+/** The last commit that carried the raw egress. Pinned, never a moving ref. */
+const BASELINE_REF = "ac453bc2";
+
+function baselineSource() {
+  let src;
+  try {
+    src = execFileSync("git", ["show", `${BASELINE_REF}:supabase/functions/paige-n8n/index.ts`], { encoding: "utf8" });
+  } catch {
+    console.error(`FAILED: cannot read ${BASELINE_REF} -- the baseline is unreachable, so nothing below would mean anything.`);
+    process.exit(1);
+  }
+  // The two egress sites this proof exists to demonstrate. If the pinned source no longer
+  // has them, the ref is wrong and every "failure" printed below would be an artefact.
+  if (!src.includes("raw_response") || !src.includes(".text()).slice(")) {
+    console.error(`FAILED: ${BASELINE_REF} does not carry the raw egress -- the baseline ref is wrong.`);
+    process.exit(1);
+  }
+  return src;
+}
+
 const entry = BASELINE
   ? {
       stdin: {
-        contents: execFileSync("git", ["show", "HEAD:supabase/functions/paige-n8n/index.ts"], { encoding: "utf8" }),
+        contents: baselineSource(),
         resolveDir: "supabase/functions/paige-n8n",
         sourcefile: "index.ts",
         loader: "ts",
@@ -247,6 +274,34 @@ check("the list is capped, so a hostile instance cannot flood the context",
   (listed.workflows ?? []).length <= 200, `got ${(listed.workflows ?? []).length}`);
 check("an id that is prose is dropped rather than truncated",
   BASELINE || (listed.workflows ?? [])[0]?.id === null);
+
+// -- The quieter ways a value stops being a value ------------------------------
+console.log("\n-- notation --");
+routes.set("/api/v1/workflows", (req, res) => json(res, 200, {
+  data: [
+    // Invisible where the string is finally read: what an admin approves and what is
+    // stored can differ with nothing on screen to say so.
+    { id: "wf-z", name: "Invoice" + "\u200b\u202e\ufeff" + "s", active: true, tags: [], updatedAt: "2026-01-01T00:00:00Z" },
+    // `String(NaN)` is "NaN", which satisfies an id grammar without being an id.
+    { id: Number.NaN, name: "Broken id", active: false, tags: [], updatedAt: "2026-01-01T00:00:00Z" },
+  ],
+}));
+bytes = await egress({ action: "list" });
+const notation = JSON.parse(bytes);
+check("zero-width and bidi characters are stripped from a name",
+  BASELINE || notation.workflows?.[0]?.name === "Invoice s", JSON.stringify(notation.workflows?.[0]?.name));
+check("a non-finite number is not accepted as an id",
+  BASELINE || notation.workflows?.[1]?.id === null, JSON.stringify(notation.workflows?.[1]?.id));
+
+// -- Our own validator's findings, which are not the provider's words ----------
+console.log("\n-- a workflow Paige composed badly --");
+bytes = await egress({ action: "create", name: "x", nodes: [] });
+const invalid = JSON.parse(bytes);
+check("a workflow that fails OUR validator says which check failed",
+  BASELINE || (Array.isArray(invalid.validation_errors) && invalid.validation_errors.length > 0),
+  JSON.stringify(invalid).slice(0, 200));
+check("...and that is the only failure whose detail crosses",
+  BASELINE || !("validation_errors" in projectN8nForModel({ error: "n8n_500", detail: INJECTION })));
 
 // -- A run against an instance that reports a foreign tenant's execution -------
 console.log("\n-- an execution report --");
