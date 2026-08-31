@@ -21,7 +21,10 @@ const directArchiveMigration = readFileSync(resolve(process.cwd(), "supabase/mig
 const reorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831214500_solo_pipeline_reorder_serialization.sql"), "utf8");
 const defaultCreatorMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831220000_solo_pipeline_default_creator_lock.sql"), "utf8");
 const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831221500_solo_pipeline_default_setter_lock.sql"), "utf8");
+const activeReorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831223000_solo_pipeline_active_reorder.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
+const paigeChat = readFileSync(resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"), "utf8");
+const paigeMcp = readFileSync(resolve(process.cwd(), "supabase/functions/paige-mcp/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -159,6 +162,10 @@ describe("Solo Campaigns approved contract", () => {
     expect(defaultSetterMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0))");
     expect(contactDeals).toContain('from("pipeline_stages").select("*").is("archived_at", null)');
     expect(stageAutomationRules).toContain('.eq("pipeline_id", pid).is("archived_at", null)');
+    expect(paigeChat.match(/\.is\("archived_at", null\)/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(paigeMcp).toContain('.eq("tenant_id", tenantId)\n        .is("archived_at", null)');
+    expect(activeReorderMigration).toContain("array_agg(order_index order by order_index)");
+    expect(activeReorderMigration).toContain("s.archived_at is null");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
