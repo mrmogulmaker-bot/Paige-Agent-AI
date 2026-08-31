@@ -70,7 +70,7 @@
 # The ordering skew is a THIRD outcome, distinct from both: both sessions ran, and
 # they raced the other way round. It is named as that rather than as either.
 #
-# MUTATION-TESTED, on a real cluster, TWELVE runs. Not "reviewed and believed":
+# MUTATION-TESTED, on a real cluster, FIFTEEN runs. Not "reviewed and believed":
 #
 #   baseline, nothing mutated ............ PASSED
 #   A's UPDATE broken .................... INCONCLUSIVE, names A
@@ -82,17 +82,21 @@
 #   the D2 FIXTURE broken ................ INCONCLUSIVE, names the fixture
 #   a second alternate on T2's mark ...... PASSED (the extension point is safe)
 #   a read whose function RAISEs NOTICE .. PASSED (a notice is not a failure)
+#   HOLD_SECONDS=1 ....................... HARNESS MISCONFIGURED, exit 2
+#   LAUNCH_GAP=5 (>= HOLD_SECONDS) ....... HARNESS MISCONFIGURED, exit 2
+#   LAUNCH_GAP=0 ......................... HARNESS MISCONFIGURED, exit 2
 #   pg_advisory_xact_lock deleted ........ D3 FAILED, "a real finding"
 #   a2p_registration_is_immutable := false  D2 FAILED, "a real guard/lock finding"
 #
-# The last two are what stop this being a machine for reporting INCONCLUSIVE: the
-# guards it exists to pin are removed for real, all four sessions run clean, and it
-# names the defect rather than a dead session.
+# The two guard rows are what stop this being a machine for reporting
+# INCONCLUSIVE: the guards it exists to pin are removed for real, all four
+# sessions run clean, and it names the defect rather than a dead session. The
+# three knob rows exit 2, deliberately distinct from a finding's 1.
 #
-# SIX OF THOSE ROWS EXIST BECAUSE A DRAFT OF THIS FILE FAILED THEM. Every failure
-# was the same shape as the four this file was written to end — a healthy thing
-# reported as dead, or a dead thing reported as a finding — and every one was found
-# by RUNNING the matrix, never by reading the code:
+# SEVEN OF THOSE ROWS EXIST BECAUSE A DRAFT OF THIS FILE FAILED THEM. Every
+# failure was the same shape as the four this file was written to end — a healthy
+# thing reported as dead, or a dead thing reported as a finding — and every one
+# was found by RUNNING the matrix, never by reading the code:
 #
 #   · B's mark was REGISTRATION_IMMUTABLE, which is ALSO B's assertion, so
 #     deleting the guard produced a healthy B that printed no such string and was
@@ -114,6 +118,12 @@
 #     merely RAISEd a NOTICE returned "NOTICE: …\nvalue", failed an equality mark,
 #     and reported a perfectly healthy session as dead. stdout and stderr are kept
 #     apart now.
+#   · HOLD_SECONDS=1 made the contention bar 0ms, so "B contended for the row"
+#     was true of anything — and the run PASSED, printing "t (waited 30ms, A held
+#     1s)": a green line disproved by its own parenthetical. A vacuous assertion
+#     is worse than a missing one, because it reads as coverage. The knobs are
+#     validated up front now, and a bad one is named as a HARNESS fault rather
+#     than becoming either a pass or a guard finding.
 # =============================================================================
 set -uo pipefail
 BASE="${1:?usage: a2p-concurrency-proof.sh <cluster-base> <pgbin> <unix-user>}"
@@ -129,17 +139,36 @@ LAUNCH_GAP=1          # the gap between a pair's two launches. THIS is what deci
 # which the ran-marks would correctly report but which is self-inflicted.
 # 711 is traverse-only; the files themselves are 644 and the directory stays
 # root-owned. An earlier revision used 755 and had no reason to.
+# THE KNOBS ARE VALIDATED, because a bad one is a HARNESS fault and this file's
+# whole subject is not reporting a harness fault as a guard finding.
+#
+#   · LAUNCH_GAP < HOLD_SECONDS, or the pair never overlaps and D2 reports
+#     `blocked=f` — which the run then prints as "a real guard/lock finding".
+#   · HOLD_SECONDS >= 2, or the contention bar `(HOLD_SECONDS-1)*1000` is 0 ms and
+#     `blocked` is TRUE OF ANYTHING. Measured at HOLD_SECONDS=1: "B contended for
+#     the row … t (waited 30ms, A held 1s)" and the run PASSED — a green line
+#     whose own parenthetical disproves it. A vacuous assertion is worse than a
+#     missing one, because it reads as coverage.
+[ "$HOLD_SECONDS" -ge 2 ] || { echo "!! HARNESS MISCONFIGURED — HOLD_SECONDS=$HOLD_SECONDS makes the contention bar 0ms, so 'B contended' would be true of anything. Nothing was measured."; exit 2; }
+[ "$LAUNCH_GAP" -ge 1 ] && [ "$LAUNCH_GAP" -lt "$HOLD_SECONDS" ] || { echo "!! HARNESS MISCONFIGURED — LAUNCH_GAP=$LAUNCH_GAP must be >=1 and < HOLD_SECONDS=$HOLD_SECONDS, or the two sessions never overlap and no race is measured."; exit 2; }
+
 TMPD="$(mktemp -d)"; chmod 711 "$TMPD"; trap 'rm -rf "$TMPD"' EXIT
 
 # ── THE ONE psql LANE. Every call in this file goes through it. ──────────────
 #
 # SQL IS WRITTEN TO A FILE AND FED WITH `-f`. It is never interpolated into the
 # string handed to `su -c`, because `sh` re-parses that string — two rounds of
-# expansion. Measured through the old path, all rc=0 and all silent:
+# expansion. Measured through the old path — and note the third column, because
+# a previous revision of this comment wrote "all rc=0 and all silent" directly
+# above a row that is neither:
 #
-#     select $$dollar-quoted$$      →  ERROR: trailing junk … "4067dollar"  (the PID)
-#     select 'X`echo PWNED`Y'       →  XPWNEDY
-#     select 'tag=$NOT_A_VAR;'      →  tag=;
+#     select $$dollar-quoted$$   →  ERROR: trailing junk … "7019dollar"   rc=1, LOUD
+#     select 'X`echo PWNED`Y'    →  XPWNEDY                               rc=0, SILENT
+#     select 'tag=$NOT_A_VAR;'   →  tag=;                                 rc=0, SILENT
+#
+# The two silent ones are the dangerous pair: the value is wrong and nothing says
+# so. The loud one would have been caught by the read guard as INCONCLUSIVE. All
+# three round-trip verbatim through the lane below.
 #
 # A previous revision fixed this for the four SESSIONS and left the reads, the
 # fixtures and the cleanups on the old path — while its comment said the hop was
@@ -158,7 +187,14 @@ PSQL_OUT=""; PSQL_ERR=""; PSQL_RC=0
 psql_file() {   # <tag> <sql> [extra psql flags…]
   local tag="$1" sql="$2"; shift 2
   printf '%s\n' "$sql" > "$TMPD/$tag.sql"; chmod 644 "$TMPD/$tag.sql"
-  PSQL_OUT="$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A $* -f $TMPD/$tag.sql" 2>"$TMPD/$tag.err")"
+  # Extra flags are quoted individually rather than pasted in as `$*`. Both
+  # callers pass only `-v ON_ERROR_STOP=1` today, so nothing is wrong — but an
+  # unquoted `$*` is re-split by bash AND by the `su` shell, which is the very
+  # hop this lane exists to remove, so it is not left as the one place it still
+  # happens.
+  local flags="" f
+  for f in "$@"; do flags+=" $(printf '%q' "$f")"; done
+  PSQL_OUT="$(su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A$flags -f $TMPD/$tag.sql" 2>"$TMPD/$tag.err")"
   PSQL_RC=$?
   PSQL_ERR="$(cat "$TMPD/$tag.err")"
   return $PSQL_RC
@@ -243,8 +279,18 @@ mark_query()  { local n="$1" q="$2"; shift 2; S_MARK_KIND[$n]=query; S_MARK_WANT
 # draft of this repair WAS `final=$(read_or_die …)`, and `exit` inside a command
 # substitution ends the SUBSHELL, not the script: a failed read would have set
 # `final` to empty and the run would have carried on to print the very
-# guard-finding this exists to stop. Measured before it shipped. psql exits
-# non-zero on a bad column either way, so rc is the discriminator here.
+# guard-finding this exists to stop. Measured before it shipped.
+#
+# rc IS the discriminator here, but ONLY because the read passes ON_ERROR_STOP —
+# see the call below, and do not weaken that flag. Measured, bad column:
+#
+#     -c  without ON_ERROR_STOP → rc 1        -c  with → rc 1
+#     -f  without ON_ERROR_STOP → rc 0  ←     -f  with → rc 3
+#
+# An earlier revision of THIS sentence said psql "exits non-zero either way",
+# which was true of the `-c` lane it was written for and false of the `-f` lane
+# the reads had just been moved onto — asserting, as a measurement, the opposite
+# of the function ten lines below it.
 #
 # READ_VAL COMES FROM STDOUT ALONE. See psql_file: a NOTICE folded into the value
 # turns a healthy session into a reported-dead one.
@@ -294,9 +340,17 @@ require_ran() {
 # call this without knowing which sessions exist yet.
 report_started() {
   local n
-  for n in "${S_ORDER[@]}"; do
-    [ -n "${S_RC[$n]+x}" ] || continue
-    printf "    %-34s rc=%-3s mark=%s\n" "session ${S_LABEL[$n]} ran" "${S_RC[$n]}" "${S_MARK_GOT[$n]:-(not yet marked)}"
+  for n in "${S_ORDER[@]:-}"; do
+    [ -n "$n" ] || continue
+    if [ -n "${S_RC[$n]+x}" ]; then
+      printf "    %-34s rc=%-3s mark=%s\n" "session ${S_LABEL[$n]} ran" "${S_RC[$n]}" "${S_MARK_GOT[$n]:-(not yet marked)}"
+    else
+      # Registered and still in flight. It gets a LINE rather than being skipped:
+      # this file exists because a background session that produced no output was
+      # indistinguishable from one that never started, and a report that silently
+      # omits a running session is that same invisibility in a new place.
+      printf "    %-34s (started, not yet reaped)\n" "session ${S_LABEL[$n]}"
+    fi
   done
 }
 
