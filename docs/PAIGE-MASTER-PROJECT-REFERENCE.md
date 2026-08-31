@@ -131,6 +131,40 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### PAIGE Chat — the governed working interface (2026-08-31, branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT YET MERGED)
+
+**Status: on a branch, verified, awaiting Gate 2. Nothing below is live on production yet.** Recorded
+here per §0 so the next session does not re-diagnose any of it.
+
+Six vertical slices, each independently reviewed by an adversarial agent, repaired, and re-verified.
+
+| Slice | What changed | Where |
+|---|---|---|
+| S1 | Every provider call files its `paige_llm_trace` row under the tenant whose evidence it carries. Eight of nine call sites passed no trace context and wrote untenanted platform rows — the ones carrying the MOST evidence. | `paige-ai-chat`, `_shared/claude.ts` seam |
+| S2 | A focused-CLIENT switch now ends the conversation the way an account switch does (one composite scope epoch). The isolation fence stopped being opt-in — the one surface that focuses clients did not set the flag. `paige_chat_turn_append` gained a tenant predicate. A refused client focus is released, and the refusal survives the reset it causes. | `PaigeAIChat.tsx`, `PaigeWorkspace.tsx`, migration `20261018000000` |
+| S3 | **A credit report dropped into chat no longer writes eight tables unasked.** It produces a proposal a person reviews field by field; approval carries KEYS, never values, and the server writes from its own stored extraction. Prohibited sensitive categories excluded; uncertainty omitted rather than defaulted. | `paige-ai-chat`, new `_shared/credit-extraction-payload.ts`, new `paige-apply-extraction`, migration `20261019000000` |
+| S4 | An approval is BOUND to the call it approved (fingerprint issued with the refusal, echoed back, re-derived at the gate) — `confirm:true` alone no longer opens it. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. | `paige-ai-chat`, migrations `20261020000000`, `20261021000000` |
+| S5 | The automatic URL fetch is tier-gated — a portal client pasting a link no longer causes server-side egress. (The raw provider-payload spread was already closed on `main` by the MCP registry work; nothing rebuilt.) | `paige-ai-chat` |
+| S6 | Removed four claims with no capability behind them: three dead composer shortcuts, an unbound ⌘K, a panel saying voice input was off while the mic worked, and a session-summary hook that had been sending `Bearer undefined` since it was written. | `PaigeAIChat.tsx`, `TenantCommandCenterShell.tsx`, `SoloPaigeWorkspace.tsx`, `usePaigeMemory.ts` |
+
+**§13 — WHAT IS NOT DONE, so nobody reads the above as more than it is.**
+- **No authenticated live drive.** This session has no browser capability; every §70.1 gate item that
+  requires a person completing the flow on the real platform is **owed to a capable session** (§32.c).
+- **Migrations are rollback-proven, not persisted.** Each was driven on production Postgres inside
+  `BEGIN..ROLLBACK` with negative controls. The §32.a persisted-apply confirmation is owed AFTER a
+  merge the owner authorizes.
+- **`runGeneralDocumentExtraction` is still undefined** — called, never defined, one of the 14
+  baseline `deno check` errors. Non-credit documents therefore still produce no proposal.
+- **`paige-mcp` does not consult `resolve_tool_autonomy`** — a second, still-ungoverned write path.
+- **Design items are owed to CD**, listed in `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md` §4b.
+
+**Live platform finding, surfaced by the S4 proof and worth an operator's attention on its own:**
+`operator_rls_coverage` is **FAILING** on production, which is already capping the platform's trust
+ceiling from 3 to 2 via the §68 decay law.
+
+**Full map:** `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md` (estate grounding, ordered slices, collision
+ownership, what is owed to CD).
+
 ### §65 operator route tree — AUTHORED from the Super Admin design pack (2026-08-18, PR #541)
 
 - ✅ **`OPERATOR_BRANCHES` is authored** (`src/lib/routing/tierBranches.ts`) — **13 branches / 5 settings
