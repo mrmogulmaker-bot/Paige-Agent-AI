@@ -21,7 +21,7 @@ export type CampaignArtifact = {
   publicHref: string;
   recentSubmissions: number;
   routingConfigured: boolean;
-  routingState: "No route" | "Draft route" | "Approval-gated" | "Human-only" | "Active + human-only" | "Active";
+  routingState: "No route" | "Draft route" | "Approval-gated" | "Human-only" | "Approval-gated + human-only" | "Active + approval-gated" | "Active + human-only" | "Active + approval-gated + human-only" | "Active";
   routingTargets: string[];
   recentDispatches: { succeeded: number; failed: number; other: number };
   dispatchStatuses: Record<string, number>;
@@ -211,8 +211,11 @@ export function useSoloCampaigns(): SoloCampaignsState {
             routingConfigured: configured.length > 0,
             routingState: configured.length === 0 ? "No route" as const
               : enabled.length === 0 ? "Draft route" as const
+              : active && approvalGated && humanOnly ? "Active + approval-gated + human-only" as const
+              : active && approvalGated ? "Active + approval-gated" as const
+              : active && humanOnly ? "Active + human-only" as const
+              : approvalGated && humanOnly ? "Approval-gated + human-only" as const
               : approvalGated ? "Approval-gated" as const
-              : humanOnly && active ? "Active + human-only" as const
               : humanOnly ? "Human-only" as const
               : "Active" as const,
             routingTargets: [...new Set(enabled.map((row) => row.target_slug))],
