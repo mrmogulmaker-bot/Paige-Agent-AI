@@ -25,6 +25,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import net from "node:net";
 import { chromium } from "playwright";
 
 const HERE = import.meta.dirname;
@@ -39,6 +40,31 @@ const FRAMES = [
   { w: 1024, h: 768 },
   { w: 900, h: 1000 },
 ];
+
+/**
+ * Refuse to run against a server this drive did not start.
+ *
+ * The harness pins port 5201, and the geometry drive uses the same one. When
+ * both run at once the second `vite` exits on `strictPort` and the browser
+ * quietly talks to the FIRST one — a different module graph, possibly built
+ * from a different working tree. That cost a full debugging cycle: assertions
+ * were read against a stale build of the stub and reported as product defects.
+ * A foreign listener is now a hard stop, not a silent substitution.
+ */
+async function assertPortFree() {
+  const free = await new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once("error", () => resolve(false));
+    probe.once("listening", () => probe.close(() => resolve(true)));
+    probe.listen(5201, "127.0.0.1");
+  });
+  if (!free) {
+    throw new Error(
+      "port 5201 is already serving — another harness (likely connections-calendars-drive) " +
+      "is running. Stop it first; this drive must own the server it measures.",
+    );
+  }
+}
 
 function startVite() {
   const child = spawn(
@@ -59,11 +85,20 @@ function startVite() {
 }
 
 const peek = (page) => page.evaluate(() => {
-  const db = window.__harnessStore;
-  if (!db) return { hook: typeof window.__harnessStore, keys: Object.keys(window).filter((k) => k.startsWith("__")) };
-  const c = (db.calendars || [])[0];
-  const ss = (() => { try { return Object.keys(sessionStorage).filter((k) => k.includes("harness")); } catch { return "blocked"; } })();
-  return c ? { id: c.id, title: c.title, type: c.type, buf: c.buffer_before_min, ss } : { rows: (db.calendars || []).length, ss };
+  // Read the STORE, not the DOM, and not a window hook that may not be reachable.
+  // Session storage is what a reload actually rehydrates from, so this is the
+  // only place that answers "did the write land?" without inference.
+  try {
+    // Key on the state currently being driven. Taking the FIRST matching key
+    // read a previous flow's table — `:empty` while `?data=dense` was on screen
+    // — so the diagnostic described rows the surface was not looking at.
+    const st = new URLSearchParams(location.search).get("data") || "dense";
+    const key = `paige-harness-store:${st}`;
+    if (!sessionStorage.getItem(key)) return { store: "absent", key };
+    const db = JSON.parse(sessionStorage.getItem(key));
+    const c = (db.calendars || [])[0];
+    return c ? { key, title: c.title, type: c.type, buf: c.buffer_before_min } : { key, rows: 0 };
+  } catch (e) { return { error: String(e).slice(0, 80) }; }
 });
 
 const results = [];
@@ -110,18 +145,43 @@ async function flowFirstPreset(page) {
   const empty = page.locator(".cc-empty");
   if (!(await empty.count())) return record("1 · first preset from the empty state", false, "no empty state rendered");
 
-  const input = page.locator(".cc-new .cc-in").first();
-  if (!(await input.count())) return record("1 · first preset from the empty state", false, "no create field offered");
+  // Creation is a two-step disclosure: a button in the empty body opens the name
+  // field. Reaching straight for the input asserted a one-step form the surface
+  // never claimed to have and reported the miss as "no create field offered" —
+  // an instrument defect, not a product one. Drive it the way a person does.
+  const opener = empty.locator("button", { hasText: /New preset/i }).first();
+  if (!(await opener.count())) {
+    return record("1 · first preset from the empty state", false, "empty state offers no way to start one");
+  }
+  await opener.click();
 
-  await input.fill("Harness intro call");
-  await page.locator(".cc-new button", { hasText: /Create/i }).first().click();
-  await page.waitForTimeout(700);
+  const input = empty.locator(".cc-new .cc-in").first();
+  await input.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+  if (!(await input.count())) return record("1 · first preset from the empty state", false, "no name field after opening the form");
 
-  // The proof is not the click — it is that the surface now HOLDS the calendar.
+  const NAME = "Harness intro call";
+  await input.fill(NAME);
+  await empty.locator(".cc-new button", { hasText: /Create/i }).first().click();
+  await page.waitForTimeout(900);
+
+  // The proof is not the click. It is that the calendar EXISTS afterwards — on
+  // screen, and still there when the page is re-read from the store rather than
+  // from the component state that just created it.
+  const onScreen = await page.getByText(NAME).count();
   const areas = await page.locator(".cc-area").count();
-  const named = await page.getByText("Harness intro call").count();
-  record("1 · first preset from the empty state", areas >= 10 && named > 0,
-    `areas=${areas} nameOnScreen=${named}`);
+  await open(page, "?data=empty");
+  const stored = await page.evaluate((wanted) => {
+    try {
+      const st = new URLSearchParams(location.search).get("data") || "dense";
+      const key = `paige-harness-store:${st}`;
+      if (!sessionStorage.getItem(key)) return "no store";
+      const db = JSON.parse(sessionStorage.getItem(key));
+      return (db.calendars || []).some((c) => c.title === wanted) ? "yes" : "no";
+    } catch (e) { return String(e).slice(0, 60); }
+  }, NAME);
+  const afterReload = await page.getByText(NAME).count();
+  record("1 · first preset from the empty state", onScreen > 0 && stored === "yes" && afterReload > 0,
+    `onScreen=${onScreen} areas=${areas} stored=${stored} afterReload=${afterReload}`);
 }
 
 /** 2 · An existing preset can be edited and the edit SURVIVES a re-read. */
@@ -177,25 +237,43 @@ async function flowRoundRobin(page) {
 /** 4 · The scheduling settings a person actually tunes, including the 15m buffer. */
 async function flowBufferAndRules(page) {
   await open(page);
-  const area = await openArea(page, "Booking rules");
-  const has15 = await area.locator(".cc-chip", { hasText: /^15m$/ }).count();
-  if (has15 < 1) return record("4 · booking rules · 15-minute buffer", false, "no 15m buffer chip offered");
 
-  // The seed already holds 15m, so clicking 15m would assert nothing. Move to a
-  // value the row does NOT have, prove that lands, then set 15m and prove THAT
-  // lands — the 15-minute buffer the assignment names, actually exercised.
+  // Scope to the "Buffer before" FIELD, not to `.cc-chip` text. Booking rules
+  // renders several chip rows — duration, buffer before, buffer after — and all
+  // of them carry a `30m` and a `15m`. Matching by text alone clicked whichever
+  // came first, so a green result was no evidence that a BUFFER had changed.
+  const bufferField = (area) => area.locator(".cc-f").filter({ has: page.locator("span", { hasText: /^Buffer before$/ }) }).first();
+
+  const area = await openArea(page, "Booking rules");
+  if (!(await bufferField(area).locator(".cc-chip", { hasText: /^15m$/ }).count())) {
+    return record("4 · booking rules · 15-minute buffer", false, "no 15m buffer chip offered");
+  }
+
+  // The seed already holds 15m, so clicking 15m alone would assert nothing.
+  // Move to a value the row does NOT have, prove that landed IN THE STORED ROW,
+  // then set 15m — the buffer the assignment names — and prove that too.
   const set = async (label) => {
     const a = await openArea(page, "Booking rules");
-    await a.locator(".cc-chip", { hasText: new RegExp(`^${label}$`) }).first().click();
+    await bufferField(a).locator(".cc-chip", { hasText: new RegExp(`^${label}$`) }).first().click();
     await save(page);
     await open(page);
     const b = await openArea(page, "Booking rules");
-    return b.locator(`.cc-chip[aria-pressed="true"]`, { hasText: new RegExp(`^${label}$`) }).count();
+    const pressed = await bufferField(b).locator('.cc-chip[aria-pressed="true"]').innerText().catch(() => "<none>");
+    const stored = await page.evaluate(() => {
+      try {
+        const st = new URLSearchParams(location.search).get("data") || "dense";
+        const db = JSON.parse(sessionStorage.getItem(`paige-harness-store:${st}`) || "{}");
+        return (db.calendars || [])[0]?.buffer_before_min ?? "<no row>";
+      } catch (e) { return String(e).slice(0, 40); }
+    });
+    return { pressed, stored };
   };
+
   const moved = await set("30m");
   const back = await set("15m");
-  record("4 · booking rules · 15-minute buffer", moved > 0 && back > 0,
-    `30m persisted=${moved} then 15m persisted=${back}`);
+  record("4 · booking rules · 15-minute buffer",
+    moved.pressed === "30m" && moved.stored === 30 && back.pressed === "15m" && back.stored === 15,
+    `30m → chip=${moved.pressed} stored=${moved.stored} · 15m → chip=${back.pressed} stored=${back.stored}`);
 }
 
 /** 4b · Notifications / follow-ups are editable, not a read-only summary. */
@@ -213,18 +291,33 @@ async function flowProviders(page) {
   await open(page);
   const accounts = page.locator(".cc-accounts");
   const text = await accounts.innerText().catch(() => "");
-  const appleBtn = accounts.locator("button", { hasText: /Connect/i });
-  let appleDisabled = null;
-  const n = await appleBtn.count();
-  for (let i = 0; i < n; i++) {
-    const row = appleBtn.nth(i);
-    const near = await row.locator("xpath=ancestor::*[contains(@class,'cc-acct')][1]").innerText().catch(() => "");
-    if (/Apple/i.test(near)) appleDisabled = await row.isDisabled();
-  }
+
+  // Walk the account CARDS, not the buttons. The previous version climbed to the
+  // nearest ancestor matching `cc-acct` — which is `.cc-acct-row`, whose whole
+  // text is "Connect". It never saw the provider name, so it read `null` for
+  // every card and reported a product failure that was purely its own.
+  const state = async (name) => {
+    const cards = accounts.locator(".cc-acct");
+    for (let i = 0; i < (await cards.count()); i++) {
+      const card = cards.nth(i);
+      if (!new RegExp(name, "i").test(await card.innerText().catch(() => ""))) continue;
+      const btn = card.locator("button", { hasText: /Connect/i }).first();
+      if (!(await btn.count())) return "no connect control";
+      return (await btn.isDisabled()) ? "disabled" : "live";
+    }
+    return "card absent";
+  };
+
+  const apple = await state("Apple");
+  const google = await state("Google");
+  const zoom = await state("Zoom");
   const mentionsOutlook = /outlook/i.test(text);
+
+  // Real paths are reachable; the one with no path is visibly inert rather than
+  // a button that would do nothing; nothing claims a provider we cannot run.
   record("5 · providers: real paths only, others honestly unavailable",
-    appleDisabled === true && !mentionsOutlook,
-    `appleConnectDisabled=${appleDisabled} mentionsOutlook=${mentionsOutlook}`);
+    google === "live" && zoom === "live" && apple === "disabled" && !mentionsOutlook,
+    `google=${google} zoom=${zoom} apple=${apple} mentionsOutlook=${mentionsOutlook}`);
 }
 
 /** 7a · A person who may not write is told so, and cannot be tricked into trying. */
@@ -273,12 +366,14 @@ async function flowShapeAtFrames(page) {
 
 async function main() {
   fs.mkdirSync(ART, { recursive: true });
+  await assertPortFree();
   const vite = await startVite();
   const browser = await chromium.launch({
     executablePath: process.env.PW_EXECUTABLE_PATH || "/opt/pw-browsers/chromium",
   });
   const page = await browser.newPage({ viewport: { width: 1536, height: 770 } });
   page.on("pageerror", (e) => console.log(`  ! page error: ${e.message}`));
+  page.on("console", (m) => { const t = m.text(); if (t.startsWith("[stub]")) console.log(`      ${t}`); });
 
   try {
     await flowFirstPreset(page);
@@ -292,7 +387,10 @@ async function main() {
     await flowShapeAtFrames(page);
   } finally {
     await browser.close();
-    vite.kill("SIGTERM");
+    // `npx` forks the real `vite`; killing only the wrapper leaves the server
+    // holding 5201, and the NEXT run then reads a stale module graph. Take the
+    // whole process group down.
+    try { process.kill(-vite.pid, "SIGTERM"); } catch { vite.kill("SIGTERM"); }
   }
 
   fs.writeFileSync(path.join(ART, "flows.json"), JSON.stringify(results, null, 2));

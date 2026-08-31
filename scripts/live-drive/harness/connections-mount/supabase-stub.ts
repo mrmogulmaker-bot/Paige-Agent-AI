@@ -143,7 +143,13 @@ function load(): Record<string, Row[]> {
 const db: Record<string, Row[]> = load();
 
 function persist() {
-  try { sessionStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch { /* ignore */ }
+  try {
+    sessionStorage.setItem(STORE_KEY, JSON.stringify(db));
+  } catch (e) {
+    // LOUD, never silent (§32). A store that stops persisting turns every
+    // persistence assertion below into a false reading of the product.
+    console.error(`[stub] persist FAILED — assertions after this are meaningless: ${String(e).slice(0, 120)}`);
+  }
 }
 
 const ok = (data: unknown) => ({ data, error: null as { message: string } | null });
