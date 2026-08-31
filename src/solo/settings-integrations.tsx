@@ -163,11 +163,19 @@ function providerMark(id: ProviderIdentity, zapier: boolean) {
 
 /* ── n8n: the one provider with a real connection flow ────────────────────── */
 
-function N8nPanelBody({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
+function N8nPanelBody({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: boolean) => void; onChanged: () => void }) {
   // Mounted only for the provider that owns this seam, so opening any other
   // card issues no n8n read at all.
   const a = useN8nConnection();
   const [editing, setEditing] = useState(false);
+  // The card grid reads its own catalogue snapshot. Without this, connecting
+  // here and closing the panel would leave the card still saying "Not
+  // connected" until the whole view reloaded.
+  const commit = useCallback(async (run: () => Promise<boolean>) => {
+    const ok = await run();
+    if (ok) onChanged();
+    return ok;
+  }, [onChanged]);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
 
   if (a.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking this workspace…</p>;
@@ -205,6 +213,7 @@ function N8nPanelBody({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => vo
           a={a}
           existing={a.configured}
           onDirtyChange={onDirtyChange}
+          onCommit={commit}
           onDone={() => { setEditing(false); onDirtyChange(false); }}
         />
       : a.canWrite && <div className="ig-actions">
@@ -213,7 +222,7 @@ function N8nPanelBody({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => vo
           </button>
           {confirmingDisconnect ? <span className="ig-confirm">
             <button type="button" className="ig-btn" data-danger disabled={a.saving}
-              onClick={() => { setConfirmingDisconnect(false); void a.disconnect(); }}>
+              onClick={() => { setConfirmingDisconnect(false); void commit(() => a.disconnect()); }}>
               Disconnect it
             </button>
             <button type="button" className="ig-btn" onClick={() => setConfirmingDisconnect(false)}>Keep it</button>
@@ -232,18 +241,24 @@ function N8nPanelBody({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => vo
  * smaller cost than holding a secret in memory for a retry that may not come.
  */
 function N8nForm({
-  a, existing, onDone, onDirtyChange,
+  a, existing, onDone, onDirtyChange, onCommit,
 }: {
   a: ReturnType<typeof useN8nConnection>;
   existing: boolean;
   onDone: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  onCommit: (run: () => Promise<boolean>) => Promise<boolean>;
 }) {
   const [baseUrl, setBaseUrl] = useState(a.baseUrl ?? "");
   const [label, setLabel] = useState(a.label ?? "");
   const [apiKey, setApiKey] = useState("");
 
-  const dirty = apiKey.length > 0 || baseUrl !== (a.baseUrl ?? "") || label !== (a.label ?? "");
+  // The seam coalesces an empty `_label` to the stored one, so a name that
+  // already exists cannot be removed here. Rather than accept the edit and
+  // silently restore the old name on reload, an emptied name is not treated as
+  // a change at all, and the field says so.
+  const nameLocked = Boolean(a.label) && label.trim() === "";
+  const dirty = apiKey.length > 0 || baseUrl !== (a.baseUrl ?? "") || (!nameLocked && label !== (a.label ?? ""));
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
 
   const valid = baseUrl.trim().length > 0 && apiKey.length > 0;
@@ -255,7 +270,7 @@ function N8nForm({
       if (!valid || a.saving) return;
       const submitted = apiKey;
       setApiKey("");
-      const ok = await a.connect({ baseUrl, apiKey: submitted, label });
+      const ok = await onCommit(() => a.connect({ baseUrl, apiKey: submitted, label }));
       if (ok) onDone();
     }}
   >
@@ -283,6 +298,7 @@ function N8nForm({
         type="text" autoComplete="off" placeholder="What you call this instance"
         value={label} onChange={(event) => setLabel(event.target.value)} disabled={a.saving}
       />
+      {nameLocked && <small>A name can be changed here but not removed, so this keeps “{a.label}”.</small>}
     </label>
     <div className="ig-actions">
       <button type="submit" className="ig-btn" data-primary disabled={!valid || a.saving}>
@@ -295,7 +311,7 @@ function N8nForm({
 
 /* ── The contextual panel ─────────────────────────────────────────────────── */
 
-function ProviderPanel({ row, zapier, onClose }: { row: ProviderRow; zapier: boolean; onClose: () => void }) {
+function ProviderPanel({ row, zapier, onClose, onChanged }: { row: ProviderRow; zapier: boolean; onClose: () => void; onChanged: () => void }) {
   const [dirty, setDirty] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -306,7 +322,14 @@ function ProviderPanel({ row, zapier, onClose }: { row: ProviderRow; zapier: boo
     onClose();
   }, [dirty, onClose]);
 
-  useEffect(() => { closeRef.current?.focus(); }, []);
+  // Captured on mount and restored on unmount: without it every close path
+  // drops focus to the document body and a keyboard user has to walk the page
+  // again to get back to where they were.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => { if (opener && document.contains(opener)) opener.focus(); };
+  }, []);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { requestClose(); return; }
@@ -349,7 +372,7 @@ function ProviderPanel({ row, zapier, onClose }: { row: ProviderRow; zapier: boo
         </div>}
 
         {row.connectable
-          ? <N8nPanelBody onDirtyChange={setDirty} />
+          ? <N8nPanelBody onDirtyChange={setDirty} onChanged={onChanged} />
           : <><p className="ig-lede">{row.note}</p>
               <p className="ig-note">Setting this up is not offered here yet, rather than offered and quietly not working.</p></>}
       </div>
@@ -366,9 +389,14 @@ type IntegrationsLeaf = "catalogue" | "automations";
 function useIntegrationsLeaf(): [IntegrationsLeaf, (next: IntegrationsLeaf) => void] {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const match = pathname.match(/^\/solo\/[^/]+\/settings\/integrations(?:\/([^/]+))?/);
-  const leaf: IntegrationsLeaf = match?.[1] === "automations" ? "automations" : "catalogue";
-  const base = pathname.replace(/\/(automations)$/, "");
+  const match = pathname.match(/^(\/solo\/[^/]+\/settings\/integrations)(?:\/([^/]+))?/);
+  const leaf: IntegrationsLeaf = match?.[2] === "automations" ? "automations" : "catalogue";
+  // Built from the canonical prefix, never by stripping a known trailing leaf.
+  // On an unknown leaf (`…/integrations/something-retired`) the latter left the
+  // retired segment in place, so the Automations tab navigated to
+  // `…/something-retired/automations` — still read as the catalogue, leaving the
+  // tab unreachable rather than merely falling back.
+  const base = match?.[1] ?? pathname;
   const setLeaf = useCallback((next: IntegrationsLeaf) => {
     navigate(next === "catalogue" ? `${base}${search}` : `${base}/automations${search}`);
   }, [base, navigate, search]);
@@ -433,7 +461,7 @@ export function SoloIntegrationsView() {
           </ul>}
     </>}
 
-    {open && <ProviderPanel row={open} zapier={zapier} onClose={() => setOpen(null)} />}
+    {open && <ProviderPanel row={open} zapier={zapier} onClose={() => setOpen(null)} onChanged={status.retry} />}
   </div>;
 }
 

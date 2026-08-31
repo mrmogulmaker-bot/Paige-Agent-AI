@@ -329,6 +329,96 @@ describe("n8n connection flow", () => {
   });
 });
 
+describe("Review findings", () => {
+  it("keeps the Automations tab reachable from an unknown legacy leaf", async () => {
+    world();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(
+      <MemoryRouter initialEntries={["/solo/1971670/settings/integrations/something-retired"]}>
+        <SoloIntegrationsView />
+      </MemoryRouter>,
+    ));
+    await act(async () => { await Promise.resolve(); });
+    // Falls back to the catalogue...
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Integrations");
+    // ...and the other tab still opens, rather than navigating to
+    // `…/something-retired/automations`, which reads as the catalogue again.
+    await click(byText(host, "Automations"));
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Automations");
+    expect(host.querySelector(".ig-grid")).toBeNull();
+  });
+
+  it("refreshes the card grid after a connection is made", async () => {
+    world();
+    const { host } = await render();
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
+
+    await openCard(host, "n8n");
+    await type(fields(host)[0], "https://mine.app.n8n.cloud");
+    await type(fields(host)[1], "key");
+    // The catalogue read must run again on success, or the card behind the
+    // panel keeps claiming the old state.
+    world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
+    const before = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connection").length;
+    await submit(host);
+    const after = rpc.mock.calls.filter((c) => c[0] === "get_tenant_mcp_connection").length;
+    expect(after).toBeGreaterThan(before);
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Connected");
+  });
+
+  it("refreshes the card grid after a disconnection", async () => {
+    world({ n8n: { configured: true, status: "connected", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Disconnect"));
+    world();
+    await click(byText(host, "Disconnect it"));
+    await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector('.ig-card[data-provider="n8n"]')?.textContent).toContain("Not connected");
+  });
+
+  it("does not offer to remove a name the seam cannot clear", async () => {
+    world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Manage"));
+    await type(fields(host)[2], "");
+    expect(host.querySelector(".ig-form")?.textContent).toMatch(/changed here but not removed/i);
+
+    // The load-bearing part: an emptied name is not a pending change, so
+    // closing does not claim there are unsaved details. (Asserting the Save
+    // button here would be vacuous — it is disabled anyway while the key is
+    // blank, so it passes with or without the fix.)
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.textContent).not.toMatch(/unsaved details/i);
+  });
+
+  it("still treats a genuine name change as a pending change", async () => {
+    world({ n8n: { configured: true, status: "connected", label: "Ops", base_url: "https://ops.app.n8n.cloud", api_key_last4: "9f2a" } });
+    const { host } = await render();
+    await openCard(host, "n8n");
+    await click(byText(host, "Manage"));
+    await type(fields(host)[2], "Ops renamed");
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.textContent).toMatch(/unsaved details/i);
+  });
+
+  it("returns focus to the card that opened the panel", async () => {
+    world();
+    const { host } = await render();
+    const card = host.querySelector<HTMLButtonElement>('.ig-card[data-provider="stripe"]');
+    card?.focus();
+    await click(card ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeTruthy();
+    await click(host.querySelector(".ig-close") ?? undefined);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(card);
+  });
+});
+
 describe("Write-error language", () => {
   it("maps every modelled rejection without leaking its code", () => {
     const cases: Array<[string, RegExp]> = [
