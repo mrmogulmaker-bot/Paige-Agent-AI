@@ -538,7 +538,143 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext: rawClientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
+
+    // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
+    //
+    // `clientId` arrives in the REQUEST BODY. Every consumer below used it raw, and most of them
+    // read or write with the SERVICE-ROLE client (`supabase`), for which auth.uid() is NULL — so
+    // RLS and every SECURITY DEFINER caller-guard are exempt BY CONSTRUCTION. That covered a
+    // memory READ, a memory WRITE, and `buildUserContext`, whose payload is far larger than the
+    // memory: profile FICO estimates, bank name and average balance, asset/revenue ranges,
+    // subscriptions, tasks, businesses, documents and QuickBooks — interpolated into the prompt.
+    //
+    // Resolved HERE, above everything, because an earlier draft guarded only the read: on the
+    // very turn it logged a refusal it still wrote attacker-authored text into the refused
+    // client's memory as a `user_preference` — the type this handler surfaces at the TOP of the
+    // prompt. Fixing the read while leaving the write is cross-tenant stored prompt injection.
+    //
+    // The predicate is TENANT EQUALITY, not mere visibility. `clients` carries policies
+    // (`clients_coaches_assigned`, `cs_rep_assigned_full`, `sales_rep_assigned_full`) that grant
+    // visibility with NO tenant predicate, so "I can SELECT this row" does not mean "I may read
+    // this client's private data". `.not("tenant_id","is",null)` is still required — the
+    // `tenant_isolation` policy admits `tenant_id IS NULL` to ANY authenticated user — but it is
+    // necessary, not sufficient. A platform operator is the one sanctioned cross-tenant caller.
+    let authorizedClientId: string | null = null;
+    let clientScopeRefusal: string | null = null;
+    if (payloadClientId) {
+      try {
+        // §53 COUPLING — deliberately `is_platform_owner()` (super_admin), NOT
+        // `is_platform_operator()`. This bypass is only ever REACHABLE when the `clients` read
+        // below returns a foreign row, and the RESTRICTIVE `tenant_isolation` policy on `clients`
+        // admits cross-tenant reads on `is_platform_owner()` alone. Gating the bypass on the
+        // WIDER helper would be dead code today AND would silently widen to `platform_admin` the
+        // moment that policy migrates per §53 — cross-tenant client-memory read AND write, with
+        // no further gate here. The guard's predicate therefore tracks the policy it depends on.
+        // If that policy is ever widened, widening this is a SEPARATE, deliberate decision.
+        const [{ data: callerTenantRaw, error: tenantErr }, { data: ownerRaw, error: ownerErr }] = await Promise.all([
+          supabaseClient.rpc("current_user_tenant_id"),
+          supabaseClient.rpc("is_platform_owner"),
+        ]);
+        const callerTenantId = (callerTenantRaw ?? null) as string | null;
+        // Strict `=== true`: a null/undefined/non-boolean result is NOT operator authority.
+        const isOperator = ownerRaw === true;
+        if (tenantErr) {
+          clientScopeRefusal = "caller workspace could not be resolved";
+        } else if (ownerErr) {
+          // The operator check is the ONLY unbounded bypass in this guard. If we cannot
+          // establish it, we do not know the caller's authority — that is UNKNOWN, never
+          // "not an operator", because a later change to this branch ordering would then
+          // silently fail OPEN. Refuse.
+          clientScopeRefusal = "caller authority could not be resolved";
+        } else {
+          const { data: authClientRow, error: authClientErr } = await supabaseClient
+            .from("clients")
+            .select("id, tenant_id")
+            .eq("id", payloadClientId)
+            .not("tenant_id", "is", null)
+            .maybeSingle();
+          const rowTenant = (authClientRow as any)?.tenant_id ?? null;
+          if (authClientErr) {
+            // A read failure is UNKNOWN authority, never permission.
+            clientScopeRefusal = "client authorization read failed";
+          } else if (!(authClientRow as any)?.id) {
+            clientScopeRefusal = "client context is not authorized for this caller";
+          } else if (!isOperator && (!callerTenantId || rowTenant !== callerTenantId)) {
+            clientScopeRefusal = "client belongs to a different workspace";
+          } else {
+            authorizedClientId = (authClientRow as any).id as string;
+          }
+        }
+      } catch (e) {
+        clientScopeRefusal = "client authorization failed";
+        void e;
+      }
+      if (clientScopeRefusal) {
+        // §13 — diagnosable, and never echoing the rejected identifier or any client field.
+        console.error(
+          "[paige] client scope REFUSED — no client-scoped data for this turn",
+          JSON.stringify({ reason: clientScopeRefusal }),
+        );
+      }
+    }
+    /** The ONLY client id any consumer may use. Null means caller-scoped or refused. */
+    const scopedClientId: string | null = authorizedClientId;
+    /** True when a client was named but could not be authorized: do NO client-scoped work. */
+    const clientScopeDenied: boolean = clientScopeRefusal !== null;
+    /**
+     * The request body also carries a pre-rendered `clientContext` block, built CLIENT-SIDE from
+     * the NAMED client's file. On a refusal the rest of this handler falls back to the CALLER's
+     * own scope (`contextUserId = scopedClientId || user.id`), so leaving this block in would
+     * blend two identities inside one prompt — the named client's context under a header that
+     * says "VERIFIED DATABASE DATA … always reference this data", alongside the caller's own
+     * profile, subscriptions and documents, with nothing marking which is which. Paige would
+     * then state one person's numbers as the other's. Rebinding the name here (rather than
+     * patching each use) means EVERY downstream consumer is gated, including ones added later.
+     */
+    const clientContext = clientScopeDenied ? undefined : rawClientContext;
+
+    // ── §9 CHOKE POINT — a refused focused turn ends HERE, before anything else runs.
+    //
+    // Everything below this line assumes a resolved subject: `buildUserContext` loads a
+    // profile, scores, banking, documents and tasks; the agentic loop can call mutating tools;
+    // the model is asked to answer as if the named client were in scope. Gating those one site
+    // at a time was the wrong shape, and it kept leaving holes — each review round found
+    // another (credit sync, summary memory, document persistence, `update_client_data`, then
+    // every OTHER mutating tool). The choke point is here.
+    //
+    // Two things made the per-site approach unsafe even where the writes were closed:
+    //   - `contextUserId` fell back to the CALLER, so a turn whose UI still says "Focused on
+    //     <name>" would answer "what is their score?" with the CALLER's figures.
+    //   - The `client_scope` frame does not prevent that: no surface consumes it yet, so the
+    //     focus indicator stays put. An advisory signal is not a control.
+    //
+    // This is what the original brief asked for — fail closed BEFORE any prompt/model egress
+    // or later-loop use — and it is strictly safer than answering with the wrong subject.
+    // The no-client path is untouched: it sends no `clientId`, so `clientScopeDenied` is false.
+    if (clientScopeDenied) {
+      const refusalText = "I couldn't confirm that this client belongs to your workspace, so I'm not able to pull anything from their file or act on their record in this conversation. Nothing has been saved. If you think this is wrong, reopen the client from your list and try again.";
+      const scopeFrame = { client_scope: { status: "refused", reason: clientScopeRefusal } };
+
+      if (generateSessionSummary) {
+        return new Response(JSON.stringify({ summary: "", ...scopeFrame }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const enc = new TextEncoder();
+      const refusalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(scopeFrame)}\n\n`));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: refusalText } }] })}\n\n`));
+          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(refusalStream, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+      });
+    }
 
     // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
     // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
@@ -658,23 +794,37 @@ JSON:`;
       const summaryData = await summaryResponse.json();
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
+      // §9 — a REFUSED turn must not file the named client's session into the CALLER's memory.
+      // Falling back to `user.id` here is not a safe degrade: these rows are durable and are
+      // injected into the caller's OWN future chats, so a refused turn would contaminate their
+      // context with a subject they were never authorized to read. The no-client path (no
+      // `clientId` sent at all) is unaffected — that is the caller legitimately summarising
+      // their own session, and `clientScopeDenied` is false there.
+      const skipScopedMemoryWrites = clientScopeDenied;
+      if (skipScopedMemoryWrites) {
+        console.error(
+          "[paige] client scope REFUSED — summary generated but NO memory written",
+          JSON.stringify({ reason: clientScopeRefusal }),
+        );
+      }
+
       // Insert session summary memory (with embedding)
-      if (summaryContent.trim()) {
+      if (!skipScopedMemoryWrites && summaryContent.trim()) {
         const summaryEmbedding = await embedText(summaryContent.trim());
         const memoryInsert: any = {
-          client_user_id: payloadClientId || user.id,
+          client_user_id: scopedClientId || user.id,
           memory_type: "session_summary",
           content: summaryContent.trim(),
           source_session_id: rawData.sessionId || null,
           embedding: summaryEmbedding,
           metadata: { channel: "text" },
         };
-        if (payloadClientId) memoryInsert.client_id = payloadClientId;
+        if (scopedClientId) memoryInsert.client_id = scopedClientId;
         await supabase.from("client_memory").insert(memoryInsert);
       }
 
       // Insert milestone memories if detected
-      if (milestoneResponse.ok) {
+      if (!skipScopedMemoryWrites && milestoneResponse.ok) {
         try {
           const milestoneData = await milestoneResponse.json();
           const milestoneRaw = milestoneData.choices?.[0]?.message?.content || "[]";
@@ -693,13 +843,13 @@ JSON:`;
             if (labelMap[m]) {
               const emb = await embedText(labelMap[m]);
               const milestoneMemory: any = {
-                client_user_id: payloadClientId || user.id,
+                client_user_id: scopedClientId || user.id,
                 memory_type: "milestone_completed",
                 content: labelMap[m],
                 source_session_id: rawData.sessionId || null,
                 embedding: emb,
               };
-              if (payloadClientId) milestoneMemory.client_id = payloadClientId;
+              if (scopedClientId) milestoneMemory.client_id = scopedClientId;
               await supabase.from("client_memory").insert(milestoneMemory);
             }
           }
@@ -709,7 +859,7 @@ JSON:`;
       }
 
       // Insert extracted user preferences (auto-extraction at session end)
-      if (preferenceResponse.ok) {
+      if (!skipScopedMemoryWrites && preferenceResponse.ok) {
         try {
           const prefData = await preferenceResponse.json();
           const prefRaw = prefData.choices?.[0]?.message?.content || "[]";
@@ -720,14 +870,14 @@ JSON:`;
               if (typeof p !== "string" || !p.trim()) continue;
               const emb = await embedText(p.trim());
               const prefMemory: any = {
-                client_user_id: payloadClientId || user.id,
+                client_user_id: scopedClientId || user.id,
                 memory_type: "user_preference",
                 content: p.trim(),
                 source_session_id: rawData.sessionId || null,
                 embedding: emb,
                 metadata: { channel: "text", source: "auto_extracted" },
               };
-              if (payloadClientId) prefMemory.client_id = payloadClientId;
+              if (scopedClientId) prefMemory.client_id = scopedClientId;
               await supabase.from("client_memory").insert(prefMemory);
             }
           }
@@ -736,8 +886,16 @@ JSON:`;
         }
       }
 
+      // The summary mode returns plain JSON, not a stream, so the `client_scope` frame the two
+      // streaming paths carry cannot reach it. Without this, a refused summary turn returned a
+      // clean 200 while filing the summary of a session the caller believed was about their
+      // focused client into the CALLER's own memory instead — the same silent-wrong-behaviour
+      // the frames exist to end. Additive: existing consumers read `summary` and ignore the rest.
       return new Response(
-        JSON.stringify({ summary: summaryContent.trim() }),
+        JSON.stringify({
+          summary: summaryContent.trim(),
+          ...(clientScopeDenied ? { client_scope: { status: "refused", reason: clientScopeRefusal } } : {}),
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -790,16 +948,23 @@ JSON:`;
           // arbitrary tenant's client. Validate through the JWT-scoped `supabaseClient` (RLS), and
           // exclude NULL-tenant client rows (the clients RLS policy admits tenant_id IS NULL); a
           // foreign/NULL-tenant clientId resolves to nothing and falls back to the caller's own id.
-          let targetUserId = user.id;
-          if (payloadClientId) {
-            const { data: authCreditClient } = await supabaseClient
-              .from("clients")
-              .select("id")
-              .eq("id", payloadClientId)
-              .not("tenant_id", "is", null)
-              .maybeSingle();
-            if (authCreditClient?.id) targetUserId = payloadClientId;
-          }
+          // `scopedClientId` is ALREADY the authorized-or-null decision (made once, above, on the
+          // JWT-scoped client and bound to the caller's tenant).
+          //
+          // §9 — on a REFUSED turn we do not persist at all. An earlier revision fell back to the
+          // caller here and called that a safe degrade; it is not. The caller attached this file
+          // believing it belonged to the client they named, so writing it under their own id
+          // durably misattributes ANOTHER person's credit report to them — and now that the sync
+          // is skipped, the `credit_report_uploads` row would also sit in `processing` forever.
+          // The legitimate no-client path is unaffected: it sends no `clientId`, so
+          // `clientScopeDenied` is false and the caller-owned upload proceeds as before.
+          if (clientScopeDenied) {
+            console.error(
+              "[paige] client scope REFUSED — credit-report document NOT persisted",
+              JSON.stringify({ reason: clientScopeRefusal }),
+            );
+          } else {
+          const targetUserId = scopedClientId ?? user.id;
           const timestamp = Date.now();
           const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
           const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
@@ -826,6 +991,7 @@ JSON:`;
               .single();
             if (!insertErr) paigeChatUploadId = uploadRec.id;
           }
+          }
         } catch (storeErr) {
           console.error("[Paige] Error storing PDF:", storeErr);
         }
@@ -851,21 +1017,20 @@ JSON:`;
         // clientId is supplied in the request body we do NOT trust it blindly (the verifier
         // flagged a body-supplied clientId used as the service-role storage folder = IDOR).
         // We validate it through the JWT-scoped `supabaseClient` (RLS-enforced) first — a
-        // foreign-tenant clientId returns nothing, so we fall back to the caller's own id and
-        // never write into another tenant's folder. This mirrors the FOCUSED-CLIENT §9 note
-        // used later in this handler (a foreign clientId simply resolves to nothing under RLS).
+        // foreign-tenant clientId resolves to nothing, so we never write into another tenant's
+        // folder. A refused scope now persists NOTHING rather than falling back to the caller —
+        // see the credit-report branch above for why that fallback was not a safe degrade.
         if (docKind === "pdf" && attachedDocument.base64) {
           try {
-            let generalTargetUserId = user.id;
-            if (payloadClientId) {
-              const { data: authClient } = await supabaseClient
-                .from("clients")
-                .select("id")
-                .eq("id", payloadClientId)
-                .not("tenant_id", "is", null)
-                .maybeSingle();
-              if (authClient?.id) generalTargetUserId = payloadClientId;
-            }
+            // Same rule as the credit-report path above: a refused turn persists nothing, so
+            // the named subject's document is never filed under the caller.
+            if (clientScopeDenied) {
+              console.error(
+                "[paige] client scope REFUSED — general document NOT persisted",
+                JSON.stringify({ reason: clientScopeRefusal }),
+              );
+            } else {
+            const generalTargetUserId = scopedClientId ?? user.id;
             const timestamp = Date.now();
             const safeName = (attachedDocument.fileName || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
             const generalPath = `${generalTargetUserId}/general/${timestamp}_paige_${safeName}`;
@@ -877,6 +1042,7 @@ JSON:`;
               .upload(generalPath, genBytes.buffer, { contentType: "application/pdf" });
             if (!genStoreErr) paigeChatGeneralDocPath = generalPath;
             else console.warn("[Paige] general PDF store skipped:", genStoreErr.message);
+            }
           } catch (genErr) {
             console.warn("[Paige] Error storing general PDF:", (genErr as Error)?.message);
           }
@@ -911,22 +1077,47 @@ JSON:`;
     }
 
     // === LOAD CLIENT MEMORY (recent + semantic) ===
+    //
+    // §9 CROSS-CLIENT LEAK, CLOSED HERE.
+    // Scope was resolved ONCE at the top of the handler (see CLIENT SCOPE AUTHORIZATION).
+    // `payloadClientId` arrives in the REQUEST BODY. Both memory lookups below used it to key
+    // reads made with the SERVICE-ROLE client (`supabase`), for which `auth.uid()` is NULL — so
+    // RLS and every SECURITY DEFINER caller-guard are exempt BY CONSTRUCTION. A caller could
+    // therefore name any client UUID and receive that client's memories, preferences and past
+    // chat snippets, which are then injected verbatim into the prompt.
+    //
+    // The fix reuses the authorization pattern this same handler already applies to the credit
+    // report upload and the general document upload: resolve the id through `supabaseClient`
+    // (the caller's JWT, so RLS applies) and require a row to come back. `.not("tenant_id","is",
+    // null)` is NOT optional — the `clients` table carries a `tenant_isolation` policy whose
+    // predicate includes `OR (tenant_id IS NULL)`, so a NULL-tenant client row is readable by
+    // ANY authenticated user and would sail through an otherwise-correct check.
+    //
+    // Memory is FAIL-CLOSED, which is stricter than the upload sites: those fall back to the
+    // caller's own id, whereas an unauthorized client here yields NO memory at all — no read,
+    // no embedding (a paid provider call), no RPC, nothing in the prompt. Falling back would be
+    // safe for confidentiality but would silently mask a caller probing for other clients.
     let memoryBlock = "";
     try {
-      const memoryQuery = payloadClientId
-        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
+      // Refused client context does NO memory work at all: the block below is skipped entirely,
+      // so there is no recent read, no semantic embedding, and no match_paige_memory call.
+      const memoryQuery = clientScopeDenied
+        ? null
+        : scopedClientId
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", scopedClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
         : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(15);
 
       // Embed the latest user message so we can retrieve semantically-relevant
       // memories and past chat snippets in parallel with the recent-memory pull.
       const lastUserContent = lastUserMessage?.content?.slice(0, 4000) || "";
-      const semanticPromise = lastUserContent
+      const semanticPromise = (lastUserContent && !clientScopeDenied)
         ? embedText(lastUserContent).then(async (queryEmbedding) => {
             if (!queryEmbedding) return [] as any[];
             const { data, error } = await supabase.rpc("match_paige_memory", {
               _query_embedding: queryEmbedding,
-              _target_user_id: payloadClientId || user.id,
-              _target_client_id: payloadClientId || null,
+              // AUTHORIZED id only. Never the raw body value.
+              _target_user_id: scopedClientId || user.id,
+              _target_client_id: scopedClientId || null,
               _match_threshold: 0.7,
               _memory_count: 5,
               _message_count: 3,
@@ -939,7 +1130,11 @@ JSON:`;
           }).catch((e) => { console.error("semantic search failed:", e); return [] as any[]; })
         : Promise.resolve([] as any[]);
 
-      const [{ data: memories }, semanticHits] = await Promise.all([memoryQuery, semanticPromise]);
+      const [memoryResult, semanticHits] = await Promise.all([
+        memoryQuery ?? Promise.resolve({ data: null }),
+        semanticPromise,
+      ]);
+      const memories = (memoryResult as any)?.data ?? null;
 
       if (memories && memories.length > 0) {
         // Always-on: surface user_preference at the top so Paige respects communication style.
@@ -1007,8 +1202,15 @@ JSON:`;
           /\bplease (be|stop|don'?t|use|avoid)/,
         ];
         const matched = preferenceTriggers.some((re) => re.test(text));
-        if (matched) {
-          const targetUserId = payloadClientId || user.id;
+        // A REFUSED client does no client-scoped work at all, including writes. Falling back to
+        // the caller's own id would be safe for confidentiality, but a turn whose scope we just
+        // declined should not mutate state on the strength of that turn — and the fallback made
+        // the refusal invisible in the write path.
+        if (matched && !clientScopeDenied) {
+          // A refused client writes NOTHING: an unauthorized id here would plant
+          // attacker-authored text as a `user_preference`, the type surfaced at the top of
+          // the prompt for whoever legitimately reads that client next.
+          const targetUserId = scopedClientId || user.id;
           // Avoid dupes: skip if we wrote the exact same content in the last 7 days.
           const { data: dup } = await supabase
             .from("client_memory")
@@ -1028,7 +1230,7 @@ JSON:`;
               embedding: emb,
               metadata: { source: "explicit_signal", channel: "text" },
             };
-            if (payloadClientId) row.client_id = payloadClientId;
+            if (scopedClientId) row.client_id = scopedClientId;
             await supabase.from("client_memory").insert(row);
           }
         }
@@ -1094,7 +1296,11 @@ JSON:`;
     // §2 — buildUserContext queries credit tables + emits credit strings ONLY when
     // fundingEnabled; a non-funding/bare tenant's client gets profile/subscription/
     // tasks/businesses/documents + QuickBooks cash awareness, never credit (§36).
-    const contextUserId = payloadClientId || user.id;
+    // The largest client-scoped read in the handler: profile FICO estimates, bank name and
+    // average balance, asset/revenue ranges, subscriptions, tasks, businesses, documents,
+    // QuickBooks — all service-role, all interpolated into the prompt. A refused client
+    // falls back to the CALLER, never to the named id.
+    const contextUserId = scopedClientId || user.id;
     const userContext = await buildUserContext(supabase, contextUserId, fundingEnabled);
 
     // Knowledge base search
@@ -1178,7 +1384,7 @@ JSON:`;
           const { data: ragProfile } = await supabase
             .from("profiles")
             .select("state")
-            .eq("user_id", payloadClientId || user.id)
+            .eq("user_id", scopedClientId || user.id)
             .maybeSingle();
           const filter: Record<string, unknown> = {};
           if (ragProfile?.state) filter.state = ragProfile.state;
@@ -3600,13 +3806,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // (2a) FOCUSED CLIENT — name who she's looking at, so "this client"/"her"/"him"
       // resolves to a real person. Resolved from the clients row; falls back silently.
       try {
-        if (payloadClientId) {
-          // JWT client (RLS-enforced): a foreign-tenant clientId returns nothing,
-          // so a body-supplied UUID from another tenant can never leak a name (§9).
+        if (scopedClientId) {
+          // JWT client (RLS-enforced) AND the hoisted scope decision. RLS alone was not enough:
+          // `tenant_isolation` admits `tenant_id IS NULL` to any authenticated caller, so a
+          // NULL-tenant client's name could reach any prompt. The scoped id excludes those.
           const { data: fc } = await supabaseClient
             .from("clients")
             .select("first_name, last_name")
-            .eq("id", payloadClientId)
+            .eq("id", scopedClientId)
             .maybeSingle();
           const fcName = [fc?.first_name, fc?.last_name].filter(Boolean).join(" ").trim();
           if (fcName) {
@@ -3638,8 +3845,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // automations, calendar, other staff) into context so she's aware of
       // cross-surface events. Rows come back newest-first; capped compact.
       try {
-        if (payloadClientId) {
-          const { data: railRows } = await supabaseClient.rpc("get_client_rail", { p_contact_id: payloadClientId, p_limit: 20, p_lens: "coach" });
+        if (scopedClientId) {
+          // The RPC carries its own correct in-body guard, so this is defence in depth: a
+          // refused client does no rail read either, keeping one rule for the whole handler.
+          const { data: railRows } = await supabaseClient.rpc("get_client_rail", { p_contact_id: scopedClientId, p_limit: 20, p_lens: "coach" });
           const rows = Array.isArray(railRows) ? railRows : [];
           if (rows.length) {
             const relTime = (iso: string): string => {
@@ -5524,10 +5733,28 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
         if (tc.function.name === "update_client_data") {
           try {
+            // §9 — same class as the credit-sync and summary-memory findings: falling back to
+            // the caller is right for READING their own context and wrong for WRITING a named
+            // subject's data. The model called this believing it was acting on the focused
+            // client; on a refused turn `scopedClientId` is null and the fallback would apply
+            // those updates to the CALLER's own record instead. RLS keeps it in-tenant, so this
+            // is not a cross-tenant leak — but it is still one person's data written onto
+            // another's. Refuse, and tell the model plainly so it does not retry.
+            if (clientScopeDenied) {
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify({
+                  success: false,
+                  error: "The client context for this conversation could not be authorized, so no client record can be updated. Tell the operator you cannot act on that client right now, and do not retry.",
+                }),
+              });
+              continue;
+            }
             const args = JSON.parse(tc.function.arguments);
             const writeBackPayload = {
               updates: args.updates,
-              target_user_id: payloadClientId || user.id,
+              target_user_id: scopedClientId || user.id,
             };
 
             const wbResponse = await fetch(`${supabaseUrl}/functions/v1/paige-write-back`, {
@@ -5834,7 +6061,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const args = JSON.parse(tc.function.arguments || "{}");
             const targetId = (typeof args.contact_id === "string" && args.contact_id.trim())
               ? args.contact_id.trim()
-              : payloadClientId;
+              : scopedClientId;
             if (!targetId) {
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, no_client_in_focus: true, note: "No client is in focus right now. Ask the operator which client they mean, or open a client's file first, then try again." }) });
             } else {
@@ -7380,7 +7607,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const args = JSON.parse(tc.function.arguments || "{}");
             const actionType = String(args.action_type || "email").toLowerCase();
             const channel = actionType === "sms" ? "sms" : "email";
-            const contactId = args.contact_id || payloadClientId || null;
+            const contactId = args.contact_id || scopedClientId || null;
             const body = String(args.body || "").trim();
             const summary = String(args.summary || (channel === "sms" ? "Text a client" : "Email a client")).trim();
             if (!body) {
@@ -7648,8 +7875,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
       const finalStream = new ReadableStream({
         async start(controller) {
-         // #12 — flush any PRE-FLIGHT compaction frames FIRST, so the compacting card renders
+         // §13/§36 — a client was named but could NOT be authorized, so this turn ran with no
+         // client scope at all: no memory, no rail, no client file. Publish that fact on the wire
+         // WITHOUT the rejected id or any client field (a fixed category string, same as the
+         // server log). Additive for every consumer: each parser is an `if (parsed.X)` chain
+         // falling through to `choices[0].delta.content`, so an unknown frame is a no-op.
+         //
+         // HONEST SCOPE (§13): this makes the refusal OBSERVABLE, it does not yet make it VISIBLE.
+         // No surface reads `client_scope` today, so a focus indicator still shows the named
+         // client on a refused turn. Presenting it is a frontend decision and is NOT this
+         // function's to make (§00) — the seam is here for that surface to consume.
+         if (clientScopeDenied) {
+           controller.enqueue(enc.encode(`data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`));
+         }
+         // #12 — flush the PRE-FLIGHT compaction frames next, so the compacting card renders
          // before Paige's reasoning/answer streams. Empty (no-op) on every turn that didn't fold.
+         // (The refusal frame above precedes them; no parser depends on frame order.)
          for (const f of compactionLeadFrames) controller.enqueue(enc.encode(f));
          // The whole live loop + final answer runs here. Because the gateway calls
          // now execute inside the stream, a mid-flight throw must degrade to a clean
@@ -7879,6 +8120,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // reply. Empty (no-op) on every turn that didn't fold. A persisted Studio thread reaching this
       // path (a doc-attached turn) still shows its compaction card.
       start(controller) {
+        // The DOCUMENT path is a SECOND, independent stream (the agentic stream below is gated
+        // on `!attachedDocument`), so the refusal frame emitted there does not reach here. This
+        // is the higher-stakes half of the surface — the caller believes they are attaching a
+        // file to a focused client, and on a refusal it is written under their OWN id instead —
+        // so it is the last place that should stay silent. Same fixed reason category, never the
+        // rejected identifier.
+        if (clientScopeDenied) {
+          controller.enqueue(new TextEncoder().encode(
+            `data: ${JSON.stringify({ client_scope: { status: "refused", reason: clientScopeRefusal } })}\n\n`,
+          ));
+        }
         for (const f of compactionLeadFrames) controller.enqueue(new TextEncoder().encode(f));
       },
       async pull(controller) {
@@ -7893,7 +8145,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             directSseBuf = "";
           }
           // Credit-report PDF path: run structured extraction + sync.
-          if (isCreditReportPdf && attachedDocument?.base64) {
+          // §9 — NOT on a refused turn. `runStructuredExtractionAndSync` builds its payload with
+          // `target_user_id: callerUserId` and `client_id: scopedClientId || null`, then calls
+          // `sync-credit-report-data` with the SERVICE-ROLE key. On a refusal that writes the
+          // NAMED client's report — scores, negative items, accounts — into the CALLER's own
+          // credit records, unscoped. Storing the file under the caller (above) is a safe
+          // degrade; synthesising another subject's credit profile into their file is not.
+          if (clientScopeDenied) {
+            console.error(
+              "[paige] client scope REFUSED — credit extraction and sync SKIPPED",
+              JSON.stringify({ reason: clientScopeRefusal }),
+            );
+            controller.enqueue(new TextEncoder().encode(
+              `data: ${JSON.stringify({ sync_status: { success: false, skipped: "client_scope_refused" } })}\n\n`,
+            ));
+          } else if (isCreditReportPdf && attachedDocument?.base64) {
             try {
               const syncResult = await runStructuredExtractionAndSync(
                 fullAssistantResponse,
@@ -7903,7 +8169,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 supabaseUrl,
                 supabaseServiceKey,
                 supabase,
-                payloadClientId || null,
+                scopedClientId || null,
                 paigeChatUploadId
               );
               const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
