@@ -14,6 +14,7 @@ const invariantMigration = readFileSync(resolve(process.cwd(), "supabase/migrati
 const archiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831210000_solo_pipeline_archive_serialization.sql"), "utf8");
 const visibilityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831211500_solo_pipeline_visibility_guard.sql"), "utf8");
 const directArchiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831213000_solo_pipeline_direct_archive_guard.sql"), "utf8");
+const reorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831214500_solo_pipeline_reorder_serialization.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
@@ -137,6 +138,9 @@ describe("Solo Campaigns approved contract", () => {
     expect(directArchiveMigration).toContain("trg_prevent_occupied_stage_archive");
     expect(directArchiveMigration).toContain("old.archived_at is null and new.archived_at is not null");
     expect(directArchiveMigration).toContain("exists(select 1 from public.deals d where d.stage_id=old.id)");
+    expect(reorderMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline_id::text,0))");
+    expect(source).toContain("[data.tenantId]");
+    expect(source).toContain('setNewPipeline({name:"",description:"",starter:"blank"})');
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
