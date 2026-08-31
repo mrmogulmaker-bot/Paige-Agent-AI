@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { takeOAuthReturn, clearOAuthReturn } from "@/solo/data/oauthReturn";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,9 +27,15 @@ function safeReturnOrigin(value: unknown): string | null {
   }
 }
 
-// Staff land back on the admin calendar; a client lands on their own
-// Connected Accounts settings. Kept in one place so both connect lanes
-// (this page + the Zoom edge callback) share the same contract.
+// Where to land when the surface that started the handshake did not say.
+// Staff land back on the admin calendar; a client lands on their own Connected
+// Accounts settings. Kept in one place so both connect lanes (this page + the
+// Zoom edge callback) share the same contract.
+//
+// A surface that DID say wins over both: it records a same-origin return path
+// before leaving (see `oauthReturn`), and honouring it is what keeps someone who
+// connected from Settings → Connections → Calendars from being dropped on an
+// unrelated page. The role default remains the fallback, unchanged.
 const STAFF_ROLES = new Set(["admin", "coach", "super_admin"]);
 
 export default function GoogleCalendarCallback() {
@@ -49,12 +56,20 @@ export default function GoogleCalendarCallback() {
     const code = params.get("code");
     const stateParam = params.get("state");
     const error = params.get("error");
+    // A return address belongs to THIS handshake and dies with it, however it
+    // ends. Consuming it only on success left it in storage for its whole TTL
+    // after a declined consent screen or a failed exchange — and the next Google
+    // connect, started somewhere that asked for no return path at all, would
+    // then finish by redirecting to Calendars. Every terminal path below clears
+    // it; the success path consumes it.
     if (error) {
+      clearOAuthReturn();
       setState("error");
       setMessage(`Google returned an error: ${error}`);
       return;
     }
     if (!code || !stateParam) {
+      clearOAuthReturn();
       setState("error");
       setMessage("Missing code or state parameter.");
       return;
@@ -65,16 +80,20 @@ export default function GoogleCalendarCallback() {
       });
       const result = data as { error?: string; google_email?: string; return_origin?: string } | null;
       if (error || result?.error) {
+        clearOAuthReturn();
         setState("error");
         setMessage(result?.error ?? error?.message ?? "Failed to complete connection.");
         return;
       }
+      // Read once, before the timer, so an unrelated later visit can never
+      // replay it — and so a poisoned entry is refused here as well as at write.
+      const requestedReturn = takeOAuthReturn();
       setState("ok");
       setMessage(`Connected${result?.google_email ? ` as ${result.google_email}` : ""}. Redirecting...`);
       toast.success("Google Calendar connected");
       const returnOrigin = safeReturnOrigin(result?.return_origin);
       setTimeout(() => {
-        const dest = isStaffRef.current ? "/admin/calendar" : "/app/settings?tab=accounts";
+        const dest = requestedReturn ?? (isStaffRef.current ? "/admin/calendar" : "/app/settings?tab=accounts");
         if (returnOrigin && returnOrigin !== window.location.origin) {
           window.location.replace(`${returnOrigin}${dest}`);
           return;

@@ -899,6 +899,43 @@ review" over a registration nobody had filed.
 tells a non-admin who to ask, rather than offering a link that denies them. On production today
 **0 of 13 tenants** carry that record, so this is the first-use path for every tenant.
 
+### The Solo shell — Settings › Connections, `/solo/{account}/settings/connections`
+
+**§66 debt, paid LATE and recorded rather than backfilled quietly.** PR #660 (`089b55b3`) shipped the
+Calendars segment of this surface and did NOT add a ledger row; this section is written at the next
+touch, which is the density pass. What follows is read from source in that commit, not remembered.
+
+`SoloSettings` is mounted **only** by `SoloApp.tsx:214`, so the whole Settings branch — Connections
+included — is a **Solo-shell** surface. Sub-accounts reach their workspace through `AgencyApp`
+(`mode="subaccount"`, the `/business/{n}` tree) and therefore do NOT see this surface today; that is
+a routing fact, not a deliberate tier exclusion, and it is the honest reason the sub-account column
+below reads N/A rather than ✓.
+
+Legend as above: **✓** live · **—** not built · **N/A** tier not opened yet.
+
+| Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
+|---|---|---|---|---|---|---|---|
+| `connections/communications` | Business-phone search (`PROPOSED`, non-mutating), the PAIGE-managed sending identity, custom sending domains, connected mailbox (`UNAVAILABLE`) | **partly wired** — identity + domains read real rows; number search runs nothing | N/A | N/A | ✓ | N/A | — |
+| `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
+| `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
+| `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+
+**What `connections/calendars` proves about itself, and what it does not (§13/§32).**
+Its geometry, scroll ownership and fold-out behaviour are MEASURED, not asserted:
+`scripts/live-drive/connections-calendars-drive.mjs` renders the shipped component and CSS against
+the real `--pg` tokens at 1440/1024/720 in both themes and checks that the document never scrolls
+sideways, that no element inside the surface owns a scrollbar, that no control is clipped past the
+surface edge, that all ten areas collapse and expand, that a closed area still answers, and that the
+sub-navigation actually pins. It does NOT prove production behaviour: the rows are synthetic and the
+render is local. **The authenticated live drive of the DEPLOYED surface is owed to a session that
+holds credentials** — these headless sessions hold none (§32.c).
+
+**Write authority is `is_current_user_tenant_admin()`.** A caller without it reads the whole
+configuration with every control disabled rather than hidden. Send capability is REPORTED from the
+four `comms_configured` seams and never asserted here, and it is only readable for the caller's own
+tenant — an operator or agency acting as another account gets `outOfScope`, which the surface states
+as "not readable from here" rather than as a negative.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

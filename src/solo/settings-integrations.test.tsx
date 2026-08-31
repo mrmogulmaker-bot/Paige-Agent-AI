@@ -44,7 +44,7 @@ describe("Solo Settings Integrations truth boundary", () => {
     expect(host.textContent).toContain("Connected");
     expect(host.textContent).toContain("Not configured");
     expect(host.textContent).not.toContain("must-not-survive");
-    expect(host.textContent).toContain("A tenant-safe installed-capability handoff is not available");
+    expect(host.textContent).toContain("Marketplace owns governed Paige capabilities");
     expect(host.querySelector('a[href*="marketplace"]')).toBeNull();
     await act(async () => root.unmount());
   });
@@ -82,7 +82,8 @@ describe("Solo Settings Integrations truth boundary", () => {
     await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
     expect(host.textContent).toContain("Couldn’t read integration status");
     expect(host.textContent).not.toContain("internal provider detail");
-    expect(Array.from(host.querySelectorAll("button")).map((node) => node.textContent)).toEqual(["Retry"]);
+    expect(Array.from(host.querySelectorAll(".ss-state button")).map((node) => node.textContent)).toEqual(["Retry"]);
+    expect(host.querySelector(".ss-state a")).toBeNull();
     await act(async () => root.unmount());
   });
 
@@ -136,7 +137,40 @@ describe("Solo Settings Integrations truth boundary", () => {
     await act(async () => root.unmount());
   });
 
-  it("admits only proven Solo destinations and never links legacy provider editors", async () => {
+  it("removes the redundant hero and states the three product owners compactly", async () => {
+    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+
+    expect(host.querySelector(".ss-integrations-intro")).toBeNull();
+    expect(host.textContent).not.toContain("External tools and bridges");
+    const boundary = host.querySelector('[aria-label="Product ownership"]');
+    expect(boundary?.textContent).toContain("ConnectionsPhone, sending identity, delivery, and calendars");
+    expect(boundary?.textContent).toContain("IntegrationsExternal data, workflow, and service bridges");
+    expect(boundary?.textContent).toContain("MarketplaceGoverned Paige capability lifecycle");
+    await act(async () => root.unmount());
+  });
+
+  it("filters the catalogue with accessible category controls", async () => {
+    rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloIntegrationsView /></MemoryRouter>));
+
+    const filters = host.querySelector('[role="group"][aria-label="Filter integration catalogue"]');
+    const all = filters?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+    expect(all?.textContent).toBe("All");
+    const documents = Array.from(filters?.querySelectorAll("button") ?? []).find((button) => button.textContent === "Documents");
+    await act(async () => documents?.click());
+    expect(documents?.getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector('[data-provider="docusign"]')).not.toBeNull();
+    expect(host.querySelector('[data-provider="quickbooks"]')).toBeNull();
+    expect(host.querySelector('[data-provider="n8n"]')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("admits only proven Solo destinations and never links Stripe Connect to Marketplace", async () => {
     rpc.mockResolvedValue({ data: { configured: false, status: "unconfigured" }, error: null });
     const host = document.createElement("div");
     const root = createRoot(host);
@@ -148,8 +182,15 @@ describe("Solo Settings Integrations truth boundary", () => {
     }));
     expect(destinations).toEqual([
       { text: "Open Automations", href: "/solo/1971670/automations" },
-      { text: "Browse Marketplace", href: "/solo/1971670/marketplace" },
     ]);
+    const stripe = host.querySelector('[data-provider="stripe"]');
+    expect(stripe?.textContent).toContain("Integrations · commerce account");
+    expect(stripe?.textContent).not.toContain("Marketplace / Storefront");
+    expect(stripe?.querySelector("a")).toBeNull();
+    const owners = Object.fromEntries(Array.from(host.querySelectorAll<HTMLElement>("[data-provider]"), (card) => [card.dataset.provider, card.dataset.owner]));
+    expect(owners).toMatchObject({ n8n: "integrations", mcp: "integrations", quickbooks: "integrations", stripe: "integrations", docusign: "integrations", apollo: "integrations", plaid: "integrations", api: "integrations" });
+    expect(host.textContent).toContain("Integrations · client data bridge");
+    expect(host.textContent).toContain("Integrations · financial data bridge");
     expect(host.innerHTML).not.toContain("/admin/integrations");
     expect(host.innerHTML).not.toContain("/mcp/authorize");
     expect(host.textContent).toContain("No safe Solo configuration handoff is available yet.");

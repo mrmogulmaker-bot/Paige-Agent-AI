@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Blocks, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, ChevronsDown, RefreshCw, ShieldCheck, Store, TriangleAlert } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -41,6 +41,16 @@ function sanitizeSafeConnectionStatus(value: unknown): SafeConnectionStatus | nu
 }
 
 type ProviderIdentity = "n8n" | "zapier" | "mcp";
+type CatalogueCategory = "all" | "automation" | "financial" | "documents" | "client-data" | "developer";
+
+const CATALOGUE_FILTERS: ReadonlyArray<{ id: CatalogueCategory; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "automation", label: "Automation" },
+  { id: "financial", label: "Financial" },
+  { id: "documents", label: "Documents" },
+  { id: "client-data", label: "Client data" },
+  { id: "developer", label: "Developer" },
+];
 
 function isZapierMcpHost(host: string | null | undefined) {
   if (!host) return false;
@@ -130,7 +140,7 @@ function BridgeCard({
   const state = statusPresentation(value);
   const evidence = value?.last_sync_at || value?.last_probed_at;
   const mark = provider === "n8n" ? "n8n" : provider === "zapier" ? "zapier" : "MCP";
-  return <article className="ss-card ss-integration-card" data-provider={provider}>
+  return <article className="ss-card ss-integration-card" data-provider={provider} data-owner="integrations">
     <header>
       <span className="ss-provider-mark" data-provider-mark={provider} aria-hidden>{mark}</span>
       <div className="ss-integration-title"><h2>{name}</h2><span>{value?.label?.trim() || kind}</span></div>
@@ -156,15 +166,15 @@ function BridgeCard({
 }
 
 const RECOVERED_SURFACES = [
-  { id: "quickbooks", name: "QuickBooks", category: "Financial tools", truth: "PARTIAL" as SettingsTruth, owner: "Integrations", note: "OAuth and financial sync seams exist, but no canonical active-Solo-tenant readiness projection is proven." },
-  { id: "stripe", name: "Stripe Connect", category: "Commerce", truth: "PARTIAL" as SettingsTruth, owner: "Marketplace / Storefront", note: "Tenant payout-account records exist. They are not Paige subscription or Billing evidence.", route: "marketplace" as const, action: "Browse Marketplace" },
-  { id: "docusign", name: "DocuSign", category: "Documents", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Legacy admin and signature seams need a tenant-safe governed contract." },
-  { id: "apollo", name: "Apollo", category: "Client data", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → Clients", note: "Legacy enrichment configuration is platform-global and cannot establish this workspace’s connection." },
-  { id: "plaid", name: "Plaid", category: "Financial tools", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations → financial owner", note: "Bank-link scaffolding does not prove tenant-safe readiness." },
-  { id: "api", name: "Webhooks & direct API", category: "Developer tools", truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
+  { id: "quickbooks", name: "QuickBooks", category: "Financial tools", filter: "financial" as CatalogueCategory, truth: "PARTIAL" as SettingsTruth, owner: "Integrations · financial data bridge", note: "OAuth and financial sync seams exist, but no canonical active-Solo-tenant readiness projection is proven." },
+  { id: "stripe", name: "Stripe Connect", category: "Commerce", filter: "financial" as CatalogueCategory, truth: "PARTIAL" as SettingsTruth, owner: "Integrations · commerce account", note: "Tenant payout-account records exist. They do not prove this workspace is connected, active, or entitled to a Paige capability." },
+  { id: "docusign", name: "DocuSign", category: "Documents", filter: "documents" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · document service bridge", note: "Legacy admin and signature seams need a tenant-safe governed contract." },
+  { id: "apollo", name: "Apollo", category: "Client data", filter: "client-data" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · client data bridge", note: "Legacy enrichment configuration is platform-global and cannot establish this workspace’s connection." },
+  { id: "plaid", name: "Plaid", category: "Financial tools", filter: "financial" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · financial data bridge", note: "Bank-link scaffolding does not prove tenant-safe readiness." },
+  { id: "api", name: "Webhooks & direct API", category: "Developer tools", filter: "developer" as CatalogueCategory, truth: "UNAVAILABLE" as SettingsTruth, owner: "Integrations · developer bridge", note: "Existing platform webhook and API-key records are not a Solo tenant contract." },
 ] as const;
 
-function useSoloDestination(slug: "automations" | "marketplace") {
+function useSoloDestination(slug: "automations") {
   const { pathname } = useLocation();
   // This preserves route context only. Tenant authority still comes exclusively from
   // useTenantContext and the server-resolved RPCs above; the URL never scopes a read.
@@ -176,9 +186,11 @@ export function SoloIntegrationsView() {
   const status = useIntegrationStatus();
   const mcpProvider: ProviderIdentity = isZapierMcpHost(status.mcp?.server_url_host) ? "zapier" : "mcp";
   const automationsHref = useSoloDestination("automations");
-  const marketplaceHref = useSoloDestination("marketplace");
   const catalogueRef = useRef<HTMLDivElement>(null);
   const [catalogueScrollable, setCatalogueScrollable] = useState(false);
+  const [category, setCategory] = useState<CatalogueCategory>("all");
+  const categoryIncludes = (candidate: CatalogueCategory) => category === "all" || category === candidate;
+  const recoveredSurfaces = RECOVERED_SURFACES.filter((surface) => categoryIncludes(surface.filter));
 
   useEffect(() => {
     const catalogue = catalogueRef.current;
@@ -192,58 +204,57 @@ export function SoloIntegrationsView() {
       window.removeEventListener("resize", measure);
       observer?.disconnect();
     };
-  }, [status.loading, status.error, status.n8n, status.mcp]);
+  }, [category, status.loading, status.error, status.n8n, status.mcp]);
 
   return <div className="ss-integrations">
-    <section className="ss-integrations-intro" aria-labelledby="ss-integrations-title">
-      <span className="ss-card-icon"><Blocks aria-hidden /></span>
-      <div><h2 id="ss-integrations-title">External tools and bridges</h2><p>Tenant-safe status only. Communications setup stays in Connections.</p></div>
-      <Truth value="PARTIAL" />
-    </section>
-
     <section className="ss-catalogue" aria-labelledby="ss-catalogue-title">
       <div className="ss-catalogue-heading">
-        <div><span>Browse by provider</span><h2 id="ss-catalogue-title">Integration catalogue</h2></div>
+        <div className="ss-catalogue-title"><span>Browse by provider</span><h2 id="ss-catalogue-title">Integration catalogue</h2></div>
         <div className="ss-catalogue-heading-meta">
           <p>Provider color identifies the tool—not readiness or permission.</p>
           <span className="ss-catalogue-scroll-hint" id="ss-catalogue-scroll-hint"><ChevronsDown aria-hidden />{catalogueScrollable ? "Scroll to browse" : "All integrations visible"}</span>
         </div>
+        <div className="ss-catalogue-filters" role="group" aria-label="Filter integration catalogue">
+          {CATALOGUE_FILTERS.map((filter) => <button key={filter.id} type="button" aria-pressed={category === filter.id} onClick={() => setCategory(filter.id)}>{filter.label}</button>)}
+        </div>
+        <dl className="ss-owner-boundary" aria-label="Product ownership">
+          <div><dt>Connections</dt><dd>Phone, sending identity, delivery, and calendars</dd></div>
+          <div><dt>Integrations</dt><dd>External data, workflow, and service bridges</dd></div>
+          <div><dt>Marketplace</dt><dd>Governed Paige capability lifecycle</dd></div>
+        </dl>
       </div>
       <div ref={catalogueRef} className="ss-catalogue-scroll" role="region" aria-label="Integration catalogue" aria-describedby="ss-catalogue-scroll-hint" data-scrollable={catalogueScrollable ? "true" : "false"} tabIndex={0}>
         {status.loading ? <div className="ss-state" role="status"><RefreshCw className="ss-spin" />Clearing and resolving this account…</div>
           : status.error ? <div className="ss-state" role="alert"><TriangleAlert /><span><strong>Couldn’t read integration status</strong>No connection state is being claimed for this account.</span><button type="button" onClick={status.retry}>Retry</button></div>
-          : <div className="ss-integration-grid">
-            <BridgeCard name="n8n" kind="Automation" provider="n8n" value={status.n8n} action={automationsHref ? { href: automationsHref, label: "Open Automations" } : null} />
-            <BridgeCard name={mcpProvider === "zapier" ? "Zapier MCP" : "MCP bridge"} kind="External tool bridge" provider={mcpProvider} value={status.mcp} />
+          : (categoryIncludes("automation") || categoryIncludes("developer")) && <div className="ss-integration-grid">
+            {categoryIncludes("automation") && <BridgeCard name="n8n" kind="Automation" provider="n8n" value={status.n8n} action={automationsHref ? { href: automationsHref, label: "Open Automations" } : null} />}
+            {categoryIncludes("developer") && <BridgeCard name={mcpProvider === "zapier" ? "Zapier MCP" : "MCP bridge"} kind="External tool bridge" provider={mcpProvider} value={status.mcp} />}
           </div>}
 
-        <section className="ss-recovered" aria-labelledby="ss-recovered-title">
+        {recoveredSurfaces.length > 0 && <section className="ss-recovered" aria-labelledby="ss-recovered-title">
           <div className="ss-recovered-heading">
             <div><span>Version One evidence</span><h2 id="ss-recovered-title">Recovered, not connected</h2></div>
             <p>No tenant connection is claimed</p>
           </div>
           <div className="ss-recovered-grid">
-            {RECOVERED_SURFACES.map((surface) => {
-              const href = "route" in surface && surface.route === "marketplace" ? marketplaceHref : null;
-              return <article key={surface.name} className="ss-recovered-item" data-provider={surface.id}>
+            {recoveredSurfaces.map((surface) => <article key={surface.name} className="ss-recovered-item" data-provider={surface.id} data-owner="integrations">
                 <span className="ss-recovered-mark" aria-hidden>{surface.name.slice(0, 2)}</span>
                 <div className="ss-recovered-title"><span>{surface.category}</span><strong>{surface.name}</strong><small>{surface.owner}</small></div>
                 <Truth value={surface.truth} />
                 <p>{surface.note}</p>
                 <div className="ss-recovered-action">
-                  {href && "action" in surface ? <Link className="ss-integration-cta" to={href}>{surface.action}<ArrowUpRight aria-hidden /></Link> : <span className="ss-integration-handoff">Setup handoff unavailable</span>}
+                  <span className="ss-integration-handoff">Setup handoff unavailable</span>
                 </div>
-              </article>;
-            })}
+              </article>)}
           </div>
-        </section>
+        </section>}
       </div>
     </section>
 
     <div className="ss-integration-grid ss-integration-supporting">
       <section className="ss-card">
-        <header><span className="ss-card-icon"><Store aria-hidden /></span><h2>Marketplace handoff</h2><Truth value="UNAVAILABLE" /></header>
-        <div className="ss-card-body"><p>Marketplace owns capability discovery and installation. A tenant-safe installed-capability handoff is not available from Settings yet, so this page does not infer products or entitlement from catalog fixtures.</p></div>
+        <header><span className="ss-card-icon"><Store aria-hidden /></span><h2>Marketplace boundary</h2><Truth value="UNAVAILABLE" /></header>
+        <div className="ss-card-body"><p>Marketplace owns governed Paige capabilities and their install, update, remove, and activation lifecycle. Stripe Connect is an Integration; a future Marketplace capability may depend on it only after the required authority and recovery contracts exist.</p></div>
       </section>
       <section className="ss-card">
         <header><span className="ss-card-icon"><ShieldCheck aria-hidden /></span><h2>Permissions and governed actions</h2><Truth value="UNAVAILABLE" /></header>
