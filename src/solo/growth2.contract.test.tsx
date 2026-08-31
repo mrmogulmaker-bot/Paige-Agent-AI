@@ -6,6 +6,7 @@ const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
 const pipelineSettings = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineSettings.tsx"), "utf8");
+const pipelineAdmin = readFileSync(resolve(process.cwd(), "src/pages/admin/PipelineAdmin.tsx"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
 const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
 const dealGuardMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831194500_solo_pipeline_deal_tenant_guard.sql"), "utf8");
@@ -16,6 +17,7 @@ const archiveMigration = readFileSync(resolve(process.cwd(), "supabase/migration
 const visibilityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831211500_solo_pipeline_visibility_guard.sql"), "utf8");
 const directArchiveMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831213000_solo_pipeline_direct_archive_guard.sql"), "utf8");
 const reorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831214500_solo_pipeline_reorder_serialization.sql"), "utf8");
+const defaultCreatorMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831220000_solo_pipeline_default_creator_lock.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
@@ -146,6 +148,9 @@ describe("Solo Campaigns approved contract", () => {
     expect(adapter).toContain('synchronousTenantId ? "loading" as const');
     expect(pipelineSettings).toContain('rpc("reorder_pipeline_stages" as never');
     expect(pipelineSettings).not.toContain('supabase.from("pipeline_stages").update({ order_index:');
+    expect(pipelineAdmin).toContain('.eq("pipeline_id", pid).is("archived_at", null).order("order_index")');
+    expect(defaultCreatorMigration).toContain("create or replace function public.create_pipeline_with_stages");
+    expect(defaultCreatorMigration).toContain("if _is_default then\n    perform pg_advisory_xact_lock(hashtextextended('pipeline-default:'||_tenant::text,0));");
   });
 
   it("reduces only the Pipeline page title and preserves the board/card geometry", () => {
