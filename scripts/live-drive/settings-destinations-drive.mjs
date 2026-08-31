@@ -123,6 +123,29 @@ async function run() {
                  true, `fits (${g.sh}px in ${g.ch}px) — nothing to scroll, not asserted`);
         }
 
+        // 6 — THE IN-APP ARRIVAL, which is how a human actually reaches 7 of the 8
+        //     destinations. `SoloSettings` does NOT remount when the destination
+        //     changes: the contextual nav renders into the shell chrome, OUTSIDE
+        //     the host, so activating it leaves focus on the nav link and Blink
+        //     propagates scroll keys upward from there — the page did not move.
+        //     Every other row in this drive arrives by COLD LOAD, which is the one
+        //     path that was never broken, so this defect was invisible until an
+        //     independent review drove the nav. It is asserted here permanently.
+        const navLink = await page.$('a:has-text("Connections")');
+        if (navLink && dest !== "settings") {
+          await navLink.click();
+          await page.waitForTimeout(700);
+          const arrival = await page.evaluate((s) => {
+            const h = document.querySelector(s);
+            return { inHost: h.contains(document.activeElement), extent: h.scrollHeight - h.clientHeight };
+          }, HOST);
+          await page.keyboard.press("End");
+          const reached = await settle(page);
+          record(dest, tag, "keyboard works after in-app navigation, not just cold load",
+                 arrival.inHost && (arrival.extent <= 1 || reached >= arrival.extent - 2),
+                 `focus in owner: ${arrival.inHost} · scrollTop ${reached} of ${arrival.extent}`);
+        }
+
         await page.screenshot({ path: path.join(OUT, `${dest}-${tag}.png`) });
         await page.close();
       }

@@ -16,20 +16,31 @@
  *
  * WHAT IT ASSERTS, per surface, per viewport, per theme:
  *   1. The screen host still computes `overflow-y: hidden` — form-fitting intact.
- *   2. The host does not overflow: `scrollHeight <= clientHeight + 1`. A host that
- *      has BOTH `hidden` and real overflow is clipped content, which is the defect
- *      this policy is meant to avoid, not evidence of good form-fitting.
- *   3. No horizontal overflow.
- *   4. Wheel over the surface does not scroll the host or the document.
- *   5. Every focusable control is inside the host's box or inside a legitimate
- *      inner scroll region — nothing is stranded past a clip.
+ *      THIS IS THE LOAD-BEARING ASSERTION. It is what proves the Settings
+ *      exception did not reach a locked surface, and it is the one that would
+ *      fail the moment a repair loosened the shared rule.
+ *   2. No horizontal overflow, the document does not scroll, and the wheel does
+ *      not move the page. HONEST NOTE: given `overflow:hidden` on a `height:100%`
+ *      chain these follow from check 1 and cannot independently fail. They are
+ *      kept as cheap corroboration, and are NOT counted as breadth of proof.
+ *   3. REACHABILITY, walked properly. Earlier revisions compared each control's
+ *      rect against the HOST box and asked whether the host overflowed — both are
+ *      blind, because the host's only child is `height:100%; overflow:hidden`,
+ *      which clamps the host's `scrollHeight` and keeps every descendant rect
+ *      inside the host box while the content is clipped one level down. Proven by
+ *      injecting 3,000px plus a button into `.trc-workspace`: host `scrollHeight`
+ *      stayed 704 and the button's rect stayed inside the host, with the content
+ *      genuinely unreachable. So each control is now compared against its OWN
+ *      nearest clipping ancestor.
  *
- * HONESTY (§13/§32.c): this drives a LOCAL mount of the real merged `SoloApp` with
- * a stubbed Supabase transport and tenant context, so the rows are synthetic and
- * several surfaces will render their empty or error states. That is the point —
- * the assertions are about CONTAINMENT, which is decided by the shell and the
- * route, not by the data. It is not the deployed app and proves nothing about
- * production data or auth.
+ * HONESTY (§13/§32.c), and this bounds what the pass rate means. The mount is
+ * local and the Supabase transport is stubbed, so these surfaces render their
+ * EMPTY or error states. Containment (check 1) is decided by the shell and the
+ * route, not by the data, so it is proven. REACHABILITY (check 3) is NOT: an empty
+ * surface has almost nothing to strand, so a green reachability row here does not
+ * establish that a POPULATED clients, growth or compass surface keeps every
+ * control reachable while form-fitting. That remains UNVERIFIED and is owed to a
+ * session with real data. Do not quote the pass rate as if it covered it.
  *
  * RUN IT AGAINST A SETTLED TREE. The harness is a Vite dev server; editing a
  * source file mid-run hot-reloads the page under the drive and silently measures
@@ -93,9 +104,6 @@ async function run() {
         record(surface, tag, "screen host is still form-fitting (overflow-y: hidden)",
                geom.ov === "hidden", `overflow-y:${geom.ov} · class:"${geom.cls}"`);
 
-        record(surface, tag, "screen host does not overflow — nothing is clipped past it",
-               geom.sh <= geom.ch + 1, `scrollHeight ${geom.sh} vs clientHeight ${geom.ch}`);
-
         record(surface, tag, "no horizontal overflow",
                geom.sw <= geom.cw + 1, `scrollWidth ${geom.sw} vs clientWidth ${geom.cw}`);
 
@@ -113,32 +121,46 @@ async function run() {
         record(surface, tag, "wheel does not scroll the page",
                moved.host === 0 && moved.doc === 0, JSON.stringify(moved));
 
-        // 6 — nothing stranded outside the host, unless it sits in a real inner
-        //     scroller the surface deliberately owns.
-        const stranded = await page.evaluate((sel) => {
+        // 6 — REACHABILITY against each control's own nearest clipping ancestor.
+        //     Not against the host: the host cannot overflow, so comparing to it
+        //     reports "nothing stranded" while content is clipped inside a child.
+        const unreachable = await page.evaluate((sel) => {
           const host = document.querySelector(sel);
-          const hb = host.getBoundingClientRect();
           const out = [];
           const focusables = host.querySelectorAll(
             'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])',
           );
           for (const el of focusables) {
             const r = el.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) continue;
-            const below = r.top > hb.bottom + 1, right = r.left > hb.right + 1;
-            if (!below && !right) continue;
-            let n = el.parentElement, inScroller = false;
-            while (n && n !== host) {
+            if (r.width === 0 && r.height === 0) continue;      // deliberately hidden
+            let n = el.parentElement;
+            while (n && n !== document.documentElement) {
               const cs = getComputedStyle(n);
-              if (/(auto|scroll)/.test(cs.overflowY) || /(auto|scroll)/.test(cs.overflowX)) { inScroller = true; break; }
+              const clipsY = cs.overflowY === "hidden" || cs.overflowY === "clip";
+              const clipsX = cs.overflowX === "hidden" || cs.overflowX === "clip";
+              const scrollsY = cs.overflowY === "auto" || cs.overflowY === "scroll";
+              const scrollsX = cs.overflowX === "auto" || cs.overflowX === "scroll";
+              if (scrollsY || scrollsX) break;                  // reachable by scrolling it
+              if (clipsY || clipsX) {
+                const b = n.getBoundingClientRect();
+                const past = (clipsY && (r.top >= b.bottom - 1 || r.bottom <= b.top + 1))
+                          || (clipsX && (r.left >= b.right - 1 || r.right <= b.left + 1));
+                if (past) {
+                  out.push({
+                    control: (el.textContent || el.tagName).trim().slice(0, 40),
+                    clippedBy: String(n.className).slice(0, 40) || n.tagName,
+                  });
+                }
+                break;
+              }
               n = n.parentElement;
             }
-            if (!inScroller) out.push((el.textContent || el.tagName).trim().slice(0, 40));
           }
           return out;
         }, HOST);
-        record(surface, tag, "no control stranded outside the form-fitting box",
-               stranded.length === 0, stranded.length ? JSON.stringify(stranded.slice(0, 5)) : "none");
+        record(surface, tag, "no control is clipped out of reach by an ancestor",
+               unreachable.length === 0,
+               unreachable.length ? JSON.stringify(unreachable.slice(0, 5)) : "none");
 
         await page.screenshot({ path: path.join(OUT, `${surface}-${tag}.png`) });
         await page.close();

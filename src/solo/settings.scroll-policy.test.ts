@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -33,7 +34,11 @@ const rules = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
 const tokens = rules(read("src/solo/solo-tokens.css"));
 const settings = rules(read("src/solo/settings.css"));
-const settingsTsx = read("src/solo/settings.tsx");
+// Comment-stripped like the stylesheets: these assertions look for CODE, and the
+// file's own comments quote the very class names and helpers under test — which
+// would satisfy a `toMatch` with no implementation behind it, and false-fail the
+// adder count below.
+const settingsTsx = rules(read("src/solo/settings.tsx"));
 
 describe("locked surfaces keep their form-fitting policy", () => {
   it("leaves the blanket inner-main clip exactly as it was", () => {
@@ -48,16 +53,37 @@ describe("locked surfaces keep their form-fitting policy", () => {
     // Two independent qualifiers, both required: it must be SoloApp's own screen
     // host, AND it must carry the class `SoloSettings` puts there. A clients or
     // growth host satisfies the first and never the second.
-    const exception = tokens.match(/\.paige-solo main\[data-solo-screen-host\][^{]*\{overflow:auto!important\}/);
-    expect(exception, "the Settings overflow exception is missing").toBeTruthy();
-    expect(exception![0]).toContain(".tcs-main--settings-scrollbar-hidden");
+    //
+    // matchAll, not match: a non-global `match` inspects only the FIRST such rule,
+    // so a second, broader exception added later in the file would pass unseen.
+    // EVERY rule that re-opens the host must carry both qualifiers.
+    const reopeners = [...tokens.matchAll(/\.paige-solo[^{}]*main[^{}]*\{[^}]*overflow:\s*auto\s*!important[^}]*\}/g)];
+    expect(reopeners.length, "no rule re-opens the Settings host").toBeGreaterThan(0);
+    for (const rule of reopeners) {
+      expect(rule[0]).toContain("[data-solo-screen-host]");
+      expect(rule[0]).toContain(".tcs-main--settings-scrollbar-hidden");
+    }
   });
 
-  it("keys the exception on a marker only Settings ever applies", () => {
-    // The whole scoping argument rests on this: if anything else started adding
-    // the class, the exception would silently widen.
-    const adders = [...settingsTsx.matchAll(/classList\.add\("tcs-main--settings-scrollbar-hidden"\)/g)];
-    expect(adders.length).toBe(1);
+  it("keys the exception on a marker only Settings ever applies — repo-wide", () => {
+    // The whole scoping argument rests on this. Grepping only `settings.tsx`
+    // would let a new adder anywhere else silently widen the exception with this
+    // test still green, so the invariant is checked where it actually lives: the
+    // whole source tree, tests and this file excluded.
+    const files = execFileSync("git", ["ls-files", "src"], { encoding: "utf8" })
+      .split("\n")
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f));
+    const adders: string[] = [];
+    for (const f of files) {
+      const body = rules(readFileSync(resolve(process.cwd(), f), "utf8"));
+      if (/(classList\.add|classList\.toggle|setAttribute\([^)]*class)[^;]*tcs-main--settings-scrollbar-hidden/.test(body)
+          || /["'`]tcs-main--settings-scrollbar-hidden["'`]/.test(body)) {
+        adders.push(f);
+      }
+    }
+    expect(adders, `unexpected reference(s) to the Settings marker class`).toEqual([
+      "src/solo/settings.tsx",
+    ]);
     expect(settingsTsx).toMatch(/classList\.remove\("tcs-main--settings-scrollbar-hidden"\)/);
   });
 });
@@ -88,21 +114,24 @@ describe("Settings gets one visible, usable scroll owner", () => {
     expect(blurAt).toBeLessThan(removeAt);
   });
 
-  it("undoes BOTH scrollbar suppression lanes, naming both classes", () => {
+  it("undoes BOTH scrollbar suppression lanes — declarations, not just selectors", () => {
     // Undoing one lane leaves the bar hidden in the other. And a single-class
     // override ties on specificity, leaving source order to decide — which it
     // loses, because `settings.css` is imported after the surfaces it dresses.
-    for (const lane of ["", "::-webkit-scrollbar"]) {
-      expect(
-        settings,
-        `lane ${lane || "standard"}`,
-      ).toMatch(
-        new RegExp(
-          "\\.tcs-main--settings-scrollbar-hidden\\.tcs-main--settings-scrollbar-shown" +
-            lane.replace(/[:-]/g, "\\$&") + "\\s*\\{",
-        ),
-      );
-    }
+    //
+    // The DECLARATIONS are asserted, not merely that a selector exists followed
+    // by a brace: an earlier version of this test passed against a rule whose body
+    // said `scrollbar-width: none`, which is the exact behaviour it is named for.
+    const both = "\\.tcs-main--settings-scrollbar-hidden\\.tcs-main--settings-scrollbar-shown";
+    const standard = settings.match(new RegExp(both + "\\s*\\{([^}]*)\\}"));
+    expect(standard, "no standard-property override").toBeTruthy();
+    expect(standard![1]).toMatch(/scrollbar-width:\s*auto/);
+    expect(standard![1]).not.toMatch(/scrollbar-width:\s*none/);
+
+    const webkit = settings.match(new RegExp(both + "::-webkit-scrollbar\\s*\\{([^}]*)\\}"));
+    expect(webkit, "no pseudo-element override").toBeTruthy();
+    expect(webkit![1]).toMatch(/display:\s*block/);
+    expect(webkit![1]).toMatch(/width:\s*[1-9]/);
   });
 
   it("applies the visible-scrollbar and keyboard fix to EVERY destination", () => {

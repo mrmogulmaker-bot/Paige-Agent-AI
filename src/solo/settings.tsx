@@ -898,9 +898,30 @@ export function SoloSettings() {
   // One scroll owner across the whole route means one scroll POSITION across it
   // too: without this, opening a short destination after scrolling a long one
   // lands part-way down its content instead of on its heading.
+  //
+  // AND ONE FOCUS POSITION. `SoloSettings` does NOT remount when the destination
+  // changes — the contextual nav renders into the shell chrome, outside `<main>`,
+  // and activating it changes only the URL splat. So the mount effect above runs
+  // exactly once, at cold load, and every destination reached the normal way was
+  // left with focus on the nav link: outside the owner, and Blink propagates
+  // scroll keys UPWARD from the focused node, so End and PageDown did nothing.
+  // Measured: 1,228px of Connections content unreachable by keyboard after an
+  // in-app nav click, while the wheel still worked and a click into the content
+  // silently fixed it. Every drive missed it because a harness always arrives by
+  // cold load, which is the one path that was never broken.
+  //
+  // Focus moves only when the owner does not already contain it, so a control the
+  // human is using inside the page is never interrupted. Taking it FROM the nav
+  // link is the intended behaviour, not a theft: activating that link is a
+  // commitment to the destination, and moving focus into the region that just
+  // rendered is what a keyboard user needs in order to read it.
   useEffect(() => {
     const scrollOwner = scrollOwnerOf(rootRef.current);
-    if (scrollOwner) scrollOwner.scrollTop = 0;
+    if (!scrollOwner) return;
+    scrollOwner.scrollTop = 0;
+    if (!scrollOwner.contains(document.activeElement)) {
+      scrollOwner.focus({ preventScroll: true });
+    }
   }, [tab, segment]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
   const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;

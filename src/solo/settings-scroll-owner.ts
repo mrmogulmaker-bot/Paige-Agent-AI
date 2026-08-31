@@ -8,11 +8,16 @@
  *
  * The fallback is not decoration: Settings is also mounted bare in unit tests and
  * in drive harnesses that supply no screen host, and there the shell main is the
- * scroll owner. Both callers must agree, or one dresses an element the other
- * scrolls — which is exactly what happened when `SoloSettings` moved to the host
- * and `CalendarsView` kept resolving `#tenant-shell-main`: the surface restored a
- * scrollbar on an element with no scroll extent while the real owner kept none.
- * One home, so the two cannot drift again (§18).
+ * scroll owner.
+ *
+ * `SoloSettings` is currently the only caller, and both of its effects resolve
+ * through here so they can never target different elements. It is a shared module
+ * rather than a local helper because the two effects ARE two callers, and because
+ * an earlier revision of this repair put a second resolver in `CalendarsView`
+ * which then drifted: `SoloSettings` had moved to the screen host while the
+ * surface still resolved `#tenant-shell-main`, so it restored a scrollbar on an
+ * element with no scroll extent while the real owner kept none. Anything that
+ * needs the Settings scroll owner imports this and does not re-derive it (§18).
  */
 export function settingsScrollOwner(root: HTMLElement | null): HTMLElement | null {
   return (
