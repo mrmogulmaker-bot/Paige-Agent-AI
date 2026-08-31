@@ -1214,6 +1214,73 @@ JSON:`;
       console.warn("[paige] RAG retrieval failed:", ragErr);
     }
 
+    // ===== ACCOUNT-SWITCH RACE — one revalidation seam, used at every egress boundary =====
+    // Authority is resolved ONCE at the top of the turn, but the account can change AFTER that:
+    // the operator switches workspaces, a membership is revoked, or the profile row is mutated
+    // between resolution and the moment we actually act. Everything downstream — the prompt we
+    // send to the model, the tools we execute, and any document-derived provider/sync work —
+    // would then run under authority that no longer holds.
+    //
+    // `authorityAtStart` is the caller's DECLARED active workspace at resolution time (may be
+    // null for a tenant-less Platform Operator; null is a legitimate baseline, not an error).
+    // Every boundary re-reads it and demands it is UNCHANGED. Deliberately a CHANGE check rather
+    // than a validity check: a caller whose scope came from the resolver fallback still chats
+    // normally — the fallback is refused at the Knowledge boundary, which is where it matters —
+    // so this cannot silently take Paige away from anyone who has her today.
+    let authorityAtStart: string | null = null;
+    try {
+      const { data: a0 } = await supabaseClient
+        .from("profiles").select("active_tenant_id").eq("user_id", user.id).maybeSingle();
+      authorityAtStart = ((a0 as any)?.active_tenant_id ?? null) as string | null;
+    } catch { authorityAtStart = null; }
+
+    /**
+     * Re-read the caller's authority and refuse the boundary if anything moved.
+     * Fails CLOSED on: change, revocation, ambiguity, malformed value, and read failure.
+     * `requireTenant` additionally pins the tenant whose knowledge actually entered the prompt.
+     */
+    const revalidateAuthority = async (
+      boundary: string,
+      requireTenant: string | null,
+    ): Promise<{ ok: boolean; reason: string | null }> => {
+      let now: unknown;
+      try {
+        const { data, error } = await supabaseClient
+          .from("profiles").select("active_tenant_id").eq("user_id", user.id).maybeSingle();
+        if (error) {
+          const reason = `authority re-read failed: ${error.message}`;
+          console.error("[paige] authority REVALIDATION FAILED", JSON.stringify({ boundary, reason }));
+          return { ok: false, reason };
+        }
+        now = (data as any)?.active_tenant_id ?? null;
+      } catch (e) {
+        const reason = `authority re-read threw: ${String((e as any)?.message ?? e)}`;
+        console.error("[paige] authority REVALIDATION FAILED", JSON.stringify({ boundary, reason }));
+        return { ok: false, reason };
+      }
+      if (now !== null && typeof now !== "string") {
+        const reason = "malformed active workspace value";
+        console.error("[paige] authority REVALIDATION FAILED", JSON.stringify({ boundary, reason }));
+        return { ok: false, reason };
+      }
+      if (now !== authorityAtStart) {
+        const reason = "active workspace changed after this turn resolved";
+        console.error("[paige] authority REVALIDATION FAILED", JSON.stringify({ boundary, reason }));
+        return { ok: false, reason };
+      }
+      // Knowledge actually entered the prompt for a specific tenant: that tenant must still be
+      // the live scope, not merely unchanged relative to a null baseline.
+      if (requireTenant && now !== requireTenant) {
+        const reason = "knowledge scope is no longer the caller's active workspace";
+        console.error("[paige] authority REVALIDATION FAILED", JSON.stringify({ boundary, reason }));
+        return { ok: false, reason };
+      }
+      return { ok: true, reason: null };
+    };
+
+    /** The tenant whose knowledge entered this turn's prompt, if any. Set at the KB boundary. */
+    let knowledgeScopeInPrompt: string | null = null;
+
     // ===== Tenant Knowledge Base (3-tier: tenant private ∪ global canon) =====
     // Uses the new multi-tenant KB. Searches the caller's ACTIVE tenant, runs the
     // hybrid match_tenant_knowledge RPC, and logs metadata-only telemetry
@@ -1285,6 +1352,7 @@ JSON:`;
           tkScopeRefusal = "resolved scope is not the caller's declared active workspace";
         } else {
           tkScopeOk = true;
+          knowledgeScopeInPrompt = tkTenantId;
         }
         if (!tkScopeOk) {
           // §13 — loud, with the reason, never a silent no-op. The visible symptom is Paige
@@ -5484,6 +5552,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     const substantiveTurn =
       !!lastUserMessage && substantiveTurnIntent(String(lastUserMessage.content ?? ""));
 
+    // BOUNDARY — MODEL EGRESS. The prompt assembled above carries this tenant's knowledge,
+    // persona, and thread. Authority was resolved before all of that; refuse to send if it has
+    // moved since. No egress, no telemetry, no follow-on loop under stale authority.
+    {
+      const rv = await revalidateAuthority("model-egress", knowledgeScopeInPrompt);
+      if (!rv.ok) {
+        return new Response(
+          JSON.stringify({
+            error: "workspace_changed",
+            reason: "Your active workspace changed while this reply was being prepared. Nothing was sent. Ask again and Paige will answer from the workspace you are in now.",
+            detail: rv.reason,
+          }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -5577,6 +5662,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // (including the terminal Unknown-tool branch). Approvals accumulate into
       // the shared queuedApprovals passed in from the loop.
       const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
+      // BOUNDARY — TOOL EXECUTION. A round can be dispatched well after the turn resolved, and
+      // tools WRITE. Re-check authority before any of them run: on a switch, revocation,
+      // ambiguity, malformed context, or read failure, execute NOTHING and hand the model a
+      // refusal instead of a result, so the loop stops rather than retrying under stale scope.
+      {
+        const rv = await revalidateAuthority("tool-execution", knowledgeScopeInPrompt);
+        if (!rv.ok) {
+          return {
+            toolResults: toolCalls.filter((t) => t?.id).map((t) => ({
+              role: "tool" as const,
+              tool_call_id: t.id,
+              content: JSON.stringify({
+                success: false,
+                error: "workspace_changed",
+                message: "The active workspace changed mid-turn. No tool was run. Do not retry; ask the owner to resend from their current workspace.",
+              }),
+            })),
+            executed: [],
+          };
+        }
+      }
       const toolResults: any[] = [];
       const executed: any[] = [];
       for (const tc of toolCalls) {
@@ -8014,7 +8120,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 supabaseServiceKey,
                 supabase,
                 payloadClientId || null,
-                paigeChatUploadId
+                paigeChatUploadId,
+                revalidateAuthority,
+                knowledgeScopeInPrompt,
               );
               const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
               controller.enqueue(new TextEncoder().encode(syncEvent));
@@ -8286,7 +8394,11 @@ async function runStructuredExtractionAndSync(
   serviceRoleKey: string,
   supabase: any,
   clientId: string | null = null,
-  uploadRecordId: string | null = null
+  uploadRecordId: string | null = null,
+  // The SAME revalidation seam the request handler uses — passed in, never re-implemented,
+  // so the document/provider path cannot drift from the egress rule (§18: one home).
+  revalidateAuthority?: (boundary: string, requireTenant: string | null) => Promise<{ ok: boolean; reason: string | null }>,
+  expectedTenantId: string | null = null,
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
@@ -8407,6 +8519,20 @@ async function runStructuredExtractionAndSync(
     };
 
     console.log(`Calling sync-credit-report-data with ${syncPayload.negative_items.length} negatives, ${syncPayload.positive_accounts.length} positives, ${syncPayload.priority_disputes.length} priority disputes`);
+
+    // BOUNDARY — DOCUMENT POST-PROCESSING / PROVIDER SYNC. This payload is DERIVED FROM THE
+    // UPLOADED DOCUMENT and crosses to another function under the SERVICE-ROLE key, which
+    // bypasses RLS by construction. Extraction ran an AI call before this, so real time has
+    // passed since authority was resolved. Re-check here, immediately before the crossing: no
+    // stale tenant payload may cross, and a refusal returns rather than syncing.
+    if (revalidateAuthority) {
+      const rv = await revalidateAuthority("document-provider-sync", expectedTenantId);
+      if (!rv.ok) {
+        console.error("[paige] document sync REFUSED — authority moved during extraction",
+          JSON.stringify({ reason: rv.reason }));
+        return { success: false, error: "workspace_changed", detail: rv.reason, synced: false };
+      }
+    }
 
     const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
       method: "POST",
