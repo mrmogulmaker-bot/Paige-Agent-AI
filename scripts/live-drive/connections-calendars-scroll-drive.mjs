@@ -175,8 +175,13 @@ async function main() {
   mkdirSync(OUT, { recursive: true });
   const vite = spawn("npx", ["vite", "--config", "scripts/live-drive/harness/connections-mount/vite.config.ts"],
     { cwd: process.cwd(), detached: true, stdio: "ignore" });
-  const browser = await chromium.launch({ executablePath: process.env.PW_EXECUTABLE_PATH || "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
+  // The launch belongs INSIDE the cleanup scope. A Chromium that cannot start —
+  // a missing or wrong `PW_EXECUTABLE_PATH` — used to reject before the `try`,
+  // leaving the detached server holding port 5201 and failing the next run's
+  // `assertPortFree` for a reason that had nothing to do with the next run.
+  let browser;
   try {
+    browser = await chromium.launch({ executablePath: process.env.PW_EXECUTABLE_PATH || "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
     await new Promise((r) => setTimeout(r, 9000));
     const page = await browser.newPage({ viewport: { width: 1536, height: 770 } });
     await page.addInitScript(() => {
@@ -197,7 +202,7 @@ async function main() {
     await proveCheckCanFail(page);
     await page.close();
   } finally {
-    await browser.close();
+    await browser?.close();
     try { process.kill(-vite.pid); } catch { /* already gone */ }
   }
   const failed = results.filter((r) => !r.ok);
