@@ -12,6 +12,13 @@ const harness = vi.hoisted(() => ({
     campaigns: [{ id: "campaign-1", name: "Grounded campaign", status: "active", activeCount: 2, completedCount: 4, lastActivityAt: "2026-08-28T12:00:00Z" }],
     artifacts: [{ id: "page-1", type: "page", name: "Published page", slug: "published-page", status: "published", updatedAt: "2026-08-28T12:00:00Z", publicHref: "/p/example/published-page", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 } }],
     submissions: [],
+    pipelineWorkspace: {
+      canManage: true,
+      pipelines: [{ id: "pipeline-1", name: "Client onboarding", description: "", isDefault: true }],
+      stages: [{ id: "stage-1", pipelineId: "pipeline-1", label: "New", description: "Awaiting review", orderIndex: 1, archivedAt: null }],
+      deals: [{ id: "deal-1", title: "Onboarding work", pipelineId: "pipeline-1", stageId: "stage-1", clientName: "Example client", owner: "Assigned owner", status: "open", source: "Source recorded", nextAction: "Review intake", updatedAt: "2026-08-28T12:00:00Z", portalAvailable: false, history: [] }],
+    },
+    pipelineAction: vi.fn(async () => ({ ok: true, message: "Saved" })),
     retry: vi.fn(),
   } as Record<string, unknown>,
 }));
@@ -39,6 +46,27 @@ afterEach(() => {
 });
 
 describe("Solo Campaigns rendered flows", () => {
+  it("renders a board-first Pipeline and opens contextual deal detail without financial claims", () => {
+    renderAt("/solo/42/growth/pipeline");
+    expect(host.textContent).toContain("Client onboarding");
+    expect(host.textContent).toContain("Onboarding work");
+    expect(host.textContent).toContain("Review intake");
+    expect(host.textContent).not.toMatch(/revenue|ROI|payment/i);
+    const card = host.querySelector(".pipeline-card") as HTMLButtonElement;
+    act(() => card.click());
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("Client portalNot connected");
+  });
+
+  it("offers optional blank or starter creation and tenant-owned stage configuration", () => {
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New pipeline") as HTMLButtonElement).click());
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("Blank pipeline");
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("Simple starter stages");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Cancel") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Configure stages") as HTMLButtonElement).click());
+    expect(host.textContent).toContain("Add a stage");
+    expect(host.textContent).toContain("Archive");
+  });
   it("renders populated grounded rows and closes details with Escape", () => {
     renderAt("/solo/42/growth/catalog");
     expect(host.textContent).toContain("Published page");
@@ -106,3 +134,4 @@ describe("Solo Campaigns rendered flows", () => {
     window.removeEventListener("paige-studio", listener);
   });
 });
+
