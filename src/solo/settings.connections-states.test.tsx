@@ -58,7 +58,7 @@ vi.mock("./data/useSoloOwner", () => ({
   useSoloOwner: () => ({ owner: { name: "Antonio Cook", email: null, phone: null, website: null }, loading: false, error: null, refresh: vi.fn() }),
 }));
 vi.mock("./data/useSoloComms", () => ({
-  useSoloComms: () => ({ domains: [], billing: null, loading: false, error: null, refresh: vi.fn() }),
+  useSoloComms: () => ({ business: { name: "", website: "", phone: "" }, mailbox: { connected: false, address: null, displayName: null, provider: null, status: null }, canManage: true, saveBusiness: vi.fn(async () => ({ ok: true, error: null })), addDomain: vi.fn(async () => ({ ok: true, error: null })), refreshDomain: vi.fn(async () => ({ ok: true, error: null })), setDefaultDomain: vi.fn(async () => ({ ok: true, error: null })), removeDomain: vi.fn(async () => ({ ok: true, error: null })), startGmailConnect: vi.fn(async () => ({ url: null, error: null })), disconnectGmail: vi.fn(async () => ({ ok: true, error: null })), domains: [], billing: null, loading: false, error: null, refresh: vi.fn() }),
 }));
 
 const READY = {

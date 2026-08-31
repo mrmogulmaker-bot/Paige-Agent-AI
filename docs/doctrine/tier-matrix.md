@@ -930,10 +930,25 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 
 | Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
 |---|---|---|---|---|---|---|---|
-| `connections/communications` | Business-phone search (`PROPOSED`, non-mutating), the PAIGE-managed sending identity, custom sending domains, connected mailbox (`UNAVAILABLE`) | **partly wired** — identity + domains read real rows; number search runs nothing | N/A | N/A | ✓ | N/A | — |
+| `connections/communications` | Business-phone search (`PROPOSED`, non-mutating), the PAIGE-managed sending identity, **editable business details**, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — business details write `set_tenant_brand` (merging); domains add/refresh/set_default/remove via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. Number search still runs nothing (`PROPOSED`) | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+
+**What `connections/communications` proves about itself, and what it does not (§13/§32).**
+
+The three action layers added on 2026-08-31 are covered by
+`src/solo/settings.connections-actions.test.tsx` (14 tests, mounted so effects run) and by the
+tenant-resolution smoke `scripts/tenant-for-user-smoke.mts` (8 checks, wired into CI). Both honesty
+rows — a rejected write never rendering as success, and an unreadable connector record never
+rendering as "not connected" — were proven to FAIL against a deliberately broken implementation
+before being trusted.
+
+What is NOT proven: authenticated runtime. No OAuth was performed and no sending domain was created
+against a live provider by the session that built this, so "the owner can complete the Google
+connect flow end to end" is OWED to a session that drives it, or to the owner. The scope granted is
+`gmail.send` — this surface connects a SENDING account and proves nothing about inbound mail, and
+there is no Outlook function in the repo at all.
 
 **What `connections/calendars` proves about itself, and what it does not (§13/§32).**
 Its geometry, scroll ownership and fold-out behaviour are MEASURED, not asserted:

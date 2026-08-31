@@ -114,19 +114,34 @@ export function WorkspaceSettingsPanel() {
     if (!tenantId) return;
     setSavingBrand(true);
     try {
+      // The workspace NAME is a column and is still written directly.
       const { error } = await supabase
         .from("tenants")
-        .update({
-          name: brand.name.trim() || "Untitled Workspace",
-          brand: {
-            logo_url: brand.logo_url || null,
-            primary_color: brand.primary_color || null,
-            from_name: brand.from_name || null,
-            support_email: brand.support_email || null,
-          },
-        })
+        .update({ name: brand.name.trim() || "Untitled Workspace" })
         .eq("id", tenantId);
       if (error) throw error;
+
+      // The BRAND is a jsonb document with more keys than this panel edits, so it
+      // goes through `set_tenant_brand`, which merges (`brand || _patch`).
+      //
+      // This used to write the whole object with exactly these four keys, which
+      // DELETED every other key on save — including `business_name`, `website`
+      // and `business_phone`, the three fields `tenant_comms_readiness()` grades
+      // for carrier registration. Saving workspace branding silently un-did the
+      // business details someone had just filled in on Connections, and the
+      // readiness ladder would drop back to "Partly filled in" with no visible
+      // cause. A whole-object write to a shared document is a data-loss bug even
+      // when every key it names is correct.
+      const { error: brandError } = await supabase.rpc("set_tenant_brand" as never, {
+        _tenant_id: tenantId,
+        _patch: {
+          logo_url: brand.logo_url || null,
+          primary_color: brand.primary_color || null,
+          from_name: brand.from_name || null,
+          support_email: brand.support_email || null,
+        },
+      } as never);
+      if (brandError) throw brandError;
       toast.success("Workspace branding saved");
       await refresh();
     } catch (e) {
