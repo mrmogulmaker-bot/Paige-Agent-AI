@@ -6,6 +6,7 @@ const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
 const adapter = readFileSync(resolve(process.cwd(), "src/solo/useSoloCampaigns.ts"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831180000_solo_pipeline_board_contract.sql"), "utf8");
+const routingMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831193000_solo_pipeline_routing_evidence.sql"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
   it("renders exactly the approved six tabs in order", () => {
@@ -48,10 +49,13 @@ describe("Solo Campaigns approved contract", () => {
   it("fails closed on tenant identity and contains read-only tenant filters", () => {
     expect(adapter).toContain("accountContextLoading");
     expect(adapter).toContain("if (!activeTenantId)");
-    expect(adapter.match(/\.eq\("tenant_id", activeTenantId\)/g)).toHaveLength(6);
+    expect(adapter.match(/\.eq\("tenant_id", activeTenantId\)/g)).toHaveLength(4);
     expect(adapter).not.toContain('functions.invoke("tenant-campaigns"');
-    expect(adapter).toContain('from("growth_form_automations")');
-    expect(adapter).toContain('from("growth_submission_dispatches")');
+    expect(adapter).toContain('rpc("get_pipeline_routing_evidence"');
+    expect(routingMigration).toContain("from public.growth_form_automations a");
+    expect(routingMigration).toContain("from public.growth_submission_dispatches d");
+    expect(routingMigration).toContain("a.autonomy_lane");
+    expect(routingMigration).not.toMatch(/limit\s+200/i);
     expect(adapter).toContain("if (!current) return");
     expect(adapter).not.toMatch(/\.(insert|update|upsert|delete)\(/);
   });
@@ -85,8 +89,8 @@ describe("Solo Campaigns approved contract", () => {
   });
 
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
-    for (const contract of ["get_pipeline_workspace", "create_tenant_pipeline", "update_pipeline_details", "manage_pipeline_stage", "reorder_pipeline_stages"]) {
-      expect(adapter + migration).toContain(contract);
+    for (const contract of ["get_pipeline_workspace", "get_pipeline_routing_evidence", "create_tenant_pipeline", "update_pipeline_details", "manage_pipeline_stage", "reorder_pipeline_stages"]) {
+      expect(adapter + migration + routingMigration).toContain(contract);
     }
     for (const action of ["create", "update", "archive", "restore"]) expect(migration).toContain(`_action='${action}'`);
     expect(migration).toContain("PIPELINE_STAGE_OCCUPIED");
