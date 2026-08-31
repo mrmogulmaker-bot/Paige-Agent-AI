@@ -31,7 +31,7 @@ export default function PipelineSettings() {
   };
 
   const loadStages = async (pid: string) => {
-    const { data } = await supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).order("order_index");
+    const { data } = await supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).is("archived_at", null).order("order_index");
     setStages((data as PipelineStage[]) || []);
   };
 
@@ -64,8 +64,8 @@ export default function PipelineSettings() {
   };
 
   const setDefault = async (id: string) => {
-    await supabase.from("pipelines").update({ is_default: false }).neq("id", id);
-    await supabase.from("pipelines").update({ is_default: true }).eq("id", id);
+    const { error } = await supabase.rpc("set_default_pipeline" as never, { _pipeline_id: id } as never);
+    if (error) return toast.error(error.message);
     await load();
     toast.success("Default pipeline updated");
   };
@@ -103,11 +103,13 @@ export default function PipelineSettings() {
     const idx = stages.findIndex((s) => s.id === id);
     const swap = stages[idx + dir];
     if (!swap) return;
-    const a = stages[idx], b = swap;
-    await Promise.all([
-      supabase.from("pipeline_stages").update({ order_index: b.order_index }).eq("id", a.id),
-      supabase.from("pipeline_stages").update({ order_index: a.order_index }).eq("id", b.id),
-    ]);
+    const ordered = [...stages];
+    [ordered[idx], ordered[idx + dir]] = [ordered[idx + dir], ordered[idx]];
+    const { error } = await supabase.rpc("reorder_pipeline_stages" as never, {
+      _pipeline_id: activeId,
+      _ordered_ids: ordered.map((stage) => stage.id),
+    } as never);
+    if (error) return toast.error(error.message);
     loadStages(activeId);
   };
 
@@ -239,3 +241,4 @@ export default function PipelineSettings() {
     </div>
   );
 }
+

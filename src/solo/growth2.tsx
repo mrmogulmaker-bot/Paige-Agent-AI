@@ -116,9 +116,80 @@ function Sales({ data, setDetail }) {
   return <section className="campaigns-surface"><SurfaceHead truthKey="sales" title="Routed capture activity" description="Recorded contact and deal references only—never estimated revenue or campaign attribution."/><StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
 }
 
+function PipelineStageRow({ stage, index, stages, pipeline, canManage, busy, save }) {
+  const [draft,setDraft]=React.useState({label:stage.label,description:stage.description||""});
+  return <article className={stage.archivedAt?"is-archived":""}><div className="pipeline-stage-fields"><label><span>Name</span><input disabled={!canManage||busy||!!stage.archivedAt} value={draft.label} onChange={(event)=>setDraft({...draft,label:event.target.value})}/></label><label><span>Description</span><input disabled={!canManage||busy||!!stage.archivedAt} value={draft.description} onChange={(event)=>setDraft({...draft,description:event.target.value})}/></label></div><div><button className="btn btn-s" disabled={!canManage||busy||!!stage.archivedAt||!draft.label.trim()} onClick={()=>save({type:"update-stage",stageId:stage.id,...draft})}>Save</button><button className="btn btn-s" disabled={!canManage||busy||index===0||!!stage.archivedAt} onClick={()=>save({type:"reorder-stages",pipelineId:pipeline.id,orderedIds:[...stages.map((item)=>item.id).filter((id)=>id!==stage.id).slice(0,index-1),stage.id,...stages.map((item)=>item.id).filter((id)=>id!==stage.id).slice(index-1)]})} aria-label={`Move ${stage.label} earlier`}>↑</button><button className="btn btn-s" disabled={!canManage||busy} onClick={()=>save({type:stage.archivedAt?"restore-stage":"archive-stage",stageId:stage.id})}>{stage.archivedAt?"Restore":"Archive"}</button></div></article>;
+}
+
+function PipelineConfigPanel({ pipeline, stages, canManage, run, onClose }) {
+  const [draft, setDraft] = React.useState({ name: pipeline.name, description: pipeline.description || "" });
+  const [newStage, setNewStage] = React.useState({ label: "", description: "" });
+  const [message, setMessage] = React.useState("");
+  const [pending, setPending] = React.useState(false);
+  const save = async (action) => { if(pending)return;setPending(true);setMessage("");try{const result = await run(action);setMessage(result.message);}finally{setPending(false);} };
+  return <section className="pipeline-config" aria-labelledby="pipeline-config-title" aria-busy={pending}>
+    <header><div><span className="eyebrow">Supporting control</span><h3 id="pipeline-config-title">Configure pipeline</h3></div><button className="btn btn-s" disabled={pending} onClick={onClose}>Done</button></header>
+    {!canManage&&<p className="pipeline-readonly"><Ic.shield size={14}/>You can review this pipeline, but only a tenant administrator can change it.</p>}
+    <div className="pipeline-config-fields"><label><span>Name</span><input disabled={!canManage||pending} value={draft.name} onChange={(event)=>setDraft({...draft,name:event.target.value})}/></label><label><span>Description</span><input disabled={!canManage||pending} value={draft.description} onChange={(event)=>setDraft({...draft,description:event.target.value})}/></label><button className="btn btn-s" disabled={!canManage||pending||!draft.name.trim()} onClick={()=>save({type:"update-pipeline",pipelineId:pipeline.id,...draft})}>Save details</button></div>
+    <div className="pipeline-stage-list"><h4>Stages</h4>{stages.map((stage,index)=><PipelineStageRow key={stage.id} stage={stage} index={index} stages={stages} pipeline={pipeline} canManage={canManage} busy={pending} save={save}/>)}</div>
+    <div className="pipeline-new-stage"><h4>Add a stage</h4><label><span>Name</span><input disabled={!canManage||pending} value={newStage.label} onChange={(event)=>setNewStage({...newStage,label:event.target.value})}/></label><label><span>Description</span><input disabled={!canManage||pending} value={newStage.description} onChange={(event)=>setNewStage({...newStage,description:event.target.value})}/></label><button className="btn btn-s" disabled={!canManage||pending||!newStage.label.trim()} onClick={()=>save({type:"create-stage",pipelineId:pipeline.id,...newStage})}>{pending?"Saving…":"Add stage"}</button></div>
+    {message&&<p className="pipeline-save-message" role="status">{message}</p>}
+  </section>;
+}
+
 function PipelineSurface({ data, setDetail }) {
-  const forms = data.artifacts.filter((artifact)=>artifact.type==="form");
-  return <section className="campaigns-surface"><SurfaceHead truthKey="pipeline" title="Capture and routing" description="Published forms and their explicit tenant-scoped routing posture."/><StateFrame phase={data.phase} retry={data.retry} noun="routing outcomes">{forms.length===0?<Empty title="No published forms to evaluate" detail="Campaigns does not create leads, customers, or deals unless an explicit routing contract exists and records an outcome."/>:<div className="campaigns-list">{forms.map((form)=><button className="campaigns-list-row" key={form.id} onClick={()=>setDetail({title:form.name,rows:[["Recent captures",`${form.recentSubmissions} in the latest 200 workspace submissions`],["Routing contract",form.routingConfigured?"Configured":"Not configured"],["Enabled targets",form.routingTargets.length?form.routingTargets.join(", "):"None recorded"],["Recent dispatch outcomes",`${form.recentDispatches.succeeded} succeeded · ${form.recentDispatches.failed} failed · ${form.recentDispatches.other} other`]],note:"Counts are bounded recent evidence, not lifetime totals. Captures become contacts or deals only through a configured, tenant-scoped routing contract."})}><span><strong>{form.name}</strong><small>{form.recentSubmissions} recent capture{form.recentSubmissions===1?"":"s"} in the bounded workspace window</small></span><span className={`campaigns-status ${form.routingConfigured?"is-ready":""}`}>{form.routingConfigured?"Configured":"Not configured"}</span></button>)}</div>}</StateFrame></section>;
+  const workspace=data.pipelineWorkspace;
+  const [selectedId,setSelectedId]=React.useState("");
+  const [focusedStageId,setFocusedStageId]=React.useState("");
+  const [configuring,setConfiguring]=React.useState(false);
+  const [creating,setCreating]=React.useState(false);
+  const [createPending,setCreatePending]=React.useState(false);
+  const [createMessage,setCreateMessage]=React.useState("");
+  const createDialogRef=React.useRef(null);
+  const createOpenerRef=React.useRef(null);
+  const [newPipeline,setNewPipeline]=React.useState({name:"",description:"",starter:"blank"});
+  const selected=workspace.pipelines.find((item)=>item.id===selectedId)??workspace.pipelines[0];
+  const stages=selected?workspace.stages.filter((stage)=>stage.pipelineId===selected.id).sort((a,b)=>a.orderIndex-b.orderIndex):[];
+  const activeStages=stages.filter((stage)=>!stage.archivedAt);
+  const focusId=activeStages.some((stage)=>stage.id===focusedStageId)?focusedStageId:activeStages[0]?.id;
+  React.useEffect(()=>{setCreating(false);setCreatePending(false);setCreateMessage("");setNewPipeline({name:"",description:"",starter:"blank"});},[data.tenantId]);
+  React.useEffect(()=>{ if(selected&&selected.id!==selectedId){setSelectedId(selected.id);setFocusedStageId("");setConfiguring(false);} },[selected,selectedId]);
+  React.useEffect(()=>{
+    if(!creating)return;
+    const dialog=createDialogRef.current;
+    const inerted=[];
+    let current=dialog;
+    while(current?.parentElement&&!current.parentElement.classList.contains("solo-campaigns")){
+      [...current.parentElement.children].filter((node)=>node!==current).forEach((node)=>{if(!node.hasAttribute("inert")){node.setAttribute("inert","");inerted.push(node);}});
+      current=current.parentElement;
+    }
+    const nav=document.querySelector(".solo-campaigns > .campaigns-nav");
+    if(nav&&!nav.hasAttribute("inert")){nav.setAttribute("inert","");inerted.push(nav);}
+    dialog?.querySelector("input")?.focus({preventScroll:true});
+    const onKeyDown=(event)=>{
+      if(event.key==="Escape"){if(dialog?.getAttribute("aria-busy")==="true")return;event.preventDefault();setCreating(false);return;}
+      if(event.key!=="Tab")return;
+      const focusable=[...(dialog?.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')??[])];
+      if(!focusable.length){event.preventDefault();return;}
+      const first=focusable[0];const last=focusable[focusable.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    };
+    window.addEventListener("keydown",onKeyDown);
+    return()=>{window.removeEventListener("keydown",onKeyDown);inerted.forEach((node)=>node.removeAttribute("inert"));createOpenerRef.current?.focus({preventScroll:true});};
+  },[creating]);
+  const openDeal=(deal)=>setDetail({title:deal.title,rows:[["Client",deal.clientName],["Owner",deal.owner],["Status",deal.status],["Next action",deal.nextAction],["Source evidence",deal.source],["Client portal",deal.portalAvailable?"Available":"Not connected"],["Last changed",formatDate(deal.updatedAt)],["Stage history",deal.history.length?deal.history.map((item)=>`${item.summary} · ${formatDate(item.createdAt)}`).join("\n"):"No recorded stage history"]],note:"This contextual record shows only durable fields returned for this tenant. Financial and lifecycle facts are omitted when they are not attributed."});
+  const openCreate=(event)=>{createOpenerRef.current=event.currentTarget;setCreateMessage("");setCreating(true);};
+  const closeCreate=()=>{setCreateMessage("");setCreating(false);};
+  const create=async()=>{if(createPending)return;setCreatePending(true);setCreateMessage("");try{const result=await data.pipelineAction({type:"create-pipeline",...newPipeline});if(result.ok){setCreating(false);setNewPipeline({name:"",description:"",starter:"blank"});return;}setCreateMessage(result.message);}finally{setCreatePending(false);}};
+  return <section className="campaigns-surface pipeline-surface"><SurfaceHead truthKey="pipeline" title="Deal workspace" description="Tenant-owned pipelines, custom stages, and contextual work records." action={<div className="pipeline-actions"><label><span className="sr-only">Pipeline</span><select value={selected?.id||""} onChange={(event)=>{setSelectedId(event.target.value);setFocusedStageId("");setConfiguring(false);}}>{workspace.pipelines.map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="btn btn-s" disabled={!workspace.canManage} onClick={openCreate}>New pipeline</button>{selected&&<button className="btn btn-s" onClick={()=>setConfiguring(!configuring)}>Configure stages</button>}</div>}/><StateFrame phase={data.phase} retry={data.retry} noun="pipeline workspace">
+    {creating&&<div ref={createDialogRef} className="pipeline-create" role="dialog" aria-modal="true" aria-labelledby="new-pipeline-title" aria-busy={createPending}><h3 id="new-pipeline-title">Create pipeline</h3><label><span>Name</span><input disabled={createPending} value={newPipeline.name} onChange={(event)=>setNewPipeline({...newPipeline,name:event.target.value})}/></label><label><span>Description</span><input disabled={createPending} value={newPipeline.description} onChange={(event)=>setNewPipeline({...newPipeline,description:event.target.value})}/></label><label><span>Starting point</span><select disabled={createPending} value={newPipeline.starter} onChange={(event)=>setNewPipeline({...newPipeline,starter:event.target.value})}><option value="blank">Blank pipeline</option><option value="simple">Simple starter stages</option></select></label>{createMessage&&<p className="pipeline-save-message" role="alert">{createMessage}</p>}<div><button className="btn btn-s" disabled={createPending} onClick={closeCreate}>Cancel</button><button className="btn btn-s btn-p" disabled={createPending||!newPipeline.name.trim()} onClick={create}>{createPending?"Creating…":"Create"}</button></div></div>}
+    {workspace.pipelines.length===0?<div className="pipeline-empty"><h2>No pipeline yet</h2><p>Create a blank pipeline or choose the optional starter stages. A campaign is one possible use, not a requirement.</p><button className="btn btn-s btn-p" disabled={!workspace.canManage} onClick={openCreate}>Create pipeline</button>{!workspace.canManage&&<p>You have read-only access. A tenant administrator can create the first pipeline.</p>}</div>:<>
+      {selected&&configuring&&<PipelineConfigPanel pipeline={selected} stages={stages} canManage={workspace.canManage} run={data.pipelineAction} onClose={()=>setConfiguring(false)}/>}
+      {selected&&activeStages.length===0?<div className="pipeline-empty"><h2>No active stages</h2><p>Add a tenant-owned stage to begin organizing work. Archived stages remain available in configuration.</p></div>:selected&&<div className="pipeline-board-wrap"><div className="pipeline-stage-focus"><label><span>Focused stage</span><select value={focusId||""} onChange={(event)=>setFocusedStageId(event.target.value)}>{activeStages.map((stage)=><option key={stage.id} value={stage.id}>{stage.label}</option>)}</select></label></div><div className="pipeline-board" style={{"--pipeline-stage-count":activeStages.length}}>{activeStages.map((stage)=><section key={stage.id} className={`pipeline-lane ${stage.id===focusId?"is-focused":""}`}><header><div><h3>{stage.label}</h3>{stage.description&&<p>{stage.description}</p>}</div></header><div className="pipeline-cards">{workspace.deals.filter((deal)=>deal.pipelineId===selected.id&&deal.stageId===stage.id).map((deal)=><button key={deal.id} className="pipeline-card" onClick={()=>openDeal(deal)}><strong>{deal.title}</strong><span>{deal.clientName}</span><small>{deal.owner}</small><small>{deal.nextAction}</small><span className="pipeline-evidence">{deal.source}</span></button>)}{!workspace.deals.some((deal)=>deal.pipelineId===selected.id&&deal.stageId===stage.id)&&<p className="pipeline-lane-empty">No work in this stage</p>}</div></section>)}</div></div>}
+      <details className="pipeline-routing"><summary>Routing, approvals, and repair evidence</summary>{data.artifacts.filter((artifact)=>artifact.type==="form").length===0?<p>No published form evidence is available. Pipelines can still be created and managed independently.</p>:<div className="campaigns-list">{data.artifacts.filter((artifact)=>artifact.type==="form").map((form)=><button className="campaigns-list-row" key={form.id} onClick={()=>setDetail({title:form.name,rows:[["Routing posture",form.routingState],["Enabled targets",form.routingTargets.length?form.routingTargets.join(", "):"None recorded"],["Durable outcome statuses",Object.keys(form.dispatchStatuses).length?Object.entries(form.dispatchStatuses).map(([status,count])=>`${status}: ${count}`).join(" · "):"No dispatch outcomes recorded"],["Repair / dead-letter",form.recentDispatches.failed?`${form.recentDispatches.failed} failed outcome${form.recentDispatches.failed===1?"":"s"} recorded`:"No failed outcome recorded"]],note:"Every recorded dispatch status is listed without collapsing its durable meaning. Routing and repair remain supporting evidence; they do not replace the deal workspace."})}><span><strong>{form.name}</strong><small>{form.routingState}</small></span><span className={`campaigns-status ${form.routingState.startsWith("Active")?"is-ready":""}`}>{form.recentDispatches.failed?"Repair needed":form.routingState}</span></button>)}</div>}</details>
+    </>}
+  </StateFrame></section>;
 }
 
 function Social() {
@@ -185,3 +256,4 @@ export const GrowthHub=()=>{
   else if(tab==="performance") body=<Performance data={data}/>;
   return <div className="solo-campaigns" data-campaigns-view={tab}><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll"><PageHead eyebrow="Campaigns" title={legacy?LEGACY[legacy].label:title} sub="Grounded campaign work and published outputs, with creative ownership kept in Vibe Studio." right={<div className="campaigns-truth-key" aria-label="Capability truth labels"><TruthTag state="LIVE"/><TruthTag state="PARTIAL"/><TruthTag state="PROPOSED"/><TruthTag state="UNAVAILABLE"/></div>}/>{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };
+

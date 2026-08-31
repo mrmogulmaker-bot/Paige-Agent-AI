@@ -1,5 +1,7 @@
 # Decision Log — chronological one-liners
 
+- **Solo Campaigns -> Pipeline Gate 1 approved (2026-08-31; draft, not live)** — owner approved the board-first interaction and ruled the immediate refinement: reduce only the page-title word "Pipeline". Locked outcome: multiple tenant-owned pipelines; campaign linkage optional, not exclusive; tenant-owned stage create/name/describe/reorder/archive/restore through a governed contract; contextual customer/deal detail; compact focused-stage behavior; routing/approval/repair secondary; six Campaigns tabs unchanged. Exact-head Gate 2 is required before merge/deploy. Authenticated durable proof remains UNVERIFIED until preview + persisted migration are available.
+
 What was decided/shipped, newest first. Backfilled from what's discoverable (GitHub PRs, dated
 CLAUDE.md rulings, doc dates). **No invented dates** — where a date isn't in the source it's omitted.
 
