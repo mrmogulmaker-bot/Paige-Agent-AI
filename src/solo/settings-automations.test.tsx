@@ -106,23 +106,25 @@ beforeEach(() => {
 });
 
 describe("Automations sub-tab routing (owned locally by Integrations)", () => {
-  it("shows the tools catalogue at the Integrations root", async () => {
+  it("shows the provider catalogue at the Integrations root", async () => {
     const { host } = await render(BASE);
     const selected = host.querySelector('[role="tab"][aria-selected="true"]');
-    expect(selected?.textContent).toContain("Your tools");
-    expect(host.textContent).toContain("Integration catalogue");
+    expect(selected?.textContent).toContain("Integrations");
+    expect(host.querySelector(".ig-grid")).toBeTruthy();
   });
 
   it("shows Automations at the automations leaf", async () => {
     const { host } = await render(`${BASE}/automations`);
     const selected = host.querySelector('[role="tab"][aria-selected="true"]');
     expect(selected?.textContent).toContain("Automations");
-    expect(host.textContent).not.toContain("Integration catalogue");
+    // The provider catalogue is not rendered underneath the Automations leaf.
+    expect(host.querySelector(".ig-grid")).toBeNull();
   });
 
   it("falls back to the catalogue for an unknown leaf, so old URLs keep working", async () => {
     const { host } = await render(`${BASE}/something-retired`);
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Your tools");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Integrations");
+    expect(host.querySelector(".ig-grid")).toBeTruthy();
   });
 });
 
