@@ -179,7 +179,11 @@ The decisive ones:
     prove it independently load-bearing, because the funding client file protects the same turn.
   - **21.v** the live token-forwarding branch. Every gate scenario resolved through the replayed
     `finalChunks`, so the branch an ordinary protected reply actually streams through had no test.
-  - **21.w** the five below-the-latch evidence sources, asserted **by name**. With all five wired,
+  - **21.w / 21.w2** the below-the-latch evidence sources, asserted **by name**. 21.w covers four
+    (CRM who-line, focused client, sender identity, activity rail); the §52 operator briefing
+    needed its own case because it is gated on a tenant-less operator and `is_platform_operator`
+    was stubbed nowhere — so it was unreachable in every check while two places claimed it was
+    covered. **21.ac** adds the tenth entry-time source, text fetched from a URL this turn. With all five wired,
     deleting any four was green — "the turn is protected" is satisfied by any one firing. The
     handler now logs every call rather than only the first so each site is provable alone.
   - **21.x** the revalidation resolver runs on the JWT client. This file's header claimed client

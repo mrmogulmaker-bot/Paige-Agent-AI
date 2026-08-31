@@ -1581,8 +1581,10 @@ JSON:`;
     //      the buffered path. NOTHING CALLED IT; deleting it left the suite green.
     //   2. "There are exactly two Knowledge retrieval sites in this handler." There were more.
     //   3. "Every source that reaches the model is read ABOVE this line … a positional property,
-    //      checkable by reading." It is not: the rolling summary, the domain identity, the
-    //      focused client, the sender identity and the activity rail are all read far below.
+    //      checkable by reading." It is not — several sources are read far below. The first
+    //      version of THIS line then listed five of them and there were seven, which is the
+    //      failure it exists to record, committed inside the record of it. Grep
+    //      `markProtectedLate(` for the real set; a list here would drift by the next commit.
     //   4. A prose enumeration under this heading that stopped at four while the code enumerated
     //      nine — and a correction sentence that said "eight" after a ninth had been added.
     //
@@ -1635,6 +1637,12 @@ JSON:`;
       //    (3); arriving as an attachment it was not. That is the §58 asymmetry this rule
       //    already removed once, reproduced on an adjacent path.
       !!(turnAttachments && turnAttachments.length) ||
+      // 10. Text fetched from a URL this turn, interpolated as `=== FETCHED URL CONTENT ===`.
+      //    Fetched with the CALLER'S auth header, so a signed storage URL for a tenant document
+      //    puts document-derived text straight into the prompt. Unambiguously "what she just
+      //    read" under the rule below, and missed by the ninth sweep because it is fetched
+      //    rather than queried.
+      !!fetchedUrlContent ||
       // 9. The request-supplied client file, up to 50,000 characters, interpolated under
       //    "=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===". On a funding tenant this is
       //    incidentally covered by (6) and `sanitizeClientContextForTier` strips the credit
@@ -1647,9 +1655,15 @@ JSON:`;
     // buffered path before any protected content can emit."
     //
     // A previous revision shipped a setter for this with NO CALL SITES, and the claim it was
-    // backing was therefore false. This one has exactly one call site, at the single point where
-    // tool output enters the model's context, and a test that fails if it is removed. If you are
-    // reading this and it again has no callers, the property is again unbacked — do not leave it.
+    // backing was therefore false. This one has real callers and tests that fail by name when
+    // they are removed. If you are reading this and it again has no callers, the property is
+    // again unbacked — do not leave it.
+    //
+    // §13 — this sentence used to say "exactly one call site, at the single point where tool
+    // output enters the model's context." That was true when written and false one commit later,
+    // when the below-the-latch sources were wired — and it sat forty-eight lines above another
+    // comment saying "one caller among several." A reviewer found both. Hence no count here:
+    // grep for the callers, they cannot drift.
     let lateRetrievalProtected = false;
     // Read through this, never off the entry value, so a tool round that lands mid-turn is seen
     // by the emitter and the revalidation guard alike.
@@ -1914,9 +1928,15 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
         + buildBrandSection(brand, tenant);
     }
 
-    // Tenant domain identity is platform configuration, not conversational
-    // memory. Read the ONE canonical RPC used by Paige, MCP, onboarding, and
-    // settings; never reconstruct hostname/email semantics in this function.
+    // Read the ONE canonical RPC used by Paige, MCP, onboarding, and settings; never
+    // reconstruct hostname/email semantics in this function.
+    //
+    // §13 — this used to open "Tenant domain identity is platform configuration, not
+    // conversational memory", twenty lines above a comment classifying it as evidence and
+    // marking it protected. Both cannot be right. The read decides: this is fetched per turn
+    // from the tenant's own record, so under the rule at `markProtectedLate` it is evidence.
+    // "Configuration" there meant it is not chat history — a different axis, and the word
+    // collided with the one the protection rule uses.
     let tenantDomainContext = "";
     if (personaCtx.tenant_id) {
       try {

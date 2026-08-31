@@ -282,6 +282,11 @@ globalThis.fetch = async (url, init) => {
     }
     return anthropicStream(next);
   }
+  if (href.endsWith("/functions/v1/fetch-url-content")) {
+    return new Response(JSON.stringify({ success: true, url: "https://example.test/doc", content: "PRIVATE-FETCHEDURL-MARKER page body" }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
   if (href.endsWith("/functions/v1/sync-credit-report-data")) {
     // Throwing HERE is what reaches the helper's catch block. Throwing from the provider does
     // NOT: `gatewayCompat` catches its own transport errors and returns a non-ok response, so
@@ -308,7 +313,7 @@ const handler = capturedHandler();
  * ordered so its FIRST row is NOT the active tenant. That is the whole trap: a correct
  * handler must ignore this ordering entirely.
  */
-async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false }) {
+async function drive({ personaTenant, personaSequence = null, memberships, kbRejects = false, ragHits = false, bodyExtras = {}, noAuth = false, unauthenticated = false, chunkTitle = "PRIVATE-CHUNKTITLE-MARKER", chunkContent = "x", provider = ["text"], rpcExtras = {}, tableExtras = {}, fundingEnabled = false, throwOnSync = false, userMessage = "what does my onboarding process look like?" }) {
   const logged = [];
   syncThrows = throwOnSync;
   resetEmbeds();
@@ -331,6 +336,10 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
       check_rate_limit: { data: true, error: null },
       get_paige_persona_context: () => {
         const state = personaStates[Math.min(personaCall++, personaStates.length - 1)];
+        // A FUNCTION IS A THROWER, not a tenant id. Without this the function fell through and
+        // became `tenant_id: <function>`, so "a resolver that throws" was actually testing a
+        // degenerate tenant id — it passed, for a reason other than the one it named.
+        if (typeof state === "function") return state();
         if (state && typeof state === "object" && "error" in state) return state;
         // A TENANT-LESS OPERATOR GETS NO ROW, NOT A ROW OF NULLS. The real resolver
         // (migration 20260805130000, lines 80-82) executes a bare `RETURN` when the tenant is
@@ -378,7 +387,7 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
         // `bodyExtras` is how a check smuggles a tenant identifier in through the REQUEST —
         // the one thing server-derived scope must never honour.
         body: JSON.stringify({
-          messages: [{ role: "user", content: "what does my onboarding process look like?" }],
+          messages: [{ role: "user", content: userMessage }],
           ...bodyExtras,
         }),
       }),
@@ -2613,11 +2622,15 @@ group("safety-first streaming: the sources the first enumeration missed");
     streamAtGate.responseText.slice(0, 400),
   );
 
-  // 21.w — THE ACTIVITY RAIL, standing in for the five below-the-latch EVIDENCE sources wired at
-  // once: the operator briefing, the CRM who-line, the focused client's name, the workspace
-  // sending identity, and this. The previous commit NAMED seven such sources in its own message
-  // and wired exactly one — so the mechanism was right and the sweep was not, which is the same
-  // half-finished shape five enumerations before it had.
+  // 21.w — FOUR of the below-the-latch EVIDENCE sources, each asserted by name below: the CRM
+  // who-line, the focused client's name, the workspace sending identity, and the activity rail.
+  //
+  // §13 — this comment used to say FIVE and name the operator briefing among them, while the
+  // assertion list held four. `is_platform_operator` was stubbed nowhere in this file, so that
+  // briefing was unreachable in every check and deleting its mark was free. Claiming coverage in
+  // a comment while the assertion list says otherwise is the sixth incomplete enumeration, and
+  // it was inside the test written to end them. The briefing now has its own case, 21.w2,
+  // driven tenant-less because that is the only shape that reaches it.
   //
   // The rail is chosen because it is the richest: up to fifteen activity titles for one named
   // client, read from storage. It also proves the general setter works from a call site far from
@@ -2635,15 +2648,15 @@ group("safety-first streaming: the sources the first enumeration missed");
       // resolution even runs.
       current_user_tenant_id: { data: CHILD, error: null },
       is_platform_owner: { data: false, error: null },
-      tenant_sender_identity: { data: [{ from_name: "Ada Coaching", from_address: "hello@ada.test" }], error: null },
+      tenant_sender_identity: { data: [{ from_name: "PRIVATE-SENDER-MARKER Coaching", from_address: "private-sender-marker@ada.test" }], error: null },
       // The rail arrives through an RPC, not a table read.
       get_client_rail: { data: [{ event_kind: "note.added", title: "PRIVATE-RAIL-MARKER call notes", occurred_at: new Date().toISOString() }], error: null },
     },
     tableExtras: {
       user_roles: () => [{ role: "admin" }],
-      clients: () => [{ id: RAIL_CLIENT, tenant_id: CHILD, linked_user_id: USER, first_name: "Ada", last_name: "L" }],
+      clients: () => [{ id: RAIL_CLIENT, tenant_id: CHILD, linked_user_id: USER, first_name: "PRIVATE-CLIENTNAME-MARKER", last_name: "Lovelace" }],
       // The operator's own name; without it `whoLine` is empty and that site never fires.
-      profiles: () => [{ active_tenant_id: CHILD, first_name: "Sam", last_name: "Rivera", full_name: "Sam Rivera" }],
+      profiles: () => [{ active_tenant_id: CHILD, first_name: "PRIVATE-OPERATORNAME-MARKER", last_name: "Rivera", full_name: "PRIVATE-OPERATORNAME-MARKER Rivera" }],
     },
   };
   const railClean = await drive({
@@ -2681,6 +2694,16 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.w a failed final check withholds the reply on a client-scoped turn",
     !railAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
     railAtGate.responseText.slice(0, 300),
+  );
+  // AND IT RUNS THE CLASSIFIER. This case had exactly one at-gate assertion — a substring search
+  // for the reply marker — so it never invoked `nonNeutralFrames` at all. A MARKED rail title
+  // riding a live neutral frame passed the whole suite: the derived-marker mechanism only
+  // protects the drives that actually call it, which is hand-maintained coverage one layer down
+  // from the hand-maintained token list it replaced.
+  assert(
+    "21.w ...and no non-neutral frame survives",
+    nonNeutralFrames(railAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(railAtGate.responseText)).slice(0, 300),
   );
 
   // 21.x — THE REVALIDATION RESOLVER MUST RUN ON THE JWT CLIENT. This file's own header claims
@@ -2747,6 +2770,154 @@ group("safety-first streaming: the sources the first enumeration missed");
     "21.y ...so a failed final check withholds the reply it grounded",
     !dedupAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
     dedupAtGate.responseText.slice(0, 300),
+  );
+
+  // 21.w2 — THE §52 OPERATOR BRIEFING, which 21.w's own comment and the README both claimed it
+  // covered. It did not: `is_platform_operator` was never stubbed anywhere in this file, so
+  // `loadOwnerContextBlock` was unreachable in all 320 checks and deleting its mark was free.
+  // That is the sixth incomplete enumeration, and it was inside the test written to end them.
+  //
+  // The briefing carries `paige_owner_memory` rows and live platform metrics — read per turn,
+  // for the operator, and reachable in production even though nothing here reached it.
+  const briefingOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    rpcExtras: { is_platform_operator: { data: true, error: null } },
+    tableExtras: {
+      paige_owner_memory: () => [{
+        memory_type: "priority", title: "Q3 focus",
+        content: "PRIVATE-OWNERMEM-MARKER — ship the isolation work.",
+        created_at: new Date().toISOString(),
+      }],
+    },
+  };
+  // TENANT-LESS, because the briefing is gated on `personaCtx.tenant_id == null` — it is the
+  // operator's surface. That also makes it the ONLY protected source on the turn: a tenant-less
+  // caller retrieves no Knowledge, so nothing else can be doing the work.
+  const briefClean = await drive({
+    personaTenant: null, personaSequence: [null], memberships: [], ...briefingOpts,
+  });
+  const briefReasons = briefClean.logged
+    .filter((l) => /protected evidence reached the model/.test(l.msg))
+    .map((l) => (l.msg.match(/"reason":"([^"]+)"/) ?? [])[1]).filter(Boolean);
+  assert(
+    "21.w2 CONTROL — the operator briefing is actually reached on an operator turn",
+    briefReasons.includes("operator_context_block"),
+    `saw: ${briefReasons.join(", ") || "(none)"}`,
+  );
+  const briefTotal = personaCallsOf(briefClean);
+  assert(
+    "21.w2 an operator-briefing turn is protected",
+    briefTotal >= 2,
+    `persona calls: ${briefTotal}`,
+  );
+  const briefAtGate = await drive({
+    personaTenant: null,
+    personaSequence: Array(Math.max(briefTotal - 1, 1)).fill(null).concat([AGENCY]),
+    memberships: [AGENCY],
+    ...briefingOpts,
+  });
+  assert(
+    "21.w2 a failed final check withholds the operator-briefing reply",
+    !briefAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    briefAtGate.responseText.slice(0, 300),
+  );
+  assert(
+    "21.w2 ...and no non-neutral frame survives",
+    nonNeutralFrames(briefAtGate.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(briefAtGate.responseText)).slice(0, 300),
+  );
+
+  // 21.aa — THE AGENTIC PATH'S TRANSCRIPT WRITE. Group 19 asserts `paige_chat_turn_append` on the
+  // DOCUMENT path, with the comment "withholding a reply from the wire while saving it to the
+  // database is not a refusal" — and the agentic twin of that property had zero assertions. The
+  // code is correct; a two-line probe caught what 320 checks did not, which is the whole reason
+  // this round exists. Correct-but-unmeasured is the standard thirteen rounds have turned on.
+  const AGENTIC_THREAD = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const persistOpts = {
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER",
+    provider: ["private-text"],
+    bodyExtras: { threadId: AGENTIC_THREAD },
+    tableExtras: { paige_chat_threads: () => [{ summary: null, studio_session_id: null }] },
+  };
+  const assistantAppends = (r) => r.rec.rpc.filter(
+    (c) => c.name === "paige_chat_turn_append" && c.args?.p_role === "assistant");
+  const persistClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...persistOpts,
+  });
+  assert(
+    "21.aa CONTROL — a clean agentic turn DOES persist its assistant reply",
+    assistantAppends(persistClean).length > 0,
+    JSON.stringify(persistClean.rec.rpc.map((c) => c.name)),
+  );
+  const persistTotal = personaCallsOf(persistClean);
+  const persistAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(persistTotal - 1).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...persistOpts,
+  });
+  assert(
+    "21.aa a refused agentic turn persists NO assistant reply to the thread",
+    assistantAppends(persistAtGate).length === 0,
+    JSON.stringify(assistantAppends(persistAtGate).map((c) => c.args?.p_content ?? "").join(" ").slice(0, 200)),
+  );
+
+  // 21.ab — A RESOLVER THAT THROWS, not one that returns an error. Every scenario drove
+  // `{ data: null, error }`; a rejected `rpc()` — transport failure, a PostgREST 5xx — took the
+  // catch, and nothing held that branch closed. The file claims "missing, changed, malformed, or
+  // revoked scope fails closed before model egress"; a throw is "missing" and was untested.
+  const thrower = () => { throw new Error("simulated resolver transport failure"); };
+  const thrown = await drive({
+    personaTenant: CHILD,
+    personaSequence: [CHILD, thrower],
+    memberships: [CHILD],
+    chunkContent: "PRIVATE-KB-SOURCE-MARKER", provider: ["private-text"],
+  });
+  assert(
+    "21.ab a resolver that THROWS fails closed, like one that errors",
+    !thrown.responseText.includes("CHILD-PRIVATE-MARKER"),
+    thrown.responseText.slice(0, 300),
+  );
+  assert(
+    "21.ab ...and no non-neutral frame survives",
+    nonNeutralFrames(thrown.responseText).length === 0,
+    JSON.stringify(nonNeutralFrames(thrown.responseText)).slice(0, 300),
+  );
+
+  // 21.ac — TEXT FETCHED FROM A URL THIS TURN. The tenth entry-time source, missed by nine
+  // sweeps because it is FETCHED rather than queried — and fetched with the CALLER'S auth
+  // header, so a signed storage URL for a tenant document puts document-derived text straight
+  // into the prompt.
+  const urlOpts = {
+    kbRejects: true,
+    provider: ["private-text"],
+    userMessage: "summarise https://example.test/doc for me",
+  };
+  const urlClean = await drive({
+    personaTenant: CHILD, personaSequence: [CHILD], memberships: [CHILD], ...urlOpts,
+  });
+  assert(
+    "21.ac CONTROL — the fetched page body really did reach the model prompt",
+    urlClean.providerCalls.some((c) => JSON.stringify(c).includes("PRIVATE-FETCHEDURL-MARKER")),
+    JSON.stringify(urlClean.providerCalls).slice(0, 200),
+  );
+  const urlTotal = personaCallsOf(urlClean);
+  assert(
+    "21.ac CONTROL — and such a turn is protected",
+    urlTotal >= 2,
+    `persona calls: ${urlTotal}`,
+  );
+  const urlAtGate = await drive({
+    personaTenant: CHILD,
+    personaSequence: Array(Math.max(urlTotal - 1, 1)).fill(CHILD).concat([AGENCY]),
+    memberships: [CHILD, AGENCY],
+    ...urlOpts,
+  });
+  assert(
+    "21.ac a failed final check withholds a reply grounded in fetched URL text",
+    !urlAtGate.responseText.includes("CHILD-PRIVATE-MARKER"),
+    urlAtGate.responseText.slice(0, 300),
   );
 }
 
