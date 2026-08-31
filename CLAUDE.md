@@ -2523,3 +2523,116 @@ landed), §5 (compliance officer — the enforcer), §39 (peer-gate — the audi
 the source, never from memory — what stale docs break), §51/§56/§61 (the matrix's existing consumers).
 *Forward-reference:* an SDLC close-out phase is intended to carry this too; the SDLC section is not on
 `main` yet, so no §-number is asserted for it here.
+
+## 70. Never build something the owner cannot USE on his own platform.
+
+> **OWNER-RULED 2026-08-31.** *"I don't want you to EVER design and build something I cannot use
+> myself on my own platform. Do I make myself clear?"* Binding immediately.
+
+**The deliverable is a human completing a task on the live platform — never a code path that
+exists.** A wired handler, a passing unit test, a green build, a rendered screenshot and a
+"structurally correct" reading are all evidence ABOUT the code. None of them is evidence that the
+owner, or a tenant, can sit down and get the job done. When those two disagree, the person who
+cannot use the surface is right and the audit is wrong.
+
+- **"The code is wired, therefore it works" is the same lie as "it compiled, therefore it runs"**
+  (§32), wearing different clothes. §32 caught the build/runtime gap; §70 catches the
+  runtime/USABILITY gap — the surface renders, the handler fires, and a human still cannot finish.
+- **Never report a capability as shipped on the strength of reading the source.** Reading
+  `onChange={set("type", …)}` proves a handler is bound. It proves nothing about whether a person
+  can find that control, understand it, change it, save it, and see the result persist. Prove the
+  ACT, not the wiring.
+- **Proof is the human flow, driven end to end** — first use from a genuinely empty state, the
+  central action, save and re-read, permission refusal, failure and retry, abandonment, and the
+  account switch. A seeded fixture or a mocked success is not proof that a human can complete the
+  flow; it is proof that a double behaved as instructed.
+- **An audit that concludes "mostly already delivered" is a claim requiring MORE proof than a
+  build, not less.** If the owner says he cannot use it and the reading says he can, reproduce
+  before arguing. The reading is the hypothesis; the owner is the measurement.
+- **Unavailable is a per-ITEM verdict, never a per-SURFACE excuse.** One genuinely missing backend
+  contract makes THAT item honestly unavailable with a reason and a recovery path. It never
+  licenses leaving the rest of the experience read-only, static, or "explained" instead of built.
+- **The test, every time:** *"Can the owner open this on his own platform and finish the job —
+  create it, change it, save it, and see it hold — or have I only proven that the code for it
+  exists?"* If it is the second, it is not done, whatever the suite says.
+
+**Anchoring case (2026-08-31, this section's origin).** Told to make Solo Settings → Connections →
+Calendars genuinely usable, CC audited the source, found every required flow bound to a real write
+with tests, and reported the assignment ~90% pre-delivered — offering options instead of building.
+The owner's answer was that he cannot use it on his own platform. Grep proved handlers existed; it
+never proved a human could complete a single flow. The audit was the artifact of the failure, not a
+finding about it.
+
+**Cross-references:** §32 (a green build is not a working render — the parent rule), §13 (honest
+reporting), §31 (never shortchange the request), §36 (intuitiveness — discoverable in five minutes),
+§58 (a shipped capability is never silently removed), §00 (CD owns how it looks; whether a human can
+FINISH is correctness, and that is CC's).
+
+### §70.1 — THE USER-USABILITY GATE (acceptance + release gate, every Paige task)
+
+> **OWNER-RULED 2026-08-31.** Non-negotiable. This is the operational checklist form of §70,
+> and it lives here rather than in a session note because a gate stated in chat evaporates on
+> the next context reset — which is precisely how the failures above kept recurring.
+
+**A Paige feature is NOT complete because code compiles, a screen renders, fixtures display, a
+prototype is interactive, or automated tests pass.** For every capability presented as supported,
+prove the owner can personally complete it through the REAL product UI against the REAL durable
+contract on their own authenticated account:
+
+- [ ] **Begin from the actual first-use / empty state** — not a seeded record.
+- [ ] **Create or configure** the supported object.
+- [ ] **Edit it and save it.**
+- [ ] **Reload or revisit, and confirm the durable result** — the value survived, not just the toast.
+- [ ] **Exercise permission, failure/retry, abandonment, and account-switch** paths.
+- [ ] **Distinguish AUTHENTICATED proof** from preview, fixture, mock, or structural-harness evidence.
+
+**None of these count as delivered:** a mocked save · a seeded record · local-only state that dies
+on reload · a static readiness card · a disabled "coming soon" control · or UI that *describes* a
+capability without allowing its supported human flow.
+
+**When a contract genuinely does not exist**, mark THAT EXACT capability honestly unavailable with
+its reason and its recovery path — then keep delivering every other supported flow. An unavailable
+dependency is never a licence to leave a whole surface static or read-only.
+
+**Release rule.** No PR may be called feature-complete, or put forward for Gate 2, until this gate
+is met — or until its remaining gaps are explicitly reported as `UNVERIFIED` / `UNAVAILABLE` and
+EXCLUDED from the claimed deliverable. "Tests pass" is not this gate. "It renders" is not this gate.
+The gate is a person finishing the job.
+
+**Evidence must be separated by class, every time:** automated test · static/build · structural or
+harness render · **authenticated runtime on the real platform** · `UNVERIFIED` with its reason. A
+harness drive against an in-memory double is the third class and must never be reported as the
+fourth.
+
+### §70.2 — THE OWNER-INTENT GATE (runs BEFORE planning, editing, or declaring done)
+
+> **OWNER-RULED 2026-08-31.** Mandatory. Sits in front of §70.1: §70.2 asks *what outcome was
+> asked for*, §70.1 asks *can a human actually reach it*.
+
+**Before planning, editing, or declaring a flow complete**, identify the current owner's INTENDED
+USABLE OUTCOME from their active instruction and their approved decisions. Carry that outcome
+through the flow contract, and compare it against the **actual rendered or executed result** before
+calling anything complete.
+
+**Nothing below overrides that intent:** a green test suite · a fixture · a prototype · a static
+status view · a PRIOR AGENT'S REPORT · or existing runtime behaviour. Each is evidence about the
+system; none is evidence that the owner got what they asked for. Existing behaviour is especially
+treacherous — it is the thing being complained about, so "it already works this way" is a
+description of the defect, not a defence against it.
+
+**Never report a capability as delivered** unless the supported human or system flow the owner
+asked for actually works through its durable contract.
+
+**When product evidence conflicts with the intended outcome:** preserve safety and authority
+boundaries, name the EXACT missing contract, and complete every proven usable part. Do not
+substitute a static representation for a usable feature, and do not let one missing contract
+justify leaving the rest of the surface inert (§70.1).
+
+**The test, every time:** *"What did the owner actually ask to be able to DO — and does the thing
+in front of me now do it? Or am I about to hand back an artifact that describes it?"*
+
+**Anchoring case (2026-08-31).** Asked to make Calendars usable, CC read the source, found every
+flow bound to a real write with tests, and reported the work ~90% pre-delivered. The owner's
+intended outcome — *I can use this on my own platform* — was never checked against a rendered
+result. Driven, four flows failed, including a save that reports "Saved." and discards the write.
+The prior report was the artifact of the miss, not a finding about it.
