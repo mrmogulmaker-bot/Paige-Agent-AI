@@ -624,6 +624,15 @@ BEGIN
     -- All four, because a pointer list that names three of the four surfaces carrying
     -- the claim leaves the fourth reading as the unqualified original — which is what
     -- the master doc did until a review found it.
+    --
+    -- AND THEN THE SAME MISS, ONE FILE OVER, IN THE COMMIT THAT WROTE THAT SENTENCE.
+    -- The evaluation-order phrasing ("short-circuits before reading the column") lived
+    -- in FIVE editable places, not four: the two comments in this file, the tier
+    -- matrix, the master doc, and docs/brain/comms-capability-map.md — which was left
+    -- unfixed while the message claimed every editable surface was done and that the
+    -- only remainder was inside 20261004060000. It is fixed now. For the record, that
+    -- recorded migration carries the phrasing TWICE (lines 16 and 81), and neither is
+    -- edited, because a recorded migration is never edited — comment or not.
     UPDATE public.tenant_a2p_registrations SET tenant_id = tA WHERE tenant_id = tD;
     allowed := true;
   EXCEPTION WHEN OTHERS THEN

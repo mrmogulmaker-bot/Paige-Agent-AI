@@ -84,8 +84,11 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   unalterable). `updated_at` is written by its own BEFORE trigger, which fires
   after the guard, so it is not restated. **`tenant_id` WAS delegated to the update policy's
   `WITH CHECK` on the same reasoning, and that reasoning was wrong** — the policy is
-  `is_platform_owner() OR (tenant_id = current_user_tenant_id() AND …)`, whose first branch
-  short-circuits before reading the column, and a platform operator over PostgREST runs as
+  `is_platform_owner() OR (tenant_id = current_user_tenant_id() AND …)`, which is TRUE for an
+  operator whatever the column holds — so the tenant_id test can never refuse their write. (That
+  is the disjunction's truth value. An earlier revision of this line said the first branch
+  "short-circuits before reading the column", which asserts an evaluation order PostgreSQL does
+  not guarantee; the conclusion never needed one.) A platform operator over PostgREST runs as
   `authenticated` and is therefore a direct caller by this guard's own definition. A review
   measured an operator both NULLing and reassigning it (the reassign onto a tenant with no
   registration of its own — onto an occupied one a unique constraint refuses it first, so the

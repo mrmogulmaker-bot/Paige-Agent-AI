@@ -66,25 +66,41 @@
 # The ordering skew is a THIRD outcome, distinct from both: both sessions ran, and
 # they raced the other way round. It is named as that rather than as either.
 #
-# MUTATION-TESTED, on a real cluster, seven runs. Not "reviewed and believed":
+# MUTATION-TESTED, on a real cluster, TEN runs. Not "reviewed and believed":
 #
 #   baseline, nothing mutated ............ PASSED
 #   A's UPDATE broken .................... INCONCLUSIVE, names A
 #   B's RPC name broken .................. INCONCLUSIVE, names B
 #   T1's RPC name broken ................. INCONCLUSIVE, names T1
 #   T2's RPC name broken ................. INCONCLUSIVE, names T2
+#   D2's verification READ broken ........ INCONCLUSIVE, names the READ
+#   D3's verification READ broken ........ INCONCLUSIVE, names the READ
+#   a second alternate on T2's mark ...... PASSED (the extension point is safe)
 #   pg_advisory_xact_lock deleted ........ D3 FAILED, "a real finding"
-#   a2p_registration_is_immutable := false  D2 FAILED, "a real finding"
+#   a2p_registration_is_immutable := false  D2 FAILED, "a real guard/lock finding"
 #
 # The last two are what stop this being a machine for reporting INCONCLUSIVE: the
 # guards it exists to pin are removed for real, all four sessions run clean, and it
 # names the defect rather than a dead session.
 #
-# THE FIRST DRAFT OF THIS MATRIX FAILED THAT SEVENTH RUN, and the failure is worth
-# keeping because it is the same shape as the four it was written to end: B's mark
-# was REGISTRATION_IMMUTABLE, which is ALSO B's assertion, so deleting the guard
-# produced a healthy B that printed no such string and was reported as dead. See
-# the mark helpers below for what a mark must not be.
+# FOUR OF THOSE ROWS EXIST BECAUSE A DRAFT OF THIS FILE FAILED THEM, and each
+# failure was the same shape as the four it was written to end:
+#
+#   · B's mark was REGISTRATION_IMMUTABLE, which is ALSO B's assertion, so
+#     deleting the guard produced a healthy B that printed no such string and was
+#     reported as dead. A mark may never be the outcome it gates.
+#   · The verification READS discarded stderr and rc, so a broken column name in
+#     one — with all four sessions healthy — printed "this is a real guard/lock
+#     finding". The defect had simply moved one layer out, from the sessions to
+#     the reads that judge them.
+#   · The first repair for that was `final=$(read_or_die …)`. `exit` inside a
+#     command substitution ends the SUBSHELL: the run would have carried on with
+#     an empty value and printed the finding anyway. It sets a global instead.
+#   · Feeding the SQL by `-f` (to kill a second shell expansion) made psql
+#     continue past an error, so A's post-COMMIT token printed for a transaction
+#     that had rolled back. ON_ERROR_STOP is why that row passes now.
+#
+# Every one of those was caught by RUNNING the matrix, not by reading it.
 # =============================================================================
 set -uo pipefail
 BASE="${1:?usage: a2p-concurrency-proof.sh <cluster-base> <pgbin> <unix-user>}"
@@ -94,7 +110,11 @@ LAUNCH_GAP=1          # the gap between a pair's two launches. THIS is what deci
                       # which session reaches the lock first — HOLD_SECONDS governs
                       # only how long the winner then holds it.
 
-TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
+# 0755, because the sessions run as $USER_NAME and read their SQL from here.
+# mktemp -d gives 0700 owned by root, which every session would fail to read —
+# and it would fail as "could not open file", i.e. as a dead session, which the
+# ran-marks would correctly report but which is a self-inflicted INCONCLUSIVE.
+TMPD="$(mktemp -d)"; chmod 755 "$TMPD"; trap 'rm -rf "$TMPD"' EXIT
 psql_as() { su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A $*"; }
 
 # ── the session matrix ───────────────────────────────────────────────────────
@@ -104,14 +124,34 @@ declare -A S_PID S_RC S_OUT S_MARK_KIND S_MARK_WANT S_MARK_GOT S_MARK_OK S_LABEL
 #   Captures stdout+stderr for EVERY session, backgrounded or not. The previous
 #   revisions sent background sessions to /dev/null, which is precisely how a dead
 #   one became invisible.
+# THE SQL GOES IN ON STDIN, NOT THROUGH A SECOND SHELL.
+#
+# It used to be interpolated into the string handed to `su -c`, which `sh` then
+# re-parses — two rounds of expansion. Measured: `select $$dollar-quoted$$` came
+# back as `select 31451dollar-quoted31451`, the PID substituted into the SQL. The
+# four sessions here are `$`-free after bash's own pass so nothing was wrong, but
+# this file's whole thesis is that adding a session is JUST ADDING A ROW, and a
+# future row using dollar-quoting, a backtick or a backslash would corrupt in
+# silence rather than error. Writing to a file and feeding `-f` removes the second
+# hop entirely — and it lets the SQL below be written plainly, with no \\\" ladder.
 start_session() {
   local n="$1" label="$2" mode="$3" sql="$4"
   S_LABEL[$n]="$label"
+  printf '%s\n' "$sql" > "$TMPD/$n.sql"
+  chmod 644 "$TMPD/$n.sql"
+  # ON_ERROR_STOP IS LOAD-BEARING, and the mutation matrix proved it. `-f` feeds
+  # statements one at a time and psql CONTINUES past an error by default — so a
+  # broken UPDATE inside A's transaction aborted the transaction, the COMMIT
+  # rolled it back, and the token AFTER the commit still printed. A's ran-mark
+  # went green on a session that did nothing, and the run reported a guard
+  # finding. The old single `-c` string aborted the whole thing for free; `-f`
+  # has to be told.
+  local PSQL="$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -v ON_ERROR_STOP=1 -f $TMPD/$n.sql"
   if [ "$mode" = bg ]; then
-    su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c \"$sql\"" >"$TMPD/$n.out" 2>&1 &
+    su "$USER_NAME" -c "$PSQL" >"$TMPD/$n.out" 2>&1 &
     S_PID[$n]=$!
   else
-    su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c \"$sql\"" >"$TMPD/$n.out" 2>&1
+    su "$USER_NAME" -c "$PSQL" >"$TMPD/$n.out" 2>&1
     S_RC[$n]=$?
     S_OUT[$n]="$(cat "$TMPD/$n.out")"
   fi
@@ -139,15 +179,47 @@ reap_session() {   # <name> — for backgrounded sessions only
 #
 # mark_output <name> <alt> [alt…]      — the session's OWN output contains one of them
 # mark_query  <name> <sql> <alt> [alt…] — the session's OWN effect is in the row
-_mark_join() { local IFS=" | "; echo "$*"; }
+# `$*` joins on the FIRST CHARACTER of IFS, not the whole string, so `IFS=" | "`
+# rendered `want 'A "B"'` — two alternates looking like one value. Joined by hand.
+_mark_join() { local out="" w; for w in "$@"; do out="${out:+$out | }$w"; done; echo "$out"; }
 mark_output() { local n="$1"; shift; S_MARK_KIND[$n]=output; S_MARK_WANT[$n]="$(_mark_join "$@")"
   S_MARK_GOT[$n]="(absent)"; S_MARK_OK[$n]=f
   local w; for w in "$@"; do
     case "${S_OUT[$n]}" in *"$w"*) S_MARK_GOT[$n]="$w"; S_MARK_OK[$n]=t; return;; esac
   done; }
 mark_query()  { local n="$1" q="$2"; shift 2; S_MARK_KIND[$n]=query; S_MARK_WANT[$n]="$(_mark_join "$@")"
-  S_MARK_GOT[$n]="$(psql_as -c "\"$q\"" 2>/dev/null | tr -d ' ')"; S_MARK_OK[$n]=f
+  read_into "mark for ${S_LABEL[$n]}" "$q"; S_MARK_GOT[$n]="$READ_VAL"; S_MARK_OK[$n]=f
   local w; for w in "$@"; do [ "${S_MARK_GOT[$n]}" = "$w" ] && { S_MARK_OK[$n]=t; return; }; done; }
+
+# A VERIFICATION READ IS A SESSION TOO, AND IT WAS THE LAST PLACE THIS HID.
+#
+# `final`, `race` and every mark_query send stderr to /dev/null and drop rc. A
+# review broke one column name in each, left all four sessions healthy, and got
+# "D2 CONCURRENCY PROOF FAILED — this is a real guard/lock finding" and "a
+# concurrent first save destroyed reviewed copy" — the exact shape the last five
+# rounds chased, relocated from the sessions to the reads that judge them, and now
+# stated with MORE confidence because the marks vouch for the sessions.
+#
+# So a read that fails is INCONCLUSIVE, never a finding, and it says what broke.
+# IT SETS A GLOBAL AND IS NEVER CALLED IN $( ). That is not style — the first
+# draft of this repair WAS `final=$(read_or_die …)`, and `exit` inside a command
+# substitution ends the SUBSHELL, not the script: a failed read would have set
+# `final` to empty and the run would have carried on to print the very
+# guard-finding this exists to stop. Measured before it shipped. psql exits 1 on a
+# bad column with or without ON_ERROR_STOP, so rc is the discriminator here.
+READ_VAL=""
+read_into() {   # <label> <sql>  → sets READ_VAL, or exits 1 as INCONCLUSIVE
+  local label="$1" sql="$2" out rc
+  out="$(psql_as -c "\"$sql\"" 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "  !! INCONCLUSIVE — the verification read '$label' failed (rc=$rc)."
+    echo "     This is the READ, not the guard. Every assertion that consumes it"
+    echo "     would otherwise read exactly like the defect under test."
+    printf '%s\n' "$out" | sed 's/^/       /' | head -10
+    exit 1
+  fi
+  READ_VAL="$(printf '%s' "$out" | tr -d ' ')"
+}
 
 # Every registered session must prove it ran BEFORE any outcome is judged.
 # Prints the session's real output, which is what actually names the cause.
@@ -160,7 +232,7 @@ require_ran() {
       echo "     Every assertion below describes state this session was supposed to create,"
       echo "     so a dead session reads exactly like the defect being tested. It is NOT that."
       echo "     Its own output was:"
-      printf '       %s\n' "${S_OUT[$n]:-(no output)}" | head -20
+      printf '%s\n' "${S_OUT[$n]:-(no output)}" | sed 's/^/       /' | head -20
       exit 1
     fi
   done
@@ -208,9 +280,11 @@ sleep "$LAUNCH_GAP"
 
 B_START=$(date +%s%N)
 start_session B "B (racing draft save)" fg "
+  begin;
   set local role authenticated;
   select set_config('request.jwt.claims', json_build_object('sub','$USR','role','authenticated')::text, true);
-  select public.tenant_a2p_registration_save_draft('re-draft','Should never land.','[\\\"x\\\",\\\"y\\\"]'::jsonb, null, null);
+  select public.tenant_a2p_registration_save_draft('re-draft','Should never land.','[\"x\",\"y\"]'::jsonb, null, null);
+  commit;
 "
 B_END=$(date +%s%N)
 reap_session A
@@ -231,7 +305,8 @@ mark_output B "REGISTRATION_IMMUTABLE" '"prepared"'
 
 blocked=f; [ "$B_MS" -ge $(( (HOLD_SECONDS - 1) * 1000 )) ] && blocked=t
 refused=f; case "${S_OUT[B]}" in *REGISTRATION_IMMUTABLE*) refused=t;; esac
-final=$(psql_as -c "\"select status||'/'||coalesce(use_case,'')||'/'||coalesce(brand_sid,'') from public.tenant_a2p_registrations where tenant_id='$TEN'\"" 2>/dev/null | tr -d ' ')
+read_into "D2 final row" "select status||'/'||coalesce(use_case,'')||'/'||coalesce(brand_sid,'') from public.tenant_a2p_registrations where tenant_id='$TEN'"
+final="$READ_VAL"
 
 psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN';
              delete from public.tenant_legal_profile where tenant_id='$TEN';
@@ -298,7 +373,7 @@ start_session T1 "T1 (first writer)" bg "
   begin;
   select set_config('role','authenticated',true);
   select set_config('request.jwt.claims', json_build_object('sub','$USR2','role','authenticated')::text, true);
-  select public.tenant_a2p_registration_save_draft('race one','First writer.','[\\\"a\\\",\\\"b\\\"]'::jsonb,
+  select public.tenant_a2p_registration_save_draft('race one','First writer.','[\"a\",\"b\"]'::jsonb,
            'FLOW ONE', null, 'OPTIN ONE', 'STOP ONE', 'HELP ONE');
   select pg_sleep($HOLD_SECONDS);
   commit;
@@ -307,16 +382,17 @@ sleep "$LAUNCH_GAP"
 
 # T2: a concurrent first save that mentions NO optional field. Absent must PRESERVE.
 start_session T2 "T2 (racing first save)" fg "
+  begin;
   select set_config('role','authenticated',true);
   select set_config('request.jwt.claims', json_build_object('sub','$USR2','role','authenticated')::text, true);
-  select public.tenant_a2p_registration_save_draft('race two','Second writer.','[\\\"c\\\",\\\"d\\\"]'::jsonb,
+  select public.tenant_a2p_registration_save_draft('race two','Second writer.','[\"c\",\"d\"]'::jsonb,
            null, null, null, null, null);
+  commit;
 "
 reap_session T1
 
-race=$(psql_as -c "\"select coalesce(optin_flow,'(null)')||'/'||coalesce(optin_message,'(null)')||'/'||
-                          coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)')
-                     from public.tenant_a2p_registrations where tenant_id='$TEN2'\"" 2>/dev/null | tr -d ' ')
+read_into "D3 preserved-copy row" "select coalesce(optin_flow,'(null)')||'/'||coalesce(optin_message,'(null)')||'/'||coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)') from public.tenant_a2p_registrations where tenant_id='$TEN2'"
+race="$READ_VAL"
 
 # T1's mark is its own payload; T2's is its own values landing LAST, which also
 # fixes the order the case depends on. Neither is the assertion below: `race`
@@ -342,7 +418,7 @@ echo "    T1's optional copy survived T2 ...... $race   want FLOWONE/OPTINONE/ST
 # it is absent when T2 did not run, and wrong when the pair raced the other way
 # round — so the two causes are separated before either is reported.
 require_ran T1
-if [ "${S_MARK_GOT[T2]}" != "${S_MARK_WANT[T2]}" ]; then
+if [ "${S_MARK_OK[T2]}" != t ]; then
   case "${S_OUT[T2]}" in
     *'"prepared"'*)
       echo "  !! D3 INCONCLUSIVE (ORDERING SKEW) — both sessions ran, but T2's values are not the"
