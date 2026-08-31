@@ -505,3 +505,9 @@ textarea.cc-in { height: auto; min-height: 62px; padding: 8px 10px; line-height:
   }
   .cc-area[data-open="true"] .cc-area-b, .cc-bar { animation: none; }
 }
+
+/* The per-row roster controls. They sit at the end of the host row and stay out
+   of the way until the row is there to act on — this is a settings list, not a
+   toolbar, so the actions are quiet until you reach them. */
+.cc-host-act { display: flex; gap: 2px; margin-left: auto; }
+.cc-host-act button { padding-inline: 6px; }

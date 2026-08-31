@@ -62,7 +62,9 @@ function seam(over: Record<string, unknown> = {}) {
     hostsError: null,
     readiness: READY,
     canWrite: true,
+    hostCandidates: { "cal-1": [{ user_id: "u2", full_name: "Sam Okafor" }] },
     refresh: vi.fn(), createCalendar: vi.fn(), saveCalendar: vi.fn(), setEnabled: vi.fn(), connect: vi.fn(), disconnect: vi.fn(),
+    saveHosts: vi.fn(async () => ({ ok: true as const })),
     ...over,
   };
 }
@@ -1122,5 +1124,114 @@ describe("identity safety — no callback may act or report for a departed accou
       click(/Connect/);
       expect(connect).toHaveBeenCalled();
     });
+  });
+});
+
+
+/**
+ * WHO TAKES THE BOOKINGS — the roster a round-robin calendar rotates through.
+ *
+ * Choosing round-robin and then having no way to say who is in the rotation is
+ * not a partial feature, it is a dead control: the calendar still hands every
+ * booking to whoever created it. Until this surface could edit the roster it
+ * pointed at the calendar workspace instead, and that workspace has no host
+ * management in it — so the instruction was a dead end and the owner could not
+ * finish the job anywhere.
+ *
+ * The roster is rewritten WHOLE, in order, because position IS priority. A
+ * partial write would leave a half-applied order that decides who gets real
+ * bookings, so these assert on the entire array, never on one element.
+ */
+describe("team & hosts — the owner can say who takes the bookings", () => {
+  const openTeam = () => {
+    const head = buttons().find((b) => /Team & hosts/.test(b.textContent ?? ""));
+    if (head) act(() => { head.click(); });
+  };
+
+  // Only round-robin and collective read the whole roster; a personal or class
+  // calendar books the top host and ignores the rest, so the add control is
+  // meaningful ONLY here.
+  const shared = () => [calendar({ type: "round_robin" })];
+
+  it("offers a way to add a host, rather than sending the reader somewhere else", () => {
+    mount({ calendars: shared() });
+    openTeam();
+    expect(byText(/Add host/i)).toBeTruthy();
+  });
+
+  it("writes the WHOLE roster in order when a host is added", () => {
+    const saveHosts = vi.fn(async () => ({ ok: true as const }));
+    mount({ saveHosts, calendars: shared() });
+    openTeam();
+    const pick = [...container.querySelectorAll<HTMLSelectElement>("select")]
+      .find((el) => [...el.options].some((o) => o.value === "u2"));
+    expect(pick).toBeTruthy();
+    act(() => {
+      pick!.value = "u2";
+      pick!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    act(() => { byText(/Add host/i)!.click(); });
+    expect(saveHosts).toHaveBeenCalledWith("cal-1", ["u1", "u2"]);
+  });
+
+  it("keeps the order the owner set, because position is priority", () => {
+    const saveHosts = vi.fn(async () => ({ ok: true as const }));
+    mount({
+      saveHosts,
+      hosts: { "cal-1": [
+        { user_id: "u1", full_name: "Alex Reed", priority: 0, hasCustomHours: false, timezone: null },
+        { user_id: "u2", full_name: "Sam Okafor", priority: 1, hasCustomHours: false, timezone: null },
+      ] },
+    });
+    openTeam();
+    const up = buttons().find((b) => /Move Sam Okafor up/i.test(b.getAttribute("aria-label") ?? ""));
+    expect(up).toBeTruthy();
+    act(() => { up!.click(); });
+    expect(saveHosts).toHaveBeenCalledWith("cal-1", ["u2", "u1"]);
+  });
+
+  it("refuses to remove the last host instead of leaving a calendar nobody can book", () => {
+    const saveHosts = vi.fn(async () => ({ ok: true as const }));
+    mount({ saveHosts });
+    openTeam();
+    const remove = buttons().find((b) => /Remove Alex Reed/i.test(b.getAttribute("aria-label") ?? ""));
+    expect(remove).toBeTruthy();
+    expect(remove!.disabled).toBe(true);
+    expect(saveHosts).not.toHaveBeenCalled();
+  });
+
+  it("does not offer to add a host where a second host would never be booked", () => {
+    // public-booking books hostIds[0] for personal and class calendars, so an
+    // add control here would promise a booking that never arrives. The reason
+    // is stated rather than the control silently vanishing.
+    mount({ calendars: [calendar({ type: "personal" })] });
+    openTeam();
+    expect(byText(/Add host/i)).toBeFalsy();
+    expect(/would never be given a booking/i.test(container.textContent ?? "")).toBe(true);
+  });
+
+  it("stops a second roster write while the first is still in flight", () => {
+    // Every control sends the WHOLE roster built from the hosts it can see, so
+    // a second click before the reload would replay a stale array — removing
+    // two people in a row could restore whichever one the later request carried.
+    const saveHosts = vi.fn(async () => ({ ok: true as const }));
+    mount({
+      saveHosts, busy: "cal-1", calendars: shared(),
+      hosts: { "cal-1": [
+        { user_id: "u1", full_name: "Alex Reed", priority: 0, hasCustomHours: false, timezone: null },
+        { user_id: "u2", full_name: "Sam Okafor", priority: 1, hasCustomHours: false, timezone: null },
+      ] },
+    });
+    openTeam();
+    expect(buttons().some((b) => /Move |Remove /i.test(b.getAttribute("aria-label") ?? ""))).toBe(false);
+    expect(byText(/Add host/i)).toBeFalsy();
+    expect(saveHosts).not.toHaveBeenCalled();
+  });
+
+  it("gives a reader no way to change the roster", () => {
+    mount({ canWrite: false, calendars: shared() });
+    openTeam();
+    expect(byText(/Add host/i)).toBeFalsy();
+    expect(buttons().some((b) => /Remove /i.test(b.getAttribute("aria-label") ?? ""))).toBe(false);
   });
 });

@@ -100,6 +100,16 @@ const READINESS_UNKNOWN: SendReadiness = { email: "unknown", sms: "unknown", mis
 
 /* ----------------------------------------------------------------- hosts */
 
+/**
+ * A teammate who could take bookings on a calendar but is not a host on it yet.
+ *
+ * Names come from `list_calendar_host_candidates` rather than a `profiles`
+ * select, because `profiles` is own-row under RLS: a manager can read their own
+ * name and nobody else's, so a roster editor built on a direct read would offer
+ * a list of uuids to choose between.
+ */
+export type HostCandidate = { user_id: string; full_name: string | null };
+
 export interface CalendarHost {
   user_id: string;
   full_name: string | null;
@@ -138,6 +148,13 @@ export interface CalendarConnectionsState {
   calendars: CalendarRow[];
   hosts: Record<string, CalendarHost[]>;
   /**
+   * Who ELSE could take bookings on each calendar — the pool the roster editor
+   * adds from. Read through `list_calendar_host_candidates` because `profiles`
+   * is own-row under RLS: a manager cannot select a teammate's name directly,
+   * and a roster editor that cannot show names is a list of uuids.
+   */
+  hostCandidates: Record<string, HostCandidate[]>;
+  /**
    * Set when the `calendar_hosts` read itself FAILED. A failed read is not an
    * empty roster: reporting "this calendar has no host" off a transient error
    * would tell someone their booking page is dead when it is running fine.
@@ -163,6 +180,7 @@ const BLANK_STATE: CalendarConnectionsState = {
   providersError: null,
   calendars: [],
   hosts: {},
+  hostCandidates: {},
   hostsError: null,
   readiness: READINESS_UNKNOWN,
   canWrite: false,
@@ -248,6 +266,7 @@ export function useCalendarConnections() {
         providersError: providerRead.error?.message ?? null,
         calendars: [],
         hosts: {},
+        hostCandidates: {},
         hostsError: null,
         readiness: READINESS_UNKNOWN,
         canWrite: false,
@@ -340,6 +359,40 @@ export function useCalendarConnections() {
       for (const list of Object.values(hosts)) list.sort((a, b) => a.priority - b.priority);
     }
 
+    // The candidate pool, per calendar. One RPC per calendar is unavoidable —
+    // `list_calendar_host_candidates` is scoped to a single calendar because the
+    // answer depends on who is ALREADY a host there — but the list is small and
+    // they run together rather than in series.
+    //
+    // A candidate read that fails is not an error the surface stops for: the
+    // roster still renders and stays editable in every other way. It simply
+    // means no name can be offered to add, which the editor says plainly rather
+    // than showing an empty picker that looks like "nobody is available".
+    const hostCandidates: Record<string, HostCandidate[]> = {};
+    if (calendars.length) {
+      const results = await Promise.all(
+        calendars.map((c) => supabase.rpc("list_calendar_host_candidates", { _cal: c.id })),
+      );
+      if (!gate.current.isCurrent(token)) return;
+      calendars.forEach((c, i) => {
+        const rows = (results[i].data as
+          { user_id: string; full_name: string | null; is_host: boolean }[] | null) ?? [];
+        hostCandidates[c.id] = rows
+          .filter((r) => !r.is_host)
+          .map((r) => ({ user_id: r.user_id, full_name: r.full_name }));
+        // The RPC is the ONLY read that can name a teammate: `profiles` is
+        // own-row under RLS, so the direct select above resolves the viewer and
+        // nobody else. Throwing the `is_host` rows away would leave every other
+        // host labelled "Team member" — a roster of anonymous rows cannot answer
+        // the one question this screen exists to answer, and the move/remove
+        // buttons would not say whose order they change.
+        const named = new Map(
+          rows.filter((r) => r.full_name).map((r) => [r.user_id, r.full_name] as const),
+        );
+        for (const h of hosts[c.id] ?? []) h.full_name ??= named.get(h.user_id) ?? null;
+      });
+    }
+
     // Each seam answers for itself, and a read that did not answer stays
     // `unknown`. Out of scope is also `unknown` — an empty result we were never
     // entitled to see is not evidence of absence.
@@ -385,6 +438,7 @@ export function useCalendarConnections() {
       providersError: providerRead.error?.message ?? null,
       calendars,
       hosts,
+      hostCandidates,
       hostsError,
       readiness,
       canWrite: !adminRead.error && adminRead.data === true,
@@ -423,6 +477,56 @@ export function useCalendarConnections() {
     setState((s) => ({ ...s, calendars: s.calendars.map((c) => (c.id === saved.id ? saved : c)) }));
     return { ok: true as const, row: saved };
   }, []);
+
+  /**
+   * Rewrite WHO takes bookings on a calendar, in priority order.
+   *
+   * The whole roster goes in one call because array POSITION IS THE PRIORITY.
+   * Adding, removing and reordering are the same operation seen three ways, and
+   * splitting them into per-row writes is how a rotation ends up half-applied —
+   * two hosts at priority 0, or a gap that decides who gets the next real
+   * booking. `set_calendar_hosts` is the existing atomic seam for exactly this
+   * (gated on `can_manage_calendar`); this is the same RPC the calendar builder
+   * already used, not a second way to do it.
+   *
+   * Per-host hours are PRESERVED rather than re-sent from the surface: the row
+   * carries `availability_json`/`timezone` that this settings screen does not
+   * edit, and sending them back as null would quietly widen someone's hours to
+   * the calendar default. Only membership and order are changed here.
+   */
+  const saveHosts = useCallback(async (calendarId: string, orderedUserIds: string[]) => {
+    if (orderedUserIds.length === 0) {
+      // A calendar with no host has no availability to offer, so its public page
+      // cannot be booked. Refuse rather than write a live-but-dead link.
+      return { ok: false as const, message: "A calendar needs at least one host." };
+    }
+    setBusy(calendarId);
+    const { data: existing, error: readErr } = await supabase
+      .from("calendar_hosts")
+      .select("user_id, availability_json, timezone")
+      .eq("calendar_id", calendarId);
+    if (readErr) {
+      setBusy(null);
+      return { ok: false as const, message: readErr.message };
+    }
+    type HoursRow = { user_id: string; availability_json: unknown; timezone: string | null };
+    const hours = new Map(((existing as HoursRow[] | null) ?? []).map((r) => [r.user_id, r]));
+    const { error } = await supabase.rpc("set_calendar_hosts", {
+      _cal: calendarId,
+      _hosts: orderedUserIds.map((user_id) => ({
+        user_id,
+        availability_json: hours.get(user_id)?.availability_json ?? null,
+        timezone: hours.get(user_id)?.timezone ?? null,
+      })) as never,
+    });
+    setBusy(null);
+    if (error) return { ok: false as const, message: error.message };
+    // Re-read rather than patch local state: the RPC decides the stored
+    // priorities, and a surface that guessed them would drift from the rotation
+    // the bookings actually follow.
+    await load();
+    return { ok: true as const };
+  }, [load]);
 
   /**
    * Create a booking preset, live and bookable from the moment it exists.
@@ -591,8 +695,8 @@ export function useCalendarConnections() {
 
   const loading = tenantLoading || state.loading;
   return useMemo(
-    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, setEnabled, connect, disconnect,
+    () => ({ ...state, loading, busy, refresh: load, createCalendar, saveCalendar, saveHosts, setEnabled, connect, disconnect,
              errorMessage: firstMessage(state.error, state.providersError) }),
-    [state, loading, busy, load, createCalendar, saveCalendar, setEnabled, connect, disconnect],
+    [state, loading, busy, load, createCalendar, saveCalendar, saveHosts, setEnabled, connect, disconnect],
   );
 }
