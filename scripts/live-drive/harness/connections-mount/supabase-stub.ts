@@ -111,9 +111,14 @@ function seed(): Record<string, Row[]> {
       { calendar_id: "cal-3", user_id: "u2", priority: 0, availability_json: null, timezone: null },
       { calendar_id: "cal-4", user_id: "u1", priority: 0, availability_json: null, timezone: null },
     ],
+    // `profiles` SELECT is own-row under RLS on the real platform, so a manager
+    // reading this table gets THEMSELVES and nobody else. Seeding teammate names
+    // here made the harness kinder than production and hid a real defect: every
+    // host rendered as "Team member" live. Host names must come from
+    // `list_calendar_host_candidates`, which is SECURITY DEFINER for exactly
+    // this reason — so the stub returns the viewer's row alone.
     profiles: [
-      { user_id: "u1", full_name: "Harness Host One" },
-      { user_id: "u2", full_name: "Harness Host Two" },
+      { user_id: "harness-user", full_name: "Harness Viewer" },
     ],
     staff_calendar_settings: [{
       user_id: "harness-user",

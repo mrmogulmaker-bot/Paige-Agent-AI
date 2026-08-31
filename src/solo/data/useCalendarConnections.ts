@@ -380,6 +380,16 @@ export function useCalendarConnections() {
         hostCandidates[c.id] = rows
           .filter((r) => !r.is_host)
           .map((r) => ({ user_id: r.user_id, full_name: r.full_name }));
+        // The RPC is the ONLY read that can name a teammate: `profiles` is
+        // own-row under RLS, so the direct select above resolves the viewer and
+        // nobody else. Throwing the `is_host` rows away would leave every other
+        // host labelled "Team member" — a roster of anonymous rows cannot answer
+        // the one question this screen exists to answer, and the move/remove
+        // buttons would not say whose order they change.
+        const named = new Map(
+          rows.filter((r) => r.full_name).map((r) => [r.user_id, r.full_name] as const),
+        );
+        for (const h of hosts[c.id] ?? []) h.full_name ??= named.get(h.user_id) ?? null;
       });
     }
 

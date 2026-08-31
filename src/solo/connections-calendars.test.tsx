@@ -1148,15 +1148,20 @@ describe("team & hosts — the owner can say who takes the bookings", () => {
     if (head) act(() => { head.click(); });
   };
 
+  // Only round-robin and collective read the whole roster; a personal or class
+  // calendar books the top host and ignores the rest, so the add control is
+  // meaningful ONLY here.
+  const shared = () => [calendar({ type: "round_robin" })];
+
   it("offers a way to add a host, rather than sending the reader somewhere else", () => {
-    mount();
+    mount({ calendars: shared() });
     openTeam();
     expect(byText(/Add host/i)).toBeTruthy();
   });
 
   it("writes the WHOLE roster in order when a host is added", () => {
     const saveHosts = vi.fn(async () => ({ ok: true as const }));
-    mount({ saveHosts });
+    mount({ saveHosts, calendars: shared() });
     openTeam();
     const pick = [...container.querySelectorAll<HTMLSelectElement>("select")]
       .find((el) => [...el.options].some((o) => o.value === "u2"));
@@ -1195,8 +1200,36 @@ describe("team & hosts — the owner can say who takes the bookings", () => {
     expect(saveHosts).not.toHaveBeenCalled();
   });
 
+  it("does not offer to add a host where a second host would never be booked", () => {
+    // public-booking books hostIds[0] for personal and class calendars, so an
+    // add control here would promise a booking that never arrives. The reason
+    // is stated rather than the control silently vanishing.
+    mount({ calendars: [calendar({ type: "personal" })] });
+    openTeam();
+    expect(byText(/Add host/i)).toBeFalsy();
+    expect(/would never be given a booking/i.test(container.textContent ?? "")).toBe(true);
+  });
+
+  it("stops a second roster write while the first is still in flight", () => {
+    // Every control sends the WHOLE roster built from the hosts it can see, so
+    // a second click before the reload would replay a stale array — removing
+    // two people in a row could restore whichever one the later request carried.
+    const saveHosts = vi.fn(async () => ({ ok: true as const }));
+    mount({
+      saveHosts, busy: "cal-1", calendars: shared(),
+      hosts: { "cal-1": [
+        { user_id: "u1", full_name: "Alex Reed", priority: 0, hasCustomHours: false, timezone: null },
+        { user_id: "u2", full_name: "Sam Okafor", priority: 1, hasCustomHours: false, timezone: null },
+      ] },
+    });
+    openTeam();
+    expect(buttons().some((b) => /Move |Remove /i.test(b.getAttribute("aria-label") ?? ""))).toBe(false);
+    expect(byText(/Add host/i)).toBeFalsy();
+    expect(saveHosts).not.toHaveBeenCalled();
+  });
+
   it("gives a reader no way to change the roster", () => {
-    mount({ canWrite: false });
+    mount({ canWrite: false, calendars: shared() });
     openTeam();
     expect(byText(/Add host/i)).toBeFalsy();
     expect(buttons().some((b) => /Remove /i.test(b.getAttribute("aria-label") ?? ""))).toBe(false);

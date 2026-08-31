@@ -363,6 +363,11 @@ async function flowDiscard(page) {
  */
 async function flowHostRoster(page) {
   await open(page);
+  // A collective calendar, deliberately: only round-robin and collective read
+  // the whole roster, so this is where adding a host actually changes who gets
+  // booked. On a one-on-one the picker is absent BY DESIGN (flow 3d).
+  const collective = page.locator(".cc-preset-card", { hasText: /quarterly review/i }).first();
+  if (await collective.count()) await collective.click();
   const area = await openArea(page, "Team & hosts");
 
   const before = await area.locator(".cc-host").count();
@@ -382,13 +387,22 @@ async function flowHostRoster(page) {
   // Proof is the re-read, not the click: the roster is rewritten by an RPC, and
   // the stored priorities are what the rotation actually follows.
   await open(page);
+  const back = page.locator(".cc-preset-card", { hasText: /quarterly review/i }).first();
+  if (await back.count()) await back.click();
   const after = await openArea(page, "Team & hosts");
   const now = await after.locator(".cc-host").count();
+  // Names, not just a count. `profiles` is own-row under RLS, so unless the
+  // roster carries the RPC's names every host reads "Team member" — and a
+  // roster of anonymous rows cannot answer who takes the bookings.
+  const named = await after.locator(".cc-host strong").allTextContents();
   const stored = await page.evaluate(() => {
     try {
       const st = new URLSearchParams(location.search).get("data") || "dense";
       const db = JSON.parse(sessionStorage.getItem(`paige-harness-store:${st}`) || "{}");
-      const cal = (db.calendars || [])[0]?.id;
+      // The COLLECTIVE calendar this flow edited, not simply the first row —
+      // reading calendars[0] here reported another calendar's roster as if it
+      // were the one just changed.
+      const cal = (db.calendars || []).find((c) => /quarterly review/i.test(c.title || ""))?.id;
       return (db.calendar_hosts || [])
         .filter((h) => h.calendar_id === cal)
         .sort((a, b) => a.priority - b.priority)
@@ -396,8 +410,29 @@ async function flowHostRoster(page) {
         .join(",");
     } catch (e) { return String(e).slice(0, 40); }
   });
-  record("3c · add a host to the rotation", now === before + 1,
-    `hosts ${before} → ${now} after reload · stored roster = ${stored}`);
+  const anonymous = named.filter((n) => /^Team member$/i.test(n.trim())).length;
+  record("3c · add a host to the rotation, by name", now === before + 1 && anonymous === 0,
+    `hosts ${before} → ${now} after reload · names=[${named.join("|")}] · stored roster = ${stored}`);
+}
+
+/**
+ * 3d · A single-host calendar does NOT offer to add a host — it says why.
+ *
+ * `public-booking` books `hostIds[0]` for personal and class calendars and
+ * ignores the rest, so an "Add a host" control there promises a booking that
+ * never arrives. Hiding it silently would be a dead end of a different kind, so
+ * the surface states the reason instead.
+ */
+async function flowSingleHostNoAdd(page) {
+  await open(page);
+  const cls = page.locator(".cc-preset-card", { hasText: /workshop/i }).first();
+  if (await cls.count()) await cls.click();
+  const area = await openArea(page, "Team & hosts");
+  const picker = await area.locator('select[aria-label="Teammate to add as a host"]').count();
+  const text = (await area.textContent()) ?? "";
+  const explains = /would never be given a booking/i.test(text);
+  record("3d · a single-host calendar explains instead of offering a dead add",
+    picker === 0 && explains, `picker=${picker} explains=${explains}`);
 }
 
 /** 4b · Notifications / follow-ups are editable, not a read-only summary. */
@@ -505,6 +540,7 @@ async function main() {
     await flowRoundRobin(page);
     await flowAvailability(page);
     await flowHostRoster(page);
+    await flowSingleHostNoAdd(page);
     await flowBufferAndRules(page);
     await flowNotifications(page);
     await flowProviders(page);

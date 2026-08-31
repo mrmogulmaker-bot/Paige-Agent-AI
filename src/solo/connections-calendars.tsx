@@ -881,6 +881,7 @@ export function CalendarsView() {
                     hosts={hosts} hostsError={conn.hostsError} onRetryHosts={conn.refresh}
                     hostCandidates={selected ? (conn.hostCandidates[selected.id] ?? []) : []}
                     onSaveHosts={saveHosts}
+                    hostsBusy={conn.busy === selected.id}
                     canWrite={conn.canWrite}
                     readiness={conn.readiness} disabled={ro} account={account}
                   />
@@ -1187,6 +1188,7 @@ interface BodyProps {
   onRetryHosts: () => void;
   hostCandidates: HostCandidate[];
   onSaveHosts: (orderedUserIds: string[]) => void;
+  hostsBusy: boolean;
   canWrite: boolean;
   readiness: SendReadiness;
   disabled: boolean;
@@ -1485,9 +1487,15 @@ function MenuBody({ draft: d, set, disabled }: BodyProps) {
 }
 
 function TeamBody({
-  draft: d, set, hosts, hostsError, onRetryHosts, hostCandidates, onSaveHosts, canWrite, disabled, account,
+  draft: d, set, hosts, hostsError, onRetryHosts, hostCandidates, onSaveHosts, hostsBusy,
+  canWrite, disabled, account,
 }: BodyProps) {
   const roundRobin = d.type === "round_robin";
+  // Only round-robin and collective calendars read the whole roster. A personal
+  // or class calendar books `hostIds[0]` and ignores the rest (public-booking's
+  // `hostView`), so offering to add a teammate here would promise a booking that
+  // never arrives.
+  const multiHost = d.type === "round_robin" || d.type === "collective";
   const [adding, setAdding] = useState("");
 
   // Every edit sends the WHOLE roster in order, because position is priority.
@@ -1503,7 +1511,11 @@ function TeamBody({
   // The roster is editable only when the reader may write AND the read
   // succeeded. Offering these controls over a list that failed to load would
   // invite someone to "fix" a roster they cannot actually see.
-  const editable = canWrite && !disabled && !hostsError;
+  // `hostsBusy` belongs here as much as the rest: every control below sends the
+  // WHOLE roster built from the `hosts` it can see, so a second click landing
+  // before the reload would replay a stale array — removing two people in a row
+  // could restore whichever one the later request still contained.
+  const editable = canWrite && !disabled && !hostsError && !hostsBusy;
   return (
     <>
       {hostsError ? (
@@ -1577,7 +1589,17 @@ function TeamBody({
         </p>
       )}
 
-      {editable && (
+      {editable && !multiHost && hosts.length > 0 && (
+        // Said rather than silently omitted, for the same reason Remove is
+        // disabled rather than hidden on the last host: the reason is the point.
+        <p className="cc-fine">
+          {d.type === "event"
+            ? "A class is run by one host, so a teammate added here would never be given a booking. Make this round-robin or collective to share it."
+            : "A one-on-one calendar books the host at the top of this list, so a teammate added here would never be given a booking. Make this round-robin or collective to share it."}
+        </p>
+      )}
+
+      {editable && multiHost && (
         <div className="cc-fields" data-cols="2">
           <Field label="Add a host" hint="They take bookings on this calendar from the moment they are added.">
             <div className="cc-new">
