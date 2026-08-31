@@ -892,8 +892,12 @@ Two further freezes landed in the same PR, after a review found the first one pa
 draft freely, but cannot rewrite the copy of record of a registration that has left preparation
 while the surface tells them it is locked. `20261004050000` freezes `id` and `created_at` for a
 direct caller at **all** stages, after a review executed a rewrite of both on a frozen row and it
-succeeded, orphaning the audit link. Again: no change to which tiers see the surface — only to
-what a direct PostgREST caller at any tier may write.
+succeeded, orphaning the audit link. `20261004060000` adds `tenant_id` to that freeze: it had been
+delegated to the update policy, whose `is_platform_owner() OR …` first branch short-circuits before
+reading the column — so an **operator** could NULL or reassign a carrier-approved registration
+(measured, all four cases). That is the one column on which this section's "including a platform
+operator using PostgREST" claim had not been true. Again: no change to which tiers see the surface —
+only to what a direct PostgREST caller at any tier may write.
 
 **Submission is `—` for every tier, and that is the shipped state, not an omission.** There is no
 carrier integration: `comms-a2p-submit` persists the reviewed copy and returns an explicit

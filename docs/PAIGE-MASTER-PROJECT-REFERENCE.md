@@ -1065,6 +1065,14 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   the `paige_audit_log.target_id` link; `20261004050000` freezes those at all stages. **Count
   the columns the guarantee claims to cover, then count the ones the guard names. Twice here
   the difference was where the hole was.**
+  **A third time, in the reason given for the last omission.** `050000` left `tenant_id` out
+  because the update policy's `WITH CHECK` "already refuses a NULL or foreign value" — true of a
+  tenant admin, false of a platform operator, because that policy reads
+  `is_platform_owner() OR (tenant_id = … AND …)` and the first branch short-circuits before it
+  looks at the column. A review measured an operator both NULLing and reassigning a
+  carrier-approved registration, which moves a live `messaging_service_sid` onto another business
+  with no audit row. `20261004060000` closes it. **A delegation is a claim about the thing you
+  delegated to — check that thing, do not restate what you assume it does.**
 
 - **2026-08-30 — a durable write turned a dormant lie into the default (PR #665).** `A2PTab`'s
   banner and status pills keyed on *"a row exists with no carrier SID"* and rendered **"Submitted for

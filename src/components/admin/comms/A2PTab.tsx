@@ -235,7 +235,8 @@ export function A2PTab() {
     setRegLoading(true);
     // A THROWN rejection would otherwise leave the skeleton up forever. Every
     // `setRegLoading(false)` below sits on a success path or an early return, and
-    // both call sites discard the promise (`void loadReg()`), so a client-
+    // two of its three call sites discard the promise (`void loadReg()` at mount
+    // and after a draft; the third awaits it inside `submit`'s own try), so a client-
     // construction or auth-layer throw — the kind supabase-js does NOT convert
     // into `{ error }` — renders the pulse at the bottom of this file with no
     // message and no console line. That is "the same invisible symptom" the
@@ -360,6 +361,13 @@ export function A2PTab() {
       console.error("A2PTab: reading this account's registration threw:", e);
       setReg(null);
       setRegUnreadable(true);
+      // ...and `regUnidentified` is cleared here for the SAME reason the
+      // unidentified path clears `regUnreadable`. `setRegUnidentified(false)`
+      // sits after the awaited tenant RPC, so a throw from that await skips it
+      // and both flags stay true. Unreachable today — every later call site is
+      // inside a gate that requires both to be false — which is exactly how
+      // harmless the mirror case was when it got fixed one commit ago.
+      setRegUnidentified(false);
       setRegLoading(false);
     }
   }, []);

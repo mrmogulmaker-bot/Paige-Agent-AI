@@ -161,7 +161,16 @@ su "$USER_NAME" -c "$PGBIN/psql -h $BASE/sock -U postgres -X -q -t -A -c \"
            null, null, null, null, null);
 \"" >/dev/null 2>&1
 T2_RC=$?
+# T1's status, captured for the SAME reason T2's is. The previous revision fixed
+# T2 and left T1 launched identically — `>/dev/null 2>&1 &` with `wait` discarding
+# `$?` — so every failure mode the comment below enumerates for T2 applied to T1
+# unchecked. A review measured the consequence: with T1's RPC name typo'd, D3
+# prints BYTE-IDENTICAL output to a genuine advisory-lock regression. It fails
+# either way, so nothing false-passes, but the diagnosis it prints sends the next
+# reader hunting a lock defect that does not exist. Fixing one of two symmetric
+# sessions is how this class keeps surviving its own correction.
 wait "$T1_PID" 2>/dev/null
+T1_RC=$?
 
 race=$(psql_as -c "\"select coalesce(optin_flow,'(null)')||'/'||coalesce(optin_message,'(null)')||'/'||
                           coalesce(optout_message,'(null)')||'/'||coalesce(help_message,'(null)')
@@ -183,7 +192,7 @@ t2mark=$(psql_as -c "\"select use_case||'/'||(sample_messages #>> '{0}')
 
 echo
 echo "  D3 FIRST-SAVE RACE (two real sessions, no pre-existing row)"
-echo "    T2 actually ran ...................... rc=$T2_RC mark=$t2mark   want rc=0 / racetwo/c"
+echo "    BOTH sessions actually ran .......... T1 rc=$T1_RC · T2 rc=$T2_RC mark=$t2mark   want 0 / 0 / racetwo/c"
 echo "    T1's optional copy survived T2 ..... $race   want FLOWONE/OPTINONE/STOPONE/HELPONE"
 
 psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2';
@@ -195,12 +204,22 @@ psql_as -c "\"delete from public.tenant_a2p_registrations where tenant_id='$TEN2
 
 [ "$blocked" = t ] && [ "$refused" = t ] && [ "$final" = "approved/APPROVEDCOPY/BN-CONC-LIVE" ] || {
   echo "  !! D2 CONCURRENCY PROOF FAILED"; exit 1; }
+[ "$T1_RC" = "0" ] || {
+  echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — T1 did not complete (rc=$T1_RC). The copy-survived"
+  echo "     assertion below is about T1's OWN values, so a dead T1 makes it read exactly like a"
+  echo "     destroyed-copy regression. This is a dead session, NOT an advisory-lock defect."; exit 1; }
 [ "$T2_RC" = "0" ] || {
   echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — T2 did not complete (rc=$T2_RC); the copy-survived"
   echo "     assertion below would have passed vacuously, so this is a FAILURE, not a pass"; exit 1; }
 [ "$t2mark" = "racetwo/c" ] || {
-  echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — T2's own write is absent (mark=$t2mark); no"
-  echo "     concurrent save occurred, so nothing was proven about the race"; exit 1; }
+  # Both sessions exited 0, so this is ORDERING, not absence: T2 won the lock and
+  # T1 overwrote it, which happens if T1's psql takes longer than the sleep to
+  # start. Nothing about the race was measured either way, so it still fails —
+  # but naming it as a skew stops the next reader debugging a write that did run.
+  echo "  !! D3 FIRST-SAVE RACE INCONCLUSIVE — both sessions ran (T1 rc=$T1_RC, T2 rc=$T2_RC) but the"
+  echo "     final row is not T2-then-T1 (mark=$t2mark). The two sessions raced in the other order,"
+  echo "     so the preservation this case exists to measure never happened. Re-run; if it recurs,"
+  echo "     the startup skew is larger than the ${HOLD_SECONDS}s hold this case assumes."; exit 1; }
 [ "$race" = "FLOWONE/OPTINONE/STOPONE/HELPONE" ] || {
   echo "  !! D3 FIRST-SAVE RACE FAILED — a concurrent first save destroyed reviewed copy"; exit 1; }
 echo "  D2 + D3 concurrency proofs PASSED"

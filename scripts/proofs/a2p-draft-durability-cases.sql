@@ -31,6 +31,12 @@ DECLARE
   uC uuid := 'cc000000-0000-4000-8000-0000000000c4';
   tD uuid := 'dd000000-0000-4000-8000-0000000000d1';  -- service-role target, untouched by other cases
   uD uuid := 'dd000000-0000-4000-8000-0000000000d2';
+  -- A PLATFORM OPERATOR. Needed because the tenant_id freeze's whole point is the
+  -- tier the update policy does NOT constrain: its WITH CHECK short-circuits on
+  -- is_platform_owner() before it reads tenant_id. A case run as a tenant admin
+  -- would be refused by RLS and would therefore pass with the freeze deleted —
+  -- vacuous against the exact defect it claims to cover.
+  uOp uuid := 'ff000000-0000-4000-8000-0000000000f1';
   n bigint; out text := E'\n'; fails int := 0; allowed boolean;
   v_sub timestamptz; v_status text; v_a2p text; v_pay jsonb; v_use text; v_desc_after text; v_optin_after text; v_hint text;
   SAMPLES constant jsonb := '["Reminder: your session is tomorrow at 2pm. Reply STOP to opt out.",
@@ -41,7 +47,8 @@ BEGIN
     (uB,'authenticated','authenticated','a2p-b@t'),
     (uNo,'authenticated','authenticated','a2p-none@t'),
     (uC,'authenticated','authenticated','a2p-c@t'),
-    (uD,'authenticated','authenticated','a2p-d@t');
+    (uD,'authenticated','authenticated','a2p-d@t'),
+    (uOp,'authenticated','authenticated','a2p-op@t');
   INSERT INTO public.tenants (id, slug, name, account_number_prefix, account_number)
   VALUES (tA,'a2p-a','A2P A','A2A','910001'),(tB,'a2p-b','A2P B','A2B','910002'),
          (tC,'a2p-c','A2P C','A2C','910003'),(tD,'a2p-d','A2P D','A2D','910004');
@@ -57,7 +64,7 @@ BEGIN
   -- got this right for its own second user, which is what makes this an omission rather
   -- than a misunderstanding.
   INSERT INTO public.user_roles (user_id,role)
-  VALUES (uA,'admin'),(uB,'admin'),(uC,'admin'),(uD,'admin') ON CONFLICT DO NOTHING;
+  VALUES (uA,'admin'),(uB,'admin'),(uC,'admin'),(uD,'admin'),(uOp,'super_admin') ON CONFLICT DO NOTHING;
   DELETE FROM public.user_roles WHERE user_id = uNo;
   INSERT INTO public.tenant_legal_profile (tenant_id, legal_business_name)
   VALUES (tA,'Proof Fixture LLC'),(tB,'Other Fixture LLC'),(tD,'Headless Fixture LLC');   -- tC deliberately has NONE
@@ -565,6 +572,53 @@ BEGIN
   out := out||format('      ...created_at frozen even while pending ... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
                      NOT allowed, coalesce(v_hint,'(none)'), E'\n');
   IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...and tenant_id is frozen against the OPERATOR, which is the tier that had
+  -- no guard at all (20261004060000). 050000 delegated this column to the update
+  -- policy on the reasoning that it "refuses a NULL or foreign value" — true of a
+  -- tenant admin, FALSE of a platform operator, because the policy reads
+  -- `is_platform_owner() OR (tenant_id = ... AND ...)` and the first branch
+  -- short-circuits before it looks at the column. An operator over PostgREST runs
+  -- as `authenticated`, so the guard's governed allow-list does not exempt them.
+  --
+  -- RUN AS THE OPERATOR ON PURPOSE. The same write as a tenant admin is refused by
+  -- RLS, so a case written that way would pass with the freeze deleted and prove
+  -- nothing about the hole it names.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uOp,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations SET tenant_id = tA WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...operator cannot REASSIGN tenant_id ..... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- ...and cannot NULL it either, which is the variant that makes the owning
+  -- tenant read "Not registered yet" and be offered a paid re-draft.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub',uOp,'role','authenticated')::text, true);
+  allowed := false; v_hint := NULL;
+  BEGIN
+    UPDATE public.tenant_a2p_registrations SET tenant_id = NULL WHERE tenant_id = tD;
+    allowed := true;
+  EXCEPTION WHEN OTHERS THEN
+    allowed := false; GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+  END;
+  RESET role;
+  out := out||format('      ...operator cannot NULL tenant_id ......... refused=%s hint=%s   want t / IDENTITY_PROTECTED%s',
+                     NOT allowed, coalesce(v_hint,'(none)'), E'\n');
+  IF allowed OR v_hint IS DISTINCT FROM 'IDENTITY_PROTECTED' THEN fails := fails + 1; END IF;
+
+  -- NON-VACUITY CONTROL: the operator's row is still THERE and still tD's, so the
+  -- two refusals above were refusals and not a silently-missing row.
+  SELECT count(*) INTO n FROM public.tenant_a2p_registrations WHERE tenant_id = tD;
+  out := out||format('      ...and the row still belongs to tD ........ %s   want 1%s', n, E'\n');
+  IF n <> 1 THEN fails := fails + 1; END IF;
 
   -- Put it back to pending so the governed-seam case below still measures what it says.
   UPDATE public.tenant_a2p_registrations

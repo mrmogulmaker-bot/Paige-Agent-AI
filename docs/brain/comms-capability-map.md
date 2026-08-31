@@ -81,8 +81,15 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   A registration still **pending** stays freely editable; one past preparation does not.
   **`20261004050000`** froze `id` and `created_at` for a direct caller at ALL stages (a review
   proved both rewritable, which orphaned the audit link on the very row the guard calls
-  unalterable). `tenant_id` is covered by the update policy's `WITH CHECK` and `updated_at`
-  by its own BEFORE trigger, so neither is restated in the guard. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
+  unalterable). `updated_at` is written by its own BEFORE trigger, which fires
+  after the guard, so it is not restated. **`tenant_id` WAS delegated to the update policy's
+  `WITH CHECK` on the same reasoning, and that reasoning was wrong** — the policy is
+  `is_platform_owner() OR (tenant_id = current_user_tenant_id() AND …)`, whose first branch
+  short-circuits before reading the column, and a platform operator over PostgREST runs as
+  `authenticated` and is therefore a direct caller by this guard's own definition. A review
+  measured an operator both NULLing and reassigning it. **`20261004060000`** puts `tenant_id`
+  in the freeze, so reassigning a carrier-approved registration — and the live
+  `messaging_service_sid` that `send-message` resolves by `tenant_id` — is refused. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
   `current_user` as its own owner and would allow everything, which the proof caught.
 
 ### Numbers — search and purchase work, and are unreachable from Solo
