@@ -128,8 +128,24 @@ function seed(): Record<string, Row[]> {
       zoom_connected: false, zoom_email: null,
     }],
     tenant_email_identities: [{ tenant_id: TENANT }],
-    tenant_phone_numbers: s === "issues" ? [] : [{ id: "num-1", tenant_id: TENANT, is_primary: true }],
-    tenant_a2p_registrations: s === "issues" ? [] : [{ tenant_id: TENANT }],
+    tenant_phone_numbers: s === "issues" ? [] : [{ id: "num-1", tenant_id: TENANT, is_primary: true, phone_number: "+15550001111", status: "active", friendly_name: null }],
+    // Seeded PREPARABLE, with every column the immutability predicate reads. The row
+    // used to carry a tenant_id and nothing else, which made `hasLeftPreparation` true
+    // by absence — `brand_status` undefined is distinct from 'pending' — so the
+    // registration surface rendered LOCKED and no drive could reach its editor.
+    tenant_a2p_registrations: s === "issues" ? [] : [{
+      tenant_id: TENANT, status: "pending", brand_status: "pending", campaign_status: "pending",
+      brand_sid: null, campaign_sid: null, messaging_service_sid: null,
+      submitted_at: null, approved_at: null,
+      use_case: "Client follow-ups",
+      campaign_description: "We text people who are already our clients about their appointments.",
+      sample_messages: ["Hi Dana - confirming Tuesday at 3."],
+      optin_flow: "Clients agree when they book.",
+      optin_message: "You are subscribed. Reply STOP to stop.",
+      optout_message: "You are unsubscribed.",
+      help_message: "Reply HELP and we will call you.",
+    }],
+    tenant_legal_profile: s === "issues" ? [] : [{ tenant_id: TENANT, legal_business_name: "Harness Coaching LLC", website: "https://harness.example.invalid" }],
     tenants: [{ id: TENANT, brand: { business_phone: s === "issues" ? "" : "+1 555 0100" } }],
     // The domain lifecycle and the Google sending account, both empty to start —
     // an empty store is the state the owner actually reported, and the state a
@@ -428,6 +444,87 @@ export const supabase = {
           return Promise.resolve(ok({ ok: true }));
         }
         return Promise.resolve(ok({ error: "unknown_verb" }));
+      }
+      // Number availability. A search is READ-ONLY at the provider, so returning a
+      // fixed list costs nothing and misrepresents nothing — but these are invented
+      // numbers, and a drive may only conclude that the surface RENDERS what it is
+      // given, never that this inventory exists.
+      if (fn === "comms-search-numbers") {
+        const body = opts?.body ?? {};
+        if (String(body.area_code ?? "") === "000") {
+          // The setup-gap answer, reachable on demand, so a drive can prove it is
+          // told apart from an empty shelf.
+          return Promise.resolve(ok({ needs_config: true, numbers: [], message: "Harness: no messaging account provisioned." }));
+        }
+        const tollFree = String(body.number_type ?? "local") === "tollfree";
+        const prefix = tollFree ? "833" : String(body.area_code ?? "404") || "404";
+        return Promise.resolve(ok({
+          needs_config: false, price_configured: true,
+          numbers: [1, 2].map((i) => ({
+            phone_number: `+1${prefix}555010${i}`,
+            locality: tollFree ? null : String(body.in_locality ?? "Atlanta"),
+            region: tollFree ? null : String(body.in_region ?? "GA"),
+            capabilities: { SMS: true, MMS: true, voice: true },
+            retail_price: { retail_monthly_cents: 120 + i },
+          })),
+        }));
+      }
+      // Buying is a real CHARGE at the provider and a row on this side. The charge is
+      // the part a harness must not pretend to; the row is the part a drive has to be
+      // able to prove, because "it said the number is yours" and "the number is on the
+      // business" are different claims and only the second one matters.
+      if (fn === "comms-purchase-number") {
+        const number = String(opts?.body?.phone_number ?? "");
+        if (!number) return Promise.resolve(ok({ error: "phone_number_required" }));
+        if (number.endsWith("2")) {
+          // One number always refuses, so a drive can prove a refusal is never
+          // rendered as a purchase. Provider inventory really does go stale between
+          // a search and a buy.
+          return Promise.resolve(ok({ error: "number_unavailable" }));
+        }
+        (db.tenant_phone_numbers ??= []).push({
+          id: `num-${(db.tenant_phone_numbers ?? []).length + 1}`, tenant_id: TENANT,
+          phone_number: number, is_primary: false, status: "active", friendly_name: null,
+        });
+        persist();
+        return Promise.resolve(ok({ ok: true, phone_number: number }));
+      }
+      // Drafting is a MODEL call. The harness returns fixture prose so a drive can
+      // reach the editor — it is not Paige's writing and no drive may grade it.
+      if (fn === "comms-a2p-draft") {
+        const row = (db.tenant_a2p_registrations ?? [])[0];
+        const draft = {
+          use_case: "Client follow-ups",
+          campaign_description: "Harness fixture copy. Not written by a model.",
+          sample_messages: ["Harness sample one.", "Harness sample two."],
+          optin_flow: "Harness opt-in description.",
+          optin_message: "Harness confirmation.",
+          optout_message: "Harness STOP reply.",
+          help_message: "Harness HELP reply.",
+        };
+        if (row) { Object.assign(row, draft, { sample_messages: draft.sample_messages }); persist(); }
+        return Promise.resolve(ok({ draft, legal_business_name: "Harness Coaching LLC", website: "https://harness.example.invalid", saved: true }));
+      }
+      // The save, with the REAL contract: filing does not exist, so `submitted` is
+      // false and `a2p_submit_wired` is false. A harness that returned a submitted
+      // state would let a drive certify the one claim this surface must never make.
+      if (fn === "comms-a2p-submit") {
+        const body = opts?.body ?? {};
+        if (!String(body.legal_business_name ?? "").trim()) {
+          return Promise.resolve({ data: { error: { code: "LEGAL_PROFILE_REQUIRED", message: "Harness: legal business name required." } }, error: { message: "non-2xx" } });
+        }
+        const row = (db.tenant_a2p_registrations ??= [])[0] ?? {};
+        Object.assign(row, {
+          tenant_id: TENANT, status: "pending", brand_status: "pending", campaign_status: "pending",
+          use_case: String(body.use_case ?? ""), campaign_description: String(body.campaign_description ?? ""),
+          sample_messages: Array.isArray(body.sample_messages) ? body.sample_messages : [],
+          optin_flow: String(body.optin_flow ?? ""), optin_message: String(body.optin_message ?? ""),
+          optout_message: String(body.optout_message ?? ""), help_message: String(body.help_message ?? ""),
+          submitted_at: null, approved_at: null,
+        });
+        if (!(db.tenant_a2p_registrations ?? []).length) db.tenant_a2p_registrations = [row];
+        persist();
+        return Promise.resolve(ok({ saved: true, submitted: false, a2p_submit_wired: false, state: "prepared", status: "pending" }));
       }
       // Everything that would leave for a provider — the Google handshake above
       // all — stays refused. Nothing was started, so nothing may be claimed.

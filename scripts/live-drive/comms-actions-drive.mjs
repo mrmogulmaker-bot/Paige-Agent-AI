@@ -99,12 +99,20 @@ async function open(browser, query = COMMS, viewport = { width: 1536, height: 90
   // revision of this drive measured the Calendars segment and reported the
   // business-details field missing, which was true of the page it was looking at
   // and said nothing about the page under test.
-  const tab = page.locator(".ss-segment button", { hasText: "Communications" }).first();
+  await select(page, "Communications");
+  return page;
+}
+
+/** Select a Connections area by its tab label, and wait for it to settle. */
+async function select(page, label) {
+  const tab = page.locator(".ss-segment button", { hasText: label }).first();
   await tab.waitFor({ state: "visible", timeout: 10000 });
   await tab.click();
   await page.waitForTimeout(1400);
-  return page;
 }
+
+/** The rows the store actually holds, which is a different question from what is on screen. */
+const rows = async (page, table) => ((await store(page)) ?? {})[table] ?? [];
 
 async function run() {
   await assertHarnessServesWorkingTree(BASE, [
@@ -118,6 +126,8 @@ async function run() {
       absent: ["BusinessDetailsPanel", "Save business details"],
     },
     { file: "src/solo/data/useSoloComms.ts", markers: ["startGmailConnect", "manage-tenant-domain"] },
+    { file: "src/solo/data/useSoloNumbers.ts", markers: ["comms-search-numbers", "comms-purchase-number"] },
+    { file: "src/solo/data/useSoloA2P.ts", markers: ["comms-a2p-draft", "comms-a2p-submit"] },
   ]);
 
   const browser = await chromium.launch({ executablePath: EXE });
@@ -251,6 +261,113 @@ async function run() {
     record("readonly", "and is told why, rather than shown a dead surface",
       /Only a workspace admin can change/i.test(t), t.slice(0, 240));
     await page.screenshot({ path: path.join(OUT, "readonly.png") });
+    await page.close();
+  }
+
+
+  /* ── FLOW 5 — buying a number, which SPENDS MONEY ─────────────────────── */
+  console.log("\n── flow 5 · finding and buying a number ──────────");
+  {
+    const page = await open(browser);
+    const before = (await rows(page, "tenant_phone_numbers")).length;
+
+    // A setup gap is not an empty shelf. Blaming the search for a missing messaging
+    // account sends someone looking for better filters instead of at the real cause.
+    await fill(page, "404", "000");
+    await click(page, "Search numbers");
+    await page.waitForTimeout(700);
+    let t = await bodyText(page);
+    record("numbers", "a setup gap is reported as a setup gap",
+      /can.?t buy a number yet/i.test(t) && !/No numbers matched/i.test(t), t.slice(0, 200));
+
+    await fill(page, "404", "404");
+    await fill(page, "GA", "GA");
+    await click(page, "Search numbers");
+    await page.waitForTimeout(700);
+    t = await bodyText(page);
+    record("numbers", "the search returns numbers with a price and what they can do",
+      /\+1404555010/.test(t) && /\$1\.2/.test(t) && /text/.test(t), t.slice(0, 300));
+
+    // The refusing number. Provider inventory really does go stale between a search
+    // and a buy, and telling someone they own a number they do not is the worst
+    // outcome available on this surface.
+    page.once("dialog", (d) => d.accept());
+    const refuseRow = page.locator(".ss-list > div", { hasText: "+14045550102" }).first();
+    await refuseRow.locator("button", { hasText: "Buy" }).click();
+    await page.waitForTimeout(900);
+    t = await bodyText(page);
+    record("numbers", "a refused purchase is NEVER rendered as a purchase",
+      !/is yours/.test(t) && (await page.locator('.ss-outcome[data-tone="bad"]').count()) > 0,
+      t.slice(0, 260));
+    record("numbers", "and nothing reached the store",
+      (await rows(page, "tenant_phone_numbers")).length === before,
+      `rows now ${(await rows(page, "tenant_phone_numbers")).length}, was ${before}`);
+
+    // It asks before it charges. A purchase that happens on one click, with no
+    // statement of the price, is a charge someone did not agree to.
+    let asked = "";
+    page.once("dialog", (d) => { asked = d.message(); d.accept(); });
+    const buyRow = page.locator(".ss-list > div", { hasText: "+14045550101" }).first();
+    await buyRow.locator("button", { hasText: "Buy" }).click();
+    await page.waitForTimeout(1100);
+    record("numbers", "it names the price before it charges",
+      /\$1\.2/.test(asked) && /charge/i.test(asked), `asked: ${asked}`);
+
+    t = await bodyText(page);
+    record("numbers", "the purchase is reported as done", /is yours/.test(t), t.slice(0, 260));
+    // The claim that matters. "It said it worked" and "the number is on the business"
+    // are different claims, and only the second one survives a reload.
+    const after = await rows(page, "tenant_phone_numbers");
+    record("numbers", "and the number REACHED THE STORE",
+      after.some((r) => r.phone_number === "+14045550101"),
+      JSON.stringify(after.map((r) => r.phone_number)));
+
+    await page.screenshot({ path: path.join(OUT, "numbers-bought.png") });
+    await page.reload({ waitUntil: "networkidle" });
+    await clearBackdrop(page);
+    await select(page, "Communications");
+    t = await bodyText(page);
+    record("numbers", "and it is still there after a reload", /\+14045550101/.test(t), t.slice(0, 300));
+    await page.close();
+  }
+
+  /* ── FLOW 6 — carrier registration, and the claim it must never make ──── */
+  console.log("\n── flow 6 · carrier registration ─────────────────");
+  {
+    const page = await open(browser);
+    await select(page, "Registration");
+    let t = await bodyText(page);
+
+    record("a2p", "registration is reachable as its own area of Connections",
+      /Prepare your registration/i.test(t), t.slice(0, 200));
+    // The ceiling, stated where the acts are rather than buried in a status card.
+    record("a2p", "says plainly that filing is the step this product does not have",
+      /Filing is the step this product does not have yet/i.test(t), t.slice(0, 400));
+
+    // Saved copy re-opens for editing. Without this the only live control is a paid
+    // generation that overwrites reviewed compliance prose.
+    const desc = page.locator("textarea").first();
+    record("a2p", "re-opens the saved copy instead of charging to see it again",
+      (await desc.inputValue()).includes("already our clients"), await desc.inputValue());
+
+    await desc.fill("We text our own clients about appointments, and nobody else.");
+    await click(page, "Save registration");
+    await page.waitForTimeout(900);
+    t = await bodyText(page);
+    record("a2p", "the save reports SAVED", /registration is saved/i.test(t), t.slice(0, 300));
+    // The one claim this surface must never make.
+    record("a2p", "and NEVER says it was filed",
+      /has not been filed/i.test(t) && !/Submitted for review/i.test(t), t.slice(0, 300));
+
+    const reg = (await rows(page, "tenant_a2p_registrations"))[0] ?? {};
+    record("a2p", "the edit REACHED THE STORE",
+      String(reg.campaign_description ?? "").includes("nobody else"),
+      String(reg.campaign_description ?? ""));
+    record("a2p", "and the store still says nothing was submitted",
+      (reg.submitted_at ?? null) === null && (reg.status ?? null) === "pending",
+      JSON.stringify({ submitted_at: reg.submitted_at ?? null, status: reg.status ?? null }));
+
+    await page.screenshot({ path: path.join(OUT, "registration-saved.png") });
     await page.close();
   }
 

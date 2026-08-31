@@ -930,10 +930,30 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 
 | Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
 |---|---|---|---|---|---|---|---|
-| `connections/communications` | Business-phone search (`PROPOSED`, non-mutating), the PAIGE-managed sending identity, **editable business details**, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — business details write `set_tenant_brand` (merging); domains add/refresh/set_default/remove via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. Number search still runs nothing (`PROPOSED`) | N/A | N/A | ✓ | N/A | — |
+| `connections/communications` | **Live business-phone search and purchase**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — number search and purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; domains add/refresh/set_default/remove via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect` | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
+| `connections/registration` | Carrier (10DLC) registration: status against the readiness ladder, **PAIGE drafts the regulatory copy**, **the reviewed copy is saved** | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+
+**Two ledger corrections, recorded rather than backfilled quietly (§13/§66).**
+The `connections/communications` row above previously claimed **editable business details**. That
+editor was DELETED in `22271bbb` on an owner ruling — the business owner, legal name, address and
+phone belong to Setup, and Connections owns only what the platform hands the tenant from its own
+server. The row is corrected here rather than left describing a surface that no longer exists. The
+same row also described number search as `PROPOSED` and non-mutating; it is now live, which is the
+other half of this touch.
+
+**What `connections/registration` proves about itself, and what it does not (§13/§32).**
+`src/solo/settings.registration.test.tsx` (11 tests, mounted) covers the four ways this surface can
+lie, and all four were proven to FAIL against a deliberately broken implementation before being
+trusted: an unresolved workspace or a failed read collapsing into "nothing registered" above a PAID
+re-draft that would overwrite reviewed copy; a registration past preparation still offering an
+editor the save seam refuses; and a saved registration reported as filed. **Filing is genuinely
+absent** — the TrustHub calls were removed and `comms-a2p-submit` returns `a2p_submit_wired: false`
+— so no state on this surface may read as submitted, and scoping the submission path is separate
+work. What is NOT proven: authenticated runtime. No live model draft was run and no registration was
+saved against production by the session that built this (§32.c).
 
 **What `connections/communications` proves about itself, and what it does not (§13/§32).**
 
