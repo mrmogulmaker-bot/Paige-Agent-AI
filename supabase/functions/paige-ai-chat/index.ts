@@ -1764,14 +1764,30 @@ JSON:`;
         // A resolution FAILURE is not a match. Requiring the row explicitly stops an errored
         // lookup from reading as "still null, still fine" for a tenant-less operator.
         //
-        // AND A SHAPELESS ROW IS NOT A RESOLUTION EITHER. `!!row` accepts `{}`, which yields a
-        // null tenant — and for the PLATFORM OPERATOR, whose turn scope is legitimately null,
-        // that compares equal and releases the protected reply. Same defect as the errored
-        // lookup above, in a different failure shape: a resolver answering with a row that has
-        // no `tenant_id` is not saying "still null", it is saying nothing. Accept an explicit
-        // null or a string, and nothing else.
-        const tid = row ? (row as any).tenant_id : undefined;
-        const resolved = !error && !!row && (tid === null || typeof tid === "string");
+        // AND A SHAPELESS ROW IS NOT A RESOLUTION EITHER. A row that comes back carrying no
+        // `tenant_id` yields a null tenant — and for the PLATFORM OPERATOR, whose turn scope is
+        // legitimately null, that compares equal and releases the protected reply. A resolver
+        // answering with a row that has no `tenant_id` is not saying "still null", it is saying
+        // nothing.
+        //
+        // BUT NO ROW AT ALL IS A REAL ANSWER, and requiring one broke the operator outright.
+        // `get_paige_persona_context` executes a bare `RETURN` when the tenant is null
+        // (migration 20260805130000, lines 80-82), and a bare RETURN from a RETURNS TABLE
+        // function yields ZERO ROWS — not a row of nulls. So the previous `!!row` requirement
+        // made `resolved` false for EVERY tenant-less operator turn, and every operator turn
+        // carrying a document, session-document context, a RAG hit or memory was refused with
+        // "your active workspace changed" when nothing had changed at all.
+        //
+        // The harness could not see it because its own fake fabricated `[{ tenant_id: null }]`,
+        // a shape production never produces — so the operator control asserted delivery against
+        // an impossible response and passed while the real path was broken. The fake models the
+        // resolver now, and this is what distinguishes the three answers it can give:
+        //   · an ERROR                  → not resolved, refuse.
+        //   · NO ROW, no error          → resolved: authoritatively no tenant (the operator).
+        //   · A ROW                     → resolved only if `tenant_id` is null or a string.
+        const hasRow = row !== null && row !== undefined;
+        const tid = hasRow ? (row as any).tenant_id : null;
+        const resolved = !error && (!hasRow || tid === null || typeof tid === "string");
         const currentTenantId = typeof tid === "string" ? tid : null;
         if (resolved && currentTenantId === turnScopeTenantId) return true;
         console.error(

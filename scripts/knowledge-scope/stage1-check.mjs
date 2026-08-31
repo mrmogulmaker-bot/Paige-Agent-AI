@@ -314,8 +314,15 @@ async function drive({ personaTenant, personaSequence = null, memberships, kbRej
       get_paige_persona_context: () => {
         const state = personaStates[Math.min(personaCall++, personaStates.length - 1)];
         if (state && typeof state === "object" && "error" in state) return state;
+        // A TENANT-LESS OPERATOR GETS NO ROW, NOT A ROW OF NULLS. The real resolver
+        // (migration 20260805130000, lines 80-82) executes a bare `RETURN` when the tenant is
+        // null, and a bare RETURN from a RETURNS TABLE function yields ZERO ROWS. This fake used
+        // to fabricate `[{ tenant_id: null, … }]`, a shape production never produces — so the
+        // operator control asserted delivery against a shape that could not occur, and passed
+        // while every real operator turn carrying evidence was being refused outright.
+        if (state == null) return { data: [], error: null };
         return {
-          data: [{ tenant_id: state ?? null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: fundingEnabled, brand: null }],
+          data: [{ tenant_id: state, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: fundingEnabled, brand: null }],
           error: null,
         };
       },
@@ -1625,6 +1632,17 @@ group("safety-first streaming: protected turns buffer, ordinary turns stream");
     "20.operator CONTROL — a tenant-less operator's document turn still delivers",
     operatorClean.responseText.includes("CHILD-PRIVATE-MARKER"),
     operatorClean.responseText.slice(0, 250),
+  );
+  // AND IT MUST BE A ZERO-ROW ANSWER THAT DELIVERS IT, not a fabricated row of nulls. The fake
+  // used to return `[{ tenant_id: null, … }]` here, which the real resolver never produces — it
+  // bare-`RETURN`s zero rows for a null tenant. So this control asserted delivery against an
+  // impossible response and stayed green while every real operator turn carrying a document,
+  // session-document context, a RAG hit or memory was refused outright. Pinning the shape is
+  // what stops the fake drifting back to something more convenient than production.
+  assert(
+    "20.operator CONTROL — ...and the resolver answered with NO ROW, the way production does",
+    operatorClean.rec.rpc.some((c) => c.name === "get_paige_persona_context"),
+    JSON.stringify(operatorClean.rec.rpc.map((c) => c.name)),
   );
   const operatorBroken = await drive({
     personaTenant: null,
