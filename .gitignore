@@ -26,8 +26,16 @@ dist-ssr
 # Claude Code local session state (settings + agent worktrees) — never commit,
 # but DO version shared project commands under .claude/commands/ so every session
 # (and every teammate) gets them.
+#
+# .claude/skills/ is versioned for the same reason and one stronger one: CLAUDE.md §69
+# makes flow-by-flow MANDATORY on every software task here, and an account-synced install
+# does not reach a fresh remote container with its references/ intact (§64 — nothing the
+# platform needs may depend on one machine). A skill whose SKILL.md arrives without the
+# files it routes to is worse than an absent one: §69's "say so plainly" never fires,
+# because the skill appears to be present.
 .claude/*
 !.claude/commands/
+!.claude/skills/
 
 # Live-drive helper screenshot artifacts — rendered PNGs are never committed (may contain
 # authed-surface pixels); credentials are ENV-only and never written to disk. (scripts/live-drive)
