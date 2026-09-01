@@ -51,6 +51,36 @@ interface PurchaseBody {
   phone_number?: string;
   /** Optional human label for the number. */
   friendly_name?: string;
+  /**
+   * The retail monthly price, in cents, that the caller ALREADY SHOWED THE HUMAN before
+   * asking them to approve this purchase. Optional, and the reason it is optional is a §37
+   * producer fact rather than a preference: the marketplace UI shows the price on the same
+   * screen as the Buy button, so the human cannot approve a number without seeing what it
+   * costs, and that path sends nothing here and is unchanged.
+   *
+   * An agent caller is different. It composes its own confirmation sentence, so nothing
+   * structurally ties the amount a human approved to the amount they will be billed — the
+   * model could omit the price, or state one that was never real. When this field IS present
+   * it is verified against `platform_number_pricing` BEFORE any money is spent, and a
+   * mismatch refuses the purchase. That makes the number in the confirmation binding instead
+   * of decorative: a human cannot be shown one price and charged another, and cannot be asked
+   * to approve an amount nobody ever quoted.
+   */
+  agreed_monthly_cents?: number;
+}
+
+/**
+ * The NANP toll-free SACs. Used only to pick which `platform_number_pricing` row governs a
+ * number, and deliberately not to decide anything else — a number we cannot classify simply
+ * has no verifiable price, which is reported rather than guessed (§13).
+ */
+const TOLLFREE_NANP = new Set(["800", "833", "844", "855", "866", "877", "888"]);
+
+/** ({number_type, country}) for the pricing row, or null when this number is unclassifiable. */
+function pricingKeyFor(e164: string): { numberType: string; country: string } | null {
+  if (!e164.startsWith("+1") || e164.length !== 12) return null; // NANP is all we price today
+  const npa = e164.slice(2, 5);
+  return { numberType: TOLLFREE_NANP.has(npa) ? "tollfree" : "local", country: "US" };
 }
 
 const E164 = /^\+[1-9][0-9]{7,14}$/;
@@ -107,6 +137,10 @@ Deno.serve(async (req) => {
     return json({ error: "phone_number must be E.164 (e.g. +14155550123)" }, 400);
   }
   const friendlyName = (body.friendly_name ?? "").trim() || null;
+  const agreedMonthlyCents = typeof body.agreed_monthly_cents === "number"
+      && Number.isFinite(body.agreed_monthly_cents)
+    ? Math.round(body.agreed_monthly_cents)
+    : null;
 
   // ── Idempotency (pre-purchase): if the tenant already owns this number, return it and
   //    DO NOT re-buy at Twilio. A number held by ANOTHER tenant is a conflict (§9 no-leak). ──
@@ -160,6 +194,47 @@ Deno.serve(async (req) => {
     return json({ needs_config: true, error: "inbound_webhook_secret_missing" });
   }
 
+  // ── The price the human approved must be the price we are about to start charging ──────
+  // This runs BEFORE `purchaseNumber`, because a check that happens after the money is spent
+  // is not a check. Only when the caller sent an amount: the marketplace UI does not (it shows
+  // the price beside the button), so its behaviour is byte-for-byte what it was.
+  if (agreedMonthlyCents !== null) {
+    const key = pricingKeyFor(phoneNumber);
+    const { data: priceRow } = key
+      ? await admin
+        .from("platform_number_pricing")
+        .select("retail_monthly_cents")
+        .eq("number_type", key.numberType)
+        .eq("country", key.country)
+        .eq("active", true)
+        .maybeSingle()
+      : { data: null };
+
+    // Unverifiable is a REFUSAL, not a pass. If we cannot read the governing price there is
+    // nothing to compare the human's approval against, and buying anyway would mean spending
+    // on an amount nobody could confirm — the exact thing this parameter exists to stop.
+    if (!priceRow || typeof priceRow.retail_monthly_cents !== "number") {
+      return json({
+        error: "price_unverifiable",
+        code: "price_unverifiable",
+        message: "This number has no published price right now, so the amount you were quoted can't be confirmed. Nothing was bought.",
+        phone_number: phoneNumber,
+      }, 409);
+    }
+    const realCents = priceRow.retail_monthly_cents as number;
+    if (realCents !== agreedMonthlyCents) {
+      // The real figure is returned so the caller can re-quote honestly rather than retry blind.
+      return json({
+        error: "price_changed",
+        code: "price_changed",
+        message: "The monthly price for this number changed since it was quoted. Nothing was bought.",
+        phone_number: phoneNumber,
+        quoted_monthly_cents: agreedMonthlyCents,
+        actual_monthly_cents: realCents,
+      }, 409);
+    }
+  }
+
   // ── Buy the number into the tenant's subaccount through the ONE seam (§18). ──
   const { smsUrl, statusCallback } = stampedWebhookUrls(supabaseUrl, subRow.inbound_webhook_secret);
   const bought = await purchaseNumber(creds.data.accountSid, creds.data.authToken, phoneNumber, {
@@ -178,10 +253,12 @@ Deno.serve(async (req) => {
   const boughtNumber = ((bought.data as Record<string, unknown>).phone_number as string | undefined) ?? phoneNumber;
 
   // ── Attributable evidence that money was spent ──────────────────────────────────
-  // Called before EVERY exit where Twilio has charged the tenant — there are three, and the
-  // first version of this wrote only the last one. The path it missed is the one that needs it
-  // most: on `number_bought_but_record_failed` the `tenant_phone_numbers` row does NOT exist,
-  // so this audit row is the ONLY record anywhere that a charge started.
+  // Called before EVERY exit where Twilio has charged the tenant — there are FOUR. The first
+  // version of this wrote only the last one; a review then found two more and stated the count
+  // as three, which was still wrong: `twilio_purchase_missing_sid` returns above and is also
+  // past the charge. On both `number_bought_but_record_failed` and `twilio_purchase_missing_sid`
+  // no `tenant_phone_numbers` row exists at all, so this audit row is the ONLY record anywhere
+  // that a charge started. `recorded_on_tenant:false` is what marks those two for reconciliation.
   //
   // The Rail is deliberately not used and cannot be: `record_rail_event` is contact-keyed and
   // raises when the contact does not resolve in the tenant, and a purchased number belongs to
@@ -216,7 +293,19 @@ Deno.serve(async (req) => {
 
   if (!pnSid) {
     // The buy succeeded HTTP-wise but the response carried no SID — do not fabricate one.
-    return json({ error: "twilio_purchase_missing_sid", phone_number: boughtNumber }, 502);
+    //
+    // THIS IS A MONEY-SPENT EXIT AND WAS MISSING ITS AUDIT ROW. We are past `bought.ok`, so
+    // Twilio accepted the purchase and the tenant may already be billed; we simply have no SID
+    // to record it under. Returning here without an audit row left the one charged-but-
+    // unrecorded case with NO trace anywhere — no `tenant_phone_numbers` row and no audit —
+    // which is the precise scenario the helper was written for. The earlier revision counted
+    // three such exits; there are four, and this is the one furthest upstream.
+    await writePurchaseAudit(null, false);
+    return json({
+      error: "twilio_purchase_missing_sid",
+      code: "twilio_purchase_missing_sid",
+      phone_number: boughtNumber,
+    }, 502);
   }
 
   // ── Record the number. subaccount_id set → the trigger derives tenant_id from the
@@ -260,9 +349,16 @@ Deno.serve(async (req) => {
     }
     // The number IS bought at Twilio but we failed to record it — report BOTH honestly so
     // an operator can reconcile (§13). The real PN SID is included for that reconcile.
+    //
+    // `code` IS THE CONTRACT; `error` is prose. `error` interpolates the database message so a
+    // human reconciling has the cause, which means it is NEVER equal to the bare token — and a
+    // consumer that compared it for equality (paige-ai-chat did) silently never matched, so the
+    // "money was already spent" flag it gates never reached the model. A caller must not have to
+    // parse a sentence to learn which failure this is.
     await writePurchaseAudit(null, false);
     return json({
       error: `number_bought_but_record_failed: ${insErr.message}`,
+      code: "number_bought_but_record_failed",
       phone_number: boughtNumber,
       twilio_sid: pnSid,
       charge_wired: false,

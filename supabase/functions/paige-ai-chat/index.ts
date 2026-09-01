@@ -5327,9 +5327,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 type: "object",
                 properties: {
                   phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
+                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number. It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than charged." },
                   friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
                 },
-                required: ["phone_number"]
+                required: ["phone_number", "monthly_cents"]
               }
             }
           },
@@ -5550,8 +5551,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       switch (name) {
         // The money one. The number and the fact that it charges have to be IN the
         // sentence — "buy a number?" is not a proposal anyone can actually approve.
-        case "comms_buy_number":
-          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a monthly charge.`;
+        case "comms_buy_number": {
+          // The AMOUNT belongs in the sentence for the same reason the number does. "This
+          // starts a monthly charge" is not something a person can meaningfully approve — they
+          // are agreeing to an unnamed recurring cost. The figure here is model-supplied, which
+          // on its own would be worth little; what makes it trustworthy is that
+          // comms-purchase-number re-checks it against platform_number_pricing BEFORE buying
+          // and refuses on any mismatch. So the operator can never be shown one price and
+          // charged another, and can never be asked to approve a price that was never real.
+          const cents = typeof a?.monthly_cents === "number" ? a.monthly_cents : null;
+          const price = cents !== null
+            ? `$${(cents / 100).toFixed(2)}/month`
+            : "an amount Paige could not quote";
+          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a recurring charge of ${price}.`;
+        }
         case "comms_name_number":
           return String(a?.friendly_name ?? "").trim()
             ? `Label that number "${a.friendly_name}".`
@@ -6689,7 +6702,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               };
             } else if (tc.function.name === "comms_buy_number") {
               const { data: d, error: e } = await supabaseClient.functions.invoke("comms-purchase-number", {
-                body: { phone_number: args.phone_number, friendly_name: args.friendly_name || undefined },
+                body: {
+                  phone_number: args.phone_number,
+                  friendly_name: args.friendly_name || undefined,
+                  // The price the operator was just shown. Sent so the server can refuse if it
+                  // is not the real one — the approval and the charge have to be the same number.
+                  agreed_monthly_cents: typeof args.monthly_cents === "number" ? args.monthly_cents : undefined,
+                },
               });
               const rec = await readInvokeBody(e, d);
               // A 200 is not a purchase. The function says `purchased` when it bought and
@@ -6711,9 +6730,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : {
                   success: false,
                   error: rec.error ?? "purchase_failed",
-                  // Carried DELIBERATELY: this is the one failure where money was already
-                  // spent, and Paige must say so instead of offering to buy another.
-                  ...(rec.error === "number_bought_but_record_failed"
+                  // MATCH `code`, NOT `error`. `error` is prose that interpolates the database
+                  // message — `number_bought_but_record_failed: duplicate key…` — so this exact
+                  // equality was NEVER true and the flag it gates never reached the model, on the
+                  // one path where money had already left. The comment above claimed it was
+                  // "carried DELIBERATELY", which made it read as verified. The prefix is still
+                  // accepted so a stale deploy of the purchase function degrades to working.
+                  ...(rec.code === "number_bought_but_record_failed"
+                    || (typeof rec.error === "string"
+                        && rec.error.startsWith("number_bought_but_record_failed"))
+                    ? { money_already_spent: true, phone_number: rec.phone_number ?? args.phone_number }
+                    : {}),
+                  // Twilio took the money and returned no SID: also charged, also unrecorded.
+                  ...(rec.code === "twilio_purchase_missing_sid"
                     ? { money_already_spent: true, phone_number: rec.phone_number ?? args.phone_number }
                     : {}),
                 };

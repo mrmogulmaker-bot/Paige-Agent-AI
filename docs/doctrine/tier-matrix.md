@@ -974,14 +974,52 @@ inherited verbatim from the table's own RLS policy so the write seam admits exac
 seam does.
 
 **Attributable evidence.** `comms-purchase-number` now writes an `audit_logs` row
-(`comms:number_purchased`) naming the caller, tenant, number and SID — at **all three** exits
+(`comms:number_purchased`) naming the caller, tenant, number and SID — at **all four** exits
 that follow a real charge, including the one where the provider took the money and our own insert
-then failed. That last row carries `recorded: false`, because a purchase we could not write down is
+then failed. (This sentence said **three** when the slice merged. It was wrong: an independent
+review of the merged diff found `twilio_purchase_missing_sid`, which returns further upstream and
+is also past the charge, writing nothing at all. Corrected here rather than edited away, per §13 —
+the count was stated as verified twice and was wrong both times.) That last row carries `recorded: false`, because a purchase we could not write down is
 exactly the event an audit trail exists for; an earlier revision of this branch declared the writer
 inside the insert-race branch, so two of the three money-spent exits recorded nothing. It records `price_recorded:
 false` rather than a price, because that seam genuinely never receives one — the retail figure lives
 in `comms-search-numbers`. The Rail is deliberately not used and cannot be: `record_rail_event` is
 contact-keyed and a purchased number belongs to the workspace, not to any one client.
+
+**Four defects found AFTER that slice merged, recorded because green gates did not catch them
+(§13/§39).** An independent review of the pushed diff — run after CI was green, the migrations were
+persisted on production and the PR was merged — found four things that every gate had passed over.
+None was hypothetical; each was reproduced before it was fixed.
+
+1. **The one-time backfill aborted in exactly the state its own guard was written for.** Review had
+   added `and p.status = 'active'` so a workspace whose only primary is released still gets
+   backfilled — correct reasoning — but `uq_tenant_phone_numbers_primary` is
+   `UNIQUE (tenant_id) WHERE is_primary` with no status predicate, so the released row still holds
+   the slot and the UPDATE collides. Reproduced on production inside a rollback transaction:
+   `ABORTED 23505`. The proof that had blessed that guard ran the SELECT and never the UPDATE.
+   `20261020000000` makes the state unreachable with a BEFORE trigger (a number leaving `active`
+   loses the flag rather than the write being refused), repairs any existing row, and finishes the
+   backfill. **One honest correction to the shipped comment:** it claimed such a workspace has its
+   caller ID "pointing at a dead number". It does not — `voice-twiml` and `send-message` both filter
+   `status = 'active'`. The real damage was the occupied unique slot.
+2. **`money_already_spent` never reached Paige.** `comms-purchase-number` returns
+   `` `number_bought_but_record_failed: ${insErr.message}` `` — prose — and the consumer compared it
+   with `===` against the bare token, so the flag marking the one path where money had already left
+   was silently never set. The response now carries a stable `code`; the consumer matches on it.
+3. **The purchase confirmation named no amount.** "This starts a monthly charge" is not something a
+   person can meaningfully approve. `comms_buy_number` now requires the quoted `monthly_cents`,
+   the confirmation renders it, and — this is what makes it more than a display —
+   `comms-purchase-number` re-checks it against `platform_number_pricing` **before** buying and
+   refuses on mismatch (`price_changed`) or when it cannot be verified (`price_unverifiable`). An
+   operator can no longer be shown one price and charged another. §37: the two UI producers send no
+   price and are byte-for-byte unaffected; only the agent path is verified.
+4. **The fourth money-spent exit.** See the correction above.
+
+`scripts/comms-purchase-safety-smoke.mjs` drives the **real** handler (bundled, `Deno.serve`
+captured, real `Request`/`Response`; only the Supabase client and the Twilio purchase substituted)
+and is wired unconditionally into CI. Each of its 21 assertions was proven to discriminate by
+reverting the corresponding fix — without the price check, a stale 99¢ quote returns
+`{"purchased": true}`.
 
 **Two ledger corrections, recorded rather than backfilled quietly (§13/§66).**
 The `connections/communications` row above previously claimed **editable business details**. That

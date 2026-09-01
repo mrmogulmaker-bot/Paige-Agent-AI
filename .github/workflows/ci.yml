@@ -338,6 +338,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:comms-webhook-auth
 
+      # Drives the REAL comms-purchase-number handler. Unconditional, and deliberately not
+      # gated on the diff touching that function: three of the four defects it pins were
+      # introduced by edits ELSEWHERE (a consumer comparing the wrong field, a helper hoisted
+      # to the wrong scope), which a path filter would have skipped.
+      - name: Smoke — comms number purchase (money-spent exits and price verification)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-purchase-safety
+
       - name: Smoke — comms tenant scope (§9/§53 webhook scoping)
         if: ${{ !cancelled() }}
         run: npm run smoke:comms-tenant-scope
