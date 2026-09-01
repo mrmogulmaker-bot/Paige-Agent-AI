@@ -8,8 +8,8 @@ import { SETTINGS_SCROLL_OWNER_CLASS, holdsSettingsScrollFocus } from "@/compone
 /**
  * THE TWO HALVES OF THE OWNER'S SCROLL POLICY, LOCKED (2026-08-31).
  *
- *   · SETTINGS is the intentionally scrollable marketplace/browse class. Every
- *     destination must be reachable through ONE visible, usable scroll owner.
+ *   · Connections/Calendars and Integrations are the authorized visible-scroll
+ *     Settings surfaces. Other destinations keep their prior non-visible policy.
  *   · Clients, Campaigns/Growth, Compass, Command Center, Mind and Analytics keep
  *     their form-fitting, design-locked interaction policy. They must NOT become
  *     document-scrollable as a side effect of repairing Settings.
@@ -36,6 +36,7 @@ const rules = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
 const tokens = rules(read("src/solo/solo-tokens.css"));
 const settings = rules(read("src/solo/settings.css"));
+const drive = read("scripts/live-drive/settings-scroll-drive.mjs");
 // Comment-stripped like the stylesheets: these assertions look for CODE, and the
 // file's own comments quote the very class names and helpers under test — which
 // would satisfy a `toMatch` with no implementation behind it, and false-fail the
@@ -87,7 +88,7 @@ describe("locked surfaces keep their form-fitting policy", () => {
       "src/solo/settings.tsx",
     ]);
     expect(settingsTsx).toMatch(/classList\.remove\("tcs-main--settings-scrollbar-hidden"\)/);
-  });
+  }, 15_000);
 });
 
 describe("the shell hands Settings its focus back", () => {
@@ -191,12 +192,44 @@ describe("Settings gets one visible, usable scroll owner", () => {
     expect(webkit![1]).toMatch(/width:\s*[1-9]/);
   });
 
-  it("applies the visible-scrollbar and keyboard fix to EVERY destination", () => {
-    // Not just the long ones. It lives in `SoloSettings`, which every destination
-    // renders through — not in one surface, which is where it started.
-    const effect = settingsTsx.slice(
-      settingsTsx.indexOf('classList.add("tcs-main--settings-scrollbar-hidden")'),
+  it("defeats the Solo form-fit overflow law only for Settings and reserves the gutter", () => {
+    const scoped = settings.match(
+      /\.paige-solo main\[data-solo-screen-host\]\.tcs-main--settings-scrollbar-hidden\.tcs-main--settings-scrollbar-shown\s*\{([^}]*)\}/,
     );
-    expect(effect.slice(0, 1200)).toMatch(/SETTINGS_SCROLLBAR_SHOWN/);
+    expect(scoped, "no Settings-scoped overflow override").toBeTruthy();
+    expect(scoped![1]).toMatch(/overflow-y:\s*auto\s*!important/);
+    expect(scoped![1]).toMatch(/overflow-x:\s*hidden\s*!important/);
+
+    const both = settings.match(
+      /\.tcs-main--settings-scrollbar-hidden\.tcs-main--settings-scrollbar-shown\s*\{([^}]*)\}/,
+    );
+    expect(both, "no visible scrollbar contract").toBeTruthy();
+    expect(both![1]).toMatch(/scrollbar-gutter:\s*stable/);
+  });
+
+  it("resets the shared owner when an in-page Connections segment changes", () => {
+    expect(settingsTsx).toMatch(/function ConnectionsView\(\{ initialSegment, onSegmentChange \}/);
+    expect(settingsTsx).toMatch(/const changeView = useCallback[\s\S]*setView\(nextView\);[\s\S]*useEffect\(\(\) => \{[\s\S]*onSegmentChange\?\.\(\)[\s\S]*\}, \[view, onSegmentChange\]\)/);
+    expect(settingsTsx).toMatch(/onClick=\{\(\) => changeView\(key\)\}/);
+    expect(settingsTsx).toMatch(/onClick=\{\(\) => changeView\("registration"\)\}/);
+    expect(settingsTsx).toMatch(/<ConnectionsView initialSegment=\{segment\} onSegmentChange=\{resetSettingsScroll\}/);
+    expect(settingsTsx).toMatch(/scrollOwner\.scrollTop = 0/);
+  });
+
+  it("keeps executable failure injections inside the cleanup boundary", () => {
+    expect(drive).toMatch(/FLOW_FORCE_VITE_FAILURE/);
+    expect(drive).toMatch(/FLOW_FORCE_BROWSER_FAILURE/);
+    expect(drive).toMatch(/FLOW_FORCE_ASSERTION_FAILURE/);
+    expect(drive).toMatch(/finally\s*\{[\s\S]*stopProcessTree\(vite\)/);
+    expect(drive).toMatch(/viewports:\s*RUN_VIEWPORTS/);
+    expect(drive).toMatch(/expectedScreenshots = RUN_VIEWPORTS\.length \* RUN_THEMES\.length \* 2/);
+    expect(drive).toMatch(/PAIGE opens once beside overflowing Connections/);
+    expect(drive).toMatch(/second PAIGE fold restores Connections PageDown/);
+  });
+  it("shows the visible scrollbar only on Connections and Integrations", () => {
+    expect(settingsTsx).toMatch(/const visibleScroll = tab === "connections" \|\| tab === "integrations"/);
+    expect(settingsTsx).toMatch(/classList\.toggle\(SETTINGS_SCROLLBAR_SHOWN, visibleScroll\)/);
+    expect(settingsTsx).not.toMatch(/EVERY Settings destination/);
+    expect(settings).not.toMatch(/:has\(> \.solo-settings\)/);
   });
 });

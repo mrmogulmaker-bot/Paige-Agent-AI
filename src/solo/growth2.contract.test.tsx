@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { hasExactPipelineArchiveApproval } from "../../supabase/functions/_shared/pipelineArchiveApproval";
 
 const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
@@ -23,8 +24,10 @@ const defaultCreatorMigration = readFileSync(resolve(process.cwd(), "supabase/mi
 const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831221500_solo_pipeline_default_setter_lock.sql"), "utf8");
 const activeReorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831223000_solo_pipeline_active_reorder.sql"), "utf8");
 const pipelineManagementMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831224500_solo_pipeline_governed_management.sql"), "utf8");
+const pipelineIdentityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260901045935_pipeline_identity_catalogue.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 const paigeChat = readFileSync(resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"), "utf8");
+const paigeChatSurface = readFileSync(resolve(process.cwd(), "src/components/dashboard/PaigeAIChat.tsx"), "utf8");
 const paigeMcp = readFileSync(resolve(process.cwd(), "supabase/functions/paige-mcp/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
@@ -94,6 +97,12 @@ describe("Solo Campaigns approved contract", () => {
     expect(css).toContain("overflow-x: clip");
   });
 
+  it("lets the Pipeline board use available vertical canvas without changing its compact-stage behavior", () => {
+    expect(css).toContain("min-height:clamp(330px,calc(100dvh - 390px),560px)");
+    expect(css).toMatch(/@media\(max-width:1100px\)\{[^}]*\.pipeline-stage-focus\{display:block\}[^}]*\.pipeline-board\{display:block\}/);
+    expect(css).toContain("overflow-x:clip");
+  });
+
   it("keeps Campaigns navigation and heading bands on the shared theme canvas", () => {
     expect(css).toMatch(/\.solo-campaigns\{[^}]*background:var\(--pg-canvas\)/);
     expect(css).toMatch(/\.campaigns-nav\{[^}]*background:var\(--pg-canvas\)/);
@@ -104,6 +113,8 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain('title="Deal workspace"');
     expect(source).toContain("New deal");
     expect(source).toContain("Create blank pipeline");
+    expect(source).toContain("Add custom stage");
+    expect(source).toContain("Start with zero stages");
     expect(source).not.toMatch(/starter stages|preset pipeline|simple starter/i);
     expect(source).toContain("Pipeline configuration");
     expect(source).toContain("Back to board");
@@ -113,13 +124,63 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain("??workspace.pipelines[0]");
     expect(source).toContain("Routing, approvals, and repair evidence");
     expect(source).not.toMatch(/pipeline.*revenue|pipeline.*ROI|pipeline.*payment/i);
+    expect(pipelineManagementMigration).not.toContain("_default_stages");
+    expect(pipelineManagementMigration).toContain("'preset_used',false");
+  });
+
+  it("gives duplicate and zero-deal pipelines immutable, tenant-safe catalogue identities", () => {
+    expect(pipelineIdentityMigration).toContain("short_ref");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_ID_IMMUTABLE");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_REFERENCE_IMMUTABLE");
+    expect(pipelineIdentityMigration).toContain("unique (tenant_id,short_ref)");
+    expect(pipelineIdentityMigration).toContain("where tenant_id is null");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_TENANT_REQUIRED");
+    expect(pipelineIdentityMigration).toContain("extensions.gen_random_bytes(1)");
+    expect(pipelineIdentityMigration).not.toContain("PIPELINE_TENANT_BACKFILL_REQUIRED");
+    expect(pipelineIdentityMigration).toContain("get_pipeline_catalogue");
+    expect(pipelineIdentityMigration).toContain("stage_count");
+    expect(pipelineIdentityMigration).toContain("deal_count");
+    expect(pipelineIdentityMigration).toContain("prepare_pipeline_archive_as_paige");
+    expect(pipelineIdentityMigration).toContain("configure_tenant_pipeline_as_paige");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_ARCHIVE_REFERENCE_MISMATCH");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_ARCHIVE_CONFIRMATION_REQUIRED");
+    expect(pipelineIdentityMigration).toContain("drop policy if exists pipelines_coach_read");
+    expect(source).toContain("pipeline.shortRef");
+    expect(source).toContain("pipeline.dealCount");
+    expect(adapter).toContain("short_ref");
+    expect(paigeChat).toContain('name: "pipeline_catalogue"');
+    expect(paigeChat).toContain('name: "pipeline_archive_preview"');
+    expect(pipelineIdentityMigration).toContain("revoke insert,update,delete on public.pipelines,public.pipeline_stages from authenticated");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_HARD_DELETE_UNAVAILABLE");
+    expect(paigeChat).toContain("ownerApprovedThisTurn");
+    expect(paigeChat).toContain("previewPredatesTurn");
+    expect(paigeChat).toContain("archive_exact_approval_required");
+    expect(paigeChat).toContain("hasExactPipelineArchiveApproval(confirmedActions, token, archivePipeline.short_ref)");
+    expect(paigeChatSurface).toContain("confirmedActions");
+    expect(paigeChatSurface).toContain("confirmationToken: confirmation.approvalToken");
+    expect(paigeChatSurface).toContain("pipelineRef: confirmation.pipelineRef");
+    expect(source).not.toContain("Delete pipeline");
+    expect(source).not.toContain("Delete stage");
+  });
+
+  it("cannot reuse approval for one same-name pipeline to archive its duplicate", () => {
+    const approvalForA = [{
+      kind: "pipeline_archive" as const,
+      confirmationToken: "11111111-1111-4111-8111-111111111111",
+      pipelineRef: "PPL-4K8M",
+    }];
+
+    expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(true);
+    expect(hasExactPipelineArchiveApproval(approvalForA, "22222222-2222-4222-8222-222222222222", "PPL-9Q2X")).toBe(false);
+    expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-9Q2X")).toBe(false);
+    expect(hasExactPipelineArchiveApproval(undefined, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(false);
   });
 
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
     for (const contract of ["get_pipeline_workspace", "get_pipeline_routing_evidence", "configure_tenant_pipeline"]) {
       expect(adapter + migration + routingMigration).toContain(contract);
     }
-    for (const action of ["create_pipeline", "update_pipeline", "activate_pipeline", "archive_pipeline", "restore_pipeline", "delete_pipeline", "create_stage", "update_stage", "archive_stage", "restore_stage", "delete_stage", "reorder_stages", "move_deal"]) {
+    for (const action of ["create_pipeline", "update_pipeline", "activate_pipeline", "archive_pipeline", "restore_pipeline", "create_stage", "update_stage", "archive_stage", "restore_stage", "reorder_stages", "move_deal"]) {
       expect(adapter + source + pipelineManagementMigration).toContain(action);
     }
     expect(migration).toContain("PIPELINE_STAGE_OCCUPIED");
@@ -154,7 +215,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(directArchiveMigration).toContain("exists(select 1 from public.deals d where d.stage_id=old.id)");
     expect(reorderMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline_id::text,0))");
     expect(source).toContain("[data.tenantId]");
-    expect(source).toContain('setNewPipeline({name:"",description:""})');
+    expect(source).toContain('setNewPipeline({name:"",description:"",stages:[]})');
     expect(adapter).toContain("state.tenantId === synchronousTenantId");
     expect(adapter).toContain('synchronousTenantId ? "loading" as const');
     expect(pipelineSettings).toContain('rpc("reorder_pipeline_stages" as never');

@@ -833,3 +833,52 @@ a merge conflict in this file. That defers the capture to another PR's merge and
 says *same change*, and "it was more convenient to put it elsewhere" is precisely the reasoning the
 rule exists to refuse. Caught on review, in a PR whose own subject is making that capture
 enforceable.
+
+## A file listing is not a file reading (2026-09-01, #708 → corrected same day)
+
+**What happened.** A whole doctrine artifact — a `.claude/skills/README.md`, a `.gitignore` comment,
+a `config-registry` row, a brain index row and a long dated `decision-log` entry — was written,
+reviewed across eight rounds, and merged, asserting that the §69 delivery skill arrives
+**half-installed** on every fresh container: *"the account-synced copy is `SKILL.md` and nothing else
+— no `references/`, no `templates/`."*
+
+The premise was false. The synced `SKILL.md` is **77,739 bytes** and inlines every `references/*.md`
+and the template under a heading that says so in plain words: *"Inlined references (self-contained ·
+2026-08-30)."* Somebody had already solved the sync limitation days earlier. A fresh container
+receives the complete skill, and §69 was never best-effort.
+
+**The mechanism.** A `find` was run. It printed one `SKILL.md` per synced skill and no `references/`
+directory. That listing was treated as an inventory of **content**. It is an inventory of **names**.
+The 77 KB size was in the same output, in the same column, the entire time — the evidence that would
+have falsified the claim was already on screen and was read past. Opening the file cost one command.
+
+**Why the reviews did not catch it.** They were not asked to. Eight rounds examined whether the
+reasoning was sound, whether the claim was over-stated, whether the licence inference was safe,
+whether the sweep was honest — and each of those found something real. Not one of them opened the
+file the argument was about, because the premise was presented as an observation rather than as a
+claim, and observations do not look like the thing to check.
+
+> **A review grades the argument. It does not grade the evidence the argument stands on.**
+> An unexamined premise inherits the credibility of everything correct that was built on top of it,
+> and the more careful the superstructure, the more solid the foundation appears.
+
+**The rules this leaves.**
+
+- **`find` / `ls` / `wc -l` answer "what is named" and "how big". They never answer "what is in it."**
+  Any claim about content is a claim about content, and needs the file opened. A size that looks
+  wrong for the claim — 77 KB for a file asserted to be a bare index — is the tell.
+- **State a premise as a claim, so it can be checked.** "The synced copy is `SKILL.md` only" reads as
+  a finding. "I ran `find` and saw one filename, and did not open it" reads as what it was, and any
+  reviewer would have opened it.
+- **Sweep your own merged work when a later finding contradicts it.** The correction here touched
+  five files; only one was the file the mistake was made in. This is exactly the Gate-6 sweep,
+  pointed at yesterday's own commit.
+- **The correction is worth more than the conclusion was.** The blocker recorded in #708 (the MIT
+  notice cannot be reconstructed) is still entirely true and still stands. What collapsed was the
+  urgency around it — and the fix that followed, shipping our close-out as our *own* repo-local
+  skill, is better than the vendoring it had been reaching for.
+
+**Related:** *"A predicate proof is not a write proof"* (a proof exercising the wrong statement) and
+*"A verification sweep that filters by content deletes the evidence"* (a search that hid its own
+answer) — both above, both 2026-09-01. Three variants of one failure in a day: **the check ran, and
+it was not a check of the thing.**

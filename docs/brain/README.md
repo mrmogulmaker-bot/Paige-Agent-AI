@@ -41,6 +41,7 @@ worse than none — it lies with authority.
 | `glossary.md` | §-anchors, tier vocab, VP roster, wave/slice names, project jargon | Any unfamiliar term |
 | `goat-anchor-registry.md` | The intellectual DNA of Paige's professional intelligence — WHOSE proven framework anchors WHICH domain (v1, 13 anchors). Branded names OK in docs; **code = mechanic-descriptive only** | Seeding a skill / authoring a methodology anchor / investor IP disclosure |
 | `paige-skills-inventory.md` | What Paige DOES at professional level — the 12-category, ~100-skill inventory (v1). The S2 seeding target list; complements the GOAT registry (what she executes vs whose thinking she reasons from) | Seeding a skill / S2 wave / investor IP disclosure |
+| `pipeline-identity-contract.md` | Draft Pipeline UUID/PPL identity, zero-deal duplicate catalogue, truthful provenance, and exact-reference governed archive contract | Any Pipeline catalogue, create, rename, stage-management, archive, or Paige Pipeline-tool work |
 
 ---
 
@@ -102,7 +103,8 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/doctrine/money-spine-architecture.md` | Full money architecture — Paige-held vs facilitated rails (§38) | Any payment/billing surface |
 | `docs/doctrine/connections-rail-contract.md` | The Page/Rail/PAIGE/Brain contract for Connections & A2P — what may reach the rail, what PAIGE may read/do, and the 4 missing shared contracts (C-1…C-4) nobody may substitute for | Any provider-setup, readiness, A2P or communications-outcome work |
 | `docs/brain/comms-capability-map.md` | What A2P / numbers / voice actually exist, and the difference between code that exists, is deployed, and is reachable. The stranded-surface backlog and the resurfacing order | "do we have comms X?" · any A2P, number, or voice work |
-| `.claude/skills/README.md` | Why the §69 delivery skill is **not** vendored (its MIT notice cannot be fetched or reconstructed without inventing a copyright holder), what would unblock it, the half-install failure mode to expect on a fresh container, and the local knowledge-capture close-out step in full so it survives an upstream update | Any software task here — §69 makes the skill mandatory · before vendoring or updating it |
+| `.claude/skills/README.md` | What lives in `.claude/skills/` and why nothing third-party does: the MIT notice for the §69 skill can neither be fetched nor reconstructed without inventing a copyright holder, and what would unblock it. **Carries the 2026-09-01 correction** — the "half-install" an earlier revision described is NOT real; the synced bundle inlines every reference and is self-contained | Any software task here — §69 makes the skill mandatory · before vendoring or updating it |
+| `.claude/skills/knowledge-closeout/SKILL.md` | **Ours.** The repo close-out procedure: record what a task taught (§0 master ref · §BRAIN.3 brain · §66 tier matrix — each binds a different file), then sweep for the claims it falsified. Loads on every fresh container | The LAST step of any task that shipped a capability, changed config, found a defect, or changed tier visibility |
 | `docs/doctrine/paige-c-suite-roster.md` | Named-agent VP roster (VERA/NEXUS/CURA/…) | Referencing or forging a Paige VP/sub-agent |
 | `docs/doctrine/paige-os-architecture.md` | Paige-as-OS architecture (§35) | OS-shaped primitive decisions |
 | `docs/doctrine/paige-practice-blueprints-2026-07-29.md` | One-click vertical "Blueprint" install layer | Playbook/Blueprint/vertical-preset work |
