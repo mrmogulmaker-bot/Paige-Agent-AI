@@ -2,32 +2,32 @@
 [0m[1mTS2339 [0m[ERROR]: Property 'equifax_score' does not exist on type 'never'.
       ? `Scores — EQ:${pi.equifax_score ?? "—"} EX:${pi.experian_score ?? "—"} TU:${pi.transunion_score ?? "—"}`
 [0m[31m                          ~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m150[0m:[0m[33m27[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m150[0m:[0m[33m27[0m
 
 [0m[1mTS2339 [0m[ERROR]: Property 'experian_score' does not exist on type 'never'.
       ? `Scores — EQ:${pi.equifax_score ?? "—"} EX:${pi.experian_score ?? "—"} TU:${pi.transunion_score ?? "—"}`
 [0m[31m                                                        ~~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m150[0m:[0m[33m57[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m150[0m:[0m[33m57[0m
 
 [0m[1mTS2339 [0m[ERROR]: Property 'transunion_score' does not exist on type 'never'.
       ? `Scores — EQ:${pi.equifax_score ?? "—"} EX:${pi.experian_score ?? "—"} TU:${pi.transunion_score ?? "—"}`
 [0m[31m                                                                                       ~~~~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m150[0m:[0m[33m88[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m150[0m:[0m[33m88[0m
 
 [0m[1mTS2339 [0m[ERROR]: Property 'total_accounts' does not exist on type 'never'.
 Accounts: ${pi?.total_accounts ?? "—"} | Total balance: $${pi?.total_balance ?? "—"} | Available credit: $${pi?.available_credit ?? "—"}
 [0m[31m                ~~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m161[0m:[0m[33m17[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m161[0m:[0m[33m17[0m
 
 [0m[1mTS2339 [0m[ERROR]: Property 'total_balance' does not exist on type 'never'.
 Accounts: ${pi?.total_accounts ?? "—"} | Total balance: $${pi?.total_balance ?? "—"} | Available credit: $${pi?.available_credit ?? "—"}
 [0m[31m                                                               ~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m161[0m:[0m[33m64[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m161[0m:[0m[33m64[0m
 
 [0m[1mTS2339 [0m[ERROR]: Property 'available_credit' does not exist on type 'never'.
 Accounts: ${pi?.total_accounts ?? "—"} | Total balance: $${pi?.total_balance ?? "—"} | Available credit: $${pi?.available_credit ?? "—"}
 [0m[31m                                                                                                                ~~~~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m161[0m:[0m[33m113[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m161[0m:[0m[33m113[0m
 
 [0m[1mTS2769 [0m[ERROR]: No overload matches this call.
   Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "analytics_events", never, "POST">', gave the following error.
@@ -36,47 +36,47 @@ Accounts: ${pi?.total_accounts ?? "—"} | Total balance: $${pi?.total_balance ?
     Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
     await admin.from("analytics_events").insert({
 [0m[31m                                         ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m200[0m:[0m[33m42[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m200[0m:[0m[33m42[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type '{ summary: string; key_insights: string[]; updated_at: string; }' is not assignable to parameter of type 'never'.
       .update({
 [0m[31m              ^[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m276[0m:[0m[33m15[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m276[0m:[0m[33m15[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type '{ last_session_summary: string; }' is not assignable to parameter of type 'never'.
       .update({ last_session_summary: summary.slice(0, 1000) })
 [0m[31m              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m285[0m:[0m[33m15[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m285[0m:[0m[33m15[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       await logEvent(admin, user.id, "broker_session_start", {
 [0m[31m                     ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m412[0m:[0m[33m22[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m412[0m:[0m[33m22[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
         await logEvent(admin, user.id, "broker_team_session_start", {
 [0m[31m                       ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m418[0m:[0m[33m24[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m418[0m:[0m[33m24[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       const { summary, insights } = await generateSummary(admin, activeSessionId!, rel as RelationshipRow, hist);
 [0m[31m                                                          ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m439[0m:[0m[33m59[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m439[0m:[0m[33m59[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
     const clientCredit = await loadClientCreditContext(admin, rel.client_user_id);
 [0m[31m                                                       ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m473[0m:[0m[33m56[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m473[0m:[0m[33m56[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
     const baseTeamContext = await loadTeamContext(admin, broker_id, brokerOwnerFullName, broker.business_name);
 [0m[31m                                                  ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m474[0m:[0m[33m51[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/broker-paige-chat/index.ts[0m:[0m[33m474[0m:[0m[33m51[0m
 
 Found 14 errors.
 

@@ -14,9 +14,10 @@
 // router"). Three tables that can drift apart silently is a §18 defect on its own; each unpriced
 // path was the same defect wearing different clothes.
 //
-// It carries NO imports on purpose. That is what lets the same source be type-checked by Deno for
-// the edge runtime AND executed directly by Node for `scripts/token-pricing/check.mjs` — the
-// pricing arithmetic is graded by a real test rather than by reading it.
+// It carries NO imports on purpose, so the same source that Deno type-checks for the edge runtime
+// is the source `scripts/token-pricing/check.mjs` executes — the pricing arithmetic is graded by a
+// real test rather than by reading it. (That check loads it through the harness's esbuild loader,
+// not Node's own type stripping, which is version-dependent and broke CI once.)
 //
 // PER-MODEL, not per-provider, for anthropic. The old single "anthropic" price was Claude's
 // reasoning-tier rate applied to EVERY Claude call, so 8,535,448 haiku tokens would have been

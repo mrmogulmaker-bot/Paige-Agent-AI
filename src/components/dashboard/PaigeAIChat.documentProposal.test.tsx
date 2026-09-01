@@ -111,9 +111,9 @@ describe("PAIGE chat — a document proposes, it does not write", () => {
   });
 
   it("sends the ticked KEYS and never the values", async () => {
-    const calls: Array<{ url: string; body: any }> = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
-      calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
       if (String(url).includes("paige-apply-extraction")) {
         return { ok: true, status: 200, json: async () => ({ ok: true, applied_keys: ["credit_score_equifax"] }) };
       }
@@ -136,8 +136,11 @@ describe("PAIGE chat — a document proposes, it does not write", () => {
     const apply = calls.find((c) => c.url.includes("paige-apply-extraction"));
     expect(apply).toBeTruthy();
     expect(apply!.body.upload_id).toBe(UPLOAD_ID);
-    expect(Array.isArray(apply!.body.approved_keys)).toBe(true);
-    expect(apply!.body.approved_keys.sort()).toEqual(["credit_score_equifax", "negative_items"]);
+    // Narrowed through a real runtime assertion, not asserted away: if `approved_keys` is not an
+    // array the line above fails first, so the cast below is only ever reached when it holds.
+    const approvedKeys = apply!.body?.approved_keys;
+    expect(Array.isArray(approvedKeys)).toBe(true);
+    expect((approvedKeys as string[]).sort()).toEqual(["credit_score_equifax", "negative_items"]);
     // THE POINT: keys travel, values do not. A body carrying 712 would mean the browser decided
     // what lands on the profile.
     expect(JSON.stringify(apply!.body)).not.toContain("712");
@@ -149,9 +152,9 @@ describe("PAIGE chat — a document proposes, it does not write", () => {
   });
 
   it("treats Skip as a decision the server records, not a silent dismissal", async () => {
-    const calls: Array<{ url: string; body: any }> = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
-      calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
       if (String(url).includes("paige-apply-extraction")) {
         return { ok: true, status: 200, json: async () => ({ ok: true, declined: true, applied_keys: [] }) };
       }
@@ -192,9 +195,9 @@ describe("PAIGE chat — unticking a field means it is not written", () => {
    * something.
    */
   it("omits the field the person unticked", async () => {
-    const calls: Array<{ url: string; body: any }> = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: any) => {
-      calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+    const calls: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
       if (String(url).includes("paige-apply-extraction")) {
         return { ok: true, status: 200, json: async () => ({ ok: true, applied_keys: ["negative_items"] }) };
       }

@@ -2,7 +2,7 @@
 [0m[1mTS2339 [0m[ERROR]: Property 'catch' does not exist on type 'PromiseLike<void>'.
     }).then(() => {}).catch(() => {});
 [0m[31m                      ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/skill-forge/index.ts[0m:[0m[33m164[0m:[0m[33m23[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/skill-forge/index.ts[0m:[0m[33m164[0m:[0m[33m23[0m
 
 [0m[1m[31merror[0m: Type checking failed.
 

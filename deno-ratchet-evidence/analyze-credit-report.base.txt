@@ -3,36 +3,36 @@
   Type '"public"' is not assignable to type 'never'.
       return await failUpload(supabase, uploadId, "Failed to download file", 500);
 [0m[31m                              ~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m382[0m:[0m[33m31[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m382[0m:[0m[33m31[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       await logAuditFailure(supabase, user.id, uploadId, "read_check_failed", {
 [0m[31m                            ~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m404[0m:[0m[33m29[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m404[0m:[0m[33m29[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       return await failUpload(supabase, uploadId, message, 422);
 [0m[31m                              ~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m408[0m:[0m[33m31[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m408[0m:[0m[33m31[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       await logAuditFailure(supabase, user.id, uploadId, "structured_extraction_validation_failed", {
 [0m[31m                            ~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m437[0m:[0m[33m29[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m437[0m:[0m[33m29[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
         supabase,
 [0m[31m        ~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m443[0m:[0m[33m9[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m443[0m:[0m[33m9[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type '{ analysis_status: string; error_message: string; }' is not assignable to parameter of type 'never'.
     .update({ analysis_status: "failed", error_message: message })
 [0m[31m            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m936[0m:[0m[33m13[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m936[0m:[0m[33m13[0m
 
 [0m[1mTS2769 [0m[ERROR]: No overload matches this call.
   Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "audit_logs", never, "POST">', gave the following error.
@@ -41,7 +41,7 @@
     Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
   await supabase.from("audit_logs").insert({
 [0m[31m                                    ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m946[0m:[0m[33m37[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/analyze-credit-report/index.ts[0m:[0m[33m946[0m:[0m[33m37[0m
 
 Found 7 errors.
 

@@ -313,7 +313,16 @@ serve(async (req: Request) => {
       .eq("id", runId);
     if (updErr) console.error("[paige-eval] run close failed (non-blocking):", updErr.message);
 
-    const payload = { runId, ...result };
+    // `result` already carries `runId` — `runEval` sets it from the same `opts.runId` passed in
+    // above (gate.ts:155), so the two are provably the same value and the explicit one was dead:
+    // the spread always overwrote it (TS2783/TS2785). Dropping it changes no output byte.
+    //
+    // Left alone until now because the deno ratchet inherited it as a baseline diagnostic. It stops
+    // being inheritable when this function's BASE leg is UNCLASSIFIED — deno reported 3 errors and
+    // the gate parsed 4 — at which point nothing is credited and the head must be clean on its own.
+    // A gate that cannot read its own baseline correctly refuses to grade rather than guessing,
+    // which is the right failure direction and is what surfaced this.
+    const payload = { ...result };
     return json(200, result.degraded ? { ok: false, needs_config: true, ...payload } : { ok: true, ...payload });
   } catch (e) {
     console.error("[paige-eval] unhandled:", e);

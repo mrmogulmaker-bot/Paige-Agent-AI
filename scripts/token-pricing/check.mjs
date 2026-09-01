@@ -15,9 +15,15 @@
  *   3. Haiku is no longer booked at reasoning-tier rates. This was the live defect: 8,535,448 haiku
  *      tokens on production would have been priced at roughly 3× their list price.
  *
- * It runs the REAL module — Node executes the same source Deno type-checks, which is the reason
- * `token-pricing.ts` deliberately carries no imports. No re-implementation of the arithmetic lives
- * here; a test that recomputes the thing it is grading proves only that it can multiply.
+ * It runs the REAL module — the same source Deno type-checks for the edge runtime. No
+ * re-implementation of the arithmetic lives here; a test that recomputes the thing it is grading
+ * proves only that it can multiply.
+ *
+ * It loads that source through the harness's esbuild loader rather than Node's own type stripping.
+ * The first version used `--experimental-strip-types`, which passed locally on Node 22 and failed
+ * CI outright with `bad option` — the flag was REMOVED in Node 24, which the runner uses. A test
+ * that only runs on the author's Node version is not a gate. The loader is already proven in CI by
+ * the sibling `trace-wiring` suite and is version-independent.
  */
 import { estimateTokenCostUsd, tokenRate } from "../../supabase/functions/_shared/token-pricing.ts";
 

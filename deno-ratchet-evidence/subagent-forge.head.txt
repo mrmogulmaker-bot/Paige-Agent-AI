@@ -1,5 +1,1 @@
-[0m[1m[31merror[0m: Could not find "@supabase/supabase-js" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/subagent-forge/index.ts[0m:[0m[33m11[0m:[0m[33m29[0m
-
-Stack backtrace:
-   0: <unknown>
+[0m[32mCheck[0m supabase/functions/subagent-forge/index.ts

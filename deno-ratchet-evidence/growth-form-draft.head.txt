@@ -2,7 +2,7 @@
 [0m[1mTS18048 [0m[ERROR]: 'options' is possibly 'undefined'.
         if (!options.length) type = "text"; // repair, don't drop the question
 [0m[31m             ~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/_shared/growth-forms.ts[0m:[0m[33m75[0m:[0m[33m14[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/_shared/growth-forms.ts[0m:[0m[33m75[0m:[0m[33m14[0m
 
 [0m[1m[31merror[0m: Type checking failed.
 

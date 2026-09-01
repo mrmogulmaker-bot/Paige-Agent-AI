@@ -2,7 +2,7 @@
 [0m[1mTS7006 [0m[ERROR]: Parameter 'd' implicitly has an 'any' type.
       await Promise.all(drafts.map(async (d) => {
 [0m[31m                                          ^[0m
-    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/content-draft/index.ts[0m:[0m[33m110[0m:[0m[33m43[0m
+    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/content-draft/index.ts[0m:[0m[33m110[0m:[0m[33m43[0m
 
 [0m[1m[31merror[0m: Type checking failed.
 
