@@ -127,7 +127,11 @@ export default function JoinWorkspace() {
 
   /** Run the accept RPC and route the user in (no consent gate — caller handles it). */
   const finishAccept = async (uid: string) => {
-    const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
+    // Solo Team invitations use the single-use, email-bound acceptance contract.
+    // Other invite kinds retain their existing specialized acceptance paths.
+    const { error: e } = isTenantStaffInvite
+      ? await supabase.rpc("accept_solo_team_invite" as never, { _token: token } as never)
+      : await supabase.rpc("accept_tenant_invite", { _token: token });
     if (e) throw e;
     try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
     toast.success(`Welcome to ${info?.tenant_name ?? "your workspace"}`);

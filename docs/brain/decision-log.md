@@ -602,3 +602,13 @@ every function importing it).
 **Also recorded:** Supabase preview pushes only NEW migration files, so a migration edited in place
 leaves the preview branch holding the pre-fix version while its badge stays green. Measured directly,
 not inferred. The from-nothing local replay is the authoritative migration proof.
+## 2026-08-31 — Solo Settings Team Gate 1 approved; production branch in flight, not live
+
+The owner approved the roster-first Team design and authorized production implementation. Growth uses
+the Settings page scroll owner plus server search/filter and 25-person Load more pages—never a nested
+people scrollbar. Job title/responsibilities are descriptive only; Owner/Admin/Member remain the
+enforced permissions. Paige context is derived from the authenticated active tenant, treats authored
+work details as untrusted reference data, and stays proposal-only until the owner confirms in Team.
+Local structural, test, security-lint, type-ratchet and build evidence is green; authenticated runtime,
+migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is still required before
+merge or deployment.

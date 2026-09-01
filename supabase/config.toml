@@ -15,6 +15,11 @@ project_id = "xygzykjyynhzqytbqnzu"
   # token server-side; safe to call with the anon key.
   [functions.send-portal-invite]
     verify_jwt = false
+  # Solo Settings -> Team invitation boundary. The browser sends no tenant id
+  # and receives no raw token; the function verifies the caller JWT and the DB
+  # derives their active tenant and membership authority.
+  [functions.solo-team-invitations]
+    verify_jwt = true
   # Self-serve removal of an abandoned pre-signup shell. Must be authenticated
   # (derives the uid from the JWT and refuses to delete a completed account).
   [functions.signup-cancel]
