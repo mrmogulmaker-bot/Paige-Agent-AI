@@ -109,10 +109,13 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
 - `comms-search-numbers` and `comms-purchase-number` — both **deployed**, and both now have a Solo
   caller: `useSoloNumbers.ts` → `PhoneSetupPanel` / `OwnedNumbers` in `src/solo/settings.tsx`.
 - **What a Solo tenant can do.** Search local or toll-free by area code, state, city, or leading
-  digits; see each result's monthly price; buy in a deliberate two-step whose second step names the
-  amount; then list owned numbers, rename one, and choose which one sends. Every write is an RPC —
-  `tenant_phone_number_set_primary` / `tenant_phone_number_rename` (`20260901010000`) — never a
-  table write from the browser. PAIGE reaches the same seams through eight `comms_*` tools —
+  digits; see each result's monthly price when one is published; buy it; then list owned numbers,
+  rename one, and choose which one sends. **The browser never writes `tenant_phone_numbers`
+  directly, but the seams differ by action and the difference matters to anyone inventorying
+  mutations:** rename and set-primary go through RPCs (`tenant_phone_number_rename` /
+  `tenant_phone_number_set_primary`, `20260901010000`), while **buying goes through the
+  `comms-purchase-number` EDGE FUNCTION** (`functions.invoke`) — the recurring-charge seam, and the
+  one most easily missed when grepping for RPCs. PAIGE reaches the same seams through eight `comms_*` tools —
   `search_numbers`, `buy_number`, `list_numbers`, `name_number`, `set_primary_number`,
   `connection_summary`, and the two A2P ones (`draft_registration`, `registration_status`),
   which reach only the "prepared" ceiling above.
@@ -125,17 +128,23 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   protected — do not quote a protection without naming its lane.** The server branches on whether
   the caller sent an agreed amount (`if (agreedMonthlyCents !== null)`), and only one lane does.
 
-  | | **Agent lane** — `comms_buy_number` | **UI lanes** — Solo `PhoneSetupPanel`, legacy `NumbersTab` |
-  |---|---|---|
-  | Sends an agreed price | yes, required | **no** — both post `{ phone_number }` only |
-  | Quote guard | **enforced** — `paige-ai-chat` refuses without a whole, positive `monthly_cents`, and the guard sits *ahead of* the autonomy gate, so it binds at `auto` too | n/a |
-  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals, checked *before* `purchaseNumber` | **no** — the branch is skipped entirely |
-  | Human sees the amount before buying | at `confirm`, in the confirmation; not at `auto` | yes — price shown beside Buy, deliberate two-step |
-  | What can go wrong | a workspace on `auto` buys with no confirmation | **a price change between search and buy is not caught** — the UI shows the figure `comms-search-numbers` read, then buys without re-reading it |
+  There are **three** callers, not two — the two UI ones behave differently from each other and
+  grouping them hides the weakest path.
 
-  The UI lanes' behaviour is deliberate and pre-existing — the function comments it: *"the
-  marketplace UI does not [send an amount] … so its behaviour is byte-for-byte what it was."*
-  It is recorded here as a **known gap**, not as a protection.
+  | | **Agent** — `comms_buy_number` | **Solo UI** — `PhoneSetupPanel` | **Legacy UI** — `NumbersTab` |
+  |---|---|---|---|
+  | Sends an agreed price | yes, required | **no** — posts `{ phone_number }` | **no** — posts `{ phone_number }` |
+  | Quote guard | **enforced** — refuses without a whole, positive `monthly_cents`, *ahead of* the autonomy gate so it binds at `auto` too | n/a | n/a |
+  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **no** — branch skipped | **no** — branch skipped |
+  | Confirmation step | at `confirm` only; **none at `auto`** | yes — a `window.confirm` (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
+  | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise **`—`** |
+  | What can go wrong | a workspace on `auto` buys unattended | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
+
+  The UI behaviour is deliberate and pre-existing — the function comments it: *"the marketplace UI
+  does not [send an amount] … so its behaviour is byte-for-byte what it was."* Recorded here as a
+  **known gap**, never as a protection. **The legacy operator tab is the weakest path on the
+  platform for starting a recurring charge**, and it is worth knowing that before quoting anything
+  above as a safeguard.
 
   - **Configurable, and it defaults safe.** `resolveToolAutonomy` defaults to `confirm` — the
     comment reads *"safe default — never assume autopilot"*. But `comms_buy_number` is a
@@ -230,9 +239,13 @@ voice route unless someone sets it by hand in the console.
 
 **Owner authorization required** (each is a provider action, and each is a separate Trust Compass
 capability per `connections-rail-contract.md` §0b):
-6. ~~Live number search, and purchase (a recurring charge).~~ **DONE 2026-09-01 (#695/#699).** The
-   authorization did not disappear — it moved into the flow: the tenant sees the price and confirms
-   it, and the price is re-verified server-side before any charge.
+6. ~~Live number search, and purchase (a recurring charge).~~ **REACHABLE 2026-09-01 (#695/#699) —
+   but the authorization is only complete in ONE of the three lanes.** In the `comms_buy_number`
+   agent lane at `confirm`, the operator is shown the amount, confirms it, and the server
+   re-verifies it before any charge — that is the full sequence. Every other lane is missing part
+   of it: the agent lane at `auto` skips the confirmation, Solo skips the server re-verification,
+   and the legacy tab skips both and has no confirmation step at all. See the lane table above
+   before treating this item as closed.
 7. Re-stamping webhook URLs on already-purchased numbers.
 8. Setting `VoiceUrl` on numbers — without it tenant inbound calling cannot work.
 9. Recording/transcription and the live co-pilot — grants #4 and #5, and it spends per call.

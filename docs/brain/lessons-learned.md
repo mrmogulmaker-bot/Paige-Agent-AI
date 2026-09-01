@@ -658,15 +658,23 @@ safety property is the more dangerous of the two, because the next session quote
 
 **The rule.** When recording anything protective, separate it by strength and say which is which:
 
-| Strength | Means | Example here |
+| Strength | Means | Example — **note every one names its lane; that is the point** |
 |---|---|---|
-| **Enforced** | code refuses; no configuration changes it | no purchase without a whole, positive `monthly_cents`; server re-verifies the price |
-| **Configurable** | safe today, a setting away from not being | `confirm` is the default lane; a workspace may set `auto` |
-| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" |
+| **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
+| **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only |
+| **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
 
-Never write "never" about the middle or bottom row. For anything money-, permission-, or
+Never write "never" about the bottom three rows. For anything money-, permission-, or
 tenant-boundary-shaped, name the lane that removes the protection **in the same sentence** as the
 protection — a reader who has to go find the exception will not.
+
+**The examples above are deliberately written the long way.** An earlier version of this table put
+*"no purchase without a whole, positive `monthly_cents`; server re-verifies the price"* in the
+Enforced row, unqualified — and the review caught that the lesson was handing future authors the
+exact unsafe sentence to copy, two paragraphs above the analysis explaining why it was false. **A
+rule whose own example violates it teaches the violation**, because the example is what gets
+copied and the prose is what gets skimmed.
 
 **How it was caught, honestly:** not by me. The §39 peer-gate caught it — an automated reviewer
 reading the actual diff, which is precisely the layer that exists because the author's own proof
