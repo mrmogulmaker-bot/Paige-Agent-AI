@@ -94,6 +94,12 @@ describe("Solo Campaigns approved contract", () => {
     expect(css).toContain("overflow-x: clip");
   });
 
+  it("lets the Pipeline board use available vertical canvas without changing its compact-stage behavior", () => {
+    expect(css).toContain("min-height:clamp(330px,calc(100dvh - 390px),560px)");
+    expect(css).toMatch(/@media\(max-width:1100px\)\{[^}]*\.pipeline-stage-focus\{display:block\}[^}]*\.pipeline-board\{display:block\}/);
+    expect(css).toContain("overflow-x:clip");
+  });
+
   it("keeps Campaigns navigation and heading bands on the shared theme canvas", () => {
     expect(css).toMatch(/\.solo-campaigns\{[^}]*background:var\(--pg-canvas\)/);
     expect(css).toMatch(/\.campaigns-nav\{[^}]*background:var\(--pg-canvas\)/);
@@ -104,6 +110,8 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain('title="Deal workspace"');
     expect(source).toContain("New deal");
     expect(source).toContain("Create blank pipeline");
+    expect(source).toContain("Add custom stage");
+    expect(source).toContain("Start with zero stages");
     expect(source).not.toMatch(/starter stages|preset pipeline|simple starter/i);
     expect(source).toContain("Pipeline configuration");
     expect(source).toContain("Back to board");
@@ -113,6 +121,8 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain("??workspace.pipelines[0]");
     expect(source).toContain("Routing, approvals, and repair evidence");
     expect(source).not.toMatch(/pipeline.*revenue|pipeline.*ROI|pipeline.*payment/i);
+    expect(pipelineManagementMigration).not.toContain("_default_stages");
+    expect(pipelineManagementMigration).toContain("'preset_used',false");
   });
 
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
@@ -154,7 +164,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(directArchiveMigration).toContain("exists(select 1 from public.deals d where d.stage_id=old.id)");
     expect(reorderMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline_id::text,0))");
     expect(source).toContain("[data.tenantId]");
-    expect(source).toContain('setNewPipeline({name:"",description:""})');
+    expect(source).toContain('setNewPipeline({name:"",description:"",stages:[]})');
     expect(adapter).toContain("state.tenantId === synchronousTenantId");
     expect(adapter).toContain('synchronousTenantId ? "loading" as const');
     expect(pipelineSettings).toContain('rpc("reorder_pipeline_stages" as never');

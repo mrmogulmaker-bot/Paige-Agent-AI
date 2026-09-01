@@ -79,6 +79,8 @@ describe("Solo Campaigns rendered flows", () => {
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
     expect(host.querySelector(".pipeline-config-workspace")?.textContent).toContain("Pipeline configuration");
     expect(host.textContent).toContain("Create blank pipeline");
+    expect(host.textContent).toContain("Start with zero stages");
+    expect(host.textContent).toContain("Add custom stage");
     expect(host.textContent).toContain("Ask PAIGE");
     expect(host.textContent).not.toMatch(/starter|preset/i);
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent?.includes("Back to board")) as HTMLButtonElement).click());
@@ -88,6 +90,68 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.textContent).toContain("Archive");
     expect(host.textContent).toContain("Delete stage");
     expect(host.textContent).toContain("Delete pipeline");
+  });
+
+  it("creates a pipeline with only the custom stages authored in the creation workspace", async () => {
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    const workspace = harness.state.pipelineWorkspace as {
+      pipelines: Array<Record<string, unknown>>;
+      stages: Array<Record<string, unknown>>;
+    };
+    const pipelineCount = workspace.pipelines.length;
+    const stageCount = workspace.stages.length;
+    action.mockClear();
+    action.mockImplementationOnce(async () => {
+      workspace.pipelines.push({ id: "pipeline-2", name: "Retention workflow", description: "", isDefault: false, lifecycleStatus: "draft", version: 1 });
+      workspace.stages.push({ id: "stage-2", pipelineId: "pipeline-2", label: "Welcome", description: "", orderIndex: 1, archivedAt: null, movePolicy: "direct", version: 1 });
+      return { ok: true, message: "Custom pipeline created", data: { pipeline_id: "pipeline-2" } };
+    });
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
+    const stageName = host.querySelector('.pipeline-create-stage input') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Retention workflow");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(stageName, "Welcome");
+      stageName.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Add custom stage") as HTMLButtonElement).click());
+    expect((host.querySelector(".pipeline-draft-stage-list input") as HTMLInputElement).value).toBe("Welcome");
+    await act(async () => {
+      ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create pipeline with 1 stage") as HTMLButtonElement).click();
+    });
+    expect(action).toHaveBeenCalledWith(expect.objectContaining({
+      type: "create-pipeline",
+      name: "Retention workflow",
+      stages: [{ label: "Welcome", description: "", movePolicy: "direct" }],
+    }));
+    expect((host.querySelector(".pipeline-actions select") as HTMLSelectElement).value).toBe("pipeline-2");
+    expect(host.querySelector(".pipeline-lane h3")?.textContent).toBe("Welcome");
+    workspace.pipelines.splice(pipelineCount);
+    workspace.stages.splice(stageCount);
+  });
+
+  it("creates a genuinely blank pipeline when the owner adds no stages", async () => {
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    action.mockResolvedValueOnce({ ok: true, message: "Blank pipeline created", data: {} });
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Owner-built workflow");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create blank pipeline") as HTMLButtonElement).click();
+    });
+    expect(action).toHaveBeenCalledWith(expect.objectContaining({
+      type: "create-pipeline",
+      name: "Owner-built workflow",
+      stages: [],
+    }));
+    expect(host.querySelector(".pipeline-config-workspace")).toBeNull();
   });
 
   it("prevents overlapping stage creation requests", async () => {

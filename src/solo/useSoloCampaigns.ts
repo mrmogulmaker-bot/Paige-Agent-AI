@@ -52,9 +52,10 @@ export type PipelineStage = { id: string; pipelineId: string; label: string; des
 export type PipelineDeal = { id: string; title: string; pipelineId: string; stageId: string; clientName: string; owner: string; status: string; source: string; nextAction: string; updatedAt: string; version: number; history: { summary: string; createdAt: string }[] };
 export type PipelineRecord = { id: string; name: string; description: string; isDefault: boolean; lifecycleStatus: "draft" | "active" | "archived"; version: number };
 export type PipelineWorkspace = { canManage: boolean; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
+export type PipelineStageDraft = { label: string; description: string; movePolicy: "direct" | "approval" };
 type CommandBase = { idempotencyKey?: string };
 export type PipelineAction =
-  | (CommandBase & { type: "create-pipeline"; name: string; description: string })
+  | (CommandBase & { type: "create-pipeline"; name: string; description: string; stages: PipelineStageDraft[] })
   | (CommandBase & { type: "update-pipeline"; pipelineId: string; name: string; description: string; expectedVersion: number })
   | (CommandBase & { type: "activate-pipeline" | "archive-pipeline" | "restore-pipeline" | "delete-pipeline"; pipelineId: string; expectedVersion: number })
   | (CommandBase & { type: "create-stage"; pipelineId: string; label: string; description: string; movePolicy: "direct" | "approval"; expectedVersion: number })
