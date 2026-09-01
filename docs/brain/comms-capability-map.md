@@ -5,6 +5,12 @@ current Solo surface shows. This maps what exists, so resurfacing is a porting e
 than a rediscovery. Written from the repo at `1b12738f`; every claim is grounded in a file or a
 commit, and the unverified ones say so.
 
+**Updated 2026-09-01** for the phone-line wave (#695 `94460ee3`, #699 `90a9d067`). The Numbers
+section, the stranded-list row for `panel=numbers`, resurfacing items 1 and 6, and the
+`paige-mcp send_sms` defect all asserted things that are no longer true. Everything about A2P and
+voice is unchanged — **no tenant can send an SMS**, and a bought number still carries no inbound
+voice route.
+
 ## Read this distinction first — it has cost us time before
 
 | Term | Means |
@@ -97,12 +103,28 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   `messaging_service_sid` that `send-message` resolves by `tenant_id` — is refused. INVOKER is the mechanism, not a detail — a DEFINER trigger reads
   `current_user` as its own owner and would allow everything, which the proof caught.
 
-### Numbers — search and purchase work, and are unreachable from Solo
+### Numbers — REACHABLE from Solo since 2026-09-01 (#695, #699)
 - `tenant_phone_numbers` (`20260726210000:73-101`, extended `20260727140000`) — status, source,
   capabilities, one primary per tenant, globally unique E.164.
-- `comms-search-numbers` and `comms-purchase-number` — both **deployed**.
-- **`NumbersTab.tsx` (17 KB) is complete**, same stranded route.
-- Solo Connections renders an inert search panel that honestly says nothing ran.
+- `comms-search-numbers` and `comms-purchase-number` — both **deployed**, and both now have a Solo
+  caller: `useSoloNumbers.ts` → `PhoneSetupPanel` / `OwnedNumbers` in `src/solo/settings.tsx`.
+- **What a Solo tenant can do.** Search local or toll-free by area code, state, city, or leading
+  digits; see each result's monthly price; buy in a deliberate two-step whose second step names the
+  amount; then list owned numbers, rename one, and choose which one sends. Every write is an RPC —
+  `tenant_phone_number_set_primary` / `tenant_phone_number_rename` (`20260901010000`) — never a
+  table write from the browser. PAIGE reaches the same seams through eight `comms_*` tools —
+  `search_numbers`, `buy_number`, `list_numbers`, `name_number`, `set_primary_number`,
+  `connection_summary`, and the two A2P ones (`draft_registration`, `registration_status`),
+  which reach only the "prepared" ceiling above.
+- **What it still cannot do, and these are the edges that matter.** Nothing here sends an SMS — the
+  A2P ceiling at the top of this file governs that and is unchanged. Nothing sets `VoiceUrl`, so a
+  number bought this way still has no inbound voice route (see the gap below). Purchase is never
+  autonomous and is never retried: `paige-ai-chat` refuses `comms_buy_number` without a whole,
+  positive `monthly_cents`, and `comms-purchase-number` re-verifies that amount against the
+  operator's own price table and returns `price_changed` / `price_unverifiable` rather than
+  spending. The panel still renders an honest unavailable — `needs_config` — when the workspace
+  cannot buy yet; that is a configured refusal, not the old inert form.
+- **`NumbersTab.tsx` (17 KB)** stays the operator-side surface on the legacy route.
 - `import_tenant_phone_number` — a correct, tenant-pinned RPC with **zero callers anywhere**.
 - `provision-tenant-twilio` — deployed, operator-gated, **zero callers**, and carries an `adopt`
   mode for reconciling console-created subaccounts.
@@ -136,13 +158,17 @@ voice route unless someone sets it by hand in the console.
   wiring** — ConversationRelay is spec-only, tracked as Wave 4.
 - **GoHighLevel comms** (`45efea53`) — predates the Twilio build; not a resurfacing candidate.
 
-## Two live defects found in passing
+## Defects found in passing — one closed, one still open
 
-1. **`paige-mcp` `send_sms` cannot send.** `index.ts:2343` builds its auth header from `authToken`,
-   which is **declared nowhere** in the file — verified: one occurrence, zero declarations. The
-   correctly-computed `authHeader` sits two lines above, used in the guard and then ignored. It
-   broke in the rename sweep `7161ee1e` (2026-08-25), which renamed the declaration and the guard
-   and missed the use. On `main`, deployed. One-line fix, **not** made here.
+1. ~~**`paige-mcp` `send_sms` cannot send.**~~ **CLOSED by #700 (`d5db4532`), and not the way this
+   entry expected.** The map recorded a broken auth header built from an undeclared `authToken`,
+   and proposed a one-line fix. #700 removed the send path instead: `send_sms` is now a deliberate
+   fail-closed stub (`index.ts:2379-2402`) that audits the attempt and returns
+   `blocked_a2p_governed_sender_required`, because tenant SMS must go through the governed sender
+   once that tenant's A2P registration is approved — and per the ceiling at the top of this file,
+   none can be. Verified 2026-09-01: zero occurrences of `authToken` or `authHeader` in that file.
+   **The lesson is about this map, not that tool** — a "one-line fix" noted in a doc is a claim with
+   a shelf life, and the fix that actually landed was an architectural refusal, not the line.
 2. **`twilio-inbound-webhook` is dead but still deployed** — superseded by `handle-inbound-sms`,
    hard-requires an absent token so it 403s everything, names a *different* Supabase project ref in
    its header comment, and its HELP reply carries finance wording on a platform-default path (§2).
@@ -155,7 +181,7 @@ voice route unless someone sets it by hand in the console.
 
 | Legacy address | Component | Solo equivalent |
 |---|---|---|
-| `…/conversations/settings?panel=numbers` | `NumbersTab` | none — inert form |
+| `…/conversations/settings?panel=numbers` | `NumbersTab` | **ported** — Connections → Business phone (#695/#699) |
 | `…?panel=a2p` | `A2PTab` | none — read-only status |
 | `…?panel=consent` | `ConsentTab` | none — a count only |
 | `…?panel=signatures` | `SignaturesTab` | none |
@@ -167,7 +193,8 @@ voice route unless someone sets it by hand in the console.
 ## Resurfacing order — cheapest real value first
 
 **No owner authorization needed** (pure ports and reads):
-1. Owned-numbers table into Connections → Business phone.
+1. ~~Owned-numbers table into Connections → Business phone.~~ **DONE 2026-09-01 (#695)** — with
+   rename and choose-what-you-send-from, which were not in the original scope.
 2. `A2PTab` into Messaging registration — reaches "prepared" with **no backend change**.
 3. `ConsentTab` into Messaging registration.
 4. Click-to-call in the Solo thread and contact pane (the dialer is already mounted).
@@ -175,7 +202,9 @@ voice route unless someone sets it by hand in the console.
 
 **Owner authorization required** (each is a provider action, and each is a separate Trust Compass
 capability per `connections-rail-contract.md` §0b):
-6. Live number search, and purchase (a recurring charge).
+6. ~~Live number search, and purchase (a recurring charge).~~ **DONE 2026-09-01 (#695/#699).** The
+   authorization did not disappear — it moved into the flow: the tenant sees the price and confirms
+   it, and the price is re-verified server-side before any charge.
 7. Re-stamping webhook URLs on already-purchased numbers.
 8. Setting `VoiceUrl` on numbers — without it tenant inbound calling cannot work.
 9. Recording/transcription and the live co-pilot — grants #4 and #5, and it spends per call.

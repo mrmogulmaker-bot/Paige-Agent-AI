@@ -592,3 +592,42 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 2. Destructure and check `error` on EVERY supabase read. A `{ data }`-only destructure is the bug.
 3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
    filter is the dangerous shape; a count that silently reads 0 is the same class.
+
+## A predicate proof is not a write proof (2026-09-01, #695 → #699)
+
+**Symptom.** A one-time backfill in `20260901010000` chose a primary phone number for any workspace
+that had an active number and no *active* primary. Reviewed, proven, merged. On any database that
+had ever put `is_primary` on a released number it aborts the whole migration with
+`23505 duplicate key value violates unique constraint "uq_tenant_phone_numbers_primary"`.
+
+**Root cause.** The index is `UNIQUE (tenant_id) WHERE is_primary` — **no status predicate**. The
+guard `... and p.status = 'active'` was added during review on correct reasoning (a workspace whose
+only primary is released has not really chosen anything, so back-fill it). In exactly the state the
+new guard was written to catch, the SELECT picks the active row and the UPDATE then collides with
+the released row still occupying the tenant's single primary slot.
+
+**What the proof did, and what it therefore could not see.** The review proved the guard
+"discriminates" by running the SELECT: with the guard it picks 1 row, without it picks 0. That is a
+true statement about a predicate. The defect lives in the *write*, which was never run. **A proof
+that exercises the read half of a read-modify-write proves the half that cannot fail.**
+
+**Why the fix is a trigger and not another guard.** `20261020000000` makes the state unreachable:
+`is_primary` is cleared whenever a row moves off `active`. A CHECK was rejected deliberately — it
+would *refuse* the write that retires a primary number, turning an ordinary act into an error the
+caller has to pre-empt. Clear the flag with the transition instead of blocking the transition.
+
+**Standing checks when a migration modifies rows under a partial unique index:**
+1. Run the actual `UPDATE`/`INSERT` inside `BEGIN … ROLLBACK`, against the state the guard was
+   written for. Never accept the `SELECT` as the proof.
+2. Read the index definition, not its name. `uq_..._primary` says nothing about which predicate is
+   in the `WHERE`, and the missing `status` is the entire bug.
+3. Ask whether the bad state should be *guarded against* or made *unreachable*. Repeated guards
+   against a state the schema still permits is the signal that the invariant belongs in the schema.
+
+**Second instance of the same class in one wave.** `comms_buy_number`'s schema marks
+`monthly_cents` required — and tool calling is automatic and non-strict, so `required` is not
+runtime validation. A malformed amount decayed to `undefined`, `comms-purchase-number` read the
+absent amount as the legacy "price shown in the UI" path, skipped verification, and **bought the
+number**. A declared contract is not an enforced one; the guard is `isSpendableQuoteCents`, and it
+was extracted into `_shared/purchase-quote.ts` precisely because a money-path guard inside a
+function with no runtime harness is a guard nobody can prove.
