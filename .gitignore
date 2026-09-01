@@ -27,7 +27,7 @@ dist-ssr
 # but DO version shared project commands under .claude/commands/ so every session
 # (and every teammate) gets them.
 #
-# .claude/skills/ is versioned for the same reason: our own knowledge-closeout skill lives
+# .claude/skills/ is versioned for the same reason: our own second-brain skill lives
 # there and must reach every fresh container (§64). The third-party §69 skill is NOT vendored,
 # because its bundle ships no LICENSE and its MIT notice can neither be fetched nor
 # reconstructed without inventing a copyright holder.

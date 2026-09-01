@@ -1,0 +1,117 @@
+---
+name: second-brain
+description: Read the second brain BEFORE starting work, and update it BEFORE calling work done. Use as one of the FIRST steps of any task here — to answer "do we have X? / is Y built? / what did we decide about Z?" from the record instead of from memory — and again as one of the LAST steps, to record what the task taught and sweep for the claims it just made false. Also use when asked to update the second brain, the knowledge base, the decision log, the lessons file, the config registry, the tier matrix, or the master project reference.
+---
+
+# The second brain — both bookends
+
+**Read it first. Update it last.** Two steps, one habit. Skipping either is how a repository ends
+up asserting two different answers to the same question.
+
+The closing half is the one everyone remembers. **The opening half is the one that saves the time** —
+a session that reads first does not spend an hour re-diagnosing something already written down.
+
+## Why this is a repo-local skill
+
+`CLAUDE.md` §69 makes the third-party **flow-by-flow** skill mandatory here. That skill is installed
+per-account and cannot see this repository, so it cannot know which file binds what. This is the
+Paige-specific half. It is our own content and adds to flow-by-flow rather than modifying it — see
+`.claude/skills/README.md`.
+
+---
+
+## STEP 1 — Before you start: READ
+
+| Read | When |
+|---|---|
+| `docs/brain/README.md` | **Always.** The index and the verified platform snapshot |
+| `docs/brain/config-registry.md` | Anything touching infra or a third-party seam — Supabase, Stripe, Twilio, ElevenLabs, CI, MCP |
+| The domain doc the README points at | Whatever area the task is in |
+| `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 | Any "do we have this?" question — §4 is SHIPPED, §5 is gaps |
+| `docs/doctrine/tier-matrix.md` | Anything whose visibility or gating differs per account type |
+| `docs/brain/decision-log.md` | Before re-opening anything that smells like a settled decision |
+
+**Answer from the record, never from memory.** "Do we have X? / is Y built? / where does Z live? /
+what did we decide about W?" all resolve to a file, then to that file's cited source. Asserting a
+capability exists — or doesn't — without checking is a §13 honesty failure, not a small slip.
+
+**A settled decision stays settled.** If the decision log already records a ruling, do not re-surface
+it as an open question. Raise it only with new evidence, and say what the evidence is.
+
+**When the brain and the code disagree, the CODE wins** — and the disagreement is itself a finding.
+Fix the record in the same change (§13 correction), don't quietly work around it.
+
+---
+
+## STEP 2 — While you work: keep the delta
+
+Note what you are about to make true or false as you go. The close-out is far cheaper when it is
+not an act of recall — and a capture deferred to "later" is a capture that does not happen.
+
+---
+
+## STEP 3 — Before you call it done: RECORD
+
+The last step of the work, **in the same change**. Not a follow-up.
+
+| What happened | What to record | Where |
+|---|---|---|
+| A capability shipped | What it does **and what it does not** — the edges, not just the feature | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4; the area's capability map |
+| A defect was found | The lesson, not only the fix: **what class of proof missed it** | `docs/brain/lessons-learned.md` |
+| Config or an integration changed | Names, IDs, and which seam reads them — **never a secret value** | `docs/brain/config-registry.md` |
+| A decision or ruling landed | The decision, dated, and what it supersedes | `docs/brain/decision-log.md` |
+| A reusable pattern or skill emerged | The mechanic, so the next task inherits it | `docs/brain/` + its index row in `README.md` |
+| Tier, surface, or gating changed | The per-tier reality **as shipped** | `docs/doctrine/tier-matrix.md` |
+| A new doc was added | Its index row | `docs/brain/README.md` |
+
+What binds which: **§0** the master reference · **§BRAIN.3** `docs/brain/` · **§66** the tier matrix ·
+**§13** record what is real, never what a commit intends · **§58** never delete a dated entry to fix
+it — mark it corrected and add the new one. These bind **different** files; satisfying one is not
+satisfying another.
+
+Record a secret value nowhere. Names and locations only.
+
+---
+
+## STEP 4 — Then sweep for what the change FALSIFIES
+
+Adding a record is half the work. The other half is finding the claims that are now wrong. A brain
+that says a capability both exists and is missing is worse than one that never mentioned it, because
+**both answers are reachable** and the next session may reach either.
+
+Search the whole knowledge home, not the section you edited — the file that would have been edited
+is rarely the file carrying the stale claim.
+
+Rules, each of which has already failed here once:
+
+- **Vary the spelling.** Hyphenated, spaced and joined forms. An absence proven with one spelling is
+  only the absence of that spelling.
+- **Never narrow by content.** `grep -v` to drop "expected" matches hides the very lines the sweep
+  was run to find, and it fails silently — the output looks identical whether it found nothing or
+  hid everything. Narrow the **search term**, never the **results**.
+- **A count is not a read.** Knowing two matches were omitted says nothing about whether they were false.
+- **A file listing is not a file reading.** `find` and `ls` show names and sizes. Concluding anything
+  about content without opening the file is a guess wearing evidence's clothes.
+- **Assess every occurrence; correct each one that is actually false** — not only the one someone
+  pointed at, and not blanket-rewritten either. Identical wording can appear in a dated entry that
+  was true when written, in a quotation, or in a corrections log that must name what it reversed.
+
+**If the work taught nothing durable, say so.** Silence is indistinguishable from having skipped the
+step, and only one of those is honest.
+
+---
+
+## Gate — report before calling the work done
+
+`PASS` / `FAIL` / `UNVERIFIED`, with:
+
+- **What was read at the start**, and what it settled — so a re-diagnosis is visibly avoided.
+- What was recorded, in which file, for which reason.
+- **The exact terms the sweep searched.** An unfalsifiable "nothing found" is indistinguishable from
+  not having looked.
+- How the sweep was narrowed, if at all — and what reading the omissions showed.
+- That no secret value was written.
+
+A record added **without** the sweep is a `FAIL`: the brain now asserts both states. A sweep whose
+omissions were never read is also a `FAIL`, however many spellings it searched — that exact
+combination has produced a false `PASS` here before.
