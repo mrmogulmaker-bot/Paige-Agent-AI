@@ -63,6 +63,19 @@ BEGIN
     RAISE EXCEPTION 'CONTACT_NO_TENANT' USING ERRCODE = '22023';
   END IF;
 
+  IF p_patch ? 'assigned_coach_user_id'
+     AND NULLIF(p_patch->>'assigned_coach_user_id', '') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.tenant_members AS tm
+        WHERE tm.tenant_id = _tenant
+          AND tm.user_id = (p_patch->>'assigned_coach_user_id')::uuid
+          AND tm.status = 'active'
+          AND public.has_any_role(tm.user_id, ARRAY['admin','super_admin','coach'])
+     ) THEN
+    RAISE EXCEPTION 'CONTACT_ASSIGNEE_FORBIDDEN' USING ERRCODE = '42501';
+  END IF;
+
   IF p_patch ? 'status'
      AND COALESCE(p_patch->>'status', '') NOT IN ('pending','active','inactive','archived') THEN
     RAISE EXCEPTION 'CONTACT_BAD_STATUS' USING ERRCODE = '22023';
@@ -82,15 +95,6 @@ BEGIN
   END IF;
 
   _email := NULLIF(btrim(p_patch->>'email'), '');
-
-  IF _contact_id IS NULL AND _email IS NOT NULL THEN
-    SELECT c.id INTO _contact_id
-      FROM public.clients AS c
-     WHERE c.tenant_id = _tenant AND lower(c.email) = lower(_email)
-     ORDER BY c.updated_at DESC
-     LIMIT 1
-     FOR UPDATE;
-  END IF;
 
   IF _contact_id IS NULL THEN
     INSERT INTO public.clients (
@@ -214,5 +218,5 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.update_contact(uuid, text, text, text, text, text, text, text, text, text, text, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.update_contact(uuid, text, text, text, text, text, text, text, text, text, text, uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.update_contact(uuid, text, text, text, text, text, text, text, text, text, text, uuid) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.update_contact(uuid, text, text, text, text, text, text, text, text, text, text, uuid) TO authenticated;

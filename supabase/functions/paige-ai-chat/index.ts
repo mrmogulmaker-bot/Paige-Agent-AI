@@ -5674,9 +5674,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "crm_create_contact":
           return `Add contact ${[a?.first_name, a?.last_name].filter(Boolean).join(" ") || a?.email || "new contact"}${a?.email ? ` (${a.email})` : ""}.`;
         case "crm_update_contact": {
-          const who = [a?.first_name, a?.last_name].filter(Boolean).join(" ") || a?.email || "";
-          const fields = ["first_name", "last_name", "email", "phone", "entity_name", "title", "lifecycle_stage", "primary_offer", "status", "notes", "assigned_coach_user_id"].filter((k) => a?.[k] != null && a[k] !== "");
-          return `Update ${who ? `${who}'s` : "this"} contact${fields.length ? ` (${fields.join(", ")})` : ""}.`;
+          const labels: Record<string, string> = {
+            first_name: "first name", last_name: "last name", email: "email", phone: "phone",
+            entity_name: "company", entity_type: "record type", title: "title", website: "website",
+            linkedin_url: "LinkedIn", street_address: "street address", city: "city", state: "state",
+            zip_code: "ZIP / postal code", lifecycle_stage: "lifecycle stage", source: "source",
+            tags: "tags", primary_offer: "primary offer", notes: "notes", status: "status",
+            assigned_coach_user_id: "assigned coach", do_not_contact: "do not contact",
+          };
+          const shown = Object.keys(labels).filter((key) => Object.prototype.hasOwnProperty.call(a || {}, key)).map((key) => {
+            const value = a[key];
+            const display = value === null || value === "" ? "clear" : Array.isArray(value) ? `[${value.join(", ")}]` : JSON.stringify(value);
+            return `${labels[key]} = ${display}`;
+          });
+          return `Update contact ${a?.client_ref || "(missing client reference)"}: ${shown.join("; ") || "no changes"}.`;
         }
         case "crm_delete_contact":
           return `Permanently delete the contact and its deals, activities, documents, and coach links. This cannot be undone.`;

@@ -71,7 +71,9 @@ interface ClientRow {
 
 const clientName = (row: ClientRow) => {
   const full = `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim();
-  return full || row.entity_name?.trim() || row.email?.trim() || "Unnamed contact";
+  const company = row.entity_name?.trim();
+  if (company && (Boolean(row.entity_type?.trim()) || !full)) return company;
+  return full || company || row.email?.trim() || "Unnamed contact";
 };
 
 const trimOrNull = (value: string | null | undefined) => value?.trim() || null;

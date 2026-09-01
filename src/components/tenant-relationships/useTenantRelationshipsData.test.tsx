@@ -122,7 +122,7 @@ describe("tenant relationship adapter sequencing", () => {
     const mapped = JSON.parse(host.querySelector("output")?.getAttribute("data-record") || "{}");
     expect(mapped).toMatchObject({
       id: "business-1",
-      name: "Supplied Contact",
+      name: "Supplied Company",
       recordType: "business",
       phone: "+1 202 555 0142",
       website: "https://example.test",

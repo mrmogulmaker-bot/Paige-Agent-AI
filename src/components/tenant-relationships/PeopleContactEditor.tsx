@@ -111,17 +111,15 @@ export function PeopleContactEditor({
     setForm(formFor(contact));
     let current = true;
     void (async () => {
-      const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
-      const ids = (roles ?? []).map(({ user_id }) => user_id);
-      if (!ids.length) {
-        if (current) setCoaches([]);
-        return;
-      }
-      const { data } = await supabase.from("coach_client_profiles_safe").select("user_id, full_name").in("user_id", ids);
-      if (current) setCoaches((data ?? []).map(({ user_id, full_name }) => ({ user_id, name: full_name || "Unnamed coach" })));
+      // Generated Supabase types do not yet include this established roster RPC.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any).rpc("get_tenant_assignable_members");
+      if (current) setCoaches((data ?? [])
+        .filter(({ roles }: { roles?: string[] }) => (roles ?? []).some((role) => ["coach", "admin", "super_admin"].includes(role)))
+        .map(({ user_id, full_name }: { user_id: string; full_name: string | null }) => ({ user_id, name: full_name || "Unnamed coach" })));
     })();
     return () => { current = false; };
-  }, [contact, open]);
+  }, [contact, open, tenantId]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((previous) => ({ ...previous, [key]: value }));
