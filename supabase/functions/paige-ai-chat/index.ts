@@ -6073,8 +6073,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // condition (undefined_function / undefined_table) falls back to the previous
             // behaviour, and it says so loudly — every other failure fails CLOSED. Remove this
             // branch once the migration is confirmed persisted (§32.a).
-            const guardMissing = (err: any) =>
-              err?.code === "42883" || err?.code === "42P01" || /does not exist/i.test(String(err?.message || ""));
+            // Matched on CODES ONLY, never on message text. A free-text /does not exist/i would
+            // also swallow ordinary runtime errors ("column ... does not exist", a bad cast) and
+            // silently disable the guard platform-wide — and it would have MISSED the case it was
+            // written for: when an RPC is absent PostgREST returns PGRST202 ("Could not find the
+            // function ... in the schema cache"), whose message never contains that phrase.
+            const GUARD_UNDEPLOYED_CODES = new Set([
+              "PGRST202", // function not in the PostgREST schema cache — the real pre-migration case
+              "PGRST203", // ambiguous overload during a signature change
+              "42883",    // undefined_function, if the call reaches Postgres
+              "42P01",    // undefined_table
+            ]);
+            const guardMissing = (err: any) => GUARD_UNDEPLOYED_CODES.has(String(err?.code ?? ""));
 
             let claim: ConfirmationClaim | undefined;
             let guardUndeployed = false;
