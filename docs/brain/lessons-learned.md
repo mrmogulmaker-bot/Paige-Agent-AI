@@ -480,6 +480,31 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   `supabase/migrations/**`, so an idle run history for it is normal and is NOT evidence of a broken
   pipeline either.
 
+  **THIRD OCCURRENCE, 2026-09-01 (#721) — and the lesson above did not prevent it.** Same symptom,
+  same wrong conclusion, same escalation: I told the owner it might be "an Actions incident, a
+  spending/quota limit, or a repository Actions setting", and that a spending limit "would need the
+  repository owner." `GET /pulls/721` returned **`"mergeable_state": "dirty"`** the whole time. The
+  branch was cut from `60f42210` and main moved to `1b50aa86` (#720), which edited the same regions
+  of `package.json` and `.github/workflows/ci.yml`; `refs/pull/721/merge` therefore never existed.
+  Merging main in and resolving one conflict fired `ci` and `Security Audit` within seconds.
+
+  **Why the existing lesson did not fire: I never read it.** I diagnosed live, from the API, and
+  never searched the lessons file for the symptom — the §BRAIN.1 read-before-work step, skipped
+  precisely because the investigation felt like it was going well. A lesson only works if something
+  makes you open it, and "no workflow runs on my PR" is that trigger.
+
+  **The tell that makes this cheap to falsify, hoisted so it cannot be missed:**
+
+  > **Before saying one word about Actions health, run `GET /pulls/<N>` and read `mergeable_state`.
+  > `dirty` means conflicted, which means no `pull_request` workflow can be scheduled. It is ONE
+  > call, and it settles the question.**
+
+  **Also recorded, because it is how the wrong answer got its confidence:** I supported the claim
+  with "no runs repo-wide since 16:16Z", which was *true and meaningless* — nothing else had been
+  pushed since #720 merged at 16:16. **A quiet CI is not a broken CI.** Evidence of absence is only
+  evidence when something should have been present, and the check for that is whether anything was
+  pushed, not whether anything ran.
+
 - **A check that has never failed is an untested branch, not evidence — negative-control every guard
   (2026-08-23).** *Symptom:* the Super Admin design pack's compiled `standalone.html` had been swept for
   §50 marks and format-valid identifiers on every delivery, always clean. *Root cause:* the standalone
