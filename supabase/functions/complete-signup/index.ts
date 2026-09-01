@@ -101,6 +101,15 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE);
 
+    const { data: profile } = await admin.from("profiles")
+      .select("active_tenant_id").eq("user_id", user.id).maybeSingle();
+    const tenantId = profile?.active_tenant_id ?? null;
+    if (!tenantId) {
+      return new Response(JSON.stringify({ error: "workspace_not_provisioned" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const [first, ...rest] = data.full_legal_name.split(/\s+/);
     const last = rest.join(" ");
     const route = classifyRoute(data);
@@ -111,6 +120,7 @@ Deno.serve(async (req) => {
       .from("clients")
       .select("id")
       .eq("linked_user_id", user.id)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     const clientPatch: Record<string, unknown> = {
@@ -126,6 +136,7 @@ Deno.serve(async (req) => {
       source: "paige_public_signup",
       tier: route === "coach_qualify" ? "btf_interested" : "self_serve",
       status: "active",
+      tenant_id: tenantId,
       current_notes:
         `Attribution: ${data.attribution_source ?? "—"} · Persona: ${persona} · ` +
         `Timeline: ${data.funding_timeline ?? "—"} · Credit: ${data.personal_credit_band ?? "—"} · ` +
