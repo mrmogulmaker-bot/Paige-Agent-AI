@@ -6,6 +6,7 @@ Status: **implementation draft — not deployed**. This document records the con
 
 - `pipelines.id` is the immutable internal UUID primary key. New writes must omit it; the server creates it.
 - `pipelines.short_ref` is a server-generated, immutable, tenant-scoped human reference in the form `PPL-XXXXX`.
+- One unattributed V1 global pipeline remains quarantined rather than being assigned to an invented tenant. It receives an immutable reference but is excluded from every tenant catalogue; all new pipelines require a real tenant.
 - Display names are editable and are never identity. Duplicate and similar names are valid.
 - Pipeline reads come from `get_pipeline_catalogue`, not deal rollups. Therefore a zero-deal pipeline remains visible and two same-name pipelines remain two records.
 
@@ -27,4 +28,4 @@ Pipeline and stage coach policies must include the active tenant, and all catalo
 
 ## Verification owed before release
 
-The draft includes static and rendered tests for duplicate names, zero deals, compact metadata, wrong-reference refusal, and exact-reference archive. A disposable Postgres migration replay, real Edge Function typecheck, and authenticated owner browser proof remain required in CI/preview before Gate 2 because Docker, Deno, and Chrome control were unavailable in the local environment.
+The draft includes static and rendered tests for duplicate names, zero deals, compact metadata, wrong-reference refusal, and exact-reference archive. The first Supabase preview truthfully exposed one unattributed V1 global pipeline; the revised migration preserves and quarantines it without inventing ownership. A green replay, real Edge Function typecheck, and authenticated owner browser proof remain required before Gate 2 because Docker, Deno, and Chrome control were unavailable locally.

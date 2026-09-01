@@ -8,13 +8,10 @@ alter table public.pipelines add column if not exists requested_by uuid referenc
 alter table public.pipelines add column if not exists archived_at timestamptz;
 alter table public.pipelines add column if not exists archived_by uuid references auth.users(id) on delete set null;
 
-do $$
-begin
-  if exists(select 1 from public.pipelines where tenant_id is null) then
-    raise exception 'PIPELINE_TENANT_BACKFILL_REQUIRED' using errcode='23514';
-  end if;
-end$$;
-alter table public.pipelines alter column tenant_id set not null;
+-- Legacy V1 contains one global, unowned pipeline with no deals or attributable
+-- tenant. Never guess its owner, archive it, or delete it in this slice. It remains
+-- invisible to every tenant because every read policy/RPC requires tenant equality.
+-- The insert trigger below rejects a missing tenant for every new pipeline.
 
 alter table public.pipelines drop constraint if exists pipelines_created_through_check;
 alter table public.pipelines add constraint pipelines_created_through_check
@@ -51,6 +48,8 @@ end$$;
 alter table public.pipelines alter column short_ref set not null;
 alter table public.pipelines drop constraint if exists pipelines_tenant_short_ref_key;
 alter table public.pipelines add constraint pipelines_tenant_short_ref_key unique (tenant_id,short_ref);
+create unique index if not exists pipelines_legacy_short_ref_key
+  on public.pipelines(short_ref) where tenant_id is null;
 
 -- A missing id means the caller omitted it. The server fills both identities and
 -- overwrites provenance from authenticated/server context; supplied identities fail.
