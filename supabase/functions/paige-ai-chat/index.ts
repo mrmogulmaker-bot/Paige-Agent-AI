@@ -1492,10 +1492,10 @@ JSON:`;
           const hasNegative = negativeSignals.some((sig) => txt.includes(sig));
           const helpful = hasPositive && !hasNegative;
 
-          await supabase
+          await recordWrite("rag_retrieval_log:feedback", supabase
             .from("rag_retrieval_log")
             .update({ was_helpful: helpful })
-            .eq("id", prevLog.id);
+            .eq("id", prevLog.id));
 
           if (helpful) {
             for (const docId of prevLog.retrieved_document_ids) {
@@ -1505,10 +1505,10 @@ JSON:`;
                 .eq("id", docId)
                 .maybeSingle();
               if (doc) {
-                await supabase
+                await recordWrite("rag_documents:helpful_count", supabase
                   .from("rag_documents")
                   .update({ helpful_count: (doc.helpful_count ?? 0) + 1 })
-                  .eq("id", docId);
+                  .eq("id", docId));
               }
             }
           }
@@ -7338,15 +7338,25 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   }));
                   const { error: aErr } = await supabaseClient.from("paige_automation_acts").insert(rows);
                   if (aErr) {
-                    // The steps are the process. A half-built one that LOOKS created is worse than
-                    // none, so it is removed rather than left as a shell the operator would find
-                    // later and not understand.
-                    await supabaseClient.from("paige_automations").delete().eq("id", created.id);
+                    // The steps ARE the process. A half-built one that LOOKS created is worse than
+                    // none, so it is removed rather than left as a shell the operator finds later
+                    // and cannot explain — the reachable version of that: the acts insert fails
+                    // 23514 on a model-supplied act, the shell keeps the name, and the operator's
+                    // retry hits the (tenant_id, name) unique index with "you already have one of
+                    // those" for a process they were just told was not created.
+                    //
+                    // AND THE ROLLBACK IS CHECKED, because the sentence below asserts it happened.
+                    // Claiming "nothing was created" when the delete was itself rejected is the
+                    // same class of untruth as the write that reported success without landing.
+                    const rolledBack = await recordWrite("paige_automations:rollback",
+                      supabaseClient.from("paige_automations").delete().eq("id", created.id));
                     toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
                       success: false,
-                      error: aErr.code === "23514"
-                        ? "Each step has to name exactly one thing to do — either one of your tools or one activity kind, not both and not neither. Rebuild the steps and try again."
-                        : "Couldn't save the steps, so nothing was created. Say that plainly.",
+                      error: !rolledBack
+                        ? `The steps didn't save, and I couldn't tidy up the half-made process either — it may be sitting there under the name "${String(args.name ?? "").slice(0, 120)}". Tell the operator that plainly and suggest a different name if they try again.`
+                        : aErr.code === "23514"
+                          ? "Each step has to name exactly one thing to do — either one of your tools or one activity kind, not both and not neither. Rebuild the steps and try again."
+                          : "Couldn't save the steps, so nothing was created. Say that plainly.",
                     }) });
                   } else {
                     const { data: posture } = await supabaseClient.rpc("resolve_automation_autonomy", { _automation_id: created.id });

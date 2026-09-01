@@ -1056,6 +1056,33 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
     !asClient.rec.inserts.some((i) => i.table === "paige_automations"),
     JSON.stringify(asClient.rec.inserts.map((i) => i.table)));
 
+  // ── 15.G THE GATE ITSELF, AT THE DEFAULT LANE. Every other check in this section forces
+  // `resolve_tool_autonomy: "auto"` so the gate is out of the way and the HANDLER is what is under
+  // test. That left the gate untested: an independent review deleted all three automation tools
+  // from `MUTATING_TOOLS` — so they would run unproposed — and every suite stayed green. Section 14
+  // could not catch it either, because it derives the gated set by parsing the same literal it is
+  // checking, which can only ever find a tool that is gated-but-undeclared, never one that stopped
+  // being gated. This drives the DEFAULT lane, where a proposal is the correct outcome.
+  {
+    const gateStore = processStore();
+    const ungated = await drive({
+      stream: true,
+      toolCall: { name: "automation_set_grant", args: { automation_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", lane: "auto" } },
+      // NO resolve_tool_autonomy override: the tenant has set nothing, so the resolver's own safe
+      // default (`confirm`) applies — exactly the posture a real workspace starts in.
+      rpcOverrides: { get_actor_access: { data: { tier: "tenant" }, error: null }, ...gateStore.__rpc },
+      tablesExtra: gateStore,
+    });
+    assert("15.G raising an autonomy grant is PROPOSED, not performed, at the default lane",
+      !ungated.rec.inserts.some((i) => i.table === "paige_automations" && i.update),
+      JSON.stringify(ungated.rec.inserts.filter((i) => i.table === "paige_automations")));
+    const gateWire = ungated.modelEgress
+      .map((b) => (typeof b === "string" ? b : JSON.stringify(b))).join("\n").replace(/\\"/g, '"');
+    assert("15.H …and the operator is asked, with a token to answer with",
+      /"needs_confirm":true/.test(gateWire) && /"confirm_token":"[0-9a-f]{16}"/.test(gateWire),
+      gateWire.includes("needs_confirm") ? "asked, but no token" : "never asked");
+  }
+
   const st = processStore();
   const built = await drive({
     stream: true,
@@ -1162,28 +1189,52 @@ console.log("\nthe TOOL loop does not retarget a refused subject at the caller")
       console.log("PROBE", t, hit.length ? hit[0].slice(0,90) : "(not reached)");
     }
   }
-  const src = await (await import("node:fs/promises")).readFile(
+  const raw = await (await import("node:fs/promises")).readFile(
     new URL("../../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
-  const lines = src.split("\n");
+
+  // COMMENTS ARE STRIPPED FIRST. The previous version exempted a write when the word "error"
+  // appeared anywhere in the three lines above it — and this file is heavily commented, so almost
+  // any write under a paragraph mentioning errors was silently exempt. An independent review drove
+  // it: an unchecked insert placed under such a comment passed. Prose must not be able to satisfy
+  // a guard about code.
+  const src = raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  // STATEMENTS, NOT LINES. `.from(x)` and `.insert(y)` frequently sit on different lines, so a
+  // line-scoped matcher misses them entirely — three real writes in this file were already
+  // invisible to it. Splitting on `;` is crude but it is the unit a postgrest chain ends with.
+  const statements = src.split(";");
   const unchecked = [];
-  for (let n = 0; n < lines.length; n++) {
-    const l = lines[n];
-    if (!/\b(supabase|supabaseClient|supabaseAdmin|admin)\.from\(/.test(l)) continue;
-    if (!/\.(insert|upsert)\(|\.update\(\{/.test(l)) continue;
-    // A write is accounted for if it is wrapped by one of the two checked helpers, destructures the
-    // error itself, or is returned to a caller that will.
-    const window = lines.slice(Math.max(0, n - 3), n + 1).join("\n");
-    if (/recordWrite|writeIfScopeCurrent|error|return await/.test(window)) continue;
-    unchecked.push(`${n + 1}: ${l.trim().slice(0, 90)}`);
+  for (const st of statements) {
+    // `await` IMMEDIATELY BEFORE THE CLIENT is what makes this an EXECUTED write. Without it the
+    // chain is a builder being assembled into a variable (`let q = supabaseClient.from(...)`), and
+    // the execution — and the error check that belongs with it — happens where that variable is
+    // finally awaited. Honest limit: a builder-based write whose await never checks its error
+    // would not be caught here. There is exactly one builder in this file (`claimConfirmation`)
+    // and it does check; a second one would want this widened.
+    if (!/await\s+(supabase|supabaseClient|supabaseAdmin|admin)\s*\.from\(/.test(st)
+        && !/await\s+\w+\s*\(\s*"[^"]*",\s*(supabase|supabaseClient|supabaseAdmin|admin)\s*\.from\(/.test(st)) continue;
+    // `.update(` matched generally — the old pattern required `.update({`, so passing a variable
+    // (`.update(row)`) skipped the guard entirely. Also driven by the review.
+    if (!/\.(insert|upsert|update)\s*\(/.test(st)) continue;
+    // An EXPLICIT marker, never a substring of prose: routed through a checked helper, or the
+    // caller destructures the error itself, or it is returned for a caller to check.
+    if (/\brecordWrite\s*\(|\bwriteIfScopeCurrent\s*\(|\bcheckedWrite\s*\(/.test(st)) continue;
+    if (/\{[^}]*\berror\b[^}]*\}\s*=\s*await/.test(st)) continue;
+    if (/\breturn\s+await\b/.test(st)) continue;
+    unchecked.push(st.trim().replace(/\s+/g, " ").slice(0, 110));
   }
   assert("16.1 every durable write reads its error, is wrapped, or returns it",
-    unchecked.length === 0, JSON.stringify(unchecked));
+    unchecked.length === 0, JSON.stringify(unchecked, null, 1));
 
-  // The guard against the check above passing because it found nothing to look at — the failure
-  // mode that made an earlier check in this file green while reading an empty object.
-  const wrapped = (src.match(/recordWrite\(/g) ?? []).length;
-  assert("16.2 …and the checked-write helper is actually in use (guards 16.1)",
-    wrapped >= 8, String(wrapped));
+  // The guard against the guard finding nothing to look at.
+  const candidates = statements.filter((st) =>
+    /await\s+(?:\w+\s*\(\s*"[^"]*",\s*)?(supabase|supabaseClient|supabaseAdmin|admin)\s*\.from\(/.test(st)
+    && /\.(insert|upsert|update)\s*\(/.test(st)).length;
+  assert("16.0 the sweep actually found durable writes to check (guards 16.1)",
+    candidates >= 15, String(candidates));
+
 }
 
 // ── 17. §70 — A PROPOSAL NOBODY CLICKED IS REACHABLE AGAIN ───────────────────────────────────
