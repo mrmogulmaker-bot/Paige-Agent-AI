@@ -127,6 +127,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:no-shadowed-credential
 
+      - name: User-facing URL guard (/admin is an inbound compatibility route, never an outbound destination)
+        if: ${{ !cancelled() }}
+        run: npm run lint:user-facing-admin-urls
+
       - name: SSRF fork guard (§18 — one address validator; use _shared/ssrfGuard.ts safeFetch)
         if: ${{ !cancelled() }}
         run: npm run lint:ssrf-fork
@@ -375,6 +379,14 @@ jobs:
       - name: Smoke — comms webhook authentication (fail-closed decisions)
         if: ${{ !cancelled() }}
         run: npm run smoke:comms-webhook-auth
+
+      # Drives the REAL comms-purchase-number handler. Unconditional, and deliberately not
+      # gated on the diff touching that function: three of the four defects it pins were
+      # introduced by edits ELSEWHERE (a consumer comparing the wrong field, a helper hoisted
+      # to the wrong scope), which a path filter would have skipped.
+      - name: Smoke — comms number purchase (money-spent exits and price verification)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-purchase-safety
 
       - name: Smoke — comms tenant scope (§9/§53 webhook scoping)
         if: ${{ !cancelled() }}

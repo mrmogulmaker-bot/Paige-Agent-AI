@@ -34,6 +34,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 import { SoloMindWorkspace } from "./SoloMindWorkspace";
+import { mindOrbitPreferenceKey, type MindOrbitPreferenceScope } from "./mindOrbitPreference";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -75,6 +76,7 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   harness.knowledge.mockReturnValue(knowledge);
   harness.systems.mockReturnValue(systems);
   harness.command.mockReturnValue(command);
@@ -90,8 +92,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function render() {
-  act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital", accountType: "standalone" }} openPaige={openPaige} />));
+function render(preferenceScope?: MindOrbitPreferenceScope) {
+  act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital", accountType: "standalone" }} openPaige={openPaige} preferenceScope={preferenceScope} />));
 }
 
 function button(name: string) {
@@ -128,6 +130,7 @@ describe("Solo Mind workspace", () => {
     expect(host.textContent).toContain("An optional presentation orbit can show 3D depth; activity particles remain source-gated");
     expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
     expect(button("Pause orbit")).toBeTruthy();
+    expect(button("Pause orbit")?.getAttribute("aria-pressed")).toBe("true");
     expect(host.textContent).not.toContain("Replay event");
   });
 
@@ -140,6 +143,38 @@ describe("Solo Mind workspace", () => {
     expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
   });
 
+  it("remembers an explicit pause only for the authenticated user and account", () => {
+    const firstScope = { userId: "user-a", tenantId: "tenant-a" };
+    render(firstScope);
+    act(() => button("Pause orbit")?.click());
+    expect(window.localStorage.getItem(mindOrbitPreferenceKey(firstScope))).toBe("true");
+    expect(button("Resume orbit")?.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(firstScope);
+    expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
+    expect(button("Resume orbit")).toBeTruthy();
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    render({ userId: "user-b", tenantId: "tenant-a" });
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    expect(button("Pause orbit")).toBeTruthy();
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    render({ userId: "user-a", tenantId: "tenant-b" });
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    expect(button("Pause orbit")).toBeTruthy();
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(firstScope);
+    act(() => button("Resume orbit")?.click());
+    expect(window.localStorage.getItem(mindOrbitPreferenceKey(firstScope))).toBeNull();
+  });
+
   it("locks the presentation orbit while record evidence has focus", () => {
     render();
     act(() => button("Reseller agreement")?.click());
@@ -149,7 +184,7 @@ describe("Solo Mind workspace", () => {
     expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
   });
 
-  it("paints immediately in reduced motion and lets the owner explicitly start and pause the orbit", () => {
+  it("starts rotating in reduced motion and remains directly pausable", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     const context = {
       setTransform: vi.fn(), clearRect: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(),
@@ -165,75 +200,31 @@ describe("Solo Mind workspace", () => {
       frames.set(frameId, callback);
       return frameId;
     });
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
     render();
     const firstPaints = context.clearRect.mock.calls.length;
     expect(firstPaints).toBeGreaterThan(0);
-    const postLayoutPaint = frames.entries().next().value as [number, FrameRequestCallback] | undefined;
-    expect(postLayoutPaint).toBeTruthy();
-    frames.delete(postLayoutPaint![0]);
-    act(() => postLayoutPaint![1](16));
-    expect(context.clearRect.mock.calls.length).toBeGreaterThan(firstPaints);
-    expect(frames.size).toBe(0);
-    act(() => button("Skills")?.click());
-    expect(frames.size).toBe(0);
-    act(() => button("All records")?.click());
-    expect(host.textContent).toContain("REDUCED MOTION · STATIC");
-    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("visible and static for reduced motion");
-    expect(button("Start orbit")?.disabled).toBe(false);
-    act(() => button("Start orbit")?.click());
-    expect(host.textContent).toContain("PRESENTATION ORBIT · USER STARTED · NOT ACTIVITY");
-    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("user-started presentation orbit");
+    expect(frames.size).toBeGreaterThan(0);
+    expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
+    expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("A slow presentation orbit shows depth");
     expect(button("Pause orbit")).toBeTruthy();
     act(() => button("Pause orbit")?.click());
     expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
+    expect(cancelFrame).toHaveBeenCalled();
+    const remainingPaints = [...frames.values()];
+    frames.clear();
+    act(() => remainingPaints.forEach((callback) => callback(16)));
+    expect(frames.size).toBe(0);
     expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("presentation orbit is paused");
     expect(button("Resume orbit")).toBeTruthy();
+    act(() => button("Resume orbit")?.click());
+    expect(frames.size).toBeGreaterThan(0);
     act(() => button("Reseller agreement")?.click());
     expect(host.textContent).toContain("FOCUS LOCK · STATIC");
     expect(button("Orbit paused for focus")?.disabled).toBe(true);
     expect(host.querySelector("canvas")?.getAttribute("aria-label")).toContain("static while record detail has focus");
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Close Mind record details"]')?.click());
-    expect(host.textContent).toContain("PRESENTATION ORBIT PAUSED");
-  });
-
-  it("stops a running orbit when reduced motion is enabled and requires explicit restart", () => {
-    let reduced = false;
-    let motionListener: (() => void) | undefined;
-    const removeMotionListener = vi.fn();
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      get matches() { return reduced; },
-      addEventListener: vi.fn((_type: string, listener: () => void) => { motionListener = listener; }),
-      removeEventListener: removeMotionListener,
-    })));
-    let frameId = 0;
-    const frames = new Map<number, FrameRequestCallback>();
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      frameId += 1;
-      frames.set(frameId, callback);
-      return frameId;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
-
-    render();
     expect(host.textContent).toContain("PRESENTATION ORBIT · NOT ACTIVITY");
-    const initialFrames = [...frames.values()];
-    frames.clear();
-    act(() => initialFrames.forEach((callback) => callback(16)));
-    expect(frames.size).toBeGreaterThan(0);
-
-    reduced = true;
-    act(() => motionListener?.());
-    expect(host.textContent).toContain("REDUCED MOTION · STATIC");
-    expect(frames.size).toBe(0);
-    expect(button("Start orbit")?.disabled).toBe(false);
-
-    act(() => button("Start orbit")?.click());
-    expect(host.textContent).toContain("PRESENTATION ORBIT · USER STARTED · NOT ACTIVITY");
-    expect(frames.size).toBeGreaterThan(0);
-    act(() => root.unmount());
-    expect(frames.size).toBe(0);
-    expect(removeMotionListener).toHaveBeenCalledWith("change", expect.any(Function));
-    root = createRoot(host);
   });
 
   it("owns first paint and resize observation when the canvas appears after loading", () => {
@@ -273,7 +264,7 @@ describe("Solo Mind workspace", () => {
     const canvas = host.querySelector("canvas");
     expect(canvas).toBeTruthy();
     expect(observe).toHaveBeenCalledWith(canvas);
-    expect(frames.size).toBe(1);
+    expect(frames.size).toBeGreaterThanOrEqual(2);
     const firstPaint = frames.entries().next().value as [number, FrameRequestCallback];
     const drawsBeforeFrame = context.clearRect.mock.calls.length;
     frames.delete(firstPaint[0]);
@@ -286,7 +277,7 @@ describe("Solo Mind workspace", () => {
     harness.knowledge.mockReturnValue({ ...knowledge, loading: true, docs: [] });
     act(() => root.render(<SoloMindWorkspace accountContext={{ accountName: "First Sterling Capital" }} />));
     expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(cancelFrame).toHaveBeenCalledWith(firstPaint[0]);
+    expect(cancelFrame).toHaveBeenCalled();
   });
 
   it("preserves orbit pose through a long gesture and resumes after the post-gesture hold", () => {
@@ -297,9 +288,7 @@ describe("Solo Mind workspace", () => {
       lineWidth: 1, font: "", textBaseline: "middle",
     };
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D);
-    const addMotionListener = vi.fn();
-    const removeMotionListener = vi.fn();
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: addMotionListener, removeEventListener: removeMotionListener })));
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 
     let frameId = 0;
     const frames = new Map<number, FrameRequestCallback>();
@@ -337,7 +326,6 @@ describe("Solo Mind workspace", () => {
 
     act(() => root.unmount());
     expect(cancelFrame).toHaveBeenCalled();
-    expect(removeMotionListener).toHaveBeenCalledWith("change", expect.any(Function));
     expect(requestFrame).toHaveBeenCalled();
     root = createRoot(host);
   });

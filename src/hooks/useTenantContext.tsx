@@ -127,6 +127,8 @@ interface TenantContextState {
   /** Owner OR scoped Platform Admin — sees the God console instead of the agency CRM. */
   isPlatformStaff: boolean;
   tenants: TenantSummary[];
+  /** Authenticated subject that owns browser-scoped, per-login UI preferences. */
+  activeUserId: string | null;
   activeTenantId: string | null;
   activeTenant: TenantSummary | null;
   /**
@@ -160,6 +162,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [isPlatformOwner, setIsPlatformOwner] = useState(false);
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
   // Auth events can start a background revalidation before the foreground mount
   // load finishes. Track accepted reads by start order so an older response can
@@ -217,6 +220,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         loadSubjectEpoch = subjectEpochRef.current;
         hasAcceptedContextRef.current = false;
         activeUidRef.current = uid;
+        setActiveUserId(uid);
         setTenants([]);
         setActiveTenantId(null);
         setIsPlatformOwner(false);
@@ -234,6 +238,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         acceptedLoadIdRef.current = loadId;
         acceptedThisLoad = true;
         activeUidRef.current = null;
+        setActiveUserId(null);
         hasAcceptedContextRef.current = false;
         setTenants([]);
         setActiveTenantId(null);
@@ -286,6 +291,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       acceptedLoadIdRef.current = loadId;
       acceptedThisLoad = true;
       activeUidRef.current = uid;
+      setActiveUserId(uid);
       const stillAuthoritative = () =>
         loadSubjectEpoch === subjectEpochRef.current && loadId === acceptedLoadIdRef.current;
 
@@ -516,6 +522,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     isPlatformOwner,
     isPlatformStaff,
     tenants,
+    activeUserId,
     activeTenantId,
     activeTenant,
     soloShellEnabled,

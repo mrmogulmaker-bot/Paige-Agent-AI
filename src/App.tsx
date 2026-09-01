@@ -62,7 +62,6 @@ const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
 const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
-const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const Onboarding = lazyWithReload(() => import("./pages/Onboarding"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
@@ -112,6 +111,7 @@ const AcceptBrokerInvite = lazyWithReload(() => import("./pages/broker/AcceptBro
 const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
 const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
+const SmsTerms = lazyWithReload(() => import("./pages/SmsTerms"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
 const Pricing = lazyWithReload(() => import("./pages/Pricing"));
@@ -193,6 +193,13 @@ const AppInner = () => {
   return <GlobalAuthSessionManager />;
 };
 
+function SignupRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set("mode", "signup");
+  return <Navigate to={`/auth?${params.toString()}`} replace />;
+}
+
 const App = () => (
   <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
   <QueryClientProvider client={queryClient}>
@@ -237,7 +244,7 @@ const App = () => (
             <Route path="/oauth/mcp/callback" element={<PageSuspense><McpOAuthCallback /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
-            <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
+            <Route path="/signup" element={<SignupRedirect />} />
             <Route path="/get-started" element={<PageSuspense><GetStarted /></PageSuspense>} />
             <Route path="/onboarding" element={<PageSuspense><Onboarding /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
@@ -302,6 +309,7 @@ const App = () => (
             <Route path="/u/:token" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
            <Route path="/terms" element={<PageSuspense><Terms /></PageSuspense>} />
            <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
+           <Route path="/sms-terms" element={<PageSuspense><SmsTerms /></PageSuspense>} />
            <Route path="/legal/:slug" element={<PageSuspense><LegalDoc /></PageSuspense>} />
             <Route path="/about" element={<PageSuspense><About /></PageSuspense>} />
             <Route path="/pricing" element={<PageSuspense><Pricing /></PageSuspense>} />

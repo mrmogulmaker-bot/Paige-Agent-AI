@@ -1,8 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-// Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
-// (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET); master TWILIO_AUTH_TOKEN absent in prod.
-import { masterBasicAuthHeader } from "../_shared/twilio.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,79 +19,47 @@ serve(async (req) => {
   }
 
   try {
-    const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
-    const twilioAuthHeader = masterBasicAuthHeader(); // API Key trio (or legacy fallback); null when unconfigured
-    const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
-
-    if (!twilioAccountSid || !twilioAuthHeader || !twilioPhoneNumber) {
-      throw new Error('Missing Twilio credentials');
-    }
-
     const { to, message, userId }: SMSRequest = await req.json();
 
-    if (!to || !message) {
-      throw new Error('Missing required fields: to and message');
+    if (!to || !message || !userId) {
+      throw new Error('Missing required fields: to, message, and userId');
     }
 
-    // Format phone number (remove any non-digit characters)
-    const formattedTo = to.replace(/\D/g, '');
-    const formattedFrom = twilioPhoneNumber.replace(/\D/g, '');
-
-    // Ensure E.164 format
-    const toE164 = formattedTo.startsWith('+') ? formattedTo : `+1${formattedTo}`;
-    const fromE164 = formattedFrom.startsWith('+') ? formattedFrom : `+1${formattedFrom}`;
-
-    console.log(`Sending SMS from ${fromE164} to ${toE164}`);
-
-    // Twilio API call
-    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
-    
-    const response = await fetch(twilioUrl, {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) throw new Error('Unauthorized');
+    if (bearer !== supabaseServiceKey) {
+      const authed = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error } = await authed.auth.getUser();
+      if (error || !user) throw new Error('Unauthorized');
+      if (user.id !== userId) throw new Error('Forbidden');
+    }
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': twilioAuthHeader,
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
       },
-      body: new URLSearchParams({
-        To: toE164,
-        From: fromE164,
-        Body: message,
+      body: JSON.stringify({
+        user_id: userId,
+        message_type: 'service_notification',
+        message_body: message,
+        to_phone: to,
       }),
     });
 
-    const twilioResponse = await response.json();
+    const result = await response.json();
 
     if (!response.ok) {
-      console.error('Twilio error:', twilioResponse);
-      throw new Error(twilioResponse.message || 'Failed to send SMS');
-    }
-
-    console.log('SMS sent successfully:', twilioResponse.sid);
-
-    // Log the SMS in database if userId is provided
-    if (userId) {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-      await supabase.from('plaid_notifications').insert({
-        user_id: userId,
-        channel: 'sms',
-        template: 'reminder',
-        metadata: {
-          to: toE164,
-          message_sid: twilioResponse.sid,
-          status: twilioResponse.status,
-        },
-      });
+      throw new Error(result.error || 'Governed SMS send failed');
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        messageSid: twilioResponse.sid,
-        status: twilioResponse.status,
-      }),
+      JSON.stringify(result),
       {
         status: 200,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },

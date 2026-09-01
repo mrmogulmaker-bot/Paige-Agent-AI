@@ -16,6 +16,8 @@ export interface SignUpTenantArgs {
   password: string;
   fullName?: string;
   marketingOptIn?: boolean;
+  phone?: string;
+  smsConsent?: boolean;
   /** True when a tenant's CUSTOMER is creating a login to accept a portal invite.
    *  They already received the tenant's branded invite email, so the platform
    *  (Paige) welcome email is suppressed to keep the seam clean (§9). */
@@ -27,12 +29,23 @@ export async function signUpTenant({
   password,
   fullName,
   marketingOptIn,
+  phone,
+  smsConsent,
   suppressWelcome,
 }: SignUpTenantArgs): Promise<{ userId: string | null }> {
   const referralCode = getStoredReferralCode();
 
   const { data, error } = await supabase.functions.invoke("tenant-signup", {
-    body: { email, password, fullName, referralCode, marketingOptIn: !!marketingOptIn, suppressWelcome: !!suppressWelcome },
+    body: {
+      email,
+      password,
+      fullName,
+      referralCode,
+      marketingOptIn: !!marketingOptIn,
+      phone: phone || null,
+      smsConsent: !!smsConsent,
+      suppressWelcome: !!suppressWelcome,
+    },
   });
 
   // Non-2xx from the function surfaces as `error`; dig out the JSON message.

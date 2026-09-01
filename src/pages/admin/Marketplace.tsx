@@ -303,7 +303,7 @@ export default function Marketplace() {
     ]);
 
   // Stripe-return loop-closer (#275): after a paid checkout the browser lands back
-  // here at /admin/marketplace?purchase=success (the install is completed server-side
+  // on the actor/tier-aware marketplace route (the install is completed server-side
   // by stripe-webhook). Give the honest receipt, refetch so the item flips to Live,
   // then strip the param so a refresh/back-nav doesn't re-toast (§13 — say what
   // actually happened; the webhook, not this toast, is what installed it).
@@ -333,17 +333,11 @@ export default function Marketplace() {
     // only ever written for money that actually cleared (§13). Free items unchanged.
     const isPaid = (r.pricing_model && r.pricing_model !== "free") || (r.price_cents ?? 0) > 0;
     if (isPaid) {
-      // The success/cancel destinations are the marketplace's OWN route to declare
-      // (§10 — the UI owns where IT returns). This surface lives at /admin/marketplace
-      // (there is no top-level /marketplace route), so Stripe must return here — not
-      // to a 404/root as it did on the server's old "/marketplace…" default (#275).
-      // The completed install lands the item as "Live" on this same surface; the
-      // ?purchase=success param below is read to confirm the charge cleared.
+      // The server resolves the return address from the authenticated actor, tenant
+      // tier, and permanent account number. The client does not guess a shared route.
       const { data, error } = await supabase.functions.invoke("marketplace-checkout-session", {
         body: {
           item_slug: r.slug,
-          success_path: "/admin/marketplace?purchase=success",
-          cancel_path: "/admin/marketplace?purchase=cancelled",
         },
       });
       if (error) throw new Error(await edgeErrorMessage(error, "Couldn't start checkout — please try again."));

@@ -17,7 +17,7 @@ interface ApprovalNotificationProps {
   clientName?: string
   submittedBy?: string
   rationale?: string
-  approvalUrl?: string
+  approvalUrl?: string | null
 }
 
 const labelFor = (event: string) =>
@@ -38,7 +38,7 @@ const ApprovalNotificationEmail = ({
   clientName,
   submittedBy,
   rationale,
-  approvalUrl = 'https://paigeagent.ai/admin/approvals',
+  approvalUrl,
 }: ApprovalNotificationProps) => {
   const heading =
     eventType === 'changes_requested'
@@ -99,9 +99,11 @@ const ApprovalNotificationEmail = ({
             ) : null}
           </Section>
 
-          <Button style={button} href={approvalUrl}>
-            Open Approval
-          </Button>
+          {approvalUrl ? (
+            <Button style={button} href={approvalUrl}>
+              Open Approval
+            </Button>
+          ) : null}
 
           <Hr style={hr} />
           <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because approval notifications are enabled for your account.</Text>
@@ -124,7 +126,7 @@ export const template = {
     riskLevel: 'medium',
     clientName: 'Jane Doe',
     submittedBy: 'Paige',
-    approvalUrl: 'https://paigeagent.ai/admin/approvals',
+    approvalUrl: 'https://paigeagent.ai/operator/settings/governance/approvals',
   },
 } satisfies TemplateEntry
 

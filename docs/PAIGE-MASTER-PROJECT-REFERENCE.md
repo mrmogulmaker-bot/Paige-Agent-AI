@@ -567,6 +567,37 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
   filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production
   tenants** currently have, so refusal is the first-use path for every tenant today.
 
+- **The business phone line — SHIPPED and Paige-callable (PRs #692, #695, #699; live 2026-09-01).**
+  A Solo tenant can search available numbers (area code, region, city, starts-with, toll-free),
+  buy one into their **own** Twilio subaccount, name it, clear the name, and choose **which number
+  the business calls and texts from** — the last of those being a control that did not previously
+  exist anywhere. Seams: `comms-search-numbers` / `comms-purchase-number` (edge) and
+  `tenant_phone_number_rename` / `tenant_phone_number_set_primary` (RPC, SECURITY DEFINER,
+  caller scope re-enforced in-body per §59). Surface: Settings → Connections → Communications.
+  - **Paige can drive the PHONE half.** Eight `comms_*` tools in `paige-ai-chat` cover the safe
+    connection summary, listing, search, buy, rename, set-primary, registration status and
+    registration draft. Four mutate and carry catalogue rows under a new **`Comms`** category, so
+    each defaults to `confirm` and the operator can switch it off: `comms_buy_number`,
+    `comms_set_primary_number`, `comms_name_number`, `comms_draft_registration`.
+  - **What Paige CANNOT drive, stated so "Paige-callable comms" is not read as the whole surface:**
+    the custom sending domains and the Google sending account. Both are operable by a person on
+    that surface and neither has a Paige tool. That half is click-only.
+  - **Money safety.** `comms_buy_number` requires the quoted `monthly_cents`, the confirmation
+    sentence names the dollar figure, and `comms-purchase-number` re-checks it against
+    `platform_number_pricing` **before** buying — refusing on mismatch (`price_changed`) or when it
+    cannot be verified (`price_unverifiable`). Unverifiable is a refusal: absence of a price is not
+    permission to spend. A malformed quote is refused **ahead of the autonomy gate**, so `auto`
+    cannot route around it. Every exit that follows a real charge — there are **four** — writes an
+    `audit_logs` row (`comms:number_purchased`), the charged-but-unrecorded ones carrying
+    `recorded_on_tenant: false`.
+  - **HONEST LIMITS.** Filing with a carrier still does not exist (see the A2P entry above).
+    Releasing a number is deliberately not built — `status='released'` has no writer, and setting it
+    without the provider call would mark a number released while the provider kept billing. The
+    Trust Compass ceiling clamps these tools at RENDER only; `resolve_tool_autonomy`, which the
+    runtime consults, does not read the compass, so the per-tool floor is the enforcement today.
+    An operator acting as a tenant cannot reach the two new RPCs through Paige (the executor passes
+    `_id` alone) — a refusal, not a leak.
+
 ### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
 
 The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitive family, live on the Fleet Console (owner screenshot 2026-08-09). This entry closes a Cowork completeness gap — the Agent UI Placement spec defined this surface but Section 4 hadn't marked it shipped. (Verified by CC against `origin/main`: all 7 files exist and every byte size matches; folded as its own docs PR since the miss #21 PR (#417) had already merged.)
@@ -586,7 +617,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 
 ### Third-party integrations WIRED + CONFIGURED
 
-- ✅ **Twilio — ISV/reseller architecture LIVE at Twilio's side; number-search UI is the only remaining gap.**
+- ✅ **Twilio — ISV/reseller architecture LIVE at Twilio's side; number search and purchase SHIPPED (2026-09-01).**
   - **Organization:** Paige Agent AI LLC (⚠ vendor/Twilio Org name — pending rename to Paige Agent AI Inc. per 2026-08-11 C-Corp conversion, owner-owed vendor update) · Org SID `<redacted — owner's Twilio console>` · verified domain paigeagent.ai · 1 managed user (Antonio Cook, info@paigeagent.ai) · 1 billing group
   - **Corporate identity (D7, SHIPPED 2026-08-11):** the legal entity is **Paige Agent AI Inc.** — a **standalone Delaware C-Corp** (direct conversion from Paige Agent AI LLC, Option A per owner ruling). No holdco, no parent. Present-tense entity name swept platform-wide (`_shared/platform-identity.ts` `legal_entity_name`, Terms/Privacy/Footer/Pricing public pages → "Paige Agent AI Inc.", Delaware corporation). Stale CoreConnect-subsidiary language + the Portfolio-mode-as-corporate-structure C-suite doctrine **DELETED** from `paige-c-suite-roster.md` (now two-scope: tenant + operator); `PORTFOLIO_SCOPE_BRIEFING.md` marked SUPERSEDED. New living doctrine: `docs/doctrine/paige-corporate-structure.md` (PROPOSED). "Portfolio" is now ONLY a future marketplace feature (task #129). **Owner-owed (task #128):** vendor renames (Twilio/Stripe/DocuSign/WHOIS) + binding-legal-doc migration + banking + the Aedis Brands LLC / Givalli Heritage Holdings Inc. brand-license decision (public Footer — preserved + flagged, not part of the CoreConnect ruling).
   - **Master account:** `<redacted — owner's Twilio console>` (owned by Antonio Cook, created 04/21/2026, Active)
@@ -598,7 +629,24 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     - Paige – Project Mogul Enterprise Inc
   - **Envs currently in code (NAMES only):** `TWILIO_ACCOUNT_SID` · `TWILIO_AUTH_TOKEN` · `TWILIO_PHONE_NUMBER` · `TWILIO_FROM` — MASTER account creds.
   - **Purchase capability EXISTS** — that's how subaccounts have numbers assigned today.
-  - **Only remaining gap:** phone-number SEARCH tools inside the Communications console (vanity 800 · pattern-matched · premium registry search). Task #27 scope.
+  - **Number search + purchase SHIPPED (PRs #692/#695/#699, live 2026-09-01).** This line previously
+    read *"Only remaining gap: phone-number SEARCH tools inside the Communications console"* and was
+    left standing when the capability shipped, so this document asserted both states at once — the
+    exact contradiction a source of truth exists to prevent. Corrected here rather than deleted, so
+    the drift is visible (§13).
+    **What a shipped caller can actually search on today:** area code · region (state) · city
+    (locality) · a DIGIT prefix (`starts_with`, converted to a Twilio `Contains` pattern with the
+    area code folded in) · toll-free vs local. Results carry the live retail price from
+    `platform_number_pricing`.
+    **What the EDGE FUNCTION accepts but no shipped caller sends** — same status, so listed the same
+    way: letter-based **vanity** matching (`starts_with` is stripped to digits, and neither the
+    Connections UI nor `comms_search_numbers` exposes a raw `contains`) and **`sms_enabled`**
+    capability filtering (headless-only; `NumbersTab.tsx` says so in a comment, `useSoloNumbers`
+    does not send it, and the tool schema has no such property). An earlier draft of this bullet
+    listed SMS filtering as shipped while calling vanity unreachable, on identical evidence — the
+    test for "shipped" is whether a product caller can reach it, applied to every filter or to none.
+    **Premium / registry search** is not built at all. Task #27's remaining scope is vanity and
+    premium/registry; exposing `sms_enabled` through a caller is a separate, smaller question.
 - ✅ **Stripe** — live-mode webhook + checkout + Marketplace + Connect wiring started. Functions: `stripe-webhook`, `create-checkout`, `create-trial-checkout`, `customer-portal`, `check-subscription`, `marketplace-checkout-session`, `tenant-checkout-session`, `tenant-stripe-connect`. B-iv storefront webhook merged (PR `9f9b6cf7`). B-ii-a marketplace paid install merged (PR `c95a7e16`). Data: `platform_subscriptions` table.
 - ✅ **ElevenLabs** — TTS + ConvAI. **Voice = Ivanna.** ConvAI agent `agent_1601k7zn6bs7e72bt6485bp99v4a`, model `eleven_turbo_v2_5`. Code in BOTH `_shared/tts-router.ts` (in-app chat voice path — per CC code check) AND `_shared/elevenlabs.ts` (ElevenLabs client). See Section 10 for the precise voice-env attribution (`ELEVENLABS_VOICE_ID` drives Studio VO, not the in-app chat voice).
 - ✅ **Supabase** — Postgres + RLS + edge functions + auth. Prod ref `xygzykjyynhzqytbqnzu`. 231+ edge functions. 688+ migrations. RLS helpers: `is_platform_owner()` (operator scope), `current_user_tenant_id()` (tenant scope).
@@ -889,7 +937,7 @@ self-knowledge (§18).
 ### MVP-blocking gaps (all-open)
 
 - ❌ **Fleet Comms operator SMS `paige-operator-sms-send` returns 500 (CC-root-caused 2026-08-09, fix specified, awaiting owner go).** Owner's §32.c live-drive send to a test recipient failed "Edge Function returned a non-2xx status code." CC diagnosis by elimination + code trace: it's HTTP **500 = `authz_check_failed`** (`index.ts:45`) — `caller.rpc("is_platform_owner")` errored. NOT needs_config (returns 200; **MG SID IS set — owner does not need to re-paste**), NOT the upsert (verified OK via rolled-back service-role txn), NOT a Twilio rejection (`twilioRequest` never throws → returns 200 'failed'). Leading cause: `is_platform_owner`/`is_super_admin` each have TWO overloads (`()` + `(_user_id uuid)`), and a PostgREST `.rpc()` against overloaded functions hits **PGRST203** — the #408 fn is the first DIRECT rpc caller (others use it inside RLS/definer). Fix (2 parts): (1) call the owner-check overload-safely + log `ownerErr.message`; (2) add an outer try/catch returning a structured 500 (§32 loud-failure). Same class as §51 #130.
-- ❌ **Twilio phone-number SEARCH tools** inside the Communications console (Task #27) — the ONE narrow remaining Twilio piece. ISV + purchase already exist per Section 4.
+- ⚠️ **Twilio phone-number search — SHIPPED 2026-09-01; only VANITY and PREMIUM/REGISTRY search remain (Task #27).** This row read *"❌ … the ONE narrow remaining Twilio piece"* after search had already shipped, so Sections 4 and 5 asserted opposite states. Search by area code, region, city, digit prefix and toll-free is live in Connections → Communications, as is purchase. Missing: letter-based **vanity** matching and **premium/registry** search. `sms_enabled` sits in the same edge-only category as vanity — the function accepts it, no product caller sends it. Task #27 is rescoped to vanity + premium/registry.
 - ❌ **A2P 10DLC carrier submit** — UI exists, backend stubbed; no `messaging_service_sid` table.
 - ❌ **SMS-in-signup** — phone capture not in signup migrations (task #23).
 - ❌ **`delete_tenant` RPC + MCP tool** — task #30 scope (§10 Paige-callable).
@@ -945,7 +993,7 @@ Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish,
 | #24 | Voice fix end-to-end | ✅ closed (Ivanna live) | — |
 | #25 | paige_conversations unsafe RLS | pending | — |
 | #26 | Second Brain (PR #410) | ✅ MERGED (brain live) | — |
-| #27 | Twilio number-search tools in Communications | pending | — |
+| #27 | Twilio number search — VANITY (letter) + premium/registry only; base search + purchase SHIPPED 2026-09-01 | pending (rescoped) | — |
 | #28 | Tenant-as-operator-client auto-provision + consent capture | pending | #29 |
 | #29 | Promotional-account classification + ARR reconciliation (PR #412) | ✅ MERGED (§32.a-proven) | — |
 | #30 | Super Admin full CRUD on tenants + §10 seams | pending | #29 |
@@ -1211,7 +1259,79 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
      because deleting the code under test made it throw instead of misbehave. Two of those were in
      the very tests written to prove this repair.
 
+- **2026-09-01 — this document asserted that number search was shipped AND that it was the only
+  remaining Twilio gap, in three places at once (PR #703 follow-up).** Recording a new capability
+  in Section 4 without sweeping for the claims it contradicts produced exactly the failure a single
+  source of truth exists to prevent: Section 4 (the Twilio integration header and its "Only
+  remaining gap" bullet), Section 5 (the ❌ gap row) and Section 6 (task ledger #27) all still said
+  search did not exist, beside a new entry saying it did. Anyone following the mandated daily
+  protocol would have got two mutually exclusive answers depending on where they looked.
+  **Corrected to what is actually true, rather than to "the gap is closed":** search by area code,
+  region, city, digit prefix and toll-free is live, and purchase with it; letter-based **vanity**
+  matching is NOT (`starts_with` is stripped to digits, and neither the UI nor
+  `comms_search_numbers` exposes a raw Twilio `contains`, so no shipped caller can reach it), nor is
+  **premium/registry** search. Task #27 rescoped to those two. Replacing an over-claim with the
+  opposite over-claim would have been the same defect wearing different clothes.
+  **On the sweep that missed it.** The PR adding the Section 4 entry reported "Section 5 checked for
+  a now-stale comms gap: none present". The check ran; it searched `phone number` while the document
+  says `phone-number`. One hyphen, and a verification statement that was true of what it searched
+  and false of what it claimed. The dated 2026-08-09 entry recording the original narrow-gap
+  rescope is deliberately left standing — it was accurate then, and this entry supersedes it rather
+  than rewriting the audit trail.
+  **The general lesson: an entry that adds a capability is not finished until the claims it
+  falsifies are found, and a grep is only as good as its spelling — vary the separator, or the
+  absence you prove is the absence of your own pattern.**
 
+- **2026-09-01 — the outbound caller ID was decided by row order, and five defects got past a
+  green gate (PRs #695, #699).** `tenant_phone_numbers.is_primary` chooses which number a
+  workspace's calls and texts come FROM — `voice-twiml` and `send-message` both order by it — and
+  **nothing in the repository had ever written it.** The only `SET is_primary = true` anywhere was
+  on `public.businesses`, a different table. Measured on production before the fix: **2 active
+  numbers, 0 primaries, 1 workspace** — so that business's outbound calls resolved to whichever row
+  Postgres returned and could differ between two calls with no data change. Closed: 0 → 1 primary,
+  1 → 0 ambiguous workspaces.
+  **The lessons are about the PROOFS, not the code.**
+  - **A predicate proof is not a write proof.** The review of #695 tightened the backfill's guard
+    and demonstrated it by running the SELECT — with the guard it picks 1 row, without it 0 — and
+    never ran the UPDATE. The UPDATE was the half that could fail: `uq_tenant_phone_numbers_primary`
+    is `UNIQUE (tenant_id) WHERE is_primary` with no status predicate, so in exactly the state the
+    new guard was written for, it aborts `23505`. Fixed in `20261020000000` by making the state
+    unreachable (a BEFORE trigger clears the flag when a number leaves `active`) rather than adding
+    a third guard.
+  - **A schema is not a guard.** `comms_buy_number` marked `monthly_cents` required; tool calling is
+    non-strict, so a model could omit it, the executor passed `undefined`, and the seam read that as
+    the legacy UI path and bought the number with no price checked or shown. At `auto` there is no
+    confirmation at all. The fallback copy — *"an amount Paige could not quote"* — was a graceful
+    degrade written where a refusal belonged.
+  - **A stable code, not prose.** `number_bought_but_record_failed: <db message>` was compared with
+    `===` against the bare token, so on the one path where money had already left, the flag stopping
+    Paige offering a replacement purchase was never set. The comment above it said "Carried
+    DELIBERATELY", which is what made it look verified.
+  - **Count the exits, then count them again.** The purchase audit helper's comment said three
+    money-spent exits, already corrected once from one. There are four.
+  - **A perturbation that changes nothing proves nothing, and looks exactly like a passing test.**
+    Two attempts to break the new assertions came back green and were briefly read as weak
+    assertions; both perturbations had simply not applied. Redone with byte offsets printed.
+  Guarded by `scripts/comms-purchase-safety-smoke.mjs`, which drives the REAL handler and is wired
+  unconditionally into CI — and was confirmed to have actually executed on the runner, since a step
+  whose script path did not match would be silently green.
+
+- **2026-09-01 — the tool catalogue is a VALUES list, so the LAST migration decides what the
+  operator can switch off (PR #695).** `list_tool_autonomy` re-declares its whole catalogue on every
+  touch. A branch whose catalogue migration sorted BEFORE two that landed on main while it was open
+  would have installed four governed `Comms` rows and had main's later migrations drop them again —
+  leaving a **paid action governed-but-invisible**, with `lint:tool-catalogue` green throughout,
+  because the lint reads the last declaration and would have found them absent there. Caught only
+  because `capabilities.v3.test.tsx` conflicted and, resolved on arithmetic, then failed. Rebuilt at
+  a timestamp that sorts last. **When a migration REPLACES rather than adds, its position is part of
+  its correctness.**
+
+- **2026-09-01 — this document went unupdated across four merged PRs (#692, #693, #695, #699).**
+  §0 binds the master reference to the SAME PR as the ship. Those four updated
+  `docs/doctrine/tier-matrix.md` (§66) instead and treated it as sufficient. §0 and §66 bind
+  DIFFERENT documents, and this is the one that answers *"do we already have this?"* — so the entire
+  Solo comms capability was absent from it while being live in production. Recorded here rather than
+  quietly backfilled, because the failure mode is the doc silently lagging reality.
 - **2026-08-30 — the honesty of a compliance surface rested on nobody exercising a policy
   (PR #672, owner-approved).** `tenant_a2p_registrations`' RLS UPDATE and INSERT policies are
   row-scoped with **no column restriction**, so a tenant admin could set `submitted_at` and a

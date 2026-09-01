@@ -6,6 +6,7 @@ import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-e
 import { projectN8nForModel, projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
+import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -6054,9 +6055,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 type: "object",
                 properties: {
                   phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
+                  monthly_cents: { type: "integer", description: "The exact monthly_cents comms_search_numbers returned for THIS number. It is shown to the operator in the approval prompt and verified against the real price before anything is bought, so a number you did not get from a search will be refused rather than charged." },
                   friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
                 },
-                required: ["phone_number"]
+                required: ["phone_number", "monthly_cents"]
               }
             }
           },
@@ -6625,8 +6627,25 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       switch (name) {
         // The money one. The number and the fact that it charges have to be IN the
         // sentence — "buy a number?" is not a proposal anyone can actually approve.
-        case "comms_buy_number":
-          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a monthly charge.`;
+        case "comms_buy_number": {
+          // The AMOUNT belongs in the sentence for the same reason the number does. "This
+          // starts a monthly charge" is not something a person can meaningfully approve — they
+          // are agreeing to an unnamed recurring cost. The figure here is model-supplied, which
+          // on its own would be worth little; what makes it trustworthy is that
+          // comms-purchase-number re-checks it against platform_number_pricing BEFORE buying
+          // and refuses on any mismatch. So the operator can never be shown one price and
+          // charged another, and can never be asked to approve a price that was never real.
+          // Unreachable: the quote guard above the autonomy gate refuses a purchase whose
+          // `monthly_cents` is not a positive integer, so this function is never reached
+          // without one. The fallback is kept as a defence in depth and deliberately does NOT
+          // read as an approvable proposal — an earlier revision said "an amount Paige could
+          // not quote", which invited a yes to a purchase with no number in it.
+          const cents = typeof a?.monthly_cents === "number" ? a.monthly_cents : null;
+          const price = cents !== null
+            ? `$${(cents / 100).toFixed(2)}/month`
+            : "an unquoted amount — this will be refused; run a search first";
+          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a recurring charge of ${price}.`;
+        }
         case "comms_name_number":
           return String(a?.friendly_name ?? "").trim()
             ? `Label that number "${a.friendly_name}".`
@@ -7004,6 +7023,39 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         if (callerTier === "client" && !clientSeatToolAllowed(tc.function.name)) {
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, forbidden_seat: true, error: "This is a client portal seat; that action is not available here." }) });
           continue;
+        }
+
+        // ── A PURCHASE WITHOUT A QUOTE IS REFUSED, BEFORE THE GATE ───────────
+        // The tool schema marks `monthly_cents` required, and that is NOT enforcement: tool
+        // calling here is automatic and non-strict, so the model can omit it or send "120" as
+        // a string. The executor then passed `undefined`, and `comms-purchase-number` treats an
+        // absent amount as the LEGACY UI PATH — the marketplace UI shows the price beside the
+        // button and sends none — so it skipped price verification and bought the number.
+        //
+        // That defeats the whole point of carrying the price. At `confirm` the operator was
+        // offered "an amount Paige could not quote" — a proposal with no number in it, which is
+        // the thing the confirmation exists to prevent. At `auto` there is no confirmation at
+        // all, so it bought at an unverified price with nobody ever seeing one.
+        //
+        // So it is refused HERE, ahead of the gate, rather than deeper: past this point either
+        // a meaningless confirmation gets shown or the purchase simply runs. The seam stays
+        // permissive on purpose (§37 — the two UI producers legitimately send no price); it is
+        // the AGENT path that must supply one.
+        if (tc.function.name === "comms_buy_number") {
+          let quoteArgs: any = {};
+          try { quoteArgs = JSON.parse(tc.function.arguments || "{}"); } catch { quoteArgs = {}; }
+          if (!isSpendableQuoteCents(quoteArgs.monthly_cents)) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                success: false,
+                error: "quote_required",
+                message: "Run comms_search_numbers first and pass the exact whole-cent monthly_cents it returned for this number. A number is never bought without a price the operator has been shown.",
+              }),
+            });
+            continue;
+          }
         }
 
         // ── AUTONOMY GATE ────────────────────────────────────────────────────
@@ -8226,7 +8278,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               };
             } else if (tc.function.name === "comms_buy_number") {
               const { data: d, error: e } = await supabaseClient.functions.invoke("comms-purchase-number", {
-                body: { phone_number: args.phone_number, friendly_name: args.friendly_name || undefined },
+                body: {
+                  phone_number: args.phone_number,
+                  friendly_name: args.friendly_name || undefined,
+                  // The price the operator was just shown. Sent so the server can refuse if it
+                  // is not the real one — the approval and the charge have to be the same number.
+                  agreed_monthly_cents: typeof args.monthly_cents === "number" ? args.monthly_cents : undefined,
+                },
               });
               const rec = await readInvokeBody(e, d);
               // A 200 is not a purchase. The function says `purchased` when it bought and
@@ -8248,9 +8306,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : {
                   success: false,
                   error: rec.error ?? "purchase_failed",
-                  // Carried DELIBERATELY: this is the one failure where money was already
-                  // spent, and Paige must say so instead of offering to buy another.
-                  ...(rec.error === "number_bought_but_record_failed"
+                  // MATCH `code`, NOT `error`. `error` is prose that interpolates the database
+                  // message — `number_bought_but_record_failed: duplicate key…` — so this exact
+                  // equality was NEVER true and the flag it gates never reached the model, on the
+                  // one path where money had already left. The comment above claimed it was
+                  // "carried DELIBERATELY", which made it read as verified. The prefix is still
+                  // accepted so a stale deploy of the purchase function degrades to working.
+                  ...(rec.code === "number_bought_but_record_failed"
+                    || (typeof rec.error === "string"
+                        && rec.error.startsWith("number_bought_but_record_failed"))
+                    ? { money_already_spent: true, phone_number: rec.phone_number ?? args.phone_number }
+                    : {}),
+                  // Twilio took the money and returned no SID: also charged, also unrecorded.
+                  ...(rec.code === "twilio_purchase_missing_sid"
                     ? { money_already_spent: true, phone_number: rec.phone_number ?? args.phone_number }
                     : {}),
                 };

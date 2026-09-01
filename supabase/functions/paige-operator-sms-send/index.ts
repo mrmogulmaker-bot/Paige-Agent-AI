@@ -9,6 +9,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { operatorTwilioCreds, operatorMessagingServiceSid, sendOperatorSms } from "../_shared/operator-twilio.ts";
 import { normalizePhone } from "../_shared/pre-send-pipeline.ts";
+import { formatPaigeAgentAiSms } from "../_shared/paige-agent-ai-sms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +17,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const STOP_SUFFIX = " Reply STOP to unsubscribe.";
 const MAX_BODY = 1600;
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   }
   if (isOwner !== true) return json({ error: "forbidden" }, 403);
 
-  let payload: { to?: string; body?: string; conversation_id?: string; counterparty_name?: string };
+  let payload: { to?: string; reason?: string; conversation_id?: string; counterparty_name?: string };
   try {
     payload = await req.json();
   } catch {
@@ -71,13 +71,22 @@ Deno.serve(async (req) => {
   }
 
   const toRaw = (payload.to ?? "").trim();
-  const bodyRaw = (payload.body ?? "").trim();
+  const reason = (payload.reason ?? "").trim();
   if (!toRaw) return json({ error: "to_required" }, 400);
-  if (!bodyRaw) return json({ error: "body_required" }, 400);
-  if (bodyRaw.length > MAX_BODY) return json({ error: "body_too_long_max_1600" }, 400);
+  if (!reason) return json({ error: "account_action_reason_required" }, 400);
+  if (reason.length > 240) return json({ error: "account_action_reason_too_long_max_240" }, 400);
 
   const toNorm = normalizePhone(toRaw);
-  const fullBody = bodyRaw.includes("STOP") ? bodyRaw : (bodyRaw + STOP_SUFFIX).slice(0, MAX_BODY);
+  let fullBody: string;
+  try {
+    fullBody = formatPaigeAgentAiSms({
+      body: `Your account requires action: ${reason}`,
+      url: "https://paigeagent.ai/auth?mode=login",
+    });
+  } catch (error) {
+    return json({ error: (error as Error).message }, 400);
+  }
+  if (fullBody.length > MAX_BODY) return json({ error: "body_too_long_max_1600" }, 400);
 
   // Short-circuit needs_config BEFORE any DB write (§13): when the operator Twilio config
   // is incomplete there is nothing to send, so we must not create a conversation thread or
@@ -92,6 +101,24 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+
+  // Platform Campaign traffic is authorized only by the platform-user evidence
+  // row created from the exact signup disclosure. Tenant/contact consent cannot
+  // authorize an operator message, even when the phone number happens to match.
+  const { data: platformConsent, error: consentErr } = await admin
+    .from("communications_consents")
+    .select("id")
+    .eq("phone", toNorm)
+    .is("tenant_id", null)
+    .is("contact_id", null)
+    .not("consent_granted_at", "is", null)
+    .is("revoked_at", null)
+    .is("withdrawn_at", null)
+    .eq("sms_transactional", true)
+    .limit(1)
+    .maybeSingle();
+  if (consentErr) return json({ outcome: "suppressed", reason: "consent_check_failed" }, 200);
+  if (!platformConsent) return json({ outcome: "suppressed", reason: "platform_sms_consent_required" }, 200);
 
   // Upsert the operator conversation thread for this counterparty (service role; the owner
   // gate above already authorized this write). Unique on (channel, counterparty_phone).

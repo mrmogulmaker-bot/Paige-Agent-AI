@@ -38,6 +38,7 @@ const INK = "#241645";
 const LOGO_URL = `${PUBLIC_BASE}/pwa-512x512.png`;
 const REPLY_TO = Deno.env.get("PLATFORM_SUPPORT_EMAIL") ?? "hello@paigeagent.ai";
 const UNSUB_URL = `${PUBLIC_BASE}/unsubscribe`;
+const SMS_DISCLOSURE_VERSION = "paige-platform-account-service-v1-2026-08-31";
 
 function esc(s: string): string {
   return String(s ?? "")
@@ -134,6 +135,9 @@ Deno.serve(async (req) => {
   const fullName = body.fullName ? String(body.fullName).trim() : null;
   const referralCode = body.referralCode ? String(body.referralCode) : null;
   const marketingOptIn = body.marketingOptIn === true;
+  const smsConsent = body.smsConsent === true;
+  const phone = body.phone ? String(body.phone).trim() : "";
+  const smsConsentSourceUrl = `${PUBLIC_BASE}/auth?mode=signup`;
   // A tenant's CUSTOMER accepting a portal invite already got the tenant's
   // branded invite email — suppress the platform (Paige) welcome so the
   // customer never sees the platform brand (§9).
@@ -144,6 +148,13 @@ Deno.serve(async (req) => {
   }
   if (password.length < 8) {
     return json({ ok: false, reason: "weak", message: "Password must be at least 8 characters." });
+  }
+  if (smsConsent && !/^\+[1-9]\d{7,14}$/.test(phone)) {
+    return json({
+      ok: false,
+      reason: "invalid_phone",
+      message: "Enter a valid mobile number with country code.",
+    });
   }
 
   const url = Deno.env.get("SUPABASE_URL");
@@ -177,6 +188,37 @@ Deno.serve(async (req) => {
       });
     }
     return json({ ok: false, reason: "error", message: error.message || "Could not create your account." });
+  }
+
+  // SMS consent is optional, but a selected checkbox is not considered granted
+  // until its complete evidence row is durable. If the evidence write fails, the
+  // newly created account is removed so no partially-authorized signup survives.
+  if (smsConsent && data.user?.id) {
+    const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const requestIp = forwardedFor || req.headers.get("cf-connecting-ip") || null;
+    const { error: consentError } = await admin.from("communications_consents").insert({
+      user_id: data.user.id,
+      email,
+      phone,
+      sms_transactional: true,
+      sms_marketing: false,
+      source: "signup",
+      source_url: smsConsentSourceUrl,
+      ip_address: requestIp,
+      user_agent: req.headers.get("user-agent"),
+      disclosure_version: SMS_DISCLOSURE_VERSION,
+      consent_granted_at: new Date().toISOString(),
+      revoked_at: null,
+    });
+
+    if (consentError) {
+      await admin.auth.admin.deleteUser(data.user.id);
+      return json({
+        ok: false,
+        reason: "consent_evidence",
+        message: "Your SMS consent could not be recorded. No account or SMS authorization was created. Please try again.",
+      }, 500);
+    }
   }
 
   // Sign-up email — the platform welcome, sent through Resend. Fire-and-forget.

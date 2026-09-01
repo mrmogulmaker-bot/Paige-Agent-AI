@@ -2,13 +2,12 @@
 // Triggered by DB triggers on paige_pending_approvals (insert + update→changes_requested).
 // Creates in-app notifications (paige_admin_notifications) and sends transactional emails.
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { canonicalAppUrl, resolveCanonicalAppPath } from '../_shared/canonical-app-url.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-
-const APP_BASE = 'https://paigeagent.ai'
 
 interface Payload {
   event: 'created' | 'changes_requested'
@@ -78,8 +77,6 @@ Deno.serve(async (req) => {
     submitterEmail = au?.user?.email ?? undefined
   }
 
-  const approvalUrl = `${APP_BASE}/admin/approvals/${approval.id}`
-
   // Determine recipients
   type Recipient = { user_id: string; email?: string; name?: string; role: string }
   const recipients: Recipient[] = []
@@ -109,6 +106,7 @@ Deno.serve(async (req) => {
         .in('role', role)
       const userIds = Array.from(new Set((roleRows ?? []).map((r) => r.user_id as string)))
       for (const uid of userIds) {
+        const roleRow = (roleRows ?? []).find((row) => row.user_id === uid)
         const { data: au } = await supabase.auth.admin.getUserById(uid)
         const { data: p } = await supabase
           .from('profiles')
@@ -119,7 +117,7 @@ Deno.serve(async (req) => {
           user_id: uid,
           email: au?.user?.email ?? undefined,
           name: p?.display_name || [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim() || undefined,
-          role: 'admin',
+          role: String(roleRow?.role ?? 'admin'),
         })
       }
     }
@@ -151,11 +149,16 @@ Deno.serve(async (req) => {
         ? 'warning'
         : 'info'
 
+  const operatorApprovalPath = resolveCanonicalAppPath({
+    actor: 'operator', tier: 'operator', destination: 'approvals',
+  })
   const notifRows = recipients.map((r) => ({
     severity,
     title,
     body: bodyText,
-    link_to: `/admin/approvals/${approval.id}`,
+    link_to: r.role === 'super_admin' || r.role === 'platform_admin'
+      ? operatorApprovalPath
+      : null,
     source_workflow_key: `approval.${body.event}`,
     contact_id: approval.contact_id ?? null,
     assigned_role: r.role === 'submitter' ? null : r.role,
@@ -171,6 +174,9 @@ Deno.serve(async (req) => {
   const emailResults: unknown[] = []
   for (const r of recipients) {
     if (!r.email) continue
+    const approvalUrl = r.role === 'super_admin' || r.role === 'platform_admin'
+      ? canonicalAppUrl({ actor: 'operator', tier: 'operator', destination: 'approvals' })
+      : null
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/send-transactional-email`, {
         method: 'POST',

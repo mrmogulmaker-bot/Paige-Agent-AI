@@ -91,24 +91,24 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
   }
 }
 
-/** The tenant's Playbook persona (domain/role/tone) → a compact "THIS PRACTICE" block so the copy
+/** The tenant's Playbook persona (domain/role/tone) → a compact "THIS BUSINESS" block so the copy
  *  reads native to this business (§7). Lengths capped so a large Playbook can't blow the budget.
  *  Returns "" when there's nothing real to add (§13 — never fabricates a persona). */
-function buildPracticeBlock(pb: unknown): string {
+function buildBusinessBlock(pb: unknown): string {
   const cfg = (pb ?? {}) as Record<string, unknown>;
   const p = (cfg.persona ?? {}) as Record<string, unknown>;
   const domain = str(p.domain).trim().slice(0, 120);
   const role = str(p.role).trim().slice(0, 160);
   const tone = str(p.tone).trim().slice(0, 160);
   const lines = [
-    domain && `Practice domain: ${domain}`,
-    role && `Who this practice serves: ${role}`,
+    domain && `Business domain: ${domain}`,
+    role && `Who this business serves: ${role}`,
     tone && `Voice & tone to hold: ${tone}`,
   ]
     .filter(Boolean)
     .join("\n");
   if (!lines) return "";
-  return `\n\nTHIS PRACTICE — write the copy NATIVE to this specific business, never a generic template:\n${lines}`;
+  return `\n\nTHIS BUSINESS — write the copy NATIVE to this specific business, never a generic template:\n${lines}`;
 }
 
 
@@ -200,7 +200,7 @@ Deno.serve(async (req: Request) => {
     // ── 4. Brand + Playbook (truthful, §13; IDOR-safe reads on the tenant WE resolved) ──
     let brandName = "";
     let tagline = "";
-    let practiceBlock = "";
+    let businessBlock = "";
     if (tenantId) {
       const admin = createClient(supabaseUrl, supabaseServiceKey);
       try {
@@ -229,7 +229,7 @@ Deno.serve(async (req: Request) => {
           const row = Array.isArray(pc) ? pc[0] : pc;
           if (row) pb = (row as Record<string, unknown>).playbook_config ?? null;
         }
-        practiceBlock = buildPracticeBlock(pb);
+        businessBlock = buildBusinessBlock(pb);
       } catch (e) {
         console.warn("comms-a2p-draft: persona lookup failed, brand-only:", (e as Error)?.message);
       }
@@ -268,7 +268,7 @@ Deno.serve(async (req: Request) => {
     // ── 5. The draft ────────────────────────────────────────────────────────
     const SYSTEM = `You are Paige, drafting the A2P 10DLC campaign registration copy for a client-based service business${legalName ? ` called "${legalName}"` : ""}. Carriers (via Twilio/TrustHub) review this copy to approve business texting — it must read as a legitimate, specific, compliant SMS program.
 
-VOICE (§3): direct, confident, professional — plain, credible language with no marketing hype or buzzwords. Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (practice, business, clients, work) rather than narrowly "coaching".
+VOICE (§3): direct, confident, professional — plain, credible language with no marketing hype or buzzwords. Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (business, clients, services, work) rather than narrowly "coaching".
 
 USE-CASE (§2 — HARD): this is a business-to-client relationship texting program. The DEFAULT purpose is client management: appointment reminders and confirmations, session/booking follow-ups, onboarding steps, and account/service notifications to people who are already the business's clients or who opted in. Do NOT introduce credit, funding, lending, loans, financing, "readiness/funding score", or any consumer-finance framing — EVEN IF the use-case hint mentions it — regulatory copy stays neutral and client-relationship focused. Never invent a marketing/promotional blast program the business did not describe.
 
@@ -285,7 +285,7 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
   "optin_message": string,          // the single confirmation SMS sent right after a client opts in
   "optout_message": string,         // the reply sent when a client texts STOP
   "help_message": string            // the reply sent when a client texts HELP
-}${practiceBlock}${tagline ? `\n\nThe practice's tagline (for tone only, do not quote): "${tagline.slice(0, 200)}"` : ""}`;
+}${businessBlock}${tagline ? `\n\nThe business's tagline (for tone only, do not quote): "${tagline.slice(0, 200)}"` : ""}`;
 
     const userTurn = [
       legalName ? `Legal business name: ${legalName}` : "",

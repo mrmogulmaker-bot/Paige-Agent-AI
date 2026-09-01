@@ -53,6 +53,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import Stripe from "https://esm.sh/stripe@17.5.0?target=deno";
+import { resolveCanonicalAppPath, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -95,6 +96,7 @@ function resolveOrigin(req: Request): string {
 function safePath(raw: unknown, fallback: string): string {
   if (typeof raw !== "string" || !raw) return fallback;
   if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
+  if (/^\/admin(?:\/|$)/i.test(raw)) return fallback;
   return raw;
 }
 
@@ -240,13 +242,29 @@ Deno.serve(async (req) => {
   const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-11-20.acacia" });
 
   const origin = resolveOrigin(req);
-  // The marketplace lives at /admin/marketplace (nested under the /admin shell) —
-  // there is NO top-level /marketplace route, so the old "/marketplace…" defaults
-  // returned the browser to a 404/root after Stripe (#275). The client always sends
-  // an explicit success_path/cancel_path; these defaults are defense-in-depth so a
-  // caller that omits them still lands on the real, live marketplace surface.
-  const successPath = safePath(body.success_path, "/admin/marketplace?purchase=success");
-  const cancelPath = safePath(body.cancel_path, "/admin/marketplace?purchase=cancelled");
+  const { data: tenantRoute } = await admin
+    .from("tenants")
+    .select("account_type, account_number")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const marketplacePath = isOwner === true
+    ? resolveCanonicalAppPath({ actor: "operator", tier: "operator", destination: "marketplace" })
+    : tenantRoute
+      ? resolveCanonicalAppPath({
+          actor: "account",
+          tier: String(tenantRoute.account_type ?? "") as CanonicalTier,
+          account: tenantRoute.account_number,
+          destination: "marketplace",
+        })
+      : null;
+  if (!marketplacePath) {
+    return json(409, {
+      error: "marketplace_return_unavailable",
+      detail: "No mounted marketplace destination exists for this actor and account tier.",
+    });
+  }
+  const successPath = safePath(body.success_path, `${marketplacePath}?purchase=success`);
+  const cancelPath = safePath(body.cancel_path, `${marketplacePath}?purchase=cancelled`);
   const successUrl =
     origin +
     successPath +
