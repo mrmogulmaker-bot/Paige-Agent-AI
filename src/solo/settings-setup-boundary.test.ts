@@ -15,6 +15,8 @@ describe("Solo Setup architecture boundary", () => {
     expect(block).toContain("persisted: false");
     expect(block).not.toContain('.from("tenants").update');
     expect(block).toContain('owner_confirmation_required: true');
+    expect(block).toContain("representativeUserIds");
+    expect(source).toContain("Resolve a named representative with crm_list_team");
   });
 
   it("keeps legacy email configuration out of chat and limits the legacy direct write to brand assets", () => {
@@ -41,5 +43,14 @@ describe("Solo Setup architecture boundary", () => {
     expect(migration).toContain("proposal patch must include at least one field");
     expect(migration).toContain("actor is not an active workspace member");
     expect(migration).toContain("tm.status = 'active'");
+  });
+
+  it("validates Paige-proposed representatives against active Team membership before staging", () => {
+    const migration = readFileSync(path.join(root, "supabase/migrations/20261019010000_solo_setup_representative_proposals.sql"), "utf8");
+    expect(migration).toContain("representativeUserIds");
+    expect(migration).toContain("every proposed business representative must be an active Team member");
+    expect(migration).toContain("public.tenant_members");
+    expect(migration).toContain("tm.status = 'active'");
+    expect(migration).toContain("to service_role");
   });
 });

@@ -45,7 +45,7 @@ describe("Solo Setup business brief contract", () => {
     expect(saved.provenance.legalName).toBeUndefined();
   });
 
-  it("applies a Paige proposal only to a draft and keeps representatives owner-controlled", () => {
+  it("applies a Team-backed representative proposal only to the owner's draft", () => {
     const current = {
       ...EMPTY_SOLO_SETUP_BRIEF,
       publicName: "Northstar Advisory",
@@ -55,12 +55,13 @@ describe("Solo Setup business brief contract", () => {
       id: "proposal-1",
       reason: "The owner described a narrower service area in chat.",
       proposedAt: "2026-08-31T22:00:00.000Z",
-      patch: { serviceArea: "Mid-Atlantic", representativeUserIds: ["attacker"] },
+      patch: { serviceArea: "Mid-Atlantic", representativeUserIds: ["owner-2"] },
     };
 
     const draft = applySetupProposal(current, proposal);
     expect(draft.serviceArea).toBe("Mid-Atlantic");
-    expect(draft.representativeUserIds).toEqual(["owner-1"]);
+    expect(draft.representativeUserIds).toEqual(["owner-2"]);
+    expect(current.representativeUserIds).toEqual(["owner-1"]);
     expect(current.serviceArea).toBe("");
   });
 });
