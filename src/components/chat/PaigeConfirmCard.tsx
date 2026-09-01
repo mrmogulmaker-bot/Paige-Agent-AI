@@ -27,7 +27,7 @@ export function PaigeConfirmCard({
    *  binding still renders; that caller's approvals simply will not open the gate. */
   fingerprints?: string[];
   onApprove: (fingerprints: string[]) => void;
-  onDeny: () => void;
+  onDeny: (fingerprints: string[]) => void;
   disabled?: boolean;
 }) {
   if (!items.length) return null;
@@ -56,7 +56,7 @@ export function PaigeConfirmCard({
             <Button size="sm" variant="gold" onClick={() => onApprove(fingerprints ?? [])} disabled={disabled}>
               <Check className="mr-1 h-4 w-4" /> {multi ? "Approve all" : "Approve"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onDeny} disabled={disabled} className="text-muted-foreground">
+            <Button size="sm" variant="ghost" onClick={() => onDeny(fingerprints ?? [])} disabled={disabled} className="text-muted-foreground">
               <X className="mr-1 h-4 w-4" /> Not now
             </Button>
           </div>

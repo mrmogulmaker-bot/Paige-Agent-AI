@@ -694,7 +694,7 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, approvedFingerprints?: string[]) => {
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
     if (soloTenantSafety && !activeTenantId) return;
     // Deliberately NOT stored on the retry: an approval is for one call at one moment. Replaying it
     // on a network retry would re-approve whatever the model emits the second time, which is the
@@ -778,6 +778,7 @@ const PaigeAIChatInner = ({
             // The exact calls the person ticked on a confirm card. The gate will only run a call
             // whose fingerprint is here; `confirm:true` on its own no longer opens it.
             ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
+            ...(declinedFingerprints?.length ? { declinedConfirmations: declinedFingerprints } : {}),
             // Attachment (#480): the edge inlines pdf/image as image_url and docx
             // textContent as a text block. Pass the REAL mimeType/kind/textContent
             // — the hook already extracted docx client-side.
@@ -1073,7 +1074,7 @@ const PaigeAIChatInner = ({
   /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
    *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
    *  longer opens it. Absent on every ordinary turn. */
-  const handleSend = async (overrideText?: string, approvedFingerprints?: string[]) => {
+  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
@@ -1098,7 +1099,7 @@ const PaigeAIChatInner = ({
     setMessages(base);
     setInput("");
     if (currentDoc) setAttachedDoc(null);
-    await streamTurn(base, rollback, userContent, currentDoc, approvedFingerprints);
+    await streamTurn(base, rollback, userContent, currentDoc, approvedFingerprints, declinedFingerprints);
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1417,7 +1418,11 @@ const PaigeAIChatInner = ({
                             fingerprints={message.confirm.map((c) => c.fingerprint).filter((f): f is string => !!f)}
                             disabled={isLoading}
                             onApprove={(fps) => void handleSend("Approved — run it.", fps)}
-                            onDeny={() => void handleSend("Hold off — skip that one.")}
+                            // Declining CANCELS the stored proposal, rather than only saying so in
+                            // prose the model interprets. Without this the row stays live for its
+                            // full window, and a later turn could still act on something the
+                            // person had already said no to.
+                            onDeny={(fps) => void handleSend("Hold off — skip that one.", undefined, fps)}
                           />
                         )}
                         {/* Reloaded from history: the confirm moment already passed —

@@ -36,6 +36,7 @@ class QueryBuilder {
     this._authorization = authorization;
     this._live = liveRef;
     this._filters = [];
+    this._insertError = null;
     this._ordered = false;
     this._limit = null;
     this._op = "select";
@@ -50,7 +51,13 @@ class QueryBuilder {
     // LIVE hook, called synchronously as the write happens. A scenario that mirrors inserts only
     // AFTER the drive returns cannot model a row being written and then read back WITHIN the same
     // request — which is precisely the case a self-approval check has to exercise.
-    this._live().scenario.onInsert?.(this._table, row);
+    // A CONSTRAINT VIOLATION IS A RESOLVED ERROR, NOT A THROW (postgrest-js defaults
+    // `shouldThrowOnError` to false). `onInsert` may therefore RETURN an error to model one —
+    // which is how a scenario reproduces the live-proposal unique index rejecting a duplicate.
+    // Without this a fixture can only model a clash by silently dropping the row, and the handler
+    // then sees a clean success: the two states it must tell apart become indistinguishable, and
+    // a check that the distinction is load-bearing passes for the wrong reason.
+    this._insertError = this._live().scenario.onInsert?.(this._table, row) ?? null;
     return this;
   }
   update(row) { this._op = "update"; this._live().recorder.inserts.push({ table: this._table, row, update: true }); return this; }
@@ -105,6 +112,7 @@ class QueryBuilder {
    *  refuse for unknown authority and never reach the write, so a table-wide error can never
    *  witness a rejected WRITE — which is exactly the class of bug the write checks exist to catch. */
   _injected() {
+    if (this._insertError) return this._insertError;
     const t = this._live().scenario.tableErrors ?? {};
     return t[`${this._table}:${this._op}`] ?? t[this._table];
   }

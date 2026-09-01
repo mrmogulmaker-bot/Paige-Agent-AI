@@ -307,6 +307,10 @@ const messageSchema = z.object({
    *  longer opens it, because that flag says only that SOMETHING was approved, not what. Bounded
    *  and shaped so a body cannot smuggle anything else through this field. */
   approvedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
+  /** Fingerprints the person DECLINED on the confirm card. A refusal that lives only in the prose
+   *  of the next message is a refusal the model has to interpret correctly — and the proposal it
+   *  describes stays redeemable for its whole window. These are cancelled outright instead. */
+  declinedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
 });
 
 const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
@@ -635,6 +639,7 @@ serve(async (req) => {
     // re-read from a raw field further down, which is how a validated value stops being the value
     // that gets used.
     const approvedConfirmations = new Set<string>(validatedData.approvedConfirmations ?? []);
+    const declinedConfirmations = validatedData.declinedConfirmations ?? [];
 
     // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
     //
@@ -4376,7 +4381,7 @@ DEFAULT PATTERN = an ORCHESTRATOR "BRAIN". When you create an automation with n8
 ADD SUB-AGENTS INTELLIGENTLY — one brain by default (give it tools, not more brains). Add a specialist sub-agent ("@n8n/n8n-nodes-langchain.agentTool") only when the work genuinely splits: a distinct expertise/persona is needed, two audiences at once (a Client-Experience agent for the client + an Owner-Ops agent for the coach — the action bus §8), more than ~6-8 tools on one agent, a stage needs its own memory/loop, or a long-horizon 90-day workflow (orchestrator decides "who's due today", a content sub-agent personalizes each touch). Tell the operator plainly: "one brain that can act, unless the work splits into different jobs or two audiences — then I give the brain a specialist teammate." Keep every generated automation coaching-generic (never funding/credit content in a default).
 
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
-1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words and ask them to confirm. ONLY after they have actually replied and said yes, call the SAME tool again passing ONLY the confirm_token you were given — you do not repeat the other arguments, because the exact call they approved is already saved. NEVER pass a confirm_token in the same reply that you were given it: you have not heard from them yet, and the platform will refuse it. If they ask for a change, call the tool again with the full new arguments and NO token, so they get a fresh summary to approve. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
+1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words and ask them to confirm. ONLY after they have actually replied and said yes, call the SAME tool again with confirm: true — you do not need to reproduce the other arguments exactly, because the exact call they approved is already saved and is what runs. NEVER set confirm in the same reply where you proposed the action: you have not heard from them yet, and the platform will refuse it. If they ask for a change, call the tool again with the full new arguments and confirm left false, so they get a fresh summary to approve. Some actions cannot be approved by you reporting a yes at all — they come back saying so, and those need the operator to approve them in the workspace where the action can be shown to them; tell them that plainly instead of trying again. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
 2. CONFIRM THE RESULT — AND NEVER FAKE ONE. Only say you did something ("Done — created…", "reminder set", "task assigned", "added to your calendar") when a TOOL you called THIS turn actually returned success. A claim of completion with no tool call behind it is a lie, and it is the worst thing you can do here — it destroys trust. You DO have real tools for reminders, planning, tasks, and booking (plan_set_reminder, plan_create/plan_assign_task/plan_add_milestone, crm_create_task, calendar_book_meeting) — USE them, then confirm off the tool's success. If there is genuinely no tool for what they asked, DO NOT pretend — say plainly "I can't do that one from here yet" and offer what you genuinely can do, or file it on the action bus so it's tracked. "It'll show up in your reminders / Task Manager / calendar" is only true if a tool actually put it there — never say it otherwise. Once an action really commits, confirm plainly in one line; never leave them guessing. For anything that SENDS (SMS/email/outbound), this is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire. The test before every "done": "Did a tool call this turn return success for exactly this? If not, I do not claim it happened."
 3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
@@ -4854,7 +4859,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   accent_color: { type: "string", description: "Accent brand color as a hex value." },
                   from_name: { type: "string", description: "The name outbound email should come from (sending identity)." },
                   support_email: { type: "string", description: "Support / reply-to email address." },
-                  confirm: { type: "boolean", description: "DEPRECATED and ignored — approval is carried by confirm_token, which the gate returns when it proposes. Setting this does nothing." }
+                  confirm: { type: "boolean", description: "Set true only after the operator has actually approved. The gate's own description of this parameter replaces this one at request time." }
                 },
                 required: []
               }
@@ -4945,7 +4950,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 type: "object",
                 properties: {
                   contact_id: { type: "string", description: "clients.id UUID." },
-                  confirm: { type: "boolean", description: "DEPRECATED and ignored — approval is carried by confirm_token, which the gate returns when it proposes. Setting this does nothing." }
+                  confirm: { type: "boolean", description: "Set true only after the operator has actually approved. The gate's own description of this parameter replaces this one at request time." }
                 },
                 required: ["contact_id"]
               }
@@ -4968,7 +4973,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   guest_email: { type: "string" },
                   notes: { type: "string" },
                   location: { type: "string", description: "e.g. 'Zoom', 'Phone', or an address." },
-                  confirm: { type: "boolean", description: "DEPRECATED and ignored — approval is carried by confirm_token, which the gate returns when it proposes. Setting this does nothing." }
+                  confirm: { type: "boolean", description: "Set true only after the operator has actually approved. The gate's own description of this parameter replaces this one at request time." }
                 },
                 required: ["title", "start_at", "end_at"]
               }
@@ -6066,8 +6071,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // Both helpers run on the CALLER's client, so RLS (`user_id = auth.uid()`) is the real
     // boundary rather than a predicate this code is trusted to remember.
 
-    /** Persist a proposed call. Returns false if it could not be recorded — never throws, because
-     *  a failure here must degrade to "ask again", never to "run it anyway". */
+    /** Persist a proposed call. Never throws: a failure here must degrade to "ask again", never
+     *  to "run it anyway".
+     *
+     *  Returns WHICH of three things happened, not merely whether it worked, because the caller
+     *  has to answer a different question for each. "created" means this request is the one that
+     *  proposed it; "exists" means an EARLIER request already did and the proposal is still live —
+     *  which is the whole basis of a later approval, and was also the hole (below). */
     // THE ONE THING THE MODEL CANNOT MANUFACTURE: a different request. It cannot start an HTTP
     // call; only a person sending another message does that. So this nonce is what "approved"
     // actually rests on — see 20261026000000 for the hole that made it necessary.
@@ -6075,7 +6085,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
     const recordConfirmation = async (
       fp: string, tool: string, args: Record<string, unknown>, summary: string,
-    ): Promise<boolean> => {
+    ): Promise<"created" | "exists" | "failed"> => {
       try {
         const { error } = await supabaseClient.from("paige_pending_confirmations").insert({
           user_id: user.id,
@@ -6094,17 +6104,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         });
         if (error) {
           // 23505 is the live-proposal unique index doing its job: this exact call is ALREADY
-          // proposed and still waiting. That is a success for the caller's purpose — there is a
-          // redeemable row and a token to hand back — so it must not be reported as a failure,
-          // which would tell the person the action could not even be set up.
-          if (error.code === "23505") return true;
+          // proposed by an earlier request and still waiting. The person has a card open for it.
+          // It is NOT a failure — but it is emphatically not the same thing as having just
+          // proposed it either, and conflating the two is exactly how a model obtained a
+          // redeemable approval for a call the operator had already declined.
+          if (error.code === "23505") return "exists";
           console.error("[paige] confirm proposal NOT recorded", JSON.stringify({ tool, code: error.code ?? null, message: error.message ?? null }));
-          return false;
+          return "failed";
         }
-        return true;
+        return "created";
       } catch (e) {
         console.error("[paige] confirm proposal threw", String(e));
-        return false;
+        return "failed";
       }
     };
 
@@ -6118,10 +6129,87 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
      *  be the ones the summary was written under. `IS NOT DISTINCT FROM` and not `=`, because a
      *  bare equality against NULL yields NULL, and the client portal legitimately has no thread and
      *  no focused client — with `=` those seats could never redeem anything. */
+    /** CANCEL what the person said no to.
+     *
+     *  A decline used to be prose only: "Hold off — skip that one." went into the transcript and
+     *  the proposal stayed live for its full window, so the refusal was something the model had to
+     *  keep honouring rather than something the platform had recorded. Consuming the row makes the
+     *  no durable — the same compare-and-set an approval uses, so a decline and an approval racing
+     *  each other cannot both win, and the decline is scoped to this person exactly like the claim.
+     *
+     *  Best-effort by design: if it fails, the proposal simply stays live and the model has already
+     *  been told no in the transcript. It must never take the turn down. */
+    const cancelConfirmations = async (fps: string[]): Promise<void> => {
+      if (fps.length === 0) return;
+      try {
+        const { error } = await supabaseClient.from("paige_pending_confirmations")
+          .update({ consumed_at: new Date().toISOString() })
+          .eq("user_id", user.id)
+          .in("fingerprint", fps)
+          .is("consumed_at", null);
+        if (error) console.error("[paige] confirm decline not recorded", JSON.stringify({ code: error.code ?? null }));
+      } catch (e) {
+        console.error("[paige] confirm decline threw", String(e));
+      }
+    };
+    await cancelConfirmations(declinedConfirmations);
+
     const claimConfirmation = async (
-      fp: string, tool: string,
+      fp: string | null, tool: string,
     ): Promise<Record<string, unknown> | null> => {
       try {
+        // WHY `fp` MAY BE NULL — the livelock this exists to avoid.
+        //
+        // A surface that renders a card echoes the fingerprint of what it displayed, so it always
+        // has an exact `fp`. A surface with no card does not: there, "the operator said yes" is
+        // carried by the model re-calling the tool, and a tool whose arguments include model-written
+        // free text will not reproduce them byte-for-byte. The fingerprint drifts, no proposal
+        // matches, and the person is read a fresh summary — forever. That is the livelock the
+        // previous design fixed with a token, and the token is what leaked.
+        //
+        // So when the fingerprint drifts, fall back to identity by SCOPE rather than by content:
+        // the single live proposal for this tool, in this tenant, thread and focused client, made
+        // by an EARLIER request. If there is exactly one, it is unambiguously the thing the person
+        // was read and answered. If there are several, there is nothing to disambiguate with and
+        // this refuses — a fresh summary is the correct answer to a genuinely ambiguous yes.
+        //
+        // What executes is still the STORED arguments either way, so drift never reaches the write.
+        if (fp === null) {
+          let f = supabaseClient.from("paige_pending_confirmations")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("tool_name", tool)
+            .is("consumed_at", null)
+            .gt("expires_at", new Date().toISOString())
+            .neq("issued_in_request", requestNonce)
+            .not("issued_in_request", "is", null);
+          f = personaCtx?.tenant_id ? f.eq("tenant_id", personaCtx.tenant_id) : f.is("tenant_id", null);
+          f = payloadThreadId ? f.eq("thread_id", payloadThreadId) : f.is("thread_id", null);
+          f = scopedClientId ? f.eq("scoped_client_id", scopedClientId) : f.is("scoped_client_id", null);
+          const { data: live, error: findErr } = await f.limit(2);
+          if (findErr) {
+            console.error("[paige] confirm lookup failed", JSON.stringify({ tool, code: findErr.code ?? null }));
+            return null;
+          }
+          const rows = (live ?? []) as Array<{ id?: string }>;
+          if (rows.length !== 1 || typeof rows[0]?.id !== "string") return null;
+          const { data: claimed, error: claimErr } = await supabaseClient
+            .from("paige_pending_confirmations")
+            .update({ consumed_at: new Date().toISOString() })
+            .eq("id", rows[0].id)
+            // Still a compare-and-set, so two tool_use blocks in one round cannot both win.
+            .is("consumed_at", null)
+            .select("args").maybeSingle();
+          if (claimErr) {
+            console.error("[paige] confirm claim failed", JSON.stringify({ tool, code: claimErr.code ?? null }));
+            return null;
+          }
+          const soleArgs = (claimed as { args?: unknown } | null)?.args;
+          return soleArgs && typeof soleArgs === "object" && !Array.isArray(soleArgs)
+            ? soleArgs as Record<string, unknown>
+            : null;
+        }
+
         let q = supabaseClient.from("paige_pending_confirmations")
           .update({ consumed_at: new Date().toISOString() })
           .eq("user_id", user.id)
@@ -6204,13 +6292,64 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "update_client_data", "delegate_to_subagent",
 ]);
 
+    // ── THE ACTIONS A MODEL MAY NEVER SAY YES TO ON THE OPERATOR'S BEHALF ────────────────────
+    //
+    // Approval reaches this gate down two channels, and they are not equally trustworthy.
+    //
+    //   1. `approvedConfirmations` — the fingerprint of a card a surface actually RENDERED, sent
+    //      up in the request body when the person clicked Approve. The model cannot forge it: it
+    //      cannot start an HTTP request, so it cannot put anything in the body.
+    //   2. `confirm: true` in the tool arguments — the model REPORTING that the person said yes.
+    //      Five of the six chat surfaces render no card, so without this channel they could not
+    //      approve anything at all. But it is the model's own word, and a model that is confused,
+    //      or steered by content it just read, can produce it after the person said "no".
+    //
+    // For most actions channel 2 is the honest cost of a conversational surface: the write is
+    // in-tenant, reversible, and the transcript records what was said. For these, it is not — an
+    // action here either cannot be undone, changes who is allowed to do what, has an effect
+    // outside this platform, or spends money. Channel 2 is refused for every one of them, so on a
+    // card-less surface they simply cannot be approved, and the person is told to approve where
+    // the action can actually be shown to them.
+    //
+    // `automation_set_grant` / `automation_set_state` are here for a second reason on top of the
+    // first: §67's red line is that Paige may never raise her own autonomy. If her own say-so
+    // could clear this gate, that line would be drawn in a place she is standing.
+    const HIGH_RISK_CONFIRM_TOOLS = new Set<string>([
+      // Irreversible.
+      "crm_delete_contact", "n8n_delete_workflow", "plan_remove_item",
+      // Changes who may do what.
+      "member_grant_role", "member_revoke_role",
+      "automation_set_grant", "automation_set_state",
+      // Takes effect outside this platform.
+      "zapier_run_action", "n8n_run_workflow", "n8n_activate_workflow",
+      "growth_page_publish", "growth_funnel_publish",
+      "calendar_book_meeting",
+      // Spends money.
+      "marketplace_install", "marketplace_uninstall",
+    ]);
+    // A high-risk tool that is not gated at all would be governed by nothing, which is worse than
+    // the thing this set exists to prevent. Fail loudly at boot rather than silently at 3am.
+    for (const t of HIGH_RISK_CONFIRM_TOOLS) {
+      if (!MUTATING_TOOLS.has(t)) throw new Error(`high-risk tool ${t} is not in MUTATING_TOOLS`);
+    }
+
     // EVERY GATED TOOL LEARNS HOW TO BE APPROVED.
     //
-    // Only three of the forty-eight tools the gate governs ever declared a `confirm` parameter, so
-    // for the other forty-five the model had no way to express "the operator said yes" even when
-    // they had. Declaring the token on exactly the gated set — derived from `MUTATING_TOOLS` rather
-    // than hand-listed, so a tool added to the gate can never miss it — makes approval a first-class
+    // Only three of the fifty-one tools the gate governs ever declared a `confirm` parameter, so
+    // for the other forty-eight the model had no way to express "the operator said yes" even when
+    // they had. Declaring it on exactly the gated set — derived from `MUTATING_TOOLS` rather than
+    // hand-listed, so a tool added to the gate can never miss it — makes approval a first-class
     // part of the contract instead of an undocumented convention.
+    //
+    // §13 — WHY THIS IS A FLAG AND NO LONGER A TOKEN. The previous design handed the model a
+    // `confirm_token` in the tool result. It was meant to be unusable in the request that minted
+    // it, and it was. It was NOT unusable in the next one: re-proposing the same call returned the
+    // same token, because the token is a fingerprint of the action rather than a secret, so any
+    // later request could ask for it back and immediately spend it — including a request whose
+    // human message was "no, cancel that". Driven, that executed arbitrary stored calls and raised
+    // an autonomy grant from `confirm` to `auto`. A key that anyone can ask for is not a key, so
+    // it is gone rather than patched, and what remains is a plain assertion that is treated as
+    // exactly what it is: the model's word, refused outright for the high-risk set above.
     //
     // Mutating `toolDefs` in place is safe: it is read at the two request sites below, both of which
     // come after this point.
@@ -6219,11 +6358,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       if (!name || !MUTATING_TOOLS.has(name)) continue;
       const props = t.function?.parameters?.properties;
       if (!props) continue;
-      props.confirm_token = {
-        type: "string",
-        description:
-          "The confirm_token you were given when this action was proposed. Pass it ONLY after the operator has approved, and pass it ALONE — every other argument of the approved call is already saved and will be used, so you do not need to repeat them. If the operator asked for any change, omit this and send the full new arguments instead so they get a fresh summary to approve.",
+      props.confirm = {
+        type: "boolean",
+        description: HIGH_RISK_CONFIRM_TOOLS.has(name)
+          ? "Set true ONLY after the operator has actually replied and approved this exact action. For this action that is not enough on its own — it must be approved on a surface that can show it to them — but never set it before they have answered."
+          : "Set true ONLY after the operator has actually replied and approved. Never in the same reply where you proposed it — you have not heard back yet, and the platform will refuse it. You do not need to repeat the other arguments exactly: the exact call they were read is saved and is what runs. If they asked for ANY change, send the full new arguments and leave this false, so they get a fresh summary to approve.",
       };
+      delete props.confirm_token;
     }
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -6703,40 +6844,55 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // That fingerprints differently, finds no proposal, and becomes a NEW card with a NEW
             // summary — which is right: a changed action deserves a fresh look.
             const fp = await confirmFingerprint(tc.function.name, gateArgs);
-            const rawToken = typeof gateArgs.confirm_token === "string" ? gateArgs.confirm_token : null;
-            // A surface that renders a real confirm card (the Solo chat) echoes the fingerprint of
-            // what it actually displayed. That is STRONGER evidence than the model's own say-so —
-            // a human demonstrably clicked — so it is accepted as a token too. It is no longer
-            // REQUIRED, because five surfaces cannot send it and a rule only one caller can obey
-            // is not a rule, it is an outage.
-            const redeem = rawToken ?? (approvedConfirmations.has(fp) ? fp : null);
-            const approvedArgs = redeem && /^[0-9a-f]{16}$/.test(redeem)
-              ? await claimConfirmation(redeem, tc.function.name)
+            const highRisk = HIGH_RISK_CONFIRM_TOOLS.has(tc.function.name);
+
+            // CHANNEL 1 — a human demonstrably clicked. A surface that renders a real confirm card
+            // (the Solo chat) echoes the fingerprint of what it actually DISPLAYED, in the request
+            // body. The model cannot put anything in the request body, so this cannot be forged.
+            const surfaceApproved = approvedConfirmations.has(fp);
+            // CHANNEL 2 — the model's word that the operator said yes. Necessary, because five of
+            // the six surfaces render no card and a rule only one caller can obey is not a rule,
+            // it is an outage. Refused outright for the high-risk set: see HIGH_RISK_CONFIRM_TOOLS.
+            const modelAsserted = gateArgs.confirm === true;
+            const claimBy: string | null | undefined = surfaceApproved
+              ? fp                                    // exact: the card said precisely this
+              : (modelAsserted && !highRisk)
+                ? null                                // by scope: tolerate the model's drift
+                : undefined;                          // nothing to redeem
+
+            const approvedArgs = claimBy !== undefined
+              ? await claimConfirmation(claimBy, tc.function.name)
               : null;
 
             if (!approvedArgs) {
               const summary = describeConfirm(tc.function.name, gateArgs);
-              // Persist BEFORE answering, so the token we hand back is one that can actually be
-              // redeemed. If this write fails the gate still refuses — it just refuses without an
-              // issued token, and the next attempt proposes again. Failing closed is the only
-              // acceptable direction here.
-              const issued = await recordConfirmation(fp, tc.function.name, gateArgs, summary);
+              // Persist BEFORE answering, so that when the person does say yes there is something
+              // to redeem. If this write fails the gate still refuses, and says so honestly rather
+              // than telling them it is pending. Failing closed is the only acceptable direction.
+              const recorded = await recordConfirmation(fp, tc.function.name, gateArgs, summary);
+              // A high-risk action the model tried to approve by itself. Say plainly that the word
+              // of the model is not what is missing here — a person has to see it.
+              const refusedSelfApproval = modelAsserted && highRisk;
               // §13 — WHY A MISMATCH IS A PLAIN RE-ASK RATHER THAN AN ACCUSATION. The
               // overwhelmingly common cause is benign: the person amended something in their
               // approval and the model faithfully carried the change. The right answer is a new
               // summary and a new ask, which is exactly what this is.
-              const changed = redeem !== null;
+              const changed = modelAsserted && !highRisk;
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
                 success: false,
                 needs_confirm: true,
                 confirm_fingerprint: fp,
-                confirm_token: issued ? fp : null,
+                requires_operator_approval: highRisk,
                 confirm_summary: summary,
-                note: changed
-                  ? "Do NOT retry with that token in this reply. Either you were given it moments ago and have not actually heard back from the operator yet — in which case you cannot approve on their behalf, so STOP and ask them — or it is spent, expired, or belongs to a different version of this action. Read the NEW confirm_summary back to them and wait for their answer."
-                  : (issued
-                    ? "Do NOT retry yet. This needs the operator's approval. Read confirm_summary back in plain language — and name the SPECIFIC client, contact or program you're acting on by the name you just used, never 'the client'. If they approve it AS-IS, call this same tool again passing ONLY confirm_token (you do NOT need to repeat any other argument — the exact call they approved is already saved, and repeating it is how approvals used to drift). If they ask for ANY change, call it again with the full new arguments and NO confirm_token, so they get a fresh summary to approve."
-                    : "Do NOT retry. This needs the operator's approval and the approval could not be recorded, so there is nothing for them to approve yet. Tell them plainly that the action could not be set up right now and don't pretend it is pending."),
+                note: refusedSelfApproval
+                  ? "This action cannot be approved by you saying it was approved — it is irreversible, changes permissions, reaches outside this platform, or spends money, so it needs the operator to approve it where it can actually be shown to them. Read confirm_summary back to them, tell them plainly it needs their approval in the workspace, and do NOT call this again in this reply."
+                  : changed
+                    ? "Not approved. Either you set confirm before actually hearing back from the operator — in which case you cannot approve on their behalf, so STOP and ask them — or the approval is spent, expired, or the action has changed since. Read the NEW confirm_summary back to them and wait for their answer."
+                    : recorded === "exists"
+                      ? "You have ALREADY asked them this and they have not answered yet. Do not read the same thing to them again and do not call this tool again — say what you are waiting on, in one line, and then move on or wait."
+                      : (recorded === "created"
+                      ? "Do NOT retry yet. This needs the operator's approval. Read confirm_summary back in plain language — and name the SPECIFIC client, contact or program you're acting on by the name you just used, never 'the client'. ONLY after they have actually replied and approved, call this same tool again with confirm: true. You do not need to reproduce the other arguments exactly — the exact call they were read is saved and is what runs. If they ask for ANY change, call it again with the full new arguments and confirm left false, so they get a fresh summary to approve."
+                      : "Do NOT retry. This needs the operator's approval and the approval could not be recorded, so there is nothing for them to approve yet. Tell them plainly that the action could not be set up right now and don't pretend it is pending."),
               }) });
               continue;
             }
