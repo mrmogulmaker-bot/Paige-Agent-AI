@@ -8,6 +8,42 @@ approval — #709, #711, #718 — each competent in isolation. A door with three
 strong as the weakest, and nobody inspects the weak one, because each looks correct on its own
 review. Two of those three accepted evidence a model can manufacture.
 
+## Who owns the final call — owner ruling, 2026-09-01
+
+> *"Every agent that creates say a read/write permission needs to only allow that with our Chat
+> Agent to make the final dev on it."* — owner
+
+**Any agent may build a capability that needs permission. No agent decides how permission is
+proven.** That decision belongs to the Chat build, because the gate lives there and because a
+second opinion about what counts as a yes is precisely how a gate acquires a hole.
+
+In practice this costs a feature agent nothing:
+
+- **Adding a gated action** — classify the tool, stop. Self-service, no review needed, no
+  approval code written. That is the whole point: the common case does not route through anyone.
+- **Changing HOW approval is proven** — a new request field, a new token path, a new way to read
+  the operator's intent, a change to the gate itself — goes to the Chat build first. This is rare
+  and should stay rare.
+- **A preview binding** sits between the two: it is a precondition, not an approval, and the shape
+  is given below. Follow it and no review is needed; deviate from it and it is a gate change.
+
+The test: *am I adding something Paige can do, or changing how we know the operator agreed?* The
+first is yours. The second is not.
+
+## Spine and Rail are not the same thing (vocabulary, so it stops drifting)
+
+Recorded here because the two words were already being used interchangeably, and a shared word
+that means two things is how two teams build the same component twice.
+
+- **Rail** — the durable record of what happened: signals, approvals, actions, results,
+  follow-ups. PAIGE's receipt and history. It is ONE part of the Spine.
+- **Spine** — the whole shared pathway that lets a domain inform Paige safely and lets Paige act
+  safely: safe evidence → approval → domain-owned action → Rail outcome.
+
+**The full Spine contract is being grounded against real code by a separate audit and is NOT
+written here.** This file owns one segment of it — the approval step — and deliberately stops
+there rather than becoming a second, competing description of the whole.
+
 ## How approval actually works
 
 The server computes a **fingerprint** of the exact tool call — the tool and its arguments, not

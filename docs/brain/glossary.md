@@ -188,3 +188,15 @@ PR #406). Build order was L1 → L4 → L2 → L5.
 
 *Add a term the moment it costs a session a lookup. When two sources conflict, record both and flag it
 owner-owed — don't paper over the disagreement.*
+
+## Spine · Rail (recorded 2026-09-01, owner-ruled)
+
+- **Rail** — the durable record of what happened: signals, approvals, actions, results,
+  follow-ups. Paige's receipt and history. **One part of the Spine, not a synonym for it.**
+- **Spine** — the whole shared pathway connecting a domain to Paige: safe evidence → approval →
+  domain-owned action → Rail outcome.
+- **The approval step of the Spine** is owned by the Chat build and specified in
+  `docs/doctrine/one-approval-gate.md`. A feature agent adds gated actions freely; changing how
+  approval is PROVEN goes to the Chat build first.
+- The full Spine contract is being grounded by a separate audit; when it lands it is the
+  authority on everything except the approval step, which stays where it is.
