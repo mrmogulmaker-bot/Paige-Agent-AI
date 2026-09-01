@@ -152,17 +152,23 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
     registered switchable tool: **a workspace that sets it to `auto` gets a validly-quoted
     purchase executed with no confirmation** (`index.ts` ~5977: *"autoMode === 'auto' … fall
     through to execute"*). `off` disables it.
-  - **NO LANE HAS SERVER-ENFORCED HUMAN CONFIRMATION FOR A PURCHASE, and this is the correction
-    that matters most here.** At `confirm` the gate is `autoMode === "confirm" && gateArgs.confirm
-    !== true`, and `gateArgs` is `JSON.parse(tc.function.arguments)` — **the model's own output**.
-    There is no pending-proposal row, no token, nothing tying `confirm:true` to the `needs_confirm`
-    that preceded it or to anything a human said. The system prompt and the `needs_confirm` note
-    both *instruct* the model to ask first; that is steering, exactly like the no-retry rule two
-    bullets down. **The platform already has the enforced pattern and this gate does not use it** —
-    outbound sends file a real `approval_id` row and wait (`index.ts` ~8251). So: the price check
-    is enforced in the agent lane; **every confirmation on this path is prompt-level or
-    client-side**, and the only human gate that a person actually meets is Solo's browser
-    `window.confirm`.
+  - **NO LANE HAS SERVER-ENFORCED *HUMAN* CONFIRMATION FOR A PURCHASE — and the gate is two layers,
+    which is worth separating rather than collapsing.** At `confirm` the check is `autoMode ===
+    "confirm" && gateArgs.confirm !== true`, and `gateArgs` is `JSON.parse(tc.function.arguments)`.
+    So:
+    - **Layer 1, genuinely enforced:** the server refuses whenever the flag is absent. That is a
+      real gate against a caller that simply invokes the tool, and it is why `needs_confirm` ever
+      reaches the operator at all.
+    - **Layer 2, prompt-level:** the flag is **the model's own output**. No pending-proposal row,
+      no token, nothing tying `confirm:true` to the `needs_confirm` that preceded it or to anything
+      a human said. The system prompt and the `needs_confirm` note both *instruct* the model to ask
+      first — steering, exactly like the no-retry rule two bullets down.
+
+    Net: the gate constrains the careless case and not the deliberate one. **The platform already
+    has the fully-enforced pattern and this gate does not use it** — outbound sends file a real
+    `approval_id` row and wait (`index.ts` ~8251). The price check is enforced in the agent lane;
+    the only *human* gate anyone actually meets on this path is Solo's browser `window.confirm`,
+    which is real for a person using the UI and client-side.
   - **Prompt-level only — NOT enforced.** "A refusal is final for that number, pick another
     rather than retrying the same one" and "if it was bought but not recorded, do not buy a
     replacement" live in the tool *description*. They steer the model; nothing rejects a retry.

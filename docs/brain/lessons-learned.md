@@ -667,7 +667,8 @@ safety property is the more dangerous of the two, because the next session quote
 |---|---|---|
 | **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
 | **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
-| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the `confirm` gate itself:** it tests `gateArgs.confirm`, parsed from the model's own arguments, with nothing binding it to a human's yes |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both say ask first; nothing checks that anyone did |
+| **Enforced but self-asserted** | code refuses without a token the ACTOR supplies — real against an actor that omits it, worthless against one that does not | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction** |
 | **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
 
 Never write "never" about the bottom three rows. For anything money-, permission-, or
@@ -684,22 +685,6 @@ copied and the prose is what gets skimmed.
 **How it was caught, honestly:** not by me. The §39 peer-gate caught it — an automated reviewer
 reading the actual diff, which is precisely the layer that exists because the author's own proof
 cannot see what the author already believes.
-
-**The hardest instance came last, and it is the one to remember.** After four rounds of correcting
-overstatements, the record still described the agent `confirm` lane as the one with complete
-authorization — operator sees the amount, confirms, server re-verifies. The confirmation half is
-**model-asserted**: the gate tests `gateArgs.confirm`, parsed from the model's own tool arguments,
-and nothing ties it to the `needs_confirm` that preceded it or to anything a human said. A model
-emitting `confirm:true` on its first call executes immediately. **The platform already has the
-enforced pattern** — outbound sends file a real approval row and wait — and this gate does not use
-it.
-
-So a confirmation that LOOKS like a two-step handshake, has a system prompt and a tool note both
-telling the model to ask first, and produces exactly the right behaviour every time the model
-complies, is still **prompt-level**. That is the trap in its purest form: *the mechanism was
-indistinguishable from enforcement in every observation, because a well-behaved model is
-observationally identical to a guard.* The only way to tell them apart is to find the line that
-would refuse — and if you cannot point at it, there isn't one.
 
 **It then happened TWICE MORE, in the fix for it.** The corrected text — written while composing
 this very lesson — still carried two overstatements, both caught on the next review round:
@@ -725,4 +710,33 @@ wrote and not the branch that skips it. So the rule needs a mechanical form, not
 
 That is §37's producer inventory pointed at prose instead of an endpoint, and it applies for the
 same reason: what breaks a categorical claim is always the caller nobody listed.
+
+### And then, one round later, the hardest one — with the over-correction that followed it
+
+Having written that rule, the record still described the agent `confirm` lane as the one carrying
+complete authorization: operator sees the amount, confirms, server re-verifies. **The middle step
+is not what it looks like.** The gate tests `gateArgs.confirm`, which is
+`JSON.parse(tc.function.arguments)` — the model's own output. Nothing ties it to the
+`needs_confirm` that preceded it or to anything a human said, so a model emitting `confirm:true`
+on its first call executes immediately. The platform already has the enforced pattern — outbound
+sends file a real approval row and wait — and this gate does not use it.
+
+**It survived the rule that was written to catch it.** I had just committed *"find the code that
+makes it true, then find every caller that does not go through it"*, applied it to the price
+check, and never applied it to the confirmation — because the confirmation *looks* like a
+mechanism. Two-step handshake, a system prompt, a tool note, and precisely the right behaviour
+every time the model complies. **A well-behaved actor is observationally identical to a guard.**
+Nothing you can watch distinguishes them; the only test is to find the line that would refuse.
+
+**And then the correction over-shot, which is the last turn of the screw.** The first fix called
+the whole thing prompt-level — *"nothing rejects the act"* — and that is also false. Line ~5973
+genuinely refuses whenever `gateArgs.confirm !== true`, so the gate is real against an actor that
+simply omits the flag; it is worthless only against one that supplies it. Two layers, not one:
+an **enforced but self-asserted** gate, and a **prompt-level** rule binding the assertion to a
+human. Hence the fifth row in the table above.
+
+**The generalisable part:** when a protection turns out weaker than claimed, the reflex is to
+reclassify it to the bottom. Ask instead *what does it still stop?* A gate that constrains the
+careless case and not the deliberate one is neither "enforced" nor "nothing" — and if the
+vocabulary has no row for it, add one rather than rounding to the nearest existing label.
 
