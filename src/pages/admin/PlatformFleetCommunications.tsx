@@ -486,7 +486,7 @@ export default function PlatformFleetCommunications() {
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke("paige-operator-sms-send", {
-        body: { to, body: text },
+        body: { to, reason: text },
       });
       if (error) throw new Error(error.message);
       const res = data as { outcome?: string; reason?: string; conversation_id?: string } | null;
@@ -500,7 +500,9 @@ export default function PlatformFleetCommunications() {
       } else if (outcome === "needs_config") {
         toast.error("Operator SMS isn't ready to send yet — one Twilio setup step remains.");
       } else {
-        toast.error(res?.reason ?? "Couldn't send that message.");
+        toast.error(res?.reason === "platform_sms_consent_required"
+          ? "This recipient has not opted in to Paige Agent AI account texts."
+          : res?.reason ?? "Couldn't send that message.");
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't send that message.");
@@ -613,8 +615,8 @@ export default function PlatformFleetCommunications() {
     onChange: setBody,
     onSend: () => void send(),
     sending,
-    placeholder: "Write a message…",
-    note: "A2P compliant — “Reply STOP to unsubscribe.” is appended automatically.",
+    placeholder: "Short reason this account needs attention…",
+    note: "Account/service notice only. Paige Agent AI adds the registered brand, sign-in link, HELP, and STOP language.",
     identities: [OPERATOR_IDENTITY],
     identityId: OPERATOR_IDENTITY.id,
     onIdentityChange: () => { /* single master identity — no switch */ },

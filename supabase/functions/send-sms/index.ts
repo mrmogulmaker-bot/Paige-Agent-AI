@@ -1,25 +1,28 @@
 // Sends an SMS via Twilio with preference checks and logging.
 // Called by the notification dispatcher (send-notification) and triggers.
-// Always appends "Reply STOP to unsubscribe" for A2P 10DLC compliance.
+// Fails closed on Campaign class and durable platform consent, then applies the
+// registered Paige Agent AI brand/link/HELP/STOP envelope.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 // Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
 // (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET), master TWILIO_AUTH_TOKEN absent in prod.
 import { masterBasicAuthHeader } from '../_shared/twilio.ts'
+import { formatPaigeAgentAiSms } from '../_shared/paige-agent-ai-sms.ts'
+import { normalizePhone } from '../_shared/pre-send-pipeline.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const STOP_SUFFIX = ' Reply STOP to unsubscribe.'
-const MAX_BODY_LEN = 160
+const MAX_BODY_LEN = 1600
+const PLATFORM_ACCOUNT_NOTIFICATION_TYPES = new Set(['onboarding', 'account_status', 'service_notification'])
 
 interface SmsRequest {
   user_id: string
   message_type: string // credit_alert | score_milestone | funding_alert | coaching_reminder | verification | onboarding | weekly_summary
   message_body: string
   to_phone?: string
-  // Internal: skip preference checks (used for verification SMS, which must always send)
+  // Internal: may skip legacy preference checks, but never the Campaign or consent gates.
   skip_preference_check?: boolean
 }
 
@@ -95,7 +98,34 @@ Deno.serve(async (req) => {
     return jsonResp({ error: 'No phone number on file' }, 400)
   }
 
-  // Preference checks (skip only for verification SMS — verifying the phone number itself)
+  // A Campaign registration is a traffic boundary, not a generic Twilio switch.
+  // Until another Paige-operated use case is separately registered, unsupported
+  // categories (including marketing, coaching, summaries, and verification) stop here.
+  if (!PLATFORM_ACCOUNT_NOTIFICATION_TYPES.has(body.message_type)) {
+    await logSms(supabase, body.user_id, body.message_type, body.message_body, 'suppressed', undefined, 'campaign_not_registered')
+    return jsonResp({ success: false, reason: 'campaign_not_registered' }, 200)
+  }
+
+  const normalizedTo = normalizePhone(toPhone)
+  const { data: consent, error: consentError } = await supabase
+    .from('communications_consents')
+    .select('id')
+    .eq('user_id', body.user_id)
+    .eq('phone', normalizedTo)
+    .is('tenant_id', null)
+    .is('contact_id', null)
+    .not('consent_granted_at', 'is', null)
+    .is('revoked_at', null)
+    .is('withdrawn_at', null)
+    .eq('sms_transactional', true)
+    .limit(1)
+    .maybeSingle()
+  if (consentError || !consent) {
+    await logSms(supabase, body.user_id, body.message_type, body.message_body, 'suppressed', undefined, consentError ? 'consent_check_failed' : 'platform_sms_consent_required')
+    return jsonResp({ success: false, reason: consentError ? 'consent_check_failed' : 'platform_sms_consent_required' }, 200)
+  }
+
+  // Legacy preference checks. The durable consent gate above is never bypassed.
   if (!body.skip_preference_check) {
     if (!prefs) {
       return jsonResp({ success: false, reason: 'no_preferences' }, 200)
@@ -116,17 +146,18 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Append STOP suffix unless already present; trim if too long
-  let finalBody = body.message_body.trim()
-  if (!finalBody.toUpperCase().includes('REPLY STOP')) {
-    const room = MAX_BODY_LEN - STOP_SUFFIX.length
-    if (finalBody.length > room) finalBody = finalBody.slice(0, room - 1).trimEnd() + '…'
-    finalBody = finalBody + STOP_SUFFIX
+  // Platform-account messages use the exact registered brand/link/HELP/STOP envelope.
+  const finalBody = formatPaigeAgentAiSms({
+    body: body.message_body,
+    url: 'https://paigeagent.ai/auth?mode=login',
+  })
+  if (finalBody.length > MAX_BODY_LEN) {
+    return jsonResp({ success: false, reason: 'body_too_long_max_1600' }, 200)
   }
 
   // Twilio API
   const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
-  const formattedTo = toPhone.startsWith('+') ? toPhone : `+1${toPhone.replace(/\D/g, '')}`
+  const formattedTo = normalizedTo
   const formattedFrom = fromPhone.startsWith('+') ? fromPhone : `+1${fromPhone.replace(/\D/g, '')}`
 
   const twilioRes = await fetch(twilioUrl, {
