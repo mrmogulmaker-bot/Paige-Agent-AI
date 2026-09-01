@@ -150,6 +150,7 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
 | A | §67 **the process record**: `paige_automations` + `paige_automation_acts` + a trigger catalogue. A grant is fingerprinted over the act chain, so changing the chain drops an `auto` grant back to `confirm` — the human approved a specific sequence. | migration `20261022000000` |
 | B | §67 **the resolver**: `resolve_automation_autonomy` = `min(grant, most restrictive act floor, Trust Compass ceiling)`, returning `capped_by` (which bound is holding it) and `dark` (why it could never fire) as separate answers. | migration `20261024000000` |
 | C | §67 **the chat seam**: five tools. A tenant describes repeatable work and Paige builds it — born `confirm` + `draft`, explicitly, whatever the request said. **She can build a process; she can never arm one.** Two of the five (`automation_set_grant`, `automation_set_state`) became `owner_only` under R3 and now refuse in chat outright — so **`paige_automations.granted_lane` and `.state` are currently settable by nothing**, the Settings control being owed to CD (§00). Automations were already inert (no trigger emits), so nothing regressed. | `paige-ai-chat`, migration `20261025000000` |
+| C1 | **Every write Paige performs now says what changed, for whom, on whose authority, and whether it worked.** Ten of forty-nine mutations reached the per-client rail and three wrote a bespoke `audit_logs` row; everything else — publishes, documents, provider calls, role grants, deals, plans — left no trace, and the rail's `ref_id` was hardcoded null so even a mirrored event could not name the record it changed. One seam at the point every executed tool passes through, into `paige_audit_log` (which already carries `tenant_id`). The rail's membership is derived from the same target map, which added `update_client_data` — the most-used per-client write, and the client seat's only one. **A `client` seat could not record its own action at all** (the insert policy required `is_staff`), and a tenant-level admin could read every UNTENANTED audit row; both closed. | `paige-ai-chat`, migration `20261027000000` |
 | S5 | The automatic URL fetch is tier-gated — a portal client pasting a link no longer causes server-side egress. (The raw provider-payload spread was already closed on `main` by the MCP registry work; nothing rebuilt.) | `paige-ai-chat` |
 | S6 | Removed four claims with no capability behind them: three dead composer shortcuts, an unbound ⌘K, a panel saying voice input was off while the mic worked, and a session-summary hook that had been sending `Bearer undefined` since it was written. | `PaigeAIChat.tsx`, `TenantCommandCenterShell.tsx`, `SoloPaigeWorkspace.tsx`, `usePaigeMemory.ts` |
 
@@ -1156,7 +1157,16 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
      class was "the model can obtain a redeemable key", and the second review found the other way to
      obtain it in an afternoon. When a fix is scoped to the exact reproduction you were handed, ask
      what the reproduction was an INSTANCE of before calling it done.
-  4. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
+  4. **The live catalogue is the source of truth about the live database, not the migration
+     history.** Extending the audit trail, I read the migrations, found a tenant-agnostic
+     `has_any_role(...)` on SELECT, recognised the §59 trap and wrote a migration justified by
+     "any tenant admin can read every tenant's audit rows". Querying production first showed that
+     is FALSE — a RESTRICTIVE `tenant_isolation` policy exists on that table that NO migration in
+     this repository creates, and being restrictive it ANDs tenant scope onto every read. The real
+     defects were different and smaller. A grep of `supabase/migrations/` is not a description of
+     prod; the near-miss was shipping a security fix for a vulnerability that did not exist while
+     the two that did went unnamed.
+  5. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
      branch and they found FOUR vacuous tests — checks passing while reading an empty object, or
      because deleting the code under test made it throw instead of misbehave. Two of those were in
      the very tests written to prove this repair.

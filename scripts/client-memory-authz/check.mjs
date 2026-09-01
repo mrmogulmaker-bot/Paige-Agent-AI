@@ -1923,5 +1923,133 @@ const mirrorConfirms = (st) => (t, row) => {
     "a confirm_token still reaches the model's context");
 }
 
+// ── 19. EVERY WRITE SAYS WHAT CHANGED, FOR WHOM, ON WHOSE AUTHORITY, AND WHETHER IT WORKED ───
+//
+// The gap: ten of the forty-nine executable mutations were mirrored onto the per-client rail and
+// three wrote a bespoke `audit_logs` row. Everything else — publishes, documents, provider calls,
+// role grants, deals, plans — left no trace at all, and the rail's `p_ref_id` was hardcoded null,
+// so even a mirrored event could not name the record it changed.
+//
+// "Paige changed something" with no record of WHAT, or on whose authority, is what this closes.
+// The rows go to `paige_audit_log` because it already exists for this and carries `tenant_id`,
+// which `audit_logs` does not.
+{
+  const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  // The persona carries a real tenant here, so 19.3 can assert the row is TENANT-SCOPED rather
+  // than merely that the key exists. With the default fixture `tenant_id` resolves to null, and a
+  // check that accepts null cannot tell "set explicitly" from "left off the insert" (§26) — the
+  // failure mode being an audit row invisible to the tenant whose change it records.
+  const WITH_TENANT = {
+    get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT, tenant_name: "T", playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
+  };
+  const AUTO = { rpcOverrides: {
+    resolve_tool_autonomy: { data: "auto", error: null },
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+    ...WITH_TENANT,
+  } };
+  const auditRows = (r) => r.rec.inserts.filter((i) => i.table === "paige_audit_log").map((i) => i.row);
+
+  // ── 19.1 A write that ran at the standing autonomy setting is recorded, with its target.
+  const wrote = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "buy a house" } } },
+    ...AUTO,
+  });
+  const row = auditRows(wrote)[0];
+  assert("19.1 an executed write files an attribution row",
+    !!row && row.action === "update_client_data",
+    JSON.stringify(auditRows(wrote)));
+  assert("19.2 …naming the entity and the record it landed on",
+    row?.target_type === "clients" && row?.target_id === OWN,
+    JSON.stringify({ target_type: row?.target_type, target_id: row?.target_id }));
+  assert("19.3 …the actor, the tenant, and the risk class",
+    row?.actor_user_id === USER && row?.tenant_id === CALLER_TENANT && row?.payload?.risk === "ordinary",
+    JSON.stringify({ actor: row?.actor_user_id, tenant: row?.tenant_id, risk: row?.payload?.risk }));
+  // The distinction that makes the row worth reading: a standing setting is not a yes given here.
+  assert("19.4 …and that it ran on a STANDING setting, not on an approval given in this turn",
+    row?.payload?.authorised_by === "standing_autonomy_setting"
+      && row?.payload?.outcome === "succeeded",
+    JSON.stringify(row?.payload ?? null));
+
+  // ── 19.5 An approval given HERE reads differently from a standing setting, or the field is
+  // decoration. Driven through the real card path: request A proposes, request B carries the
+  // fingerprint the gate actually minted.
+  const CONFIRM = { rpcOverrides: {
+    resolve_tool_autonomy: { data: "confirm", error: null },
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+    ...WITH_TENANT,
+  } };
+  const st = makeConfirmStore();
+  const proposed = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "buy a house" } } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st.table },
+    onInsert: mirrorConfirms(st),
+  });
+  assert("19.5a a proposal awaiting a person files NO attribution row — it is not a write",
+    auditRows(proposed).length === 0, JSON.stringify(auditRows(proposed)));
+
+  const approved = await drive({
+    clientId: OWN, stream: true,
+    extraBody: { threadId: THREAD, approvedConfirmations: [st.rows[0]?.fingerprint] },
+    toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "buy a house" } } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st.table },
+    onInsert: mirrorConfirms(st),
+  });
+  assert("19.5 an approval given on the card is recorded as such, not as a standing setting",
+    auditRows(approved)[0]?.payload?.authorised_by === "operator_card",
+    JSON.stringify(auditRows(approved).map((r) => r.payload?.authorised_by)));
+
+  // ── 19.6 A FAILED write is recorded as failed. A trail that only holds successes tells the
+  // reassuring half of the story, which is worse than none — it is the half you would check.
+  const failedWrite = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "crm_create_task", args: { title: "x" } },
+    ...AUTO,
+    tableErrorsExtra: { "tasks:insert": { message: "denied", code: "42501" } },
+  });
+  const failRow = auditRows(failedWrite)[0];
+  assert("19.6 a write that failed is recorded, and recorded as having failed",
+    !!failRow && failRow.payload?.outcome === "failed",
+    JSON.stringify(auditRows(failedWrite).map((r) => r.payload)));
+  // The arguments can carry a client's details and an audit row is read by more people than the
+  // conversation was. Kills: widening the payload to "just include the args, it's useful".
+  assert("19.6b …without copying the arguments into a row other people can read",
+    !JSON.stringify(failRow?.payload ?? {}).includes("\"updates\"")
+      && !JSON.stringify(failRow?.payload ?? {}).includes("\"title\""),
+    JSON.stringify(failRow?.payload ?? null));
+
+  // ── 19.7 THE RAIL CAN NAVIGATE TO WHAT IT CHANGED. `p_ref_id` was hardcoded null, so a rail
+  // event asserted that something happened to a client without pointing at the record.
+  const railCall = wrote.rec.rpc.find((c) => c.name === "record_rail_event");
+  assert("19.7 a rail event names the record it changed, not just the table",
+    !!railCall && railCall.args?.p_ref_table === "clients" && railCall.args?.p_ref_id === OWN,
+    JSON.stringify(railCall?.args ?? "no rail event"));
+
+  // ── 19.8 COVERAGE. The point is that the map is not a hand-picked ten any more: every
+  // executable mutation names the entity it touches. Kills: adding a write tool and leaving it
+  // out of the map, which would file an attribution row that says only "something happened".
+  const { mutatingTools: mt, classifyAction: ca } =
+    await import("../../supabase/functions/_shared/action-risk.ts");
+  const chatSrc = await (await import("node:fs/promises")).readFile(
+    new URL("../../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
+  const mapAt = chatSrc.indexOf("const WRITE_TARGET: Record<string, string> = {");
+  const mapped = new Set([...chatSrc.slice(mapAt, chatSrc.indexOf("};", mapAt))
+    .matchAll(/([a-z0-9_]+):\s*"[a-z0-9_]+"/g)].map((m) => m[1]));
+  const executable = [...mt()].filter((t) => ca(t) !== "owner_only");
+  const unmapped = executable.filter((t) => !mapped.has(t));
+  assert("19.8 every executable mutation names the entity it touches",
+    mapped.size >= 40 && unmapped.length === 0, JSON.stringify(unmapped));
+
+  // ── 19.9 The rail's membership is DERIVED from that map, not a second hand-picked list. Kills:
+  // reverting `isCrm` to the frozen set, which is how `update_client_data` — the most-used
+  // per-client write and the client seat's only one — came to be missing from it.
+  assert("19.9 the per-client rail is derived from the target map, not a frozen list",
+    /WRITE_TARGET\[name\] === "clients"/.test(chatSrc),
+    "the rail set is hand-listed again");
+}
+
 console.log(`\n${checks - failures} passed, ${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

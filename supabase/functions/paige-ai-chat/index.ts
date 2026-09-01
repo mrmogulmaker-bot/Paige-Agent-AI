@@ -641,6 +641,16 @@ serve(async (req) => {
     // that gets used.
     const approvedConfirmations = new Set<string>(validatedData.approvedConfirmations ?? []);
     const declinedConfirmations = validatedData.declinedConfirmations ?? [];
+    /**
+     * HOW EACH EXECUTED CALL WAS AUTHORISED, keyed by tool_call id.
+     *
+     * The gate knows this and the audit row needs it, and they are four thousand lines apart. An
+     * audit trail that records WHAT changed but not on whose authority answers half the question a
+     * person asks when they find a change they do not recognise — and "Paige did it" is not an
+     * answer when the whole point of the autonomy work is that she does some things alone and asks
+     * about others.
+     */
+    const approvalChannel = new Map<string, string>();
 
     // ===== CLIENT SCOPE AUTHORIZATION — resolved ONCE, before ANY use of the body id =====
     //
@@ -6888,9 +6898,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
 
             // THE APPROVED CALL, NOT THE RE-EMITTED ONE. Every execution branch below re-parses
-            // `tc.function.arguments`, so overwriting it here routes all forty-eight gated tools
-            // through one seam rather than forty-eight per-tool edits.
+            // `tc.function.arguments`, so overwriting it here routes all fifty-one gated tools
+            // through one seam rather than fifty-one per-tool edits.
             tc.function.arguments = JSON.stringify(approvedArgs);
+            approvalChannel.set(tc.id, surfaceApproved ? "operator_card" : "model_asserted");
+          } else {
+            // `auto` — the operator's standing decision in their autonomy settings, not an
+            // approval given in this conversation. Recorded as what it is, so a later reader can
+            // tell "they said yes to this" apart from "they had already said yes to all of these".
+            approvalChannel.set(tc.id, studioSessionId && STUDIO_AUTO_TOOLS.has(tc.function.name)
+              ? "studio_session_auto" : "standing_autonomy_setting");
           }
           // autoMode === 'auto', or the approval matched this exact call → fall through to execute.
         }
@@ -9232,11 +9249,72 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         "crm_assign_contact", "crm_assign_coach", "crm_update_pipeline_stage", "program_enroll",
       ]);
       const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task"]);
-      const RAIL_REF_TABLE: Record<string, string> = {
-        crm_update_contact: "clients", crm_create_contact: "clients", crm_delete_contact: "clients",
+      /**
+       * WHAT EACH WRITE TOUCHES — one map, read by both the rail and the audit row.
+       *
+       * The rail used to carry ten of these and the audit row none, so a change Paige made could
+       * be seen (sometimes) without being traceable to the thing she changed. This names the
+       * entity for every mutation she can perform, which is what lets an audit row and a rail
+       * event point at a record instead of merely asserting that something happened.
+       *
+       * These are ENTITY labels, not necessarily table names — `target_type` is text, and an
+       * external provider call has no row in this database at all. Saying "external_provider"
+       * honestly beats naming a table that does not exist.
+       */
+      const WRITE_TARGET: Record<string, string> = {
+        crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
-        program_enroll: "clients", crm_log_activity: "activities", crm_create_task: "tasks",
+        program_enroll: "clients", update_client_data: "clients",
+        crm_log_activity: "activities", crm_create_task: "tasks", plan_assign_task: "tasks",
+        update_business_profile: "tenants",
+        pipeline_create: "pipelines", pipeline_add_stage: "pipelines",
+        deal_create: "deals", deal_move_stage: "deals",
+        member_grant_role: "user_roles", member_revoke_role: "user_roles",
         calendar_book_meeting: "calendar_events",
+        draft_marketing_content: "content", generate_image: "content", content_save: "content",
+        document_generate: "content",
+        growth_page_save: "growth_pages", growth_page_publish: "growth_pages",
+        growth_funnel_build: "growth_funnels", growth_funnel_publish: "growth_funnels",
+        action_file: "paige_actions", action_advance: "paige_actions",
+        n8n_activate_workflow: "n8n_workflow", n8n_deactivate_workflow: "n8n_workflow",
+        n8n_create_workflow: "n8n_workflow", n8n_update_workflow: "n8n_workflow",
+        n8n_run_workflow: "n8n_workflow", n8n_archive_workflow: "n8n_workflow",
+        n8n_delete_workflow: "n8n_workflow",
+        zapier_run_action: "external_provider",
+        forge_subagent: "paige_subagents", delegate_to_subagent: "paige_subagents",
+        save_to_knowledge_base: "knowledge_base",
+        plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
+        plan_update_item: "plans", plan_remove_item: "plans",
+        author_event_kind: "event_kinds",
+        automation_draft: "paige_automations",
+        marketplace_install: "marketplace", marketplace_uninstall: "marketplace",
+      };
+
+      /**
+       * The id of the record a write landed on, probed in a fixed order.
+       *
+       * The tool's OUTPUT is asked first and the arguments only after, because the output is what
+       * actually happened: a create returns the id it minted, which no argument could have carried.
+       * A bulk write resolves to nothing here on purpose — one row cannot honestly name several
+       * records, and the ids stay in the payload where a list belongs.
+       */
+      const TARGET_ID_KEYS = [
+        "contact_id", "client_id", "deleted", "deal_id", "task_id", "pipeline_id", "stage_id",
+        "page_id", "funnel_id", "content_id", "booking_id", "log_id", "automation_id", "plan_id",
+        "item_id", "workflow_id", "subagent_id", "action_id", "tenant_id", "id",
+      ] as const;
+      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const resolveWriteTargetId = (args: any, out: any): string | null => {
+        for (const k of TARGET_ID_KEYS) {
+          for (const src of [out, args]) {
+            const v = src?.[k];
+            // `target_id` is a uuid column, so a slug or a provider's own string id must NOT be
+            // forced into it — that would fail the insert and lose the whole audit row over a
+            // field that was only ever supplementary.
+            if (typeof v === "string" && UUID.test(v)) return v;
+          }
+        }
+        return null;
       };
       const resolveRailContactId = (args: any, out: any): string | null => {
         // A bulk assign (client_ids[]) only maps cleanly to ONE rail when it's a
@@ -9252,10 +9330,81 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         const cand = out?.contact_id ?? args?.contact_id ?? args?.client_id ?? null;
         return typeof cand === "string" && cand ? cand : null;
       };
+      /**
+       * EVERY WRITE PAIGE PERFORMS LEAVES A ROW SAYING WHAT CHANGED, FOR WHOM, ON WHOSE AUTHORITY,
+       * AND WHETHER IT WORKED.
+       *
+       * Before this, ten of the forty-nine executable mutations were mirrored onto the per-client
+       * rail and three wrote a bespoke `audit_logs` row; everything else — publishes, documents,
+       * provider calls, role grants, deals, plans — left no trace at all. "Paige changed something"
+       * with no record of what, or on what authority, is the state this closes.
+       *
+       * It goes to `paige_audit_log` because that table already exists for exactly this and carries
+       * `tenant_id` (§9), which `audit_logs` does not. The three bespoke `audit_logs` rows stay
+       * where they are: that is the platform's older CRM trail with its own readers, and quietly
+       * removing it to tidy up would be a §58 regression dressed as a refactor.
+       *
+       * Fire-and-forget and non-fatal: an audit failure must never undo or block the operator's
+       * write. It is logged loudly instead, because an unattributable write is the thing this row
+       * exists to prevent and a silent audit failure recreates it exactly.
+       *
+       * SCOPE, stated rather than implied: this records EXECUTION ATTEMPTS — a call that got past
+       * the gate, with its real outcome. A proposal awaiting a person, a refusal, and a disabled
+       * tool are not writes and are not recorded here; they are visible in the transcript and, for
+       * a refusal, in the console. Recording them belongs with the activity surface (item 5), not
+       * with the write trail.
+       */
+      const auditWriteForTool = (tc: any, res: any): void => {
+        try {
+          const name: string = tc?.function?.name ?? "";
+          const risk = classifyAction(name);
+          // Never executed, so never a write: an unclassified or owner-only call is refused
+          // before dispatch and there is nothing to attribute.
+          if (risk === "unclassified" || risk === "owner_only") return;
+          let args: any = {}; try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
+          let out: any = {}; try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
+          // A proposal or a switched-off tool did not run.
+          if (out?.needs_confirm === true || out?.disabled === true) return;
+          const failed = out?.success === false;
+          // `Promise.resolve` around the builder, not `void builder.then?.()`: a postgrest builder
+          // is a THENABLE, not a Promise, so it has no `.catch` — and an audit write whose own
+          // rejection path is unreachable is precisely the silent failure this row exists to stop.
+          void Promise.resolve(supabaseClient.from("paige_audit_log").insert({
+            // §26 — set explicitly rather than left to a default, so a row can never land
+            // untenanted and become invisible to the tenant whose change it records.
+            tenant_id: personaCtx?.tenant_id ?? null,
+            actor_user_id: user.id,
+            actor_role: "paige_chat",
+            action: name,
+            target_type: WRITE_TARGET[name] ?? null,
+            target_id: resolveWriteTargetId(args, out),
+            payload: {
+              source: "paige_chat",
+              risk,
+              // Which authority let this run. `standing_autonomy_setting` is the operator's earlier
+              // decision, not a yes given in this conversation, and the two must not read alike.
+              authorised_by: approvalChannel.get(tc.id) ?? "standing_autonomy_setting",
+              outcome: failed ? "failed" : "succeeded",
+              // The tool's own error text, capped. Never the arguments: they can carry a client's
+              // details, and an audit row is read by more people than the conversation was.
+              error: failed ? String(out?.error ?? "").slice(0, 300) : null,
+              thread_id: payloadThreadId ?? null,
+              scoped_client_id: scopedClientId ?? null,
+            },
+          })).then(({ error }: any) => {
+            if (error) console.error("[paige] write attribution FAILED", JSON.stringify({ tool: name, code: error.code ?? null, message: error.message ?? null }));
+          }).catch((e: any) => console.error("[paige] write attribution threw", String(e)));
+        } catch (e) { console.error("[paige] write attribution threw", String(e)); }
+      };
+
       const emitRailForTool = (tc: any, res: any, label: string): void => {
         try {
           const name: string = tc?.function?.name ?? "";
-          const isCrm = RAIL_CRM_TOOLS.has(name);
+          // DERIVED, not frozen: anything the target map says lands on a client belongs on that
+          // client's rail. `update_client_data` — the most-used per-client write there is, and the
+          // client seat's only one — was missing from the hand-picked list, so a client could have
+          // their record changed with nothing on their own timeline to show for it.
+          const isCrm = RAIL_CRM_TOOLS.has(name) || WRITE_TARGET[name] === "clients";
           const isAction = RAIL_ACTION_TOOLS.has(name);
           if (!isCrm && !isAction) return;
           let args: any = {}; try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
@@ -9270,8 +9419,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             p_actor_type: "owner_staff",
             p_title: label || "Updated the client",
             p_summary: null,
-            p_ref_table: RAIL_REF_TABLE[name] ?? null,
-            p_ref_id: null,
+            p_ref_table: WRITE_TARGET[name] ?? null,
+            // Was hardcoded null, so a rail event could never navigate to what it changed.
+            p_ref_id: resolveWriteTargetId(args, out),
           }).then?.(({ error }: any) => { if (error) console.warn("[paige-ai-chat] rail producer non-fatal:", error.message); })
             .catch?.((e: any) => console.warn("[paige-ai-chat] rail producer skipped:", e?.message));
         } catch (e) { console.warn("[paige-ai-chat] rail producer skipped:", (e as Error)?.message); }
@@ -9474,6 +9624,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary), ...(parsed.confirm_fingerprint ? { fingerprint: String(parsed.confirm_fingerprint) } : {}) });
                   }
                 } catch { /* keep ok */ }
+                // BEFORE the cosmetic-trace drop below. `describeStep` returning null means the
+                // step should not RENDER; it says nothing about whether a write happened, and a
+                // tool it does not recognise would otherwise execute with no record at all.
+                auditWriteForTool(tc, res);
                 const derived = describeStep(tc, res);
                 if (!derived) continue; // gated/stub calls dropped (never render as failure)
                 // Mirror a successful client-scoped mutation onto the rail (§8) —

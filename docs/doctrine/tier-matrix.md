@@ -1024,6 +1024,11 @@ five of six surfaces without any ledger row noticing.
 | `update_client_data` completable by a client seat | n/a | n/a | n/a | n/a | n/a | ✓ | 403 |
 | One approval executes exactly once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | A declined proposal is cancelled, not left live | — | — | — | ✓ | ✓ | — | 403 |
+| Every executed write files an attribution row | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …and the actor can record their OWN action (`paige_audit_log` INSERT) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Reads their own tenant's audit rows | ✓ | ✓ (admin) | ✓ (admin) | ✓ (admin) | ✓ (admin) | own rows only | 403 |
+| Reads ANOTHER tenant's audit rows | ✓ (operator) | — | — | — | — | — | 403 |
+| Per-client rail names the record it changed (`ref_id`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
@@ -1102,6 +1107,35 @@ reintroduces the hand-list, or that classifies a delete/publish/grant as `ordina
 carries the same rule as a last line: a tool whose name reads as a write and carries no
 classification is refused before dispatch, so a missed classification is inert rather than
 ungoverned.
+
+**EVERY WRITE IS ATTRIBUTABLE — and the Client row above changed from a `—` to a `✓`.** One seam,
+at the point every executed tool passes through, files a `paige_audit_log` row carrying the entity
+and record touched, the actor, the tenant, the risk class, **the authority it ran on**, and the real
+outcome. `standing_autonomy_setting` (the operator's earlier decision) and `operator_card` (a yes
+given in this conversation) are recorded as different things, because they are.
+
+Two policy defects had to close first, both confirmed against production before being fixed and both
+in migration `20261027000000`:
+
+1. **The INSERT policy required `is_staff()`**, so a `client` seat could never record its own action
+   — and that seat's one write (`update_client_data`, on their own record) was the single write the
+   trail structurally could not cover. Now `actor_user_id = auth.uid()`, which loses nothing: an
+   actor could only ever insert a row naming themselves.
+2. **A tenant-level `admin` could read every UNTENANTED audit row.** Near-harmless while almost
+   nothing was written there; not once every write files one. §58: this is a narrowing — a tenant
+   admin loses a read they had — and it is a leak closing, not a capability going.
+
+**§13 — a correction to how this was nearly done.** The first version of that migration was
+justified by "a tenant admin can read every tenant's audit rows", read out of the migration history.
+Production says otherwise: a RESTRICTIVE `tenant_isolation` policy exists on this table that **no
+migration in this repository creates**, and it already ANDs tenant scope onto every read. The
+migration was rewritten against the defects that are actually there. The live catalogue is the
+source of truth about the live database; a grep of `supabase/migrations/` is not.
+
+**Still open, named rather than implied:** `delegate_to_subagent` is classified `high`, so
+dispatching a specialist needs the approval card — but the orchestrator it calls runs under the
+service role, so what that specialist then does is governed by its own surface, not by this gate.
+The dispatch is attributable; the specialist's own writes are the orchestrator's to account for.
 
 **THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
 earlier commit message said two tools "both default to confirm now"; that is true inside the chat
