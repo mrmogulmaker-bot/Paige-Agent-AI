@@ -253,5 +253,44 @@ console.log("comms-purchase-number safety smoke\n");
     calls.pricingLookups[0]?.number_type === "local", JSON.stringify(calls.pricingLookups));
 }
 
+/* 9 ── THE AGENT-SIDE QUOTE GUARD, driven against the malformations that caused the finding.
+       The seam above is permissive by design: an ABSENT price means "the marketplace UI, which
+       shows the price beside the button" and is not verified. That is correct for the UI and it
+       is exactly why the agent path must never let a malformed quote decay into an absent one —
+       `undefined` there is indistinguishable from the legacy caller, so the purchase proceeds
+       unverified, and at `auto` with no confirmation shown at all.
+
+       `paige-ai-chat` has no runtime harness, so the predicate was pulled into `_shared` for
+       this reason: the guard on a money path is exercised here rather than asserted about. */
+{
+  const qOut = path.join(outDir, "quote.mjs");
+  await build({
+    entryPoints: ["supabase/functions/_shared/purchase-quote.ts"],
+    outfile: qOut, bundle: true, format: "esm", platform: "neutral", target: "es2022",
+  });
+  const { isSpendableQuoteCents: ok } = await import(pathToFileURL(qOut).href);
+
+  check("a whole-cent price is spendable", ok(120) === true);
+  // Each of these previously became `undefined` and bought the number unverified.
+  check("  a MISSING quote is refused", ok(undefined) === false);
+  check("  a STRING quote is refused", ok("120") === false);
+  check("  a null quote is refused", ok(null) === false);
+  check("  a FRACTIONAL cent is refused", ok(120.5) === false);
+  check("  a zero price is refused", ok(0) === false);
+  check("  a negative price is refused", ok(-120) === false);
+  check("  NaN is refused", ok(NaN) === false);
+
+  // The guard is only worth anything if the shipped call site actually uses it.
+  const chat = fs.readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+  const guardAt = chat.indexOf("isSpendableQuoteCents(quoteArgs.monthly_cents)");
+  // Anchor on the EXECUTABLE line that opens the gate, not on a comment banner: an earlier
+  // "AUTONOMY GATE WIRING" comment elsewhere in the file made an indexOf on the banner match
+  // the wrong place and fail this check against correct code.
+  const gateAt = chat.indexOf("MUTATING_TOOLS.has(tc.function.name)");
+  check("the buy path calls it", guardAt > 0);
+  check("  and refuses BEFORE the autonomy gate, so `auto` cannot route around it",
+    guardAt > 0 && gateAt > 0 && guardAt < gateAt, `guard@${guardAt} gate@${gateAt}`);
+}
+
 console.log(`\n${n}/${n} checks passed`);
 fs.rmSync(outDir, { recursive: true, force: true });
