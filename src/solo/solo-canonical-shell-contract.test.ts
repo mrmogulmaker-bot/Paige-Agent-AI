@@ -31,4 +31,15 @@ describe("canonical Solo shell contract", () => {
     expect(app).toContain("activeTenant?.account_number");
     expect(app).toContain("String(own) !== String(urlAccount)");
   });
+
+  it("cannot restore a mutable per-tenant selector for the canonical Solo shell", () => {
+    const admin = source("src/pages/Admin.tsx");
+    const context = source("src/hooks/useTenantContext.tsx");
+
+    expect(admin).toContain("resolveCanonicalSoloAdminOwner");
+    expect(admin).toContain("CanonicalSoloAdminHandoff");
+    expect(admin).not.toContain("<SoloApp");
+    expect(admin).not.toMatch(/soloShellEnabled|solo_shell_enabled/);
+    expect(context).not.toMatch(/soloShellEnabled|solo_shell_enabled/);
+  });
 });

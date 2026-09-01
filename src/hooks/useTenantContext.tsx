@@ -94,10 +94,8 @@ export interface TenantSummary {
    */
   account_number: number | null;
   /**
-   * Per-tenant `tenants.features` JSONB — the §18 one home for config-as-data flags
-   * (e.g. `features.playbook`, `features.finance_in_scope`, `features.solo_shell_enabled`).
-   * Set by the platform operator (§57 source-of-truth); read here to derive
-   * `soloShellEnabled` below. `null` when the row has no features object.
+   * Per-tenant `tenants.features` JSONB for truthful capability and setup state
+   * (for example `features.playbook` and `features.finance_in_scope`).
    */
   features: Record<string, unknown> | null;
   /**
@@ -131,13 +129,6 @@ interface TenantContextState {
   activeUserId: string | null;
   activeTenantId: string | null;
   activeTenant: TenantSummary | null;
-  /**
-   * Runtime per-tenant Solo-shell activation (§57 config-as-data, §51-safe):
-   * `true` ONLY when the ACTIVE tenant's OWN `features.solo_shell_enabled === true`.
-   * Reads no other tenant's features (no cross-tenant / param path). Defaults to
-   * `false` while loading or when the flag is absent → shell OFF (§58 byte-unchanged).
-   */
-  soloShellEnabled: boolean;
   /**
    * Runtime per-tenant Agency-shell activation (§57 config-as-data, §51-safe):
    * `true` ONLY when the ACTIVE tenant's OWN `features.agency_shell_enabled === true`.
@@ -507,10 +498,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
 
-  // §57 config-as-data: derive the Solo-shell flag from ONLY the active tenant's own
-  // features (§51-safe — no cross-tenant read, no request param). Absent flag → false.
-  const soloShellEnabled = activeTenant?.features?.solo_shell_enabled === true;
-
   // §57 config-as-data: derive the Agency-shell flag from ONLY the active tenant's own
   // features (§51-safe — no cross-tenant read, no request param). Absent flag → false.
   const agencyShellEnabled = activeTenant?.features?.agency_shell_enabled === true;
@@ -525,7 +512,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     activeUserId,
     activeTenantId,
     activeTenant,
-    soloShellEnabled,
     agencyShellEnabled,
     switchTenant,
     // Always a foreground refresh — wrapped so an event-handler caller (onClick={refresh})

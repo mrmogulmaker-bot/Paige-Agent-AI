@@ -1,3 +1,5 @@
+import type { SoloSurfaceDeclaration } from "@/lib/routing/soloSurfaceContract";
+
 export type SettingsTruth = "LIVE" | "PARTIAL" | "UNAVAILABLE" | "PROPOSED";
 
 export type ConnectionStateTone = "neutral" | "ok" | "warn" | "bad";
@@ -87,19 +89,19 @@ export type SoloSettingsKey =
   | "vault"
   | "billing";
 
-export const SOLO_SETTINGS_DESTINATIONS: ReadonlyArray<{
+export const SOLO_SETTINGS_DESTINATIONS: ReadonlyArray<SoloSurfaceDeclaration & {
   key: SoloSettingsKey;
   label: string;
   truth: SettingsTruth;
 }> = [
-  { key: "setup", label: "Setup", truth: "LIVE" },
-  { key: "team", label: "Team", truth: "PARTIAL" },
-  { key: "connections", label: "Connections", truth: "PARTIAL" },
-  { key: "integrations", label: "Integrations", truth: "PARTIAL" },
-  { key: "notifications", label: "Notifications", truth: "PARTIAL" },
-  { key: "security-data", label: "Security & data", truth: "PARTIAL" },
-  { key: "vault", label: "Vault", truth: "PROPOSED" },
-  { key: "billing", label: "Billing", truth: "PARTIAL" },
+  { key: "setup", label: "Setup", truth: "LIVE", template: "canonical_solo", delivery: "global_template" },
+  { key: "team", label: "Team", truth: "PARTIAL", template: "canonical_solo", delivery: "global_template" },
+  { key: "connections", label: "Connections", truth: "PARTIAL", template: "canonical_solo", delivery: "global_template" },
+  { key: "integrations", label: "Integrations", truth: "PARTIAL", template: "canonical_solo", delivery: "global_template" },
+  { key: "notifications", label: "Notifications", truth: "PARTIAL", template: "canonical_solo", delivery: "global_template" },
+  { key: "security-data", label: "Security & data", truth: "PARTIAL", template: "canonical_solo", delivery: "global_template" },
+  { key: "vault", label: "Vault", truth: "PROPOSED", template: "canonical_solo", delivery: "global_template" },
+  { key: "billing", label: "Billing", truth: "PARTIAL", template: "canonical_solo", delivery: "global_template" },
 ] as const;
 
 export type SoloSettingsEntry = {

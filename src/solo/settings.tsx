@@ -203,8 +203,8 @@ export const READINESS_COPY: Record<string, { headline: string; next: string }> 
   // Was: "PAIGE can prepare that registration from your business details."
   // That was an unbacked claim. Paige has no A2P tool registered, and the only
   // caller of comms-a2p-draft / comms-a2p-submit anywhere is the legacy admin tab
-  // a flag-enabled Solo tenant is redirected away from — so neither Paige nor the
-  // tenant could act on it. Copy now states the fact and promises nothing that
+  // a canonical Solo tenant does not own — so neither Paige nor the tenant could
+  // act on it. Copy now states the fact and promises nothing that
   // cannot happen (§13).
   registration_absent:        { headline: "Texting is not ready yet", next: "Carriers require your business to be registered before any text can send, and nothing has been registered for your business yet." },
   registration_not_approved:  { headline: "Texting is not ready yet", next: "Your registration is prepared but has not been filed with carriers. Texting stays off until it is approved." },
