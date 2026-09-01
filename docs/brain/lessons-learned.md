@@ -592,3 +592,41 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 2. Destructure and check `error` on EVERY supabase read. A `{ data }`-only destructure is the bug.
 3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
    filter is the dangerous shape; a count that silently reads 0 is the same class.
+
+## A verification sweep that filters by content deletes the evidence (2026-09-01, #708)
+
+**Symptom.** A change removed two vendored skill bundles and their assembled `LICENSE`. The
+close-out sweep for claims the change falsified was reported clean. Two files still asserted the
+redistribution had happened, and pointed readers at the two deleted paths — one of them
+`config-registry.md`, the mandatory source for that configuration.
+
+**Root cause — the sweep, not the writing.** The command was:
+
+```
+grep -rn "vendored" docs/ | grep -iv "not vendored\|before vendoring\|the vendoring was"
+```
+
+Every `-v` term had been added to suppress a line already known to be fine. **Both offending lines
+matched one of those exclusions.** The filter written to reduce noise removed exactly the signal.
+
+**Why this is worse than the spelling problem the close-out step already warns about.** Varying the
+spelling can only *miss* a hit that was never retrieved. A content filter *deletes* a hit you had
+in hand — and it fails **silently**, because the output looks identical whether the sweep found
+nothing or hid everything. There is no signal distinguishing "clean" from "blinded".
+
+**The rules, both cheap:**
+
+1. **Sweep unfiltered and read the hits.** Output too long to read is information about the claim's
+   blast radius, not a reason to filter. Narrow by **path** if you must — never by content.
+2. **Fix a flagged claim everywhere, not where it was pointed at.** In the same change a reviewer
+   flagged one over-broad sentence in one file; the unfiltered re-sweep found the identical sentence
+   in two others. A correction applied only where someone pointed leaves the wrong version in every
+   place nobody looked — which is the close-out sweep's entire purpose, failing on the correction
+   itself.
+
+**Recorded here rather than in a sibling PR, and that is part of the lesson.** These two defects
+were found reviewing this change, and the first draft put them in a different PR's branch to avoid
+a merge conflict in this file. That defers the capture to another PR's merge and ordering — §BRAIN.3
+says *same change*, and "it was more convenient to put it elsewhere" is precisely the reasoning the
+rule exists to refuse. Caught on review, in a PR whose own subject is making that capture
+enforceable.
