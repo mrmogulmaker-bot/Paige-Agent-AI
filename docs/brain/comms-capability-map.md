@@ -124,9 +124,10 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   number bought this way still has no inbound voice route (see the gap below). The panel still
   renders an honest unavailable — `needs_config` — when the workspace cannot buy yet; that is a
   configured refusal, not the old inert form.
-- **What actually protects the money. There are TWO purchase lanes and they are not equally
+- **What actually protects the money. There are THREE purchase lanes and they are not equally
   protected — do not quote a protection without naming its lane.** The server branches on whether
-  the caller sent an agreed amount (`if (agreedMonthlyCents !== null)`), and only one lane does.
+  the caller sent an agreed amount (`if (agreedMonthlyCents !== null)`), and only one of the three
+  does.
 
   There are **three** callers, not two — the two UI ones behave differently from each other and
   grouping them hides the weakest path.

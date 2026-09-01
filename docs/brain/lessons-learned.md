@@ -596,9 +596,14 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 ## A predicate proof is not a write proof (2026-09-01, #695 → #699)
 
 **Symptom.** A one-time backfill in `20260901010000` chose a primary phone number for any workspace
-that had an active number and no *active* primary. Reviewed, proven, merged. On any database that
-had ever put `is_primary` on a released number it aborts the whole migration with
-`23505 duplicate key value violates unique constraint "uq_tenant_phone_numbers_primary"`.
+that had an active number and no *active* primary. Reviewed, proven, merged. It aborts the whole
+migration with `23505 duplicate key value violates unique constraint
+"uq_tenant_phone_numbers_primary"` — **but only against one specific live state, and being precise
+about which one is part of the lesson.** The collision needs BOTH conditions true at once for the
+same tenant, at the moment the migration runs: an inactive row still holding `is_primary` (so the
+tenant's single primary slot is occupied), AND an active row the backfill's `select distinct on`
+picks for it. Either alone is harmless — a tenant whose flag was since cleared, or one with no
+active number, produces no collision. History does not matter; the state at run time does.
 
 **Root cause.** The index is `UNIQUE (tenant_id) WHERE is_primary` — **no status predicate**. The
 guard `... and p.status = 'active'` was added during review on correct reasoning (a workspace whose
