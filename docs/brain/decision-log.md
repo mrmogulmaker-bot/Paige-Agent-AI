@@ -620,3 +620,11 @@ migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is st
 merge or deployment.
 
 - **Client identity contract (green draft, Gate 2 pending, 2026-09-01)** — Preserve existing client UUIDs and references; fail closed if any historical client lacks a tenant; backfill only missing references with nonsequential `CLT-…` values; make UUID, tenant, and reference immutable; route browser creation through `create_contact()`; keep invite acceptance as the only consent linkage path; expose `client_ref`, not raw UUIDs, to Paige. No merge or deployment authorized.
+
+## 2026-09-01 — Solo Team scope corrected; cross-domain access profile rejected
+
+The owner explicitly rejected the proposed cross-domain Hidden/View/Manage workstream. The Solo Team assignment remains roster, invitations and lifecycle, existing Owner/Admin/Member roles, informational job title/responsibilities, and truthful PAIGE Team context. The unreleased broad draft was reverted locally and was never pushed, merged, migrated, or deployed.
+
+PAIGE receives the server-resolved active-tenant roster plus Team invitation lifecycle under the existing Team owner/admin visibility boundary. She may identify, draft, recommend, and prepare; she may not silently invite, mutate roles, grant elevated access, or bypass Team authorization. Invitation tokens never enter the context.
+
+The narrow draft requires a new exact-head Gate 2 packet before merge or deployment. Authenticated browser interaction and migration application remain UNVERIFIED until directly exercised.

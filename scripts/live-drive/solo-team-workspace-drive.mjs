@@ -47,11 +47,11 @@ try {
   check("load more reaches remaining people", await page.locator(".stw-row").count() === 34);
 
   await page.locator(".stw-row").nth(1).click();
-  await page.getByRole("button", { name: "Edit work details" }).click();
-  const title = page.getByPlaceholder("e.g. Client Success Manager"); const original = await title.inputValue();
+  let title = page.getByPlaceholder("e.g. Client Success Manager"); const original = await title.inputValue();
   await title.fill("Account Director"); await page.getByRole("button", { name: "Cancel" }).click();
+  await page.locator(".stw-row").nth(1).click(); title = page.getByPlaceholder("e.g. Client Success Manager");
   check("edit cancel restores work title", await title.inputValue() === original);
-  await page.getByRole("button", { name: "Edit work details" }).click(); await title.fill("Account Director");
+  await title.fill("Account Director");
   await page.getByRole("button", { name: "Save work details" }).click(); await page.locator(".stw-modal-actions").getByRole("button", { name: "Close" }).click();
   await page.locator(".stw-row").nth(1).click(); check("saved work title survives re-read", await page.getByPlaceholder("e.g. Client Success Manager").inputValue() === "Account Director");
   await page.getByLabel("Enforced permission").selectOption("admin"); check("permission requires confirmation", await page.getByRole("button", { name: "Confirm access change" }).isVisible());
