@@ -109,7 +109,7 @@ function describeStep(
     // Pipeline (owner)
     case "pipeline_create": return { label: "Building your pipeline", group: "owner" };
     case "pipeline_add_stage": return { label: "Adding a pipeline stage", group: "owner" };
-    case "pipeline_suggest_from_program": return { label: "Mapping out your sales process", group: "owner" };
+    case "pipeline_configure": return { label: "Configuring your pipeline", group: "owner" };
     case "deal_create": return { label: "Adding the deal", group: "owner" };
     case "deal_move_stage": return { label: "Moving the deal", group: "owner" };
     case "crm_pipeline_summary": case "crm_list_deals": return { label: "Reviewing your pipeline", group: "owner" };
@@ -3734,7 +3734,7 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
 - "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
 - "What tasks are overdue?" → crm_list_tasks with overdue=true.
-- "Set up a pipeline for my program" / "Help me figure out my sales process" → if they describe a program or offer, pipeline_suggest_from_program to draft the stages, read them back, refine, then pipeline_create (confirm-gated). You can also design the stages conversationally yourself; use the proposer when they've described a program/offer so the result matches the app.
+- "Set up a pipeline for my program" / "Help me organize this workflow" → read the tenant's current pipeline context, propose an editable name, purpose, and stage list in the operator's own vocabulary, refine it with them, then use pipeline_configure (confirm-gated) to save the draft. Do not impose preset stages, a generic sales taxonomy, won/lost meanings, or activation. Activate only after the operator reviews the saved draft and explicitly asks.
 - "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
 - "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
 
@@ -4250,52 +4250,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   confirm: { type: "boolean", description: "Set true ONLY after the operator has approved the change. Leave unset on the first (proposal) call." }
                 },
                 required: []
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "pipeline_create",
-              description: "Admin/coach only. Create a new sales/delivery pipeline with ordered stages. Use when the operator asks you to set up a pipeline for their program or business. PROPOSE FIRST: describe the pipeline and its stages, get the operator's yes, then call again with confirm:true — unless the workspace autonomy policy has set this action to auto. Each stage: label, probability 0-100, stage_type open|won|lost (exactly one won, one lost). Returns the new pipeline id.",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string", description: "Pipeline name in the tenant's own language." },
-                  description: { type: "string" },
-                  is_default: { type: "boolean", description: "Make this the tenant's default pipeline." },
-                  stages: {
-                    type: "array",
-                    description: "Ordered stages, first to last.",
-                    items: {
-                      type: "object",
-                      properties: {
-                        label: { type: "string" },
-                        probability: { type: "number" },
-                        stage_type: { type: "string", enum: ["open", "won", "lost"] }
-                      },
-                      required: ["label"]
-                    }
-                  }
-                },
-                required: ["name"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "pipeline_add_stage",
-              description: "Admin/coach only. Add a single stage to an existing pipeline. Propose the stage first and call again with confirm:true once the operator approves — unless the workspace has set this action to auto.",
-              parameters: {
-                type: "object",
-                properties: {
-                  pipeline_id: { type: "string" },
-                  label: { type: "string" },
-                  probability: { type: "number" },
-                  stage_type: { type: "string", enum: ["open", "won", "lost"] }
-                },
-                required: ["pipeline_id", "label"]
               }
             }
           },
@@ -4819,14 +4773,46 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
-              name: "pipeline_suggest_from_program",
-              description: "Admin/coach only. When the operator wants help figuring out what their SALES PROCESS should look like from a described program/offer/service, use this to get a tuned, guard-railed proposal (4-7 stages in their own vocabulary, exactly one won and one lost). Pass the operator's own description of the program/offer as program_text (a paragraph or more — ask for it if they haven't given it). This RETURNS a proposal only; it does NOT create anything. Read the proposed stages back to the operator, refine conversationally, then call pipeline_create (confirm-gated) to build it. Prefer this over inventing stages yourself when they describe a program or offer.",
+              name: "pipeline_configure",
+              description: "Admin only. The complete governed pipeline.configure capability shared with the Campaigns Pipeline workspace. Read configuration with crm_pipeline_summary, propose an editable tenant-specific shape, then use this tool for create, rename, describe, activate, archive, restore, or delete pipeline; create, edit, reorder, archive, restore, or delete stage; and move a deal. create-pipeline may include an explicit editable stages array or no stages for a blank draft; it never substitutes presets. Every write is tenant-scoped, attributable, idempotent, version-checked, and confirm-gated. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
               parameters: {
                 type: "object",
                 properties: {
-                  program_text: { type: "string", description: "The operator's description of their program/offer/service, in their words (min ~1 paragraph)." }
+                  command: {
+                    type: "object",
+                    description: "One explicit pipeline.configure command. Use current tenant ids and versions. Omit stages for a blank draft; when present, stages are the operator-approved editable proposal.",
+                    properties: {
+                      type: { type: "string", enum: ["create-pipeline", "update-pipeline", "activate-pipeline", "archive-pipeline", "restore-pipeline", "delete-pipeline", "create-stage", "update-stage", "archive-stage", "restore-stage", "delete-stage", "reorder-stages", "move-deal"] },
+                      pipelineId: { type: "string", description: "Current tenant pipeline id." },
+                      stageId: { type: "string", description: "Current tenant stage id." },
+                      dealId: { type: "string", description: "Current tenant deal id." },
+                      targetStageId: { type: "string", description: "Active stage id in the deal's current pipeline." },
+                      expectedVersion: { type: "integer", minimum: 1, description: "Version read immediately before proposing this write." },
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      label: { type: "string" },
+                      movePolicy: { type: "string", enum: ["direct", "approval"] },
+                      orderedIds: { type: "array", items: { type: "string" }, description: "Every active stage id exactly once, in the requested order." },
+                      reason: { type: "string", description: "Short operator-visible reason for a deal move." },
+                      stages: {
+                        type: "array",
+                        description: "Optional explicit stages for an editable draft. Never generate a preset taxonomy.",
+                        items: {
+                          type: "object",
+                          properties: {
+                            label: { type: "string" },
+                            description: { type: "string" },
+                            movePolicy: { type: "string", enum: ["direct", "approval"] },
+                          },
+                          required: ["label"],
+                        },
+                      },
+                    },
+                    required: ["type"],
+                  },
+                  idempotency_key: { type: "string", description: "A stable unique key for this exact proposed write. Reuse it only when retrying the identical command." }
                 },
-                required: ["program_text"]
+                required: ["command", "idempotency_key"]
               }
             }
           },
@@ -5324,7 +5310,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "update_business_profile",
       "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
       "crm_create_task", "crm_log_activity",
-      "pipeline_create", "pipeline_add_stage",
+      "pipeline_create", "pipeline_add_stage", "pipeline_configure",
       "deal_create", "deal_move_stage",
       "member_grant_role", "member_revoke_role",
       "calendar_book_meeting", "program_enroll",
@@ -5355,6 +5341,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_log_activity: "logging an activity",
       pipeline_create: "creating a pipeline",
       pipeline_add_stage: "adding a pipeline stage",
+      pipeline_configure: "configuring the pipeline",
       deal_create: "adding a deal",
       deal_move_stage: "moving a deal",
       member_grant_role: "granting a staff role",
@@ -5398,6 +5385,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Create a pipeline "${a?.name || "Untitled"}"${Array.isArray(a?.stages) && a.stages.length ? ` with ${a.stages.length} stage${a.stages.length === 1 ? "" : "s"}${a.stages.map((s: any) => s?.label).filter(Boolean).length ? ` (${a.stages.map((s: any) => s?.label).filter(Boolean).join(" → ")})` : ""}` : ""}.`;
         case "pipeline_add_stage":
           return `Add stage "${a?.label || ""}" to the pipeline.`;
+        case "pipeline_configure":
+          return `Run the requested governed pipeline change (${String(a?.command?.type || "configuration").replaceAll("-", " ")}).`;
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
         case "deal_move_stage":
@@ -6266,9 +6255,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "update_business_profile" ||
           tc.function.name === "pipeline_create" ||
           tc.function.name === "pipeline_add_stage" ||
+          tc.function.name === "pipeline_configure" ||
           tc.function.name === "deal_create" ||
           tc.function.name === "deal_move_stage" ||
-          tc.function.name === "pipeline_suggest_from_program" ||
           tc.function.name === "member_grant_role" ||
           tc.function.name === "member_revoke_role" ||
           tc.function.name === "calendar_book_meeting" ||
@@ -6687,21 +6676,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   }
                 }
               }
-            } else if (tc.function.name === "pipeline_suggest_from_program") {
-              // Route the operator's program/offer description through the tuned pipeline-suggest
-              // proposer (the same guard-railed engine behind the "Build from a program" dialog),
-              // so consultative sales-process design in chat matches the UI instead of ad-hoc stages.
-              // Returns a PROPOSAL only — Paige reads it back and calls pipeline_create to build it.
-              const { data: sug, error: serr } = await supabaseClient.functions.invoke("pipeline-suggest", {
-                body: { program_text: args.program_text },
-              });
-              // pipeline-suggest returns its internal-failure body with HTTP 200, so functions.invoke
-              // sees no transport error — check the payload's own `error` field too, or Paige would
-              // "read back" an error object as if it were a real proposal (§13 truthfulness).
-              if (serr || (sug as any)?.error || !(sug as any)?.proposed_pipeline) {
-                result = { success: false, error: "Couldn't draft a pipeline from that — try describing the program in a bit more detail." };
+            } else if (tc.function.name === "pipeline_configure") {
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
-                result = { success: true, suggestion: sug };
+                const { data: configured, error: configureError } = await supabaseClient.rpc("configure_tenant_pipeline", {
+                  _tenant_id: tenantId,
+                  _command: args.command,
+                  _idempotency_key: args.idempotency_key,
+                  _actor_kind: "paige",
+                });
+                if (configureError) throw configureError;
+                result = { success: (configured as any)?.ok !== false, ...(configured as any) };
               }
             } else if (tc.function.name === "member_grant_role") {
               const { error } = await supabaseClient.rpc("grant_tenant_member_role", {
