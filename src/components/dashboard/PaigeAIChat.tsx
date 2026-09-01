@@ -559,6 +559,9 @@ const PaigeAIChatInner = ({
         const b = (t.bundle_ref ?? {}) as Record<string, unknown>;
         const queued = Array.isArray(b.approval_queued) ? (b.approval_queued as QueuedApproval[]) : undefined;
         const confirm = Array.isArray(b.paige_confirm)
+          // Rehydrated summaries only. Deliberately NOT typed with `fingerprint`: a stored turn
+          // carries no live fingerprint, and `confirmResolved` below renders it settled, so there
+          // is nothing here that could re-fire a decision already taken (§15).
           ? (b.paige_confirm as Array<{ tool: string; summary: string }>)
           : undefined;
         // Honest timestamp: use the turn's stored created_at when present; if the

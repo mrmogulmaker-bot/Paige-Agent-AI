@@ -3,7 +3,8 @@ import { useSyncExternalStore } from "react";
 type Mode = "active" | "empty" | "readonly";
 const listeners = new Set<() => void>();
 
-const pipeline = { id: "pipeline-1", name: "Client onboarding", description: "A tenant-owned journey from inquiry through a completed handoff.", isDefault: true, lifecycleStatus: "active", version: 4 };
+const pipeline = { id: "pipeline-1", shortRef: "PPL-4K8MX", name: "BUILD-to-FUND", description: "A tenant-owned journey from inquiry through a completed handoff.", isDefault: true, lifecycleStatus: "active", version: 4, createdAt: "2026-08-20T13:20:00Z", updatedAt: "2026-08-30T13:20:00Z", createdThrough: "owner", createdByName: "Toni", requestedByName: null, stageCount: 4, dealCount: 4 };
+const duplicatePipeline = { id: "pipeline-2", shortRef: "PPL-7Q2NZ", name: "BUILD-to-FUND", description: "A distinct zero-deal pipeline with the same display name.", isDefault: false, lifecycleStatus: "active", version: 2, createdAt: "2026-08-29T13:20:00Z", updatedAt: "2026-08-29T13:20:00Z", createdThrough: "paige", createdByName: "Toni", requestedByName: "Toni", stageCount: 0, dealCount: 0 };
 const stages = [
   { id: "stage-1", pipelineId: pipeline.id, label: "New inquiry", description: "Newly captured work", orderIndex: 1, archivedAt: null, movePolicy: "direct", version: 2 },
   { id: "stage-2", pipelineId: pipeline.id, label: "Discovery", description: "Fit and needs review", orderIndex: 2, archivedAt: null, movePolicy: "direct", version: 3 },
@@ -19,6 +20,8 @@ const deals = [
 
 let mode: Mode = "active";
 let currentDeals = deals;
+let currentPipelines = [pipeline, duplicatePipeline];
+let currentStages = stages;
 let snapshot = buildSnapshot();
 
 function buildSnapshot() {
@@ -31,11 +34,20 @@ function buildSnapshot() {
     submissions: [],
     pipelineWorkspace: {
       canManage: mode !== "readonly",
-      pipelines: hasPipeline ? [pipeline] : [],
-      stages: hasPipeline ? stages : [],
+      pipelines: hasPipeline ? currentPipelines : [],
+      stages: hasPipeline ? currentStages : [],
       deals: hasPipeline ? currentDeals : [],
     },
     pipelineAction: async (command: Record<string, unknown>) => {
+      if (command.type === "create-pipeline") {
+        const pipelineId = `pipeline-${currentPipelines.length + 1}`;
+        const authoredStages = Array.isArray(command.stages) ? command.stages as Array<{ label: string; description: string; movePolicy: "direct" | "approval" }> : [];
+        currentPipelines = [...currentPipelines, { id: pipelineId, shortRef: "PPL-9X2QK", name: String(command.name), description: String(command.description ?? ""), isDefault: false, lifecycleStatus: "draft", version: 1, createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z", createdThrough: "owner", createdByName: "Prototype owner", requestedByName: null, stageCount: authoredStages.length, dealCount: 0 }];
+        currentStages = [...currentStages, ...authoredStages.map((stage, index) => ({ id: `${pipelineId}-stage-${index + 1}`, pipelineId, label: stage.label, description: stage.description, orderIndex: index + 1, archivedAt: null, movePolicy: stage.movePolicy, version: 1 }))];
+        snapshot = buildSnapshot();
+        listeners.forEach((listener) => listener());
+        return { ok: true, message: "Local custom pipeline created.", data: { pipeline_id: pipelineId } };
+      }
       if (command.type === "move-deal") {
         currentDeals = currentDeals.map((deal) => deal.id === command.dealId ? { ...deal, stageId: String(command.targetStageId), version: deal.version + 1 } : deal);
         snapshot = buildSnapshot();

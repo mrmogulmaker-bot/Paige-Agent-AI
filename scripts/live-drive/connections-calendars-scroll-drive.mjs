@@ -34,6 +34,25 @@ const record = (name, ok, detail) => {
 };
 
 /** The port must be ours, or we measure someone else's stale module graph. */
+async function stopProcessTree(child) {
+  if (!child?.pid) return;
+  if (process.platform === "win32") {
+    await new Promise((resolve) => {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
+      killer.once("exit", resolve);
+      killer.once("error", resolve);
+    });
+    return;
+  }
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  try { process.kill(-child.pid, "SIGTERM"); } catch { return; }
+  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+  if (child.exitCode === null) {
+    try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+  }
+}
+
 function assertPortFree() {
   return new Promise((resolve, reject) => {
     const s = net.createConnection({ host: "127.0.0.1", port: 5201 }, () => {
@@ -48,12 +67,15 @@ function assertPortFree() {
 const CONTROLS = ".cc button:not([disabled]), .cc input, .cc select, .cc textarea, .cc a[href]";
 
 async function openFullSurface(page, clipped) {
-  await page.goto(`${BASE}/${clipped ? "?host=clipped" : ""}`, { waitUntil: "networkidle" });
+  const query = new URLSearchParams({ theme: "light" });
+  if (clipped) query.set("host", "clipped");
+  await page.goto(`${BASE}/solo/1971670/settings/connections?${query}`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".solo-settings", { timeout: 20_000 });
+  const foldPaige = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
+  if (await foldPaige.isVisible()) await foldPaige.click();
+  await page.click('.ss-segment button:text-is("Calendars")');
   await page.waitForSelector(".cc-area", { timeout: 20_000 });
-  // Every fold-out open: the owner configuring a preset is the tallest real state,
-  // and a surface that scrolls while collapsed can still trap them when expanded.
-  const expand = page.locator("button", { hasText: /Expand all/i }).first();
-  if (await expand.count()) { await expand.click(); await page.waitForTimeout(600); }
+  await page.waitForTimeout(600);
 }
 
 const lastControlReach = () => {
@@ -156,7 +178,25 @@ async function driveViewport(page, w, h) {
     `canvas=${clip?.canvas}px extent=${clip?.extent}px`);
 }
 
-/** The negative control: with the scroll owner removed, the check MUST fail. */
+/**
+ * THE CONTROLS — and why the clipped-host one changed meaning (2026-08-31).
+ *
+ * `?host=clipped` used to be the proof that this drive could fail: it put the screen
+ * host back to inline `overflow:hidden`, the surface lost its scroll owner, and the
+ * reachability check went red.
+ *
+ * Settings' scroll ownership is now decided by an !important, Settings-scoped rule in
+ * settings.css, which outranks ANY inline style on the host — the clipped one
+ * included. So the clipped host can no longer take the scroll owner away, and keeping
+ * the old assertion would mean asserting something that is now false to make a drive
+ * look rigorous. It measured the inline style; the inline style is no longer what
+ * decides.
+ *
+ * So this control now asserts the HARDENING (Settings stays reachable even under the
+ * clipped host — the regression class that shipped as #681 cannot come back through a
+ * route-list edit), and the can-this-fail duty moves to deleting the opt-out rule from
+ * the live stylesheet, which still turns the surface red on demand.
+ */
 async function proveCheckCanFail(page) {
   await page.setViewportSize({ width: 1366, height: 768 });
   await openFullSurface(page, true);
@@ -165,15 +205,47 @@ async function proveCheckCanFail(page) {
   const r = await page.evaluate(lastControlReach);
   const scrollers = await page.evaluate(liveScrollers);
   await page.screenshot({ path: path.join(OUT, "negative-control-clipped-host.png") });
-  record("negative control · a clipped host FAILS this drive",
-    !r.reachable && scrollers.length === 0,
-    `scrollers=[${scrollers.join(", ")}] lastControlBottom=${r.bottom} vh=${r.vh} (expected unreachable)`);
+  record("hardening · a clipped host can no longer remove the scroll owner",
+    r.reachable && scrollers.length === 1,
+    `scrollers=[${scrollers.join(", ")}] lastControlBottom=${r.bottom} vh=${r.vh} (expected reachable)`);
+
+  // The control that CAN still fail: take the Settings-scoped opt-out out of the live
+  // stylesheet and the surface must stop scrolling.
+  await openFullSurface(page, false);
+  const killed = await page.evaluate(() => {
+    let deleted = 0;
+    for (const sheet of [...document.styleSheets]) {
+      let rules; try { rules = sheet.cssRules; } catch { continue; }
+      for (let i = rules.length - 1; i >= 0; i--) {
+        const sel = rules[i].selectorText || "";
+        if (!/(^|,)\s*\.paige-solo main/.test(sel)) continue;
+        if (!/\.solo-settings|tcs-main--settings-scrollbar/.test(sel)) continue;
+        sheet.deleteRule(i); deleted += 1;
+      }
+    }
+    const host = document.querySelector("[data-solo-screen-host]");
+    return { deleted, overflowY: host ? getComputedStyle(host).overflowY : null };
+  });
+  await page.waitForTimeout(200);
+
+  // The control must fail the way the BATTERY fails. `overflow-y: hidden` on the host
+  // is only a proxy for that: if `lastControlReach` or `liveScrollers` themselves
+  // regressed, or another ancestor became the scroller, the battery could stay
+  // false-green while a computed-style assertion still passed. So re-run the drive's
+  // own predicates and require the verdict the clipped host used to produce.
+  const deadReach = await page.evaluate(lastControlReach);
+  const deadScrollers = await page.evaluate(liveScrollers);
+  record("negative control · removing the Settings opt-out stops the scroll",
+    killed.deleted > 0 && killed.overflowY === "hidden"
+      && !deadReach.reachable && deadScrollers.length === 0,
+    `rules deleted=${killed.deleted} → computed overflow-y=${killed.overflowY} · `
+    + `scrollers=[${deadScrollers.join(", ")}] · lastControlBottom=${deadReach.bottom} vh=${deadReach.vh}`);
 }
 
 async function main() {
   await assertPortFree();
   mkdirSync(OUT, { recursive: true });
-  const vite = spawn("npx", ["vite", "--config", "scripts/live-drive/harness/connections-mount/vite.config.ts"],
+  const vite = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "scripts/live-drive/harness/settings-mount/vite.config.ts", "--port", "5201", "--strictPort"],
     { cwd: process.cwd(), detached: true, stdio: "ignore" });
   // The launch belongs INSIDE the cleanup scope. A Chromium that cannot start —
   // a missing or wrong `PW_EXECUTABLE_PATH` — used to reject before the `try`,
@@ -181,7 +253,7 @@ async function main() {
   // `assertPortFree` for a reason that had nothing to do with the next run.
   let browser;
   try {
-    browser = await chromium.launch({ executablePath: process.env.PW_EXECUTABLE_PATH || "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
+    browser = await chromium.launch({ ...(process.env.PW_EXECUTABLE_PATH ? { executablePath: process.env.PW_EXECUTABLE_PATH } : {}), args: ["--no-sandbox"], ignoreDefaultArgs: ["--hide-scrollbars"] });
     await new Promise((r) => setTimeout(r, 9000));
     const page = await browser.newPage({ viewport: { width: 1536, height: 770 } });
     await page.addInitScript(() => {
@@ -203,7 +275,7 @@ async function main() {
     await page.close();
   } finally {
     await browser?.close();
-    try { process.kill(-vite.pid); } catch { /* already gone */ }
+    await stopProcessTree(vite);
   }
   const failed = results.filter((r) => !r.ok);
   console.log("");

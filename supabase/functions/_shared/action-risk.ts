@@ -203,6 +203,14 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
   ["growth_page_generate", "drafts a page in memory and returns it; saving is growth_page_save"],
   ["growth_funnel_generate", "drafts a funnel in memory; building it is growth_funnel_build"],
   ["propose_action", "files a request for the operator's decision and sends nothing; the send it proposes is the gated act"],
+  // ADDED 2026-09-02 with the Pipelines merge. It persists a row, so the verb backstop was right
+  // to stop it — but the row is the archive's own binding: single-use, expiring, scoped to this
+  // tenant and this requester, and it changes nothing anyone would notice. Its whole purpose is to
+  // show the operator what archiving would cost BEFORE they answer. Gating it would demand an
+  // approval to be shown the consequences, and would put a second approval in front of one act,
+  // which is the duplication the merge removed. The archive itself stays gated, and additionally
+  // cannot run unless this preview exists and predates the turn.
+  ["pipeline_archive_preview", "mints the archive's own single-use binding and shows the consequence; the archive it prepares is the gated act"],
 ]);
 
 /**

@@ -341,6 +341,16 @@ const messageSchema = z.object({
    *  of the next message is a refusal the model has to interpret correctly — and the proposal it
    *  describes stays redeemable for its whole window. These are cancelled outright instead. */
   declinedConfirmations: z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(16).optional(),
+  // RETIRED HERE, 2026-09-02: `confirmedActions`, a second approval channel carrying a
+  // pipeline-archive token, arrived from a parallel branch. It solved the same problem as the two
+  // fields above — bind the approval to the exact thing approved — for exactly one action.
+  //
+  // Owner ruling: the chat's mechanism is the standing order, and clashing code gets rewritten
+  // onto it rather than run beside it. Two ways into the same gate is how a gate acquires a hole
+  // nobody is looking at, and the archive path is now covered by the general fingerprint like
+  // every other gated action. What that branch built that the fingerprint does NOT do — binding
+  // the request to a server-issued PREVIEW of the archive — is kept, as a precondition rather
+  // than as a second way to say yes.
 });
 
 const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
@@ -4476,10 +4486,11 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
 The current user is an ADMIN or COACH operating the Paige CRM. You have full read access to every contact, deal, task, and activity in the system through the crm_* tools. Use them proactively whenever the operator asks anything that requires looking across the customer base — for example:
 - "Who are my new leads this week?" → crm_search_contacts with lifecycle_stage=lead, sort by created_at desc.
 - "Show me [first name]'s clients" → crm_search_contacts filtered by coach.
-- "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
+- "Which pipelines do I have?" / "Find BUILD-to-FUND" → pipeline_catalogue. It reads pipeline records even when there are zero deals. Show every same-name match with its exact PPL reference and compact metadata; never guess, merge duplicates, split a display name, or infer stages.
 - "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
 - "What tasks are overdue?" → crm_list_tasks with overdue=true.
-- "Set up a pipeline for my program" / "Help me organize this workflow" → read the tenant's current pipeline context, propose an editable name, purpose, and stage list in the operator's own vocabulary, refine it with them, then use pipeline_configure (confirm-gated) to save the draft. Do not impose preset stages, a generic sales taxonomy, won/lost meanings, or activation. Activate only after the operator reviews the saved draft and explicitly asks.
+- "Set up a pipeline for my program" / "Help me organize this workflow" → read the tenant's current pipeline context with pipeline_catalogue, propose an editable name, purpose, and stage list in the operator's own vocabulary, refine it with them, then use pipeline_configure (confirm-gated) to save the draft. Do not impose preset stages, a generic sales taxonomy, won/lost meanings, or activation. Activate only after the operator reviews the saved draft and explicitly asks.
+- "Archive that pipeline" → require one exact PPL reference. Call pipeline_archive_preview, state the returned exact name, reference, deal count, and consequence, wait for the owner's confirmation, then call pipeline_configure with the same token and confirmed reference. Archive never inherits auto mode and hard delete is unavailable.
 - "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
 - "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
 
@@ -5598,8 +5609,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "pipeline_catalogue",
+              description: "Read the tenant's pipeline catalogue directly from pipeline records, including zero-deal pipelines. Duplicate and similar names are separate records. Returns each exact PPL reference and truthful compact metadata; never infer stages or split a display name into multiple pipelines.",
+              parameters: {
+                type: "object",
+                properties: {
+                  search: { type: "string", description: "Optional similar-name search or exact PPL reference. Omit to list every pipeline." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "pipeline_archive_preview",
+              description: "Admin only. Resolve one exact PPL reference and prepare the owner-visible archive confirmation. Returns the exact pipeline name, reference, deal count, current version, consequence, and a short-lived token. This does not archive anything.",
+              parameters: {
+                type: "object",
+                properties: {
+                  pipeline_ref: { type: "string", description: "Exact tenant-scoped reference such as PPL-4K8M." }
+                },
+                required: ["pipeline_ref"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "pipeline_configure",
-              description: "Admin only. The complete governed pipeline.configure capability shared with the Campaigns Pipeline workspace. Read configuration with crm_pipeline_summary, propose an editable tenant-specific shape, then use this tool for create, rename, describe, activate, archive, restore, or delete pipeline; create, edit, reorder, archive, restore, or delete stage; and move a deal. create-pipeline may include an explicit editable stages array or no stages for a blank draft; it never substitutes presets. Every write is tenant-scoped, attributable, idempotent, version-checked, and confirm-gated. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
+              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; or move a deal. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5607,8 +5645,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     type: "object",
                     description: "One explicit pipeline.configure command. Use current tenant ids and versions. Omit stages for a blank draft; when present, stages are the operator-approved editable proposal.",
                     properties: {
-                      type: { type: "string", enum: ["create-pipeline", "update-pipeline", "activate-pipeline", "archive-pipeline", "restore-pipeline", "delete-pipeline", "create-stage", "update-stage", "archive-stage", "restore-stage", "delete-stage", "reorder-stages", "move-deal"] },
+                      type: { type: "string", enum: ["create-pipeline", "update-pipeline", "activate-pipeline", "archive-pipeline", "restore-pipeline", "create-stage", "update-stage", "archive-stage", "restore-stage", "reorder-stages", "move-deal"] },
                       pipelineId: { type: "string", description: "Current tenant pipeline id." },
+                      pipelineRef: { type: "string", description: "Exact server-issued PPL reference. Required for archive." },
+                      confirmedReference: { type: "string", description: "The exact PPL reference the owner confirmed. Required for archive." },
+                      confirmationToken: { type: "string", description: "Short-lived token from pipeline_archive_preview. Required for archive." },
                       stageId: { type: "string", description: "Current tenant stage id." },
                       dealId: { type: "string", description: "Current tenant deal id." },
                       targetStageId: { type: "string", description: "Active stage id in the deal's current pipeline." },
@@ -6718,6 +6759,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "pipeline_add_stage":
           return `Add stage "${a?.label || ""}" to the pipeline.`;
         case "pipeline_configure":
+          if (a?.command?.type === "archive-pipeline" && a?._archive) {
+            return `Archive "${a._archive.name}" (${a._archive.short_ref}) with ${a._archive.deal_count} deal${a._archive.deal_count === 1 ? "" : "s"}. This removes it from active selection; it does not hard-delete the pipeline or its history.`;
+          }
           return `Run the requested governed pipeline change (${String(a?.command?.type || "configuration").replaceAll("-", " ")}).`;
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
@@ -7180,6 +7224,51 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           let gateArgs: any = {};
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
           let autoMode = await resolveToolAutonomy(tc.function.name);
+          const isPipelineArchive = tc.function.name === "pipeline_configure" && gateArgs?.command?.type === "archive-pipeline";
+          if (isPipelineArchive) {
+            autoMode = "confirm";
+            const tenantId = personaCtx?.tenant_id;
+            const token = String(gateArgs?.command?.confirmationToken || "");
+            const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
+            const { data: archiveBinding } = tenantId && token
+              ? await gateAdmin.from("pipeline_archive_confirmations")
+                .select("pipeline_id,short_ref,expected_deal_count,expires_at,used_at,created_at")
+                .eq("token", token).eq("tenant_id", tenantId).eq("requested_by", user.id).maybeSingle()
+              : { data: null };
+            const { data: archivePipeline } = archiveBinding
+              ? await gateAdmin.from("pipelines").select("id,name,short_ref").eq("id", archiveBinding.pipeline_id).eq("tenant_id", tenantId).maybeSingle()
+              : { data: null };
+            const previewPredatesTurn = archiveBinding ? new Date(archiveBinding.created_at).getTime() < startedAt : false;
+            if (!archiveBinding || archiveBinding.used_at || new Date(archiveBinding.expires_at).getTime() <= Date.now() || !archivePipeline) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "archive_preview_required", message: "Run pipeline_archive_preview with the exact PPL reference before asking the owner to confirm. No pipeline was changed." }) });
+              continue;
+            }
+            // REWRITTEN ONTO THE GENERAL GATE (owner ruling, 2026-09-02). This block arrived from
+            // the Campaigns/Pipelines branch carrying its own approval test: a `confirmedActions`
+            // echo, plus a string comparison against the operator's last message being exactly
+            // "Approved — run it."
+            //
+            // Both are now removed, and the reasons are worth keeping. The echo was a second way
+            // into the same gate, for one action out of forty-eight — the general fingerprint below
+            // already binds an approval to the exact call, so this was the same idea implemented
+            // twice. And matching the operator's prose is precisely the weakness the fingerprint
+            // exists to remove: a model that can produce a message can produce that sentence.
+            //
+            // WHAT THAT BRANCH GOT RIGHT AND IS KEPT, because the fingerprint does NOT do it: the
+            // archive is bound to a server-issued PREVIEW of itself. You cannot ask to archive a
+            // pipeline the server has not just shown you the consequences of, and that preview is
+            // scoped to this tenant and this requester, single-use, and expiring. That is a real
+            // precondition rather than a second approval, so it runs BEFORE the gate and refuses
+            // outright — a proposal that never reaches the operator cannot be approved by anyone.
+            if (!previewPredatesTurn) {
+              // The preview and the approval cannot be the same breath. Minting a preview and
+              // acting on it inside one turn is the turn approving itself, which is the same
+              // shape as a model redeeming a token it just issued.
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "archive_preview_required", message: `Show the owner the ${archivePipeline.short_ref} preview and let them read it before asking them to confirm. No pipeline was changed.` }) });
+              continue;
+            }
+            gateArgs._archive = { name: archivePipeline.name, short_ref: archivePipeline.short_ref, deal_count: archiveBinding.expected_deal_count };
+          }
           // #292 — inside a STUDIO session the creative BUILD tools run at auto. The Vibe Studio IS the
           // propose→build surface: the customer already asked, the design agent's core says "build,
           // don't describe", and StudioChat has no confirm affordance — so confirm-gating these stalls
@@ -8124,6 +8213,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "update_business_profile" ||
           tc.function.name === "pipeline_create" ||
           tc.function.name === "pipeline_add_stage" ||
+          tc.function.name === "pipeline_catalogue" ||
+          tc.function.name === "pipeline_archive_preview" ||
           tc.function.name === "pipeline_configure" ||
           tc.function.name === "deal_create" ||
           tc.function.name === "deal_move_stage" ||
@@ -8902,16 +8993,41 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   }
                 }
               }
+            } else if (tc.function.name === "pipeline_catalogue") {
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
+              } else {
+                const { data: catalogue, error: catalogueError } = await supabaseClient.rpc("get_pipeline_catalogue", {
+                  _tenant_id: tenantId,
+                  _search: typeof args.search === "string" && args.search.trim() ? args.search.trim() : null,
+                });
+                if (catalogueError) throw catalogueError;
+                result = { success: true, ...(catalogue as any) };
+              }
+            } else if (tc.function.name === "pipeline_archive_preview") {
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
+              } else {
+                const { data: preview, error: previewError } = await admin.rpc("prepare_pipeline_archive_as_paige", {
+                  _tenant_id: tenantId,
+                  _requested_by: user.id,
+                  _pipeline_ref: args.pipeline_ref,
+                });
+                if (previewError) throw previewError;
+                result = { success: (preview as any)?.ok !== false, ...(preview as any) };
+              }
             } else if (tc.function.name === "pipeline_configure") {
               const tenantId = personaCtx?.tenant_id;
               if (!tenantId) {
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
-                const { data: configured, error: configureError } = await supabaseClient.rpc("configure_tenant_pipeline", {
+                const { data: configured, error: configureError } = await admin.rpc("configure_tenant_pipeline_as_paige", {
                   _tenant_id: tenantId,
+                  _requested_by: user.id,
                   _command: args.command,
                   _idempotency_key: args.idempotency_key,
-                  _actor_kind: "paige",
                 });
                 if (configureError) throw configureError;
                 result = { success: (configured as any)?.ok !== false, ...(configured as any) };

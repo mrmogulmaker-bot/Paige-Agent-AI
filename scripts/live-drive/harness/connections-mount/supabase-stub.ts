@@ -118,7 +118,11 @@ function seed(): Record<string, Row[]> {
     // `list_calendar_host_candidates`, which is SECURITY DEFINER for exactly
     // this reason — so the stub returns the viewer's row alone.
     profiles: [
-      { user_id: "harness-user", full_name: "Harness Viewer" },
+      {
+        user_id: "harness-user", full_name: "Harness Viewer",
+        work_email: "viewer@harness.example.invalid",
+        phone: "+1 555 0111", website_url: "https://viewer.example.invalid",
+      },
     ],
     staff_calendar_settings: [{
       user_id: "harness-user",
@@ -130,7 +134,26 @@ function seed(): Record<string, Row[]> {
     tenant_email_identities: [{ tenant_id: TENANT }],
     tenant_phone_numbers: s === "issues" ? [] : [{ id: "num-1", tenant_id: TENANT, is_primary: true }],
     tenant_a2p_registrations: s === "issues" ? [] : [{ tenant_id: TENANT }],
-    tenants: [{ id: TENANT, brand: { business_phone: s === "issues" ? "" : "+1 555 0100" } }],
+    tenants: [{
+      id: TENANT,
+      name: "Harness workspace",
+      brand: {
+        business_phone: s === "issues" ? "" : "+1 555 0100",
+        website: "https://harness.example.invalid",
+        industry: "Consulting",
+      },
+    }],
+    // Billing joins the plan to the subscription on `plan_slug`/`plan_id` and prices
+    // it from `monthly_price_cents`/`annual_price_cents`. Seeding only id+name left
+    // the card rendering "Not provided" for Price and Renewal — a partial stub makes
+    // a partial surface, and a partial surface is not the geometry the drive claims.
+    platform_subscription_plans: [
+      {
+        id: "plan-1", slug: "harness-pro", name: "Harness plan",
+        monthly_price_cents: 9700, annual_price_cents: 97000,
+        is_active: true, messaging_included: true,
+      },
+    ],
   };
 }
 
@@ -311,15 +334,134 @@ export const supabase = {
       persist();
       return Promise.resolve(ok(null));
     }
+    // ---- Seams the OTHER Settings destinations read. Added when the mount was
+    // widened from Calendars alone to the whole `SoloSettings` route, so every
+    // destination renders its real content rather than a spinner — a surface
+    // stuck loading is short, and a short surface passes a reachability check
+    // vacuously. Shapes follow each caller's own reader in `settings.tsx`.
+
+    // Connections › Communications. The ONE canonical readiness resolver; the
+    // surface discards a row whose tenant_id is not the active account, so the
+    // stub must carry it.
+    if (name === "tenant_comms_readiness") {
+      const ready = state() !== "issues";
+      // The shape is the exported `CommsReadiness` interface, field for field.
+      // A flattened guess rendered fine in TypeScript and threw at runtime on
+      // `business.has_name` — the harness must model the record the resolver
+      // actually returns, not a convenient summary of it.
+      return Promise.resolve(ok({
+        tenant_id: TENANT,
+        can_send_sms: ready,
+        blocked_reason: ready ? null : "number_absent",
+        subaccount: ready ? "connected" : "inactive",
+        number: ready ? "assigned" : "absent",
+        number_e164: ready ? "+15550100" : null,
+        business: { has_name: true, has_website: ready, has_phone: ready },
+        a2p: ready ? "approved" : "absent",
+        consent: {
+          granted_count: ready ? 12 : 0,
+          suppressed_count: ready ? 1 : 0,
+          state: ready ? "ready" : "none_recorded",
+        },
+        delivery: {
+          state: ready ? "delivering" : "no_activity",
+          sent_30d: ready ? 48 : 0, delivered_30d: ready ? 46 : 0, failed_30d: ready ? 2 : 0,
+          last_inbound_at: ready ? new Date(Date.now() - 3_600_000).toISOString() : null,
+          inbound_reporting: ready ? "available" : "unavailable",
+        },
+        billing: {
+          subscription: ready ? "active" : "absent",
+          plan_name: ready ? "Harness plan" : null,
+          period_end: ready ? new Date(Date.now() + 20 * 86_400_000).toISOString() : null,
+          cancel_at_period_end: false,
+          usage_metering: ready ? "recording" : "not_recording",
+          metered_events_30d: ready ? 310 : 0,
+        },
+      }));
+    }
+
+    // Connections › Communications sending identity. The field names are
+    // `ManagedIdentityRecord`'s, from settings-contract.ts — `default_email_sender`,
+    // `default_email_domain`, `default_email_kind`, `default_email_status`. An
+    // earlier version invented `default_from_email`/`custom_domain`, which the card
+    // simply ignores: it reported a VERIFIED identity while rendering "Not provided"
+    // for its sender, domain and kind. A stub whose keys the component does not read
+    // measures a surface nobody runs.
+    if (name === "resolve_tenant_domain_identity") {
+      const ready = state() !== "issues";
+      return Promise.resolve(ok([{
+        tenant_id: TENANT,
+        default_email_status: ready ? "verified" : "unverified",
+        default_email_sender: ready ? "hello@harness.example.invalid" : null,
+        default_email_domain: ready ? "harness.example.invalid" : null,
+        default_email_kind: ready ? "managed_subdomain" : null,
+      }]));
+    }
+
+    if (name === "get_tenant_platform_subscription") {
+      if (state() === "issues") return Promise.resolve(ok(null));
+      return Promise.resolve(ok({
+        plan_id: "plan-1", plan_slug: "harness-pro", status: "active",
+        billing_period: "monthly",
+        current_period_end: new Date(Date.now() + 20 * 86_400_000).toISOString(),
+        cancel_at_period_end: false,
+      }));
+    }
+
+    // Settings › Integrations. Both connectors answer "not connected", which is
+    // the honest default and still renders the full catalogue.
+    if (name === "get_tenant_n8n_connection") return Promise.resolve(ok(null));
+    if (name === "get_tenant_mcp_connection") return Promise.resolve(ok(null));
+
     return Promise.resolve(ok(null));
   },
+  // Realtime, answered as an inert channel. The Solo Command Center subscribes for
+  // live approvals; without this the whole screen throws on mount and a drive that
+  // only wanted to read its CSS geometry gets an error boundary instead of a screen.
+  // It never delivers an event — a harness has no server to deliver one.
+  channel: (_name: string) => {
+    const ch = {
+      on: (..._args: unknown[]) => ch,
+      subscribe: (cb?: (status: string) => void) => { cb?.("SUBSCRIBED"); return ch; },
+      unsubscribe: () => Promise.resolve("ok" as const),
+    };
+    return ch;
+  },
+  removeChannel: (_ch: unknown) => Promise.resolve("ok" as const),
   auth: {
     getUser: () => Promise.resolve({ data: { user: { id: "harness-user" } }, error: null }),
+    onAuthStateChange: (_cb: unknown) => ({
+      data: { subscription: { unsubscribe: () => undefined } },
+    }),
   },
   functions: {
-    // A harness never leaves for a provider. Reporting a failure is the honest
-    // answer — nothing was started, so nothing may be claimed.
-    invoke: () => Promise.resolve({ data: null, error: { message: "Harness: no provider handshake" } }),
+    invoke: (fn: string, opts?: { body?: Record<string, unknown> }) => {
+      // `useSoloComms` awaits this read FIRST and rethrows its error, so a blanket
+      // failure short-circuited the hook before it consumed the plan rows, the
+      // subscription RPC or the admin RPC. Billing then rendered its error/retry
+      // fallback and Communications its degraded sending-identity state, and the
+      // reachability drive measured THOSE — a shorter surface than the one it
+      // claimed to cover. A stub that fails a read the surface depends on does not
+      // measure the surface.
+      if (fn === "manage-tenant-domain" && opts?.body?.verb === "list") {
+        return Promise.resolve({
+          data: {
+            domains: state() === "issues" ? [] : [{
+              id: "dom-1",
+              domain: "harness.example.invalid",
+              from_email_local: "hello",
+              from_name: "Harness workspace",
+              status: "verified",
+              is_default: true,
+            }],
+          },
+          error: null,
+        });
+      }
+      // Everything else still fails honestly: a harness never leaves for a provider,
+      // and nothing was started, so nothing may be claimed.
+      return Promise.resolve({ data: null, error: { message: "Harness: no provider handshake" } });
+    },
   },
 };
 
