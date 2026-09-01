@@ -688,3 +688,47 @@ work details as untrusted reference data, and stays proposal-only until the owne
 Local structural, test, security-lint, type-ratchet and build evidence is green; authenticated runtime,
 migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is still required before
 merge or deployment.
+
+---
+
+## M3 — a new conversation remembers the last one (2026-09-01)
+
+**Measured on production first.** Within a thread, continuity already worked: 35 threads, 14 long
+enough to fold, 6 compacted, the longest 105 messages, and the rolling summary preserves decisions,
+queued actions, open approvals and open loops by design. **Across threads it did not exist.** One
+tenant holds 18 threads and 277 turns, 8 of them carrying folded summaries, and every new
+conversation opened blank. The charter's wording is "a future session must recover authorized
+context, current plan, next promised action" — and a person starting a new chat is a future session.
+
+**It EXTENDS `paige_operating_memory` rather than adding a read (§18).** That function already
+derives scope the only safe way, already narrows on the focused client, is already called once per
+turn on the caller's own client, and its result already renders into both prompt paths. A second
+function would duplicate four things and be the one that drifts. The three memory layers the charter
+names stay distinct in MEANING without becoming three separate reads.
+
+**The cross-client rule is the load-bearing part.** A thread summary is prose about a conversation,
+so carrying the wrong one is a disclosure, not a nuisance. The predicate is the SAME one every other
+section uses — client in focus narrows to that client, no client in focus means the operator's own
+general workspace — so there is one rule to reason about rather than a special case that can drift
+from its neighbours. Isolation beyond that stays RLS's (SECURITY INVOKER retained).
+
+### Two things worth keeping from how it was proven
+
+1. **The proof could not run on production, and the reason is the finding.** `paige_operating_memory`
+   and `paige_automations` do not exist on prod — both are created by this branch's unmerged
+   migrations. Two attempts failed on exactly that before it was obvious. The proof runs against the
+   PREVIEW branch database, which is the only Postgres where the "before" state exists, with the
+   identity chain (auth user → tenant → tenant_members) seeded because the preview is data-free.
+   **Stated rather than smoothed over: this is a preview proof, not a prod proof.** Prod gets the
+   same state after merge, and the §32.a persisted-apply confirmation is where that is checked.
+2. **Production has ZERO client-scoped summarised threads**, so the cross-client rule could not be
+   exercised on real rows at all and had to be seeded. A rule that cannot be tested against existing
+   data is exactly the one that rots quietly; it now has a seeded case and a negative control
+   (client Y's own thread MUST appear) so it cannot pass by filtering everything.
+
+**Evidence.** 14/14 on the preview including the seeded cross-client and cross-tenant cases;
+authz harness 183/183 with three new checks, each mutation-tested — reverting the render, dropping
+the recollection label, dropping the record-wins tiebreak and un-threading the exclusion each drive
+exactly the check built for it red. Deno diagnostics on the handler unchanged at 14.
+
+**Not merged, not deployed.** The authenticated live drive remains UNVERIFIED.

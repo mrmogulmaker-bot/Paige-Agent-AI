@@ -2073,6 +2073,13 @@ const mirrorConfirms = (st) => (t, row) => {
     in_flight: [{ id: "2", title: "DRAFT-AWAITING-YOU", status: "pending_approval", awaiting_approval: true }],
     processes: [{ id: "3", name: "NEW-LEAD-WELCOME", granted_lane: "auto", state: "live" }],
     recent: [{ action: "crm_create_contact", target_type: "clients", outcome: "failed" }],
+    // The cross-thread half (M3). A folded summary of an EARLIER conversation, which is what makes
+    // a new thread open knowing what the last one committed to instead of blank.
+    continuity: [{
+      thread_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      title: "LAST-WEEKS-CALL", turns: 40, last_active: "2026-08-28T09:00:00Z",
+      summary: "EARLIER-CONVERSATION-RECALLED they agreed to the September start date",
+    }],
     scope: { tenant_id: CALLER_TENANT, user_id: USER, contact_id: null },
   };
   const carrying = (extra = {}) => drive({
@@ -2105,6 +2112,20 @@ const mirrorConfirms = (st) => (t, row) => {
     /crm_create_contact on clients — failed/.test(p0),
     "a failed action is presented without its failure");
 
+  // ── 20.4b CROSS-THREAD CONTINUITY (M3). Within one thread the rolling summary already carried
+  // decisions and open loops; across threads nothing did, so a new conversation opened blank while
+  // the tenant's own earlier threads sat summarised and unread. Measured on production: one tenant
+  // with 18 threads, 277 turns and 8 folded summaries, none of which a new chat could see.
+  assert("20.4b an earlier conversation reaches the turn, so a new thread does not open blank",
+    /EARLIER-CONVERSATION-RECALLED/.test(p0),
+    "the continuity section is read but never rendered — a read nothing renders is a read nobody sees");
+  // §13 — it is the ONLY model-written section here. Presented as recollection, with the record
+  // named as the tiebreak, because a folded summary stated with the confidence of an audit row is
+  // how a conversation becomes evidence.
+  assert("20.4c …labelled as recollection rather than as the record",
+    /your own recollection, not the record/.test(p0) && /the record wins/.test(p0),
+    "prose about a conversation is being presented with the authority of a real row");
+
   // ── 20.5 SCOPE. The read takes NO tenant argument — scope is derived server-side from the
   // session — and when a client is in focus it narrows to that client, which is what stops a
   // switch carrying the previous client's open work into the new scope (§S2).
@@ -2116,6 +2137,11 @@ const mirrorConfirms = (st) => (t, row) => {
     omCall?.args?.p_contact_id === OWN, JSON.stringify(omCall?.args ?? null));
   assert("20.5c …and it is asked as the CALLER, so RLS is the boundary",
     omCall?.client !== "service", JSON.stringify({ client: omCall?.client }));
+  // The current thread is excluded by id. Without this the turn is handed its OWN folded summary
+  // alongside the copy the caller already injects — budget spent restating what is in front of the
+  // model. Asserting the exact id, not merely that the key exists, because a null here is the bug.
+  assert("20.5d …and the CURRENT thread is excluded, so it is not handed its own summary back",
+    omCall?.args?.p_exclude_thread_id === THREAD, JSON.stringify(omCall?.args ?? null));
 
   // ── 20.5d BOTH PROMPT PATHS, NOT JUST THE VERTICAL ONE. §2: `FUNDING_SKILL_PROMPT` is the
   // opt-in funding skill and `buildNeutralCorePrompt` is what every tenant that has NOT opted in

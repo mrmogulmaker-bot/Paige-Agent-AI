@@ -1387,6 +1387,11 @@ JSON:`;
       const { data: om, error: omErr } = await supabaseClient.rpc("paige_operating_memory", {
         p_contact_id: scopedClientId ?? null,
         p_limit: 8,
+        // The thread being composed, so its own folded summary is not handed back to it — that
+        // summary is injected separately a few hundred lines below, and echoing it would spend
+        // budget restating what is already in front of the model. Null on a brand-new
+        // conversation, which is exactly the case that has nothing of its own to exclude.
+        p_exclude_thread_id: payloadThreadId ?? null,
       });
       if (omErr) {
         // §13 — an error is NOT "nothing open". Rendering an empty block here would tell the
@@ -1423,8 +1428,18 @@ JSON:`;
           parts.push(`What you did last, and how it went:\n${recent.map((r) =>
             `- ${r.action} on ${r.target_type ?? "something"} — ${r.outcome ?? "unknown"}`).join("\n")}`);
         }
+        // WHAT WAS ALREADY DISCUSSED, in earlier conversations. Rendered LAST and labelled as
+        // recollection rather than record, because it is the only section that is model-written
+        // prose: `commitments`, `in_flight` and `recent` come from real rows, a folded summary is
+        // an account of a conversation. A reader that cannot tell those apart will eventually
+        // state one with the confidence owed to the other (§13).
+        const continuity = rows("continuity");
+        if (continuity.length) {
+          parts.push(`Earlier conversations with this person (your own recollection, not the record):\n${continuity.map((t) =>
+            `- ${t.title || "Untitled"} (${t.turns ?? "?"} turns, last ${when(t.last_active)}): ${String(t.summary ?? "").replace(/\s+/g, " ").trim().slice(0, 600)}`).join("\n")}`);
+        }
         if (parts.length) {
-          operatingMemoryBlock = `\n\n=== WHAT YOU ARE CARRYING (from the record, not from this conversation) ===\n${parts.join("\n\n")}\n=== END ===\n\nThis is what the platform actually holds for this person right now. Use it to pick up where you left off and to answer "what's outstanding" without asking them. Do NOT read it out as a list unless they ask — refer to it the way someone who remembered would. Never claim an item is done when it is listed as open, and never describe an attempt that failed as though it succeeded.\n`;
+          operatingMemoryBlock = `\n\n=== WHAT YOU ARE CARRYING (from the record, not from this conversation) ===\n${parts.join("\n\n")}\n=== END ===\n\nThis is what the platform actually holds for this person right now. Use it to pick up where you left off and to answer "what's outstanding" without asking them. Do NOT read it out as a list unless they ask — refer to it the way someone who remembered would. Never claim an item is done when it is listed as open, and never describe an attempt that failed as though it succeeded. Where an earlier conversation is quoted, it is your recollection of what was SAID — treat the other sections as what is true, and if the two disagree, the record wins.\n`;
         }
       }
     } catch (err) {
