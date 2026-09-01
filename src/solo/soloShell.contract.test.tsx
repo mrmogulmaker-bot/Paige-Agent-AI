@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -83,7 +84,6 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
 
 /** Repo-wide search for the JSX attribute, kept out of the assertion for clarity. */
 function execFileSyncGrep(): string[] {
-  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
   const out = execFileSync(
     "grep",
     ["-rl", "--include=*.tsx", "-e", "data-solo-screen-host [^=]", "-e", "data-solo-screen-host>", "-e", "data-solo-screen-host ", "src"],
