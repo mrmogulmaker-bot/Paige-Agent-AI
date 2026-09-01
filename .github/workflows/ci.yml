@@ -243,6 +243,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk
 
+      # Three separate slices independently built a SECOND way to prove the operator approved
+      # something (#709, #711, #718). Each was competent alone; a door with three locks is only
+      # as strong as the weakest, and nobody inspects the weak one. This fails a new channel —
+      # not a new gated action, which needs no approval path of its own.
+      - name: One approval channel (a second way to say yes is a way in)
+        if: ${{ !cancelled() }}
+        run: npm run lint:approval-gate
+
+      - name: Approval-channel guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:approval-gate:test
+
       - name: Action-risk guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test
