@@ -594,3 +594,242 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
    filter is the dangerous shape; a count that silently reads 0 is the same class.
 
 - A UUID default is not a complete identity contract. Every producer must converge on a required immutable tenant binding, and an AI-facing lookup must return a stable human reference while resolving the internal UUID only inside a server-validated tenant boundary. A service-role query with an ID filter is not tenant safety unless the tenant predicate is present in the same query.
+## A predicate proof is not a write proof (2026-09-01, #695 → #699)
+
+**Symptom.** A one-time backfill in `20260901010000` chose a primary phone number for any workspace
+that had an active number and no *active* primary. Reviewed, proven, merged. It aborts the whole
+migration with `23505 duplicate key value violates unique constraint
+"uq_tenant_phone_numbers_primary"` — **but only against one specific live state, and being precise
+about which one is part of the lesson.** The collision needs BOTH conditions true at once for the
+same tenant, at the moment the migration runs: an inactive row still holding `is_primary` (so the
+tenant's single primary slot is occupied), AND an active row the backfill's `select distinct on`
+picks for it. Either alone is harmless — a tenant whose flag was since cleared, or one with no
+active number, produces no collision. History does not matter; the state at run time does.
+
+**Root cause.** The index is `UNIQUE (tenant_id) WHERE is_primary` — **no status predicate**. The
+guard `... and p.status = 'active'` was added during review on correct reasoning (a workspace whose
+only primary is released has not really chosen anything, so back-fill it). In exactly the state the
+new guard was written to catch, the SELECT picks the active row and the UPDATE then collides with
+the released row still occupying the tenant's single primary slot.
+
+**What the proof did, and what it therefore could not see.** The review proved the guard
+"discriminates" by running the SELECT: with the guard it picks 1 row, without it picks 0. That is a
+true statement about a predicate. The defect lives in the *write*, which was never run. **A proof
+that exercises the read half of a read-modify-write proves the half that cannot fail.**
+
+**Why the fix is a trigger and not another guard.** `20261020000000` makes the state unreachable:
+`is_primary` is cleared whenever a row moves off `active`. A CHECK was rejected deliberately — it
+would *refuse* the write that retires a primary number, turning an ordinary act into an error the
+caller has to pre-empt. Clear the flag with the transition instead of blocking the transition.
+
+**Standing checks when a migration modifies rows under a partial unique index:**
+1. Run the actual `UPDATE`/`INSERT` inside `BEGIN … ROLLBACK`, against the state the guard was
+   written for. Never accept the `SELECT` as the proof.
+2. Read the index definition, not its name. `uq_..._primary` says nothing about which predicate is
+   in the `WHERE`, and the missing `status` is the entire bug.
+3. Ask whether the bad state should be *guarded against* or made *unreachable*. Repeated guards
+   against a state the schema still permits is the signal that the invariant belongs in the schema.
+
+**Second instance of the same class in one wave.** `comms_buy_number`'s schema marks
+`monthly_cents` required — and tool calling is automatic and non-strict, so `required` is not
+runtime validation. A malformed amount decayed to `undefined`, `comms-purchase-number` read the
+absent amount as the legacy "price shown in the UI" path, skipped verification, and **bought the
+number**. A declared contract is not an enforced one; the guard is `isSpendableQuoteCents`, and it
+was extracted into `_shared/purchase-quote.ts` precisely because a money-path guard inside a
+function with no runtime harness is a guard nobody can prove.
+
+## A default is not a guarantee, and a prompt is not an enforcement (2026-09-01, #707)
+
+**Symptom.** A brain record about the number-purchase path stated: *"Purchase is never autonomous
+and is never retried."* Both halves are false, and the record was written by the same session that
+had built the path.
+
+**Root cause, in two parts.**
+
+1. **Default mistaken for guarantee.** `resolveToolAutonomy` defaults to `confirm` — its own
+   comment says *"safe default — never assume autopilot"* — so the observed behaviour is always a
+   confirmation. But `comms_buy_number` is a registered switchable tool, and at `auto` the gate
+   comments its own behaviour plainly: *"autoMode === 'auto' … fall through to execute."* A
+   validly-quoted purchase then runs with no confirmation. What was observed was the default; what
+   was written down was a property.
+2. **Prompt mistaken for mechanism.** *"A refusal is final for that number, pick another rather
+   than retrying"* and *"do not buy a replacement"* live in the tool **description**. They steer a
+   model. Nothing rejects a retry. Enforcement and instruction read identically in a diff, and only
+   one of them survives a model that ignores it.
+
+**Why this one is worth a lesson.** It landed **in the close-out record itself** — the document
+written to stop exactly this. The sweep half of the close-out step looks for claims the change
+*falsified*; it does not look for claims the author *overstated*, and an overstatement about a
+safety property is the more dangerous of the two, because the next session quotes it as settled.
+
+**The rule.** When recording anything protective, separate it by strength and say which is which:
+
+| Strength | Means | Example — **note every one names its lane; that is the point** |
+|---|---|---|
+| **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
+| **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both say ask first; nothing checks that anyone did |
+| **Enforced but self-asserted** | code refuses without an assertion the actor can **MINT ITSELF**, and validates only its value — not who issued it. Real against an actor that omits it, worthless against one that supplies it. **The property is mintability, not who transmits it:** a JWT or capability token is also actor-supplied, and is strong precisely because the actor cannot create one the server will accept | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the flag is self-minted and the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction** |
+| **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
+
+Never write "never" about the bottom three rows. For anything money-, permission-, or
+tenant-boundary-shaped, name the lane that removes the protection **in the same sentence** as the
+protection — a reader who has to go find the exception will not.
+
+**The examples above are deliberately written the long way.** An earlier version of this table put
+*"no purchase without a whole, positive `monthly_cents`; server re-verifies the price"* in the
+Enforced row, unqualified — and the review caught that the lesson was handing future authors the
+exact unsafe sentence to copy, two paragraphs above the analysis explaining why it was false. **A
+rule whose own example violates it teaches the violation**, because the example is what gets
+copied and the prose is what gets skimmed.
+
+**How it was caught, honestly:** not by me. The §39 peer-gate caught it — an automated reviewer
+reading the actual diff, which is precisely the layer that exists because the author's own proof
+cannot see what the author already believes.
+
+**It then happened TWICE MORE, in the fix for it.** The corrected text — written while composing
+this very lesson — still carried two overstatements, both caught on the next review round:
+
+1. *"Every money-spent exit writes an audit row"*, filed under **Enforced**. `writePurchaseAudit`
+   is non-blocking **by design** — its own comment says a failed audit must not turn a completed
+   purchase into a reported failure — so a failed insert is logged and nothing else changes. A
+   completed charge with no audit row is reachable. The exit *attempts* the write.
+2. *"No purchase without a whole, positive `monthly_cents`"* and *"the server re-verifies"*, both
+   stated categorically. They bind the **agent lane only**. Solo `PhoneSetupPanel` and legacy
+   `NumbersTab` post `{ phone_number }` with no amount, and the server's check is guarded on
+   `if (agreedMonthlyCents !== null)` — skipped entirely for them.
+
+**That recurrence is the actual lesson, and it is worth more than the original.** Knowing the rule
+did not prevent breaking it three times in one wave, because the failure is not ignorance — it is
+that a protection you built *feels* total from the inside. The author remembers the guard they
+wrote and not the branch that skips it. So the rule needs a mechanical form, not a principle:
+
+> Before writing any protective sentence, find the code that makes it true, and then find **every
+> caller that does not go through it**. If you have not enumerated the callers, write "in the
+> `<lane>` lane" instead of a bare claim — and if you cannot name the lane, you do not yet know
+> what you are asserting.
+
+That is §37's producer inventory pointed at prose instead of an endpoint, and it applies for the
+same reason: what breaks a categorical claim is always the caller nobody listed.
+
+### And then, one round later, the hardest one — with the over-correction that followed it
+
+Having written that rule, the record still described the agent `confirm` lane as the one carrying
+complete authorization: operator sees the amount, confirms, server re-verifies. **The middle step
+is not what it looks like.** The gate tests `gateArgs.confirm`, which is
+`JSON.parse(tc.function.arguments)` — the model's own output. Nothing ties it to the
+`needs_confirm` that preceded it or to anything a human said, so a model emitting `confirm:true`
+on its first call executes immediately. The platform already has the enforced pattern — outbound
+sends file a real approval row and wait — and this gate does not use it.
+
+**It survived the rule that was written to catch it.** I had just committed *"find the code that
+makes it true, then find every caller that does not go through it"*, applied it to the price
+check, and never applied it to the confirmation — because the confirmation *looks* like a
+mechanism. Two-step handshake, a system prompt, a tool note, and precisely the right behaviour
+every time the model complies. **A well-behaved actor is observationally identical to a guard.**
+Nothing you can watch distinguishes them; the only test is to find the line that would refuse.
+
+**And then the correction over-shot, which is the last turn of the screw.** The first fix called
+the whole thing prompt-level — *"nothing rejects the act"* — and that is also false. Line ~5973
+genuinely refuses whenever `gateArgs.confirm !== true`, so the gate is real against an actor that
+simply omits the flag; it is worthless only against one that supplies it. Two layers, not one:
+an **enforced but self-asserted** gate, and a **prompt-level** rule binding the assertion to a
+human. Hence the fifth row in the table above.
+
+**The generalisable part:** when a protection turns out weaker than claimed, the reflex is to
+reclassify it to the bottom. Ask instead *what does it still stop?* A gate that constrains the
+careless case and not the deliberate one is neither "enforced" nor "nothing" — and if the
+vocabulary has no row for it, add one rather than rounding to the nearest existing label.
+
+**And then the new row's own definition was wrong, which is where this entry stops.** It first read
+*"code refuses without a token the ACTOR supplies"* — but a JWT is actor-supplied and is strong,
+precisely because the actor cannot create one the server will accept. The property is
+**mintability**, not who transmits the value: the gate is weak because the model can produce the
+accepted assertion itself and the server validates only its value, never its issuer. Getting that
+wrong would have classified session tokens as weak protections.
+
+**The last round found three defects, all of them the SAME correction failing to propagate** — the
+two-layer distinction had been applied to three places and was needed in six, so a risk cell still
+named only `auto` as the unattended path, and a summary sentence still said "every confirmation is
+prompt-level". That is this entry's own second rule failing on this entry: *search and assess every
+occurrence.* Applying a correction where you were looking is not applying it.
+
+**Why this is where it stops, stated rather than left implicit.** Successive rounds moved from
+wrong claims, to wrong verification, to wrong placement, to a wrong definition inside the fix for a
+wrong classification. Each was real and each was smaller. The record is now accurate on every point
+anyone raised, and the remaining risk is no longer in this text — it is in the two product defects
+it documents, which are filed as their own work.
+
+
+## A verification sweep that filters by content deletes the evidence (2026-09-01, #708)
+
+**Symptom.** A change removed two vendored skill bundles and their assembled `LICENSE`. The
+close-out sweep for claims the change falsified was reported clean. Two files still asserted the
+redistribution had happened, and pointed readers at the two deleted paths — one of them
+`config-registry.md`, the mandatory source for that configuration.
+
+**Root cause — the sweep, not the writing.** The command was:
+
+```
+grep -rn "vendored" docs/ | grep -iv "not vendored\|before vendoring\|the vendoring was"
+```
+
+Every `-v` term had been added to suppress a line already known to be fine. **Both offending lines
+matched one of those exclusions.** The filter written to reduce noise removed exactly the signal.
+
+**Why this is worse than the spelling problem the close-out step already warns about.** Varying the
+spelling can only *miss* a hit that was never retrieved. A content filter *deletes* a hit you had
+in hand — and it fails **silently**, because the output looks identical whether the sweep found
+nothing or hid everything. There is no signal distinguishing "clean" from "blinded".
+
+**The rules, both cheap. Note what each one is about — the property, not the mechanism:**
+
+1. **Every omitted match must stay auditable.** The defect was not `grep -v` as such; it was that
+   the excluded set vanished without being seen or counted. A **path** filter hides a stale claim
+   just as effectively — narrowing to `docs/brain/` would have missed a `docs/doctrine/` copy — so
+   "filter by path, not content" is the wrong invariant. A content filter is fine *when the excluded
+   stream is retained and READ*. **Counting it is not enough** — in the anchoring incident the
+   excluded stream contained both stale claims, so `wc -l` would have reported "2 omitted",
+   satisfied any "reviewed or counted" wording, and revealed neither. A count establishes that
+   omissions exist; it says nothing about whether they are false. If a count is all you have, any
+   **nonzero** result has to trigger reading them. In practice: sweep unfiltered and read the hits,
+   or if volume genuinely forces narrowing, read what the narrowing removed. Output too long to
+   read is information about the claim's blast radius, not permission to stop looking.
+2. **Search and assess EVERY occurrence; correct each one that is actually false.** Not "fix it
+   everywhere" — identical wording can appear in a dated decision-log entry that was true when
+   written, in a quotation, in a corrections log that must name what it reversed (§50), or in a
+   scope where the claim still holds. Rewriting those corrupts an honest record rather than
+   repairing it, and §58 forbids purging legitimate audit entries. The failure being guarded
+   against is *not looking* at the other occurrences, which is different from *not changing* them.
+   In the anchoring case all three happened to be false and all three were changed — that was the
+   finding, not the rule.
+
+**Both rules above were themselves over-stated in their first draft, and that is the sharpest thing
+in this entry.** They began as *"narrow by path, never by content"* and *"fix a flagged claim
+everywhere"* — a banned mechanism and a universal instruction, written inside a lesson about not
+generalising past the evidence. Review caught both: a path filter hides just as well, and blanket
+"fix everywhere" would have someone rewrite a dated log entry that was true when written.
+
+The generalisation is the reflex, not the exception. A rule derived from one incident wants to be
+stated as a mechanism (*don't use this tool*) because that is concrete and checkable, when what the
+incident actually taught is a property (*don't leave omissions unaudited*).
+
+**This is not an argument against mechanism-form rules as such** — and that qualifier is itself a
+correction, because the first draft of this paragraph said the mechanism form is simply "wrong".
+Where a mechanism genuinely has no permitted safe use, banning it outright is the right control and
+is *meant* to be blunt: §50's prohibition on the listed third-party marks is exactly that, and a
+meta-rule that reads as "prefer properties to mechanisms" could be used to argue it down. The
+failure mode is narrower — a mechanism-form rule that **overgeneralises past its evidence**, so it
+forbids safe uses of the named tool while permitting the same failure by other means.
+
+The test, which distinguishes the two cases: state what property was violated, then ask whether the
+rule as phrased would catch a version of the failure **using different means**. If it would not, it
+describes the incident rather than the lesson. If it would — because the mechanism itself is the
+whole hazard — the mechanism form is correct and should stay blunt.
+
+**Recorded here rather than in a sibling PR, and that is part of the lesson too.** These two defects
+were found reviewing this change, and the first draft put them in a different PR's branch to avoid
+a merge conflict in this file. That defers the capture to another PR's merge and ordering — §BRAIN.3
+says *same change*, and "it was more convenient to put it elsewhere" is precisely the reasoning the
+rule exists to refuse. Caught on review, in a PR whose own subject is making that capture
+enforceable.
