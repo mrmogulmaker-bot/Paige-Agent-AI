@@ -38,5 +38,8 @@ describe("Solo Setup architecture boundary", () => {
     expect(migration).toContain("solo_setup.owner_approved_proposal");
     expect(migration).toContain("stage_solo_business_brief_proposal");
     expect(migration).toContain("to service_role");
+    expect(migration).toContain("proposal patch must include at least one field");
+    expect(migration).toContain("actor is not an active workspace member");
+    expect(migration).toContain("tm.status = 'active'");
   });
 });

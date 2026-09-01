@@ -261,8 +261,20 @@ begin
   if _tenant_id is null or _actor_user_id is null or _patch is null or jsonb_typeof(_patch) <> 'object' then
     raise exception 'tenant, actor and proposal patch are required' using errcode = '22023';
   end if;
+  if not exists (select 1 from jsonb_object_keys(_patch)) then
+    raise exception 'proposal patch must include at least one field' using errcode = '22023';
+  end if;
   if pg_column_size(_patch) > 32768 or char_length(coalesce(_reason,'')) > 1000 then
     raise exception 'proposal is too large' using errcode = '22001';
+  end if;
+  if not exists (
+    select 1
+    from public.tenant_members tm
+    where tm.tenant_id = _tenant_id
+      and tm.user_id = _actor_user_id
+      and tm.status = 'active'
+  ) then
+    raise exception 'actor is not an active workspace member' using errcode = '42501';
   end if;
   for v_key in select jsonb_object_keys(_patch) loop
     if not v_key = any(v_allowed_keys) or jsonb_typeof(_patch -> v_key) <> 'string' then
