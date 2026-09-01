@@ -646,6 +646,14 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Solo Settings → Team management (Gate 1 approved 2026-08-31; local branch, NOT LIVE)
+
+- The sparse Team destination is replaced by a roster-first workspace with server-side search/filter, 25-person pages and an explicit Load more path. Settings remains the one vertical scroll owner; the people list never creates a nested scrollbar.
+- Enforced tenant permissions remain Owner, Admin, Member, plus truthful read-only presentation of existing specialized permissions. Editable job title and responsibilities describe work only and never participate in authorization.
+- Team invitations have review-before-send, pending/resend/revoke/accepted/expired states, email-bound single-use acceptance, and service-role-only token handling. Permission changes have their own owner confirmation.
+- Paige chat receives a server-resolved, active-tenant confirmed roster block for the authenticated speaker. Tenant-authored titles/responsibilities are explicitly untrusted reference data; the block cannot send invitations or mutate access and routes confirmation back to Settings → Team.
+- Truth status: 25/25 structural-harness checks pass at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build are green. Migration persistence, authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch, preview runtime and exact-head Gate 2 remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
+
 ### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
 
 - Gate 1 locks the board-first Pipeline interaction inside the existing six-tab Campaigns shell. The only post-approval prototype refinement is the smaller page-title word "Pipeline"; lane, card, detail, and supporting-control geometry remain frozen.

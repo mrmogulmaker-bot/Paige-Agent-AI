@@ -42,6 +42,14 @@ function senderFrom(tenantName: string, fallbackFrom: string): string {
 // portal; a sub-account OWNER is handed the reins of their own workspace. The
 // pixels (logo/accent/sender) are the agency's either way; only the words change.
 function inviteCopy(kind: string, tenantName: string): { lead: string; cta: string; subject: string; textLead: string } {
+  if (kind === "team") {
+    return {
+      subject: `${tenantName} invited you to join the team`,
+      lead: `${esc(tenantName)} invited you to join their workspace team. Set up or sign in to your account to accept the invitation and see your workspace access.`,
+      textLead: `${tenantName} invited you to join their workspace team.`,
+      cta: "Join the team",
+    };
+  }
   if (kind === "subaccount_owner") {
     return {
       subject: `${tenantName} set up your workspace — take the reins`,
