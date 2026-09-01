@@ -932,11 +932,43 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 
 | Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
 |---|---|---|---|---|---|---|---|
-| `connections/communications` | **Live business-phone search and purchase**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — number search and purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; domains add/refresh/set_default/remove via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect` | N/A | N/A | ✓ | N/A | — |
+| `connections/communications` | **Live business-phone search, purchase, rename and choose-what-you-send-from**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — search/purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; rename and set-primary run `tenant_phone_number_rename` / `tenant_phone_number_set_primary`; domains via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. **Paige can drive all of it** — eight `comms_*` tools, four of them governed and switchable | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
 | `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+
+**The caller-ID defect this slice found, recorded because it shipped invisibly (§13).**
+`tenant_phone_numbers.is_primary` decides which number a workspace's outbound calls and texts come
+FROM — `voice-twiml` and `send-message` both order by it to pick the caller ID — and NOTHING in the
+repository had ever written it. The only `SET is_primary = true` anywhere was on `public.businesses`,
+an unrelated table. Measured on production before the fix: **2 active numbers, 0 primaries, 1
+workspace** — so that workspace's outbound calls resolved to whichever row Postgres returned, and
+`voice-twiml` has no secondary sort at all. Buying a second number for a different part of the
+business made the first one unpredictable. Migration `20260901010000` adds the two write seams that
+did not exist (`tenant_phone_number_set_primary`, `tenant_phone_number_rename`) and backfills a
+deterministic primary for any workspace left in that tie; the backfill was proven in a rollback
+transaction on prod (0 → 1 primary) before merge.
+
+**Paige-callable, and governed (§10/§67).** Before this slice `paige-ai-chat` registered 82 tools and
+none of them touched numbers, calls or carrier registration — the capability was reachable only by a
+human click. It now carries eight `comms_*` tools. Four mutate and are in `MUTATING_TOOLS` with
+catalogue rows under a new `Comms` category, so each defaults to `confirm` and the operator can turn
+it off: buying a number (a real monthly charge), choosing what the business sends from (what a client
+sees on their phone), renaming, and drafting the registration (a paid model call that overwrites
+saved compliance copy). `comms_connection_summary` is the safe read Paige starts from — channels,
+number, registration state, and which comms actions this workspace currently permits. It carries no
+credentials, tokens, domains or provider payloads by construction, naming each field it returns
+rather than spreading a record. **Honest limit:** the Trust Compass ceiling clamps these at RENDER
+only (`clampMode` in `useToolAutonomy`); `resolve_tool_autonomy`, which the runtime actually
+consults, never reads the compass. The per-tool floor is the enforcement today. That gap predates
+this slice and is not closed by it.
+
+**Attributable evidence.** `comms-purchase-number` now writes an `audit_logs` row
+(`comms:number_purchased`) naming the caller, tenant, number and SID. It records `price_recorded:
+false` rather than a price, because that seam genuinely never receives one — the retail figure lives
+in `comms-search-numbers`. The Rail is deliberately not used and cannot be: `record_rail_event` is
+contact-keyed and a purchased number belongs to the workspace, not to any one client.
 
 **Two ledger corrections, recorded rather than backfilled quietly (§13/§66).**
 The `connections/communications` row above previously claimed **editable business details**. That

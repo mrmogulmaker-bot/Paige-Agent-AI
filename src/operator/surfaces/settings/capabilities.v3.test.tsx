@@ -118,8 +118,12 @@ describe("what the surface says about the gap is the measured number", () => {
     }
 
     const invisible = [...gate].filter((k) => !catalogue.has(k));
-    expect(gate.size).toBe(46);
-    expect(catalogue.size).toBe(23);
+    // Both totals moved on 2026-09-01 when the four Comms tools were added to the runtime gate
+    // AND to the catalogue in the same change: 46 → 50 gated, 23 → 27 catalogued. The number the
+    // surface actually states — the GAP — is unchanged at 23, which is the point: a new governed
+    // tool is only allowed to ship with its catalogue row, so the invisible set cannot grow.
+    expect(gate.size).toBe(50);
+    expect(catalogue.size).toBe(27);
     expect(invisible).toHaveLength(23);
     // The one that makes it more than bookkeeping: a permanent delete the operator cannot disable.
     expect(invisible).toContain("n8n_delete_workflow");

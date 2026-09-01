@@ -231,6 +231,42 @@ Deno.serve(async (req) => {
     }, 500);
   }
 
+  // ── Attributable evidence that money was spent ──────────────────────────────────
+  // Buying a number is the one act on this seam that costs the tenant something, and until
+  // now it left no trace anyone could audit: no rail event, no audit row, nothing but the
+  // `tenant_phone_numbers` row itself. A row records that a number EXISTS; it does not record
+  // who bought it, when, or from which session.
+  //
+  // The Rail is deliberately not used and cannot be: `record_rail_event` is contact-keyed and
+  // raises when the contact does not resolve inside the tenant, and a purchased number belongs
+  // to the WORKSPACE, not to any one client. Inventing a synthetic contact to file it there is
+  // the parallel-store drift the A2P slice already refused for the same reason.
+  //
+  // Never blocking. A failed audit write must not turn a completed purchase into a reported
+  // failure — the number is bought and the charge has started either way, and reporting that
+  // honestly matters more than the log. It is LOGGED rather than swallowed (§32).
+  {
+    const { error: auditErr } = await admin.from("audit_logs").insert({
+      user_id: user.id,
+      entity: "tenant_phone_number",
+      action: "comms:number_purchased",
+      entity_id: inserted?.id ?? null,
+      data: {
+        tenant_id: tenantId,
+        phone_number: boughtNumber,
+        twilio_sid: pnSid,
+        // No price is recorded, because this seam genuinely does not know one: the retail
+        // figure lives in `comms-search-numbers`, which reads `platform_number_pricing`, and
+        // is never passed here. Writing a number this function did not receive would be an
+        // audit row that invents its own most important field (§13). When billing is wired
+        // (the Money-Spine slice this function's own header names), the amount belongs here.
+        price_recorded: false,
+        charge_wired: false,
+      },
+    });
+    if (auditErr) console.error("[comms-purchase-number] audit write failed:", auditErr.message);
+  }
+
   return json({
     purchased: true,
     id: inserted?.id ?? null,

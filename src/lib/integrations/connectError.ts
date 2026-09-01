@@ -107,6 +107,11 @@ const COMMS_COPY: Record<string, string> = {
   MISSING_USE_CASE: "Say what you use texting for — carriers read that line.",
   MISSING_DESCRIPTION: "The description carriers read can’t be empty.",
   MISSING_SAMPLES: "Include at least one real sample message — carriers check them.",
+  NUMBER_NOT_FOUND: "We couldn’t find that number on this business.",
+  NUMBER_NOT_ACTIVE: "That number isn’t active, so it can’t be the one you send from.",
+  NAME_TOO_LONG: "That name is too long — keep it under 120 characters.",
+  NO_TENANT: "We couldn’t tell which business you’re in.",
+  TENANT_MISMATCH: "That number belongs to a different business.",
   REGISTRATION_IMMUTABLE:
     "This registration has moved past preparation, so its wording is locked. Changes now go through the carrier.",
 };

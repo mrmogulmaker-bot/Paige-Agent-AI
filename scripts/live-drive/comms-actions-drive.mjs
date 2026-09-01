@@ -125,8 +125,13 @@ async function run() {
       // crash in a component the source no longer has.
       absent: ["BusinessDetailsPanel", "Save business details"],
     },
+    // The controls this drive exercises, pinned by their own copy. A stale harness served the
+    // PREVIOUS render of this list once — "primary"/"Primary" instead of these — and the drive
+    // then spent thirty seconds waiting for a button that the build it was looking at did not
+    // have. Freshness has to name what is being driven, not only the file it lives in.
+    { file: "src/solo/settings.tsx", markers: ["the number you send from", "Sends from this", "Save label"] },
     { file: "src/solo/data/useSoloComms.ts", markers: ["startGmailConnect", "manage-tenant-domain"] },
-    { file: "src/solo/data/useSoloNumbers.ts", markers: ["comms-search-numbers", "comms-purchase-number"] },
+    { file: "src/solo/data/useSoloNumbers.ts", markers: ["comms-search-numbers", "comms-purchase-number", "tenant_phone_number_set_primary"] },
     { file: "src/solo/data/useSoloA2P.ts", markers: ["comms-a2p-draft", "comms-a2p-submit"] },
   ]);
 
@@ -321,6 +326,33 @@ async function run() {
     record("numbers", "and the number REACHED THE STORE",
       after.some((r) => r.phone_number === "+14045550101"),
       JSON.stringify(after.map((r) => r.phone_number)));
+
+    // Owning a second number is exactly the "dedicated number for another part of the business"
+    // case, and it is where the caller-ID defect lived: `is_primary` decides which number a
+    // client sees, and nothing in the platform ever wrote it.
+    // The harness seeds one number ALREADY primary, so the "nothing decides it" warning is
+    // correctly absent here — that branch is pinned by the unit fixture, which can control the
+    // state exactly. What the browser proves is the control itself: a newly bought number is
+    // not the one you send from until someone says so, and saying so actually moves it.
+    t = await bodyText(page);
+    record("numbers", "a newly bought number is NOT silently made the one you send from",
+      !/Pick the number this business sends from/i.test(t)
+        && (await rows(page, "tenant_phone_numbers")).filter((r) => r.is_primary === true).length === 1,
+      JSON.stringify((await rows(page, "tenant_phone_numbers")).map((r) => [r.phone_number, r.is_primary])));
+
+    const secondRow = page.locator(".ss-list > div", { hasText: "+14045550101" }).first();
+    await secondRow.locator("button", { hasText: "Send from this" }).click();
+    await page.waitForTimeout(900);
+    t = await bodyText(page);
+    record("numbers", "sets which number the business sends from",
+      /is now the number you send from/i.test(t), t.slice(0, 260));
+    const after2 = await rows(page, "tenant_phone_numbers");
+    record("numbers", "and exactly ONE number holds it in the store",
+      after2.filter((r) => r.is_primary === true).length === 1,
+      JSON.stringify(after2.map((r) => [r.phone_number, r.is_primary])));
+    record("numbers", "and it is the one just chosen, not the one seeded",
+      (await rows(page, "tenant_phone_numbers")).find((r) => r.is_primary === true)?.phone_number === "+14045550101",
+      JSON.stringify((await rows(page, "tenant_phone_numbers")).map((r) => [r.phone_number, r.is_primary])));
 
     await page.screenshot({ path: path.join(OUT, "numbers-bought.png") });
     await page.reload({ waitUntil: "networkidle" });
