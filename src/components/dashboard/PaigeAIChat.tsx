@@ -49,7 +49,7 @@ type Message = {
   documentFileName?: string;
   documentKind?: AttachedDocKind;
   queued?: QueuedApproval[];
-  confirm?: Array<{ tool: string; summary: string }>;
+  confirm?: Array<{ tool: string; summary: string; approvalToken?: string; pipelineRef?: string }>;
   /** True on turns rehydrated from history: their confirm cards render settled,
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
@@ -455,7 +455,7 @@ const PaigeAIChatInner = ({
         const b = (t.bundle_ref ?? {}) as Record<string, unknown>;
         const queued = Array.isArray(b.approval_queued) ? (b.approval_queued as QueuedApproval[]) : undefined;
         const confirm = Array.isArray(b.paige_confirm)
-          ? (b.paige_confirm as Array<{ tool: string; summary: string }>)
+          ? (b.paige_confirm as Array<{ tool: string; summary: string; approvalToken?: string; pipelineRef?: string }>)
           : undefined;
         // Honest timestamp: use the turn's stored created_at when present; if the
         // stored turn has none, omit it and the hover time simply hides (never faked).
@@ -581,7 +581,7 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null) => {
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, confirmedActions?: Array<{ kind: "pipeline_archive"; confirmationToken: string; pipelineRef: string }>) => {
     if (soloTenantSafety && !activeTenantId) return;
     retryTurnRef.current = { base, rollback, userText, doc };
     setConnectionIssue(null);
@@ -661,6 +661,7 @@ const PaigeAIChatInner = ({
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
+            ...(confirmedActions?.length ? { confirmedActions } : {}),
             // Attachment (#480): the edge inlines pdf/image as image_url and docx
             // textContent as a text block. Pass the REAL mimeType/kind/textContent
             // — the hook already extracted docx client-side.
@@ -711,7 +712,7 @@ const PaigeAIChatInner = ({
       let queuedThisTurn: QueuedApproval[] = [];
       // Accumulate EVERY pending confirmation this turn — a blanket "Approve" runs
       // all of them, so the operator must see all of them (design-crew B1).
-      const confirmThisTurn: Array<{ tool: string; summary: string }> = [];
+      const confirmThisTurn: Array<{ tool: string; summary: string; approvalToken?: string; pipelineRef?: string }> = [];
       // #29 — deliverables (document/image) Paige persisted this turn, streamed as
       // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
       const artifactsThisTurn: PaigeArtifact[] = [];
@@ -766,7 +767,13 @@ const PaigeAIChatInner = ({
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
-              confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) });
+              confirmThisTurn.push({
+                tool: String(parsed.paige_confirm.tool || "action"),
+                summary: String(parsed.paige_confirm.summary),
+                ...(typeof parsed.paige_confirm.approvalToken === "string" && typeof parsed.paige_confirm.pipelineRef === "string"
+                  ? { approvalToken: parsed.paige_confirm.approvalToken, pipelineRef: parsed.paige_confirm.pipelineRef }
+                  : {}),
+              });
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
               continue;
             }
@@ -829,7 +836,7 @@ const PaigeAIChatInner = ({
     }
   };
 
-  const handleSend = async (overrideText?: string) => {
+  const handleSend = async (overrideText?: string, confirmedActions?: Array<{ kind: "pipeline_archive"; confirmationToken: string; pipelineRef: string }>) => {
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
@@ -854,7 +861,7 @@ const PaigeAIChatInner = ({
     setMessages(base);
     setInput("");
     if (currentDoc) setAttachedDoc(null);
-    await streamTurn(base, rollback, userContent, currentDoc);
+    await streamTurn(base, rollback, userContent, currentDoc, confirmedActions);
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -1164,7 +1171,14 @@ const PaigeAIChatInner = ({
                           <PaigeConfirmCard
                             items={message.confirm.map((c) => c.summary)}
                             disabled={isLoading}
-                            onApprove={() => void handleSend("Approved — run it.")}
+                            onApprove={() => void handleSend(
+                              "Approved — run it.",
+                              message.confirm?.flatMap((confirmation) =>
+                                confirmation.approvalToken && confirmation.pipelineRef
+                                  ? [{ kind: "pipeline_archive" as const, confirmationToken: confirmation.approvalToken, pipelineRef: confirmation.pipelineRef }]
+                                  : []
+                              )
+                            )}
                             onDeny={() => void handleSend("Hold off — skip that one.")}
                           />
                         )}
