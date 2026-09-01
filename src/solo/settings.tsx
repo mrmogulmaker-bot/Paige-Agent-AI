@@ -630,12 +630,7 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
                     render only when there were TWO or more, so the FIRST number a
                     workspace ever bought appeared nowhere until a separate readiness read
                     caught up — and nowhere at all if that read lagged or failed. */}
-                {numbers.owned.length > 0 && <div className="ss-list" style={{ marginTop: 9 }}>
-                  {numbers.owned.map((n) => <div key={n.id}>
-                    <span><strong>{n.phoneNumber}</strong><small>{n.friendlyName ?? (n.isPrimary ? "primary" : "additional")}</small></span>
-                    <Status tone={n.isPrimary ? "ok" : "neutral"}>{n.isPrimary ? "Primary" : (n.status ?? "active")}</Status>
-                  </div>)}
-                </div>}
+                {numbers.owned.length > 0 && <OwnedNumbers numbers={numbers}/>}
               </> : noRecord("number")}
             </ReadState>
           </Card>
@@ -1173,6 +1168,74 @@ function PhoneSetupPanel({ numbers, onPurchased }: {
  * showing it to someone whose registration exists but could not be read is how reviewed
  * compliance prose gets destroyed by a surface trying to be helpful.
  */
+/**
+ * The numbers a business owns, and the two things it can DO to them.
+ *
+ * "Which number do we send from" is not a cosmetic setting: `voice-twiml` and `send-message`
+ * both pick the caller ID by `is_primary`, so this control decides what a client sees when the
+ * phone rings. It is called out when no number holds it, because until this change nothing in
+ * the platform ever set it — every row was false, and the choice fell to row order.
+ */
+function OwnedNumbers({ numbers }: { numbers: ReturnType<typeof useSoloNumbers> }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+
+  const active = numbers.owned.filter((n) => (n.status ?? "active") === "active");
+  const ambiguous = active.length > 1 && !active.some((n) => n.isPrimary);
+
+  const run = async (id: string, work: () => Promise<{ ok: boolean; error: string | null }>, done: string) => {
+    setBusy(id); setOutcome(null);
+    const res = await work();
+    setBusy(null);
+    setOutcome(res.ok ? { tone: "ok", message: done } : { tone: "bad", message: res.error ?? "That change didn't save." });
+    if (res.ok) setEditing(null);
+  };
+
+  return <>
+    {ambiguous && <div className="ss-next" role="status">
+      <strong>Pick the number this business sends from</strong>
+      <p>You own more than one and none is set as the one you send from, so which number a client
+        sees when you call or text isn&rsquo;t decided. Choose one below.</p>
+    </div>}
+    <div className="ss-list" style={{ marginTop: 9 }}>
+      {numbers.owned.map((n) => <div key={n.id}>
+        <span>
+          <strong>{n.phoneNumber}</strong>
+          <small>{n.friendlyName ?? (n.isPrimary ? "the number you send from" : "no label")}</small>
+        </span>
+        <Status tone={n.isPrimary ? "ok" : "neutral"}>{n.isPrimary ? "Sends from this" : (n.status ?? "active")}</Status>
+        {numbers.canManage && <div className="ss-row-actions">
+          <button type="button" className="ss-btn ss-btn--sm ss-btn--quiet" disabled={busy !== null}
+            onClick={() => { setEditing(editing === n.id ? null : n.id); setDraftName(n.friendlyName ?? ""); }}>
+            {editing === n.id ? "Cancel" : "Rename"}
+          </button>
+          {!n.isPrimary && (n.status ?? "active") === "active" && <button type="button" className="ss-btn ss-btn--sm"
+            disabled={busy !== null}
+            onClick={() => void run(n.id, () => numbers.setPrimary(n.id), `${n.phoneNumber} is now the number you send from.`)}>
+            {busy === n.id ? "Saving…" : "Send from this"}
+          </button>}
+        </div>}
+      </div>)}
+    </div>
+    {editing && numbers.canManage && <div className="ss-form-row" style={{ marginTop: 9 }}>
+      <label><span>Label</span>
+        <input value={draftName} onChange={(e) => setDraftName(e.target.value)}
+          placeholder="Intake line" maxLength={120} disabled={busy !== null}/></label>
+      <div className="ss-form-actions">
+        <button type="button" className="ss-btn ss-btn--sm" disabled={busy !== null}
+          onClick={() => void run(editing, () => numbers.rename(editing, draftName),
+            draftName.trim() ? "Label saved." : "Label cleared.")}>Save label</button>
+        {/* Clearing is its own act, because a name you can set but never remove is a control
+            that half works — and the RPC accepts "" for exactly this. */}
+        <span className="ss-note">Leave it empty to clear the label.</span>
+      </div>
+    </div>}
+    <Outcome state={outcome}/>
+  </>;
+}
+
 function RegistrationPanel({ a2p, account, status, statusLoading }: {
   a2p: ReturnType<typeof useSoloA2P>;
   account: string;

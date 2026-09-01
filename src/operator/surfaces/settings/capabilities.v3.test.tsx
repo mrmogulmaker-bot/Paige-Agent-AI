@@ -118,8 +118,17 @@ describe("what the surface says about the gap is the measured number", () => {
     }
 
     const invisible = [...gate].filter((k) => !catalogue.has(k));
-    expect(gate.size).toBe(48);
-    expect(catalogue.size).toBe(25);
+    // Both totals move whenever governed tools ship, and they moved twice for 2026-09-01: the
+    // Pipeline tools on main took 46 → 48 gated and 23 → 25 catalogued, and the four Comms tools
+    // on this branch take it to 52 and 29. Two independent branches each adding a governed tool
+    // is exactly when this test earns its keep, because the merge has to reconcile the totals.
+    //
+    // The number the SURFACE states is the third assertion — the GAP — and it is unchanged at 23
+    // through both. That is the invariant: a new governed tool only ships with its catalogue row,
+    // so the set of tools the operator cannot turn off can never grow underneath us. The first
+    // two numbers are bookkeeping; the third is the property.
+    expect(gate.size).toBe(52);
+    expect(catalogue.size).toBe(29);
     expect(invisible).toHaveLength(23);
     // The one that makes it more than bookkeeping: a permanent delete the operator cannot disable.
     expect(invisible).toContain("n8n_delete_workflow");

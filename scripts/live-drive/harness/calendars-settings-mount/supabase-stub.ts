@@ -341,6 +341,26 @@ export const supabase = {
         billing: { subscription: "active", plan_name: "Solo", period_end: null, cancel_at_period_end: false, usage_metering: "not_recording", metered_events_30d: 0 },
       }));
     }
+    if (name === "tenant_phone_number_set_primary") {
+      const rows = (db.tenant_phone_numbers ??= []);
+      const id = String((args as Record<string, unknown> | undefined)?._id ?? "");
+      const target = rows.find((r) => r.id === id);
+      if (!target) return Promise.resolve({ data: null, error: { message: "NUMBER_NOT_FOUND", hint: "NUMBER_NOT_FOUND" } });
+      rows.forEach((r) => { r.is_primary = false; });
+      target.is_primary = true;
+      persist();
+      return Promise.resolve(ok(target));
+    }
+    if (name === "tenant_phone_number_rename") {
+      const rows = (db.tenant_phone_numbers ??= []);
+      const a2 = (args as Record<string, unknown> | undefined) ?? {};
+      const target = rows.find((r) => r.id === String(a2._id ?? ""));
+      if (!target) return Promise.resolve({ data: null, error: { message: "NUMBER_NOT_FOUND", hint: "NUMBER_NOT_FOUND" } });
+      const next = String(a2._friendly_name ?? "").trim();
+      target.friendly_name = next || null;
+      persist();
+      return Promise.resolve(ok(target));
+    }
     if (name === "is_current_user_tenant_admin") return Promise.resolve(ok(state() !== "readonly"));
 
     // Who could be added as a host. Real shape: every teammate, each flagged with
