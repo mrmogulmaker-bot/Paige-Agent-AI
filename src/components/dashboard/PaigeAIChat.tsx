@@ -36,6 +36,10 @@ import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/c
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
+type PipelineConfirmedAction =
+  | { kind: "pipeline_archive"; confirmationToken: string; pipelineRef: string }
+  | { kind: "pipeline_folder_archive"; confirmationToken: string; folderId: string; folderName: string };
+type PaigeConfirmation = { tool: string; summary: string; approvalToken?: string; pipelineRef?: string; approvalKind?: string; folderId?: string; folderName?: string };
 type Message = {
   /** Stable id — survives array splices; underwrites copy/retry/feedback (1c-vi). */
   id: string;
@@ -49,7 +53,7 @@ type Message = {
   documentFileName?: string;
   documentKind?: AttachedDocKind;
   queued?: QueuedApproval[];
-  confirm?: Array<{ tool: string; summary: string; approvalToken?: string; pipelineRef?: string }>;
+  confirm?: PaigeConfirmation[];
   /** True on turns rehydrated from history: their confirm cards render settled,
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
@@ -455,7 +459,7 @@ const PaigeAIChatInner = ({
         const b = (t.bundle_ref ?? {}) as Record<string, unknown>;
         const queued = Array.isArray(b.approval_queued) ? (b.approval_queued as QueuedApproval[]) : undefined;
         const confirm = Array.isArray(b.paige_confirm)
-          ? (b.paige_confirm as Array<{ tool: string; summary: string; approvalToken?: string; pipelineRef?: string }>)
+          ? (b.paige_confirm as PaigeConfirmation[])
           : undefined;
         // Honest timestamp: use the turn's stored created_at when present; if the
         // stored turn has none, omit it and the hover time simply hides (never faked).
@@ -581,7 +585,7 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, confirmedActions?: Array<{ kind: "pipeline_archive"; confirmationToken: string; pipelineRef: string }>) => {
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, confirmedActions?: PipelineConfirmedAction[]) => {
     if (soloTenantSafety && !activeTenantId) return;
     retryTurnRef.current = { base, rollback, userText, doc };
     setConnectionIssue(null);
@@ -712,7 +716,7 @@ const PaigeAIChatInner = ({
       let queuedThisTurn: QueuedApproval[] = [];
       // Accumulate EVERY pending confirmation this turn — a blanket "Approve" runs
       // all of them, so the operator must see all of them (design-crew B1).
-      const confirmThisTurn: Array<{ tool: string; summary: string; approvalToken?: string; pipelineRef?: string }> = [];
+      const confirmThisTurn: PaigeConfirmation[] = [];
       // #29 — deliverables (document/image) Paige persisted this turn, streamed as
       // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
       const artifactsThisTurn: PaigeArtifact[] = [];
@@ -772,6 +776,8 @@ const PaigeAIChatInner = ({
                 summary: String(parsed.paige_confirm.summary),
                 ...(typeof parsed.paige_confirm.approvalToken === "string" && typeof parsed.paige_confirm.pipelineRef === "string"
                   ? { approvalToken: parsed.paige_confirm.approvalToken, pipelineRef: parsed.paige_confirm.pipelineRef }
+                  : parsed.paige_confirm.approvalKind === "pipeline_folder_archive" && typeof parsed.paige_confirm.approvalToken === "string" && typeof parsed.paige_confirm.folderId === "string" && typeof parsed.paige_confirm.folderName === "string"
+                    ? { approvalKind: "pipeline_folder_archive", approvalToken: parsed.paige_confirm.approvalToken, folderId: parsed.paige_confirm.folderId, folderName: parsed.paige_confirm.folderName }
                   : {}),
               });
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
@@ -836,7 +842,7 @@ const PaigeAIChatInner = ({
     }
   };
 
-  const handleSend = async (overrideText?: string, confirmedActions?: Array<{ kind: "pipeline_archive"; confirmationToken: string; pipelineRef: string }>) => {
+  const handleSend = async (overrideText?: string, confirmedActions?: PipelineConfirmedAction[]) => {
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
@@ -1173,9 +1179,11 @@ const PaigeAIChatInner = ({
                             disabled={isLoading}
                             onApprove={() => void handleSend(
                               "Approved — run it.",
-                              message.confirm?.flatMap((confirmation) =>
+                              message.confirm?.flatMap<PipelineConfirmedAction>((confirmation) =>
                                 confirmation.approvalToken && confirmation.pipelineRef
                                   ? [{ kind: "pipeline_archive" as const, confirmationToken: confirmation.approvalToken, pipelineRef: confirmation.pipelineRef }]
+                                  : confirmation.approvalKind === "pipeline_folder_archive" && confirmation.approvalToken && confirmation.folderId && confirmation.folderName
+                                    ? [{ kind: "pipeline_folder_archive" as const, confirmationToken: confirmation.approvalToken, folderId: confirmation.folderId, folderName: confirmation.folderName }]
                                   : []
                               )
                             )}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { hasExactPipelineArchiveApproval } from "../../supabase/functions/_shared/pipelineArchiveApproval";
+import { hasExactPipelineArchiveApproval, hasExactPipelineFolderArchiveApproval } from "../../supabase/functions/_shared/pipelineArchiveApproval";
 
 const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
@@ -25,6 +25,7 @@ const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/mig
 const activeReorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831223000_solo_pipeline_active_reorder.sql"), "utf8");
 const pipelineManagementMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831224500_solo_pipeline_governed_management.sql"), "utf8");
 const pipelineIdentityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260901045935_pipeline_identity_catalogue.sql"), "utf8");
+const pipelineFoldersMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260901144648_solo_pipeline_folders.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 const paigeChat = readFileSync(resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"), "utf8");
 const paigeChatSurface = readFileSync(resolve(process.cwd(), "src/components/dashboard/PaigeAIChat.tsx"), "utf8");
@@ -121,7 +122,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain("Ask PAIGE");
     expect(source).toContain("Add a stage");
     expect(source).toContain("Focused stage");
-    expect(source).toContain("??workspace.pipelines[0]");
+    expect(source).toContain('folderFilter==="all"?workspace.pipelines[0]:null');
     expect(source).toContain("Routing, approvals, and repair evidence");
     expect(source).not.toMatch(/pipeline.*revenue|pipeline.*ROI|pipeline.*payment/i);
     expect(pipelineManagementMigration).not.toContain("_default_stages");
@@ -174,6 +175,60 @@ describe("Solo Campaigns approved contract", () => {
     expect(hasExactPipelineArchiveApproval(approvalForA, "22222222-2222-4222-8222-222222222222", "PPL-9Q2X")).toBe(false);
     expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-9Q2X")).toBe(false);
     expect(hasExactPipelineArchiveApproval(undefined, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(false);
+  });
+
+  it("cannot reuse a folder approval across token, folder, or name", () => {
+    const approval = [{ kind: "pipeline_folder_archive" as const, confirmationToken: "11111111-1111-4111-8111-111111111111", folderId: "22222222-2222-4222-8222-222222222222", folderName: "Campaign pipelines" }];
+    expect(hasExactPipelineFolderArchiveApproval(approval, approval[0].confirmationToken, approval[0].folderId, approval[0].folderName)).toBe(true);
+    expect(hasExactPipelineFolderArchiveApproval(approval, "33333333-3333-4333-8333-333333333333", approval[0].folderId, approval[0].folderName)).toBe(false);
+    expect(hasExactPipelineFolderArchiveApproval(approval, approval[0].confirmationToken, "44444444-4444-4444-8444-444444444444", approval[0].folderName)).toBe(false);
+    expect(hasExactPipelineFolderArchiveApproval(approval, approval[0].confirmationToken, approval[0].folderId, "Other folder")).toBe(false);
+  });
+
+  it("implements tenant-owned one-level Pipeline folders through the governed contract", () => {
+    expect(pipelineFoldersMigration).toContain("create table public.pipeline_folders");
+    expect(pipelineFoldersMigration).not.toContain("parent_id");
+    expect(pipelineFoldersMigration).toContain("lifecycle_status");
+    expect(pipelineFoldersMigration).toContain("folder_id uuid");
+    expect(pipelineFoldersMigration).toContain("foreign key (tenant_id,folder_id)");
+    expect(pipelineFoldersMigration).toContain("enable row level security");
+    expect(pipelineFoldersMigration).toContain("revoke insert,update,delete on public.pipeline_folders,public.pipelines from authenticated");
+    for (const action of ["create_folder", "rename_folder", "archive_folder", "restore_folder", "move_pipeline_to_folder"]) {
+      expect(pipelineFoldersMigration + adapter + source).toContain(action);
+    }
+    expect(pipelineFoldersMigration).toContain("'folders'");
+    expect(pipelineFoldersMigration).toContain("'unfiled_count'");
+    expect(pipelineFoldersMigration).toContain("set folder_id=null");
+    expect(pipelineFoldersMigration).toContain("PIPELINE_FOLDER_TENANT_MISMATCH");
+    expect(pipelineFoldersMigration).toContain("PIPELINE_FOLDER_OWNER_REQUIRED");
+    expect(pipelineFoldersMigration).toContain("pipeline_folder_archive_confirmations");
+    expect(pipelineFoldersMigration).toContain("prepare_pipeline_folder_archive_as_paige");
+    expect(pipelineFoldersMigration).toContain("expected_pipeline_count");
+    expect(pipelineFoldersMigration).toContain("used_at=now()");
+    expect(pipelineFoldersMigration).toContain("_cached.command_hash<>_hash");
+    expect(pipelineFoldersMigration).toContain("return _cached.result||jsonb_build_object");
+    expect(pipelineFoldersMigration).toContain("replay_pipeline_folder_archive_as_paige");
+    expect(pipelineFoldersMigration).toContain("'replayed',true");
+    expect(pipelineFoldersMigration).toContain("lower(btrim(name))<>'unfiled'");
+    expect(adapter).toContain("can_archive_folders");
+    expect(pipelineFoldersMigration).toContain("pipeline_command_results");
+    expect(pipelineFoldersMigration).toContain("audit_logs");
+    expect(source).toContain("Unfiled");
+    expect(source).toContain("Folder organizer");
+    expect(source).toContain("Archive folder");
+    expect(source).toContain("Direct PAIGE");
+    expect(source).toContain("Only the workspace owner can archive a folder");
+    expect(paigeChat).toContain('name: "pipeline_folder_archive_preview"');
+    expect(paigeChat).toContain("hasExactPipelineFolderArchiveApproval(confirmedActions, token, archiveFolder.id, archiveFolder.name)");
+    expect(paigeChat).toContain('kind: "pipeline_folder_archive"');
+    expect(paigeChat).toContain("a._folderArchive.pipeline_count");
+    expect(paigeChat).toContain('gateAdmin.rpc("replay_pipeline_folder_archive_as_paige"');
+    expect(paigeChat.indexOf('gateAdmin.rpc("replay_pipeline_folder_archive_as_paige"')).toBeLessThan(paigeChat.indexOf('.from("pipeline_folder_archive_confirmations")'));
+    expect(paigeChatSurface).toContain('kind: "pipeline_folder_archive"');
+    expect(css).toContain(".pipeline-action-new");
+    expect(css).toContain(".pipeline-action-manage");
+    expect(css).toContain(".pipeline-action-folders");
+    expect(css).toContain("translateY(-2px)");
   });
 
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
