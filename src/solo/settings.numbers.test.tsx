@@ -24,16 +24,31 @@ const state = vi.hoisted(() => ({
   invoke: vi.fn(),
   owned: [] as unknown[],
   isAdmin: true as boolean | null,
+  tenantId: "tenant-1971670" as string | null,
 }));
 
+vi.mock("@/hooks/useUserRoles", () => ({
+  // The predicate the SERVER gates on (platform owner OR global admin/coach). Tied to the
+  // same switch as the tenant-admin answer, so "someone the server would refuse" is
+  // refused by BOTH halves — otherwise the authority row passes for want of one of them.
+  useUserRoles: () => ({
+    loading: false, userId: "u1", roles: state.isAdmin ? ["admin"] : [],
+    isAdmin: state.isAdmin === true, isCoach: false, isClient: false, isBroker: false,
+    isStaff: state.isAdmin === true,
+  }),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) =>
-      fn === "is_current_user_tenant_admin"
-        ? { data: state.isAdmin, error: null }
-        : fn === "tenant_comms_readiness"
-          ? { data: READINESS, error: null }
-          : { data: null, error: null }),
+      // `current_user_tenant_id` is the resolver the WRITES use, so the reads now use it
+      // too — a double that cannot answer it makes the surface look unidentifiable.
+      fn === "current_user_tenant_id"
+        ? { data: state.tenantId, error: state.tenantId ? null : { message: "no tenant" } }
+        : fn === "is_current_user_tenant_admin"
+          ? { data: state.isAdmin, error: null }
+          : fn === "tenant_comms_readiness"
+            ? { data: READINESS, error: null }
+            : { data: null, error: null }),
     from: vi.fn(() => ({
       select: () => ({
         eq: () => ({
@@ -73,7 +88,7 @@ const RESULT = {
   numbers: [{
     phone_number: "+14045550123", locality: "Atlanta", region: "GA",
     capabilities: { SMS: true, MMS: true, voice: true },
-    retail_price: { retail_monthly_cents: 120 },
+    retail_price: { monthly_cents: 120, onetime_cents: null, currency: "usd" },
   }],
   needs_config: false,
   price_configured: true,
@@ -123,6 +138,7 @@ beforeEach(() => {
   state.invoke = vi.fn(async () => ({ data: RESULT, error: null }));
   state.owned = [];
   state.isAdmin = true;
+  state.tenantId = "tenant-1971670";
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -143,6 +159,27 @@ describe("Finding a number actually searches", () => {
     expect(text()).toContain("Atlanta, GA");
     expect(text()).toContain("$1.20/mo");
     expect(text()).toContain("text");
+  });
+
+  it("shows the real monthly price, reading the key the server actually sends", async () => {
+    // The server's response key is `monthly_cents`; `retail_monthly_cents` is the DB
+    // column behind it. Reading the column name made every price null while the server
+    // reported the type as priced — so the row said "—" with no explanation and the
+    // purchase confirm called a known amount "an unlisted monthly price".
+    await mount();
+    await search();
+    expect(text()).toContain("$1.20/mo");
+    expect(text()).not.toContain("pricing pending");
+  });
+
+  it("says WHY a price is missing when the operator has not priced this type", async () => {
+    state.invoke = vi.fn(async () => ({
+      data: { numbers: [{ ...RESULT.numbers[0], retail_price: null }], needs_config: false, price_configured: false },
+      error: null,
+    }));
+    await mount();
+    await search();
+    expect(text()).toContain("no price on file yet");
   });
 
   it("passes the state, city and starts-with filters through", async () => {
@@ -202,7 +239,7 @@ describe("Buying a number spends money, and says so honestly", () => {
     await mount();
     await search();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    state.invoke = vi.fn(async () => ({ data: { ok: true, phone_number: "+14045550123" }, error: null }));
+    state.invoke = vi.fn(async () => ({ data: { purchased: true, phone_number: "+14045550123", twilio_sid: "PN4045550123" }, error: null }));
     await act(async () => { button("Buy")?.click(); });
     const call = state.invoke.mock.calls.find((c) => c[0] === "comms-purchase-number");
     expect(call).toBeTruthy();
@@ -233,8 +270,11 @@ describe("Buying a number spends money, and says so honestly", () => {
 
 describe("Authority", () => {
   it("shows no search or buy control to someone the server would refuse", async () => {
-    // `comms-search-numbers` returns 403 to a non-admin, so rendering the control
-    // would be rendering a button that always fails (§70).
+    // `comms-search-numbers` returns 403 unless the caller is a platform owner or holds
+    // the global admin/coach role, so rendering the control to anyone else would be
+    // rendering a button that always fails (§70). The surface mirrors that exact
+    // predicate — an earlier comment here claimed it was tenant-admin, which would have
+    // hidden the capability from a coach the server permits.
     state.isAdmin = false;
     await mount();
     expect(button("Search numbers")).toBeUndefined();

@@ -934,7 +934,7 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 |---|---|---|---|---|---|---|---|
 | `connections/communications` | **Live business-phone search and purchase**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — number search and purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; domains add/refresh/set_default/remove via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect` | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
-| `connections/registration` | Carrier (10DLC) registration: status against the readiness ladder, **PAIGE drafts the regulatory copy**, **the reviewed copy is saved** | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce | N/A | N/A | ✓ | N/A | — |
+| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
 
@@ -947,7 +947,7 @@ same row also described number search as `PROPOSED` and non-mutating; it is now 
 other half of this touch.
 
 **What `connections/registration` proves about itself, and what it does not (§13/§32).**
-`src/solo/settings.registration.test.tsx` (11 tests, mounted) covers the four ways this surface can
+`src/solo/settings.registration.test.tsx` (12 tests, mounted) covers the ways this surface can
 lie, and all four were proven to FAIL against a deliberately broken implementation before being
 trusted: an unresolved workspace or a failed read collapsing into "nothing registered" above a PAID
 re-draft that would overwrite reviewed copy; a registration past preparation still offering an
@@ -956,6 +956,20 @@ absent** — the TrustHub calls were removed and `comms-a2p-submit` returns `a2p
 — so no state on this surface may read as submitted, and scoping the submission path is separate
 work. What is NOT proven: authenticated runtime. No live model draft was run and no registration was
 saved against production by the session that built this (§32.c).
+
+**Two defects the peer-gate (§39) caught that the green suite could not, recorded because both were
+green for the SAME reason — a fixture written from the same belief as the code.**
+The number search read `retail_price.retail_monthly_cents`, which is the DATABASE column; the
+response key is `monthly_cents`. Every price therefore resolved to null, every row rendered "—"
+*without* the "pricing pending" note (suppressed because the server correctly reported the type as
+priced), and the purchase confirm offered "an unlisted monthly price" for a charge whose amount the
+response was carrying. Both the unit fixture and the harness stub encoded the wrong key, so a
+CORRECT implementation would have failed those tests and the broken one passed. Separately, the
+registration form rendered the legal name, website and EIN as editable inputs over fields
+`comms-a2p-submit` documents as "validated and then DISCARDED" — a save that reports success and
+throws the typing away (§70). Both fixtures now carry the real shapes, the identity fields are
+read-only reflections pointing at Setup, and the browser drive asserts no typeable box exists over
+them.
 
 **What `connections/communications` proves about itself, and what it does not (§13/§32).**
 

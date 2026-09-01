@@ -78,6 +78,39 @@ const SMTP_COPY: Record<string, string> = {
   connector_insert_failed: "We couldn’t save that connection just now. Try again in a moment.",
 };
 
+// Numbers and carrier registration. These codes are the whole reason the server
+// bothers to emit a stable code instead of a sentence — each one has a DIFFERENT
+// thing the person should do next, and the generic "please try again in a moment"
+// is wrong for every one of them. Two are actively harmful:
+//
+//   • `number_unavailable` — retrying is the one thing that will never work.
+//   • `number_bought_but_record_failed` — the number WAS bought and IS being billed;
+//     telling someone it didn't complete invites a second purchase of a second number.
+//
+// `LEGAL_PROFILE_REQUIRED` is the default state of every workspace that has not
+// filled in its business profile, so without it the commonest outcome of pressing
+// "Draft with Paige" was an instruction to try again, forever.
+const COMMS_COPY: Record<string, string> = {
+  number_unavailable:
+    "That number was taken while you were looking at it. Search again and pick another — this one won’t come back.",
+  twilio_subaccount_not_provisioned:
+    "This business doesn’t have a messaging account yet, so there’s nothing to buy a number into.",
+  inbound_webhook_secret_missing:
+    "Messaging isn’t finished being set up for this business yet, so a number can’t be attached safely.",
+  number_bought_but_record_failed:
+    "The number was bought and you are being billed for it, but we couldn’t attach it to this business. Don’t buy another — tell us and we’ll attach this one.",
+  phone_number_required: "Pick a number from the search results first.",
+  LEGAL_PROFILE_REQUIRED:
+    "Carriers need your legal business name before a registration can be prepared. Add it in Setup, then come back.",
+  MISSING_LEGAL_NAME:
+    "Carriers need your legal business name before a registration can be saved. Add it in Setup, then come back.",
+  MISSING_USE_CASE: "Say what you use texting for — carriers read that line.",
+  MISSING_DESCRIPTION: "The description carriers read can’t be empty.",
+  MISSING_SAMPLES: "Include at least one real sample message — carriers check them.",
+  REGISTRATION_IMMUTABLE:
+    "This registration has moved past preparation, so its wording is locked. Changes now go through the carrier.",
+};
+
 /** Codes that mean "you lack the role to do this". */
 const PERMISSION_CODES = new Set(["unauthorized", "forbidden"]);
 
@@ -98,8 +131,14 @@ export async function readFunctionErrorBody(
   data: unknown,
 ): Promise<Record<string, unknown> | null> {
   // Shape (a): a JSON body was returned on a 2xx (or the client parsed it onto data).
-  if (data && typeof data === "object" && typeof (data as Record<string, unknown>).error === "string") {
-    return data as Record<string, unknown>;
+  // `error` may be a bare code string OR a structured `{ code, message }` — both are
+  // shapes functions in this repo actually return, and accepting only the string one
+  // made every structured refusal look like no body at all.
+  if (data && typeof data === "object") {
+    const err = (data as Record<string, unknown>).error;
+    if (typeof err === "string" || (err && typeof err === "object" && !Array.isArray(err))) {
+      return data as Record<string, unknown>;
+    }
   }
 
   // Shape (b): non-2xx → the body lives on FunctionsHttpError.context (the Response).
@@ -127,8 +166,19 @@ export async function readFunctionErrorBody(
 
 async function extractCode(error: unknown, data: unknown): Promise<string | null> {
   const body = await readFunctionErrorBody(error, data);
-  const code = body?.error;
-  return typeof code === "string" && code.length > 0 ? code : null;
+  const raw = body?.error;
+  if (typeof raw === "string") return raw.length > 0 ? raw : null;
+  // TWO SHAPES, both real. Most functions answer `{ error: "some_code" }`, but the
+  // A2P pair answers `{ error: { code, message } }` — a structured error their own
+  // headers document. Reading only the string form meant every structured refusal
+  // arrived here as "no code" and fell to the generic try-again line, including
+  // LEGAL_PROFILE_REQUIRED, which is the state of a workspace that has not filled in
+  // its business profile — that is, the commonest one. The server named the problem
+  // precisely and we threw the name away.
+  const nested = (raw && typeof raw === "object" && !Array.isArray(raw))
+    ? (raw as { code?: unknown }).code
+    : null;
+  return typeof nested === "string" && nested.length > 0 ? nested : null;
 }
 
 /**
@@ -161,6 +211,9 @@ export async function resolveFunctionError(args: {
   }
   if (code && SMTP_COPY[code]) {
     return { code, message: SMTP_COPY[code] };
+  }
+  if (code && COMMS_COPY[code]) {
+    return { code, message: COMMS_COPY[code] };
   }
   if (code && PERMISSION_CODES.has(code)) {
     return {

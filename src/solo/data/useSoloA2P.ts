@@ -33,6 +33,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { createSettingsRequestGate } from "../settings-contract";
 import { resolveFunctionError } from "@/lib/integrations/connectError";
 import { draftFromRegistration, hasLeftPreparation } from "@/components/admin/comms/a2pDraftResume";
@@ -66,7 +68,7 @@ export interface SoloA2PData {
   draftWithPaige: (input: { legalBusinessName: string; website: string; useCaseHint: string })
     => Promise<{ ok: boolean; draft: EditDraft | null; error: string | null }>;
   /** Saves reviewed copy. NEVER files with a carrier — see the header. */
-  saveReviewed: (input: { legalBusinessName: string; website: string; ein: string; draft: EditDraft })
+  saveReviewed: (input: { legalBusinessName: string; website: string; draft: EditDraft })
     => Promise<{ ok: boolean; error: string | null }>;
 }
 
@@ -96,6 +98,20 @@ function draftFromResponse(raw: unknown): EditDraft {
 }
 
 export function useSoloA2P(): SoloA2PData {
+  // The client's active tenant is the TRIGGER for a re-read; the server's
+  // `current_user_tenant_id()` remains the AUTHORITY for what is read and written.
+  //
+  // Without the trigger this hook resolved the workspace once, at mount, and never
+  // again — and `SoloSettings` is not remounted on a tenant switch. Combined with the
+  // one-way latches below (which exist to protect an in-progress edit), tenant A's saved
+  // compliance copy stayed on screen after the active tenant became B, and pressing Save
+  // wrote it into B's registration, because the write derives its tenant server-side.
+  // `useSoloNumbers` already guarded exactly this; the hook that writes REGULATORY PROSE
+  // did not.
+  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  // The SERVER's gate, mirrored — `comms-a2p-draft` and `comms-a2p-submit` admit
+  // `is_platform_owner() OR global admin OR global coach`, which `isStaff` is exactly.
+  const { isStaff } = useUserRoles();
   const [loading, setLoading] = useState(true);
   const [read, setRead] = useState<A2PReadState>({ state: "ok", registration: null });
   const [resumed, setResumed] = useState<EditDraft | null>(null);
@@ -103,6 +119,8 @@ export function useSoloA2P(): SoloA2PData {
   const [website, setWebsite] = useState("");
   const [canManage, setCanManage] = useState(false);
   const gate = useRef(createSettingsRequestGate());
+  /** The workspace the state on screen belongs to. A ref, so it is not a `load` dependency. */
+  const loadedRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const token = gate.current.begin();
@@ -138,11 +156,19 @@ export function useSoloA2P(): SoloA2PData {
         setRead({ state: "unreadable" });
         return;
       }
+      // The workspace moved under us. Everything the previous one put on screen is
+      // dropped BEFORE the latches below get their chance to preserve it.
+      const switched = loadedRef.current !== null && loadedRef.current !== tenantId;
+      if (switched) { setResumed(null); setLegal(""); setWebsite(""); setCanManage(false); }
+      loadedRef.current = tenantId;
+
       const row = (regRes.data as A2PRegistration | null) ?? null;
       setRead({ state: "ok", registration: row });
       // Distinction 3 lives in draftFromRegistration, which returns null for a locked row.
       // `prev ?? …` so a refresh behind an in-progress edit never discards unsaved work.
-      setResumed((prev) => prev ?? draftFromRegistration(row));
+      // Safe only because a tenant change clears `prev` above; without that, the latch
+      // preserves the WRONG workspace's copy forever.
+      setResumed((prev) => (switched ? draftFromRegistration(row) : prev ?? draftFromRegistration(row)));
 
       if (legalRes.error) {
         // Logged, not branched: a missing legal name disables the SAVE but does not blank
@@ -151,10 +177,11 @@ export function useSoloA2P(): SoloA2PData {
       }
       const lp = asRecord(legalRes.data);
       // `prev || stored`, not `prev ?? stored`: these initialise to "" and `??` would
-      // therefore never fill them.
-      if (str(lp.legal_business_name)) setLegal((prev) => prev || str(lp.legal_business_name));
-      if (str(lp.website)) setWebsite((prev) => prev || str(lp.website));
-      setCanManage(adminRes.data === true); // fail-closed
+      // therefore never fill them. On a switch the stored value WINS outright, for the
+      // same reason as above.
+      if (str(lp.legal_business_name)) setLegal((prev) => (switched ? str(lp.legal_business_name) : prev || str(lp.legal_business_name)));
+      if (str(lp.website)) setWebsite((prev) => (switched ? str(lp.website) : prev || str(lp.website)));
+      setCanManage(adminRes.data === true || isStaff); // fail-closed on both halves
     } catch (e) {
       if (!gate.current.isCurrent(token)) return;
       console.error("useSoloA2P: registration read failed:", e instanceof Error ? e.message : e);
@@ -162,13 +189,14 @@ export function useSoloA2P(): SoloA2PData {
     } finally {
       if (gate.current.isCurrent(token)) setLoading(false);
     }
-  }, []);
+  }, [activeTenantId, isStaff]);
 
   useEffect(() => {
     const active = gate.current;
+    if (tenantLoading) return;
     void load();
     return () => active.clear();
-  }, [load]);
+  }, [tenantLoading, load]);
 
   const refresh = useCallback(() => { void load(); }, [load]);
 
@@ -199,13 +227,12 @@ export function useSoloA2P(): SoloA2PData {
     }
   }, [load]);
 
-  const saveReviewed = useCallback(async (input: { legalBusinessName: string; website: string; ein: string; draft: EditDraft }) => {
+  const saveReviewed = useCallback(async (input: { legalBusinessName: string; website: string; draft: EditDraft }) => {
     try {
       const { data, error: fnError } = await supabase.functions.invoke("comms-a2p-submit", {
         body: {
           legal_business_name: input.legalBusinessName.trim(),
           website: input.website.trim() || undefined,
-          ein: input.ein.trim() || undefined,
           use_case: input.draft.use_case,
           campaign_description: input.draft.campaign_description,
           sample_messages: input.draft.samples.map((s) => s.text.trim()).filter(Boolean),
@@ -235,7 +262,7 @@ export function useSoloA2P(): SoloA2PData {
   const locked = read.state === "ok" && read.registration ? hasLeftPreparation(read.registration) : false;
 
   return useMemo(() => ({
-    loading, read, resumed, locked, legalBusinessName, website, canManage,
+    loading: loading || tenantLoading, read, resumed, locked, legalBusinessName, website, canManage,
     refresh, draftWithPaige, saveReviewed,
-  }), [loading, read, resumed, locked, legalBusinessName, website, canManage, refresh, draftWithPaige, saveReviewed]);
+  }), [loading, tenantLoading, read, resumed, locked, legalBusinessName, website, canManage, refresh, draftWithPaige, saveReviewed]);
 }

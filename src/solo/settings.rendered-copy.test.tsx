@@ -11,15 +11,24 @@ const testState = vi.hoisted(() => ({ tab: "team" }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock("@/hooks/useUserRoles", () => ({
+  // The predicate the SERVER gates on (platform owner OR global admin/coach). Mocked
+  // rather than left to the real hook, which opens its own auth subscription.
+  useUserRoles: () => ({ loading: false, userId: "u1", roles: ["admin"], isAdmin: true, isCoach: false, isClient: false, isBroker: false, isStaff: true }),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+    // `current_user_tenant_id` is the resolver both new adapters read through — it is
+    // what the WRITES use, so the reads use it too. A double that answers null for it
+    // makes every surface report an unidentifiable workspace instead of rendering copy.
+    rpc: vi.fn(async (fn: string) =>
+      fn === "current_user_tenant_id" ? { data: "tenant-1971670", error: null } : { data: null, error: null }),
     // The number panel calls an edge function now, and `useSoloNumbers` reads the
     // numbers table, so both have to exist on the double or the surface throws
     // before any copy is rendered.
     functions: { invoke: vi.fn().mockResolvedValue({ data: null, error: null }) },
     from: vi.fn(() => ({
-      select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }),
+      select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }), limit: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
     })),
   },
 }));
@@ -213,7 +222,12 @@ describe("Solo Settings rendered customer copy", () => {
     // `comms-search-numbers` returns 403 to anyone else, so a surface that showed
     // the control to a non-admin would be showing a button that always fails.
     (client.rpc as ReturnType<typeof vi.fn>).mockImplementation(async (fn: string) =>
-      fn === "is_current_user_tenant_admin" ? { data: true, error: null } : { data: null, error: null });
+      // Both resolvers, because the adapter needs both: the workspace it is scoped to,
+      // and whether this caller may change its numbers. Answering only the second left
+      // the surface unable to say which workspace it was in, so it showed no controls.
+      fn === "current_user_tenant_id" ? { data: "tenant-1971670", error: null }
+        : fn === "is_current_user_tenant_admin" ? { data: true, error: null }
+          : { data: null, error: null });
     const invoke = client.functions.invoke as ReturnType<typeof vi.fn>;
     invoke.mockResolvedValue({ data: { needs_config: true, message: "Messaging isn't set up yet.", numbers: [] }, error: null });
 

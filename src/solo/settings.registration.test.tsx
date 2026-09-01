@@ -42,6 +42,16 @@ const PREPARABLE = {
   optout_message: "Reply STOP to opt out.", help_message: "Reply HELP for help.",
 };
 
+vi.mock("@/hooks/useUserRoles", () => ({
+  // The predicate the SERVER gates on (platform owner OR global admin/coach). Tied to the
+  // same switch as the tenant-admin answer, so "someone the server would refuse" is
+  // refused by BOTH halves — otherwise the authority row passes for want of one of them.
+  useUserRoles: () => ({
+    loading: false, userId: "u1", roles: state.isAdmin ? ["admin"] : [],
+    isAdmin: state.isAdmin === true, isCoach: false, isClient: false, isBroker: false,
+    isStaff: state.isAdmin === true,
+  }),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) => {
@@ -149,12 +159,26 @@ describe("Reaching the registration at all", () => {
     expect(buttonContaining("Draft with Paige")).toBeTruthy();
   });
 
-  it("restores the stored legal name, because the save refuses without it", async () => {
-    // Without this the copy re-opens fully populated with the save disabled, and the only
-    // live control is another paid generation that overwrites it.
+  it("shows the stored legal name WITHOUT offering a box that would discard it", async () => {
+    // Both A2P functions read the legal name from `tenant_legal_profile` and ignore the
+    // one in the request body — submit's own header says the identity fields are
+    // "validated and then DISCARDED here". So an input for it is a save that lies: type
+    // a correction, be told the registration was saved, reload, find the old value.
     await mount();
-    const input = [...host.querySelectorAll("input")].find((i) => i.value === "Test Workspace LLC");
-    expect(input, "the stored legal business name should be in the form").toBeTruthy();
+    expect(text()).toContain("Test Workspace LLC");
+    const typeable = [...host.querySelectorAll("input")].find((i) => i.value === "Test Workspace LLC");
+    expect(typeable, "a field the save discards must not be typeable").toBeUndefined();
+    expect(text()).toContain("Setup");
+  });
+
+  it("does not offer the PAID draft to a workspace the server will refuse", async () => {
+    // `comms-a2p-draft` refuses with LEGAL_PROFILE_REQUIRED before it spends, and a
+    // workspace that has not filled in its business profile is the default case — so
+    // without this gate the commonest outcome of pressing the button was a refusal.
+    state.legal = null;
+    await mount();
+    expect(buttonContaining("Draft with Paige")).toBeUndefined();
+    expect(text()).toContain("Add your legal business name first");
   });
 });
 

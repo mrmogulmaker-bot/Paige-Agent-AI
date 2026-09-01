@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { createSettingsRequestGate } from "../settings-contract";
 import { resolveFunctionError } from "@/lib/integrations/connectError";
 
@@ -41,7 +42,13 @@ export interface NumberSearchFilters {
   region: string;
   /** City, e.g. Atlanta. */
   locality: string;
-  /** Digits the number should begin with, after the area code. */
+  /**
+   * Digits the number should begin with. These are matched from the START of the
+   * ten-digit national number, so with an area code set they follow it (404 + 555 →
+   * 404555****) and without one they ARE the leading digits. The docs here used to say
+   * "after the area code" while the pattern meant "instead of it", which made the two
+   * controls contradict each other and return nothing.
+   */
   startsWith: string;
 }
 
@@ -97,27 +104,61 @@ function cap(caps: Record<string, unknown>, key: "sms" | "mms" | "voice"): boole
 }
 
 export function useSoloNumbers(): SoloNumbersData {
+  // The client's active tenant is the TRIGGER for a re-read, never the authority for
+  // what gets read. `comms-purchase-number` derives its tenant from the verified JWT
+  // via `current_user_tenant_id()`, and that resolver can legitimately answer something
+  // else — a `profiles.active_tenant_id` whose membership has lapsed falls through to a
+  // different tenant, and a multi-tenant user with no stored preference is resolved by
+  // `tenant_members.joined_at` here and by `tenants.created_at` on the client. Reading
+  // by one and writing by the other is how a surface lists one workspace's numbers and
+  // bills another (§9/§51). So: re-read when the client says the tenant moved, but scope
+  // every read to the tenant the SERVER resolved.
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
-  const tenantId = activeTenantId;
+  // The SERVER's gate, mirrored. Both edge functions admit
+  // `is_platform_owner() OR global admin OR global coach` — which `isStaff` is exactly.
+  // The surface gated on `is_current_user_tenant_admin()` instead and justified it with a
+  // comment claiming that was the server's rule. It is not: a tenant COACH maps to the
+  // global `coach` role, passes the server, and was shown a read-only surface anyway —
+  // a capability hidden from someone the server permits, on a false premise (§13/§70).
+  const { isStaff } = useUserRoles();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [owned, setOwned] = useState<OwnedNumber[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
+  // A ref, not a dependency. As state in `load`'s dep list it changed `load`'s identity
+  // on every completed read, which re-fired the effect that depends on `load` — two
+  // full reads on every mount and three on a tenant change.
+  const loadedRef = useRef<string | null>(null);
   const gate = useRef(createSettingsRequestGate());
 
   const load = useCallback(async () => {
     const token = gate.current.begin();
-    // Only forget the previous workspace when it actually CHANGED. Blanking on a
-    // same-workspace refresh unmounts whatever the surface was showing, including the
-    // result of the purchase that triggered the refresh.
-    const switching = loadedTenantId !== null && loadedTenantId !== tenantId;
-    if (switching) { setLoadedTenantId(null); setOwned([]); setCanManage(false); }
     setError(null);
-    if (!tenantId) { setLoading(false); return; }
-    if (loadedTenantId !== tenantId) setLoading(true);
+    if (!activeTenantId) { setLoading(false); return; }
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types (repo-wide pattern)
+      const { data: resolved } = await (supabase as any).rpc("current_user_tenant_id");
+      if (!gate.current.isCurrent(token)) return;
+      const tenantId = typeof resolved === "string" ? resolved : null;
+      if (!tenantId) {
+        // Not an empty account — an unresolved one. Say so rather than rendering a
+        // confident "no numbers" over a workspace we never identified.
+        setLoadedTenantId(null); loadedRef.current = null;
+        setOwned([]); setCanManage(false);
+        setError("We couldn’t tell which business you’re in.");
+        return;
+      }
+      // Only forget the previous workspace when it actually CHANGED. Blanking on a
+      // same-workspace refresh unmounts whatever the surface was showing, including the
+      // result of the purchase that triggered the refresh.
+      if (loadedRef.current !== null && loadedRef.current !== tenantId) {
+        setLoadedTenantId(null); loadedRef.current = null;
+        setOwned([]); setCanManage(false);
+      }
+      if (loadedRef.current !== tenantId) setLoading(true);
+
       const [numbersRes, adminRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types (repo-wide pattern, cf. channel_connectors)
         (supabase as any)
@@ -140,7 +181,10 @@ export function useSoloNumbers(): SoloNumbersData {
           friendlyName: str(row.friendly_name),
         };
       }));
-      setCanManage(adminRes.data === true); // fail-closed
+      // Either half is sufficient because either half passes the server. Fail-closed on
+      // both: an unreadable role answer is never treated as authority.
+      setCanManage(adminRes.data === true || isStaff);
+      loadedRef.current = tenantId;
       setLoadedTenantId(tenantId);
     } catch (e) {
       if (!gate.current.isCurrent(token)) return;
@@ -148,7 +192,7 @@ export function useSoloNumbers(): SoloNumbersData {
     } finally {
       if (gate.current.isCurrent(token)) setLoading(false);
     }
-  }, [tenantId, loadedTenantId]);
+  }, [activeTenantId, isStaff]);
 
   useEffect(() => {
     const active = gate.current;
@@ -202,7 +246,15 @@ export function useSoloNumbers(): SoloNumbersData {
             locality: str(row.locality),
             region: str(row.region),
             capabilities: { sms: cap(caps, "sms"), mms: cap(caps, "mms"), voice: cap(caps, "voice") },
-            priceCents: typeof price.retail_monthly_cents === "number" ? price.retail_monthly_cents : null,
+            // `monthly_cents`, NOT `retail_monthly_cents`. The latter is the DATABASE
+            // column; the response key is `monthly_cents` (comms-search-numbers declares
+            // the shape as {monthly_cents, onetime_cents, currency} and the sibling
+            // consumer reads it that way). Reading the column name here made every price
+            // `null` — so every row showed "—" WITHOUT the "pricing pending" note, which
+            // is suppressed when the server says the type IS priced, and the purchase
+            // confirm offered "an unlisted monthly price" for a charge whose amount the
+            // response was carrying all along.
+            priceCents: typeof price.monthly_cents === "number" ? price.monthly_cents : null,
           };
         }).filter((n) => n.phoneNumber),
       };
@@ -223,6 +275,14 @@ export function useSoloNumbers(): SoloNumbersData {
         const { message } = await resolveFunctionError({ error: fnError, data, action: "buy that number" });
         return { ok: false, error: message };
       }
+      // And the ABSENCE of an error is not a purchase. The server says `purchased: true`
+      // when it bought, or `already_owned: true` when this workspace held the number
+      // before we asked. Treating any 200 as a buy would let a shape nobody anticipated
+      // — a partial write, a future branch — read as "the number is yours".
+      if (rec.purchased !== true && rec.already_owned !== true) {
+        const { message } = await resolveFunctionError({ error: null, data, action: "buy that number" });
+        return { ok: false, error: message };
+      }
       await load();
       return { ok: true, error: null };
     } catch (e) {
@@ -231,10 +291,13 @@ export function useSoloNumbers(): SoloNumbersData {
   }, [load]);
 
   return useMemo(() => ({
-    loading: loading || tenantLoading || Boolean(tenantId && loadedTenantId !== tenantId),
+    loading: loading || tenantLoading,
     error,
-    owned: loadedTenantId === tenantId ? owned : [],
-    canManage: loadedTenantId === tenantId ? canManage : false,
+    // Nothing is shown until a workspace has actually been resolved and read. The
+    // comparison used to be against the CLIENT's tenant, which permanently hid the
+    // list whenever the server legitimately resolved a different one.
+    owned: loadedTenantId ? owned : [],
+    canManage: loadedTenantId ? canManage : false,
     refresh, search, purchase,
-  }), [loading, tenantLoading, tenantId, loadedTenantId, error, owned, canManage, refresh, search, purchase]);
+  }), [loading, tenantLoading, loadedTenantId, error, owned, canManage, refresh, search, purchase]);
 }

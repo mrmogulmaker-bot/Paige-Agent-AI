@@ -187,13 +187,23 @@ Deno.serve(async (req) => {
   }
 
   // ── Search Twilio's Available Phone Numbers as the subaccount (§18 one seam). ──
-  // `starts_with` becomes a Contains pattern. US numbers are 10 digits after the country
-  // code, so "555" searched as a prefix is `555` + seven wildcards. An explicit `contains`
-  // from a headless caller wins, because it is already a Twilio pattern and re-padding it
-  // would corrupt a deliberate one.
+  // `starts_with` becomes a Contains pattern, and the AREA CODE IS PART OF IT.
+  //
+  // Twilio matches Contains from position 1 of the ten-digit national number, so a bare
+  // `555*******` means "area code 555", not "555 after the area code". Sending that
+  // alongside AreaCode=404 asked for a number whose area code is both 404 and 555 —
+  // mutually exclusive, so the search returned nothing, every time, and reported it as
+  // "no numbers matched those filters. Try a wider search." Widening could never help.
+  //
+  // So the pattern is built from areaCode + starts_with together. With both, "404" and
+  // "555" become `404555****`; with starts_with alone it keeps its previous meaning
+  // (digits the number begins with, area code included). An explicit `contains` from a
+  // headless caller still wins — it is already a Twilio pattern and re-padding a
+  // deliberate one would corrupt it.
   const startsWith = (body.starts_with ?? "").replace(/\D/g, "");
+  const prefixDigits = `${areaCode ?? ""}${startsWith}`.replace(/\D/g, "");
   const containsPattern = body.contains
-    ?? (startsWith ? startsWith.slice(0, 10).padEnd(10, "*") : undefined);
+    ?? (startsWith ? prefixDigits.slice(0, 10).padEnd(10, "*") : undefined);
 
   const search = await listAvailableNumbers(creds.data.accountSid, creds.data.authToken, {
     areaCode,

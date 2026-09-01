@@ -344,6 +344,14 @@ async function run() {
     record("a2p", "says plainly that filing is the step this product does not have",
       /Filing is the step this product does not have yet/i.test(t), t.slice(0, 400));
 
+    // The identity fields the save DISCARDS are shown, not typeable. A box over a
+    // discarded field is a save that lies: type a correction, be told it saved, reload,
+    // find the old value.
+    record("a2p", "shows the legal identity without offering a box that would discard it",
+      /Harness Coaching LLC/.test(t)
+        && await page.evaluate(() => ![...document.querySelectorAll("input")].some((i) => i.value === "Harness Coaching LLC")),
+      t.slice(0, 300));
+
     // Saved copy re-opens for editing. Without this the only live control is a paid
     // generation that overwrites reviewed compliance prose.
     const desc = page.locator("textarea").first();

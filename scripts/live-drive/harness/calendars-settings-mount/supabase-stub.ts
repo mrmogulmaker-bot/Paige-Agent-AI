@@ -465,7 +465,7 @@ export const supabase = {
             locality: tollFree ? null : String(body.in_locality ?? "Atlanta"),
             region: tollFree ? null : String(body.in_region ?? "GA"),
             capabilities: { SMS: true, MMS: true, voice: true },
-            retail_price: { retail_monthly_cents: 120 + i },
+            retail_price: { monthly_cents: 120 + i, onetime_cents: null, currency: "usd" },
           })),
         }));
       }
@@ -487,7 +487,11 @@ export const supabase = {
           phone_number: number, is_primary: false, status: "active", friendly_name: null,
         });
         persist();
-        return Promise.resolve(ok({ ok: true, phone_number: number }));
+        // The REAL success shape. `{ok:true}` was a weaker contract than the function
+        // actually returns, so a consumer that checks for `purchased` would have failed
+        // against the harness while passing in production — a fixture certifying the
+        // wrong thing.
+        return Promise.resolve(ok({ purchased: true, phone_number: number, twilio_sid: `PN${number.slice(-10)}`, charge_wired: true }));
       }
       // Drafting is a MODEL call. The harness returns fixture prose so a drive can
       // reach the editor — it is not Paige's writing and no drive may grade it.
@@ -524,7 +528,7 @@ export const supabase = {
         });
         if (!(db.tenant_a2p_registrations ?? []).length) db.tenant_a2p_registrations = [row];
         persist();
-        return Promise.resolve(ok({ saved: true, submitted: false, a2p_submit_wired: false, state: "prepared", status: "pending" }));
+        return Promise.resolve(ok({ saved: true, submitted: false, a2p_submit_wired: false, needs_config: true, state: "prepared", status: "pending" }));
       }
       // Everything that would leave for a provider — the Google handshake above
       // all — stays refused. Nothing was started, so nothing may be claimed.

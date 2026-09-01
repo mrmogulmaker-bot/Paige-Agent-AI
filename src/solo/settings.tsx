@@ -629,22 +629,13 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
       <Subsection id="ss-sub-a2p" title="Carrier registration"
         blurb="Before a carrier will deliver your texts, it needs your business on record and the exact wording of what you send.">
         <div className="ss-grid">
-          <Card title="Where this stands" icon={Webhook}
-            truth={r ? registrationStep(r).truth : "PARTIAL"}
-            actions={r ? <Status tone={registrationStep(r).tone}>{registrationStep(r).state}</Status> : undefined}>
-            <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
-              {r ? <>
-                <p>{registrationStep(r).detail}</p>
-                <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
-              </> : noRecord("registration")}
-            </ReadState>
-            <p className="ss-note">
-              Your legal name, website and business phone live in{" "}
-              <Link to={`/solo/${account}/settings/setup`}>Setup</Link>. Carriers check them against
-              your registration, so a mismatch there is what gets one rejected.
-            </p>
-          </Card>
-          <RegistrationPanel a2p={a2p}/>
+          {/* One card, deliberately. A "where this stands" card here would have restated
+              the grading that Communications already carries — two homes for one answer,
+              free to disagree the moment either is edited. The panel reports the
+              registration's own state as part of doing the work. */}
+          <RegistrationPanel a2p={a2p} account={account}
+            status={r ? { tone: registrationStep(r).tone, state: registrationStep(r).state, detail: registrationStep(r).detail } : null}
+            statusLoading={readiness.loading}/>
         </div>
       </Subsection>
     </div>}
@@ -661,9 +652,12 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
               {r ? <><p>{phoneStep(r).detail}</p>
                 {r.number === "assigned" && <div className="ss-fields"><Field label="Number" value={r.number_e164}/></div>}
                 {/* The readiness record names ONE number; a business may own several.
-                    Listing the rest here keeps this card the single place a person looks
-                    for "what numbers do we have", rather than a partial answer. */}
-                {numbers.owned.length > 1 && <div className="ss-list" style={{ marginTop: 9 }}>
+                    Listing them here keeps this card the single place a person looks for
+                    "what numbers do we have", rather than a partial answer. It used to
+                    render only when there were TWO or more, so the FIRST number a
+                    workspace ever bought appeared nowhere until a separate readiness read
+                    caught up — and nowhere at all if that read lagged or failed. */}
+                {numbers.owned.length > 0 && <div className="ss-list" style={{ marginTop: 9 }}>
                   {numbers.owned.map((n) => <div key={n.id}>
                     <span><strong>{n.phoneNumber}</strong><small>{n.friendlyName ?? (n.isPrimary ? "primary" : "additional")}</small></span>
                     <Status tone={n.isPrimary ? "ok" : "neutral"}>{n.isPrimary ? "Primary" : (n.status ?? "active")}</Status>
@@ -686,10 +680,19 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
               {r ? <>
                 <p>{registrationStep(r).detail}</p>
                 <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
-                <p className="ss-note">Filing with a carrier is not something this surface can do. A registration can be
-                  prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
               </> : noRecord("registration")}
             </ReadState>
+            {/* This card GRADES; it does not act. Its previous sentence said a
+                registration could be "prepared and saved here", which stopped being true
+                the moment the editor existed elsewhere — this card has no controls at
+                all. So the sentence now points at the one place the act lives (§18),
+                rather than describing a capability this card does not have (§13). */}
+            <p className="ss-note">
+              Filing with a carrier is not something this product can do yet. Preparing and
+              saving a registration happens in{" "}
+              <button type="button" className="ss-linklike" onClick={() => setView("registration")}>Registration</button>,
+              where it stops at <strong>prepared, not submitted</strong>.
+            </p>
             {/* These three fields live in SETUP, not here (owner ruling,
                 2026-08-31): the business owner, legal name, address and phone are
                 Setup's, and Connections owns only what we hand the tenant from our
@@ -1113,13 +1116,18 @@ function PhoneSetupPanel({ numbers, onPurchased }: {
               <label><span>Area code</span>
                 <input value={filters.areaCode} onChange={set("areaCode")} placeholder={tollFree ? "n/a for toll-free" : "404"}
                   inputMode="numeric" maxLength={3} disabled={searching || tollFree}/></label>
+              {/* Toll-free numbers have no geography — the provider's toll-free inventory
+                  does not accept a state or a city — so these are disabled rather than
+                  sent as filters that cannot match and then reported as "no numbers". */}
               <label><span>State</span>
-                <input value={filters.region} onChange={set("region")} placeholder="GA" maxLength={2} disabled={searching}/></label>
+                <input value={filters.region} onChange={set("region")} placeholder={tollFree ? "n/a for toll-free" : "GA"}
+                  maxLength={2} disabled={searching || tollFree}/></label>
             </div>
             <div className="ss-form-row">
               <label><span>City</span>
-                <input value={filters.locality} onChange={set("locality")} placeholder="Atlanta" disabled={searching}/></label>
-              <label><span>Starts with</span>
+                <input value={filters.locality} onChange={set("locality")} placeholder={tollFree ? "n/a for toll-free" : "Atlanta"}
+                  disabled={searching || tollFree}/></label>
+              <label><span>Number starts with</span>
                 <input value={filters.startsWith} onChange={set("startsWith")} placeholder="555" inputMode="numeric" maxLength={7} disabled={searching}/></label>
             </div>
             <div className="ss-form-actions">
@@ -1192,10 +1200,15 @@ function PhoneSetupPanel({ numbers, onPurchased }: {
  * showing it to someone whose registration exists but could not be read is how reviewed
  * compliance prose gets destroyed by a surface trying to be helpful.
  */
-function RegistrationPanel({ a2p }: { a2p: ReturnType<typeof useSoloA2P> }) {
+function RegistrationPanel({ a2p, account, status, statusLoading }: {
+  a2p: ReturnType<typeof useSoloA2P>;
+  account: string;
+  /** Graded by the readiness ladder, passed in rather than re-derived (§57). */
+  status: { tone: string; state: string; detail: string } | null;
+  statusLoading: boolean;
+}) {
   const [legal, setLegal] = useState("");
   const [site, setSite] = useState("");
-  const [ein, setEin] = useState("");
   const [hint, setHint] = useState("");
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [drafting, setDrafting] = useState(false);
@@ -1233,7 +1246,7 @@ function RegistrationPanel({ a2p }: { a2p: ReturnType<typeof useSoloA2P> }) {
   const save = async () => {
     if (!draft) return;
     setSaving(true); setOutcome(null);
-    const res = await a2p.saveReviewed({ legalBusinessName: legal, website: site, ein, draft });
+    const res = await a2p.saveReviewed({ legalBusinessName: legal, website: site, draft });
     setSaving(false);
     setOutcome(res.ok
       // Saying "saved" and stopping would let someone read it as filed. It is not.
@@ -1279,30 +1292,50 @@ function RegistrationPanel({ a2p }: { a2p: ReturnType<typeof useSoloA2P> }) {
     </>;
 
     return <>
-      <form className="ss-form" onSubmit={runDraft}>
-        <div className="ss-form-row">
-          <label><span>Legal business name</span>
-            <input value={legal} onChange={(e) => setLegal(e.target.value)}
-              placeholder="As registered with the IRS" disabled={drafting || saving}/></label>
-          <label><span>Website</span>
-            <input value={site} onChange={(e) => setSite(e.target.value)}
-              placeholder="https://…" disabled={drafting || saving}/></label>
-        </div>
-        <div className="ss-form-row">
-          <label><span>EIN <small>(optional)</small></span>
-            <input value={ein} onChange={(e) => setEin(e.target.value)}
-              placeholder="12-3456789" disabled={drafting || saving}/></label>
-          <label><span>What do you text clients about?</span>
-            <input value={hint} onChange={(e) => setHint(e.target.value)}
-              placeholder="Appointment reminders and follow-ups" disabled={drafting || saving}/></label>
-        </div>
-        <div className="ss-form-actions">
-          <button type="submit" className="ss-btn" disabled={drafting || saving}>
-            {drafting ? <RefreshCw className="ss-spin" aria-hidden/> : <Sparkles aria-hidden/>}
-            {drafting ? "Paige is writing…" : draft ? "Draft again with Paige" : "Draft with Paige"}
-          </button>
-        </div>
-      </form>
+      {/* READ-ONLY, deliberately, and this is the second time this branch has had to
+          learn it. Both `comms-a2p-draft` and `comms-a2p-submit` read the legal name
+          from `tenant_legal_profile` and IGNORE the one in the request body — submit's
+          own header says the three identity fields are "validated and then DISCARDED
+          here". An earlier revision rendered them as text inputs, so a person could
+          correct their legal name, press Save, be told the registration was saved, and
+          find the old value still there on reload. A typeable box over a discarded
+          field is a save that lies (§70). These reflect the stored record and send
+          people to its one home (§18). EIN was dropped outright: nothing reads it,
+          nothing stores it, and an input for it was a box that ate typing. */}
+      <div className="ss-fields">
+        <Field label="Legal business name" value={legal || null}/>
+        <Field label="Website" value={site || null}/>
+      </div>
+      <p className="ss-note">
+        These come from <Link to={`/solo/${account}/settings/setup`}>Setup</Link>, which is
+        where they are edited. Carriers check them against your registration, so a mismatch
+        there is what gets one rejected.
+      </p>
+
+      {/* The gate in front of the SPEND. `comms-a2p-draft` refuses with
+          LEGAL_PROFILE_REQUIRED when no legal name is stored — the default state of a
+          workspace that has not filled in its business profile — so without this the
+          commonest outcome of pressing this button was a refusal, over and over. */}
+      {!legal.trim()
+        ? <div className="ss-next" role="status">
+            <strong>Add your legal business name first</strong>
+            <p>Carriers register a legal entity, so there is nothing to prepare until yours
+              is on file. Add it in <Link to={`/solo/${account}/settings/setup`}>Setup</Link>,
+              then come back.</p>
+          </div>
+        : <form className="ss-form" onSubmit={runDraft}>
+            <div className="ss-form-row">
+              <label><span>What do you text clients about?</span>
+                <input value={hint} onChange={(e) => setHint(e.target.value)}
+                  placeholder="Appointment reminders and follow-ups" disabled={drafting || saving}/></label>
+            </div>
+            <div className="ss-form-actions">
+              <button type="submit" className="ss-btn" disabled={drafting || saving}>
+                {drafting ? <RefreshCw className="ss-spin" aria-hidden/> : <Sparkles aria-hidden/>}
+                {drafting ? "Paige is writing…" : draft ? "Draft again with Paige" : "Draft with Paige"}
+              </button>
+            </div>
+          </form>}
 
       {draft && <div className="ss-reg-draft">
         <label className="ss-field-block"><span>Use case</span>
@@ -1359,6 +1392,7 @@ function RegistrationPanel({ a2p }: { a2p: ReturnType<typeof useSoloA2P> }) {
         Carriers require a registered business before any text sends. Paige writes the regulatory
         copy for you; you review it and save it.
       </p>
+      {!statusLoading && status && <p className="ss-note"><Status tone={status.tone}>{status.state}</Status> {status.detail}</p>}
       <ReadState loading={a2p.loading} error={null} retry={a2p.refresh}>{body()}</ReadState>
       {/* Stated once, where the acts are, rather than only in a status card further up. */}
       <p className="ss-note">
