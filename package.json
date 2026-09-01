@@ -37,6 +37,8 @@
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
+    "lint:readiness-copy": "node scripts/ci/readiness-copy-parity.mjs",
+    "lint:readiness-copy:test": "node scripts/ci/readiness-copy-parity.mjs --self-test",
     "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",
     "smoke:comms-purchase-safety": "node scripts/comms-purchase-safety-smoke.mjs",
     "smoke:mcp-registry": "node scripts/mcp-registry-provider-smoke.mjs",
