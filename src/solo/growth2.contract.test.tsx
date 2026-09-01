@@ -199,6 +199,14 @@ describe("Solo Campaigns approved contract", () => {
     expect(pipelineFoldersMigration).toContain("'folders'");
     expect(pipelineFoldersMigration).toContain("'unfiled_count'");
     expect(pipelineFoldersMigration).toContain("set folder_id=null");
+    expect(pipelineFoldersMigration).toContain("'active_pipeline_count'");
+    expect(pipelineFoldersMigration).toContain("'archived_pipeline_count'");
+    expect(pipelineFoldersMigration).toContain("'active_pipelines_moved_to_unfiled'");
+    expect(pipelineFoldersMigration).toContain("'archived_pipelines_moved_to_unfiled'");
+    expect(pipelineFoldersMigration).toMatch(/select count\(\*\)::int into _count from public\.pipelines where tenant_id=_tenant_id and folder_id=_folder\.id;/);
+    expect(pipelineFoldersMigration).not.toMatch(/expected_pipeline_count[\s\S]{0,500}lifecycle_status<>'archived'/);
+    expect(source).toContain("keep the current lifecycle status");
+    expect(paigeChat).toContain("keeps its current lifecycle status");
     expect(pipelineFoldersMigration).toContain("PIPELINE_FOLDER_TENANT_MISMATCH");
     expect(pipelineFoldersMigration).toContain("PIPELINE_FOLDER_OWNER_REQUIRED");
     expect(pipelineFoldersMigration).toContain("pipeline_folder_archive_confirmations");

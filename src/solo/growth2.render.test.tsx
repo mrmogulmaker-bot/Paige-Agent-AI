@@ -119,13 +119,13 @@ describe("Solo Campaigns rendered flows", () => {
     expect(action).toHaveBeenCalledWith(expect.objectContaining({type:"move-pipeline-to-folder",pipelineId:"pipeline-1",pipelineRef:"PPL-4K8MX",folderId:null}));
   });
 
-  it("requires the exact folder name before archive and keeps pipelines active in Unfiled", async () => {
+  it("requires the exact folder name and preserves each pipeline lifecycle status in Unfiled", async () => {
     const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
     action.mockClear();
     renderAt("/solo/42/growth/pipeline");
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Folders") as HTMLButtonElement).click());
     act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Archive folder") as HTMLButtonElement).click());
-    expect(host.querySelector(".pipeline-folder-archive")?.textContent).toContain("stay active and move to Unfiled");
+    expect(host.querySelector(".pipeline-folder-archive")?.textContent).toContain("move to Unfiled and keep the current lifecycle status");
     const input = host.querySelector(".pipeline-folder-archive input") as HTMLInputElement;
     const archive = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Archive exact folder") as HTMLButtonElement;
     expect(archive.disabled).toBe(true);

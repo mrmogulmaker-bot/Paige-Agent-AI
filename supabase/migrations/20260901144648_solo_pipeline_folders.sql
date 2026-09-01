@@ -59,18 +59,22 @@ grant all on public.pipeline_folder_archive_confirmations to service_role;
 
 create or replace function public.prepare_pipeline_folder_archive_as_paige(_tenant_id uuid,_requested_by uuid,_folder_id uuid)
 returns jsonb language plpgsql security definer set search_path=public as $$
-declare _folder public.pipeline_folders%rowtype; _token uuid; _count int; _old_sub text:=current_setting('request.jwt.claim.sub',true);
+declare _folder public.pipeline_folders%rowtype; _token uuid; _count int; _active_count int; _archived_count int; _old_sub text:=current_setting('request.jwt.claim.sub',true);
 begin
   if auth.role()<>'service_role' then raise exception 'PIPELINE_FOLDER_FORBIDDEN' using errcode='42501'; end if;
   perform set_config('request.jwt.claim.sub',_requested_by::text,true);
   if not (public.is_platform_owner() or exists(select 1 from public.tenants t where t.id=_tenant_id and t.owner_user_id=_requested_by)) then raise exception 'PIPELINE_FOLDER_OWNER_REQUIRED' using errcode='42501'; end if;
   select * into _folder from public.pipeline_folders where id=_folder_id and tenant_id=_tenant_id and lifecycle_status='active';
   if not found then return jsonb_build_object('ok',false,'outcome','no_match','message','No active folder matched that exact selection.'); end if;
-  select count(*)::int into _count from public.pipelines where tenant_id=_tenant_id and folder_id=_folder.id and lifecycle_status<>'archived';
+  select count(*)::int,
+    count(*) filter (where lifecycle_status<>'archived')::int,
+    count(*) filter (where lifecycle_status='archived')::int
+  into _count,_active_count,_archived_count
+  from public.pipelines where tenant_id=_tenant_id and folder_id=_folder.id;
   insert into public.pipeline_folder_archive_confirmations(tenant_id,folder_id,folder_name,expected_version,expected_pipeline_count,requested_by)
   values(_tenant_id,_folder.id,_folder.name,_folder.version,_count,_requested_by) returning token into _token;
   perform set_config('request.jwt.claim.sub',coalesce(_old_sub,''),true);
-  return jsonb_build_object('ok',true,'confirmation_token',_token,'folder_id',_folder.id,'name',_folder.name,'pipeline_count',_count,'expected_version',_folder.version,'consequence','Archive removes this folder only. Its pipelines stay active and move to Unfiled; no pipeline, deal, stage, or history is deleted.');
+  return jsonb_build_object('ok',true,'confirmation_token',_token,'folder_id',_folder.id,'name',_folder.name,'pipeline_count',_count,'active_pipeline_count',_active_count,'archived_pipeline_count',_archived_count,'expected_version',_folder.version,'consequence','Archive removes this folder only. Every assigned pipeline moves to Unfiled and keeps its current lifecycle status; no pipeline, deal, stage, or history is deleted.');
 end$$;
 revoke all on function public.prepare_pipeline_folder_archive_as_paige(uuid,uuid,uuid) from public,anon,authenticated;
 grant execute on function public.prepare_pipeline_folder_archive_as_paige(uuid,uuid,uuid) to service_role;
@@ -94,12 +98,14 @@ begin
     'id',f.id,'name',f.name,'lifecycle_status',f.lifecycle_status,'version',f.version,
     'created_by',f.created_by,'created_through',f.created_through,'requested_by',f.requested_by,
     'created_at',f.created_at,'updated_at',f.updated_at,
-    'pipeline_count',(select count(*)::int from public.pipelines p where p.tenant_id=f.tenant_id and p.folder_id=f.id and p.lifecycle_status<>'archived')
+    'pipeline_count',(select count(*)::int from public.pipelines p where p.tenant_id=f.tenant_id and p.folder_id=f.id),
+    'active_pipeline_count',(select count(*)::int from public.pipelines p where p.tenant_id=f.tenant_id and p.folder_id=f.id and p.lifecycle_status<>'archived'),
+    'archived_pipeline_count',(select count(*)::int from public.pipelines p where p.tenant_id=f.tenant_id and p.folder_id=f.id and p.lifecycle_status='archived')
   ) order by f.lifecycle_status,f.name,f.id),'[]'::jsonb) into _folders
   from public.pipeline_folders f where f.tenant_id=_tenant;
 
   select count(*)::int into _unfiled from public.pipelines p
-  where p.tenant_id=_tenant and p.folder_id is null and p.lifecycle_status<>'archived';
+  where p.tenant_id=_tenant and p.folder_id is null;
 
   return (_base-'items')||jsonb_build_object('items',_items,'folders',_folders,'unfiled_count',_unfiled);
 end$$;
@@ -139,6 +145,8 @@ declare
   _from_folder_id uuid;
   _expected bigint;
   _count int;
+  _active_count int;
+  _archived_count int;
   _result jsonb;
   _through text;
 begin
@@ -176,10 +184,14 @@ begin
     elsif _action='archive_folder' then
       if not (public.is_platform_owner() or exists(select 1 from public.tenants t where t.id=_tenant_id and t.owner_user_id=_caller)) then raise exception 'PIPELINE_FOLDER_OWNER_REQUIRED' using errcode='42501'; end if;
       if coalesce(_command->>'confirmedName','')<>_folder.name then raise exception 'PIPELINE_FOLDER_CONFIRMATION_MISMATCH' using errcode='22023'; end if;
-      select count(*)::int into _count from public.pipelines where tenant_id=_tenant_id and folder_id=_folder.id and lifecycle_status<>'archived';
+      select count(*)::int,
+        count(*) filter (where lifecycle_status<>'archived')::int,
+        count(*) filter (where lifecycle_status='archived')::int
+      into _count,_active_count,_archived_count
+      from public.pipelines where tenant_id=_tenant_id and folder_id=_folder.id;
       update public.pipelines set folder_id=null,updated_at=now() where tenant_id=_tenant_id and folder_id=_folder.id;
       update public.pipeline_folders set lifecycle_status='archived',archived_at=now(),archived_by=_caller,updated_at=now() where id=_folder.id;
-      _result:=jsonb_build_object('ok',true,'outcome','folder_archived','folder_id',_folder.id,'pipelines_moved_to_unfiled',_count,'message','Folder archived. Its pipelines remain active in Unfiled.');
+      _result:=jsonb_build_object('ok',true,'outcome','folder_archived','folder_id',_folder.id,'pipelines_moved_to_unfiled',_count,'active_pipelines_moved_to_unfiled',_active_count,'archived_pipelines_moved_to_unfiled',_archived_count,'message','Folder archived. Every assigned pipeline moved to Unfiled and kept its lifecycle status.');
     else
       update public.pipeline_folders set lifecycle_status='active',archived_at=null,archived_by=null,updated_at=now() where id=_folder.id;
       _result:=jsonb_build_object('ok',true,'outcome','folder_restored','folder_id',_folder.id,'message','Folder restored. It remains empty until pipelines are moved into it.');
@@ -242,7 +254,7 @@ begin
       if not found then raise exception 'PIPELINE_FOLDER_ARCHIVE_CONFIRMATION_REQUIRED' using errcode='22023'; end if;
       select * into _folder from public.pipeline_folders where id=_confirm.folder_id and tenant_id=_tenant_id and lifecycle_status='active' for update;
       if not found then raise exception 'PIPELINE_FOLDER_ARCHIVE_CONFIRMATION_STALE' using errcode='40001'; end if;
-      select count(*)::int into _count from public.pipelines where tenant_id=_tenant_id and folder_id=_folder.id and lifecycle_status<>'archived';
+      select count(*)::int into _count from public.pipelines where tenant_id=_tenant_id and folder_id=_folder.id;
       if _folder.version<>_confirm.expected_version or _count<>_confirm.expected_pipeline_count or (_command->>'folderId')::uuid<>_confirm.folder_id or coalesce(_command->>'confirmedName','')<>_confirm.folder_name or _folder.name<>_confirm.folder_name then raise exception 'PIPELINE_FOLDER_ARCHIVE_CONFIRMATION_STALE' using errcode='40001'; end if;
     end if;
     _result:=public.configure_pipeline_folder_core(_tenant_id,_command,_idempotency_key,'paige');

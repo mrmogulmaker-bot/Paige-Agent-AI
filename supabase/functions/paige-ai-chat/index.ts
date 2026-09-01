@@ -4913,7 +4913,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "pipeline_configure",
-              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves its pipelines to Unfiled without changing them. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
+              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves every assigned pipeline to Unfiled without changing its lifecycle status. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5682,7 +5682,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           }
           if (a?.command?.type === "archive-folder") {
             const folderCount = typeof a?._folderArchive?.pipeline_count === "number" ? a._folderArchive.pipeline_count : null;
-            return `Archive the exact folder "${a?.command?.confirmedName || "selected folder"}"${folderCount === null ? "" : ` with ${folderCount} pipeline${folderCount === 1 ? "" : "s"}`}. Its pipelines stay active and move to Unfiled; no pipeline, deal, stage, or history is deleted.`;
+            return `Archive the exact folder "${a?.command?.confirmedName || "selected folder"}"${folderCount === null ? "" : ` with ${folderCount} assigned pipeline record${folderCount === 1 ? "" : "s"}`}. Every assigned pipeline moves to Unfiled and keeps its current lifecycle status; no pipeline, deal, stage, or history is deleted.`;
           }
           return `Run the requested governed pipeline change (${String(a?.command?.type || "configuration").replaceAll("-", " ")}).`;
         case "deal_create":

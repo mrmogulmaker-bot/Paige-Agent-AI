@@ -130,6 +130,51 @@ const PaigeWorkspaceFixture = () => {
 };
 
 describe("tenant shell owns one PAIGE surface", () => {
+  it("renders one canonical Solo shell structure for different server-resolved tenants", () => {
+    const renderTenant = (accountNumber: string, accountName: string) => {
+      window.localStorage.setItem("paige.tenantShell.navExpanded", "true");
+      const host = document.createElement("div");
+      const root = createRoot(host);
+
+      act(() => root.render(
+        <MemoryRouter initialEntries={[`/solo/${accountNumber}/growth/pipeline`]}>
+          <TenantCommandCenterShell
+            accountName={accountName}
+            accountType="standalone"
+            userRole="admin"
+            brandHomeHref={`/solo/${accountNumber}/command-center`}
+            soloPaigeWorkspace={<div data-canonical-paige-workspace />}
+            onSignOut={vi.fn()}
+          >
+            <div data-pipeline-domain>Pipeline domain</div>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      ));
+
+      const shell = host.querySelector<HTMLElement>("[data-tenant-shell]");
+      const fingerprint = {
+        shellClass: shell?.className,
+        destinations: [...host.querySelectorAll<HTMLElement>("[data-tenant-destination]")]
+          .map((item) => [item.dataset.tenantDestination, item.textContent?.trim()]),
+        paigeWorkspaces: host.querySelectorAll("#tenant-paige-workspace").length,
+        pipelineDomains: host.querySelectorAll("[data-pipeline-domain]").length,
+      };
+
+      act(() => root.unmount());
+      return fingerprint;
+    };
+
+    const affectedTenant = renderTenant("410001", "First example business");
+    const knownGoodTenant = renderTenant("410002", "Second example business");
+
+    expect(affectedTenant).toEqual(knownGoodTenant);
+    expect(affectedTenant.destinations.map(([id]) => id)).toEqual([
+      "command", "clients", "campaigns", "marketplace", "analytics", "settings",
+    ]);
+    expect(affectedTenant.paigeWorkspaces).toBe(1);
+    expect(affectedTenant.pipelineDomains).toBe(1);
+  });
+
   it.each([
     ["light", "Obsidian", "dark"],
     ["dark", "Mineral", "light"],
