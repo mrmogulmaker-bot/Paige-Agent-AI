@@ -116,6 +116,15 @@ export const TOOL_IDENTITY_FIELDS: Readonly<Record<string, readonly string[]>> =
   member_revoke_role: ["user_id", "role"],
   // Destruction.
   crm_delete_contact: ["contact_id"],
+  // Contact edits are fully rendered in describeConfirm. Pin both the opaque tenant-scoped
+  // subject and every allowlisted writable value so an approval cannot be replayed for another
+  // client or a substituted patch.
+  crm_update_contact: [
+    "client_ref", "first_name", "last_name", "email", "phone", "entity_name", "entity_type",
+    "title", "website", "linkedin_url", "street_address", "city", "state", "zip_code",
+    "lifecycle_stage", "source", "tags", "primary_offer", "notes", "status",
+    "assigned_coach_user_id", "do_not_contact",
+  ],
   n8n_delete_workflow: ["workflow_id"],
   n8n_archive_workflow: ["workflow_id"],
   // External side effects through the tenant's own connected apps.

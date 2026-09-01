@@ -53,6 +53,7 @@
 .trc-people-toolbar > div > small { color: var(--pg-positive); font: 600 var(--pg-t-label) var(--pg-font-data); letter-spacing: .04em; text-transform: uppercase; }
 .trc-people-toolbar label { min-width: 0; }
 .trc-people-toolbar input { width: 100%; min-height: 40px; padding: 0 13px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); color: var(--pg-ink); background: var(--pg-surface); }
+.trc-people-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .trc-people-toolbar button, .trc-record-notice button, .trc-search-empty button, .trc-record-back, .trc-record-actions button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip); color: var(--pg-ink); background: var(--pg-raised); cursor: pointer; }
 .trc-people-toolbar input:focus-visible, .trc-people-toolbar button:focus-visible, .trc-person-select:focus-visible, .trc-record-notice button:focus-visible, .trc-search-empty button:focus-visible, .trc-record-back:focus-visible, .trc-record-actions button:focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: -2px; }
 .trc-record-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--pg-line); border-left: 2px solid var(--pg-warning); border-radius: var(--pg-r-panel); background: var(--pg-surface); }

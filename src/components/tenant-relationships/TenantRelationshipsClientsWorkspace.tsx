@@ -5,11 +5,14 @@ import {
   ArrowRight,
   Building2,
   CalendarDays,
+  ExternalLink,
   FileText,
   Mail,
   MapPin,
   MessageSquare,
   Phone,
+  Pencil,
+  Plus,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -31,6 +34,7 @@ import {
   type WorkspaceTab,
 } from "./workspaceModel";
 import { TenantCanonicalCalendarWorkspace } from "@/components/tenant-calendar/TenantCanonicalCalendarWorkspace";
+import { PeopleContactEditor } from "./PeopleContactEditor";
 import "./tenant-relationships-clients-workspace.css";
 
 const CanonicalConversations = lazy(() => import("@/pages/admin/ClientsConversations"));
@@ -294,6 +298,8 @@ function SoloPeopleView({
   onClearContact: () => void;
 }) {
   const [search, setSearch] = useState("");
+  const [editorContact, setEditorContact] = useState<ReturnType<typeof useTenantRelationshipsData>["people"][number] | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [recordLayout, setRecordLayout] = useState<"docked" | "overlay">("docked");
   const workspaceRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLElement | null>(null);
@@ -399,9 +405,20 @@ function SoloPeopleView({
   if (!data.peopleAvailable) return <BoundedState eyebrow="People · UNAVAILABLE" title="People are not connected" detail="A server-authorized People contract is required before records can appear." kind="unavailable" />;
   if (data.peopleLoading) return <BoundedState eyebrow="People · LIVE" title="Loading the authorized book" detail="The previous account and selected record are cleared while this account resolves." kind="loading" />;
   if (data.peopleError) return <BoundedState eyebrow="People · UNAVAILABLE" title="We couldn't load People" detail="No count, record, or relationship state is inferred from a failed read." kind="error" onRetry={() => void data.retryPeople()} />;
-  if (!data.people.length) return <BoundedState eyebrow="People · LIVE" title="No people here yet" detail="The active account returned no records. Create remains in its existing legacy owner and no sample clients replace this result." kind="empty" />;
-
   const staleDeepLink = Boolean(deepLinkedContactId && !selected && !data.deepLinkLoading);
+  const openNewContact = () => {
+    setEditorContact(null);
+    setEditorOpen(true);
+  };
+  const openEditContact = () => {
+    if (!selected) return;
+    setEditorContact(selected);
+    setEditorOpen(true);
+  };
+  const handleSaved = async (contactId: string) => {
+    await data.retryPeople();
+    selectPerson(contactId);
+  };
 
   return (
     <section
@@ -422,7 +439,12 @@ function SoloPeopleView({
           <span className="sr-only">Search people</span>
           <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, company, email, phone, tag…" />
         </label>
-        {search && <button type="button" onClick={() => setSearch("")}>Clear search</button>}
+        <span className="trc-people-actions">
+          {search && <button type="button" onClick={() => setSearch("")}>Clear search</button>}
+          <RoleGate allow={["admin", "super_admin", "coach"]} fallback={<ProofPill>Read only</ProofPill>}>
+            <button type="button" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
+          </RoleGate>
+        </span>
       </header>
 
       {staleDeepLink && (
@@ -467,9 +489,13 @@ function SoloPeopleView({
             </div>
           ) : (
             <div className="trc-search-empty" role="status">
-              <strong>No matching people</strong>
-              <span>The loaded list is unchanged. Clear search to see every loaded record.</span>
-              <button type="button" onClick={() => setSearch("")}>Clear search</button>
+              <strong>{query ? "No matching people" : "No people here yet"}</strong>
+              <span>{query ? "The loaded list is unchanged. Clear search to see every loaded record." : "Create the first tenant-scoped Person or Business record."}</span>
+              {query ? <button type="button" onClick={() => setSearch("")}>Clear search</button> : (
+                <RoleGate allow={["admin", "super_admin", "coach"]} fallback={<ProofPill>Read only</ProofPill>}>
+                  <button type="button" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
+                </RoleGate>
+              )}
             </div>
           )}
         </section>
@@ -481,18 +507,26 @@ function SoloPeopleView({
               backRef={setBackButton}
               onBack={returnToList}
               openPaige={openPaige}
+              onEdit={openEditContact}
             />
           ) : (
             <div className="trc-record-empty">
               <UserRound aria-hidden />
               <span>Client record</span>
               <h2 id="trc-record-title">Choose a client</h2>
-              <p>Select an authorized Person or Business record while keeping the People list in place.</p>
+              <p>{data.people.length ? "Select an authorized Person or Business record while keeping the People list in place." : "Create the first authorized contact without leaving People."}</p>
               <div><ProofPill tone="live">Read and selection · LIVE</ProofPill><ProofPill>Record depth · PARTIAL</ProofPill></div>
             </div>
           )}
         </section>
       </div>
+      <PeopleContactEditor
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        tenantId={activeTenantId}
+        contact={editorContact}
+        onSaved={handleSaved}
+      />
     </section>
   );
 }
@@ -502,11 +536,13 @@ function ClientRecord({
   backRef,
   onBack,
   openPaige,
+  onEdit,
 }: {
   person: ReturnType<typeof useTenantRelationshipsData>["people"][number];
   backRef: (node: HTMLButtonElement | null) => void;
   onBack: () => void;
   openPaige: () => void;
+  onEdit: () => void;
 }) {
   const isBusiness = person.recordType === "business";
   return (
@@ -519,9 +555,12 @@ function ClientRecord({
             <h2 id="trc-record-title">{person.name}</h2>
             <p>{[isBusiness ? "Business profile" : "Person profile", person.title, !isBusiness ? person.company : null, "PARTIAL", "derived"].filter(Boolean).join(" · ")}</p>
           </div>
-          <ProofPill tone="live">Read · LIVE</ProofPill>
+          <ProofPill tone="live">Record · LIVE</ProofPill>
         </div>
         <div className="trc-record-actions">
+          <RoleGate allow={["admin", "super_admin", "coach"]} fallback={null}>
+            <button type="button" onClick={onEdit}><Pencil aria-hidden /> Edit contact</button>
+          </RoleGate>
           <button type="button" onClick={openPaige}><Sparkles aria-hidden /> Open PAIGE workspace</button>
           <span>Enrichment · UNAVAILABLE</span>
         </div>
@@ -542,13 +581,18 @@ function ClientRecord({
         </section>
 
         <section className="trc-record-section">
-          <header><div><span>Identity</span><h3>{isBusiness ? "Organization details" : "Contact details"}</h3></div><ProofPill>Read-only · PARTIAL</ProofPill></header>
+          <header><div><span>Identity</span><h3>{isBusiness ? "Organization details" : "Contact details"}</h3></div><ProofPill tone="live">Owner-editable · LIVE</ProofPill></header>
           <div className="trc-contact-lines">
             <div><Mail aria-hidden /><span><small>Email</small>{person.email || "Not recorded"}</span></div>
             <div><Phone aria-hidden /><span><small>Phone</small>{person.phone || "Not recorded"}</span></div>
             <div><MapPin aria-hidden /><span><small>Location</small>{person.location || "Not recorded"}</span></div>
-            <div><Building2 aria-hidden /><span><small>{isBusiness ? "Website" : "Company"}</small>{(isBusiness ? person.website : person.company) || "Not recorded"}</span></div>
+            <div><Building2 aria-hidden /><span><small>Company</small>{person.company || "Not recorded"}</span></div>
+            <div><ExternalLink aria-hidden /><span><small>Website</small>{person.website || "Not recorded"}</span></div>
+            <div><ExternalLink aria-hidden /><span><small>LinkedIn</small>{person.linkedinUrl || "Not recorded"}</span></div>
+            <div><MapPin aria-hidden /><span><small>Street address</small>{person.streetAddress || "Not recorded"}</span></div>
+            <div><Tag aria-hidden /><span><small>Primary offer</small>{person.primaryOffer || "Not recorded"}</span></div>
           </div>
+          {person.notes && <div className="trc-inline-state"><strong>Internal relationship notes</strong><span>{person.notes}</span></div>}
           {isBusiness && <div className="trc-inline-state"><strong>Related people · PARTIAL</strong><span>A relationship seam exists, but this workspace does not infer or join records.</span></div>}
         </section>
 
