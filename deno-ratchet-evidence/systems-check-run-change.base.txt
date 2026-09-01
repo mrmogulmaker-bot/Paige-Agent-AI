@@ -1,0 +1,48 @@
+[0m[32mCheck[0m supabase/functions/systems-check-run-change/index.ts
+[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
+    Argument of type '{ tenant_id: string | null; actor_user_id: string | null; actor_role: string | null; action: string; target_type: string; payload: Record<string, unknown>; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
+    await admin.from("paige_audit_log").insert({
+[0m[31m                                        ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/_shared/model-router.ts[0m:[0m[33m650[0m:[0m[33m41[0m
+
+[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "studio_deliverable", never, "POST">', gave the following error.
+    Argument of type '{ tenant_id: string; mode: string; modality: Modality; artifact_storage_key: string | null; provider: string; model: string; tier: Tier; cost_estimate_usd: number | null; created_by: string; metadata: { ...; }; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "studio_deliverable", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
+      .insert({
+[0m[31m       ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/_shared/model-router.ts[0m:[0m[33m735[0m:[0m[33m8[0m
+
+[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
+    Argument of type '{ tenant_id: string | null; actor_user_id: string | null; actor_role: string | null; action: string; target_type: string; payload: Record<string, unknown>; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
+    await admin.from("paige_audit_log").insert({
+[0m[31m                                        ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/_shared/prompt-forge.ts[0m:[0m[33m75[0m:[0m[33m41[0m
+
+[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_prompt_memory", never, "POST">', gave the following error.
+    Argument of type '{ tenant_id: string; modality: Modality; provider: string; model: string; tier: Tier | undefined; template_name: string | null; template_id: string | null; user_intent: string; ... 8 more ...; metadata: { ...; }; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_prompt_memory", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
+      .insert({
+[0m[31m       ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/_shared/prompt-forge.ts[0m:[0m[33m458[0m:[0m[33m8[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type '{ p_tenant_id: string; p_query_embedding: number[]; p_match_count: number; }' is not assignable to parameter of type 'undefined'.
+    const { data, error } = await admin.rpc("match_prompt_memory", {
+[0m[31m                                                                   ^[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/_shared/prompt-forge.ts[0m:[0m[33m615[0m:[0m[33m68[0m
+
+Found 5 errors.
+
+[0m[1m[31merror[0m: Type checking failed.
+
+Stack backtrace:
+   0: <unknown>

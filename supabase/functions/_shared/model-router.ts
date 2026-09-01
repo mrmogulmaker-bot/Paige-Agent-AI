@@ -269,7 +269,7 @@ export async function claudeVoicePolish(draft: string, brandVoice?: string): Pro
 // (§3 voice) → persist the artifact → audit. Every existing export above stays untouched (§12).
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
   type Modality,
   type Tier,
@@ -621,8 +621,15 @@ function estimateCost(
 }
 
 // ── Service-role client (lazy) for audit + deliverable persistence ──────────────────────────
-let _admin: ReturnType<typeof createClient> | null = null;
-function getAdmin(): ReturnType<typeof createClient> | null {
+//
+// Typed `SupabaseClient`, NOT `ReturnType<typeof createClient>`. The inferred form resolves every
+// table's row type to `never`, so `.insert({...})` failed overload resolution on both writers below
+// — two long-standing TS2769s that `deno check` reported on every function importing this module.
+// `_shared/llm-trace.ts` already uses this idiom and checks clean. Fixed here rather than left
+// inherited: the deno ratchet stops crediting a diagnostic in a file the change TOUCHES, which is
+// the right rule — editing a file makes you answerable for it.
+let _admin: SupabaseClient | null = null;
+function getAdmin(): SupabaseClient | null {
   if (_admin) return _admin;
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");

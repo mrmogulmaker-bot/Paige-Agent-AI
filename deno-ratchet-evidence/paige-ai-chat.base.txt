@@ -1,0 +1,88 @@
+[0m[32mCheck[0m supabase/functions/paige-ai-chat/index.ts
+[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
+  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "analytics_events", never, "POST">', gave the following error.
+    Argument of type '{ user_id: string | null; event_name: string; event_category: "system" | "paige" | "engagement"; properties: Record<string, unknown>; page_path: string; }' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "analytics_events", never, "POST">', gave the following error.
+    Object literal may only specify known properties, and 'user_id' does not exist in type 'never[]'.
+  await recordWrite("analytics_events", supabaseAdmin.from("analytics_events").insert({
+[0m[31m                                                                               ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m175[0m:[0m[33m80[0m
+
+[0m[1mTS2304 [0m[ERROR]: Cannot find name 'runGeneralDocumentExtraction'.
+          extractionProposal = await runGeneralDocumentExtraction(
+[0m[31m                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m1132[0m:[0m[33m38[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
+  Type '"public"' is not assignable to type 'never'.
+            void logAnalyticsEvent(supabase, user.id, "rag_retrieval_triggered", "paige", {
+[0m[31m                                   ~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m1635[0m:[0m[33m36[0m
+
+[0m[1mTS2304 [0m[ERROR]: Cannot find name 'admin'.
+        const { data: identity, error: identityError } = await admin.rpc(
+[0m[31m                                                               ~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m2185[0m:[0m[33m64[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
+  Type '"public"' is not assignable to type 'never'.
+            void logAnalyticsEvent(supabase, user.id, "web_search_triggered", "paige", {
+[0m[31m                                   ~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m7220[0m:[0m[33m36[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
+  Type '"public"' is not assignable to type 'never'.
+            void logAnalyticsEvent(supabase, user.id, "deep_research_triggered", "paige", {
+[0m[31m                                   ~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m7255[0m:[0m[33m36[0m
+
+[0m[1mTS2304 [0m[ERROR]: Cannot find name 'result'.
+            result = kbOk
+[0m[31m            ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m9195[0m:[0m[33m13[0m
+
+[0m[1mTS2304 [0m[ERROR]: Cannot find name 'result'.
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
+[0m[31m                                                                                          ~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m9198[0m:[0m[33m91[0m
+
+[0m[1mTS2339 [0m[ERROR]: Property 'catch' does not exist on type 'PromiseLike<void>'.
+            .catch?.((e: any) => console.warn("[paige-ai-chat] rail producer skipped:", e?.message));
+[0m[31m             ~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m9567[0m:[0m[33m14[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type '{ ok: boolean; status: number; body?: ReadableStream<Uint8Array<ArrayBufferLike>> | undefined; json: () => Promise<any>; text: () => Promise<...>; }' is not assignable to parameter of type 'Response'.
+  Type '{ ok: boolean; status: number; body?: ReadableStream<Uint8Array<ArrayBufferLike>> | undefined; json: () => Promise<any>; text: () => Promise<...>; }' is missing the following properties from type 'Response': headers, redirected, statusText, type, and 8 more.
+            const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
+[0m[31m                                                                                      ~~~~~~~~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m9669[0m:[0m[33m87[0m
+
+[0m[1mTS2740 [0m[ERROR]: Type '{ ok: boolean; status: number; body?: ReadableStream<Uint8Array<ArrayBufferLike>> | undefined; json: () => Promise<any>; text: () => Promise<...>; }' is missing the following properties from type 'Response': headers, redirected, statusText, type, and 8 more.
+            finalStreamResponse = await gatewayCompat("anthropic", {
+[0m[31m            ~~~~~~~~~~~~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m9816[0m:[0m[33m13[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
+  Type '"public"' is not assignable to type 'never'.
+              void logAnalyticsEvent(supabase, user.id, "entity_diagram_generated", "paige", {});
+[0m[31m                                     ~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m10321[0m:[0m[33m38[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
+  Type '"public"' is not assignable to type 'never'.
+                void logAnalyticsEvent(supabase, user.id, "legal_flag_shown", "paige", {
+[0m[31m                                       ~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m10331[0m:[0m[33m40[0m
+
+[0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
+  Type '"public"' is not assignable to type 'never'.
+                void logAnalyticsEvent(supabase, user.id, "lender_searched", "engagement", {
+[0m[31m                                       ~~~~~~~~[0m
+    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-ai-chat/index.ts[0m:[0m[33m10352[0m:[0m[33m40[0m
+
+Found 14 errors.
+
+[0m[1m[31merror[0m: Type checking failed.
+
+Stack backtrace:
+   0: <unknown>
