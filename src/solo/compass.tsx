@@ -2,6 +2,7 @@
 import React from "react";
 import { Ic, Foldout, PageHead, Wrap } from "./_shared";
 import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
+import { useSoloPendingActions, type SoloPendingAction } from "./data/useSoloPendingActions";
 
 export const TC_DEPTS=[
  {id:'exec',n:'Executive',ic:'shield',g:.30,w:[6,3,1],conf:91,trend:2,acts:['Weekly priorities','Board-style summary','Goal tracking','Escalation triage']},
@@ -47,15 +48,36 @@ export const deptTier=id=>{const g=TRUST.of(id);return g>=.6?'green':g>=.34?'amb
 // the canvas orbs (`onOrb`), whose tier comes from the simulated dial rather than from this feed,
 // so wiring the feed removes no affordance (§58). They are their own finding — TC_ESC in
 // particular renders a specific recommendation about a fabricated lapsed insurance policy.
-const TC_DRAFT={dept:'Marketing',type:'Outbound email',conf:91,
- subj:'A quieter way to run your Q3',to:'sarah.nnadi@harpervale.com',from:'jordan@paigeagent.ai',
- why:'She opened the last two teardowns without replying, and her renewal window opens in five weeks. A soft-value email now beats a renewal ask later.',
- body:"Sarah — no ask here. You opened the last two teardowns, so I pulled the one thing both had in common: the teams that got traction moved reporting off Friday afternoons.\n\nIf that's useful I'll send the one-pager. If not, ignore me and I'll see you at the quarterly."};
-const TC_ESC={dept:'Legal',type:'Coverage decision',
- brief:"Workers' compensation lapsed on August 9. Reinstatement inside the 30-day window is available at an unknown premium, or the policy can be rewritten with a new carrier.",
- why:"I can't decide this one. It changes your statutory coverage position and the premium is not published — a person has to weigh the cost against the exposure.",
- opts:['Reinstate with Statewide Mutual at whatever the premium comes back as','Quote two carriers before committing, accepting a longer gap','Reduce scope of covered roles and reprice'],
- rec:'Reinstate now, quote carriers at the next renewal. The gap is the bigger exposure.'};
+// TC_DRAFT and TC_ESC — REMOVED 2026-09-01, recorded rather than deleted quietly (§13/§58).
+//
+// TC_DRAFT was a complete outbound email: a named recipient at a named company, a named sender, a
+// subject, a body, a "why she drafted it" rationale citing behaviour that never occurred ("she
+// opened the last two teardowns"), and a confidence of 91%. Approving it raised a toast reading
+// "Sent." — a claim that mail had gone to a person who does not exist.
+//
+// TC_ESC was a legal escalation: a workers' compensation policy said to have lapsed on a specific
+// date, a named carrier, three courses of action, and a recommendation to reinstate. An operator
+// reading it would have been reading a statutory coverage position invented in a source file.
+// (Paraphrased deliberately — compass.fabrications.test.ts greps this file for the original
+// wording, and a note that quotes it verbatim makes the guard match its own explanation.)
+//
+// Between them that is four of the six things the standing boundary names — an invented customer
+// record, invented provider state, an invented measurement, and a fabricated successful action.
+//
+// Both modals now read `paige_actions` through `useSoloPendingActions`: the real action bus, where
+// filed work sitting at `autonomy_lane='confirm'` is genuinely waiting on a person. 117 such rows
+// exist on production, so this is not a hypothetical replacement for a hypothetical fixture.
+//
+// FOUR FIELDS ARE GONE RATHER THAN DEFAULTED, because `paige_actions` has no source for them: the
+// recipient, the sender, the confidence percentage, and the list of "options as she sees them".
+// They were never missing data awaiting a backfill — they were claims with nothing behind them,
+// and rendering a plausible substitute would be the same defect with better manners.
+//
+// STILL A FALSE AFFORDANCE, REPORTED NOT REWRITTEN (§00 — in-surface copy is Claude Design's):
+// "Approve & send" and "Decide and log" both only close the modal. The first no longer claims a
+// send happened, which was the part that was mine to fix; what those buttons should say and do now
+// that they cannot pretend is a design and product decision, and the approval seam itself is the
+// chat confirm gate (§18 — one home), not a second one built here.
 
 const TcCanvas=({sel,setSel,onOrb,drag,setDrag,setPreview})=>{
 const wrap=React.useRef(null),cvr=React.useRef(null),S=React.useRef({});
@@ -252,45 +274,52 @@ return <div className="card" style={{overflow:'hidden'}}>
 <div style={{padding:'12px 20px',borderTop:'1px solid var(--line-soft)'}}>
 <button className="btn btn-s" style={{width:'100%',justifyContent:'center'}} onClick={()=>go&&go('compass')}>Open Trust Compass <Ic.arrow size={14}/></button></div></div>};
 
-const TcApprove=({onClose,onDone})=>(<><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(10,8,24,.62)',backdropFilter:'blur(4px)',zIndex:90}}/>
+// Shared shell so the two modals cannot drift apart in how they report an absent read (§18).
+const TcModalState=({state,error,onRetry,emptyLine})=>
+ <div className="sub" style={{fontSize:12.9,lineHeight:1.55,padding:'4px 2px'}} role={state==='error'?'alert':'status'}>
+ {state==='loading'?'Reading what is waiting on you…'
+  :state==='error'?<>This could not be loaded, so it is not a record of nothing waiting.{error?' ('+error+')':''} <button className="btn btn-s" style={{marginTop:9}} onClick={onRetry}>Try again</button></>
+  :emptyLine}</div>;
+
+const TcApprove=({onClose,onDone})=>{const q=useSoloPendingActions();
+const a:SoloPendingAction|null=q.items[0]??null;
+const state=q.loading?'loading':q.error?'error':a?'ok':'empty';
+return (<><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(10,8,24,.62)',backdropFilter:'blur(4px)',zIndex:90}}/>
 <div className="fade-in card" style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:'min(600px,95vw)',maxHeight:'90vh',overflow:'auto',zIndex:91,borderRadius:'var(--r-xl)',boxShadow:'var(--sh-3)'}}>
 <div className="hd"><div><div className="row" style={{gap:8}}><span className="pill pill-warn"><span className="dot"/>Waiting on you</span>
-<span className="pill pill-n">{TC_DRAFT.dept} · {TC_DRAFT.type}</span></div>
-<h3 style={{marginTop:8}}>{TC_DRAFT.subj}</h3></div>
+{a&&<span className="pill pill-n">{a.department}</span>}</div>
+<h3 style={{marginTop:8}}>{a?a.title:'Waiting on you'}</h3></div>
 <button className="btn btn-s" onClick={onClose} style={{width:28,height:28,padding:0,justifyContent:'center',borderRadius:'50%'}}><Ic.x size={13}/></button></div>
 <div style={{padding:'16px 20px 20px',display:'grid',gap:14}}>
-<div style={{border:'1px solid var(--line)',borderRadius:'var(--r-m)',overflow:'hidden'}}>
-{[['To',TC_DRAFT.to],['From',TC_DRAFT.from+' · your domain'],['Confidence',TC_DRAFT.conf+'%']].map(([k,v],i)=>
-<div key={i} className="row" style={{gap:12,padding:'9px 13px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
-<span className="sub" style={{flex:'0 0 90px'}}>{k}</span><span className="grow trunc" style={{fontSize:12.9,fontWeight:500}}>{v}</span></div>)}</div>
-<div style={{background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'14px 16px',fontSize:13.3,color:'var(--ink-2)',lineHeight:1.65,whiteSpace:'pre-wrap'}}>{TC_DRAFT.body}</div>
-<div><div className="eyebrow">Why she drafted it</div><div style={{fontSize:13,color:'var(--ink-2)',marginTop:5,lineHeight:1.6}}>{TC_DRAFT.why}</div></div>
-<MiniCompass dept="Marketing"/>
+{state!=='ok'?<TcModalState state={state} error={q.error} onRetry={q.refresh}
+  emptyLine="Nothing is waiting on you right now. When Paige files work she is not allowed to run alone, it appears here."/>:<>
+{a.draftContent&&<div style={{background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'14px 16px',fontSize:13.3,color:'var(--ink-2)',lineHeight:1.65,whiteSpace:'pre-wrap'}}>{a.draftContent}</div>}
+{a.summary&&<div style={{fontSize:13.2,color:'var(--ink-2)',lineHeight:1.6}}>{a.summary}</div>}
+{a.rationale&&<div><div className="eyebrow">Why she stopped</div><div style={{fontSize:13,color:'var(--ink-2)',marginTop:5,lineHeight:1.6}}>{a.rationale}</div></div>}
+<MiniCompass dept={a.department}/>
 <div className="row" style={{gap:9,flexWrap:'wrap'}}>
 <button onClick={onDone} className="row" style={{gap:7,height:36,padding:'0 18px',borderRadius:10,background:'var(--gold-bright)',color:'#2A1C00',fontWeight:700,fontSize:13.4}}><Ic.check size={14}/>Approve & send</button>
-<button className="btn">Edit</button><button className="btn" onClick={onClose}>Dismiss</button></div></div></div></>);
+<button className="btn">Edit</button><button className="btn" onClick={onClose}>Dismiss</button></div></>}</div></div></>);};
 
-const TcEscalate=({onClose})=>(<><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(10,8,24,.62)',backdropFilter:'blur(4px)',zIndex:90}}/>
+const TcEscalate=({onClose})=>{const q=useSoloPendingActions();
+const a:SoloPendingAction|null=q.items[0]??null;
+const state=q.loading?'loading':q.error?'error':a?'ok':'empty';
+return (<><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(10,8,24,.62)',backdropFilter:'blur(4px)',zIndex:90}}/>
 <div className="fade-in card" style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:'min(580px,95vw)',maxHeight:'90vh',overflow:'auto',zIndex:91,borderRadius:'var(--r-xl)',boxShadow:'var(--sh-3)'}}>
 <div className="hd"><div><div className="row" style={{gap:8}}><span className="pill pill-bad"><span className="dot"/>Your decision</span>
-<span className="pill pill-n">{TC_ESC.dept} · {TC_ESC.type}</span></div>
-<h3 style={{marginTop:8}}>She stopped and brought this to you</h3></div>
+{a&&<span className="pill pill-n">{a.department}</span>}</div>
+<h3 style={{marginTop:8}}>{a?a.title:'She stopped and brought this to you'}</h3></div>
 <button className="btn btn-s" onClick={onClose} style={{width:28,height:28,padding:0,justifyContent:'center',borderRadius:'50%'}}><Ic.x size={13}/></button></div>
 <div style={{padding:'16px 20px 20px',display:'grid',gap:14}}>
-<div style={{fontSize:13.4,color:'var(--ink-2)',lineHeight:1.65}}>{TC_ESC.brief}</div>
-<div style={{background:'var(--bad-tint)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'12px 14px',fontSize:13,color:'var(--ink-2)',lineHeight:1.6}}>
-<strong style={{color:'var(--ink)'}}>Why she won't decide it: </strong>{TC_ESC.why}</div>
-<div><div className="eyebrow">Options as she sees them</div>
-<div style={{display:'grid',gap:8,marginTop:9}}>{TC_ESC.opts.map((o,i)=>
-<label key={i} className="row" style={{gap:11,padding:'11px 13px',border:'1px solid '+(i===0?'var(--violet-line)':'var(--line)'),
-background:i===0?'var(--violet-tint)':'transparent',borderRadius:'var(--r-m)',cursor:'pointer',alignItems:'flex-start'}}>
-<span style={{width:15,height:15,borderRadius:'50%',border:'1.5px solid '+(i===0?'var(--violet)':'var(--line)'),flex:'none',marginTop:2,
-display:'grid',placeItems:'center'}}>{i===0&&<span style={{width:7,height:7,borderRadius:'50%',background:'var(--violet)'}}/>}</span>
-<span style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.5}}>{o}{i===0&&<span className="pill pill-v" style={{marginLeft:8}}>She recommends</span>}</span></label>)}</div></div>
-<div className="sub">{TC_ESC.rec} Consult counsel for your specific situation.</div>
+{state!=='ok'?<TcModalState state={state} error={q.error} onRetry={q.refresh}
+  emptyLine="Nothing is waiting on your decision right now. When Paige files work she will not take alone, it appears here."/>:<>
+{a.summary&&<div style={{fontSize:13.4,color:'var(--ink-2)',lineHeight:1.65}}>{a.summary}</div>}
+{a.draftContent&&<div style={{background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'14px 16px',fontSize:13.2,color:'var(--ink-2)',lineHeight:1.6,whiteSpace:'pre-wrap'}}>{a.draftContent}</div>}
+{a.rationale&&<div style={{background:'var(--bad-tint)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',padding:'12px 14px',fontSize:13,color:'var(--ink-2)',lineHeight:1.6}}>
+<strong style={{color:'var(--ink)'}}>Why she won't decide it: </strong>{a.rationale}</div>}
 <div className="row" style={{gap:9,flexWrap:'wrap'}}>
 <button onClick={onClose} className="row" style={{gap:7,height:36,padding:'0 18px',borderRadius:10,background:'var(--gold-bright)',color:'#2A1C00',fontWeight:700,fontSize:13.4}}><Ic.check size={14}/>Decide and log</button>
-<button className="btn">Hand back with guidance</button><button className="btn" onClick={onClose}>Later</button></div></div></div></>);
+<button className="btn">Hand back with guidance</button><button className="btn" onClick={onClose}>Later</button></div></>}</div></div></>);};
 
 const TcDept=({id,onBack})=>{const d=TC_DEPTS.find(x=>x.id===id);const trust=useTrust();
 const[subs,setSubs]=React.useState(()=>d.acts.map((_,i)=>Math.max(.14,Math.min(.92,d.g+(i%3-1)*.16))));
@@ -435,7 +464,7 @@ style={{width:'100%',textAlign:'left',gap:11,padding:'10px 20px',borderTop:i?'1p
 <span className="mono sub" style={{fontSize:11}}>{d.w[0]}/{d.w[1]}/{d.w[2]}</span>
 <span className="pill pill-n" style={{fontSize:10}}>{tierLabel[t]}</span></button>})}</div></Foldout></div>
 
-{flow==='appr'&&<TcApprove onClose={()=>setFlow(null)} onDone={()=>{setFlow(null);setToast('Sent. That one raced through — she logged it under Marketing.');setTimeout(()=>setToast(null),3400)}}/>}
+{flow==='appr'&&<TcApprove onClose={()=>setFlow(null)} onDone={()=>setFlow(null)}/>}
 {flow==='esc'&&<TcEscalate onClose={()=>setFlow(null)}/>}
 {toast&&<div className="fade-in row" style={{position:'fixed',bottom:26,left:'50%',transform:'translateX(-50%)',gap:9,background:'var(--rail)',color:'var(--ink-inv)',
 padding:'11px 18px',borderRadius:12,fontSize:13,boxShadow:'var(--sh-3)',zIndex:95,maxWidth:'min(560px,92vw)'}}>
