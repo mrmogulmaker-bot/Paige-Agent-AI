@@ -16,6 +16,18 @@ describe("PAIGE contact upsert contract", () => {
     expect(summary).toContain('Object.keys(labels)');
   });
 
+  it("keeps the approved People editor inside the form-fitting Clients page host", () => {
+    const editor = readFileSync(resolve("src/components/tenant-relationships/PeopleContactEditor.tsx"), "utf8");
+    expect(editor).toContain("trc-contact-editor");
+    expect(editor).toContain("Identity");
+    expect(editor).toContain("Business context");
+    expect(editor).toContain("Relationship & consent");
+    expect(editor).toContain("Draft retained locally");
+    expect(editor).toContain("aria-selected");
+    expect(editor).not.toContain("DialogContent");
+    expect(editor).not.toContain("overflow-y-auto");
+  });
+
   it("uses the tenant-scoped assignee roster and enforces it again at the database seam", () => {
     const editor = readFileSync("src/components/tenant-relationships/PeopleContactEditor.tsx", "utf8");
     const migration = readFileSync("supabase/migrations/20260901035325_solo_people_contact_upsert_hotfix.sql", "utf8");

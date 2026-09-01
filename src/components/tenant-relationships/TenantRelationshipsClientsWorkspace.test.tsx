@@ -18,6 +18,10 @@ const useTenantContext = vi.fn();
 const useSubtabRoute = vi.fn();
 const useTenantRelationshipsData = vi.fn();
 const ownerHarness = vi.hoisted(() => ({ conversations: 0, calendars: 0, portals: 0 }));
+const editorHarness = vi.hoisted(() => ({
+  rpc: vi.fn(async (..._args: unknown[]) => ({ data: [] })),
+  upsert: vi.fn(async (..._args: unknown[]) => "saved-contact"),
+}));
 
 vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => useTenantContext() }));
 vi.mock("@/components/tenant-calendar/SoloCalendarWorkspace", async () => {
@@ -51,6 +55,10 @@ vi.mock("@/components/admin/contacts/ContactPortalPanel", () => ({ ContactPortal
 vi.mock("@/lib/routing/useSubtabRoute", () => ({ useSubtabRoute: (...args: unknown[]) => useSubtabRoute(...args) }));
 vi.mock("./useTenantRelationshipsData", () => ({
   useTenantRelationshipsData: (...args: unknown[]) => useTenantRelationshipsData(...args),
+}));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: editorHarness.rpc } }));
+vi.mock("./contactUpsert", () => ({
+  upsertRelationshipContact: (...args: unknown[]) => editorHarness.upsert(...args),
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -106,6 +114,8 @@ describe("tenant Relationships / Clients workspace", () => {
     useTenantContext.mockReset();
     useSubtabRoute.mockReset();
     useTenantRelationshipsData.mockReset();
+    editorHarness.rpc.mockClear();
+    editorHarness.upsert.mockClear();
     useTenantContext.mockReturnValue({
       activeTenantId: "tenant-solo",
       activeTenant: { id: "tenant-solo", name: "Supplied Workspace", account_type: "standalone", parent_tenant_id: null },
@@ -194,6 +204,103 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).toContain("New contact");
     expect(html).toContain("0 clients · Tenant read · LIVE");
     expect(html).not.toContain("Create remains in its existing legacy owner");
+  });
+
+  it("runs the approved three-step editor in-place, retains the draft, and restores the exact entry action", async () => {
+    useSubtabRoute.mockImplementation((_tier: string, _branch: string, initial: string) => React.useState(initial));
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter initialEntries={["/solo/42/clients/people"]}><TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()} /></MemoryRouter>));
+    const origin = host.querySelector<HTMLButtonElement>('[data-contact-editor-origin="toolbar-new"]');
+    origin?.focus();
+    await act(async () => origin?.click());
+    await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector(".trc-contact-editor-header h1")));
+    expect(host.querySelector(".trc-contact-editor")).not.toBeNull();
+    expect(host.querySelector(".trc-client-workspace")).toBeNull();
+
+    const identityTab = host.querySelector<HTMLButtonElement>('#trc-contact-step-1');
+    identityTab?.focus();
+    await act(async () => identityTab?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    const businessTab = host.querySelector<HTMLButtonElement>('#trc-contact-step-2');
+    expect(document.activeElement).toBe(businessTab);
+    expect(businessTab?.getAttribute("aria-selected")).toBe("true");
+    await act(async () => identityTab?.click());
+
+    const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find((input) => input.previousElementSibling?.textContent === "First name")
+      ?? host.querySelectorAll<HTMLInputElement>("input")[0];
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(firstName, "Avery");
+      firstName?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const continueButton = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Continue");
+    await act(async () => continueButton?.click());
+    expect(
+      host.querySelector('.trc-contact-editor-steps [role="tab"][aria-selected="true"]')?.textContent,
+    ).toContain("Business context");
+    const backButton = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Back");
+    await act(async () => backButton?.click());
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>("input")).some((input) => input.value === "Avery")).toBe(true);
+
+    const cancel = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Cancel");
+    await act(async () => cancel?.click());
+    expect(host.textContent).toContain("Continue editing?");
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Resume draft")?.click());
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>("input")).some((input) => input.value === "Avery")).toBe(true);
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Cancel")?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Discard and return")?.click());
+    await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector('[data-contact-editor-origin="toolbar-new"]')));
+    expect(host.querySelector(".trc-contact-editor")).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("preserves the draft through a failed save, retries the tenant mutation, and returns to the exact durable contact", async () => {
+    useSubtabRoute.mockImplementation((_tier: string, _branch: string, initial: string) => React.useState(initial));
+    let persisted = false;
+    const retryPeople = vi.fn(async () => { persisted = true; });
+    useTenantRelationshipsData.mockImplementation(() => ({
+      ...baseData,
+      retryPeople,
+      people: persisted
+        ? [...baseData.people, { ...baseData.people[0], id: "saved-contact", name: "Avery Contact" }]
+        : baseData.people,
+    }));
+    editorHarness.upsert
+      .mockRejectedValueOnce(new Error("Retryable save failure"))
+      .mockResolvedValueOnce("saved-contact");
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter initialEntries={["/solo/42/clients/people"]}><TenantRelationshipsClientsWorkspace routeTier="solo" openPaige={vi.fn()} /><LocationProbe /></MemoryRouter>));
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-contact-editor-origin="toolbar-new"]')?.click());
+    const firstName = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find((input) => input.previousElementSibling?.textContent === "First name");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(firstName, "Avery");
+      firstName?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const finalStep = Array.from(host.querySelectorAll<HTMLButtonElement>('.trc-contact-editor-steps [role="tab"]')).find((button) => button.textContent?.includes("Relationship & consent"));
+    await act(async () => finalStep?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Create contact")?.click());
+    await vi.waitFor(() => expect(host.textContent).toContain("Retryable save failure"));
+    expect(Array.from(host.querySelectorAll<HTMLButtonElement>("button")).some((button) => button.textContent === "Retry save")).toBe(true);
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Retry save")?.click());
+    await vi.waitFor(() => expect(host.textContent).toContain("Contact saved"));
+    expect(editorHarness.upsert).toHaveBeenCalledTimes(2);
+    expect(editorHarness.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
+      tenantId: "tenant-solo",
+      contactId: undefined,
+      patch: expect.objectContaining({ first_name: "Avery" }),
+    }));
+    expect(retryPeople).toHaveBeenCalledTimes(1);
+    expect(host.querySelector("[data-location]")?.textContent).toContain("person=saved-contact");
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Return to saved contact")?.click());
+    expect(host.querySelector("[data-contact-editor]")).toBeNull();
+    expect(host.textContent).toContain("Avery Contact");
+    act(() => root.unmount());
+    host.remove();
   });
 
   it("presents business records without forcing person-only fields", () => {
@@ -536,8 +643,12 @@ describe("tenant Relationships / Clients workspace", () => {
       host.querySelector<HTMLButtonElement>(".trc-person-select")?.click();
     });
     expect(host.querySelector("[data-location]")?.textContent).toContain("person=p-1");
+    const editButton = host.querySelector<HTMLButtonElement>('[data-contact-editor-origin="record-edit"]');
+    await act(async () => editButton?.click());
+    expect(host.querySelector("[data-contact-editor]")).not.toBeNull();
     tenantId = "tenant-b";
     await act(async () => root.render(tree()));
+    expect(host.querySelector("[data-contact-editor]")).toBeNull();
     expect(host.querySelector<HTMLInputElement>("input[placeholder^='Search']")?.value).toBe("");
     expect(host.textContent).toContain("Second Account Client");
     expect(host.textContent).not.toContain("Supplied Person");
