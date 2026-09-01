@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { hasExactPipelineArchiveApproval } from "../../supabase/functions/_shared/pipelineArchiveApproval";
 
 const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
@@ -23,8 +24,10 @@ const defaultCreatorMigration = readFileSync(resolve(process.cwd(), "supabase/mi
 const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831221500_solo_pipeline_default_setter_lock.sql"), "utf8");
 const activeReorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831223000_solo_pipeline_active_reorder.sql"), "utf8");
 const pipelineManagementMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831224500_solo_pipeline_governed_management.sql"), "utf8");
+const pipelineIdentityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261019001000_pipeline_identity_catalogue.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 const paigeChat = readFileSync(resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"), "utf8");
+const paigeChatSurface = readFileSync(resolve(process.cwd(), "src/components/dashboard/PaigeAIChat.tsx"), "utf8");
 const paigeMcp = readFileSync(resolve(process.cwd(), "supabase/functions/paige-mcp/index.ts"), "utf8");
 
 describe("Solo Campaigns approved contract", () => {
@@ -125,11 +128,55 @@ describe("Solo Campaigns approved contract", () => {
     expect(pipelineManagementMigration).toContain("'preset_used',false");
   });
 
+  it("gives duplicate and zero-deal pipelines immutable, tenant-safe catalogue identities", () => {
+    expect(pipelineIdentityMigration).toContain("short_ref");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_ID_IMMUTABLE");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_REFERENCE_IMMUTABLE");
+    expect(pipelineIdentityMigration).toContain("unique (tenant_id,short_ref)");
+    expect(pipelineIdentityMigration).toContain("get_pipeline_catalogue");
+    expect(pipelineIdentityMigration).toContain("stage_count");
+    expect(pipelineIdentityMigration).toContain("deal_count");
+    expect(pipelineIdentityMigration).toContain("prepare_pipeline_archive_as_paige");
+    expect(pipelineIdentityMigration).toContain("configure_tenant_pipeline_as_paige");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_ARCHIVE_REFERENCE_MISMATCH");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_ARCHIVE_CONFIRMATION_REQUIRED");
+    expect(pipelineIdentityMigration).toContain("drop policy if exists pipelines_coach_read");
+    expect(source).toContain("pipeline.shortRef");
+    expect(source).toContain("pipeline.dealCount");
+    expect(adapter).toContain("short_ref");
+    expect(paigeChat).toContain('name: "pipeline_catalogue"');
+    expect(paigeChat).toContain('name: "pipeline_archive_preview"');
+    expect(pipelineIdentityMigration).toContain("revoke insert,update,delete on public.pipelines,public.pipeline_stages from authenticated");
+    expect(pipelineIdentityMigration).toContain("PIPELINE_HARD_DELETE_UNAVAILABLE");
+    expect(paigeChat).toContain("ownerApprovedThisTurn");
+    expect(paigeChat).toContain("previewPredatesTurn");
+    expect(paigeChat).toContain("archive_exact_approval_required");
+    expect(paigeChat).toContain("hasExactPipelineArchiveApproval(confirmedActions, token, archivePipeline.short_ref)");
+    expect(paigeChatSurface).toContain("confirmedActions");
+    expect(paigeChatSurface).toContain("confirmationToken: confirmation.approvalToken");
+    expect(paigeChatSurface).toContain("pipelineRef: confirmation.pipelineRef");
+    expect(source).not.toContain("Delete pipeline");
+    expect(source).not.toContain("Delete stage");
+  });
+
+  it("cannot reuse approval for one same-name pipeline to archive its duplicate", () => {
+    const approvalForA = [{
+      kind: "pipeline_archive" as const,
+      confirmationToken: "11111111-1111-4111-8111-111111111111",
+      pipelineRef: "PPL-4K8M",
+    }];
+
+    expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(true);
+    expect(hasExactPipelineArchiveApproval(approvalForA, "22222222-2222-4222-8222-222222222222", "PPL-9Q2X")).toBe(false);
+    expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-9Q2X")).toBe(false);
+    expect(hasExactPipelineArchiveApproval(undefined, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(false);
+  });
+
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
     for (const contract of ["get_pipeline_workspace", "get_pipeline_routing_evidence", "configure_tenant_pipeline"]) {
       expect(adapter + migration + routingMigration).toContain(contract);
     }
-    for (const action of ["create_pipeline", "update_pipeline", "activate_pipeline", "archive_pipeline", "restore_pipeline", "delete_pipeline", "create_stage", "update_stage", "archive_stage", "restore_stage", "delete_stage", "reorder_stages", "move_deal"]) {
+    for (const action of ["create_pipeline", "update_pipeline", "activate_pipeline", "archive_pipeline", "restore_pipeline", "create_stage", "update_stage", "archive_stage", "restore_stage", "reorder_stages", "move_deal"]) {
       expect(adapter + source + pipelineManagementMigration).toContain(action);
     }
     expect(migration).toContain("PIPELINE_STAGE_OCCUPIED");
