@@ -200,6 +200,20 @@ jobs:
       # classification cannot run. This fails the change that would add a write tool without
       # classifying it — in the repository, rather than in production where the runtime's own
       # fail-closed guard would turn it into an inert tool nobody understands.
+      # A colliding migration version does not fail on push — it is SKIPPED, and every downstream
+      # signal (CI, the db-live tag, the preview badge) stays green while the migration never
+      # reaches production. The Supabase preview reports only the FIRST duplicate key, so it cannot
+      # be relied on to enumerate them.
+      - name: No migration reuses a version (a reused version is silently skipped, never applied)
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ steps.mergebase.outputs.mb }}
+        run: npm run lint:migration-versions
+
+      - name: Migration-version guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:migration-versions:test
+
       - name: Every write tool is classified by the action-risk policy
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk
