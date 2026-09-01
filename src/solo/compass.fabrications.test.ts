@@ -12,6 +12,7 @@ import path from "node:path";
  * read the real seam. A future edit that reintroduces any of them fails here.
  */
 const src = fs.readFileSync(path.join(process.cwd(), "src/solo/compass.tsx"), "utf8");
+const team = fs.readFileSync(path.join(process.cwd(), "src/solo/team.tsx"), "utf8");
 
 describe("no invented customer or provider state", () => {
   it("carries no invented recipient, sender, company or carrier", () => {
@@ -71,5 +72,49 @@ describe("the modals read the real action bus", () => {
   it("has no remaining reference to the removed fixtures", () => {
     expect(src).not.toMatch(/TC_DRAFT\./);
     expect(src).not.toMatch(/TC_ESC\./);
+  });
+});
+
+describe("the Team hub's thin-spots rail invents no one and measures nothing", () => {
+  it("no longer renders the invented findings or their action buttons", () => {
+    // The worst-shaped one named a colleague who does not exist, attributed two named client
+    // accounts to them, and put a monthly hours figure on the coverage — under a button offering
+    // to act on it.
+    expect(team).not.toContain("TM.gaps");
+    expect(team).not.toContain("point at Sasha Kim");
+    expect(team).not.toContain("Reconciliation is manual");
+    expect(team).not.toContain("the worst ratio in the book");
+  });
+
+  it("DELIBERATELY does not yet assert the roster and client fixtures are gone", () => {
+    // Stated rather than silently omitted. `TM.people` and `TM.clients` still carry invented
+    // colleagues and clients, and this slice did not fix them — so a broad name sweep here would
+    // fail for work that has not happened, which is a TODO wearing a guard's clothes. The reason
+    // they are not fixed is real and worth writing down: the roster HAS a live seam
+    // (`useSoloPeople`), but it supplies name, role, email, status and ownership — five of the
+    // twelve fields a person card renders. Capacity, load, accounts, open work, response time,
+    // win rate, pipeline value and hours saved have no source at all. Wiring it therefore means
+    // deciding what a person card shows when only identity is real, and that is Claude Design's
+    // call (§00), not something to settle by picking substitutes.
+    expect(team).toContain("TM.people");
+  });
+
+  it("asserts no capacity it cannot measure", () => {
+    // "112h used of 96h" with the meter driven to 116%, and "Three invited seats would add 140
+    // hours a month." Hours per seat is not a thing this platform records.
+    expect(team).not.toContain("used of 96h");
+    expect(team).not.toContain("would add 140 hours");
+    expect(team).not.toMatch(/Meter pct=\{116\}/);
+  });
+
+  it("still has a rail, rendering an absence rather than being deleted", () => {
+    // §58 — the surface is not removed, it stops asserting. If the whole card disappears, that is
+    // a design decision nobody made.
+    // Asserted on the JSX, not the bare phrase. `toContain("Where the team is thin")` passed with
+    // the card's heading replaced, because the removal note above quotes the heading — the same
+    // self-match that bit three times while writing that note, here making a guard VACUOUS
+    // instead of failing loudly. Mutation is what found it: deleting the heading left this green.
+    expect(team).toContain("<h3>Where the team is thin</h3>");
+    expect(team).toContain("Nothing to show here yet");
   });
 });

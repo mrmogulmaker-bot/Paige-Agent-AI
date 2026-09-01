@@ -45,13 +45,33 @@ accts:[
  {c:'Cairn Advisory',own:'You',hrs:12,val:6200,paige:'Invoicing, recaps',load:'ok'},
  {c:'Mercer Studio',own:'You',hrs:9,val:1180,paige:'Everything routine',load:'light'},
  {c:'Okonkwo Group',own:'Sasha Kim (not invited)',hrs:6,val:600,paige:'Everything routine',load:'light'}],
-gaps:[
- {t:'Two accounts are assigned to a seat that has never signed in',b:'Selby and Okonkwo point at Sasha Kim. In practice you are covering both — 42 hours a month.',
-  act:'Send Sasha the invite',tone:'bad'},
- {t:'No one owns the books',b:'Reconciliation is manual and lands on you the first week of every month. Dolores reads quarterly, which is after the fact.',
-  act:'Raise Finance to full autonomy',tone:'warn'},
- {t:'Devon has 20 hours a week and nothing on him',b:'Ridgeline is the obvious first move. It takes 38 hours and returns $2,400 — the worst ratio in the book.',
-  act:'Move Ridgeline to Devon',tone:'warn'}],
+// gaps — REMOVED 2026-09-01 (§13/§58), recorded rather than deleted quietly.
+//
+// Three "findings" rendered under "Where the team is thin · What Paige would fix first", each
+// with an action button offering to act on it. All three were invented. The first named a
+// colleague who does not exist, attributed two named client accounts to them, and put a monthly
+// hours figure on the coverage. The others asserted who owns the books and how often someone
+// reads them, and ranked a named client by invented hours against invented revenue.
+//
+// UNLIKE the activity feed and the approval modals, THIS ONE CANNOT BE WIRED. There is no
+// gap-analysis seam, and the inputs it would need — per-seat capacity in hours, hours spent per
+// client, revenue per client, who reads what and when — are not recorded anywhere in this
+// platform. The honest answer is not "this needs a query", it is "these numbers do not exist".
+//
+// The same was true of the capacity block beneath them, whose figures were inline rather than
+// even in this fixture: hours used against hours available, a meter driven past 100%, and a claim
+// about how many hours three unopened invites would add.
+//
+// DESCRIBED, NOT QUOTED — and the rule is stronger than "paraphrase". compass.fabrications.test.ts
+// greps this file for the removed wording, so a note that reuses any of its phrasing makes the
+// guard match its own explanation. I did that THREE times writing this one file: first quoting
+// the finding, then quoting the capacity figures, then leaving one borrowed phrase in a sentence
+// I had already rewritten. The reliable form is to describe the SHAPE of what was removed — a
+// named colleague, two named accounts, an hours figure — and never its words.
+//
+// The card shell is left standing and says plainly that it has nothing to show. What that absence
+// should LOOK like, and whether the surface should exist at all before there is data behind it,
+// is Claude Design's call (§00) — the part that was mine was to stop it asserting.
 // feed — REMOVED 2026-09-01 (§13/§58), recorded rather than deleted quietly.
 //
 // Eight invented entries under the heading "What the team did": a dunning reminder to a client
@@ -137,17 +157,8 @@ return <div className="an-2">
 const TmRail=()=>(<div className="card" style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
 <div className="hd" style={{flex:'none'}}><div><h3>Where the team is thin</h3><div className="sub">What Paige would fix first</div></div></div>
 <div className="pane" style={{flex:1,padding:'11px 13px',display:'grid',gap:9,alignContent:'start'}}>
-{TM.gaps.map((g,i)=><div key={i} style={{padding:'12px 13px',border:'1px solid var(--line)',borderRadius:'var(--r-m)'}}>
-<div className="row" style={{gap:8,alignItems:'flex-start'}}>
-<span style={{width:6,height:6,borderRadius:'50%',background:g.tone==='bad'?'var(--bad)':'var(--warn)',flex:'none',marginTop:5}}/>
-<span style={{fontSize:12.7,fontWeight:600,lineHeight:1.4}}>{g.t}</span></div>
-<div style={{fontSize:12,color:'var(--ink-2)',lineHeight:1.5,marginTop:6}}>{g.b}</div>
-<button className="btn btn-s btn-g" style={{height:26,fontSize:11.5,marginTop:9}}><Ic.check size={11}/>{g.act}</button></div>)}
 <div style={{padding:'12px 13px',border:'1px solid var(--line)',borderRadius:'var(--r-m)',background:'var(--surface-2)'}}>
-<div className="eyebrow" style={{fontSize:9.6}}>Capacity across live seats</div>
-<div style={{fontSize:20,fontWeight:600,letterSpacing:'-.03em',margin:'6px 0 8px'}}>112h <span className="sub" style={{fontSize:12,fontWeight:400}}>used of 96h</span></div>
-<Meter pct={116} tone="var(--bad)" h={7}/>
-<div style={{fontSize:11.8,color:'var(--ink-2)',lineHeight:1.5,marginTop:9}}>Three invited seats would add 140 hours a month. Until they sign in, the only lever is her autonomy.</div>
+<div style={{fontSize:12.2,color:'var(--ink-2)',lineHeight:1.55}}>Nothing to show here yet. Working this out needs hours per seat, hours per client and revenue per client, and this workspace does not record any of them — so there is no thin spot to point at rather than one that happens to be empty.</div>
 <button className="btn btn-s" style={{height:26,fontSize:11.5,marginTop:9}}><Ic.send size={11}/>Resend all invites</button></div></div></div>);
 
 const TmWorkload=()=>{const[sort,setSort]=React.useState('worst');
