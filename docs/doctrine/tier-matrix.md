@@ -1032,6 +1032,9 @@ five of six surfaces without any ledger row noticing.
 | Opens knowing what it is carrying (`paige_operating_memory`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | …scoped to THEIR tenant, and their own work within it | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | …narrowed to the focused client when one is in focus | — | — | — | ✓ | ✓ | ✓ | 403 |
+| Reads client memory for their OWN tenant's clients | ✓ | ✓ (admin) | ✓ (admin) | ✓ (admin) | ✓ (admin) | own only | 403 |
+| Reads ANOTHER tenant's client memory | ✓ (operator) | — | — | — | — | — | 403 |
+| Writes client memory into another tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
 
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,

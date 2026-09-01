@@ -254,6 +254,9 @@ in `docs/doctrine/tier-matrix.md` per §66.
 
 | **M2a — the memory reads could never resolve their operator** | `match_paige_memory`, `match_rag_documents` and `match_prompt_memory` raised 42883 on every call: `<=>` lives in `extensions`, their `search_path` is `public`. `match_rag_documents` was broken twice — an `array_agg(r.id)` over a subquery aliased `d`. All three repaired; `lint:vector-path` prevents recurrence. | 9-case prod rollback proof with 4 negative controls · guard driven against the un-fixed tree, catching all 5 historical occurrences · 10-case lint self-test |
 
+| **M2b — client memory belongs to a tenant** | `client_memory` had no tenant column, no restrictive policy, and a tenant-agnostic admin policy: driven, tenant A's admin read 2 of tenant B's memories. Closed by deriving the tenant rather than adding a column, so none of ~20 producers changes. `user_preference` — written at two sites, rejected by the CHECK — now accepted. | 9-case prod rollback proof with 2 negative controls that measured both defects first (2 foreign rows read; 23514 on the preference write) |
+| **Layer 2 — already built, verified rather than rebuilt** | The charter's "owner-confirmed business facts" exists: `save_to_knowledge_base` (confirm-gated, tenant-scoped, embedded, honest on failure) → `match_tenant_knowledge` (caller JWT, DB-side guard, correct search_path) → `tenantKbContext`, cleared on a refused scope. A `remember_fact` sibling would have been a §18 duplicate and was NOT built. | §18 inventory; read path traced end to end |
+
 **Owner ruling absorbed (2026-09-01).** *"Paige may never grant or raise her own autonomy through
 Chat, regardless of action class or owner wording."* `automation_set_grant` and `automation_set_state`
 are `owner_only` and refuse down every channel, including a clicked card. **Named rather than
