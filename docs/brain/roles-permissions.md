@@ -41,10 +41,14 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
   `check_feature_access()` reach `user_roles` one level down and match none of the
   `has_role|has_any_role|user_roles` tokens. Closing that is R2b.
 
+## Solo Team descriptive work data (2026-09-01 reconciliation)
+
+- `tenant_members.job_title` and `tenant_members.responsibilities` are now on `main` through PR #697 (`3fd9944cd90e02794db21fa2ae6d32703fe89ea4`). They are descriptive tenant data only; `role` and `is_owner` remain the only enforced permission inputs.
+- PR #702 (`81e350ca477b9334e62dc636c2a8b57f891917df`) added truthful stored-name/email fallback and work-detail editing. GitHub records show both PRs merged and successful Production deployment statuses; this reconciliation did **not** establish a fresh production row-level query. Authenticated save, invite, permission, account-switch, and email behavior remain **UNVERIFIED**.
+
 ## Not yet built
 
 - No custom-roles table, no permissions table (`user_roles` is the only role table).
-- On `main`, `tenant_members` has **no work-title/responsibilities columns**. ⚠ **In-flight, not live (2026-08-31):** the Solo Team branch adds `job_title` and `responsibilities` as descriptive tenant data while keeping `role`/`is_owner` as the only enforced permission inputs. Do not report this available until its migration is applied and authenticated behavior is proven.
 - `app_role` has **no** `sales_lead` / `closer` / `appointment_setter` / `sdr` / `sales_ops`
   (only `sales_rep`). The owner-ruled sales catalog is entirely net-new.
 
