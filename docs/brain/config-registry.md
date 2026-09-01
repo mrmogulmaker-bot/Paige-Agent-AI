@@ -279,7 +279,7 @@ state stays out while shared assets are versioned. Two negations exist:
 | Path | Why it is versioned |
 |---|---|
 | `!.claude/commands/` | Shared project commands (e.g. `/edge-drift`) — "so every session (and every teammate) gets them" |
-| `!.claude/skills/` | The §69 delivery skill (`flow-by-flow` + its required sibling `flow-prototype`). The account-synced install delivers `SKILL.md` ONLY — no `references/`, no `templates/` — so on a fresh container `SKILL.md`'s first instruction (*read `references/orchestration.md`*) points at a file that does not exist, and §69's "say so plainly" never fires because a skill WAS found. Versioning it is also §64: a container-local install dies with the container |
+| `!.claude/skills/` | Currently a **README only**. The §69 delivery skill (`flow-by-flow` + its required sibling `flow-prototype`) is **NOT vendored** — its bundle ships no `LICENSE`, and the MIT notice can neither be fetched nor reconstructed without inventing a copyright holder, so redistribution is blocked pending an owner decision. The README records the blocker and the local knowledge-capture close-out step that must survive an upstream update. **Known live consequence:** the account-synced install delivers `SKILL.md` ONLY, so on a fresh container the index's first instruction points at a missing `references/orchestration.md` and §69's "say so plainly" never fires — a session in that state should say so rather than improvise |
 
 Contains **no secrets** — these are markdown process documents. Vendored third-party content is
 MIT; see `.claude/skills/LICENSE` and `PROVENANCE.md`, including the open item that the upstream

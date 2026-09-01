@@ -27,12 +27,11 @@ dist-ssr
 # but DO version shared project commands under .claude/commands/ so every session
 # (and every teammate) gets them.
 #
-# .claude/skills/ is versioned for the same reason and one stronger one: CLAUDE.md §69
-# makes flow-by-flow MANDATORY on every software task here, and an account-synced install
-# does not reach a fresh remote container with its references/ intact (§64 — nothing the
-# platform needs may depend on one machine). A skill whose SKILL.md arrives without the
-# files it routes to is worse than an absent one: §69's "say so plainly" never fires,
-# because the skill appears to be present.
+# .claude/skills/ is versioned for the same reason. It currently holds a README only: the
+# §69 skill itself is NOT vendored, because its bundle ships no LICENSE and its MIT notice
+# can neither be fetched nor reconstructed without inventing a copyright holder. That README
+# records the blocker, what would unblock it, and the local close-out step that must survive
+# an upstream update. See .claude/skills/README.md before adding anything here.
 .claude/*
 !.claude/commands/
 !.claude/skills/
