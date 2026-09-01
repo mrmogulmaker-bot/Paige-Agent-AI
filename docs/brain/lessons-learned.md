@@ -637,3 +637,51 @@ that it completed. Where a swallowing catch sits downstream, assert something on
 chain produces. This is the third time this session that a component failing soft has looked
 healthy — the others being vector reads returning `[]` and a drain worker reporting 30,375
 successes over a queue that never empties.
+
+---
+
+## A reused migration version does not fail — it is silently SKIPPED
+
+**2026-09-01, merging main into a long-lived branch.** `schema_migrations` is keyed on the VERSION
+alone. When a version is already recorded, `supabase db push` does not error and does not warn: it
+skips the file. The migration merges, CI is green, the `db-live` tag advances, every badge reads
+healthy, and the migration **never exists on production**. The first sign is whatever breaks weeks
+later, in a place that looks unrelated.
+
+**Three collisions arrived in one merge, and only one was reported.** The Supabase preview stops at
+the first duplicate-key error, so it named `20261018000000` and nothing else. Fixing what it named
+would have left two behind and looked resolved:
+
+| version | this branch | already taken by |
+|---|---|---|
+| 20261018000000 | `chat_turn_append_tenant_scope` | main's `secret_read_keeps_its_approvals` |
+| 20261019000000 | `credit_extraction_review_state` | main's `solo_setup_business_brief` |
+| 20261020000000 | `tool_autonomy_catalogue_covers_the_gate` | **prod's** `primary_number_is_always_active` |
+
+**The third is the shape nothing in the repository can see.** It has no duplicate filename anywhere
+— its twin exists only in production's ledger, applied from a branch that is not merged. Scanning
+the tree for repeated prefixes finds nothing. Comparing against the base branch finds nothing. Only
+querying `supabase_migrations.schema_migrations` finds it.
+
+**Three checks, and each misses what the others catch:**
+1. duplicate filenames in the tree — misses both merge shapes;
+2. versions the branch ADDS vs the merge base — misses the production-only twin;
+3. the live ledger — catches all three, needs credentials CI does not have.
+
+`lint:migration-versions` does 1 and 2 offline and **says in its own header that it cannot do 3**.
+The pre-merge check for the third shape is a query against the ledger, and it belongs in the §32.a
+persisted-apply confirmation. A guard trusted for more than it checks is worse than no guard.
+
+**The fix is always to rename the NEW file** to a free, later version. Renumbering the one already
+applied orphans a live row.
+
+**Before renaming, verify three things against the ledger**, or the fix creates its own defect:
+the new name was never applied under its own name (or it re-runs); the replacement versions are
+free; and the replacements sort after everything already applied and before the branch's own later
+migrations, so ordering is preserved.
+
+**This class was already on record.** The `20261004000000` collision with #666 is written up above,
+with the line *"a migration version collision is invisible to every gate."* It stayed invisible
+because nothing mechanical was added at the time — only the note. The lesson behind the lesson:
+recording a failure class without building the check that catches it buys one session's memory,
+not a guard.
