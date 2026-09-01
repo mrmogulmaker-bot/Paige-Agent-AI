@@ -39,7 +39,8 @@ function jsonResp(data: Record<string, unknown>, status = 200): Response {
 }
 
 async function logSms(
-  supabase: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   user_id: string,
   message_type: string,
   body: string,

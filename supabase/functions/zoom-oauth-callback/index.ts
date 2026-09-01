@@ -89,7 +89,9 @@ function redirectTo(origin: string, status: "connected" | "error", detail?: stri
 // the *success* path is role-aware. On any role-lookup failure we fail toward the
 // safe non-admin surface so an admin route is never leaked to a client.
 async function redirectConnectedForUser(
-  admin: ReturnType<typeof createClient>,
+  // The callback uses a service-role client without generated database types.
+  // deno-lint-ignore no-explicit-any
+  admin: any,
   origin: string,
   userId: string,
 ): Promise<Response> {

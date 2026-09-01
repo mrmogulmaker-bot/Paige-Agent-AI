@@ -97,7 +97,11 @@ Deno.serve(async (req) => {
   return twiml();
 });
 
-type Admin = ReturnType<typeof createClient>;
+// Supabase's generated database type is intentionally unavailable in this
+// standalone webhook. Keep the service client dynamic, as the existing inbound
+// handlers do, so helper parameters retain the runtime client's table surface.
+// deno-lint-ignore no-explicit-any
+type Admin = any;
 
 async function revokePlatformSmsConsent(admin: Admin, phone: string): Promise<void> {
   const { error } = await admin

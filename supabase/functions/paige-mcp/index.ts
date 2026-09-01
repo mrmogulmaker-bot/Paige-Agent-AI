@@ -4097,7 +4097,7 @@ mcp.tool("add_email_domain", {
     }).select("*").single();
     if (error) return err(error.message);
     await audit("add_email_domain", "email_domain", data.id, { domain });
-    const settingsUrl = await externalActorDestination(tenantId, "connections");
+    const settingsUrl = await externalActorDestination(tenant_id, "connections");
     return ok({
       email_domain: data,
       next_steps: settingsUrl
