@@ -482,7 +482,7 @@ const Auth = () => {
   const platformFeatures = [
     { icon: TrendingUp, title: "Client follow-through", desc: "Every client gets the follow-up you'd never keep up with" },
     { icon: Zap, title: "Works on day one", desc: "Paige runs your operation the moment you connect her" },
-    { icon: Shield, title: "Your practice, private", desc: "256-bit encryption keeps your client data secure" },
+    { icon: Shield, title: "Your business, private", desc: "Access controls help protect your client data" },
   ];
   // For a CLIENT accepting a tenant invite, the left panel speaks to THEM (the
   // customer), not the coach — and never pitches the Paige platform (§9).
@@ -656,7 +656,7 @@ const Auth = () => {
               <p className="text-xs font-medium text-primary-foreground/85">
                 {isClientInvite ? `Your private workspace with ${brandName}` : "Built for coaches, consultants, agencies & thought leaders"}
               </p>
-              <p className="text-[11px] text-primary-foreground/55">256-bit encryption · your data stays private</p>
+              <p className="text-[11px] text-primary-foreground/55">Access controls · encrypted transport</p>
             </div>
           </div>
         </div>
