@@ -137,9 +137,9 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   | Sends an agreed price | yes, required | **no** — posts `{ phone_number }` | **no** — posts `{ phone_number }` |
   | Quote guard | **enforced** — refuses without a whole, positive `monthly_cents`, *ahead of* the autonomy gate so it binds at `auto` too | n/a | n/a |
   | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **no** — branch skipped | **no** — branch skipped |
-  | Confirmation step | **model-asserted, not enforced** — the gate tests `gateArgs.confirm`, parsed from the model's own tool arguments (`index.ts` ~5973). Nothing binds it to the prior `needs_confirm` or to a human's yes, so a model emitting `confirm:true` on its FIRST call executes immediately at `confirm` mode. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
+  | Confirmation step | **enforced but self-asserted** — `index.ts` ~5973 really does refuse without `gateArgs.confirm`, so a caller that just invokes the tool is stopped. But the flag is parsed from the model's OWN arguments, so a model emitting `confirm:true` on its FIRST call executes immediately at `confirm` mode with no human involved. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
   | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise **`—`** |
-  | What can go wrong | a workspace on `auto` buys unattended | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
+  | What can go wrong | **two unattended paths, not one** — a workspace on `auto` buys with no gate, AND at `confirm` a first-call `confirm:true` executes with no human involved | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
 
   The UI behaviour is deliberate and pre-existing — the function comments it: *"the marketplace UI
   does not [send an amount] … so its behaviour is byte-for-byte what it was."* Recorded here as a
@@ -258,8 +258,9 @@ voice route unless someone sets it by hand in the console.
 capability per `connections-rail-contract.md` §0b):
 6. ~~Live number search, and purchase (a recurring charge).~~ **REACHABLE 2026-09-01 (#695/#699) —
    and NO lane carries the full authorization.** The agent lane at `confirm` re-verifies the price
-   server-side but its confirmation is **model-asserted**, not enforced — nothing binds
-   `confirm:true` to a human's yes. The agent lane at `auto` has no confirmation at all. Solo has a
+   server-side but its confirmation is **enforced-but-self-asserted** — the server does refuse
+   without the flag, and the flag is the model's own output, so nothing binds it to a human's yes.
+   The agent lane at `auto` has no confirmation at all. Solo has a
    real browser confirmation but no server-side price check. The legacy tab has neither. **Do not
    treat this item as closed:** what shipped is reachability, not the authorization the item
    originally meant. See the lane table above, and the tracked follow-up covering both UI lanes.

@@ -668,7 +668,7 @@ safety property is the more dangerous of the two, because the next session quote
 | **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
 | **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
 | **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both say ask first; nothing checks that anyone did |
-| **Enforced but self-asserted** | code refuses without a token the ACTOR supplies — real against an actor that omits it, worthless against one that does not | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction** |
+| **Enforced but self-asserted** | code refuses without an assertion the actor can **MINT ITSELF**, and validates only its value — not who issued it. Real against an actor that omits it, worthless against one that supplies it. **The property is mintability, not who transmits it:** a JWT or capability token is also actor-supplied, and is strong precisely because the actor cannot create one the server will accept | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the flag is self-minted and the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction** |
 | **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
 
 Never write "never" about the bottom three rows. For anything money-, permission-, or
@@ -739,4 +739,23 @@ human. Hence the fifth row in the table above.
 reclassify it to the bottom. Ask instead *what does it still stop?* A gate that constrains the
 careless case and not the deliberate one is neither "enforced" nor "nothing" — and if the
 vocabulary has no row for it, add one rather than rounding to the nearest existing label.
+
+**And then the new row's own definition was wrong, which is where this entry stops.** It first read
+*"code refuses without a token the ACTOR supplies"* — but a JWT is actor-supplied and is strong,
+precisely because the actor cannot create one the server will accept. The property is
+**mintability**, not who transmits the value: the gate is weak because the model can produce the
+accepted assertion itself and the server validates only its value, never its issuer. Getting that
+wrong would have classified session tokens as weak protections.
+
+**The last round found three defects, all of them the SAME correction failing to propagate** — the
+two-layer distinction had been applied to three places and was needed in six, so a risk cell still
+named only `auto` as the unattended path, and a summary sentence still said "every confirmation is
+prompt-level". That is this entry's own second rule failing on this entry: *search and assess every
+occurrence.* Applying a correction where you were looking is not applying it.
+
+**Why this is where it stops, stated rather than left implicit.** Successive rounds moved from
+wrong claims, to wrong verification, to wrong placement, to a wrong definition inside the fix for a
+wrong classification. Each was real and each was smaller. The record is now accurate on every point
+anyone raised, and the remaining risk is no longer in this text — it is in the two product defects
+it documents, which are filed as their own work.
 
