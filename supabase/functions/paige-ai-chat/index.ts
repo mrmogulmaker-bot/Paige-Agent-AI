@@ -5,6 +5,7 @@ import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 import { hasExactPipelineArchiveApproval } from "../_shared/pipelineArchiveApproval.ts";
+import { toolIdentityHash, decideToolConfirmation, type ConfirmationClaim } from "../_shared/toolConfirmation.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -6052,9 +6053,95 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, error: `${(TOOL_LABELS[tc.function.name] || "this action").replace(/^./, (c) => c.toUpperCase())} is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled (don't mention any internal names) and don't retry.` }) });
             continue;
           }
-          if (autoMode === "confirm" && gateArgs.confirm !== true) {
-            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, confirm_summary: describeConfirm(tc.function.name, gateArgs), ...(pipelineArchiveApproval ? { approval_binding: { kind: "pipeline_archive", confirmationToken: pipelineArchiveApproval.confirmationToken, pipelineRef: pipelineArchiveApproval.pipelineRef } } : {}), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
-            continue;
+          if (autoMode === "confirm") {
+            // ── CONFIRMATION BINDING ──────────────────────────────────────────────────────
+            // `gateArgs.confirm` is JSON.parse(tc.function.arguments) — the MODEL'S OWN OUTPUT.
+            // On its own it proves nothing: a model emitting confirm:true on its first call used
+            // to execute immediately, and because the round dedupe keys on the exact argument
+            // string, it could even propose and self-approve inside ONE turn with no operator
+            // message between. So the flag no longer decides anything — it only selects a branch.
+            // The ONLY thing that executes a confirm-lane tool is consuming a SERVER-MINTED
+            // proposal for this tool, created BEFORE this turn began.
+            //
+            // Bound on IDENTITY, not on the whole arguments: history is rebuilt as
+            // {role, content} only (~4005), so the model regenerates its arguments from prose on
+            // the confirming turn, and a whole-argument hash is unsatisfiable for a tool whose
+            // arguments ARE authored content (document_generate's `blocks`). See
+            // _shared/toolConfirmation.ts — that version livelocked in silence.
+            //
+            // Honest bound (§13): proves the server proposed first, that a turn intervened, and
+            // that one approval buys one execution. Does NOT prove the human said yes. Binding to
+            // an authenticated approval click needs per-surface UI work (only PaigeAIChat renders
+            // PaigeConfirmCard; useSoloChat drops the frame) and is tracked separately.
+            //
+            // FAILS CLOSED, deliberately. There is no "guard not deployed yet" escape: an earlier
+            // revision had one, and it restored the exact self-asserted bypass this exists to
+            // close, platform-wide, for every tool. A confirm-lane tool that asks twice for a few
+            // minutes while the migration lands is strictly better than member_grant_role running
+            // unguarded (§68 — a check that fails open has proven nothing).
+            const confirmAdmin = createClient(supabaseUrl, supabaseServiceKey);
+            const confirmTenantId = personaCtx?.tenant_id ?? null;
+
+            // Guarded like every other await in this loop: a throw here escapes executeToolCalls
+            // and breaks the whole SSE stream rather than one tool result.
+            let confirmIdentityHash: string | null = null;
+            try {
+              confirmIdentityHash = await toolIdentityHash(tc.function.name, gateArgs);
+            } catch (e) {
+              console.error("[confirm-binding] identity hash threw for", tc.function.name, e);
+            }
+
+            let claim: ConfirmationClaim | undefined;
+            if (gateArgs.confirm === true && confirmIdentityHash) {
+              try {
+                const { data, error } = await confirmAdmin.rpc("paige_tool_confirmation_claim", {
+                  _tenant_id: confirmTenantId,
+                  _requested_by: user.id,
+                  _tool_key: tc.function.name,
+                  _identity_hash: confirmIdentityHash,
+                  _turn_started_at: new Date(startedAt).toISOString(),
+                });
+                if (error) {
+                  console.error("[confirm-binding] claim failed for", tc.function.name, error);
+                  claim = { ok: false, reason: "error" };
+                } else {
+                  claim = (data ?? { ok: false, reason: "error" }) as ConfirmationClaim;
+                }
+              } catch (e) {
+                console.error("[confirm-binding] claim threw for", tc.function.name, e);
+                claim = { ok: false, reason: "error" };
+              }
+            }
+
+            const decision = decideToolConfirmation({ autoMode, confirmFlag: gateArgs.confirm, claim });
+
+            if (decision.kind === "propose") {
+              // Mint the proposal this action's future confirm:true will have to spend. Minting
+              // supersedes any earlier open proposal for this tool, so exactly one is claimable
+              // and one approval can never be spent twice. If it fails we still refuse — never
+              // execute on an unrecorded proposal.
+              if (confirmIdentityHash) {
+                try {
+                  let confirmSummaryForRow = "";
+                  try { confirmSummaryForRow = describeConfirm(tc.function.name, gateArgs); } catch { /* label only */ }
+                  const { error: openErr } = await confirmAdmin.rpc("paige_tool_confirmation_open", {
+                    _tenant_id: confirmTenantId,
+                    _requested_by: user.id,
+                    _tool_key: tc.function.name,
+                    _identity_hash: confirmIdentityHash,
+                    _summary: confirmSummaryForRow,
+                  });
+                  if (openErr) console.error("[confirm-binding] open failed for", tc.function.name, openErr);
+                } catch (e) {
+                  console.error("[confirm-binding] open threw for", tc.function.name, e);
+                }
+              }
+              if (decision.revalidate) {
+                console.error("[confirm-binding] REFUSED self-asserted confirm for", tc.function.name, "reason:", claim?.reason ?? "none");
+              }
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, confirm_summary: describeConfirm(tc.function.name, gateArgs), ...(pipelineArchiveApproval ? { approval_binding: { kind: "pipeline_archive", confirmationToken: pipelineArchiveApproval.confirmationToken, pipelineRef: pipelineArchiveApproval.pipelineRef } } : {}), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
+              continue;
+            }
           }
           // autoMode === 'auto', or confirm already satisfied → fall through to execute.
         }

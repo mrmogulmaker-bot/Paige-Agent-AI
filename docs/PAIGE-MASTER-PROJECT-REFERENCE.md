@@ -131,6 +131,55 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Paige's tool confirmation is bound to SERVER-HELD state (2026-09-01, `20261021000000`)
+
+`confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
+in `paige-ai-chat` mints a `paige_tool_confirmations` row on every `needs_confirm`, and a later
+`confirm:true` executes ONLY by atomically consuming a row for that tool, requester and tenant that
+is unspent, unsuperseded, unexpired, and **created before the current turn began**. Minting
+supersedes any earlier open proposal for the same tool, so one approval buys exactly one execution.
+
+For a list of high-consequence tools (`TOOL_IDENTITY_FIELDS`) the row also pins an identity. Some
+of those values ARE shown to the operator (the phone number, the role, a workflow or page id);
+others — `user_id`, `contact_id`, `number_id` — are **not**, and the pin there buys less than it
+looks like: a mismatch re-renders the *same* sentence, so a second yes executes on the new subject.
+It closes an accidental swap; it does not let the operator tell two subjects apart. Naming the
+subject in the summary is filed separately.
+
+It deliberately does **not** pin whole arguments: history carries only `{role, content}`, so the
+model re-authors its arguments from prose on the confirming turn, and hashing a `document_generate`
+payload made the flow unapprovable.
+
+**Any user turn satisfies the gate — including "no, don't."** This proves a turn intervened, never
+that the operator agreed.
+
+**Both versions before this one were BLOCKED by the §39 peer-gate**, the first for that
+whole-argument hash, the second for a supersede that keyed on the tool alone while the claim keyed
+on tool+identity — which livelocked any *batch* ("delete these two contacts") in exactly the same
+silent way. Neither was reachable by the SQL proof or the unit tests as they stood.
+
+**What this closed.** The gate previously tested `gateArgs.confirm`, which is
+`JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
+its first call executed immediately; and because the tool loop dedupes rounds on the exact argument
+string, it could even propose and self-approve **inside a single HTTP turn** with no operator
+message in between. `MUTATING_TOOLS` carries **52 entries**, two of which (`marketplace_install`,
+`marketplace_uninstall`) are containment tombstones with no tool definition and no dispatch branch
+and can never reach it. The rest include `member_grant_role`,
+`n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`.
+
+**What it does NOT claim (§13).** It proves the server proposed first, that a turn intervened, that
+what runs is what was proposed, and that an approval is spent once. It does **not** prove the human
+said *yes*. Binding to an authenticated approval click needs per-surface UI work — only
+`PaigeAIChat` renders `PaigeConfirmCard`, and `useSoloChat` drops the confirm frame — and is
+tracked separately. `auto` is unchanged and still carries no confirmation, by design (§67).
+
+**§18:** generalizes `pipeline_archive_confirmations` (#709), which already did this for one tool.
+Not a rival seam. **Proof:** 11/11 behavioural assertions against prod inside `BEGIN … ROLLBACK`
+via the committed `scripts/tool-confirmation-sql-proof.sql`, plus 46 unit tests including explicit
+livelock regressions. Inside a studio thread `STUDIO_AUTO_TOOLS` still flips five build tools to
+`auto`, so the binding does not reach those there.
+
+
 ### §65 operator route tree — AUTHORED from the Super Admin design pack (2026-08-18, PR #541)
 
 - ✅ **`OPERATOR_BRANCHES` is authored** (`src/lib/routing/tierBranches.ts`) — **13 branches / 5 settings
