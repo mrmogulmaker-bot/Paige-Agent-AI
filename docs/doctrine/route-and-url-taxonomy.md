@@ -311,6 +311,8 @@ Paige can route *to* and pull data *from*, not just "where the UI is." Without a
    sub-account," the address is `/business/{n}/growth` — the code, the data, and the §16 department that
    owns it are all pinned by that one handle.
 
+**Canonical Solo shell invariant (owner ruling 2026-09-01).** Every current and future Solo tenant mounts the same canonical shell chain: SoloEntry → SoloApp → TenantCommandCenterShell → SoloSettings for Settings. The account segment is an address used to resolve the active tenant on the server; it is never authority and never a layout switch. Tenant context may change data, permissions, entitlements, and proven capability state; it must never fork the Solo shell, layout, navigation, responsive host, scroll policy, or PAIGE workspace. A defect in any shared surface is repaired at its canonical owner for every Solo tenant, never behind an account number, tenant name, fixture, demo flag, or URL-value condition.
+
 ---
 
 ## 11. The complete per-tier branch map (deep-linkable tabs)

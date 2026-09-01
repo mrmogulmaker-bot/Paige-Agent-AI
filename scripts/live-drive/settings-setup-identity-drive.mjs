@@ -15,6 +15,10 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const OUT = path.resolve("scripts/live-drive/artifacts/settings-setup-identity");
 const VIEWPORTS = [[1536, 770], [1366, 768], [1024, 768], [900, 1000]];
 const THEMES = ["light", "dark"];
+const CONTEXTS = [
+  { key: "affected", query: "primary", account: "1971670", accountName: "Harness workspace", legalName: "Harness Advisory LLC" },
+  { key: "known-good", query: "second", account: "2072681", accountName: "Second harness workspace", legalName: "Second Harness Studio Inc." },
+];
 const results = [];
 
 function record(name, ok, detail = "") {
@@ -95,53 +99,92 @@ async function main() {
     browser = await chromium.launch({ ignoreDefaultArgs: ["--hide-scrollbars"] });
     for (const [width, height] of VIEWPORTS) {
       for (const theme of THEMES) {
-        const label = `${width}x${height} ${theme}`;
-        const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme });
-        const page = await context.newPage();
-        const errors = [];
-        page.on("pageerror", (error) => errors.push(String(error).slice(0, 160)));
-        await page.goto(`${BASE}/solo/1971670/settings/setup?theme=${theme}`, { waitUntil: "networkidle" });
-        await page.locator(".setup-brief").waitFor();
-        const foldPaige = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
-        if (await foldPaige.isVisible()) await foldPaige.click();
+        let canonicalShellFingerprint;
+        for (const tenant of CONTEXTS) {
+          const label = `${width}x${height} ${theme} · ${tenant.key}`;
+          const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme });
+          const page = await context.newPage();
+          const errors = [];
+          page.on("pageerror", (error) => errors.push(String(error).slice(0, 160)));
+          await page.goto(
+            `${BASE}/solo/${tenant.account}/settings/setup?theme=${theme}&tenant=${tenant.query}`,
+            { waitUntil: "domcontentloaded", timeout: 60_000 },
+          );
+          await page.locator(".setup-brief").waitFor();
 
-        const read = await measure(page);
-        record(`${label} · real Setup renders`, read.setup && read.errors === 0, `${read.controls} controls`);
-        record(`${label} · carrier contract visible`, read.carrierCopy && read.representativeCopy);
+          const foldPaige = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
+          if (await foldPaige.isVisible()) await foldPaige.click();
+          await page.locator("#tenant-paige-workspace").waitFor({ state: "hidden" });
 
-        await page.getByRole("button", { name: "Edit brief" }).click();
-        const edit = await measure(page);
-        record(`${label} · complete edit flow renders`, edit.controls >= 30, `${edit.controls} enabled controls`);
-        record(`${label} · one vertical owner`, edit.scrollers === 1 && edit.overflowY === "auto",
-          `owners=${edit.scrollers} overflow=${edit.overflowY} ${edit.hostScroll}/${edit.hostClient}`);
-        record(`${label} · no horizontal overflow`, !edit.horizontal);
-        record(`${label} · full registration number is masked`,
-          await page.locator("#setup-businessRegistrationNumber").getAttribute("type") === "password");
-        record(`${label} · exact provider choices render`,
-          await page.locator("#setup-entityType option").count() === 6 &&
-          await page.locator("#setup-businessRegistrationIdentifier option").count() === 10 &&
-          await page.locator("#setup-authorizedRepresentativeJobPosition option").count() === 8);
+          const closed = await measure(page);
+          const bodyText = await page.locator("body").innerText();
+          const otherTenant = CONTEXTS.find((candidate) => candidate.key !== tenant.key);
+          record(`${label} · canonical route/context resolves`,
+            page.url().includes(`/solo/${tenant.account}/settings/setup`) && bodyText.includes(tenant.legalName));
+          record(`${label} · tenant legal identity stays isolated`,
+            bodyText.includes(tenant.legalName) && !bodyText.includes(otherTenant.legalName));
+          record(`${label} · PAIGE closed geometry`, !closed.horizontal,
+            `host=${closed.hostScroll}/${closed.hostClient}`);
 
-        const deepest = page.locator("#setup-doNotAssume");
-        await deepest.focus();
-        const deepestVisible = await deepest.evaluate((el) => {
-          const r = el.getBoundingClientRect();
-          return r.top >= 0 && r.bottom <= window.innerHeight;
-        });
-        record(`${label} · keyboard focus reaches deepest field`, deepestVisible);
-        record(`${label} · no page errors`, errors.length === 0, errors.join(" | "));
+          const shellFingerprint = await page.evaluate(() => JSON.stringify({
+            shellCount: document.querySelectorAll("[data-tenant-shell]").length,
+            hostCount: document.querySelectorAll("[data-solo-screen-host]").length,
+            nav: [...document.querySelectorAll(".tcs-nav a, .tcs-nav button")]
+              .map((el) => el.textContent?.replace(/\s+/g, " ").trim())
+              .filter(Boolean),
+          }));
+          canonicalShellFingerprint ??= shellFingerprint;
+          record(`${label} · same canonical shell fingerprint`, shellFingerprint === canonicalShellFingerprint);
 
-        await page.evaluate(() => {
-          const mark = document.createElement("div");
-          mark.textContent = "HARNESS RENDER · NOT LIVE";
-          Object.assign(mark.style, {
-            position: "fixed", right: "10px", bottom: "10px", zIndex: "2147483647",
-            padding: "6px 9px", background: "#111", color: "#fff", font: "700 11px sans-serif",
+          await page.locator("[data-tenant-paige-command]").click();
+          await page.locator("#tenant-paige-workspace").waitFor({ state: "visible" });
+          const open = await measure(page);
+          record(`${label} · PAIGE open uses one workspace`,
+            await page.locator("#tenant-paige-workspace").count() === 1);
+          record(`${label} · PAIGE open geometry`, !open.horizontal,
+            `host=${open.hostScroll}/${open.hostClient}`);
+          await page.screenshot({ path: path.join(OUT, `${width}x${height}-${theme}-${tenant.key}-paige-open.png`) });
+          await foldPaige.click();
+          await page.locator("#tenant-paige-workspace").waitFor({ state: "hidden" });
+
+          const read = await measure(page);
+          record(`${label} · real Setup renders`, read.setup && read.errors === 0, `${read.controls} controls`);
+          record(`${label} · carrier contract visible`, read.carrierCopy && read.representativeCopy);
+
+          await page.getByRole("button", { name: "Edit brief" }).click();
+          const edit = await measure(page);
+          record(`${label} · complete edit flow renders`, edit.controls >= 30, `${edit.controls} enabled controls`);
+          record(`${label} · one vertical owner`, edit.scrollers === 1 && edit.overflowY === "auto",
+            `owners=${edit.scrollers} overflow=${edit.overflowY} ${edit.hostScroll}/${edit.hostClient}`);
+          record(`${label} · no horizontal overflow`, !edit.horizontal);
+          record(`${label} · full registration number is masked`,
+            await page.locator("#setup-businessRegistrationNumber").getAttribute("type") === "password");
+          record(`${label} · exact provider choices render`,
+            await page.locator("#setup-entityType option").count() === 6 &&
+            await page.locator("#setup-businessRegistrationIdentifier option").count() === 10 &&
+            await page.locator("#setup-authorizedRepresentativeJobPosition option").count() === 8);
+
+          const deepest = page.locator("#setup-doNotAssume");
+          await deepest.focus();
+          const deepestVisible = await deepest.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            return r.top >= 0 && r.bottom <= window.innerHeight;
           });
-          document.body.append(mark);
-        });
-        await page.screenshot({ path: path.join(OUT, `${width}x${height}-${theme}.png`) });
-        await context.close();
+          record(`${label} · keyboard focus reaches deepest field`, deepestVisible);
+          record(`${label} · no page errors`, errors.length === 0, errors.join(" | "));
+
+          await page.evaluate(() => {
+            const mark = document.createElement("div");
+            mark.textContent = "HARNESS RENDER · NOT LIVE";
+            Object.assign(mark.style, {
+              position: "fixed", right: "10px", bottom: "10px", zIndex: "2147483647",
+              padding: "6px 9px", background: "#111", color: "#fff", font: "700 11px sans-serif",
+            });
+            document.body.append(mark);
+          });
+          await page.screenshot({ path: path.join(OUT, `${width}x${height}-${theme}-${tenant.key}-paige-closed.png`) });
+          await context.close();
+        }
       }
     }
   } finally {

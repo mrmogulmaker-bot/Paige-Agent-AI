@@ -34,7 +34,11 @@ function state(): StubState {
   return (v as StubState) || "dense";
 }
 
-const TENANT = "harness-tenant";
+const SECOND_CONTEXT = new URLSearchParams(window.location.search).get("tenant") === "second";
+const TENANT = SECOND_CONTEXT ? "harness-tenant-second" : "harness-tenant";
+const TENANT_NAME = SECOND_CONTEXT ? "Second harness workspace" : "Harness workspace";
+const LEGAL_NAME = SECOND_CONTEXT ? "Second Harness Studio Inc." : "Harness Advisory LLC";
+const PUBLIC_NAME = SECOND_CONTEXT ? "Second Harness Studio" : "Harness Advisory";
 
 /** The workspace's people. Visibly synthetic, so a frame can never be mistaken
  *  for a real roster and no invented person appears in an artifact (§13/§63). */
@@ -148,7 +152,7 @@ function seed(): Record<string, Row[]> {
     tenant_a2p_registrations: s === "issues" ? [] : [{ tenant_id: TENANT }],
     tenants: [{
       id: TENANT,
-      name: "Harness workspace",
+      name: TENANT_NAME,
       brand: {
         business_phone: s === "issues" ? "" : "+1 555 0100",
         website: "https://harness.example.invalid",
@@ -322,7 +326,7 @@ export const supabase = {
     if (name === "get_solo_setup_identity") {
       const stored = db.tenants[0]?.brand as Record<string, unknown> | undefined;
       const businessBrief = stored?.business_brief ?? {
-        legalName: "Harness Advisory LLC", publicName: "Harness Advisory", dbaName: "",
+        legalName: LEGAL_NAME, publicName: PUBLIC_NAME, dbaName: "",
         website: "https://harness.example.invalid", address: "123 Harness Way, Atlanta, GA 30303",
         phone: "+14045550123", industry: "PROFESSIONAL_SERVICES", naicsCode: "541611", sicCode: "8742",
         entityType: "Limited Liability Corporation", stateOfFormation: "GA",
@@ -340,7 +344,7 @@ export const supabase = {
         provenance: {}, updatedAt: "2026-09-01T00:00:00.000Z",
       };
       return Promise.resolve(ok({
-        tenant_id: TENANT, tenant_name: "Harness workspace", business_brief: businessBrief,
+        tenant_id: TENANT, tenant_name: TENANT_NAME, business_brief: businessBrief,
         pending_proposal: null, primary_business_email: "owner@harness.example.invalid",
         can_edit: state() !== "readonly", business_registration_number_last_4: "6789",
       }));
@@ -510,7 +514,7 @@ export const supabase = {
               id: "dom-1",
               domain: "harness.example.invalid",
               from_email_local: "hello",
-              from_name: "Harness workspace",
+              from_name: TENANT_NAME,
               status: "verified",
               is_default: true,
             }],
