@@ -500,7 +500,7 @@ function requestedSegment(search: string): ConnectionsSegment | undefined {
   return CONNECTIONS_SEGMENTS.find((s) => s === raw);
 }
 
-function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
+function ConnectionsView({ initialSegment, onSegmentChange }: { initialSegment?: ConnectionsSegment; onSegmentChange?: () => void }) {
   // The account slug, for the one link this surface owes to Setup — where the
   // business record actually lives.
   const account = useParams().account ?? "";
@@ -517,6 +517,15 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
   // Communications after following a link that says Calendars is the kind of miss
   // that makes someone believe the setting is not there.
   const [view, setView] = useState<ConnectionsSegment>(initialSegment ?? "communications");
+  const changeView = useCallback((nextView: ConnectionsSegment) => {
+    setView(nextView);
+  }, []);
+  // Reset after React commits the destination segment. This matters for the
+  // inline Registration handoff: the clicked link disappears during the render,
+  // so a synchronous focus handoff would leave focus on <body>.
+  useEffect(() => {
+    onSegmentChange?.();
+  }, [view, onSegmentChange]);
   const identityStatus = identity.value?.default_email_status ?? null;
   const identityPresentation = getManagedIdentityPresentation({ identity: identity.value, loading: identity.loading, error: identity.error });
   const domainPresentation = getCustomDomainPresentation({ statuses: comms.domains.map((domain) => domain.status), loading: comms.loading, error: comms.error });
@@ -588,7 +597,7 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
       <span className="ss-subnav-here">Connections</span>
       <div className="ss-segment" role="tablist" aria-label="Connections areas">
         {TABS.map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={view === key} onClick={() => setView(key)}>{label}</button>
+          <button key={key} role="tab" aria-selected={view === key} onClick={() => changeView(key)}>{label}</button>
         ))}
       </div>
     </div>
@@ -655,7 +664,7 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
             <p className="ss-note">
               Filing with a carrier is not something this product can do yet. Preparing and
               saving a registration happens in{" "}
-              <button type="button" className="ss-linklike" onClick={() => setView("registration")}>Registration</button>,
+              <button type="button" className="ss-linklike" onClick={() => changeView("registration")}>Registration</button>,
               where it stops at <strong>prepared, not submitted</strong>.
             </p>
             {/* These three fields live in SETUP, not here (owner ruling,
@@ -1507,10 +1516,6 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
     if (!scrollOwner) return;
     scrollOwner.classList.add("tcs-main--settings-scrollbar-hidden");
 
-    // EVERY Settings destination, not just the long ones. Owner policy makes
-    // Settings the intentionally scrollable browse class, so its one scroll owner
-    // has to be visible AND drivable from the keyboard wherever you land.
-    //
     // `tabindex="-1"` makes the owner focusable without adding a tab stop, and
     // focus is taken only when nothing else holds it, so it never steals focus
     // from a control already in use. Without it the owner cannot hold focus at
@@ -1518,7 +1523,6 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
     // UPWARD from the focused node and never descends into a scrollable
     // descendant, and the shell above is `overflow: hidden` — so Space, PageDown
     // and End each left `scrollTop` at 0.
-    scrollOwner.classList.add(SETTINGS_SCROLLBAR_SHOWN);
     const hadTabIndex = scrollOwner.hasAttribute("tabindex");
     if (!hadTabIndex) scrollOwner.setAttribute("tabindex", "-1");
     if (document.activeElement === document.body || document.activeElement === null) {
@@ -1536,7 +1540,25 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
         scrollOwner.removeAttribute("tabindex");
       }
     };
-  }, []);
+  }, [scrollOwnerOf]);
+  // Connections (including Calendars) and Integrations are the two
+  // owner-approved browse surfaces. The other Settings destinations retain
+  // their form-fitting shell policy while sharing the same physical host.
+  useEffect(() => {
+    const scrollOwner = scrollOwnerOf(rootRef.current);
+    if (!scrollOwner) return;
+    const visibleScroll = tab === "connections" || tab === "integrations";
+    scrollOwner.classList.toggle(SETTINGS_SCROLLBAR_SHOWN, visibleScroll);
+    return () => scrollOwner.classList.remove(SETTINGS_SCROLLBAR_SHOWN);
+  }, [tab, scrollOwnerOf]);
+  const resetSettingsScroll = useCallback(() => {
+    const scrollOwner = scrollOwnerOf(rootRef.current);
+    if (!scrollOwner) return;
+    scrollOwner.scrollTop = 0;
+    if (!scrollOwner.contains(document.activeElement)) {
+      scrollOwner.focus({ preventScroll: true });
+    }
+  }, [scrollOwnerOf]);
   // One scroll owner across the whole route means one scroll POSITION across it
   // too: without this, opening a short destination after scrolling a long one
   // lands part-way down its content instead of on its heading.
@@ -1558,15 +1580,10 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
   // commitment to the destination, and moving focus into the region that just
   // rendered is what a keyboard user needs in order to read it.
   useEffect(() => {
-    const scrollOwner = scrollOwnerOf(rootRef.current);
-    if (!scrollOwner) return;
-    scrollOwner.scrollTop = 0;
-    if (!scrollOwner.contains(document.activeElement)) {
-      scrollOwner.focus({ preventScroll: true });
-    }
-  }, [tab, segment]);
+    resetSettingsScroll();
+  }, [tab, segment, resetSettingsScroll]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SoloSetupView account={account}/>;
+  const view = tab === "team" ? <TeamView openPaige={openPaige}/> : tab === "connections" ? <ConnectionsView initialSegment={segment} onSegmentChange={resetSettingsScroll}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SoloSetupView account={account}/>;
   return <div ref={rootRef} className="solo-settings">
     <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}

@@ -202,9 +202,9 @@
 
 /* SETTINGS SHOWS ITS SCROLLBAR.
  *
- * Owner policy (2026-08-31): Settings is the intentionally scrollable
- * marketplace/browse class, so its one scroll owner must be visible and
- * draggable. Command Center, Clients, Campaigns/Growth, Compass, Mind and
+ * Owner policy (2026-08-31): Connections (including Calendars) and
+ * Integrations are the intentionally scrollable Settings browse surfaces, so
+ * their shared physical owner must be visible and draggable. Command Center, Clients, Campaigns/Growth, Compass, Mind and
  * Analytics keep their form-fitting policy and are untouched by these rules.
  *
  * The suppression above sets BOTH lanes — `scrollbar-width` for Firefox and
@@ -218,7 +218,8 @@
  * that pseudo-element at all makes Chromium stop drawing its own bar, so the
  * thumb and track rules the shell already ships are what must apply.
  */
-.tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown { scrollbar-width: auto; -ms-overflow-style: auto; }
+.paige-solo main[data-solo-screen-host].tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown { overflow-y: auto !important; overflow-x: hidden !important; scrollbar-width: auto; scrollbar-gutter: stable; -ms-overflow-style: auto; }
+.tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown { scrollbar-width: auto; scrollbar-gutter: stable; -ms-overflow-style: auto; }
 
 /* Solo Team — the Settings page remains the ONE scroll owner. The roster never
    creates an inner scrolling region; growth is handled by search/filter + pages. */

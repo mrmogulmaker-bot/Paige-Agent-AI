@@ -35,6 +35,13 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { CalendarsView } from "@/solo/connections-calendars";
 import "@/index.css";
 import "@/components/tenant-shell/tenant-command-center-shell.css";
+// PRODUCTION ORDER (2026-08-31). `SoloApp` loads solo-tokens.css before it loads
+// Settings, so the Solo form-fit law `.paige-solo main{overflow:hidden!important}` is
+// live on every real render of this surface. Without it this harness gave the screen
+// host a scroll owner from its inline `overflow:auto` that production's cascade
+// overrode — so its geometry was measured on a surface nobody ships. Do NOT drop this
+// import to make a drive pass.
+import "@/solo/solo-tokens.css";
 import "@/solo/settings.css";
 
 const params = new URLSearchParams(window.location.search);
@@ -58,7 +65,7 @@ document.documentElement.classList.toggle("dark", theme === "dark");
  *       main.tcs-main    flex:1, min-height:0, overflow-y:auto  ← the scroll owner
  *
  * `.solo-settings` / `.ss-content` are what the surface's container queries and
- * the sticky sub-navigation resolve against, and `.tcs-main--settings-scrollbar-hidden`
+ * the sticky sub-navigation resolve against, and `.tcs-main--settings-scrollbar`
  * is what the real Settings surface adds to the scroll owner on mount.
  */
 function Harness() {
@@ -71,7 +78,7 @@ function Harness() {
         <header className="tcs-command-row">
           <div className="tcs-context"><span>Harness</span></div>
         </header>
-        <main id="tenant-shell-main" className="tcs-main tcs-main--settings-scrollbar-hidden">
+        <main id="tenant-shell-main" className="tcs-main tcs-main--settings-scrollbar">
           {/*
             SoloApp's own wrapper, reproduced. Every Solo screen renders inside
             `.paige-solo` > a flex row > a screen host whose overflow depends on

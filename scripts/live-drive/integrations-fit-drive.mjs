@@ -71,21 +71,40 @@ const measure = () => {
   }
   const firstCard = document.querySelector(".ig-card, .ig-state");
   const shell = document.querySelector("#tenant-shell-main");
+  // The FRAME OF REFERENCE for "above the fold" (corrected 2026-08-31). This drive
+  // used to measure against the browser viewport, which was right only because the
+  // harness faked the shell as a bare full-height <main> with no chrome above it.
+  // The real chain puts a fixed rail and command row above the scroll owner — space
+  // the surface neither controls nor can scroll away — so measuring from the viewport
+  // charges the surface for its shell. The fold this check is about is the scroll
+  // PORT: the box the surface actually gets. Same 34% budget, correct origin; a
+  // surface that buries its own content a third of the way down its port still fails.
+  const port = document.querySelector("[data-solo-screen-host]") ?? shell;
+  const portBox = port ? port.getBoundingClientRect() : null;
+  const portStyle = port ? getComputedStyle(port) : null;
   return {
     docScrollWidth: doc.scrollWidth,
     docClientWidth: doc.clientWidth,
     horizontalOverflow: doc.scrollWidth > doc.clientWidth + 1,
     scrollers,
     clipped,
-    // Distance from the top of the viewport to the first real content.
-    contentStartsAt: firstCard ? Math.round(firstCard.getBoundingClientRect().top) : null,
-    // Space between the last card and the bottom of the viewport. Recorded so
+    // Distance from the top of the SCROLL PORT to the first real content.
+    contentStartsAt: firstCard && portBox
+      ? Math.round(firstCard.getBoundingClientRect().top - portBox.top) : null,
+    // The port's own height — the denominator the fold budget is measured against.
+    portHeight: portBox ? Math.round(portBox.height) : null,
+    portOverflowY: portStyle?.overflowY ?? null,
+    portOverflowX: portStyle?.overflowX ?? null,
+    portClasses: port instanceof HTMLElement ? [...port.classList] : [],
+    portScrollHeight: port instanceof HTMLElement ? port.scrollHeight : null,
+    portClientHeight: port instanceof HTMLElement ? port.clientHeight : null,
+    // Space between the last card and the bottom of the port. Recorded so
     // "no oversized dead space" is a measurement rather than an impression.
     trailingSpace: (() => {
       const cards = document.querySelectorAll(".ig-card");
       const last = cards[cards.length - 1];
-      if (!last) return null;
-      return Math.round(window.innerHeight - last.getBoundingClientRect().bottom);
+      if (!last || !portBox) return null;
+      return Math.round(portBox.bottom - last.getBoundingClientRect().bottom);
     })(),
     headerHeight: document.querySelector(".ss-page-head")?.getBoundingClientRect().height ?? null,
     shellScrolls: shell ? shell.scrollHeight > shell.clientHeight + 1 : null,
@@ -103,7 +122,8 @@ function check(label, condition, detail) {
 }
 
 const browser = await chromium.launch({
-  executablePath: process.env.PW_EXECUTABLE_PATH || "/opt/pw-browsers/chromium",
+  ...(process.env.PW_EXECUTABLE_PATH ? { executablePath: process.env.PW_EXECUTABLE_PATH } : {}),
+  ignoreDefaultArgs: ["--hide-scrollbars"],
 });
 
 try {
@@ -117,13 +137,22 @@ try {
       const tag = `${theme}-${vp.name}`;
       check(`${tag} no horizontal overflow`, !m.horizontalOverflow, `doc ${m.docScrollWidth} vs ${m.docClientWidth}`);
       const inPageScrollers = m.scrollers.filter((s) => !s.selector.includes("tenant-shell-main"));
+      check(`${tag} real Settings owner computes overflow-y:auto`,
+        m.portOverflowY === "auto",
+        `computed=${m.portOverflowY} classes=${m.portClasses.join(" ")} extent=${m.portScrollHeight}/${m.portClientHeight}`);
+      check(`${tag} real SoloSettings applied the visible-scroll contract`,
+        m.portClasses.includes("tcs-main--settings-scrollbar-shown"),
+        `classes=${m.portClasses.join(" ")}`);
+      check(`${tag} scroll owner keeps horizontal overflow hidden`, m.portOverflowX === "hidden", `computed=${m.portOverflowX}`);
       check(`${tag} one vertical scroll owner`, inPageScrollers.filter((s) => s.y).length === 0,
         `nested: ${JSON.stringify(inPageScrollers.filter((s) => s.y))}`);
       check(`${tag} no element scrolls horizontally`, m.scrollers.filter((s) => s.x).length === 0,
         `x-scrollers: ${JSON.stringify(m.scrollers.filter((s) => s.x))}`);
       check(`${tag} nothing clipped`, m.clipped.length === 0, JSON.stringify(m.clipped));
-      check(`${tag} content is above the fold`, m.contentStartsAt !== null && m.contentStartsAt < vp.height * 0.34,
-        `first content at ${m.contentStartsAt}px of ${vp.height} (header ${Math.round(m.headerHeight)}px)`);
+      check(`${tag} content is above the fold`,
+        m.contentStartsAt !== null && m.portHeight !== null && m.contentStartsAt < m.portHeight * 0.34,
+        `first content at ${m.contentStartsAt}px into a ${m.portHeight}px scroll port `
+        + `(${vp.height}px viewport, page header ${Math.round(m.headerHeight)}px)`);
       check(`${tag} every provider rendered`, m.cards === 8, `${m.cards} cards`);
 
       // Every design token this surface REFERENCES must actually resolve. An
@@ -151,12 +180,43 @@ try {
       });
       check(`${tag} every --pg token this slice references resolves`, tokens.length === 0, `undefined: ${tokens.join(", ")}`);
 
-      report.push({ label: `${tag} trailing space below the last card`, pass: true, detail: `${m.trailingSpace}px of ${vp.height}` });
+      report.push({ label: `${tag} trailing space below the last card`, pass: true, detail: `${m.trailingSpace}px of a ${m.portHeight}px port` });
       await settle(page);
       await page.screenshot({ path: path.join(OUT, `integrations-${tag}.png`), fullPage: false });
       await page.close();
     }
   }
+
+  // Mutation control: remove the production Settings-only overflow grant. The
+  // Integrations catalogue can FIT at a tall viewport, so geometry alone can stay
+  // green even when the form-fit law has taken its scroll owner away. Computed
+  // overflow must fail independently of whether this particular data set overflows.
+  const control = await browser.newPage({ viewport: { width: 900, height: 1000 } });
+  await control.goto(`${BASE}/?theme=dark&data=connected`, { waitUntil: "networkidle" });
+  await control.waitForSelector(".ig-card", { timeout: 10000 });
+  const killed = await control.evaluate(() => {
+    let deleted = 0;
+    for (const sheet of [...document.styleSheets]) {
+      let rules; try { rules = sheet.cssRules; } catch { continue; }
+      for (let i = rules.length - 1; i >= 0; i -= 1) {
+        const rule = rules[i];
+        const selector = rule.selectorText || "";
+        const grantsSettings = selector.includes(".paige-solo main")
+          && (selector.includes(".solo-settings") || selector.includes("settings-scrollbar-shown") || selector.includes("settings-scrollbar-hidden"))
+          && /auto|scroll/.test(rule.style?.getPropertyValue("overflow-y") || "")
+          && rule.style?.getPropertyPriority("overflow-y") === "important";
+        if (!grantsSettings) continue;
+        sheet.deleteRule(i);
+        deleted += 1;
+      }
+    }
+    const port = document.querySelector("[data-solo-screen-host]");
+    return { deleted, overflowY: port ? getComputedStyle(port).overflowY : null };
+  });
+  check("negative control · deleting the Settings overflow grant makes Integrations fail closed",
+    killed.deleted > 0 && killed.overflowY === "hidden",
+    `rules deleted=${killed.deleted}; computed overflow-y=${killed.overflowY}`);
+  await control.close();
 
   // ── Interaction states, at the tightest common desktop width ───────────────
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });

@@ -39,14 +39,39 @@ const WIDTHS = [
 ];
 const FACES = ["Schibsted Grotesk", "JetBrains Mono"];
 
+async function stopProcessTree(child) {
+  if (!child?.pid) return;
+  if (process.platform === "win32") {
+    await new Promise((resolve) => {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
+      killer.once("exit", resolve);
+      killer.once("error", resolve);
+    });
+    return;
+  }
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  try { process.kill(-child.pid, "SIGTERM"); } catch { return; }
+  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+  if (child.exitCode === null) {
+    try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+  }
+}
+
 function startVite() {
   const child = spawn(
-    "npx",
-    ["vite", "--config", "scripts/live-drive/harness/connections-mount/vite.config.ts"],
-    { cwd: REPO, stdio: ["ignore", "pipe", "pipe"] },
+    process.execPath,
+    ["node_modules/vite/bin/vite.js", "--config", "scripts/live-drive/harness/connections-mount/vite.config.ts"],
+    // Detached so the whole group can be killed: SIGTERM to the `npx` wrapper alone
+    // leaves the vite child holding port 5201, and the next drive then fails its
+    // own port-free guard for a reason that has nothing to do with the code.
+    { cwd: REPO, stdio: ["ignore", "pipe", "pipe"], detached: true },
   );
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("vite did not start in 90s")), 90_000);
+    const timer = setTimeout(async () => {
+      await stopProcessTree(child);
+      reject(new Error("vite did not start in 90s"));
+    }, 90_000);
     const watch = (buf) => {
       const line = String(buf);
       if (line.includes("ready in") || line.includes("Local:")) {
@@ -57,6 +82,11 @@ function startVite() {
     child.stdout.on("data", watch);
     child.stderr.on("data", watch);
     child.on("exit", (code) => { clearTimeout(timer); reject(new Error(`vite exited ${code}`)); });
+    child.on("error", async (error) => {
+      clearTimeout(timer);
+      await stopProcessTree(child);
+      reject(error);
+    });
   });
 }
 
@@ -69,7 +99,14 @@ const check = (name, pass, detail) => {
 
 const FACTS = (faces) => {
   const doc = document.documentElement;
-  const owner = document.getElementById("tenant-shell-main");
+  // Resolve the owner the way `SoloSettings` itself does. Hardcoding
+  // `#tenant-shell-main` was correct until #681 moved the scroll owner to SoloApp's
+  // screen host nested inside it; after that the outer main stopped overflowing and
+  // this drive went permanently red on `main` — asserting about an element that is
+  // no longer the one that scrolls. The product was right and the assertion was
+  // stale, which is the same class of false signal this whole drive exists to catch.
+  const owner = document.querySelector("[data-solo-screen-host]")
+    ?? document.getElementById("tenant-shell-main");
 
   // Anything inside the surface that scrolls is a nested scroll trap. The shell's
   // own main is the ONE permitted scroll owner.
@@ -135,11 +172,14 @@ async function main() {
   fs.rmSync(ART, { recursive: true, force: true });
   fs.mkdirSync(ART, { recursive: true });
 
-  const vite = await startVite();
-  const browser = await chromium.launch({
-    executablePath: process.env.PW_EXECUTABLE_PATH || "/opt/pw-browsers/chromium",
-  });
+  let vite;
+  let browser;
   try {
+    vite = await startVite();
+    browser = await chromium.launch({
+      ...(process.env.PW_EXECUTABLE_PATH ? { executablePath: process.env.PW_EXECUTABLE_PATH } : {}),
+      ignoreDefaultArgs: ["--hide-scrollbars"],
+    });
     const page = await browser.newPage();
     // Off-origin is aborted so a stray call fails loudly, except the font hosts —
     // a frame that lost its typeface BECAUSE the capture blocked the CDN looks
@@ -191,10 +231,33 @@ async function main() {
     // The sub-navigation genuinely pins. It starts below the page heading, rises
     // to the top of the scroll port, and then does not move again however much
     // further the page travels — which is the behaviour, not merely the property.
-    const subnavTop = () => page.evaluate(() => document.querySelector(".ss-subnav").getBoundingClientRect().top);
+    // Measured against the scroll PORT's own top, not the viewport's: the port is
+    // SoloApp's screen host, which sits below the command row, so a correctly
+    // pinned sub-navigation reads ~66 in viewport coordinates and 0 in the port's.
+    // Comparing to the viewport is what made a healthy surface report "66".
+    const subnavTop = () => page.evaluate(() => {
+      const port = document.querySelector("[data-solo-screen-host]")
+        ?? document.getElementById("tenant-shell-main");
+      return document.querySelector(".ss-subnav").getBoundingClientRect().top
+        - port.getBoundingClientRect().top;
+    });
+    const scrollTo0 = () => page.evaluate(() => {
+      const port = document.querySelector("[data-solo-screen-host]")
+        ?? document.getElementById("tenant-shell-main");
+      port.scrollTop = 0;
+    });
+    // "At rest" has to MEAN at rest. The preceding expand/collapse steps leave the
+    // port scrolled, and reading the sub-navigation there measured it already
+    // pinned — reporting 0 for a surface whose heading is perfectly intact.
+    await scrollTo0();
+    await page.waitForTimeout(120);
     const atRest = await subnavTop();
     const scrollTo = async (y) => {
-      await page.evaluate((v) => { document.getElementById("tenant-shell-main").scrollTop = v; }, y);
+      await page.evaluate((v) => {
+        const port = document.querySelector("[data-solo-screen-host]")
+          ?? document.getElementById("tenant-shell-main");
+        port.scrollTop = v;
+      }, y);
       await page.waitForTimeout(150);
     };
     await scrollTo(900);
@@ -206,8 +269,8 @@ async function main() {
     check("it stays pinned however far the page travels", Math.abs(stillPinned - pinned) < 2, `${pinned} → ${stillPinned}`);
     await page.screenshot({ path: path.join(ART, "scrolled-dark-desk.png") });
   } finally {
-    await browser.close();
-    vite.kill("SIGTERM");
+    await browser?.close();
+    await stopProcessTree(vite);
   }
 
   if (failures.length) {
