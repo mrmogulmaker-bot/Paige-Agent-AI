@@ -512,6 +512,37 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
   filing. Preparing requires `tenant_legal_profile.legal_business_name`, which **0 of 13 production
   tenants** currently have, so refusal is the first-use path for every tenant today.
 
+- **The business phone line — SHIPPED and Paige-callable (PRs #692, #695, #699; live 2026-09-01).**
+  A Solo tenant can search available numbers (area code, region, city, starts-with, toll-free),
+  buy one into their **own** Twilio subaccount, name it, clear the name, and choose **which number
+  the business calls and texts from** — the last of those being a control that did not previously
+  exist anywhere. Seams: `comms-search-numbers` / `comms-purchase-number` (edge) and
+  `tenant_phone_number_rename` / `tenant_phone_number_set_primary` (RPC, SECURITY DEFINER,
+  caller scope re-enforced in-body per §59). Surface: Settings → Connections → Communications.
+  - **Paige can drive the PHONE half.** Eight `comms_*` tools in `paige-ai-chat` cover the safe
+    connection summary, listing, search, buy, rename, set-primary, registration status and
+    registration draft. Four mutate and carry catalogue rows under a new **`Comms`** category, so
+    each defaults to `confirm` and the operator can switch it off: `comms_buy_number`,
+    `comms_set_primary_number`, `comms_name_number`, `comms_draft_registration`.
+  - **What Paige CANNOT drive, stated so "Paige-callable comms" is not read as the whole surface:**
+    the custom sending domains and the Google sending account. Both are operable by a person on
+    that surface and neither has a Paige tool. That half is click-only.
+  - **Money safety.** `comms_buy_number` requires the quoted `monthly_cents`, the confirmation
+    sentence names the dollar figure, and `comms-purchase-number` re-checks it against
+    `platform_number_pricing` **before** buying — refusing on mismatch (`price_changed`) or when it
+    cannot be verified (`price_unverifiable`). Unverifiable is a refusal: absence of a price is not
+    permission to spend. A malformed quote is refused **ahead of the autonomy gate**, so `auto`
+    cannot route around it. Every exit that follows a real charge — there are **four** — writes an
+    `audit_logs` row (`comms:number_purchased`), the charged-but-unrecorded ones carrying
+    `recorded_on_tenant: false`.
+  - **HONEST LIMITS.** Filing with a carrier still does not exist (see the A2P entry above).
+    Releasing a number is deliberately not built — `status='released'` has no writer, and setting it
+    without the provider call would mark a number released while the provider kept billing. The
+    Trust Compass ceiling clamps these tools at RENDER only; `resolve_tool_autonomy`, which the
+    runtime consults, does not read the compass, so the per-tool floor is the enforcement today.
+    An operator acting as a tenant cannot reach the two new RPCs through Paige (the executor passes
+    `_id` alone) — a refusal, not a leak.
+
 ### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
 
 The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitive family, live on the Fleet Console (owner screenshot 2026-08-09). This entry closes a Cowork completeness gap — the Agent UI Placement spec defined this surface but Section 4 hadn't marked it shipped. (Verified by CC against `origin/main`: all 7 files exist and every byte size matches; folded as its own docs PR since the miss #21 PR (#417) had already merged.)
@@ -1058,6 +1089,57 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-09-01 — the outbound caller ID was decided by row order, and five defects got past a
+  green gate (PRs #695, #699).** `tenant_phone_numbers.is_primary` chooses which number a
+  workspace's calls and texts come FROM — `voice-twiml` and `send-message` both order by it — and
+  **nothing in the repository had ever written it.** The only `SET is_primary = true` anywhere was
+  on `public.businesses`, a different table. Measured on production before the fix: **2 active
+  numbers, 0 primaries, 1 workspace** — so that business's outbound calls resolved to whichever row
+  Postgres returned and could differ between two calls with no data change. Closed: 0 → 1 primary,
+  1 → 0 ambiguous workspaces.
+  **The lessons are about the PROOFS, not the code.**
+  - **A predicate proof is not a write proof.** The review of #695 tightened the backfill's guard
+    and demonstrated it by running the SELECT — with the guard it picks 1 row, without it 0 — and
+    never ran the UPDATE. The UPDATE was the half that could fail: `uq_tenant_phone_numbers_primary`
+    is `UNIQUE (tenant_id) WHERE is_primary` with no status predicate, so in exactly the state the
+    new guard was written for, it aborts `23505`. Fixed in `20261020000000` by making the state
+    unreachable (a BEFORE trigger clears the flag when a number leaves `active`) rather than adding
+    a third guard.
+  - **A schema is not a guard.** `comms_buy_number` marked `monthly_cents` required; tool calling is
+    non-strict, so a model could omit it, the executor passed `undefined`, and the seam read that as
+    the legacy UI path and bought the number with no price checked or shown. At `auto` there is no
+    confirmation at all. The fallback copy — *"an amount Paige could not quote"* — was a graceful
+    degrade written where a refusal belonged.
+  - **A stable code, not prose.** `number_bought_but_record_failed: <db message>` was compared with
+    `===` against the bare token, so on the one path where money had already left, the flag stopping
+    Paige offering a replacement purchase was never set. The comment above it said "Carried
+    DELIBERATELY", which is what made it look verified.
+  - **Count the exits, then count them again.** The purchase audit helper's comment said three
+    money-spent exits, already corrected once from one. There are four.
+  - **A perturbation that changes nothing proves nothing, and looks exactly like a passing test.**
+    Two attempts to break the new assertions came back green and were briefly read as weak
+    assertions; both perturbations had simply not applied. Redone with byte offsets printed.
+  Guarded by `scripts/comms-purchase-safety-smoke.mjs`, which drives the REAL handler and is wired
+  unconditionally into CI — and was confirmed to have actually executed on the runner, since a step
+  whose script path did not match would be silently green.
+
+- **2026-09-01 — the tool catalogue is a VALUES list, so the LAST migration decides what the
+  operator can switch off (PR #695).** `list_tool_autonomy` re-declares its whole catalogue on every
+  touch. A branch whose catalogue migration sorted BEFORE two that landed on main while it was open
+  would have installed four governed `Comms` rows and had main's later migrations drop them again —
+  leaving a **paid action governed-but-invisible**, with `lint:tool-catalogue` green throughout,
+  because the lint reads the last declaration and would have found them absent there. Caught only
+  because `capabilities.v3.test.tsx` conflicted and, resolved on arithmetic, then failed. Rebuilt at
+  a timestamp that sorts last. **When a migration REPLACES rather than adds, its position is part of
+  its correctness.**
+
+- **2026-09-01 — this document went unupdated across four merged PRs (#692, #693, #695, #699).**
+  §0 binds the master reference to the SAME PR as the ship. Those four updated
+  `docs/doctrine/tier-matrix.md` (§66) instead and treated it as sufficient. §0 and §66 bind
+  DIFFERENT documents, and this is the one that answers *"do we already have this?"* — so the entire
+  Solo comms capability was absent from it while being live in production. Recorded here rather than
+  quietly backfilled, because the failure mode is the doc silently lagging reality.
 
 - **2026-08-30 — the honesty of a compliance surface rested on nobody exercising a policy
   (PR #672, owner-approved).** `tenant_a2p_registrations`' RLS UPDATE and INSERT policies are
