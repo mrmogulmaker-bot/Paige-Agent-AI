@@ -579,16 +579,19 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     left standing when the capability shipped, so this document asserted both states at once — the
     exact contradiction a source of truth exists to prevent. Corrected here rather than deleted, so
     the drift is visible (§13).
-    **What the search actually accepts today:** area code · region (state) · city (locality) ·
-    a DIGIT prefix (`starts_with`, converted to a Twilio `Contains` pattern with the area code
-    folded in) · toll-free vs local · SMS-capable filtering. Results carry the live retail price
-    from `platform_number_pricing`.
-    **What is still NOT built, stated precisely rather than as "the gap is closed":** letter-based
-    **vanity** matching (1-800-FLOWERS style). The seam would accept a raw `contains` with letters,
-    but `starts_with` is stripped to digits and neither the Connections UI nor the
-    `comms_search_numbers` tool exposes `contains`, so no shipped caller can reach it. **Premium /
-    registry search** is likewise not built. Task #27's remaining scope is those two, not search
-    itself.
+    **What a shipped caller can actually search on today:** area code · region (state) · city
+    (locality) · a DIGIT prefix (`starts_with`, converted to a Twilio `Contains` pattern with the
+    area code folded in) · toll-free vs local. Results carry the live retail price from
+    `platform_number_pricing`.
+    **What the EDGE FUNCTION accepts but no shipped caller sends** — same status, so listed the same
+    way: letter-based **vanity** matching (`starts_with` is stripped to digits, and neither the
+    Connections UI nor `comms_search_numbers` exposes a raw `contains`) and **`sms_enabled`**
+    capability filtering (headless-only; `NumbersTab.tsx` says so in a comment, `useSoloNumbers`
+    does not send it, and the tool schema has no such property). An earlier draft of this bullet
+    listed SMS filtering as shipped while calling vanity unreachable, on identical evidence — the
+    test for "shipped" is whether a product caller can reach it, applied to every filter or to none.
+    **Premium / registry search** is not built at all. Task #27's remaining scope is vanity and
+    premium/registry; exposing `sms_enabled` through a caller is a separate, smaller question.
 - ✅ **Stripe** — live-mode webhook + checkout + Marketplace + Connect wiring started. Functions: `stripe-webhook`, `create-checkout`, `create-trial-checkout`, `customer-portal`, `check-subscription`, `marketplace-checkout-session`, `tenant-checkout-session`, `tenant-stripe-connect`. B-iv storefront webhook merged (PR `9f9b6cf7`). B-ii-a marketplace paid install merged (PR `c95a7e16`). Data: `platform_subscriptions` table.
 - ✅ **ElevenLabs** — TTS + ConvAI. **Voice = Ivanna.** ConvAI agent `agent_1601k7zn6bs7e72bt6485bp99v4a`, model `eleven_turbo_v2_5`. Code in BOTH `_shared/tts-router.ts` (in-app chat voice path — per CC code check) AND `_shared/elevenlabs.ts` (ElevenLabs client). See Section 10 for the precise voice-env attribution (`ELEVENLABS_VOICE_ID` drives Studio VO, not the in-app chat voice).
 - ✅ **Supabase** — Postgres + RLS + edge functions + auth. Prod ref `xygzykjyynhzqytbqnzu`. 231+ edge functions. 688+ migrations. RLS helpers: `is_platform_owner()` (operator scope), `current_user_tenant_id()` (tenant scope).
@@ -878,7 +881,7 @@ self-knowledge (§18).
 ### MVP-blocking gaps (all-open)
 
 - ❌ **Fleet Comms operator SMS `paige-operator-sms-send` returns 500 (CC-root-caused 2026-08-09, fix specified, awaiting owner go).** Owner's §32.c live-drive send to a test recipient failed "Edge Function returned a non-2xx status code." CC diagnosis by elimination + code trace: it's HTTP **500 = `authz_check_failed`** (`index.ts:45`) — `caller.rpc("is_platform_owner")` errored. NOT needs_config (returns 200; **MG SID IS set — owner does not need to re-paste**), NOT the upsert (verified OK via rolled-back service-role txn), NOT a Twilio rejection (`twilioRequest` never throws → returns 200 'failed'). Leading cause: `is_platform_owner`/`is_super_admin` each have TWO overloads (`()` + `(_user_id uuid)`), and a PostgREST `.rpc()` against overloaded functions hits **PGRST203** — the #408 fn is the first DIRECT rpc caller (others use it inside RLS/definer). Fix (2 parts): (1) call the owner-check overload-safely + log `ownerErr.message`; (2) add an outer try/catch returning a structured 500 (§32 loud-failure). Same class as §51 #130.
-- ⚠️ **Twilio phone-number search — SHIPPED 2026-09-01; only VANITY and PREMIUM/REGISTRY search remain (Task #27).** This row read *"❌ … the ONE narrow remaining Twilio piece"* after search had already shipped, so Sections 4 and 5 asserted opposite states. Search by area code, region, city, digit prefix and toll-free is live in Connections → Communications, as is purchase. What is genuinely missing is letter-based **vanity** matching (`starts_with` is stripped to digits and no shipped caller can send a raw Twilio `contains`) and **premium/registry** search. Task #27 is rescoped to exactly those two.
+- ⚠️ **Twilio phone-number search — SHIPPED 2026-09-01; only VANITY and PREMIUM/REGISTRY search remain (Task #27).** This row read *"❌ … the ONE narrow remaining Twilio piece"* after search had already shipped, so Sections 4 and 5 asserted opposite states. Search by area code, region, city, digit prefix and toll-free is live in Connections → Communications, as is purchase. Missing: letter-based **vanity** matching and **premium/registry** search. `sms_enabled` sits in the same edge-only category as vanity — the function accepts it, no product caller sends it. Task #27 is rescoped to vanity + premium/registry.
 - ❌ **A2P 10DLC carrier submit** — UI exists, backend stubbed; no `messaging_service_sid` table.
 - ❌ **SMS-in-signup** — phone capture not in signup migrations (task #23).
 - ❌ **`delete_tenant` RPC + MCP tool** — task #30 scope (§10 Paige-callable).
