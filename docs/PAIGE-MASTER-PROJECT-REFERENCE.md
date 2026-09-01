@@ -25,8 +25,11 @@ If the request touches a specific slice, load the canonical deep doc for it from
 1. **Update Section 4 checkboxes** — a capability just became SHIPPED
 2. **Update Section 5 status** — a gap closed, or a new one surfaced
 3. **Log §13 corrections in Section 10** if the work revealed the codebase disagreed with what someone claimed
-4. **Cross-post to the brain** (`docs/brain/` once PR #410 merges)
-5. **Commit** with message: `docs(master): update after <PR#/slice>`
+4. **Cross-post to the brain** (`docs/brain/`)
+5. **Close the release truth:** final packet says `SECOND BRAIN: UPDATED`, `SECOND BRAIN: NO UPDATE
+   REQUIRED` (checked scope + reason), or `SECOND BRAIN: OWED — EMERGENCY FOLLOW-UP`. Emergency
+   documentation debt lands before unrelated feature work starts.
+6. **Commit** with message: `docs(master): update after <PR#/slice>`
 
 ### Cowork paste-to-CC/Codex standard
 
@@ -653,6 +656,16 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
     An operator acting as a tenant cannot reach the two new RPCs through Paige (the executor passes
     `_id` alone) — a refusal, not a leak.
 
+- **A2P public compliance + consent enforcement — MERGED and Production records successful (PRs
+  #700/#704, 2026-09-01).** Public app/static routes now include auth, privacy and SMS terms;
+  canonical outbound account URLs no longer send users to internal `/admin` paths, and CI guards
+  that boundary. Durable platform-user SMS consent evidence and the shared send clamp fail closed;
+  the A2P draft immutability predicate is pinned to `search_path=pg_catalog`. Exact merge SHAs:
+  `d5db4532b6dd2faa4bdce30e7b60277bcb57d8b3` and
+  `1013ec85b5c9f711ae1ae8b836ce3976af0376d2`. GitHub migration/edge/CI workflows and Production
+  deployment records succeeded. **HONEST LIMITS:** carrier/TrustHub filing remains unavailable;
+  authenticated consent/send proof and a fresh live security-advisor re-query remain **UNVERIFIED**.
+
 ### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
 
 The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitive family, live on the Fleet Console (owner screenshot 2026-08-09). This entry closes a Cowork completeness gap — the Agent UI Placement spec defined this surface but Section 4 hadn't marked it shipped. (Verified by CC against `origin/main`: all 7 files exist and every byte size matches; folded as its own docs PR since the miss #21 PR (#417) had already merged.)
@@ -811,15 +824,20 @@ Grouped:
 - The chooser displays only the caller's RLS-filtered tenant records intersected with their own active membership rows. It never treats an account number, URL, email text or client-supplied tenant id as authorization. Platform operators, client/invite continuations and single-membership users retain their existing direct routing.
 - Choosing a workspace persists `profiles.active_tenant_id` through the existing guarded `switchTenant` seam before the browser scope changes. A failed write leaves the current workspace unchanged. The Solo header exposes the same independent-membership switcher; the existing server-gated agency parent/sub-account switcher remains separate and unchanged.
 - Truth status: 7 focused policy/OAuth/render tests pass, the TypeScript ratchet adds no errors, focused lint is green and the production build succeeds. Live authenticated Google return, both-account selection, retry, session expiry, account-switch persistence and preview runtime remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
-### Solo Settings → Team management (Gate 1 approved 2026-08-31; local branch, NOT LIVE)
+### Solo Settings → Team management (MERGED + Production record — PR #697; truth follow-up #702; authenticated runtime UNVERIFIED)
 
 - The sparse Team destination is replaced by a roster-first workspace with server-side search/filter, 25-person pages and an explicit Load more path. Settings remains the one vertical scroll owner; the people list never creates a nested scrollbar.
 - Enforced tenant permissions remain Owner, Admin, Member, plus truthful read-only presentation of existing specialized permissions. Editable job title and responsibilities describe work only and never participate in authorization.
 - Team invitations have review-before-send, pending/resend/revoke/accepted/expired states, email-bound single-use acceptance, and service-role-only token handling. Permission changes have their own owner confirmation.
 - Paige chat receives a server-resolved, active-tenant confirmed roster block for the authenticated speaker. Tenant-authored titles/responsibilities are explicitly untrusted reference data; the block cannot send invitations or mutate access and routes confirmation back to Settings → Team.
-- Truth status: 25/25 structural-harness checks pass at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build are green. Migration persistence, authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch, preview runtime and exact-head Gate 2 remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
+- Release evidence: PR #697 head `a2046aad…` and merge `3fd9944c…` passed CI, security audit and
+  migration lint; GitHub records a successful Production deployment at 2026-09-01 02:29:10Z. PR
+  #702 (`632de74a…` → merge `81e350ca…`) then made stored member name/email fallback and editable
+  work-detail saves truthful; its PR-head CI passed and GitHub records Production success, while its
+  rapidly superseded push CI was cancelled. Authenticated save/reload, real invitation delivery,
+  permission refusal/retry, account switch and email delivery remain **UNVERIFIED** in this record.
 
-### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
+### Solo Campaigns -> Pipeline board (MERGED + Production record; verification FAIL — PR #691)
 
 - **Canonical Solo ownership contract (owner-locked 2026-09-01).** There is exactly one Solo shell
   for every current and future Solo tenant. `src/solo/SoloEntry.tsx` dispatches the authenticated
@@ -836,9 +854,14 @@ Grouped:
 - Gate 1 locks the board-first Pipeline interaction inside the existing six-tab Campaigns shell. The only post-approval prototype refinement is the smaller page-title word "Pipeline"; lane, card, detail, and supporting-control geometry remain frozen.
 - The draft adds multiple tenant-owned pipelines, blank-first creation with only owner-authored custom stages, tenant-owned stage name/description/order/archive/restore controls, contextual deal detail, focused-stage compact behavior, subordinate routing/repair evidence, stable short references and one-level tenant-owned folders with a virtual Unfiled view. No preset pipeline or stage taxonomy is supplied. Campaign linkage is optional; it is not the only reason to create a pipeline.
 - The durable contract is tenant-scoped and callable. Read-only members can inspect but not mutate. Occupied stages fail closed on archive. No revenue, ROI, payment, client-health, or unsupported portal facts are inferred.
-- Truth status: local contract/render tests, production build and the draft checks are green on the recorded exact head. The deterministic browser proof covers both example Solo contexts at the four locked viewports with PAIGE closed/open; it is local rendered evidence, not authenticated tenant proof. Migration persistence, authenticated save/reload, permission, retry, abandonment, account-switch and production runtime remain UNVERIFIED. Do not merge or deploy without the separate exact-head Gate 2 request.
+- Release evidence: PR #691 head `85df219e…` merged as `2d94bc2e…`; migration and edge deploy jobs
+  succeeded and GitHub records a successful Production deployment at 2026-08-31 22:36:40Z.
+  **Not green/closed:** PR-head and merge-head `verify` failed (ESLint and Test steps), and the PR
+  Supabase Preview failed. Authenticated save/reload, permission, retry, abandonment, account switch,
+  migration runtime and owner production acceptance remain **UNVERIFIED**. Production deployment is
+  not evidence that these flows work.
 
-### Solo Clients → Conversations — implementation awaiting exact-head release verification (2026-08-28)
+### Solo Clients → Conversations — MERGED + Production record; authenticated acceptance UNVERIFIED (PR #621)
 
 The owner-approved Solo redesign is intentionally confined to the existing workspace directly below
 `People · Conversations · Calendar · Portal`. It adds no route-local Clients hero, title banner, or
@@ -849,6 +872,9 @@ account-epoch clearing, pane-owned scrolling, and constrained-center form-fit. P
 does not prove identity, send permission, A2P, inbound, webhook, mailbox, or operational readiness.
 Video and Apple Messages for Business remain unavailable unless separately proven. Ordinary consumer
 iMessage is never claimed. No backend, provider, schema, auth, or business-data mutation is in scope.
+PR #621 head `0cd8cda3…` merged as `7682d283…`; PR-head and merge-head CI/security checks passed and
+GitHub records a successful Production deployment at 2026-08-28 15:03:55Z. Authenticated provider,
+send, permission, retry, abandonment and account-switch proof remains **UNVERIFIED** in this record.
 
 ### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
 
@@ -1801,9 +1827,10 @@ The tenant prototype now implements Signal Field, Living Lineage, Creation Chamb
 
 The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.
 
-### Solo Command Center Mind — owner-approved build in draft review (2026-08-28)
+### Solo Command Center Mind — MERGED + Production record; authenticated acceptance UNVERIFIED (PRs #620, #701)
 
-- **Status: DRAFT PR ONLY; not shipped, merged, or deployed.** Owner-approved prototype:
+- **Release evidence:** PR #620 head `51f31dc9…` merged as `98562411…`; CI/security checks passed and
+  GitHub records successful Production deployment at 2026-08-28 14:48:10Z. Owner-approved prototype:
   `paige-command-center-mind-flow-prototype.html`, SHA-256
   `2CE38FC21DD1C6B6DD0C5816A63E2FA09F80245F09BB73F809DA52089F69`, 57,193 bytes.
 - Solo Command Center's proposed customer-facing information architecture is exactly
@@ -1814,19 +1841,23 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   LIVE; current pending decision references are LIVE SOURCE but non-actionable here; the latest Systems Check snapshot
   is PARTIAL history. Full historical series, resolved-decision history, helper provenance, and inferred
   semantic/causal relationships remain UNAVAILABLE.
-- The interactive 3D topology is a PROPOSED presentation, not a new data owner. It is still by default.
-  Direct mouse/keyboard manipulation is not business activity; finite motion may occur only after a
+- The interactive 3D topology is presentation, not a new data owner. PR #701 (`e9917918…` → merge
+  `a0a706c6…`) defaults orbit motion to running and persists an explicit pause per authenticated user
+  and tenant in local storage; GitHub records Production success. Its PR-head CI passed; push CI was
+  cancelled after rapid later merges. Direct mouse/keyboard manipulation is not business activity;
+  finite motion may occur only after a
   genuinely newly observed grounded record. One existing PAIGE workspace remains the only workspace,
   and opening it does not attach, prefill, send, prepare, or start work.
 - Tenant identity remains server-resolved. The Mind data child does not mount while `activeTenantId` is
   unresolved and remounts by tenant epoch so prior-account state and late responses cannot paint the
   next account.
 
-### Solo Systems Check Operating Signal — owner-approved build in draft review (2026-08-29)
+### Solo Systems Check Operating Signal — MERGED + Production record; authenticated acceptance UNVERIFIED (PR #641)
 
-- **Status: DRAFT PR ONLY; not shipped, merged, deployed, or production-accepted.** The owner approved
-  the Operating Signal prototype and authorized implementation through a green draft PR and preview;
-  the separate final go-live gate remains required.
+- **Release evidence:** PR #641 head `f37f54b9…` merged as `3af567e6…`; PR-head and merge-head
+  CI/security checks passed and GitHub records successful Production deployment at 2026-08-30
+  01:27:39Z. Authenticated tenant/runtime acceptance and owner production acceptance remain
+  **UNVERIFIED**; deployment metadata does not satisfy them.
 - The Solo Systems Check is a compact business-awareness surface over the existing tenant-scoped
   `systems_check_snapshot` rail. Persisted findings are grouped into confirmed, needs-attention, and
   unavailable reads; missing or partial evidence never becomes inferred health. Refresh motion is

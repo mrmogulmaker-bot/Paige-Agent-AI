@@ -1276,3 +1276,24 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+---
+
+## A release is not closed while its durable truth still says “draft” (2026-09-01)
+
+**Symptom.** The master and Second Brain still called five capabilities draft, in-flight, or not live
+after their exact merge SHAs had successful GitHub Production deployment records. Four communications
+releases updated the tier matrix but skipped the master; later docs-only fixes updated the master but
+skipped the Second Brain. A future builder got opposite answers depending on which mandated section
+they opened.
+
+**Root cause.** “Docs updated” was treated as a file-level checkbox instead of a release-close data
+contract. No final packet had to state which durable sources changed, why no update was required, or
+who owned emergency documentation debt.
+
+**Rule.** A normal release is not fully closed until the master and every affected brain record match
+the exact merged head. End with `SECOND BRAIN: UPDATED`, `SECOND BRAIN: NO UPDATE REQUIRED` plus the
+checked scope, or `SECOND BRAIN: OWED — EMERGENCY FOLLOW-UP`; emergency debt blocks unrelated feature
+work. Sweep for claims the new fact falsifies, including separator variants. Keep evidence classes
+separate: a green PR head, a cancelled superseded push run, a successful Production deployment, and
+an authenticated human flow are four different facts. Never let one silently stand in for another.

@@ -411,6 +411,28 @@ Values intentionally omitted.
 *(This is the inventory of integration **existence**, not an endorsement that each is configured/live.
 A name here proves the edge code references it; it does not prove the secret is set on prod.)*
 
+### Communications/A2P release reconciliation (2026-09-01)
+
+- **Purchase quote boundary (#699):** Paige's `comms_buy_number` must supply numeric
+  `monthly_cents`; malformed/missing quotes fail before autonomy. `comms-purchase-number` re-reads
+  `platform_number_pricing.retail_monthly_cents` and refuses `price_changed` or
+  `price_unverifiable` before provider purchase. Human UI callers remain a separate legacy contract
+  that send `{ phone_number }` only. Authenticated deployed-app proof is **UNVERIFIED / owed**.
+- **Primary-number invariant (#699):** migration
+  `20261020000000_primary_number_is_always_active.sql` installs a BEFORE trigger so an inactive
+  number cannot retain `is_primary`, repairs existing inactive flags, and deterministically fills a
+  tenant with active numbers but no active primary. Successful migration workflow evidence exists;
+  this record does not claim a fresh production row-level re-query.
+- **Durable consent/send clamp (#700):** migrations
+  `20260901003955_a2p_platform_user_consent_evidence.sql` and
+  `20260901020000_harden_platform_sms_consent_evidence.sql` add and harden platform-user SMS consent
+  evidence. `_shared/paige-agent-ai-sms.ts` is the shared sending boundary. Carrier/TrustHub submit
+  remains **UNAVAILABLE**; no secret values or provider payloads are recorded here.
+- **A2P immutable predicate hardening (#704):** migration
+  `20261004070000_a2p_immutable_search_path.sql` pins
+  `a2p_registration_is_immutable(tenant_a2p_registrations)` to `search_path=pg_catalog`. Migration
+  deployment succeeded; a fresh live security-advisor result remains **UNVERIFIED**.
+
 ---
 
 *Regenerate the verified rows whenever infra changes; any config-touching PR updates this file in the

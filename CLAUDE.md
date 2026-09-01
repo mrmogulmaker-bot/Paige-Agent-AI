@@ -1710,10 +1710,20 @@ re-derive what the brain already records.
   `decision-log.md`; a new class of costly mistake → `lessons-learned.md`; a new term/§-anchor →
   `glossary.md`. Shipping the change but not the brain update is a §13/§46 drift — the brain silently
   goes stale and the next session is misled.
+- **§BRAIN.4 — Release-close gate.** A normal release is **not fully closed** until
+  `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` and every affected `docs/brain/` record are reconciled to
+  the exact merged head and proven release state. The final packet must say exactly one of:
+  **`SECOND BRAIN: UPDATED`**, **`SECOND BRAIN: NO UPDATE REQUIRED`** (with the checked files and why
+  durable truth did not change), or **`SECOND BRAIN: OWED — EMERGENCY FOLLOW-UP`** (only when an
+  emergency release could not safely carry the documentation). An emergency follow-up is release
+  debt and must land before unrelated feature work starts. Record capability/owner/contract/
+  permission/provider/data-boundary changes, exact PR/commit and deploy evidence when proven, and
+  explicit `UNVERIFIED` limits. Never put secrets, raw provider payloads, customer data, prompts, or
+  unsupported agent claims in either durable source.
 - **The test, every time:** *"Did I read the brain before I started, answer 'do we have this?' from it
-  instead of from memory, and update it in the same commit as my change — or did I let it go stale and
-  set the next session up to re-diagnose what I already knew?"* If the brain wasn't read or wasn't
-  updated, the work isn't done.
+  instead of from memory, update it in the same commit as my change, and report the release-close
+  disposition — or did I let it go stale and set the next session up to re-diagnose what I already
+  knew?"* If the brain wasn't read or the release-close disposition is missing, the work isn't done.
 
 ## Voice Configuration (§46 — so no future session re-diagnoses the "I updated the agent but still hear the old voice" leak)
 

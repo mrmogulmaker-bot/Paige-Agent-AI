@@ -23,8 +23,12 @@ index what you have not checked.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 
 **How to keep it true (see proposed CLAUDE.md §BRAIN).** Any PR that ships a feature, changes
-config, or lands a ruling updates the relevant brain file **in the same commit**. A stale brain is
-worse than none — it lies with authority.
+config, or lands a ruling updates the relevant brain file **in the same commit**. A normal release
+is not fully closed until the master reference and affected brain files are reconciled. Its final
+packet says `SECOND BRAIN: UPDATED`, `SECOND BRAIN: NO UPDATE REQUIRED` with the checked scope, or
+`SECOND BRAIN: OWED — EMERGENCY FOLLOW-UP`; emergency documentation debt lands before unrelated
+feature work starts. Never store secrets, raw provider payloads, customer data, prompts, or
+unsupported agent claims here. A stale brain is worse than none — it lies with authority.
 
 **Brain-internal files**
 | File | What it holds | When to read |
@@ -49,7 +53,20 @@ worse than none — it lies with authority.
 
 ---
 
-## Verified platform snapshot (this session, 2026-08-09)
+## Release-truth cutoff (reconciled 2026-09-01)
+
+- **Prior evidence-backed Second Brain cutoff:** merge `3fd9944cd90e02794db21fa2ae6d32703fe89ea4`
+  (PR #697, 2026-09-01 02:28:06Z). It was the last `main` commit to update `docs/brain/`.
+- **Reconciled through:** `797d6f08c53e89f8cf36bde24d6df90714922629` (PR #705). Seven later
+  first-parent `main` records were inventoried: #701, #699, #700, #702, #703, #704, #705. Exact
+  heads, check/deploy evidence, durable changes, and `UNVERIFIED` limits are in
+  `decision-log.md` → “2026-09-01 — release reconciliation after #697.”
+- **Evidence boundary:** all seven are merged and have successful GitHub `Production` deployment
+  records. That proves release metadata, not authenticated product behavior. #699 explicitly owes
+  authenticated runtime. #701 and #702 had green PR-head CI but cancelled push CI after rapid later
+  merges. No claim below upgrades those limits.
+
+## Baseline platform snapshot (verified 2026-08-09; recheck drift-prone counts)
 
 All figures below were checked live this session; how each was verified is in `config-registry.md`.
 
