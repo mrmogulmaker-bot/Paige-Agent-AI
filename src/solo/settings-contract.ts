@@ -92,7 +92,7 @@ export const SOLO_SETTINGS_DESTINATIONS: ReadonlyArray<{
   label: string;
   truth: SettingsTruth;
 }> = [
-  { key: "setup", label: "Setup", truth: "PARTIAL" },
+  { key: "setup", label: "Setup", truth: "LIVE" },
   { key: "team", label: "Team", truth: "PARTIAL" },
   { key: "connections", label: "Connections", truth: "PARTIAL" },
   { key: "integrations", label: "Integrations", truth: "PARTIAL" },

@@ -10,7 +10,7 @@ import {
 describe("Solo Settings ownership contract", () => {
   it("locks the approved customer-facing taxonomy and truth labels", () => {
     expect(SOLO_SETTINGS_DESTINATIONS.map(({ key, label, truth }) => [key, label, truth])).toEqual([
-      ["setup", "Setup", "PARTIAL"],
+      ["setup", "Setup", "LIVE"],
       ["team", "Team", "PARTIAL"],
       ["connections", "Connections", "PARTIAL"],
       ["integrations", "Integrations", "PARTIAL"],
