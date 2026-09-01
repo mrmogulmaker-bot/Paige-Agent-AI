@@ -145,10 +145,11 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
 | S3 | **A credit report dropped into chat no longer writes eight tables unasked.** It produces a proposal a person reviews field by field; approval carries KEYS, never values, and the server writes from its own stored extraction. Prohibited sensitive categories excluded; uncertainty omitted rather than defaulted. | `paige-ai-chat`, new `_shared/credit-extraction-payload.ts`, new `paige-apply-extraction`, migration `20261019000000` |
 | S4 | An approval is BOUND to the call it approved, not to a boolean. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. **The binding MECHANISM changed twice after this — read R1 and R2 below before trusting any description of it.** | `paige-ai-chat`, migrations `20261020000000`, `20261021000000` |
 | R1 | S4's mechanism (the surface echoes a fingerprint back) made every gated tool **un-executable on five of the six chat surfaces**, because only `PaigeAIChat` sends the echo — and the client-portal seat lost `update_client_data`, its only write. The proposed call is now persisted and approval carries a TOKEN; the STORED arguments execute, so the model never restates the call and a document-sized argument cannot livelock. | `paige-ai-chat`, migration `20261023000000` |
-| R2 | **R1 opened a self-approval hole and this closes it — see §10.** A proposal records the request that minted it and the claim excludes it, so a token cannot be redeemed by the turn that issued it. | `paige-ai-chat`, migration `20261026000000` |
+| R2 | **R1 opened a self-approval hole and this closes it — see §10.** The nonce (a token cannot be redeemed by the turn that minted it) held, but was not enough: the token is a fingerprint of the ACTION, so any LATER request that re-proposed the same call got it back and spent it — including one whose human message was "cancel that". **The token is removed.** Approval is a rendered card (unforgeable — a model cannot write a request body) or `confirm: true` (the model's word); both redeem the STORED call. Declining now CANCELS the proposal. | `paige-ai-chat`, migration `20261026000000`, `PaigeConfirmCard.tsx` |
+| R3 | **The risk split became a policy.** `_shared/action-risk.ts` classifies all 51 mutations once — 28 `ordinary` (either channel), 21 `high` (rendered card only; the model's word is refused), 2 `owner_only` (not a chat action at any approval strength). `MUTATING_TOOLS` is that policy's key set, so there is no second list to drift out of step. An unclassified write refuses at dispatch AND fails CI (`lint:action-risk`). **Owner ruling 2026-09-01 absorbed:** Paige may never grant or raise her own autonomy through Chat, so `automation_set_grant`/`automation_set_state` refuse down every channel including a clicked card. | new `_shared/action-risk.ts`, `paige-ai-chat`, new `scripts/ci/action-risk-lint.mjs` |
 | A | §67 **the process record**: `paige_automations` + `paige_automation_acts` + a trigger catalogue. A grant is fingerprinted over the act chain, so changing the chain drops an `auto` grant back to `confirm` — the human approved a specific sequence. | migration `20261022000000` |
 | B | §67 **the resolver**: `resolve_automation_autonomy` = `min(grant, most restrictive act floor, Trust Compass ceiling)`, returning `capped_by` (which bound is holding it) and `dark` (why it could never fire) as separate answers. | migration `20261024000000` |
-| C | §67 **the chat seam**: five tools. A tenant describes repeatable work and Paige builds it — born `confirm` + `draft`, explicitly, whatever the request said. **She can build a process; she can never arm one.** | `paige-ai-chat`, migration `20261025000000` |
+| C | §67 **the chat seam**: five tools. A tenant describes repeatable work and Paige builds it — born `confirm` + `draft`, explicitly, whatever the request said. **She can build a process; she can never arm one.** Two of the five (`automation_set_grant`, `automation_set_state`) became `owner_only` under R3 and now refuse in chat outright — so **`paige_automations.granted_lane` and `.state` are currently settable by nothing**, the Settings control being owed to CD (§00). Automations were already inert (no trigger emits), so nothing regressed. | `paige-ai-chat`, migration `20261025000000` |
 | S5 | The automatic URL fetch is tier-gated — a portal client pasting a link no longer causes server-side egress. (The raw provider-payload spread was already closed on `main` by the MCP registry work; nothing rebuilt.) | `paige-ai-chat` |
 | S6 | Removed four claims with no capability behind them: three dead composer shortcuts, an unbound ⌘K, a panel saying voice input was off while the mic worked, and a session-summary hook that had been sending `Bearer undefined` since it was written. | `PaigeAIChat.tsx`, `TenantCommandCenterShell.tsx`, `SoloPaigeWorkspace.tsx`, `usePaigeMemory.ts` |
 
@@ -1117,18 +1118,32 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   tested the mechanism I had built rather than the adversary it exists to stop. An independent
   adversarial review driving the real handler found it; no static reading would have.
 
-  **Repair 2 (`20261026000000`) restores a structural floor.** A proposal records the request that
-  minted it; the claim excludes it. A model cannot start an HTTP request — only a person sending
-  another message can — so same-turn self-approval is impossible again, while approval from a later
-  message still works and the five-surface outage stays closed.
+  **Repair 2 (`20261026000000`) restored a structural floor — and was still not enough.** A proposal
+  records the request that minted it; the claim excludes it. That much held: a model cannot start an
+  HTTP request, so same-turn self-approval became impossible again. A third review then broke it a
+  different way and I reproduced it before acting. **The token is the fingerprint of the ACTION, not
+  a secret.** Any LATER request that re-proposed the same call was handed it straight back — and a
+  request is just the next message, whatever that message says. Driven, a turn whose human text was
+  *"No. Do not do that. Cancel it."* executed the stored write and raised an autonomy grant from
+  `confirm` to `auto`. The nonce was never the flaw; **re-issuing the key on demand was.**
 
-  **What repair 2 does NOT prove, stated because an ambiguous sentence here is how the first hole
-  got written:** a new request proves a person sent another message, not that the message was a
-  yes. On the five surfaces without a confirm card the yes is still model-asserted prose — the
-  trust level those surfaces always had, now with arguments pinned server-side, a single-use claim,
-  and scope re-checked at redemption. Only a surface that renders the summary and echoes back its
-  fingerprint turns "a person replied" into "a person approved THIS". That is interface work owed
-  to CD (§00), and it is the real close-out.
+  **Repair 3 removes the token rather than patching it, and turns the risk split into a policy.**
+  Approval now arrives down two channels the code names and treats differently: a rendered card
+  (its fingerprint travels in the request body, which a model cannot write) and `confirm: true` (the
+  model's own word). `supabase/functions/_shared/action-risk.ts` decides which channel each action
+  needs, from the action alone — 28 `ordinary`, 21 `high` (card only), 2 `owner_only`. `MUTATING_TOOLS`
+  is that policy's key set, so the two lists that must agree became one. An unclassified write is
+  refused at dispatch and fails CI. Declining a proposal now CANCELS it, instead of leaving it live
+  for its full window while the refusal existed only as prose the model had to keep honouring.
+
+  **What repair 3 still does NOT prove, stated because an ambiguous sentence here is how the first
+  hole got written:** for an ORDINARY action on a card-less surface, the yes is still model-asserted
+  prose. That is the trust level those surfaces have always had, now with the arguments pinned
+  server-side, a single-use claim, scope re-checked at redemption, and a decline that actually kills
+  the proposal. It is not a proof that a human agreed, and it is not claimed as one — which is
+  exactly why nothing irreversible, permission-changing, outward-facing or money-spending is
+  reachable that way any more. Building the card on the other five surfaces is the real close-out;
+  it is interface work owed to CD (§00).
 
   **Three transferable rules, each paid for:**
   1. **When a fix removes a structural impossibility and replaces it with an instruction, that is
@@ -1136,7 +1151,12 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
      not a gate.
   2. **A test that supplies a credential the way the honest caller would cannot tell you whether a
      dishonest caller could supply it too.** Adversary-shaped fixtures, not just happy-path ones.
-  3. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
+  3. **A hole closed twice is a hole whose SHAPE you have not understood yet.** Repair 2 fixed the
+     instance the reviewer showed me — same-turn replay — and I treated the class as closed. The
+     class was "the model can obtain a redeemable key", and the second review found the other way to
+     obtain it in an afternoon. When a fix is scoped to the exact reproduction you were handed, ask
+     what the reproduction was an INSTANCE of before calling it done.
+  4. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
      branch and they found FOUR vacuous tests — checks passing while reading an empty object, or
      because deleting the code under test made it throw instead of misbehave. Two of those were in
      the very tests written to prove this repair.

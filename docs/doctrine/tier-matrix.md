@@ -1016,11 +1016,14 @@ five of six surfaces without any ledger row noticing.
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
 | Mutating tool gated before it runs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
-| Operator can see/flip every gated tool (48/48) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Approval by token (works with no confirm UI) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
-| Approval by fingerprint echo (needs a confirm card) | — | — | — | ✓ | ✓ | — | 403 |
+| Operator can see/flip every gated tool (51/51) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| ORDINARY action approvable by `confirm: true` (no card needed) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| HIGH-RISK action approvable — rendered card only | — | — | — | ✓ | ✓ | — | 403 |
+| OWNER-ONLY action approvable from chat | — | — | — | — | — | — | 403 |
+| Unclassified write refused before dispatch | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
 | `update_client_data` completable by a client seat | n/a | n/a | n/a | n/a | n/a | ✓ | 403 |
 | One approval executes exactly once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| A declined proposal is cancelled, not left live | — | — | — | ✓ | ✓ | — | 403 |
 
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
@@ -1062,6 +1065,43 @@ now with the arguments pinned, the claim single-use, and scope re-checked. Only 
 renders the summary and echoes back the fingerprint of what it displayed turns "a person replied"
 into "a person approved THIS", and exactly one surface does that today. Building the card on the
 other five is the real close-out; it is interface work, and it is owed to Claude Design (§00).
+
+**THE RISK SPLIT IS A POLICY, NOT A COMMENT — and the token is gone entirely.** Two rows above
+changed shape, so the reason is recorded rather than left to a diff.
+
+The token described below was re-obtainable. It is the fingerprint of an ACTION rather than a
+secret, so any later request that re-proposed the same call was handed it straight back and could
+spend it immediately — including a request whose human message was "No. Do not do that." Driven,
+that executed arbitrary stored calls and raised an autonomy grant from `confirm` to `auto`. Removed
+rather than patched: a key anyone can ask for is not a key.
+
+What replaces it is `supabase/functions/_shared/action-risk.ts`, the ONE place that classifies every
+mutation. `classifyAction` takes a tool name and nothing else — no request, no arguments, no calling
+surface — so nothing in a turn can argue about its own risk:
+
+| Class | Count | What it means | How a yes reaches it |
+|---|---:|---|---|
+| `ordinary` | 28 | Reversible, in-tenant, effects stay in the workspace | `confirm: true` (the model reporting a yes) **or** a rendered card |
+| `high` | 21 | Irreversible · changes who may do what · reaches outside the platform · spends money · goes public | The rendered card ONLY. The model's word is refused. |
+| `owner_only` | 2 | Raising Paige's own autonomy | Nothing. Not approvable here at any strength. |
+| *unclassified* | 0 | — | Refused before dispatch, both at the gate and ahead of it |
+
+`owner_only` is `automation_set_grant` and `automation_set_state`, per the owner's ruling of
+2026-09-01: *"Paige may never grant or raise her own autonomy through Chat, regardless of action
+class or owner wording. That remains an owner-controlled Settings policy."* Turning a process LIVE is
+the same decision wearing different clothes, so both refuse. **Consequence, stated rather than
+buried: `paige_automations.granted_lane` and `.state` are currently settable by nothing** — the chat
+tools refuse and no Settings control exists yet. Automations were already inert (no trigger emits —
+slice D), so nothing regressed; the Settings control is owed, and it is interface work belonging to
+Claude Design (§00).
+
+**The gated set is now the policy's key set.** `MUTATING_TOOLS` used to be a literal beside the gate;
+two lists that must agree eventually do not, and the permissive answer was the one that came free.
+CI (`lint:action-risk`) fails any change that adds a write tool without classifying it, or that
+reintroduces the hand-list, or that classifies a delete/publish/grant as `ordinary`. The runtime
+carries the same rule as a last line: a tool whose name reads as a write and carries no
+classification is refused before dispatch, so a missed classification is inert rather than
+ungoverned.
 
 **THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
 earlier commit message said two tools "both default to confirm now"; that is true inside the chat

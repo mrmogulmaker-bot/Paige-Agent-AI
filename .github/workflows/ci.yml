@@ -192,6 +192,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tool-catalogue
 
+      # Every mutation Paige can perform carries a risk classification, and an action with no
+      # classification cannot run. This fails the change that would add a write tool without
+      # classifying it — in the repository, rather than in production where the runtime's own
+      # fail-closed guard would turn it into an inert tool nobody understands.
+      - name: Every write tool is classified by the action-risk policy
+        if: ${{ !cancelled() }}
+        run: npm run lint:action-risk
+
+      - name: Action-risk guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:action-risk:test
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint

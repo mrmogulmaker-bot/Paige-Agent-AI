@@ -1170,11 +1170,16 @@ const mirrorConfirms = (st) => (t, row) => {
     .replace(/\\"/g, '"');
   const declared = [...wire.matchAll(/"name":"([a-z0-9_]+)"/g)].map((m) => m[1]);
 
+  // The gated set and the risk classes now come from the POLICY, because the handler no longer
+  // holds either as a literal — which is the change this section is checking. Reading the policy
+  // directly also means a check can never be satisfied by parsing the same list it is grading.
   const src = await (await import("node:fs/promises")).readFile(
     new URL("../../supabase/functions/paige-ai-chat/index.ts", import.meta.url), "utf8");
-  const at = src.indexOf("const MUTATING_TOOLS = new Set<string>([");
-  const gated = [...src.slice(src.indexOf("[", at), src.indexOf("]);", at)).matchAll(/"([a-z0-9_]+)"/g)]
-    .map((m) => m[1]);
+  const { mutatingTools, classifyAction, nonMutatingExemptions, MUTATION_VERB } =
+    await import("../../supabase/functions/_shared/action-risk.ts");
+  const gated = [...mutatingTools()];
+  const highRisk = gated.filter((t) => classifyAction(t) === "high");
+  const ownerOnly = gated.filter((t) => classifyAction(t) === "owner_only");
   const offered = gated.filter((t) => declared.includes(t));
 
   assert("14.0 the tool schema was actually found on the wire (guards this section)",
@@ -1207,9 +1212,6 @@ const mirrorConfirms = (st) => (t, row) => {
   // these regardless, so this is honesty rather than enforcement — but a model told nothing will
   // keep asserting approval and keep being refused, and the person will be told it is pending
   // forever. Kills: the one-branch description that says the same thing to every tool.
-  const at2 = src.indexOf("const HIGH_RISK_CONFIRM_TOOLS = new Set<string>([");
-  const highRisk = [...src.slice(src.indexOf("[", at2), src.indexOf("]);", at2)).matchAll(/"([a-z0-9_]+)"/g)]
-    .map((m) => m[1]);
   const offeredHighRisk = highRisk.filter((t) => declared.includes(t));
   const notWarned = offeredHighRisk.filter((t) => !/not enough on its own/.test(blockFor(t)));
   assert("14.4 every high-risk tool tells the model its word is not enough",
@@ -1233,11 +1235,55 @@ const mirrorConfirms = (st) => (t, row) => {
   // `zapier_run_action`) — because the patterns catch what is nameable, not everything that
   // qualifies. Kills: removing any pattern-matching member, and adding a new one outside the set.
   const IRREVERSIBLE_OR_OUTWARD = /(^|_)(delete|remove|revoke|publish|uninstall|install)(_|$)|(^|_)grant(_|$)/;
-  const shouldBeHighRisk = gated.filter((t) => IRREVERSIBLE_OR_OUTWARD.test(t));
-  const escaped = shouldBeHighRisk.filter((t) => !highRisk.includes(t));
-  assert("14.6 every gated tool that destroys, publishes or changes permissions is high-risk",
-    shouldBeHighRisk.length >= 8 && escaped.length === 0,
-    JSON.stringify({ matched: shouldBeHighRisk, escaped }));
+  const shouldBeStrong = gated.filter((t) => IRREVERSIBLE_OR_OUTWARD.test(t));
+  // `owner_only` is stronger than `high`, not weaker, so it satisfies this rule too.
+  const escaped = shouldBeStrong.filter((t) => !highRisk.includes(t) && !ownerOnly.includes(t));
+  assert("14.6 every gated tool that destroys, publishes or changes permissions is at least high-risk",
+    shouldBeStrong.length >= 8 && escaped.length === 0,
+    JSON.stringify({ matched: shouldBeStrong, escaped }));
+
+  // ── 14.6b NO FALLBACK PATH REACHES A HIGH-RISK ACTION. Inside a Studio session a short list of
+  // creative BUILD tools is escalated from `confirm` to `auto`, because StudioChat has no confirm
+  // affordance and gating them there stalls the agent in a loop that never builds anything. That
+  // escalation is, by construction, a route to running something without the person answering —
+  // which is exactly what a high-risk classification forbids. So the list and the high-risk set
+  // must not intersect.
+  //
+  // §13, stated rather than implied: the runtime guard that enforces this is currently unreachable,
+  // because today no member of the list is `high`. Deleting it therefore fails nothing, and this
+  // check is what actually holds the property — it catches the change that would matter (promoting
+  // a listed tool to `high`, or adding a `high` tool to the list) even though it cannot catch the
+  // deletion of the belt beneath the braces.
+  const studioAt = src.indexOf("const STUDIO_AUTO_TOOLS = new Set([");
+  const studioAuto = studioAt < 0 ? [] : [...src.slice(studioAt, src.indexOf("]);", studioAt))
+    .matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]);
+  const escalatedHighRisk = studioAuto.filter((t) => classifyAction(t) !== "ordinary");
+  assert("14.6b the Studio auto-escalation cannot reach a high-risk action",
+    studioAuto.length >= 3 && escalatedHighRisk.length === 0,
+    JSON.stringify({ studioAuto, escalatedHighRisk }));
+
+  // ── 14.7 THE CLASSIFIER CANNOT BE TALKED INTO A CLASS. An object-literal lookup answers
+  // `"constructor"` with a function off the prototype chain, so an invented tool name would come
+  // back classified. Kills: swapping the Map for an object literal.
+  assert("14.7 an invented tool name is unclassified, not whatever the prototype returns",
+    classifyAction("constructor") === "unclassified"
+      && classifyAction("__proto__") === "unclassified"
+      && classifyAction("toString") === "unclassified"
+      && classifyAction("") === "unclassified",
+    JSON.stringify(["constructor", "__proto__", "toString", ""].map(classifyAction)));
+
+  // ── 14.8 EVERY DECLARED TOOL IS EITHER CLASSIFIED, EXEMPTED WITH A REASON, OR READS AS A QUERY.
+  // This is the inventory: a new write tool cannot be added without landing in one of the three,
+  // and the only one of the three that lets it run is the classification. Kills: adding a write
+  // tool and forgetting the policy — which is the exact failure the hand-list made free.
+  const exempt = nonMutatingExemptions();
+  const unaccounted = declared.filter((t) =>
+    MUTATION_VERB.test(t) && classifyAction(t) === "unclassified" && !exempt.has(t));
+  assert("14.8 no declared tool reads as a write while carrying no classification",
+    unaccounted.length === 0, JSON.stringify(unaccounted));
+  assert("14.8b …and every exemption states why it persists nothing",
+    [...exempt.values()].every((why) => typeof why === "string" && why.length > 20),
+    JSON.stringify([...exempt]));
 }
 
 // ── 15. §67 — PAIGE BUILDS A PROCESS, BUT NEVER GRANTS HERSELF ONE ───────────────────────────
@@ -1312,13 +1358,15 @@ const mirrorConfirms = (st) => (t, row) => {
       JSON.stringify(ungated.rec.inserts.filter((i) => i.table === "paige_automations")));
     const gateWire = ungated.modelEgress
       .map((b) => (typeof b === "string" ? b : JSON.stringify(b))).join("\n").replace(/\\"/g, '"');
-    assert("15.H …and the operator is asked, and told this is not Paige's to approve",
-      /"needs_confirm":true/.test(gateWire)
-        && /"requires_operator_approval":true/.test(gateWire)
-        && /"confirm_summary":"[^"]+"/.test(gateWire),
+    // §67's red line is no longer "she must ask before raising her own autonomy" — it is that she
+    // cannot raise it from a conversation AT ALL, at any approval strength, however the request is
+    // worded. So the correct outcome is not a confirm card: it is a refusal that points at
+    // Settings. A card here would be the defect, because a card is a thing that can be answered.
+    assert("15.H …and it is REFUSED outright, not offered as something to approve",
+      !/"needs_confirm":true/.test(gateWire) && /settings/i.test(gateWire),
       gateWire.includes("needs_confirm")
-        ? "asked, but not marked as needing the operator"
-        : "never asked");
+        ? "offered as an approvable card — it must not be approvable here at all"
+        : "refused, but without telling them where the decision lives");
   }
 
   const st = processStore();
@@ -1731,32 +1779,45 @@ const mirrorConfirms = (st) => (t, row) => {
     !grantB.rec.inserts.some((i) => i.table === "paige_automations" && i.update),
     JSON.stringify(grantB.rec.inserts.filter((i) => i.table === "paige_automations")));
 
-  // ── 18.6 — HIGH RISK: the model's word is refused even from a later request. ───────────────
+  // ── 18.6/18.7 — HIGH RISK: the model's word is refused, a rendered card is not. ────────────
   //
-  // 18.3 establishes that `confirm: true` from a later request is a working approval channel for
-  // an ordinary tool. That channel rests on the model reporting a human's answer truthfully. For
-  // an act that cannot be undone, changes permissions, reaches outside the platform or spends
-  // money, that is not a good enough basis — so the channel is closed and only a rendered card
-  // counts. Without this check the two would be indistinguishable.
+  // Driven on `member_grant_role`, which the policy classifies `high` because it changes who may
+  // do what. Deliberately NOT on `automation_set_grant` any more: that is now `owner_only`, so it
+  // is refused down BOTH channels, and a check that cannot distinguish "refused because high-risk"
+  // from "refused because it never runs here" proves nothing about the high-risk rule.
+  //
+  // The role gate below the confirm gate reads `user_roles`, so the fixture grants admin. Without
+  // it 18.6 would pass because the role gate stopped the write, not because the approval channel
+  // did — the check would be measuring the wrong refusal.
+  const GRANT_TOOL = "member_grant_role";
+  const GRANT_ARGS = { user_id: "99999999-9999-4999-8999-999999999999", role: "coach" };
+  const asAdmin = { user_roles: () => [{ role: "admin" }] };
+  const granted = (r) => r.rec.rpc.some((c) => c.name === "grant_tenant_member_role");
+
+  // 18.6a — the policy really does classify this `high`, so 18.6/18.7 are about the rule and not
+  // about whatever this tool happens to do. Kills: reclassifying it and leaving these checks
+  // apparently green while they silently test an ordinary action.
+  const { classifyAction: classify } = await import("../../supabase/functions/_shared/action-risk.ts");
+  assert("18.6a the tool these two checks drive is classified high (guards 18.6/18.7)",
+    classify(GRANT_TOOL) === "high", String(classify(GRANT_TOOL)));
+
   const st7 = makeConfirmStore([{
- user_id: USER, tool_name: "automation_set_grant", fingerprint: "1111111111111111",
-    args: { automation_id: AUTOMATION, lane: "auto" }, issued_in_request: "a-previous-request",
+    user_id: USER, tool_name: GRANT_TOOL, fingerprint: "1111111111111111",
+    args: GRANT_ARGS, issued_in_request: "a-previous-request",
   }]);
   const highRiskWord = await drive({
     stream: true, extraBody: { threadId: THREAD },
-    toolCall: { name: "automation_set_grant", args: { automation_id: AUTOMATION, lane: "auto", confirm: true } },
+    toolCall: { name: GRANT_TOOL, args: { ...GRANT_ARGS, confirm: true } },
     ...CONFIRM,
-    tablesExtra: { paige_pending_confirmations: st7.table, ...automationTable },
+    tablesExtra: { paige_pending_confirmations: st7.table, ...asAdmin },
   });
   assert("18.6 a high-risk act is NOT approved by the model saying it was approved",
-    !highRiskWord.rec.inserts.some((i) => i.table === "paige_automations" && i.update),
-    JSON.stringify(highRiskWord.rec.inserts.filter((i) => i.table === "paige_automations")));
+    !granted(highRiskWord), JSON.stringify(highRiskWord.rec.rpc.map((c) => c.name)));
   assert("18.6b …and the proposal is left unspent for the person to actually answer",
-    st7.rows.every((r) => !r.consumed),
-    JSON.stringify(st7.rows));
+    st7.rows.every((r) => !r.consumed), JSON.stringify(st7.rows));
 
-  // ── 18.7 — THE OTHER OUTAGE GUARD. A rendered card still approves a high-risk act, or 18.6
-  // would be satisfied by making high-risk tools unapprovable by anyone, which is not a fix.
+  // ── 18.7 — THE OUTAGE GUARD. A rendered card still approves a high-risk act, or 18.6 would be
+  // satisfied by making high-risk tools unapprovable by anyone, which is not a fix.
   //
   // Two real requests, exactly as the product runs: request A proposes and the gate mints the
   // fingerprint; the surface renders that card, the person clicks, and request B carries it back
@@ -1764,27 +1825,95 @@ const mirrorConfirms = (st) => (t, row) => {
   // by the fixture — is what makes this a test of the echo path and not of the fixture.
   const st8 = makeConfirmStore();
   const proposeGrant = await drive({
-    stream: true, extraBody: { threadId: THREAD }, toolCall: grantA, ...CONFIRM,
-    tablesExtra: { paige_pending_confirmations: st8.table, ...automationTable },
+    stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: GRANT_TOOL, args: GRANT_ARGS }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st8.table, ...asAdmin },
     onInsert: mirrorConfirms(st8),
   });
-  const minted = proposeGrant.rec.inserts
-    .find((i) => i.table === "paige_pending_confirmations")?.row?.fingerprint;
-  assert("18.7a request A minted a fingerprint for the card to echo (guards 18.7)",
-    typeof minted === "string" && /^[0-9a-f]{16}$/.test(minted), String(minted));
+  assert("18.7a request A proposed rather than acting, and minted a fingerprint to echo",
+    !granted(proposeGrant) && st8.rows.length === 1
+      && /^[0-9a-f]{16}$/.test(String(st8.rows[0]?.fingerprint)),
+    JSON.stringify(st8.rows));
 
   const highRiskCard = await drive({
     stream: true,
-    extraBody: { threadId: THREAD, approvedConfirmations: [minted] },
-    toolCall: grantA,
-    ...CONFIRM,
-    tablesExtra: { paige_pending_confirmations: st8.table, ...automationTable },
+    extraBody: { threadId: THREAD, approvedConfirmations: [st8.rows[0]?.fingerprint] },
+    toolCall: { name: GRANT_TOOL, args: GRANT_ARGS }, ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st8.table, ...asAdmin },
     onInsert: mirrorConfirms(st8),
   });
   assert("18.7 a high-risk act IS approved when a person clicked the card a surface rendered",
-    highRiskCard.rec.inserts.some((i) => i.table === "paige_automations" && i.update
-      && i.row?.granted_lane === "auto"),
-    JSON.stringify(highRiskCard.rec.inserts.filter((i) => i.table === "paige_automations")));
+    granted(highRiskCard), JSON.stringify(highRiskCard.rec.rpc.map((c) => c.name)));
+
+  // ── 18.7b — OWNER-ONLY IS REFUSED DOWN BOTH CHANNELS, INCLUDING THE CARD. This is the property
+  // 18.6/18.7 moved off `automation_set_grant` to make room for. A rendered card is the strongest
+  // approval the platform has, and it still must not raise Paige's own autonomy from a chat turn.
+  //
+  // The fingerprint is COMPUTED from the arguments, so a hand-written one in the fixture can never
+  // be the one the gate would accept — a card echo built on an invented fingerprint tests nothing.
+  // `automation_set_grant` refuses before it ever mints one, so the fingerprint is taken from the
+  // ordinary tool that DOES mint, proving the echo channel is genuinely open in this drive and
+  // that what closes it here is the classification. Without this the check passes whether or not
+  // owner_only is enforced, which is exactly how 18.7 first passed.
+  const st9 = makeConfirmStore();
+  const echoProbe = await drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD },
+    toolCall: { name: "update_client_data", args: { client_id: OWN, updates: { goal: "probe" } } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st9.table, ...automationTable, ...asAdmin },
+    onInsert: mirrorConfirms(st9),
+  });
+  const liveFp = st9.rows[0]?.fingerprint;
+  assert("18.7b0 the echo channel is genuinely open in this drive (guards 18.7b)",
+    typeof liveFp === "string" && /^[0-9a-f]{16}$/.test(liveFp),
+    JSON.stringify({ rows: st9.rows.length, egress: echoProbe.modelEgress.length }));
+
+  const ownerOnlyCard = await drive({
+    stream: true, clientId: OWN,
+    // Every approval this platform can produce, presented at once: a live card fingerprint AND the
+    // model's own assertion. Neither may move an owner_only action.
+    extraBody: { threadId: THREAD, approvedConfirmations: [liveFp] },
+    toolCall: { name: "automation_set_grant", args: { automation_id: AUTOMATION, lane: "auto", confirm: true } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st9.table, ...automationTable, ...asAdmin },
+    onInsert: mirrorConfirms(st9),
+  });
+  assert("18.7b even a clicked card cannot raise Paige's own autonomy from a chat turn",
+    !ownerOnlyCard.rec.inserts.some((i) => i.table === "paige_automations" && i.update),
+    JSON.stringify(ownerOnlyCard.rec.inserts.filter((i) => i.table === "paige_automations")));
+  assert("18.7c …and it never even proposes it, because a proposal is a thing that can be answered",
+    !ownerOnlyCard.rec.inserts.some((i) => i.table === "paige_pending_confirmations"
+      && i.row?.tool_name === "automation_set_grant"),
+    JSON.stringify(ownerOnlyCard.rec.inserts.filter((i) => i.table === "paige_pending_confirmations").map((i) => i.row?.tool_name)));
+
+  // ── 18.9 — THE LAST LINE AT RUNTIME. A tool name that reads as a write and carries no
+  // classification is refused before dispatch. The refusal is asserted on the LOG MARKER as well
+  // as on the absence of a write, because "an unknown tool did nothing" is true whether the guard
+  // exists or not — the marker is the only evidence that the GUARD is what stopped it.
+  const inventedWrite = await drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD },
+    toolCall: { name: "secret_delete_everything", args: { target: "all" } },
+    ...CONFIRM,
+    tablesExtra: { ...asAdmin },
+  });
+  assert("18.9 an unclassified write-shaped tool is refused by the policy, not merely unhandled",
+    inventedWrite.logged.some((l) => l.msg.includes("[paige] unclassified write refused")),
+    JSON.stringify(inventedWrite.logged.map((l) => l.msg).slice(0, 6)));
+  assert("18.9b …and nothing left the platform on that turn",
+    inventedWrite.outboundCalls.length === 0,
+    JSON.stringify(inventedWrite.outboundCalls.map((c) => c.url)));
+
+  // ── 18.9c — …and a read-shaped unknown tool is NOT swallowed by that guard, or 18.9 would be
+  // satisfied by refusing everything unfamiliar, which would break every read tool ever added.
+  const inventedRead = await drive({
+    stream: true, clientId: OWN, extraBody: { threadId: THREAD },
+    toolCall: { name: "widget_list_things", args: {} },
+    ...CONFIRM,
+    tablesExtra: { ...asAdmin },
+  });
+  assert("18.9c an unknown READ-shaped tool is not caught by the write guard",
+    !inventedRead.logged.some((l) => l.msg.includes("[paige] unclassified write refused")),
+    JSON.stringify(inventedRead.logged.map((l) => l.msg).slice(0, 6)));
 
   // ── 18.8 — the token is gone from the wire entirely. A key anyone can ask for is not a key;
   // leaving it in the response "for compatibility" would hand the next reader the same trap.

@@ -108,16 +108,24 @@ describe("what the surface says about the gap is the measured number", () => {
    * silent.
    */
   it("matches the live diff of the runtime gate against the catalogue", () => {
-    const chat = readFileSync(
-      resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"),
+    // The runtime gate is the action-risk policy's key set — the handler no longer holds a literal
+    // of its own, so that the classification and the gated set cannot drift apart. This derives the
+    // gate the same way the runtime does.
+    const policy = readFileSync(
+      resolve(process.cwd(), "supabase/functions/_shared/action-risk.ts"),
       "utf8",
     );
-    const at = chat.indexOf("const MUTATING_TOOLS = new Set<string>([");
+    const at = policy.indexOf("const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [");
     const gate = new Set(
-      [...chat.slice(chat.indexOf("[", at), chat.indexOf("]);", at)).matchAll(/"([a-z0-9_]+)"/g)].map(
-        (m) => m[1],
-      ),
+      [
+        ...policy
+          .slice(at, policy.indexOf("\n];", at))
+          .matchAll(/\[\s*"([a-z0-9_]+)"\s*,\s*"(?:ordinary|high|owner_only)"\s*,/g),
+      ].map((m) => m[1]),
     );
+    // A parse that finds nothing would report a clean gap, which is indistinguishable from a clean
+    // gap. Prove the subject was found before measuring it.
+    expect(gate.size).toBeGreaterThan(40);
 
     const dir = resolve(process.cwd(), "supabase/migrations");
     let catalogue = new Set<string>();

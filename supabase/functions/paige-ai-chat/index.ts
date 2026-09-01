@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { checkedWrite, writeOutcome } from "../_shared/checked-write.ts";
+import { classifyAction, mutatingTools, riskReason, unclassifiedWriteReason } from "../_shared/action-risk.ts";
 import { buildCreditProposal, buildCreditSyncPayload } from "../_shared/credit-extraction-payload.ts";
 import { projectN8nForModel, projectOutcomeForModel } from "../_shared/mcp-outcome.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
@@ -6246,93 +6247,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     };
 
-    const MUTATING_TOOLS = new Set<string>([
-      // Containment tombstones: these Marketplace mutations are deliberately not
-      // registered or dispatched. Keeping them classified as mutating means a
-      // future accidental re-registration still cannot inherit read semantics.
-      "marketplace_install", "marketplace_uninstall",
-      "crm_update_contact", "crm_create_contact", "crm_delete_contact",
-      "update_business_profile",
-      "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
-      "crm_create_task", "crm_log_activity",
-      "pipeline_create", "pipeline_add_stage",
-      "deal_create", "deal_move_stage",
-      "member_grant_role", "member_revoke_role",
-      "calendar_book_meeting", "program_enroll",
-      "draft_marketing_content", "generate_image", "content_save", "document_generate",
-      "growth_page_save", "growth_page_publish",
-      "growth_funnel_build", "growth_funnel_publish",
-      "action_file", "action_advance",
-      "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
-      "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
-      "zapier_run_action",
-      "forge_subagent", "save_to_knowledge_base",
-      "plan_set_reminder", "plan_create", "plan_add_milestone",
-      "plan_assign_task", "plan_update_item", "plan_remove_item",
-      "author_event_kind",
-      // §67 — AUTHORING A PROCESS IS ITSELF A WRITE, AND GRANTING ONE IS A DECISION.
-      // `automation_draft` creates a row that cannot act (born `confirm` + `draft`), so gating it
-      // is not about danger — it is about the operator being able to see it in their autonomy
-      // settings and switch it off. `automation_set_grant` is the human deciding how much Paige
-      // may do alone, which is the one thing she must never be able to do for herself.
-      "automation_draft", "automation_set_grant", "automation_set_state",
-      // §13 — THESE TWO WERE NOT IN THIS SET, AND BOTH ARE WRITES.
-      //
-      // `update_client_data` forwards to `paige-write-back`, which writes a NAMED client's profile
-      // fields — the single most consequential per-client write Paige can make — and it never
-      // reached this gate at all. No confirm, no off switch, no autonomy row: a tenant that turned
-      // everything else to `confirm` still had this running unattended.
-      //
-      // `delegate_to_subagent` dispatches a subagent RUN. Its sibling `forge_subagent` was gated;
-      // the one that actually executes was not.
-      //
-      // Both default to `confirm` like every other entry, because the catalog default is `confirm`
-      // for anything without a row (`resolve_tool_autonomy`). A tenant that wants either on
-      // autopilot sets it deliberately, which is the point.
-      "update_client_data", "delegate_to_subagent",
-]);
+    // THE GATED SET IS THE POLICY'S KEY SET — there is no second list to fall out of step.
+    //
+    // It used to be a literal here, next to a comment explaining the risk split. Two lists that
+    // must agree eventually do not: a tool added to one and missed by the other is ungoverned, and
+    // the permissive answer was the one that came for free. `_shared/action-risk.ts` classifies
+    // every mutation once, CI proves the classification is exhaustive, and this reads it.
+    const MUTATING_TOOLS = mutatingTools();
 
-    // ── THE ACTIONS A MODEL MAY NEVER SAY YES TO ON THE OPERATOR'S BEHALF ────────────────────
+    // ── HOW APPROVAL REACHES THIS GATE, AND WHY THE TWO CHANNELS ARE NOT EQUAL ──────────────
     //
-    // Approval reaches this gate down two channels, and they are not equally trustworthy.
-    //
-    //   1. `approvedConfirmations` — the fingerprint of a card a surface actually RENDERED, sent
-    //      up in the request body when the person clicked Approve. The model cannot forge it: it
+    //   1. `approvedConfirmations` — the fingerprint of a card a surface actually RENDERED, sent up
+    //      in the request body when the person clicked Approve. The model cannot forge it: it
     //      cannot start an HTTP request, so it cannot put anything in the body.
     //   2. `confirm: true` in the tool arguments — the model REPORTING that the person said yes.
     //      Five of the six chat surfaces render no card, so without this channel they could not
     //      approve anything at all. But it is the model's own word, and a model that is confused,
     //      or steered by content it just read, can produce it after the person said "no".
     //
-    // For most actions channel 2 is the honest cost of a conversational surface: the write is
-    // in-tenant, reversible, and the transcript records what was said. For these, it is not — an
-    // action here either cannot be undone, changes who is allowed to do what, has an effect
-    // outside this platform, or spends money. Channel 2 is refused for every one of them, so on a
-    // card-less surface they simply cannot be approved, and the person is told to approve where
-    // the action can actually be shown to them.
-    //
-    // `automation_set_grant` / `automation_set_state` are here for a second reason on top of the
-    // first: §67's red line is that Paige may never raise her own autonomy. If her own say-so
-    // could clear this gate, that line would be drawn in a place she is standing.
-    const HIGH_RISK_CONFIRM_TOOLS = new Set<string>([
-      // Irreversible.
-      "crm_delete_contact", "n8n_delete_workflow", "plan_remove_item",
-      // Changes who may do what.
-      "member_grant_role", "member_revoke_role",
-      "automation_set_grant", "automation_set_state",
-      // Takes effect outside this platform.
-      "zapier_run_action", "n8n_run_workflow", "n8n_activate_workflow",
-      "growth_page_publish", "growth_funnel_publish",
-      "calendar_book_meeting",
-      // Spends money.
-      "marketplace_install", "marketplace_uninstall",
-    ]);
-    // A high-risk tool that is not gated at all would be governed by nothing, which is worse than
-    // the thing this set exists to prevent. Fail loudly at boot rather than silently at 3am.
-    for (const t of HIGH_RISK_CONFIRM_TOOLS) {
-      if (!MUTATING_TOOLS.has(t)) throw new Error(`high-risk tool ${t} is not in MUTATING_TOOLS`);
-    }
-
+    // Which channel an action requires is not decided here. `classifyAction` decides it, from the
+    // action alone, in `_shared/action-risk.ts`.
     // EVERY GATED TOOL LEARNS HOW TO BE APPROVED.
     //
     // Only three of the fifty-one tools the gate governs ever declared a `confirm` parameter, so
@@ -6360,7 +6294,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       if (!props) continue;
       props.confirm = {
         type: "boolean",
-        description: HIGH_RISK_CONFIRM_TOOLS.has(name)
+        description: classifyAction(name) === "high"
           ? "Set true ONLY after the operator has actually replied and approved this exact action. For this action that is not enough on its own — it must be approved on a surface that can show it to them — but never set it before they have answered."
           : "Set true ONLY after the operator has actually replied and approved. Never in the same reply where you proposed it — you have not heard back yet, and the platform will refuse it. You do not need to repeat the other arguments exactly: the exact call they were read is saved and is what runs. If they asked for ANY change, send the full new arguments and leave this false, so they get a fresh summary to approve.",
       };
@@ -6791,6 +6725,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // acts. 'off' → disabled. Read tools skip this entirely. Every branch here
         // pushes exactly one tool-result then `continue`s, preserving the loop's
         // one-result-per-executed-tc invariant.
+        // THE LAST LINE, AHEAD OF EVERY DISPATCH. A tool whose name reads as a write but which
+        // carries no classification does not run. CI (`lint:action-risk`) refuses the change that
+        // would create this state and should always catch it first — but CI catches it in the
+        // repository, and this catches it in production, which is where a missed classification
+        // would otherwise be an ungoverned write rather than an inert one.
+        const unclassifiedWrite = unclassifiedWriteReason(tc.function.name);
+        if (unclassifiedWrite) {
+          console.error("[paige] unclassified write refused", JSON.stringify({ tool: tc.function.name }));
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+            success: false,
+            error: "This action has no risk classification, so it cannot be run. Tell the operator plainly that you cannot do this one and that it needs looking at — do not try a different way round it.",
+          }) });
+          continue;
+        }
+
         if (MUTATING_TOOLS.has(tc.function.name)) {
           let gateArgs: any = {};
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
@@ -6808,7 +6757,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             "generate_image", "content_save", "document_generate",
             "growth_page_save", "growth_funnel_build",
           ]);
-          if (studioSessionId && STUDIO_AUTO_TOOLS.has(tc.function.name) && autoMode === "confirm") {
+          // …AND IT CAN NEVER LIFT A HIGH-RISK ACTION. This escalation is a fallback path — a way
+          // for an action to run without the person answering — which is precisely what a high-risk
+          // classification exists to forbid. Today no member of the list is classified `high`, so
+          // this guard changes nothing; it is here so that adding one later cannot silently create
+          // an unapproved route to it, which is how the list would eventually be widened.
+          if (
+            studioSessionId && STUDIO_AUTO_TOOLS.has(tc.function.name) && autoMode === "confirm"
+            && classifyAction(tc.function.name) === "ordinary"
+          ) {
             autoMode = "auto";
           }
           if (autoMode === "off") {
@@ -6843,8 +6800,41 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // If the person AMENDS the request, the model emits fresh arguments with no token.
             // That fingerprints differently, finds no proposal, and becomes a NEW card with a NEW
             // summary — which is right: a changed action deserves a fresh look.
+            // THE CLASSIFICATION, FROM THE ACTION ALONE. Nothing in `gateArgs`, the request body,
+            // or the calling surface is an input here — which is the point: an action's risk is a
+            // property of the action, and a request that could argue about its own risk would be
+            // negotiating its own permission.
+            const risk = classifyAction(tc.function.name);
+
+            // FAIL CLOSED. A write with no classification does not run — not as ordinary, not as
+            // high, not at all. CI refuses the change that would create this state, so reaching it
+            // means something got past CI, and the safe answer to that is to stop rather than to
+            // pick a class. There is no approval path out of here: the fix is to classify the tool.
+            if (risk === "unclassified") {
+              console.error("[paige] unclassified mutation refused", JSON.stringify({ tool: tc.function.name }));
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: false,
+                error: "This action has no risk classification, so it cannot be run. Tell the operator plainly that you cannot do this one and that it needs looking at — do not try a different way round it.",
+              }) });
+              continue;
+            }
+
+            // NOT A CHAT ACTION AT ALL. `owner_only` is not "needs stronger approval" — no approval
+            // reaches it, because the decision is about how much authority Paige herself holds and
+            // an assistant that can be talked into more authority has no ceiling. It lives in
+            // Settings, where a person changes it deliberately rather than at the end of a
+            // conversation Paige was steering.
+            if (risk === "owner_only") {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: false,
+                error: "This is the operator's decision to make in their settings, not something you can do from a conversation — it changes how much you are allowed to do on your own. Say so plainly, tell them where it lives, and do not ask them to approve it here.",
+                reason: riskReason(tc.function.name),
+              }) });
+              continue;
+            }
+
             const fp = await confirmFingerprint(tc.function.name, gateArgs);
-            const highRisk = HIGH_RISK_CONFIRM_TOOLS.has(tc.function.name);
+            const highRisk = risk === "high";
 
             // CHANNEL 1 — a human demonstrably clicked. A surface that renders a real confirm card
             // (the Solo chat) echoes the fingerprint of what it actually DISPLAYED, in the request
@@ -6852,7 +6842,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const surfaceApproved = approvedConfirmations.has(fp);
             // CHANNEL 2 — the model's word that the operator said yes. Necessary, because five of
             // the six surfaces render no card and a rule only one caller can obey is not a rule,
-            // it is an outage. Refused outright for the high-risk set: see HIGH_RISK_CONFIRM_TOOLS.
+            // it is an outage. Refused outright when the policy classifies the action `high`.
             const modelAsserted = gateArgs.confirm === true;
             const claimBy: string | null | undefined = surfaceApproved
               ? fp                                    // exact: the card said precisely this

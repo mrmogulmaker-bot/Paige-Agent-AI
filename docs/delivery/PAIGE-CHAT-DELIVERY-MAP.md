@@ -245,6 +245,16 @@ in `docs/doctrine/tier-matrix.md` per §66.
 | **B — the resolver** | `resolve_automation_autonomy` = min(grant, act floor, ceiling), returning `capped_by` and `dark` separately. | 11-case prod proof, each bound driven independently with its own negative control |
 | **C — the chat seam** | Five tools. Paige builds a process; she can never grant herself one. | 8 harness checks · 4 mutations driven, all red |
 
+| **R2 — a key anyone can ask for is not a key** | An independent review broke R1's binding and it reproduced: `confirm_token` was the fingerprint of the action, so any later request that re-proposed the same call got it back and could spend it — including a request whose human message was "cancel that". The token is removed. Approval is now a rendered card (unforgeable: the model cannot write a request body) or `confirm: true` (the model's word). Declining CANCELS the proposal. | 15 mutations driven, all red on the check built for them · the two-request drive the old suite could not express |
+| **R3 — the risk split becomes a policy** | `_shared/action-risk.ts` classifies all 51 mutations once: 28 `ordinary`, 21 `high` (card only), 2 `owner_only` (not a chat action at any strength). `MUTATING_TOOLS` is the policy's key set, so there is no second list to drift. Unclassified writes refuse at dispatch AND fail CI. | 9 policy mutations driven at the DISPATCH paths · `lint:action-risk` with a 12-case self-test · two shipped tests repointed rather than weakened |
+
+**Owner ruling absorbed (2026-09-01).** *"Paige may never grant or raise her own autonomy through
+Chat, regardless of action class or owner wording."* `automation_set_grant` and `automation_set_state`
+are `owner_only` and refuse down every channel, including a clicked card. **Named rather than
+buried: no Settings control for automation grants exists yet, so those two fields are currently
+settable by nothing.** Automations were already inert (no trigger emits), so nothing regressed — but
+the Settings control is the close-out, and it is CD's surface (§00).
+
 **What the autonomy wave does NOT claim.** Triggers do not yet EMIT — slice D in the architecture doc.
 Four trigger rows are seeded, not the eighty the pack declares, because `is_live` is the field a
 builder trusts and only what was verified against production is claimed live. `paige-mcp` performs no

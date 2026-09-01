@@ -36,6 +36,8 @@
     "pack:keys": "node scripts/pack/key-xref.mjs",
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
+    "lint:action-risk": "node scripts/ci/action-risk-lint.mjs",
+    "lint:action-risk:test": "node scripts/ci/action-risk-lint.mjs --self-test",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
     "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",
     "smoke:mcp-registry": "node scripts/mcp-registry-provider-smoke.mjs",
