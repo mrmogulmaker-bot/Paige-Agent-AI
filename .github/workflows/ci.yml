@@ -204,6 +204,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test
 
+      # A similarity search whose search_path excludes `extensions` cannot resolve `<=>` and raises
+      # on every call. Three shipped functions were in that state for months, invisible because
+      # every call site degrades to an empty result — "no matches" and "cannot execute" look the
+      # same from outside.
+      - name: Vector searches can resolve their own operator
+        if: ${{ !cancelled() }}
+        run: npm run lint:vector-path
+
+      - name: Vector search-path guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:vector-path:test
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint

@@ -37,6 +37,8 @@
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
     "lint:action-risk": "node scripts/ci/action-risk-lint.mjs",
+    "lint:vector-path": "node scripts/ci/vector-search-path-lint.mjs",
+    "lint:vector-path:test": "node scripts/ci/vector-search-path-lint.mjs --self-test",
     "lint:action-risk:test": "node scripts/ci/action-risk-lint.mjs --self-test",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
     "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",

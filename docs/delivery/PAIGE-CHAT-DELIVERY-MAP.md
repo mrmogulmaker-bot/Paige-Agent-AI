@@ -108,7 +108,7 @@ Ordered by contract, not by file. **DV** = direct violation of a named purpose c
 | | Retry exists only for offline/timeout. An HTTP error rolls back with no retry affordance | `PaigeAIChat.tsx:1272-1275` vs `:810-826` |
 | | No in-transcript permission-denied state | verified |
 | | `usePaigeMemory.ts:86` sends `Authorization: Bearer undefined` | verified |
-| | *(inferred)* `match_paige_memory` is called on the service-role client where `auth.uid()` is NULL, and its hardened guard has no service-role exemption — so it likely raises on every call and degrades silently to `[]` | `index.ts:1128`; `20260821000000…sql:458-498` |
+| **§13 — DRIVEN, AND THE INFERENCE WAS WRONG** | This row guessed the CAUSE (a service-role auth guard) and under-stated the SCOPE. Driven 2026-09-01: `match_paige_memory` raises for **every** caller, including a fully authorised one, and the reason is operator resolution — `<=>` lives in `extensions`, the function pins `search_path = public`. Two sibling functions were in the same state and a third bug sat behind one of them. Symptom correctly guessed, cause and blast radius both wrong; see M2a. | driven, `20261029000000` |
 
 ### Clause 4 — protected content (the #675 work in flight)
 
@@ -251,6 +251,8 @@ in `docs/doctrine/tier-matrix.md` per §66.
 | **C1 — every write is attributable** | One seam at the point every executed tool passes through files a `paige_audit_log` row: entity + record, actor, tenant, risk class, the AUTHORITY it ran on, and the real outcome. The rail's membership is derived from the same target map (adding `update_client_data`) and `ref_id` is filled, so an event can name the record it changed. Two policy defects closed: a `client` seat could not record its own action, and a tenant admin could read every untenanted row. | 8 mutations driven, all red on the check built for them · 5-case prod rollback proof with 2 negative controls that confirmed both defects were real first |
 
 | **M1 — Paige opens knowing what she is carrying** | `paige_operating_memory()` composes open commitments, live processes, work in flight, and what she last did with its real outcome. Nothing stored, so nothing can go stale. No tenant parameter; SECURITY INVOKER. A failed read renders nothing rather than implying nothing is outstanding. | 6 mutations driven, all red on the check built for them · 11-case prod rollback proof across two identically-seeded tenants, with a control that the function did not already exist |
+
+| **M2a — the memory reads could never resolve their operator** | `match_paige_memory`, `match_rag_documents` and `match_prompt_memory` raised 42883 on every call: `<=>` lives in `extensions`, their `search_path` is `public`. `match_rag_documents` was broken twice — an `array_agg(r.id)` over a subquery aliased `d`. All three repaired; `lint:vector-path` prevents recurrence. | 9-case prod rollback proof with 4 negative controls · guard driven against the un-fixed tree, catching all 5 historical occurrences · 10-case lint self-test |
 
 **Owner ruling absorbed (2026-09-01).** *"Paige may never grant or raise her own autonomy through
 Chat, regardless of action class or owner wording."* `automation_set_grant` and `automation_set_state`
