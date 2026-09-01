@@ -36,6 +36,11 @@ If the request touches a specific slice, load the canonical deep doc for it from
 Every paste Cowork produces for CC or Codex includes the line:
 > Reference `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Sections 4 + 5 before starting; update Section 4 on merge; log any §13 corrections in Section 10.
 
+Every new feature assignment also includes the `PAIGE SPINE DECLARATION` from
+`docs/brain/paige-spine-integration-standard.md`: evidence/action/outcome/no-obligation plus named
+domain, PAIGE Chat, and shared-Spine owners. A missing shared interface is a Spine Change Request,
+not authority for the feature workstream to alter shared cores.
+
 ---
 
 ## 1. Vision & MVP Definition
@@ -113,6 +118,15 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 ### Proposed in `docs/doctrine/claude-md-amendment-draft-2026-07-28.md` (owner sign-off pending, Task #93)
 
 §§40 Revenue-Stage Awareness · §41 Entity-Type Awareness · §42 Paige C-Suite · §43 Surface-is-a-Tool · §45 Sellability · §49 Unified Comms.
+
+### PAIGE Spine Integration Standard (owner-approved 2026-09-01; architecture policy)
+
+**Canonical:** `docs/brain/paige-spine-integration-standard.md`. The Spine is the platform-wide safe
+path from tenant/client domain event to structured Mind/PAIGE Chat evidence, a governed action when
+separately authorized, and an attributable Rail outcome. Rail is part of the Spine, not the whole
+architecture. Feature/domain, designated PAIGE Chat, and shared-Spine ownership is explicit; Trust
+may restrict but never elevate domain permission. Platform implementation remains **PARTIAL** and
+must be verified per domain — the standard itself is not a shipped-adapter claim.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 
@@ -1165,6 +1179,14 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 ---
 
 ## 9. Canonical deep docs (by topic)
+
+### Second Brain architecture standards (`docs/brain/`)
+
+- PAIGE Spine Integration Standard — `paige-spine-integration-standard.md` (owner-approved safe
+  integration architecture; assignment declaration; domain/Chat/shared ownership; Spine Change
+  Requests; platform implementation `PARTIAL`)
+- Primary-brain wiring standard — `paige-brain-wiring-standard.md` (runtime context/tool coverage
+  ledger; subordinate to the Spine ownership boundary)
 
 ### Product specs (LOCKED 2026-08-08 — `docs/product/`)
 

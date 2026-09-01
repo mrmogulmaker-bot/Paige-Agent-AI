@@ -8,6 +8,11 @@
 > authorise live voice or any provider action — a taxonomy describes the shape an authorization must
 > take; it is not the authorization.
 
+This is the Solo Connections/A2P domain specialization under
+`docs/brain/paige-spine-integration-standard.md`. Feature owners keep the domain contract and safe
+evidence manifest; missing Mind, Chat, Trust, Rail-core, Systems Check, or shared-executor interfaces
+go to their designated owners as Spine Change Requests rather than direct shared-core edits.
+
 Paige Agent AI is building toward full governed autonomy across the Solo account. Everything
 below exists so that ambition is served by the foundation that already ships, rather than by a
 second one grown quietly beside it.
