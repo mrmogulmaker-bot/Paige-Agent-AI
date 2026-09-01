@@ -141,6 +141,26 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise the same words *"an unlisted monthly price"* **since 2026-09-01**. The `—` is still what the search RESULTS ROW renders; it is no longer what the person is asked to agree to |
   | What can go wrong | **one unattended path now, not two** — a workspace on `auto` still buys with no gate at all (chosen, and by design). At `confirm` the first-call/same-turn bypass is closed; what remains is that an intervening human turn is not the same as a human saying yes, so a model could still read a refusal as approval | an unpriced number is bought for an unnamed sum. *A price change between search and buy is now caught — the server re-verifies and refuses* | the same as Solo since 2026-09-01. *Was: all of the above, plus no confirmation at all — a single click started a recurring charge* |
 
+  ### Blocking reasons and their next steps — held by CI as of 2026-09-01
+
+  `tenant_comms_readiness()` returns exactly six `blocked_reason` values
+  (`messaging_account_missing`, `messaging_account_inactive`, `no_sms_number`,
+  `registration_absent`, `registration_not_approved`, `no_consent_recorded`) plus `null`.
+  Connections renders each through `READINESS_COPY` in `src/solo/settings.tsx`, whose entries
+  carry a headline **and** a `next` — the one thing the person can do. Measured 2026-09-01:
+  **exact parity, no gap in either direction.**
+
+  Where the map has no entry the surface falls back to *"Some setup is still outstanding."* —
+  honest, and naming no next step. That is the dead end, and it was reachable only by adding a
+  seventh reason to the migration, which is a different file reviewed by different eyes.
+  `npm run lint:readiness-copy` (CI step "Blocking reasons carry a next step") now fails on
+  either direction, and on an entry that has a headline but no `next`.
+
+  **What the guard does NOT do (§13):** it proves the two vocabularies agree; it does not judge
+  the copy (that is Claude Design's, §00), and it reads the migration that defines the resolver,
+  not the deployed function — so a resolver changed on prod without a migration is outside what
+  it can see, as it is for every other static gate here.
+
   **CLOSED 2026-09-01.** The paragraph that stood here recorded the UI lanes as a **known gap**,
   never a protection: neither sent an amount, so the server's re-verification — guarded
   `if (agreedMonthlyCents !== null)` — was skipped for both, and the legacy operator tab bought on a

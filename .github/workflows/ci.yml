@@ -200,6 +200,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tool-catalogue
 
+      # Every reason `tenant_comms_readiness()` can BLOCK a tenant for must have a
+      # next step on the surface that renders it. The two halves live in a SQL
+      # migration and a React file, reviewed at different times by different eyes,
+      # and nothing connected them: they are in exact parity today, by hand. Where
+      # the map has no entry the surface says "Some setup is still outstanding." —
+      # honest, and no next step, which is the dead end the usability pass exists
+      # to remove. Adding a seventh reason to the migration is the whole cost.
+      - name: Blocking reasons carry a next step (Connections has no dead ends)
+        if: ${{ !cancelled() }}
+        run: npm run lint:readiness-copy
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
