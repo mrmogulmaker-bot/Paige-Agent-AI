@@ -19,6 +19,8 @@ const deals = [
 
 let mode: Mode = "active";
 let currentDeals = deals;
+let currentPipelines = [pipeline];
+let currentStages = stages;
 let snapshot = buildSnapshot();
 
 function buildSnapshot() {
@@ -31,11 +33,20 @@ function buildSnapshot() {
     submissions: [],
     pipelineWorkspace: {
       canManage: mode !== "readonly",
-      pipelines: hasPipeline ? [pipeline] : [],
-      stages: hasPipeline ? stages : [],
+      pipelines: hasPipeline ? currentPipelines : [],
+      stages: hasPipeline ? currentStages : [],
       deals: hasPipeline ? currentDeals : [],
     },
     pipelineAction: async (command: Record<string, unknown>) => {
+      if (command.type === "create-pipeline") {
+        const pipelineId = `pipeline-${currentPipelines.length + 1}`;
+        const authoredStages = Array.isArray(command.stages) ? command.stages as Array<{ label: string; description: string; movePolicy: "direct" | "approval" }> : [];
+        currentPipelines = [...currentPipelines, { id: pipelineId, name: String(command.name), description: String(command.description ?? ""), isDefault: false, lifecycleStatus: "draft", version: 1 }];
+        currentStages = [...currentStages, ...authoredStages.map((stage, index) => ({ id: `${pipelineId}-stage-${index + 1}`, pipelineId, label: stage.label, description: stage.description, orderIndex: index + 1, archivedAt: null, movePolicy: stage.movePolicy, version: 1 }))];
+        snapshot = buildSnapshot();
+        listeners.forEach((listener) => listener());
+        return { ok: true, message: "Local custom pipeline created.", data: { pipeline_id: pipelineId } };
+      }
       if (command.type === "move-deal") {
         currentDeals = currentDeals.map((deal) => deal.id === command.dealId ? { ...deal, stageId: String(command.targetStageId), version: deal.version + 1 } : deal);
         snapshot = buildSnapshot();
