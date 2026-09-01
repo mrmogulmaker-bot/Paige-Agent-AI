@@ -136,12 +136,23 @@ Replace step 10 with:
 > - A sweep was run for claims this change **falsifies**, across the whole knowledge home rather
 >   than the section edited, using more than one spelling of the key term. Report the terms actually
 >   searched — an unfalsifiable "nothing found" is indistinguishable from not having looked.
+> - **Nothing the sweep matched was discarded unread.** A sweep narrowed by content (`grep -v`) or
+>   by path can hide the very claims it was run to find, and it fails silently — the output looks
+>   identical whether it found nothing or hid everything. If the sweep was narrowed at all, say how,
+>   and read what the narrowing removed. **A count is not a read:** knowing two matches were omitted
+>   tells you nothing about whether they were false.
+> - **Every occurrence found was assessed, and each one that is actually false was corrected** — not
+>   only the one someone pointed at, and not blanket-rewritten either: identical wording can appear
+>   in a dated entry that was true when written, in a quotation, or in a corrections log that must
+>   name what it reversed.
 > - If the work taught nothing durable, that is stated explicitly. Silence is not a result.
 > - No secret value was written anywhere.
 >
-> Report `PASS` with what was recorded and what the sweep searched, `FAIL` with the contradiction
-> found, or `UNVERIFIED` with the exact reason. A record added without the sweep is a `FAIL`: the
-> document now asserts both states, and both are reachable.
+> Report `PASS` with what was recorded, what the sweep searched, and how it was narrowed if it was;
+> `FAIL` with the contradiction found; or `UNVERIFIED` with the exact reason. A record added without
+> the sweep is a `FAIL`: the document now asserts both states, and both are reachable. **A sweep
+> whose omissions were never read is also a `FAIL`, however many spellings it searched** — that
+> combination is what produced a false `PASS` once already.
 
 ### 4. `SKILL.md` — the "Gates" list
 

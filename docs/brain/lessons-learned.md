@@ -619,11 +619,14 @@ nothing or hid everything. There is no signal distinguishing "clean" from "blind
 1. **Every omitted match must stay auditable.** The defect was not `grep -v` as such; it was that
    the excluded set vanished without being seen or counted. A **path** filter hides a stale claim
    just as effectively — narrowing to `docs/brain/` would have missed a `docs/doctrine/` copy — so
-   "filter by path, not content" is the wrong invariant. A content filter is fine *when its excluded
-   stream is separately reviewed or counted*; an unaudited omission of any kind is not. In practice:
-   sweep unfiltered and read the hits, or if the volume genuinely forces narrowing, look at what the
-   narrowing removed. Output too long to read is information about the claim's blast radius, not
-   permission to stop looking.
+   "filter by path, not content" is the wrong invariant. A content filter is fine *when the excluded
+   stream is retained and READ*. **Counting it is not enough** — in the anchoring incident the
+   excluded stream contained both stale claims, so `wc -l` would have reported "2 omitted",
+   satisfied any "reviewed or counted" wording, and revealed neither. A count establishes that
+   omissions exist; it says nothing about whether they are false. If a count is all you have, any
+   **nonzero** result has to trigger reading them. In practice: sweep unfiltered and read the hits,
+   or if volume genuinely forces narrowing, read what the narrowing removed. Output too long to
+   read is information about the claim's blast radius, not permission to stop looking.
 2. **Search and assess EVERY occurrence; correct each one that is actually false.** Not "fix it
    everywhere" — identical wording can appear in a dated decision-log entry that was true when
    written, in a quotation, in a corrections log that must name what it reversed (§50), or in a
@@ -641,11 +644,20 @@ generalising past the evidence. Review caught both: a path filter hides just as 
 
 The generalisation is the reflex, not the exception. A rule derived from one incident wants to be
 stated as a mechanism (*don't use this tool*) because that is concrete and checkable, when what the
-incident actually taught is a property (*don't leave omissions unaudited*). **The mechanism form is
-easier to write, easier to follow, and wrong** — it forbids safe uses and permits unsafe ones that
-happen to use a different tool. When writing any rule from a single failure, state what property
-was violated and check whether the rule as phrased would have caught a version of the failure using
-different means. If it would not, it is describing the incident rather than the lesson.
+incident actually taught is a property (*don't leave omissions unaudited*).
+
+**This is not an argument against mechanism-form rules as such** — and that qualifier is itself a
+correction, because the first draft of this paragraph said the mechanism form is simply "wrong".
+Where a mechanism genuinely has no permitted safe use, banning it outright is the right control and
+is *meant* to be blunt: §50's prohibition on the listed third-party marks is exactly that, and a
+meta-rule that reads as "prefer properties to mechanisms" could be used to argue it down. The
+failure mode is narrower — a mechanism-form rule that **overgeneralises past its evidence**, so it
+forbids safe uses of the named tool while permitting the same failure by other means.
+
+The test, which distinguishes the two cases: state what property was violated, then ask whether the
+rule as phrased would catch a version of the failure **using different means**. If it would not, it
+describes the incident rather than the lesson. If it would — because the mechanism itself is the
+whole hazard — the mechanism form is correct and should stay blunt.
 
 **Recorded here rather than in a sibling PR, and that is part of the lesson too.** These two defects
 were found reviewing this change, and the first draft put them in a different PR's branch to avoid
