@@ -461,6 +461,29 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   guarding those two bootstrap `CREATE TABLE`s or turning the preview integration off; editing historical
   migrations is not a thing to do casually mid-fire.
 
+  **RESOLVED 2026-08-30 by #643 (`ba6c038c`, "restore fresh-database replay of the committed history"),
+  confirmed 2026-09-01 — the standing risk above is CLOSED and needs no owner decision.** #643 took the
+  first of the two options: `20251009234919_…sql:11` now reads `CREATE TABLE IF NOT EXISTS
+  public.profiles`, and the bootstrap file was rewritten (50 insertions, 90 deletions). A sweep for an
+  unguarded `create table public.profiles` across every migration returns **nothing** — all guarded.
+
+  Measured on #721: Supabase Preview completed **Configurations ✅ → Migrations ✅ → Seeding ✅ →
+  Edge Functions ✅** on four consecutive runs across three heads. The failure this entry describes no
+  longer reproduces.
+
+  **Two places still assert the old state and are now WRONG:**
+  - `.github/workflows/ci.yml` (the deno-ratchet block) — *"the migration replay, which fails on every
+    PR (#211) — observed: Configurations ✅ → Migrations ❌ → Seeding ⏸️ → Edge Functions ⏸️, so it never
+    runs."* Corrected in this commit. **The gate itself is untouched and stays:** the deno ratchet
+    compares the PR BASE against the HEAD and fails only on NEW diagnostics, which Preview has never
+    done and still does not. Only the stale justification changed.
+  - The paragraph above, corrected here rather than deleted (§58).
+
+  *Rule this leaves behind:* **a "standing risk, owner decision owed" is a claim with a shelf life.**
+  This one was fixed by an unrelated PR eleven days later and stayed on the books as an open owner
+  decision because nothing re-checked it. When an entry says a decision is owed, the cheapest thing to
+  do before escalating is re-run the check that produced it.
+
 - **A CONFLICTED PR silently suppresses every `pull_request` workflow — that is NOT "Actions is broken"
   (2026-08-19).** *Symptom:* PR #554 showed only Vercel + Supabase checks. No `ci`, no `lint`, no
   `verify`, no `prove`. A stale plan note said "GitHub Actions has not run on this repo since
@@ -479,6 +502,31 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   on a non-problem. Related trap: `deploy-migrations.yml` only triggers on pushes to `main` that touch
   `supabase/migrations/**`, so an idle run history for it is normal and is NOT evidence of a broken
   pipeline either.
+
+  **THIRD OCCURRENCE, 2026-09-01 (#721) — and the lesson above did not prevent it.** Same symptom,
+  same wrong conclusion, same escalation: I told the owner it might be "an Actions incident, a
+  spending/quota limit, or a repository Actions setting", and that a spending limit "would need the
+  repository owner." `GET /pulls/721` returned **`"mergeable_state": "dirty"`** the whole time. The
+  branch was cut from `60f42210` and main moved to `1b50aa86` (#720), which edited the same regions
+  of `package.json` and `.github/workflows/ci.yml`; `refs/pull/721/merge` therefore never existed.
+  Merging main in and resolving one conflict fired `ci` and `Security Audit` within seconds.
+
+  **Why the existing lesson did not fire: I never read it.** I diagnosed live, from the API, and
+  never searched the lessons file for the symptom — the §BRAIN.1 read-before-work step, skipped
+  precisely because the investigation felt like it was going well. A lesson only works if something
+  makes you open it, and "no workflow runs on my PR" is that trigger.
+
+  **The tell that makes this cheap to falsify, hoisted so it cannot be missed:**
+
+  > **Before saying one word about Actions health, run `GET /pulls/<N>` and read `mergeable_state`.
+  > `dirty` means conflicted, which means no `pull_request` workflow can be scheduled. It is ONE
+  > call, and it settles the question.**
+
+  **Also recorded, because it is how the wrong answer got its confidence:** I supported the claim
+  with "no runs repo-wide since 16:16Z", which was *true and meaningless* — nothing else had been
+  pushed since #720 merged at 16:16. **A quiet CI is not a broken CI.** Evidence of absence is only
+  evidence when something should have been present, and the check for that is whether anything was
+  pushed, not whether anything ran.
 
 - **A check that has never failed is an untested branch, not evidence — negative-control every guard
   (2026-08-23).** *Symptom:* the Super Admin design pack's compiled `standalone.html` had been swept for
@@ -1139,3 +1187,92 @@ the ledger entry was wrong), then re-run. `db push` applied the canonical versio
 
 **Related:** *"Migration merged-but-never-applied — the false-green"* (§32/#275) is the opposite
 failure, and this one is what happens when you over-correct for it.
+
+---
+
+## Widening an implementation without widening the interface that declares it (2026-09-01, #717)
+
+**What broke.** `useSoloNumbers` exposes its shape through an exported interface,
+`SoloNumbersData`. I widened the *implementation* — `purchase(phoneNumber, agreedMonthlyCents)` —
+and the *call site* in `settings.tsx`, and left the interface at one parameter. The consumer is
+typed against the interface, so the second argument had nowhere to land:
+
+```
+src/solo/settings.tsx: error TS2554: Expected 1 arguments, but got 2.
+```
+
+**Why the suite did not catch it.** It could not. `settings.numbers.test.tsx` renders the REAL
+component through the REAL hook and mocks only the Supabase client, so it asserted the true thing —
+that the request body carries `agreed_monthly_cents: 120` — and passed, correctly. The runtime path
+was right the whole time. Only the *declared contract* was stale, and a stale type is invisible to
+every test that runs the code. **1680 passing tests are not a typecheck**, in the same way a green
+build is not a working render (§32).
+
+**Why I did not catch it either.** I reported "tsc 0" for this branch. That result was real, and it
+was for an earlier state of the tree — the final call-site edit came after it, and I never re-ran.
+`npm run ci:tsc` uses the same `tsconfig.app.json` as `npm run typecheck`, so there was no
+environment difference and nothing subtle: I quoted a gate's verdict from before the last edit.
+
+**The rules.**
+
+- **Re-run the gates AFTER the last edit, not once during the work.** A green result is a statement
+  about a tree state. Quoting it for a different tree state is the same class of claim as reporting
+  a hoped-for outcome (§13), even when every individual run was honest.
+- **When you change a function's signature, grep for every place that DECLARES it, not just every
+  place that calls it.** `grep -rn "purchase: ("` would have found the interface in one command.
+  An exported interface is a second declaration site that the compiler enforces and no test runs.
+- **Read the step list before reading the log.** Four tool calls went into scanning a 9,487-line
+  job log whose tail showed everything passing, because the failing step ran early and every later
+  step carries `if: !cancelled()`. `actions_get / get_workflow_job` returns a per-step
+  conclusion array and named the failing step (#32, "Typecheck (ratchet)") immediately.
+- **The local gate set is the CI gate set, not the subset you remember.** `ci.yml` runs ~28 checks
+  in `verify`; running seven and calling it green is a partial answer reported as a complete one.
+
+---
+
+## "Prod is not reachable headless" is the wrong reason — the browser tunnel is (2026-09-01)
+
+**The conclusion on record is right and its stated cause is wrong**, which matters because the two
+imply completely different fixes.
+
+`CLAUDE.md` §32's live-drive bullet says: *"live prod was NOT reachable headless from the CI sandbox
+even via the proxy, which forwards only tool/MCP hosts."* Every session inherits that and reasons
+about a network-allowlisting problem. Measured in this container:
+
+| | |
+|---|---|
+| `curl https://paigeagent.ai` **through `HTTPS_PROXY`** | **HTTP 200 in 1.17s** |
+| `liveDrive({url:"https://paigeagent.ai"})` | `ok:false`, `proxied:true`, `executableResolved:true`, `ERR_CONNECTION_RESET` |
+
+So the proxy forwards our host perfectly well. The helper is fine, Chromium is present
+(`/opt/pw-browsers`), `playwright` resolves. **What fails is the browser's tunnel**, and the proxy's
+own diagnostics name it — `curl "$HTTPS_PROXY/__agentproxy/status"` → `recentRelayFailures`:
+
+```
+{"kind":"ws_closed_mid_exchange","host":"paigeagent.ai:443",
+ "detail":"tunnel closed (code 1006, Connection ended) after 6s;
+           1819 B sent, 39 B received, client reading"}
+```
+
+~1.8KB out (a TLS ClientHello), 39 bytes back, closed after 6s. **And it is not about our domain:**
+identical `ws_closed_mid_exchange` for `www.google.com:443`, `accounts.google.com:443`,
+`android.clients.google.com:443` — every host Chromium tried. Uniform across hosts is the signature
+of an environment limitation, not an application or configuration problem.
+
+**So the owed §32.c drive has two independent blockers, both now measured rather than assumed:**
+
+1. the relay does not sustain Chromium CONNECT tunnels in this container; and
+2. `LIVE_DRIVE_EMAIL` / `LIVE_DRIVE_PASSWORD` are unset, so even a working browser could not
+   authenticate.
+
+**Why the distinction earns its words.** "Unreachable" points at allowlisting, which nobody needs to
+do. The actual unblocks are the ones §32.c already names: a **browser-capable session** (its Cowork /
+Chrome MCP drive lane) and a **scoped test-tenant credential** in env — never owner PII.
+
+**`CLAUDE.md` §32's wording is doctrine and is OWNER-OWED.** It is not corrected here: a session does
+not quietly edit doctrine because it found a contradicting measurement. The measurement is recorded;
+the ruling is the owner's.
+
+*Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
+This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
+it. An inherited limit is a hypothesis with a citation, not a finding.

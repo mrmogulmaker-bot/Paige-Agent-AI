@@ -134,18 +134,87 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
 
   | | **Agent** — `comms_buy_number` | **Solo UI** — `PhoneSetupPanel` | **Legacy UI** — `NumbersTab` |
   |---|---|---|---|
-  | Sends an agreed price | yes, required | **no** — posts `{ phone_number }` | **no** — posts `{ phone_number }` |
+  | Sends an agreed price | yes, required | **yes since 2026-09-01** — sends the `priceCents` the confirm named | **yes since 2026-09-01** — sends `retail_price.monthly_cents`. Both omit the key when the type is unpriced, because there is no amount to hold anyone to |
   | Quote guard | **enforced** — refuses without a whole, positive `monthly_cents`, *ahead of* the autonomy gate so it binds at `auto` too | n/a | n/a |
-  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **no** — branch skipped | **no** — branch skipped |
-  | Confirmation step | **enforced and server-bound since 2026-09-01** — `confirm:true` no longer decides anything on its own. It must SPEND a server-minted `paige_tool_confirmations` row for this tool, requester and tenant that is unspent, unsuperseded, unexpired, and **was created before the current turn began** — and for `comms_buy_number` the row also pins the PHONE NUMBER the operator was shown (not the price: that has its own quote guard and server re-verification, and pinning it would refuse a legitimate re-quote). A first-call `confirm:true` and a same-turn propose-then-self-approve are both refused; a failed claim re-proposes rather than dead-ending. **Still not proof the human said YES** — it proves a turn intervened, not what was in it. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
-  | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise **`—`** |
-  | What can go wrong | **one unattended path now, not two** — a workspace on `auto` still buys with no gate at all (chosen, and by design). At `confirm` the first-call/same-turn bypass is closed; what remains is that an intervening human turn is not the same as a human saying yes, so a model could still read a refusal as approval | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
+  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **yes since 2026-09-01** — the branch now runs, and both codes have their own copy | **yes since 2026-09-01** — same |
+  | Confirmation step | **enforced and server-bound since 2026-09-01** — `confirm:true` no longer decides anything on its own. It must SPEND a server-minted `paige_tool_confirmations` row for this tool, requester and tenant that is unspent, unsuperseded, unexpired, and **was created before the current turn began** — and for `comms_buy_number` the row also pins the PHONE NUMBER the operator was shown (not the price: that has its own quote guard and server re-verification, and pinning it would refuse a legitimate re-quote). A first-call `confirm:true` and a same-turn propose-then-self-approve are both refused; a failed claim re-proposes rather than dead-ending. **Still not proof the human said YES** — it proves a turn intervened, not what was in it. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **yes since 2026-09-01** — the same `window.confirm`, in the same wording as Solo (§6). Was **NONE**: `onClick={() => void buy(n)}` bought on one click |
+  | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise the same words *"an unlisted monthly price"* **since 2026-09-01**. The `—` is still what the search RESULTS ROW renders; it is no longer what the person is asked to agree to |
+  | What can go wrong | **one unattended path now, not two** — a workspace on `auto` still buys with no gate at all (chosen, and by design). At `confirm` the first-call/same-turn bypass is closed; what remains is that an intervening human turn is not the same as a human saying yes, so a model could still read a refusal as approval | an unpriced number is bought for an unnamed sum. *A price change between search and buy is now caught — the server re-verifies and refuses* | the same as Solo since 2026-09-01. *Was: all of the above, plus no confirmation at all — a single click started a recurring charge* |
 
-  The UI behaviour is deliberate and pre-existing — the function comments it: *"the marketplace UI
-  does not [send an amount] … so its behaviour is byte-for-byte what it was."* Recorded here as a
-  **known gap**, never as a protection. **The legacy operator tab is the weakest path on the
-  platform for starting a recurring charge**, and it is worth knowing that before quoting anything
-  above as a safeguard.
+  ### Audit evidence on the Communications write seams (measured 2026-09-01)
+
+  | Seam | Real action | `audit_logs` |
+  |---|---|---|
+  | `comms-purchase-number` | buys a number | **yes**, since #695 — non-blocking, four exits incl. charged-but-unrecorded |
+  | `manage-tenant-domain` | add · set default · remove · verify transition | **yes**, since 2026-09-01 |
+  | `gmail-oauth-callback` | grants `gmail.send` on an account | **yes**, since 2026-09-01 |
+  | `gmail-disconnect` | revokes that grant | **yes**, since 2026-09-01 |
+
+  Before this, only the phone-number purchase left a trace. Adding, re-pointing or removing a
+  sending domain — which changes the identity every outbound message carries — and granting or
+  revoking Paige's permission to send as a Google account all wrote **nothing**. The comparison
+  that settled it: `quickbooks-disconnect` has always audited the same class of act.
+
+  **The Rail is deliberately NOT used, and cannot be.** `record_rail_event` is contact-keyed and
+  raises when the contact does not resolve in the tenant; a sending domain and a Google account
+  belong to the WORKSPACE, not to any one client. `comms-purchase-number` recorded this reasoning
+  first and it applies unchanged here — so for these actions the answer to "Rail or audit?" is
+  audit, on the record, rather than an omission.
+
+  **Shape** follows the established one exactly (§18): `audit_logs` has no `tenant_id` column (it
+  is in the §51 no-tenant-id governance set), so the tenant goes inside `data`, as every other
+  writer does. Actor is `user.id` from the verified JWT; tenant is server-derived; neither is ever
+  taken from a request body (§9). Every write is **non-blocking** (the `comms-purchase-number`
+  pattern, not `quickbooks-disconnect`'s): the change has already landed by the time it runs, so a
+  failed audit write is logged loudly and never turns a completed change into a reported failure.
+
+  **No secret is recorded anywhere:** the Resend API key is never referenced, the Gmail refresh
+  token stays in Vault and its `credentials_vault_ref` is never written. The email address IS
+  recorded, because an entry that does not say which identity changed is not evidence.
+
+  **Honest bound (§13):** `npm run smoke:comms-domain-audit` drives the REAL
+  `manage-tenant-domain` handler and proves the writes fire on the right paths and NOT on a
+  rejected verb, a foreign row, a read, or a DNS poll that found nothing. The two gmail writes are
+  covered by `deno check` only — no smoke drives them, and that is stated rather than implied.
+  Whether a row actually lands in prod is a live-drive check that has not been run.
+
+  ### Blocking reasons and their next steps — held by CI as of 2026-09-01
+
+  `tenant_comms_readiness()` returns exactly six `blocked_reason` values
+  (`messaging_account_missing`, `messaging_account_inactive`, `no_sms_number`,
+  `registration_absent`, `registration_not_approved`, `no_consent_recorded`) plus `null`.
+  Connections renders each through `READINESS_COPY` in `src/solo/settings.tsx`, whose entries
+  carry a headline **and** a `next` — the one thing the person can do. Measured 2026-09-01:
+  **exact parity, no gap in either direction.**
+
+  Where the map has no entry the surface falls back to *"Some setup is still outstanding."* —
+  honest, and naming no next step. That is the dead end, and it was reachable only by adding a
+  seventh reason to the migration, which is a different file reviewed by different eyes.
+  `npm run lint:readiness-copy` (CI step "Blocking reasons carry a next step") now fails on
+  either direction, and on an entry that has a headline but no `next`.
+
+  **What the guard does NOT do (§13):** it proves the two vocabularies agree; it does not judge
+  the copy (that is Claude Design's, §00), and it reads the migration that defines the resolver,
+  not the deployed function — so a resolver changed on prod without a migration is outside what
+  it can see, as it is for every other static gate here.
+
+  **CLOSED 2026-09-01.** The paragraph that stood here recorded the UI lanes as a **known gap**,
+  never a protection: neither sent an amount, so the server's re-verification — guarded
+  `if (agreedMonthlyCents !== null)` — was skipped for both, and the legacy operator tab bought on a
+  single click (`onClick={() => void buy(n)}`) while rendering the price as `—` when the type was
+  unpriced. It was **the weakest path on the platform for starting a recurring charge**.
+
+  Both lanes now send the amount they displayed, and the legacy tab asks first, in the same words
+  Solo already used. `price_changed` and `price_unverifiable` have their own copy on both surfaces —
+  without it the right refusal surfaced as *"try another number"*, which sent people in a loop.
+
+  **The legacy tab had no test at all**, which is how one-click buying survived; it has one now
+  (`NumbersTab.purchase.test.tsx`), and 5 of its 7 cases fail against the previous version. The Solo
+  assertion was loosened enough to miss this (`toMatchObject`) and is now `toEqual`.
+
+  **Still true:** an UNPRICED number is still buyable on both lanes, with the confirm saying *"an
+  unlisted monthly price"*. Whether that should be possible at all is a product question, not a
+  defect, and it has not been ruled on.
 
   - **Configurable, and it defaults safe.** `resolveToolAutonomy` defaults to `confirm` — the
     comment reads *"safe default — never assume autopilot"*. But `comms_buy_number` is a

@@ -6,13 +6,21 @@ export type RelationshipWorkspaceVariant = "relationships" | "clients";
 
 export interface RelationshipPerson {
   id: string;
+  firstName: string;
+  lastName: string;
   name: string;
   recordType: "person" | "business";
+  entityType: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;
   title: string | null;
   website: string | null;
+  linkedinUrl: string | null;
+  streetAddress: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
   location: string | null;
   source: string | null;
   status: string;
@@ -21,6 +29,10 @@ export interface RelationshipPerson {
   sharedContextConsent: boolean;
   linkedUserId: string | null;
   relationship: string;
+  lifecycleStage: string;
+  primaryOffer: string | null;
+  notes: string | null;
+  assignedCoachUserId: string | null;
   owner: string;
   lastTouch: string | null;
   createdAt: string | null;
@@ -37,8 +49,11 @@ interface ClientRow {
   phone: string | null;
   title: string | null;
   website: string | null;
+  linkedin_url: string | null;
+  street_address: string | null;
   city: string | null;
   state: string | null;
+  zip_code: string | null;
   source: string | null;
   status: string;
   tags: string[];
@@ -46,6 +61,8 @@ interface ClientRow {
   paige_shared_context_consent: boolean;
   linked_user_id: string | null;
   lifecycle_stage: string | null;
+  primary_offer: string | null;
+  current_notes: string | null;
   assigned_coach_user_id: string | null;
   last_contacted_at: string | null;
   created_at: string;
@@ -54,7 +71,9 @@ interface ClientRow {
 
 const clientName = (row: ClientRow) => {
   const full = `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim();
-  return full || row.entity_name?.trim() || row.email?.trim() || "Unnamed contact";
+  const company = row.entity_name?.trim();
+  if (company && (Boolean(row.entity_type?.trim()) || !full)) return company;
+  return full || company || row.email?.trim() || "Unnamed contact";
 };
 
 const trimOrNull = (value: string | null | undefined) => value?.trim() || null;
@@ -67,13 +86,21 @@ const recordType = (row: ClientRow): RelationshipPerson["recordType"] => {
 
 const mapClient = (row: ClientRow): RelationshipPerson => ({
   id: row.id,
+  firstName: row.first_name ?? "",
+  lastName: row.last_name ?? "",
   name: clientName(row),
   recordType: recordType(row),
+  entityType: trimOrNull(row.entity_type),
   company: trimOrNull(row.entity_name),
   email: trimOrNull(row.email),
   phone: trimOrNull(row.phone),
   title: trimOrNull(row.title),
   website: trimOrNull(row.website),
+  linkedinUrl: trimOrNull(row.linkedin_url),
+  streetAddress: trimOrNull(row.street_address),
+  city: trimOrNull(row.city),
+  state: trimOrNull(row.state),
+  zipCode: trimOrNull(row.zip_code),
   location: [trimOrNull(row.city), trimOrNull(row.state)].filter(Boolean).join(", ") || null,
   source: trimOrNull(row.source),
   status: trimOrNull(row.status) || "Not classified",
@@ -82,6 +109,10 @@ const mapClient = (row: ClientRow): RelationshipPerson => ({
   sharedContextConsent: Boolean(row.paige_shared_context_consent),
   linkedUserId: row.linked_user_id,
   relationship: row.lifecycle_stage?.split("_").join(" ") || "Not classified",
+  lifecycleStage: trimOrNull(row.lifecycle_stage) || "new_lead",
+  primaryOffer: trimOrNull(row.primary_offer),
+  notes: trimOrNull(row.current_notes),
+  assignedCoachUserId: row.assigned_coach_user_id,
   owner: row.assigned_coach_user_id ? "Assigned owner" : "Unassigned",
   lastTouch: row.last_contacted_at,
   createdAt: row.created_at ?? null,
@@ -113,7 +144,7 @@ export function useTenantRelationshipsData({
       const { data, error } = await supabase
         .from("clients")
         .select(soloPeople
-          ? "id,first_name,last_name,entity_name,entity_type,email,phone,title,website,city,state,source,status,tags,do_not_contact,paige_shared_context_consent,linked_user_id,lifecycle_stage,assigned_coach_user_id,last_contacted_at,created_at,updated_at"
+          ? "id,first_name,last_name,entity_name,entity_type,email,phone,title,website,linkedin_url,street_address,city,state,zip_code,source,status,tags,do_not_contact,paige_shared_context_consent,linked_user_id,lifecycle_stage,primary_offer,current_notes,assigned_coach_user_id,last_contacted_at,created_at,updated_at"
           : "id,first_name,last_name,entity_name,email,linked_user_id,lifecycle_stage,assigned_coach_user_id,last_contacted_at")
         .eq("tenant_id", activeTenantId)
         .order("created_at", { ascending: false })
@@ -131,7 +162,7 @@ export function useTenantRelationshipsData({
       if (!activeTenantId || !deepLinkedContactId) return null;
       const { data, error } = await supabase
         .from("clients")
-        .select("id,first_name,last_name,entity_name,entity_type,email,phone,title,website,city,state,source,status,tags,do_not_contact,paige_shared_context_consent,linked_user_id,lifecycle_stage,assigned_coach_user_id,last_contacted_at,created_at,updated_at")
+        .select("id,first_name,last_name,entity_name,entity_type,email,phone,title,website,linkedin_url,street_address,city,state,zip_code,source,status,tags,do_not_contact,paige_shared_context_consent,linked_user_id,lifecycle_stage,primary_offer,current_notes,assigned_coach_user_id,last_contacted_at,created_at,updated_at")
         .eq("tenant_id", activeTenantId)
         .eq("id", deepLinkedContactId)
         .maybeSingle();

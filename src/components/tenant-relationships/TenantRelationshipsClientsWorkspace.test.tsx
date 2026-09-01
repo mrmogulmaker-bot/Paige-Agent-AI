@@ -178,6 +178,24 @@ describe("tenant Relationships / Clients workspace", () => {
     expect(html).not.toMatch(/religion|password|credential|race|ethnicity|political affiliation|sexual orientation|biometric/i);
   });
 
+  it("exposes tenant-governed create and edit entry points without replacing the People layout", () => {
+    const html = render("/solo/42/clients/people?person=p-1");
+    expect(html).toContain("New contact");
+    expect(html).toContain("Edit contact");
+    expect(html).toContain("Owner-editable · LIVE");
+    expect(html).toContain("Open PAIGE workspace");
+    expect(html).toContain("Governed details · UNAVAILABLE");
+  });
+
+  it("keeps contact creation reachable from the authenticated empty state", () => {
+    useTenantRelationshipsData.mockReturnValue({ ...baseData, people: [] });
+    const html = render();
+    expect(html).toContain("No people here yet");
+    expect(html).toContain("New contact");
+    expect(html).toContain("0 clients · Tenant read · LIVE");
+    expect(html).not.toContain("Create remains in its existing legacy owner");
+  });
+
   it("presents business records without forcing person-only fields", () => {
     useTenantRelationshipsData.mockReturnValue({
       ...baseData,
@@ -276,7 +294,7 @@ describe("tenant Relationships / Clients workspace", () => {
     const css = readFileSync(resolve("src/components/tenant-relationships/tenant-relationships-clients-workspace.css"), "utf8");
     expect(html).toContain('data-record-layout="docked"');
     expect(html).toContain('aria-label="Back to People list"');
-    expect(html).toContain("Read · LIVE");
+    expect(html).toContain("Record · LIVE");
     expect(html).toContain("Enrichment · UNAVAILABLE");
     expect(html.match(/Open PAIGE workspace/g)).toHaveLength(1);
     expect(css).toMatch(/\.trc-record-header\s*\{[^}]*grid-template-columns:[^}]*padding:\s*7px 10px/);

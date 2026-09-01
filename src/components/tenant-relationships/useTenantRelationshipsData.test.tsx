@@ -108,7 +108,8 @@ describe("tenant relationship adapter sequencing", () => {
         data: [{
           id: "business-1", first_name: "Supplied", last_name: "Contact", entity_name: "Supplied Company", entity_type: "LLC",
           email: "hello@example.test", phone: "+1 202 555 0142", title: null, website: "https://example.test",
-          city: "Atlanta", state: "GA", source: "referral", status: "active", tags: ["Priority"],
+          linkedin_url: "https://linkedin.com/in/supplied", street_address: "10 Peachtree St", city: "Atlanta", state: "GA", zip_code: "30303",
+          primary_offer: "Advisory", current_notes: "Prefers email", source: "referral", status: "active", tags: ["Priority"],
           do_not_contact: false, paige_shared_context_consent: false, linked_user_id: null,
           lifecycle_stage: "client_active", assigned_coach_user_id: null, last_contacted_at: null,
           created_at: "2026-01-10T12:00:00Z", updated_at: "2026-08-24T12:00:00Z",
@@ -121,13 +122,31 @@ describe("tenant relationship adapter sequencing", () => {
     const mapped = JSON.parse(host.querySelector("output")?.getAttribute("data-record") || "{}");
     expect(mapped).toMatchObject({
       id: "business-1",
-      name: "Supplied Contact",
+      name: "Supplied Company",
       recordType: "business",
       phone: "+1 202 555 0142",
       website: "https://example.test",
+      linkedinUrl: "https://linkedin.com/in/supplied",
+      streetAddress: "10 Peachtree St",
       location: "Atlanta, GA",
+      zipCode: "30303",
+      primaryOffer: "Advisory",
+      notes: "Prefers email",
       tags: ["Priority"],
     });
+    act(() => root.unmount());
+  });
+
+  it("requests the complete owner-editable People profile projection", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    await act(async () => root.render(<QueryClientProvider client={client}><DetailHarness tenantId="tenant-fields" /></QueryClientProvider>));
+    await vi.waitFor(() => expect(pending.has("clients:tenant-fields")).toBe(true));
+    const columns = selections.find(({ table }) => table === "clients")?.columns ?? "";
+    for (const field of ["street_address", "zip_code", "linkedin_url", "primary_offer", "current_notes"]) {
+      expect(columns.split(",")).toContain(field);
+    }
     act(() => root.unmount());
   });
 

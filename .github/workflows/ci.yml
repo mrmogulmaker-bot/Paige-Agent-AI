@@ -200,6 +200,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tool-catalogue
 
+      # Every reason `tenant_comms_readiness()` can BLOCK a tenant for must have a
+      # next step on the surface that renders it. The two halves live in a SQL
+      # migration and a React file, reviewed at different times by different eyes,
+      # and nothing connected them: they are in exact parity today, by hand. Where
+      # the map has no entry the surface says "Some setup is still outstanding." —
+      # honest, and no next step, which is the dead end the usability pass exists
+      # to remove. Adding a seventh reason to the migration is the whole cost.
+      - name: Blocking reasons carry a next step (Connections has no dead ends)
+        if: ${{ !cancelled() }}
+        run: npm run lint:readiness-copy
       # Every mutation Paige can perform carries a risk classification, and an action with no
       # classification cannot run. This fails the change that would add a write tool without
       # classifying it — in the repository, rather than in production where the runtime's own
@@ -259,11 +269,19 @@ jobs:
 
       # --- Edge functions: the gap this closes (task #142) ---------------------------------
       # NOTHING compiled an edge function before it deployed. `tsc` covers src/ only (edge fns
-      # are Deno and are not in the Vite tsconfig); `prove` looks at migrations only; and
-      # Supabase Preview DOES have an Edge Functions task but it sits DOWNSTREAM of the
-      # migration replay, which fails on every PR (#211) — observed: Configurations ✅ →
-      # Migrations ❌ → Seeding ⏸️ → Edge Functions ⏸️, so it never runs. The first thing that
-      # compiled a function was the deploy itself, by which point it was live.
+      # are Deno and are not in the Vite tsconfig) and `prove` looks at migrations only, so the
+      # first thing that compiled a function was the deploy itself, by which point it was live.
+      #
+      # CORRECTION 2026-09-01: this block used to add that Supabase Preview's Edge Functions task
+      # "never runs" because the migration replay "fails on every PR (#211)". That stopped being
+      # true on 2026-08-30, when #643 guarded the duplicate bootstrap `CREATE TABLE public.profiles`
+      # that was killing the replay. Preview now completes Configurations → Migrations → Seeding →
+      # Edge Functions clean (observed four consecutive runs on #721).
+      #
+      # THE GATE BELOW STAYS, and its real justification is stronger than the one it replaces:
+      # Preview type-checks ONE tree. This ratchet compares the PR BASE against the HEAD and fails
+      # only on NEW or increased diagnostics, which is what lets a function carrying inherited debt
+      # be edited at all. Preview has never done that and still does not.
       #
       # SCOPE, stated honestly: this checks the functions THIS PR affects, not the ~249 already
       # in the tree. It stops new breakage; it is not a retroactive audit of what is already
@@ -402,6 +420,17 @@ jobs:
       - name: Smoke — comms tenant scope (§9/§53 webhook scoping)
         if: ${{ !cancelled() }}
         run: npm run smoke:comms-tenant-scope
+
+      # Drives the REAL manage-tenant-domain handler. Adding, re-pointing or removing
+      # a sending domain changes the identity every outbound message carries, and none
+      # of it left a trace until now. `deno check` proves the audit writes compile; only
+      # driving the handler proves they fire on the right paths — and, just as much,
+      # that a rejected verb, a foreign row and a DNS poll that found nothing write
+      # NOTHING. 16 of its 20 assertions fail against the version before the change;
+      # the 4 that pass are exactly those negative controls.
+      - name: Smoke — sending-domain changes leave audit evidence
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-domain-audit
 
       - name: Smoke — client-memory authorization (§9 cross-client fail-closed)
         if: ${{ !cancelled() }}

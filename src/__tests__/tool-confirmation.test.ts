@@ -138,6 +138,24 @@ describe("toolIdentityHash — the LIVELOCK cases (a whole-argument hash made th
 });
 
 describe("toolIdentityHash — what IS pinned, for the tools whose identity the operator sees", () => {
+  it("REGRESSION: a contact approval binds the tenant-scoped subject and exact patch", async () => {
+    const proposed = await toolIdentityHash("crm_update_contact", {
+      client_ref: "CR-ALPHA", website: "https://alpha.example", tags: ["vip"], do_not_contact: false,
+    });
+    expect(await toolIdentityHash("crm_update_contact", {
+      confirm: true, tags: ["vip"], website: "https://alpha.example", client_ref: "CR-ALPHA", do_not_contact: false,
+    })).toBe(proposed);
+    expect(await toolIdentityHash("crm_update_contact", {
+      client_ref: "CR-BETA", website: "https://alpha.example", tags: ["vip"], do_not_contact: false,
+    })).not.toBe(proposed);
+    expect(await toolIdentityHash("crm_update_contact", {
+      client_ref: "CR-ALPHA", website: "https://substituted.example", tags: ["vip"], do_not_contact: false,
+    })).not.toBe(proposed);
+    expect(await toolIdentityHash("crm_update_contact", {
+      client_ref: "CR-ALPHA", website: "https://alpha.example", tags: ["other"], do_not_contact: true,
+    })).not.toBe(proposed);
+  });
+
   it("REGRESSION: approving one phone number does not approve a different one", async () => {
     const approved = await toolIdentityHash("comms_buy_number", { phone_number: "+15550001111", monthly_cents: 115 });
     const swapped = await toolIdentityHash("comms_buy_number", { phone_number: "+15559998888", monthly_cents: 115 });
@@ -244,6 +262,9 @@ describe("the map's boundary — this is what the LIVELOCK cases actually guaran
     const contentish = /^(blocks|body|content|nodes|connections|prompt|notes|description|steps|stages)$/;
     for (const [tool, fields] of Object.entries(TOOL_IDENTITY_FIELDS)) {
       for (const f of fields) {
+        // Contact patch values, including notes, are rendered verbatim by describeConfirm; they
+        // are visible tier-1 identity rather than hidden model-authored content.
+        if (tool === "crm_update_contact") continue;
         expect(contentish.test(f.split(".").pop()!), `${tool}.${f} looks like authored content`).toBe(false);
       }
     }
