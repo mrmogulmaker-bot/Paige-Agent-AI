@@ -221,11 +221,19 @@ jobs:
 
       # --- Edge functions: the gap this closes (task #142) ---------------------------------
       # NOTHING compiled an edge function before it deployed. `tsc` covers src/ only (edge fns
-      # are Deno and are not in the Vite tsconfig); `prove` looks at migrations only; and
-      # Supabase Preview DOES have an Edge Functions task but it sits DOWNSTREAM of the
-      # migration replay, which fails on every PR (#211) — observed: Configurations ✅ →
-      # Migrations ❌ → Seeding ⏸️ → Edge Functions ⏸️, so it never runs. The first thing that
-      # compiled a function was the deploy itself, by which point it was live.
+      # are Deno and are not in the Vite tsconfig) and `prove` looks at migrations only, so the
+      # first thing that compiled a function was the deploy itself, by which point it was live.
+      #
+      # CORRECTION 2026-09-01: this block used to add that Supabase Preview's Edge Functions task
+      # "never runs" because the migration replay "fails on every PR (#211)". That stopped being
+      # true on 2026-08-30, when #643 guarded the duplicate bootstrap `CREATE TABLE public.profiles`
+      # that was killing the replay. Preview now completes Configurations → Migrations → Seeding →
+      # Edge Functions clean (observed four consecutive runs on #721).
+      #
+      # THE GATE BELOW STAYS, and its real justification is stronger than the one it replaces:
+      # Preview type-checks ONE tree. This ratchet compares the PR BASE against the HEAD and fails
+      # only on NEW or increased diagnostics, which is what lets a function carrying inherited debt
+      # be edited at all. Preview has never done that and still does not.
       #
       # SCOPE, stated honestly: this checks the functions THIS PR affects, not the ~249 already
       # in the tree. It stops new breakage; it is not a retroactive audit of what is already
