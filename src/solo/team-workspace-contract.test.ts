@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   inviteLifecycle,
+  memberVisibleIdentity,
   permissionPresentation,
   validateWorkProfile,
 } from "./team-workspace-contract";
 
 describe("Solo Team workspace contract", () => {
+  it("uses a verified stored name and otherwise identifies the real member by email", () => {
+    expect(memberVisibleIdentity({ full_name: "  Avery Brooks  ", email: "avery@example.com" })).toEqual({
+      primary: "Avery Brooks",
+      secondary: "avery@example.com",
+    });
+    expect(memberVisibleIdentity({ full_name: "   ", email: "member@example.com" })).toEqual({
+      primary: "member@example.com",
+      secondary: null,
+    });
+    expect(memberVisibleIdentity({ full_name: null, email: "  member@example.com  " })).toEqual({
+      primary: "member@example.com",
+      secondary: null,
+    });
+  });
   it("keeps custom work identity separate from enforced permission", () => {
     expect(permissionPresentation("admin", false)).toEqual({ label: "Admin", mutable: true });
     expect(permissionPresentation("member", false)).toEqual({ label: "Member", mutable: true });
