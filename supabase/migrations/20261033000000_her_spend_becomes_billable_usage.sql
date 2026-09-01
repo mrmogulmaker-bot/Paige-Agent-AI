@@ -59,6 +59,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_platform_usage_llm_trace
   ON public.platform_usage_events ((metadata->>'trace_id'))
   WHERE event_type = 'llm_tokens';
 
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+-- ON THE `lint_migrations.py` PATTERN-2 WARNING THIS FILE RAISES, answered rather than left to be
+-- re-derived on every CI run:
+--
+--     PATTERN-2 (warn) — INSERT … SELECT present; verify no NOT NULL target column maps from a
+--     nullable source (23502 on fresh rebuild).
+--
+-- The guard is right to point here. `platform_usage_events` has four NOT NULL columns fed from
+-- this SELECT, and two of the sources ARE nullable on `paige_llm_trace`. Each is guarded:
+--
+--   tenant_id   ← t.tenant_id            NULLABLE, and the CTE carries `WHERE t.tenant_id IS NOT
+--                                        NULL`. An unattributable trace is counted and reported,
+--                                        never metered to a guessed tenant.
+--   quantity    ← c.tin + c.tout         BOTH nullable, both COALESCE(…,0) in the CTE, so the sum
+--                                        cannot be null; `> 0` then excludes the zero case.
+--   occurred_at ← t.created_at           NOT NULL with DEFAULT now() on the source.
+--   metadata    ← jsonb_strip_nulls(…)   jsonb_build_object never returns null, strip_nulls of a
+--                 || jsonb_build_object  non-null is non-null, and `||` of two non-nulls likewise.
+--
+-- DRIVEN, not read (2026-09-01, production, inside BEGIN … ROLLBACK): four adversarial traces —
+-- no tenant, null token counts, zero tokens, and one real — alongside the 234 live traces the run
+-- actually metered, with 231 unattributable and 212 zero-token rows present in the same pass. No
+-- 23502. The three bad shapes were skipped and the real one metered at 10 tokens, which is what
+-- keeps "skipped" from being indistinguishable from "the function did nothing" — an earlier
+-- version of that assertion passed while the function did not exist at all.
+--
+-- The warning stays. It is a pattern match doing its job, and the answer belongs here rather than
+-- in a suppression.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+
 CREATE OR REPLACE FUNCTION public.meter_llm_usage(p_limit integer DEFAULT 500)
 RETURNS jsonb
 LANGUAGE plpgsql
