@@ -1,27 +1,9 @@
 [0m[32mCheck[0m supabase/functions/paige-public-chat/index.ts
-[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
-  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
-    Argument of type '{ tenant_id: string | null; actor_user_id: string | null; actor_role: string | null; action: string; target_type: string; payload: Record<string, unknown>; }' is not assignable to parameter of type 'never'.
-  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
-    Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
-    await admin.from("paige_audit_log").insert({
-[0m[31m                                        ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/head/supabase/functions/_shared/model-router.ts[0m:[0m[33m651[0m:[0m[33m41[0m
-
-[0m[1mTS2769 [0m[ERROR]: No overload matches this call.
-  Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "studio_deliverable", never, "POST">', gave the following error.
-    Argument of type '{ tenant_id: string; mode: string; modality: Modality; artifact_storage_key: string | null; provider: string; model: string; tier: Tier; cost_estimate_usd: number | null; created_by: string; metadata: { ...; }; }' is not assignable to parameter of type 'never'.
-  Overload 2 of 2, '(values: never[], options?: { count?: "exact" | "planned" | "estimated" | undefined; defaultToNull?: boolean | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "studio_deliverable", never, "POST">', gave the following error.
-    Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
-      .insert({
-[0m[31m       ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/head/supabase/functions/_shared/model-router.ts[0m:[0m[33m736[0m:[0m[33m8[0m
-
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'Admin'.
   Property '_getSessionToken' is missing in type 'import("https://esm.sh/@supabase/supabase-js@2.75.0/dist/module/SupabaseClient.d.ts", { with: { "resolution-mode": "import" } }).default<any, "public", "public", any, any>' but required in type 'import("https://esm.sh/@supabase/supabase-js@2.112.4/dist/index.d.mts", { with: { "resolution-mode": "import" } }).SupabaseClient<any, "public", "public", any, any>'.
       overRateLimit(admin, `ppc:ip:${ip}`, RL.ipPerMin, 60),
 [0m[31m                    ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m215[0m:[0m[33m21[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m215[0m:[0m[33m21[0m
 
     '_getSessionToken' is declared here.
       private _getSessionToken;
@@ -32,7 +14,7 @@
   Property '_getSessionToken' is missing in type 'import("https://esm.sh/@supabase/supabase-js@2.75.0/dist/module/SupabaseClient.d.ts", { with: { "resolution-mode": "import" } }).default<any, "public", "public", any, any>' but required in type 'import("https://esm.sh/@supabase/supabase-js@2.112.4/dist/index.d.mts", { with: { "resolution-mode": "import" } }).SupabaseClient<any, "public", "public", any, any>'.
       overRateLimit(admin, `ppc:tenant:${tenantId}`, RL.tenantPerMin, 60, true),
 [0m[31m                    ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m216[0m:[0m[33m21[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m216[0m:[0m[33m21[0m
 
     '_getSessionToken' is declared here.
       private _getSessionToken;
@@ -43,7 +25,7 @@
   Property '_getSessionToken' is missing in type 'import("https://esm.sh/@supabase/supabase-js@2.75.0/dist/module/SupabaseClient.d.ts", { with: { "resolution-mode": "import" } }).default<any, "public", "public", any, any>' but required in type 'import("https://esm.sh/@supabase/supabase-js@2.112.4/dist/index.d.mts", { with: { "resolution-mode": "import" } }).SupabaseClient<any, "public", "public", any, any>'.
       overRateLimit(admin, `ppc:global`, RL.globalPerMin, 60, true),
 [0m[31m                    ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m217[0m:[0m[33m21[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m217[0m:[0m[33m21[0m
 
     '_getSessionToken' is declared here.
       private _getSessionToken;
@@ -54,14 +36,14 @@
   Property '_getSessionToken' is missing in type 'import("https://esm.sh/@supabase/supabase-js@2.75.0/dist/module/SupabaseClient.d.ts", { with: { "resolution-mode": "import" } }).default<any, "public", "public", any, any>' but required in type 'import("https://esm.sh/@supabase/supabase-js@2.112.4/dist/index.d.mts", { with: { "resolution-mode": "import" } }).SupabaseClient<any, "public", "public", any, any>'.
       overRateLimit(admin, `ppc:conv:${conversationId}`, RL.convPer5Min, 300),
 [0m[31m                    ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m218[0m:[0m[33m21[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/head/supabase/functions/paige-public-chat/index.ts[0m:[0m[33m218[0m:[0m[33m21[0m
 
     '_getSessionToken' is declared here.
       private _getSessionToken;
     [0m[36m          ~~~~~~~~~~~~~~~~[0m
         at [0m[36mhttps://esm.sh/@supabase/supabase-js@2.112.4/dist/index.d.mts[0m:[0m[33m777[0m:[0m[33m11[0m
 
-Found 6 errors.
+Found 4 errors.
 
 [0m[1m[31merror[0m: Type checking failed.
 

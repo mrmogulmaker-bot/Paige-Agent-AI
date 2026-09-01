@@ -5,14 +5,14 @@
       Type '"public"' is not assignable to type 'never'.
       if (userData?.user) tenantId = await resolveCallerTenantId(admin, userData.user.id);
 [0m[31m                                                                 ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/generate-outreach-draft/index.ts[0m:[0m[33m59[0m:[0m[33m66[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/generate-outreach-draft/index.ts[0m:[0m[33m59[0m:[0m[33m66[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'MinimalSupabaseRpc'.
   The types returned by 'rpc(...)' are incompatible between these types.
     Type 'PostgrestFilterBuilder<any, any, any, any, string, null, "RPC", false>' is missing the following properties from type 'Promise<{ data: unknown; error: unknown; }>': catch, finally, [Symbol.toStringTag]
     const operator = await resolveOperatorIdentity(admin, tenantId);
 [0m[31m                                                   ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/generate-outreach-draft/index.ts[0m:[0m[33m61[0m:[0m[33m52[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/generate-outreach-draft/index.ts[0m:[0m[33m61[0m:[0m[33m52[0m
 
 Found 2 errors.
 

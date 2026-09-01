@@ -1,5 +1,5 @@
 [0m[1m[31merror[0m: Could not find a matching package for 'npm:@supabase/supabase-js@2.45.0' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `"nodeModulesDir": "auto"` in your deno.json file.
-    at [0m[36mfile:///tmp/deno-ratchet-ODx36f/base/supabase/functions/paige-problem-reverse-engineer/index.ts[0m:[0m[33m8[0m:[0m[33m30[0m
+    at [0m[36mfile:///tmp/deno-ratchet-gn8zmr/base/supabase/functions/paige-problem-reverse-engineer/index.ts[0m:[0m[33m8[0m:[0m[33m30[0m
 
 Stack backtrace:
    0: <unknown>
