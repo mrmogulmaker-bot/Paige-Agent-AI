@@ -562,7 +562,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 
 ### Third-party integrations WIRED + CONFIGURED
 
-- ✅ **Twilio — ISV/reseller architecture LIVE at Twilio's side; number-search UI is the only remaining gap.**
+- ✅ **Twilio — ISV/reseller architecture LIVE at Twilio's side; number search and purchase SHIPPED (2026-09-01).**
   - **Organization:** Paige Agent AI LLC (⚠ vendor/Twilio Org name — pending rename to Paige Agent AI Inc. per 2026-08-11 C-Corp conversion, owner-owed vendor update) · Org SID `<redacted — owner's Twilio console>` · verified domain paigeagent.ai · 1 managed user (Antonio Cook, info@paigeagent.ai) · 1 billing group
   - **Corporate identity (D7, SHIPPED 2026-08-11):** the legal entity is **Paige Agent AI Inc.** — a **standalone Delaware C-Corp** (direct conversion from Paige Agent AI LLC, Option A per owner ruling). No holdco, no parent. Present-tense entity name swept platform-wide (`_shared/platform-identity.ts` `legal_entity_name`, Terms/Privacy/Footer/Pricing public pages → "Paige Agent AI Inc.", Delaware corporation). Stale CoreConnect-subsidiary language + the Portfolio-mode-as-corporate-structure C-suite doctrine **DELETED** from `paige-c-suite-roster.md` (now two-scope: tenant + operator); `PORTFOLIO_SCOPE_BRIEFING.md` marked SUPERSEDED. New living doctrine: `docs/doctrine/paige-corporate-structure.md` (PROPOSED). "Portfolio" is now ONLY a future marketplace feature (task #129). **Owner-owed (task #128):** vendor renames (Twilio/Stripe/DocuSign/WHOIS) + binding-legal-doc migration + banking + the Aedis Brands LLC / Givalli Heritage Holdings Inc. brand-license decision (public Footer — preserved + flagged, not part of the CoreConnect ruling).
   - **Master account:** `<redacted — owner's Twilio console>` (owned by Antonio Cook, created 04/21/2026, Active)
@@ -574,7 +574,24 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
     - Paige – Project Mogul Enterprise Inc
   - **Envs currently in code (NAMES only):** `TWILIO_ACCOUNT_SID` · `TWILIO_AUTH_TOKEN` · `TWILIO_PHONE_NUMBER` · `TWILIO_FROM` — MASTER account creds.
   - **Purchase capability EXISTS** — that's how subaccounts have numbers assigned today.
-  - **Only remaining gap:** phone-number SEARCH tools inside the Communications console (vanity 800 · pattern-matched · premium registry search). Task #27 scope.
+  - **Number search + purchase SHIPPED (PRs #692/#695/#699, live 2026-09-01).** This line previously
+    read *"Only remaining gap: phone-number SEARCH tools inside the Communications console"* and was
+    left standing when the capability shipped, so this document asserted both states at once — the
+    exact contradiction a source of truth exists to prevent. Corrected here rather than deleted, so
+    the drift is visible (§13).
+    **What a shipped caller can actually search on today:** area code · region (state) · city
+    (locality) · a DIGIT prefix (`starts_with`, converted to a Twilio `Contains` pattern with the
+    area code folded in) · toll-free vs local. Results carry the live retail price from
+    `platform_number_pricing`.
+    **What the EDGE FUNCTION accepts but no shipped caller sends** — same status, so listed the same
+    way: letter-based **vanity** matching (`starts_with` is stripped to digits, and neither the
+    Connections UI nor `comms_search_numbers` exposes a raw `contains`) and **`sms_enabled`**
+    capability filtering (headless-only; `NumbersTab.tsx` says so in a comment, `useSoloNumbers`
+    does not send it, and the tool schema has no such property). An earlier draft of this bullet
+    listed SMS filtering as shipped while calling vanity unreachable, on identical evidence — the
+    test for "shipped" is whether a product caller can reach it, applied to every filter or to none.
+    **Premium / registry search** is not built at all. Task #27's remaining scope is vanity and
+    premium/registry; exposing `sms_enabled` through a caller is a separate, smaller question.
 - ✅ **Stripe** — live-mode webhook + checkout + Marketplace + Connect wiring started. Functions: `stripe-webhook`, `create-checkout`, `create-trial-checkout`, `customer-portal`, `check-subscription`, `marketplace-checkout-session`, `tenant-checkout-session`, `tenant-stripe-connect`. B-iv storefront webhook merged (PR `9f9b6cf7`). B-ii-a marketplace paid install merged (PR `c95a7e16`). Data: `platform_subscriptions` table.
 - ✅ **ElevenLabs** — TTS + ConvAI. **Voice = Ivanna.** ConvAI agent `agent_1601k7zn6bs7e72bt6485bp99v4a`, model `eleven_turbo_v2_5`. Code in BOTH `_shared/tts-router.ts` (in-app chat voice path — per CC code check) AND `_shared/elevenlabs.ts` (ElevenLabs client). See Section 10 for the precise voice-env attribution (`ELEVENLABS_VOICE_ID` drives Studio VO, not the in-app chat voice).
 - ✅ **Supabase** — Postgres + RLS + edge functions + auth. Prod ref `xygzykjyynhzqytbqnzu`. 231+ edge functions. 688+ migrations. RLS helpers: `is_platform_owner()` (operator scope), `current_user_tenant_id()` (tenant scope).
@@ -864,7 +881,7 @@ self-knowledge (§18).
 ### MVP-blocking gaps (all-open)
 
 - ❌ **Fleet Comms operator SMS `paige-operator-sms-send` returns 500 (CC-root-caused 2026-08-09, fix specified, awaiting owner go).** Owner's §32.c live-drive send to a test recipient failed "Edge Function returned a non-2xx status code." CC diagnosis by elimination + code trace: it's HTTP **500 = `authz_check_failed`** (`index.ts:45`) — `caller.rpc("is_platform_owner")` errored. NOT needs_config (returns 200; **MG SID IS set — owner does not need to re-paste**), NOT the upsert (verified OK via rolled-back service-role txn), NOT a Twilio rejection (`twilioRequest` never throws → returns 200 'failed'). Leading cause: `is_platform_owner`/`is_super_admin` each have TWO overloads (`()` + `(_user_id uuid)`), and a PostgREST `.rpc()` against overloaded functions hits **PGRST203** — the #408 fn is the first DIRECT rpc caller (others use it inside RLS/definer). Fix (2 parts): (1) call the owner-check overload-safely + log `ownerErr.message`; (2) add an outer try/catch returning a structured 500 (§32 loud-failure). Same class as §51 #130.
-- ❌ **Twilio phone-number SEARCH tools** inside the Communications console (Task #27) — the ONE narrow remaining Twilio piece. ISV + purchase already exist per Section 4.
+- ⚠️ **Twilio phone-number search — SHIPPED 2026-09-01; only VANITY and PREMIUM/REGISTRY search remain (Task #27).** This row read *"❌ … the ONE narrow remaining Twilio piece"* after search had already shipped, so Sections 4 and 5 asserted opposite states. Search by area code, region, city, digit prefix and toll-free is live in Connections → Communications, as is purchase. Missing: letter-based **vanity** matching and **premium/registry** search. `sms_enabled` sits in the same edge-only category as vanity — the function accepts it, no product caller sends it. Task #27 is rescoped to vanity + premium/registry.
 - ❌ **A2P 10DLC carrier submit** — UI exists, backend stubbed; no `messaging_service_sid` table.
 - ❌ **SMS-in-signup** — phone capture not in signup migrations (task #23).
 - ❌ **`delete_tenant` RPC + MCP tool** — task #30 scope (§10 Paige-callable).
@@ -920,7 +937,7 @@ Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish,
 | #24 | Voice fix end-to-end | ✅ closed (Ivanna live) | — |
 | #25 | paige_conversations unsafe RLS | pending | — |
 | #26 | Second Brain (PR #410) | ✅ MERGED (brain live) | — |
-| #27 | Twilio number-search tools in Communications | pending | — |
+| #27 | Twilio number search — VANITY (letter) + premium/registry only; base search + purchase SHIPPED 2026-09-01 | pending (rescoped) | — |
 | #28 | Tenant-as-operator-client auto-provision + consent capture | pending | #29 |
 | #29 | Promotional-account classification + ARR reconciliation (PR #412) | ✅ MERGED (§32.a-proven) | — |
 | #30 | Super Admin full CRUD on tenants + §10 seams | pending | #29 |
@@ -1089,6 +1106,29 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-09-01 — this document asserted that number search was shipped AND that it was the only
+  remaining Twilio gap, in three places at once (PR #703 follow-up).** Recording a new capability
+  in Section 4 without sweeping for the claims it contradicts produced exactly the failure a single
+  source of truth exists to prevent: Section 4 (the Twilio integration header and its "Only
+  remaining gap" bullet), Section 5 (the ❌ gap row) and Section 6 (task ledger #27) all still said
+  search did not exist, beside a new entry saying it did. Anyone following the mandated daily
+  protocol would have got two mutually exclusive answers depending on where they looked.
+  **Corrected to what is actually true, rather than to "the gap is closed":** search by area code,
+  region, city, digit prefix and toll-free is live, and purchase with it; letter-based **vanity**
+  matching is NOT (`starts_with` is stripped to digits, and neither the UI nor
+  `comms_search_numbers` exposes a raw Twilio `contains`, so no shipped caller can reach it), nor is
+  **premium/registry** search. Task #27 rescoped to those two. Replacing an over-claim with the
+  opposite over-claim would have been the same defect wearing different clothes.
+  **On the sweep that missed it.** The PR adding the Section 4 entry reported "Section 5 checked for
+  a now-stale comms gap: none present". The check ran; it searched `phone number` while the document
+  says `phone-number`. One hyphen, and a verification statement that was true of what it searched
+  and false of what it claimed. The dated 2026-08-09 entry recording the original narrow-gap
+  rescope is deliberately left standing — it was accurate then, and this entry supersedes it rather
+  than rewriting the audit trail.
+  **The general lesson: an entry that adds a capability is not finished until the claims it
+  falsifies are found, and a grep is only as good as its spelling — vary the separator, or the
+  absence you prove is the absence of your own pattern.**
 
 - **2026-09-01 — the outbound caller ID was decided by row order, and five defects got past a
   green gate (PRs #695, #699).** `tenant_phone_numbers.is_primary` chooses which number a
