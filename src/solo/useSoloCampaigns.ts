@@ -50,8 +50,9 @@ export type SoloCampaignsState = {
 
 export type PipelineStage = { id: string; pipelineId: string; label: string; description: string; orderIndex: number; archivedAt: string | null; movePolicy: "direct" | "approval"; version: number };
 export type PipelineDeal = { id: string; title: string; pipelineId: string; stageId: string; clientName: string; owner: string; status: string; source: string; nextAction: string; updatedAt: string; version: number; history: { summary: string; createdAt: string }[] };
-export type PipelineRecord = { id: string; shortRef: string; name: string; description: string; isDefault: boolean; lifecycleStatus: "draft" | "active" | "archived"; version: number; createdAt: string; updatedAt: string; createdThrough: "owner" | "team_member" | "paige" | "approved_automation" | null; createdByName: string | null; requestedByName: string | null; stageCount: number; dealCount: number };
-export type PipelineWorkspace = { canManage: boolean; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
+export type PipelineFolder = { id: string; name: string; lifecycleStatus: "active" | "archived"; version: number; pipelineCount: number };
+export type PipelineRecord = { id: string; shortRef: string; folderId: string | null; folderName: string | null; name: string; description: string; isDefault: boolean; lifecycleStatus: "draft" | "active" | "archived"; version: number; createdAt: string; updatedAt: string; createdThrough: "owner" | "team_member" | "paige" | "approved_automation" | null; createdByName: string | null; requestedByName: string | null; stageCount: number; dealCount: number };
+export type PipelineWorkspace = { canManage: boolean; canArchiveFolders: boolean; folders: PipelineFolder[]; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
 export type PipelineStageDraft = { label: string; description: string; movePolicy: "direct" | "approval" };
 type CommandBase = { idempotencyKey?: string };
 export type PipelineAction =
@@ -63,7 +64,12 @@ export type PipelineAction =
   | (CommandBase & { type: "update-stage"; stageId: string; label: string; description: string; movePolicy: "direct" | "approval"; expectedVersion: number })
   | (CommandBase & { type: "archive-stage" | "restore-stage"; stageId: string; expectedVersion: number })
   | (CommandBase & { type: "reorder-stages"; pipelineId: string; orderedIds: string[]; expectedVersion: number })
-  | (CommandBase & { type: "move-deal"; dealId: string; targetStageId: string; expectedVersion: number; reason?: string });
+  | (CommandBase & { type: "move-deal"; dealId: string; targetStageId: string; expectedVersion: number; reason?: string })
+  | (CommandBase & { type: "create-folder"; name: string })
+  | (CommandBase & { type: "rename-folder"; folderId: string; name: string; expectedVersion: number })
+  | (CommandBase & { type: "archive-folder"; folderId: string; confirmedName: string; expectedVersion: number })
+  | (CommandBase & { type: "restore-folder"; folderId: string; expectedVersion: number })
+  | (CommandBase & { type: "move-pipeline-to-folder"; pipelineId: string; pipelineRef: string; folderId: string | null; expectedVersion: number });
 
 type PageRow = { id: string; slug: string; title: string; status: string; updated_at: string };
 type FunnelRow = { id: string; slug: string; name: string; status: string; updated_at: string };
@@ -94,12 +100,14 @@ type RoutingEvidenceRow = {
 type RoutingEvidencePayload = { routes?: RoutingEvidenceRow[] };
 type PipelineWorkspacePayload = {
   can_manage?: boolean;
-  pipelines?: { id: string; short_ref: string; name: string; description?: string | null; is_default?: boolean; lifecycle_status?: "draft" | "active" | "archived"; version?: number; created_at: string; updated_at: string; created_through?: "owner" | "team_member" | "paige" | "approved_automation" | null; created_by_name?: string | null; requested_by_name?: string | null; stage_count?: number; deal_count?: number }[];
+  can_archive_folders?: boolean;
+  folders?: { id: string; name: string; lifecycle_status?: "active" | "archived"; version?: number; pipeline_count?: number }[];
+  pipelines?: { id: string; short_ref: string; folder_id?: string | null; folder_name?: string | null; name: string; description?: string | null; is_default?: boolean; lifecycle_status?: "draft" | "active" | "archived"; version?: number; created_at: string; updated_at: string; created_through?: "owner" | "team_member" | "paige" | "approved_automation" | null; created_by_name?: string | null; requested_by_name?: string | null; stage_count?: number; deal_count?: number }[];
   stages?: { id: string; pipeline_id: string; label: string; description?: string | null; order_index: number; archived_at?: string | null; move_policy?: "direct" | "approval"; version?: number }[];
   deals?: { id: string; title: string; pipeline_id: string; stage_id: string; client_name?: string | null; owner_user_id?: string | null; status?: string | null; source?: string | null; next_action?: string | null; updated_at: string; version?: number; history?: { summary: string; createdAt: string }[] }[];
 };
 
-const emptyPipeline: PipelineWorkspace = { canManage: false, pipelines: [], stages: [], deals: [] };
+const emptyPipeline: PipelineWorkspace = { canManage: false, canArchiveFolders: false, folders: [], pipelines: [], stages: [], deals: [] };
 const empty = { campaigns: [], artifacts: [], submissions: [], pipelineWorkspace: emptyPipeline };
 
 export function useSoloCampaigns(): SoloCampaignsState {
@@ -121,6 +129,9 @@ export function useSoloCampaigns(): SoloCampaignsState {
       console.error("[solo-pipeline] action failed", { action: action.type, error });
       const detail = String(error.message || "");
       const message = detail.includes("PIPELINE_VERSION_CONFLICT") ? "This record changed somewhere else. The board was refreshed; review the current stage before trying again."
+        : detail.includes("PIPELINE_FOLDER_NAME_CONFLICT") ? "A folder with that name already exists in this workspace."
+        : detail.includes("PIPELINE_FOLDER_CONFIRMATION_MISMATCH") ? "That folder name does not match the selected folder. Nothing was archived."
+        : detail.includes("PIPELINE_FOLDER_TENANT_MISMATCH") || detail.includes("PIPELINE_FOLDER_FORBIDDEN") ? "That folder or pipeline is not available to this workspace and role."
         : detail.includes("PIPELINE_ARCHIVE_REFERENCE_REQUIRED") ? "Enter the selected pipeline reference before archiving."
         : detail.includes("PIPELINE_ARCHIVE_REFERENCE_MISMATCH") || detail.includes("PIPELINE_ARCHIVE_CONFIRMATION_MISMATCH") ? "That reference does not match the selected pipeline. Nothing was archived."
         : detail.includes("PIPELINE_DEPENDENCIES_UNRESOLVED") ? "Delete is blocked until its deals, routes, approvals, automations, and retained history are resolved."
@@ -227,7 +238,9 @@ export function useSoloCampaigns(): SoloCampaignsState {
         const rawPipeline = (pipelineResponse.data ?? {}) as unknown as PipelineWorkspacePayload;
         const pipelineWorkspace: PipelineWorkspace = {
           canManage: rawPipeline.can_manage === true,
-          pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, shortRef: row.short_ref, name: row.name, description: row.description ?? "", isDefault: row.is_default === true, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1, createdAt: row.created_at, updatedAt: row.updated_at, createdThrough: row.created_through ?? null, createdByName: row.created_by_name ?? null, requestedByName: row.requested_by_name ?? null, stageCount: row.stage_count ?? 0, dealCount: row.deal_count ?? 0 })),
+          canArchiveFolders: rawPipeline.can_archive_folders === true,
+          folders: (rawPipeline.folders ?? []).map((row) => ({ id: row.id, name: row.name, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1, pipelineCount: row.pipeline_count ?? 0 })),
+          pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, shortRef: row.short_ref, folderId: row.folder_id ?? null, folderName: row.folder_name ?? null, name: row.name, description: row.description ?? "", isDefault: row.is_default === true, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1, createdAt: row.created_at, updatedAt: row.updated_at, createdThrough: row.created_through ?? null, createdByName: row.created_by_name ?? null, requestedByName: row.requested_by_name ?? null, stageCount: row.stage_count ?? 0, dealCount: row.deal_count ?? 0 })),
           stages: (rawPipeline.stages ?? []).map((row) => ({ id: row.id, pipelineId: row.pipeline_id, label: row.label, description: row.description ?? "", orderIndex: row.order_index, archivedAt: row.archived_at ?? null, movePolicy: row.move_policy ?? "direct", version: row.version ?? 1 })),
           deals: (rawPipeline.deals ?? []).map((row) => ({ id: row.id, title: row.title, pipelineId: row.pipeline_id, stageId: row.stage_id, clientName: row.client_name || "Client not recorded", owner: row.owner_user_id ? "Assigned owner" : "Owner not recorded", status: row.status || "Not recorded", source: row.source || "Source not recorded", nextAction: row.next_action || "Next action not recorded", updatedAt: row.updated_at, version: row.version ?? 1, history: row.history ?? [] })),
         };
