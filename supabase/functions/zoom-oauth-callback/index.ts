@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encryptSecret } from "../_shared/calendarCrypto.ts";
 import { resolveTenantForUser } from "../_shared/tenant-for-user.ts";
+import { resolveCanonicalAppPath, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const enc = new TextEncoder();
 
@@ -73,8 +74,10 @@ function zoomRedirectUri(): string {
 }
 
 function redirectTo(origin: string, status: "connected" | "error", detail?: string): Response {
-  const url = new URL(`${origin.replace(/\/$/, "")}/admin/settings`);
-  url.searchParams.set("tab", "connectors");
+  // Before a signed user+tenant context is available, fail closed to login rather
+  // than guessing an account address or emitting the retired shared route.
+  const url = new URL(`${origin.replace(/\/$/, "")}/auth`);
+  url.searchParams.set("mode", "login");
   url.searchParams.set("zoom", status);
   if (detail) url.searchParams.set("zoom_detail", detail);
   return new Response(null, { status: 302, headers: { Location: url.toString() } });
@@ -86,11 +89,13 @@ function redirectTo(origin: string, status: "connected" | "error", detail?: stri
 // the *success* path is role-aware. On any role-lookup failure we fail toward the
 // safe non-admin surface so an admin route is never leaked to a client.
 async function redirectConnectedForUser(
-  admin: ReturnType<typeof createClient>,
+  // The callback uses a service-role client without generated database types.
+  // deno-lint-ignore no-explicit-any
+  admin: any,
   origin: string,
   userId: string,
 ): Promise<Response> {
-  let isStaff = false;
+  let staffRole: string | null = null;
   try {
     const { data, error } = await admin
       .from("user_roles")
@@ -98,15 +103,38 @@ async function redirectConnectedForUser(
       .eq("user_id", userId)
       .in("role", ["admin", "coach", "super_admin", "platform_admin"])
       .limit(1);
-    if (!error && data && data.length > 0) isStaff = true;
+    if (!error && data && data.length > 0) staffRole = String(data[0].role);
   } catch {
-    isStaff = false; // fail toward the client (non-admin) surface
+    staffRole = null; // fail toward the client (non-admin) surface
   }
 
   const base = origin.replace(/\/$/, "");
-  const url = isStaff
-    ? (() => { const u = new URL(`${base}/admin/settings`); u.searchParams.set("tab", "connectors"); return u; })()
-    : (() => { const u = new URL(`${base}/app/settings`); u.searchParams.set("tab", "accounts"); return u; })();
+  let path = "/app/settings?tab=accounts";
+  if (staffRole === "super_admin" || staffRole === "platform_admin") {
+    path = resolveCanonicalAppPath({
+      actor: "operator", tier: "operator", destination: "connections",
+    }) ?? "/auth?mode=login";
+  } else if (staffRole) {
+    const resolved = await resolveTenantForUser(admin, userId);
+    if (resolved.tenantId) {
+      const { data: tenant } = await admin
+        .from("tenants")
+        .select("account_type, account_number")
+        .eq("id", resolved.tenantId)
+        .maybeSingle();
+      path = tenant
+        ? resolveCanonicalAppPath({
+            actor: "account",
+            tier: String(tenant.account_type ?? "") as CanonicalTier,
+            account: tenant.account_number,
+            destination: "connections",
+          }) ?? "/auth?mode=login"
+        : "/auth?mode=login";
+    } else {
+      path = "/auth?mode=login";
+    }
+  }
+  const url = new URL(`${base}${path}`);
   url.searchParams.set("zoom", "connected");
   return new Response(null, { status: 302, headers: { Location: url.toString() } });
 }

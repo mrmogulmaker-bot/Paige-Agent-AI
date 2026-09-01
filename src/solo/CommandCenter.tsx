@@ -16,7 +16,7 @@ const CommandCenter = ({ accountContext, openPaige }) => <SoloSystemsCheckWorksp
 
 const CommandHub = ({ accountContext, openPaige }) => {
   const [tab, setTab] = useSubtabRoute("solo", "command-center", "sys");
-  const { activeTenantId } = useTenantContext();
+  const { activeTenantId, activeUserId } = useTenantContext();
   const location = useLocation();
   const navigate = useNavigate();
   const tabRefs = useRef([]);
@@ -101,7 +101,12 @@ const CommandHub = ({ accountContext, openPaige }) => {
           </div>
         ) : activeTenantId ? (
           <div role="tabpanel" id="command-panel-mind" aria-labelledby="command-tab-mind" style={{ height: "100%" }}>
-            <SoloMindWorkspace key={activeTenantId} accountContext={accountContext} openPaige={openPaige} />
+            <SoloMindWorkspace
+              key={`${activeUserId ?? "resolving"}:${activeTenantId}`}
+              accountContext={accountContext}
+              openPaige={openPaige}
+              preferenceScope={activeUserId ? { userId: activeUserId, tenantId: activeTenantId } : null}
+            />
           </div>
         ) : (
           <div role="status" aria-live="polite" style={{ padding: 24, color: "var(--pg-muted)" }}>

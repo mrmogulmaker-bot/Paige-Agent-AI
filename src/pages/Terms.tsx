@@ -17,7 +17,7 @@ const Terms = () => {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h1 className="text-4xl font-bold mb-2 text-foreground">Terms of Service</h1>
         <p className="text-sm text-muted-foreground mb-10">
-          Last updated: July 26, 2026 — the plain-English agreement for running your practice on Paige.
+          Last updated: August 31, 2026 — the plain-English agreement for using Paige.
         </p>
 
         <div className="prose prose-sm max-w-none space-y-10 text-foreground/90">
@@ -31,7 +31,7 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">2. Description of Service</h2>
             <p>
-              PaigeAgent.ai is a client-management platform for coaches, consultants, agencies, thought leaders, and advisors. The Service provides tools to onboard clients, manage relationships and workflows, follow up, schedule, and run the day-to-day of your practice, with Paige — our AI assistant — helping you draft, suggest, and act on your behalf.
+              PaigeAgent.ai is a client-management platform for coaches, consultants, agencies, thought leaders, and advisors. The Service provides tools to onboard clients, manage relationships and workflows, follow up, schedule, and run day-to-day business operations, with Paige — our AI assistant — helping you draft, suggest, and act on your behalf.
             </p>
             <p>
               <strong>Important:</strong> Paige assists with your work but does not replace professional judgment. We provide technology tools and do not guarantee any specific business outcome.
@@ -62,7 +62,7 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">6. SMS / Text Message Notifications</h2>
             <p>
-              Users may opt in to receive SMS notifications from Paige Agent AI Inc. by providing their phone number and consent during signup. Msg &amp; data rates may apply. Reply STOP to unsubscribe. Reply HELP for support. This service is provided by Paige Agent AI Inc. in accordance with US TCPA and CTIA guidelines.
+              Users may choose to receive account and service text messages by providing a mobile number and selecting the separate SMS consent checkbox during signup. Message frequency varies. Message and data rates may apply. Consent is not a condition of purchase. Reply STOP to opt out or HELP for help. See the <a href="/sms-terms">Messaging Terms</a> for details.
             </p>
           </section>
 

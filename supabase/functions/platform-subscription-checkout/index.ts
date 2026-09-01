@@ -67,6 +67,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import Stripe from "https://esm.sh/stripe@17.5.0?target=deno";
+import { resolveCanonicalAppPath, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -109,6 +110,7 @@ function resolveOrigin(req: Request): string {
 function safePath(raw: unknown, fallback: string): string {
   if (typeof raw !== "string" || !raw) return fallback;
   if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
+  if (/^\/admin(?:\/|$)/i.test(raw)) return fallback;
   return raw;
 }
 
@@ -182,10 +184,11 @@ Deno.serve(async (req) => {
   // even with an invite. DISTINCT from the onboarding branch's `parent_tenant_id IS NULL`
   // owned-tenant *filter* (~:281, which selects which owned top-level tenant to
   // grandfather) — this is a separate REJECT on an already-resolved sub-account tenant.
+  let tenantRoute: { account_type: string | null; account_number: string | number | null } | null = null;
   if (tenantId) {
     const { data: scopeRow, error: scopeErr } = await admin
       .from("tenants")
-      .select("parent_tenant_id")
+      .select("parent_tenant_id, account_type, account_number")
       .eq("id", tenantId)
       .maybeSingle();
     if (scopeErr) return json(400, { error: scopeErr.message });
@@ -196,6 +199,9 @@ Deno.serve(async (req) => {
           "This workspace runs on its parent agency's plan. Platform billing is managed by the agency — you can manage your own client billing under Setup.",
       });
     }
+    tenantRoute = scopeRow
+      ? { account_type: scopeRow.account_type, account_number: scopeRow.account_number }
+      : null;
   }
 
   // ── INVITE TOKEN (super-admin 30-day trial invite) ─────────────────────────────
@@ -306,13 +312,17 @@ Deno.serve(async (req) => {
     // second checkout for an already-subscribed owner).
     const { data: ownedTenant, error: ownedErr } = await admin
       .from("tenants")
-      .select("id")
+      .select("id, account_type, account_number")
       .eq("owner_user_id", actorUserId)
       .is("parent_tenant_id", null)
       .maybeSingle();
     if (ownedErr) return json(400, { error: ownedErr.message });
     if (ownedTenant?.id) {
       tenantId = ownedTenant.id;
+      tenantRoute = {
+        account_type: ownedTenant.account_type,
+        account_number: ownedTenant.account_number,
+      };
       const { data: isAdmin, error: adminErr } = await admin.rpc(
         "is_tenant_admin_as",
         { _actor: actorUserId, _tenant: tenantId },
@@ -371,17 +381,31 @@ Deno.serve(async (req) => {
   // Onboarding lands on a post-payment WAIT route (/welcome) — the webhook is
   // provisioning the tenant asynchronously, so the app polls there until the
   // workspace + subscription exist. Grandfathered stays on the in-app billing surface.
+  const canonicalBillingPath = tenantRoute
+    ? resolveCanonicalAppPath({
+        actor: "account",
+        tier: String(tenantRoute.account_type ?? "") as CanonicalTier,
+        account: tenantRoute.account_number,
+        destination: "billing",
+      })
+    : null;
+  if (!onboarding && !canonicalBillingPath) {
+    return json(409, {
+      error: "billing_return_unavailable",
+      detail: "No mounted billing destination exists for this account tier.",
+    });
+  }
   const successPath = safePath(
     body.success_path,
     onboarding
       ? "/welcome?checkout=success"
-      : "/admin/setup/billing?subscribe=success",
+      : `${canonicalBillingPath}?subscribe=success`,
   );
   const cancelPath = safePath(
     body.cancel_path,
     onboarding
       ? "/pricing?checkout=cancelled"
-      : "/admin/setup/billing?subscribe=cancelled",
+      : `${canonicalBillingPath}?subscribe=cancelled`,
   );
   const successUrl =
     origin +

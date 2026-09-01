@@ -61,6 +61,8 @@ Deno.serve(async (req) => {
   const params = new URLSearchParams(formText)
   const fromPhone = params.get('From') ?? ''
   const bodyRaw = (params.get('Body') ?? '').trim().toUpperCase()
+  const optOutType = (params.get('OptOutType') ?? '').trim().toUpperCase()
+  const keyword = optOutType || bodyRaw
 
   console.log('Twilio inbound', { fromPhone, body: bodyRaw })
 
@@ -73,7 +75,15 @@ Deno.serve(async (req) => {
     .eq('sms_phone_number', fromPhone)
     .maybeSingle()
 
-  if (STOP_KEYWORDS.includes(bodyRaw)) {
+  if (optOutType === 'STOP' || STOP_KEYWORDS.includes(keyword)) {
+    await supabase
+      .from('communications_consents')
+      .update({ revoked_at: new Date().toISOString(), withdrawn_reason: 'sms_stop_keyword' })
+      .eq('phone', fromPhone)
+      .is('tenant_id', null)
+      .is('contact_id', null)
+      .not('consent_granted_at', 'is', null)
+      .is('revoked_at', null)
     if (prefs?.user_id) {
       await supabase
         .from('communication_preferences')
@@ -91,18 +101,61 @@ Deno.serve(async (req) => {
     return twiml()
   }
 
-  if (START_KEYWORDS.includes(bodyRaw)) {
+  if (optOutType === 'START' || START_KEYWORDS.includes(keyword)) {
     if (prefs?.user_id) {
       await supabase
         .from('communication_preferences')
         .update({ sms_enabled: true })
         .eq('user_id', prefs.user_id)
     }
-    return twiml('You are re-subscribed to PaigeAgent SMS alerts. Reply STOP at any time to opt out.')
+    const { data: active } = await supabase
+      .from('communications_consents')
+      .select('id')
+      .eq('phone', fromPhone)
+      .is('tenant_id', null)
+      .is('contact_id', null)
+      .not('consent_granted_at', 'is', null)
+      .is('revoked_at', null)
+      .limit(1)
+      .maybeSingle()
+    let restored = !!active
+    if (!restored) {
+      const { data: prior } = await supabase
+        .from('communications_consents')
+        .select('user_id,email')
+        .eq('phone', fromPhone)
+        .is('tenant_id', null)
+        .is('contact_id', null)
+        .not('consent_granted_at', 'is', null)
+        .order('consent_granted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (prior?.user_id) {
+        const { error } = await supabase.from('communications_consents').insert({
+          user_id: prior.user_id,
+          email: prior.email,
+          phone: fromPhone,
+          sms_transactional: true,
+          sms_marketing: false,
+          source: 'sms_start_keyword',
+          source_url: 'https://paigeagent.ai/sms-terms#start',
+          disclosure_version: 'paige-platform-sms-keyword-start-v1-2026-08-31',
+          consent_granted_at: new Date().toISOString(),
+          user_agent: 'Twilio inbound START/UNSTOP keyword',
+        })
+        restored = !error
+      }
+    }
+    if (optOutType) return twiml()
+    return restored
+      ? twiml('Paige Agent AI: You are subscribed to recurring account and service text messages. Message frequency varies. Reply HELP for help or STOP to opt out.')
+      : twiml('Paige Agent AI: We could not restore text messages for this number. Sign in at https://paigeagent.ai/auth?mode=login or email support@paigeagent.ai for help.')
   }
 
-  if (bodyRaw === 'HELP' || bodyRaw === 'INFO') {
-    return twiml('PaigeAgent: AI funding advisor. Reply STOP to unsubscribe. Support: support@paigeagent.ai')
+  if (optOutType === 'HELP' || keyword === 'HELP' || keyword === 'INFO') {
+    return optOutType
+      ? twiml()
+      : twiml('Paige Agent AI: For help, email support@paigeagent.ai. Reply STOP to opt out.')
   }
 
   // Any other inbound — just acknowledge silently

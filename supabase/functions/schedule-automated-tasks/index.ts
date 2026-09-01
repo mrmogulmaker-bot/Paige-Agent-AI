@@ -30,6 +30,18 @@ serve(async (req) => {
       throw new Error('Missing userId or taskType');
     }
 
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) throw new Error('Unauthorized');
+    if (bearer !== supabaseServiceKey) {
+      const authed = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error } = await authed.auth.getUser();
+      if (error || !user) throw new Error('Unauthorized');
+      if (user.id !== userId) throw new Error('Forbidden');
+    }
+
     console.log(`Scheduling ${taskType} for user ${userId} with frequency ${frequency}`);
 
     // Get user's notification preferences
@@ -58,7 +70,7 @@ serve(async (req) => {
     let result;
     switch (taskType) {
       case 'sms_reminder':
-        result = await executeSMSReminder(supabaseUrl, userId, parameters);
+        result = await executeSMSReminder(supabaseUrl, supabaseServiceKey, userId, parameters);
         break;
 
       case 'funding_report':
@@ -118,10 +130,10 @@ serve(async (req) => {
   }
 });
 
-async function executeSMSReminder(supabaseUrl: string, userId: string, params: any) {
+async function executeSMSReminder(supabaseUrl: string, serviceKey: string, userId: string, params: any) {
   const response = await fetch(`${supabaseUrl}/functions/v1/send-sms-reminder`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
     body: JSON.stringify({
       to: params.phoneNumber,
       message: params.message || 'This is your scheduled reminder from Paige AI.',

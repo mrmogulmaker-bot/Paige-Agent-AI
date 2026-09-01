@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import fs from "fs";
@@ -10,8 +10,8 @@ import fs from "fs";
 function wellKnownPlugin() {
   return {
     name: "well-known-static",
-    configureServer(server: any) {
-      server.middlewares.use((req: any, res: any, next: any) => {
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use((req, res, next) => {
         if (req.url && req.url.startsWith("/.well-known/")) {
           const rel = req.url.split("?")[0];
           const fp = path.resolve(__dirname, "public" + rel);
@@ -115,6 +115,12 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        privacy: path.resolve(__dirname, "privacy.html"),
+        smsTerms: path.resolve(__dirname, "sms-terms.html"),
+        auth: path.resolve(__dirname, "auth.html"),
+      },
       output: {
         manualChunks: {
           "react-vendor": ["react", "react-dom", "react-router-dom"],

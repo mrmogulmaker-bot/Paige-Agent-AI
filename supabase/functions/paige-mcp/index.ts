@@ -22,6 +22,7 @@ import { z } from "https://esm.sh/zod@3.25.76";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 import { applyContactSearchFilter, contactSearchTokens, CONTACT_SEARCH_COLUMNS } from "../_shared/contact-search.ts";
+import { canonicalAppUrl, type CanonicalDestination, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -138,7 +139,6 @@ import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
 // Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
 // (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET); master TWILIO_AUTH_TOKEN absent in prod.
-import { masterBasicAuthHeader } from "../_shared/twilio.ts";
 
 // Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
 // tenant != MMA. These are forward-looking — none are implemented yet but the
@@ -234,6 +234,28 @@ async function actorTenantId(): Promise<string | null> {
   // workspace by construction.
   if (isPlatformOwner) return await platformOperatorTenantId(admin);
   return null;
+}
+
+async function externalActorDestination(
+  tenantId: string,
+  destination: CanonicalDestination,
+): Promise<string | null> {
+  const actor = currentActor();
+  if (actor.kind === "platform" || await actorIsPlatformOwner(actor)) {
+    return canonicalAppUrl({ actor: "operator", tier: "operator", destination });
+  }
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("account_type, account_number")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (!tenant) return null;
+  return canonicalAppUrl({
+    actor: "account",
+    tier: String(tenant.account_type ?? "") as CanonicalTier,
+    account: tenant.account_number,
+    destination,
+  });
 }
 
 /** Marketplace browse never inherits actorTenantId's legacy first-membership fallback. */
@@ -345,7 +367,8 @@ mcp.tool("get_contact", {
     const { data, error } = await admin.from("clients").select("*").eq("id", contact_id).eq("tenant_id", tenantId).maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found");
-    return ok({ contact: data, paige_url: `https://paigeagent.ai/admin/contacts/${contact_id}` });
+    const paigeUrl = await externalActorDestination(tenantId, "contacts");
+    return ok({ contact: data, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
   },
 });
 
@@ -362,7 +385,8 @@ mcp.tool("lookup_contact_by_account_number", {
     const { data, error } = await q.maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found");
-    return ok({ contact: data, paige_url: `https://paigeagent.ai/admin/contacts/${data.id}` });
+    const paigeUrl = await externalActorDestination(tenantId, "contacts");
+    return ok({ contact: data, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
   },
 });
 
@@ -536,7 +560,8 @@ mcp.tool("create_deal", {
       .single();
     if (error) return err(error.message);
     await audit("create_deal", "deal", data.id, { title: args.title, pipeline_id: args.pipeline_id, stage_id: resolvedStage });
-    return ok({ ok: true, deal_id: data.id, paige_url: `https://paigeagent.ai/admin/pipeline?deal=${data.id}` });
+    const paigeUrl = await externalActorDestination(tenantId, "pipeline");
+    return ok({ ok: true, deal_id: data.id, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
   },
 });
 
@@ -2352,9 +2377,10 @@ mcp.tool("send_transactional_email", {
 });
 
 // ---------- send_sms ----------
+// Legacy send_sms stays fail-closed until governed outbound authorization exists.
 mcp.tool("send_sms", {
   description:
-    "Send a one-off SMS via Twilio. From-number from TWILIO_PHONE_NUMBER. Auto-appends 'Reply STOP to unsubscribe.' for A2P 10DLC compliance. Respects opt-out flag on contact when contact_id supplied.",
+    "SMS sending is unavailable from this legacy tool. Tenant messages must use the governed Communications sender after that tenant's A2P registration is approved.",
   inputSchema: z.object({
     to_phone: z.string().describe("E.164, e.g. +14705944470"),
     body: z.string(),
@@ -2364,48 +2390,14 @@ mcp.tool("send_sms", {
   annotations: { destructiveHint: false },
   handler: async (args) => {
     if (args.body.length > 1600) return err("body_too_long_max_1600");
-    if (args.contact_id) {
-      const { data: c } = await admin
-        .from("clients").select("sms_opt_out, phone").eq("id", args.contact_id).maybeSingle();
-      if (c && (c as any).sms_opt_out === true) {
-        return ok({ send_id: null, status: "blocked_by_optout", from_phone: null, to: args.to_phone });
-      }
-    }
-    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const authHeader = masterBasicAuthHeader(); // API Key trio (or legacy fallback); null when unconfigured
-    const fromPhone = Deno.env.get("TWILIO_PHONE_NUMBER");
-    if (!accountSid || !authHeader || !fromPhone) return err("twilio_not_configured");
     const send_id = crypto.randomUUID();
-    const STOP_SUFFIX = " Reply STOP to unsubscribe.";
-    const fullBody = args.body.includes("STOP") ? args.body : (args.body + STOP_SUFFIX).slice(0, 1600);
-    const segments = Math.max(1, Math.ceil(fullBody.length / 160));
-    let providerMsgId: string | null = null;
-    let status: "sent" | "failed" = "sent";
-    let errorMsg: string | null = null;
-    try {
-      const body = new URLSearchParams({ To: args.to_phone, From: fromPhone, Body: fullBody });
-      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-        method: "POST",
-        headers: {
-          // @ts-expect-error Legacy send_sms stays fail-closed until governed outbound authorization exists.
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body.toString(),
-      });
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok) { status = "failed"; errorMsg = (j as any)?.message ?? `twilio_${r.status}`; }
-      else providerMsgId = (j as any)?.sid ?? null;
-    } catch (e) {
-      status = "failed";
-      errorMsg = (e as Error).message.slice(0, 300);
-    }
-    await audit("send_sms", "sms", send_id, { to: args.to_phone, contact_id: args.contact_id ?? null, status });
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({
-        send_id, provider_message_id: providerMsgId, status, from_phone: fromPhone, segments, error: errorMsg,
-      }, null, 2) }],
-    };
+    const status = "blocked_a2p_governed_sender_required";
+    await audit("send_sms", "sms", send_id, {
+      to: args.to_phone,
+      contact_id: args.contact_id ?? null,
+      status,
+    });
+    return ok({ send_id, provider_message_id: null, status, from_phone: null, to: args.to_phone });
   },
 });
 
@@ -2592,7 +2584,7 @@ async function sha256Hex(input: string): Promise<string> {
 //   1. Every ingest is auditable + reversible.
 //   2. Hallucination guards (range checks, conflict deltas, fuzzy-match disambiguation) run before commit.
 //   3. Tenant scoping is enforced on every read/write.
-//   4. Admins can review `needs_review` items in /admin/approvals.
+//   4. Operators can review `needs_review` items in the governed approval queue.
 //
 // Tools: search_clients_fuzzy, propose_client_update, confirm_proposal, reject_proposal,
 //        ingest_credit_scores, ingest_banking_snapshot, append_client_memory,
@@ -2773,7 +2765,7 @@ mcp.tool("propose_client_update", {
       diff,
       status: needsReview ? "needs_review" : "pending",
       next_step: needsReview
-        ? "Routed to admin /admin/approvals. Do not call confirm_proposal."
+        ? "Routed to the governed approval queue. Do not call confirm_proposal."
         : "Read the diff back to the teammate verbatim, then call confirm_proposal with this proposal_id once they say yes.",
     });
   },
@@ -2865,7 +2857,7 @@ mcp.tool("ingest_credit_scores", {
       diff,
       review_reasons: reviewReasons,
       next_step: needsReview
-        ? "Routed to /admin/approvals for human review. Do NOT confirm."
+        ? "Routed to the governed approval queue for human review. Do NOT confirm."
         : 'Read the scores back verbatim ("TransUnion 520 from a soft pull on 2026-06-29 — correct?"). Then call confirm_proposal.',
     });
   },
@@ -2912,7 +2904,7 @@ mcp.tool("ingest_banking_snapshot", {
       status: review.length ? "needs_review" : "pending",
       review_reasons: review,
       next_step: review.length
-        ? "Routed to /admin/approvals."
+        ? "Routed to the governed approval queue."
         : "Read snapshot back to teammate, then call confirm_proposal.",
     });
   },
@@ -2957,7 +2949,7 @@ mcp.tool("append_client_memory", {
     return ok({
       proposal_id: proposal.id,
       status: needsReview ? "needs_review" : "pending",
-      next_step: needsReview ? "Routed to /admin/approvals." : "Read back to teammate, then call confirm_proposal.",
+      next_step: needsReview ? "Routed to the governed approval queue." : "Read back to teammate, then call confirm_proposal.",
     });
   },
 });
@@ -4106,7 +4098,13 @@ mcp.tool("add_email_domain", {
     }).select("*").single();
     if (error) return err(error.message);
     await audit("add_email_domain", "email_domain", data.id, { domain });
-    return ok({ email_domain: data, next_steps: "Add the DNS records returned in `dns_records` (or visit /admin/settings/email) and then call set_default_email_domain or wait for verification." });
+    const settingsUrl = await externalActorDestination(tenant_id, "connections");
+    return ok({
+      email_domain: data,
+      next_steps: settingsUrl
+        ? `Add the DNS records returned in \`dns_records\` (or visit ${settingsUrl}) and then call set_default_email_domain or wait for verification.`
+        : "Add the DNS records returned in `dns_records`, then call set_default_email_domain or wait for verification.",
+    });
   },
 });
 

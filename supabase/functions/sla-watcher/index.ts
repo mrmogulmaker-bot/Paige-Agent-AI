@@ -100,7 +100,9 @@ Deno.serve(async (req) => {
       severity: t.severity === "critical" ? "urgent" : t.severity === "warning" ? "warning" : "info",
       title: `Unassigned ${row.tier} > SLA`,
       body: message,
-      link_to: `/admin/contacts/${row.id}`,
+      // The operator tree has no mounted contact-detail destination. Keep the
+      // alert readable and non-clickable rather than minting a dead tenant URL.
+      link_to: null,
       source_workflow_key: "unassigned_sla",
       contact_id: row.id,
       scope: "admin",
