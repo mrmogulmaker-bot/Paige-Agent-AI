@@ -18,15 +18,8 @@ const rpc = async (name: string, args: Record<string, unknown> = {}) => {
     const search = String(args._search || "").toLowerCase(); const permission = String(args._permission || "all");
     if (search) rows = rows.filter((m) => [m.full_name, m.email, m.job_title, m.responsibilities].some((v) => v?.toLowerCase().includes(search)));
     if (permission !== "all") rows = rows.filter((m) => (m.is_owner ? "owner" : m.permission) === permission);
-const tenantId = () => new URLSearchParams(window.location.search).get("context") === "alternate" ? "team-harness-alternate" : "team-harness-tenant";
-const accessDefaults = {
-  owner: { command: "manage", clients: "manage", calendar: "manage", campaigns: "manage", analytics: "manage", team: "manage", connections: "manage", integrations: "manage", security: "manage", vault: "manage", billing: "manage" },
-  admin: { command: "manage", clients: "manage", calendar: "manage", campaigns: "manage", analytics: "view", team: "manage", connections: "manage", integrations: "manage", security: "view", vault: "hidden", billing: "hidden" },
-  member: { command: "view", clients: "view", calendar: "view", campaigns: "view", analytics: "view", team: "view", connections: "hidden", integrations: "hidden", security: "hidden", vault: "hidden", billing: "hidden" },
-};
-const accessVersions = { admin: 2, member: 3 };
     const total = rows.length; const offset = Number(args._offset || 0); const limit = Number(args._limit || 25);
-    return { data: { tenant_id: tenantId(), tenant_name: tenantId().endsWith("alternate") ? "Known-good alternate" : "Northstar Studio", viewer_permission: tenantId().endsWith("alternate") ? "member" : "owner", can_manage_profiles: !tenantId().endsWith("alternate"), can_manage_invitations: !tenantId().endsWith("alternate"), can_change_permissions: !tenantId().endsWith("alternate"), total_members: total, members: rows.slice(offset, offset + limit), invitations: mode() === "first" ? [] : invites }, error: null };
+    return { data: { tenant_id: "team-harness-tenant", tenant_name: "Northstar Studio", viewer_permission: "owner", can_manage_profiles: true, can_manage_invitations: true, can_change_permissions: true, total_members: total, members: rows.slice(offset, offset + limit), invitations: mode() === "first" ? [] : invites }, error: null };
   }
   if (name === "set_solo_team_member_work_profile") {
     const row = members.find((m) => m.user_id === args._member_user_id); if (row) { row.job_title = String(args._job_title || "") || null; row.responsibilities = String(args._responsibilities || "") || null; }
@@ -35,20 +28,6 @@ const accessVersions = { admin: 2, member: 3 };
   if (name === "set_solo_team_member_permission") {
     const row = members.find((m) => m.user_id === args._member_user_id); if (row) row.permission = String(args._new_permission);
     return { data: { ok: true }, error: null };
-  }
-  if (name === "get_solo_team_access_profiles") {
-    if (mode() === "denied") return { data: null, error: { message: "access denied" } };
-    return { data: { tenant_id: tenantId(), viewer_permission: tenantId().endsWith("alternate") ? "member" : "owner", can_manage: !tenantId().endsWith("alternate"), profiles: [
-      { permission: "owner", version: 0, updated_at: null, areas: accessDefaults.owner },
-      { permission: "admin", version: accessVersions.admin, updated_at: "2026-09-01T12:00:00Z", areas: accessDefaults.admin },
-      { permission: "member", version: accessVersions.member, updated_at: "2026-09-01T12:00:00Z", areas: accessDefaults.member },
-    ] }, error: null };
-  }
-  if (name === "set_solo_team_access_profile") {
-    const permission = String(args._permission) as "admin" | "member";
-    accessVersions[permission] += 1;
-    Object.assign(accessDefaults[permission], args._areas || {});
-    return { data: { permission, version: accessVersions[permission], updated_at: new Date().toISOString(), areas: accessDefaults[permission] }, error: null };
   }
   return { data: null, error: { message: `Unsupported harness RPC ${name}` } };
 };

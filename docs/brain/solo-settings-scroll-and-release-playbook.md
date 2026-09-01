@@ -120,14 +120,6 @@ Do not repair a product failure by weakening the drive, substituting a surface-o
 treating `FITS` as evidence that overflow works. Classify every
 destination honestly as `OVERFLOWS` or `FITS`.
 
-## Team access and canonical-shell guardrail
-
-Settings → Team owns the tenant-scoped access configuration contract. The one canonical Solo shell may consume only the server-resolved effective profile for the authenticated active tenant; it must never fork the shell, page host, navigation model, geometry, responsive behavior, or PAIGE workspace for a named tenant, account number, fixture, demo state, or URL value.
-
-Team and its Roles & access matrix use the existing Settings page reachability owner. Growing rosters use server search/filter and paging; the people list and role matrix do not introduce nested scroll regions. Any future shell enforcement must be defense in depth over the owning domain's server authorization, and must be proven in both the affected tenant/context and a different known-good context with PAIGE open and closed at all four standard Solo viewports.
-
-This guardrail is owned jointly by `src/solo/team-access-profile.ts` (domain contract), `src/solo/team-access-configuration.tsx` (Settings surface), `supabase/migrations/20260901140000_solo_team_access_profiles.sql` (tenant-safe enforcement), and the canonical shell owners listed below. A future agent encounters it by reading this playbook before changing Settings or shell reachability.
-
 ## Collision and release discipline
 
 File non-overlap is not enough. Re-ground active PRs for shared route, CSS, shell, selector, test and

@@ -7,7 +7,6 @@ describe("Paige tenant team context", () => {
     tenant_name: "Northwind",
     speaker: { user_id: "u1", name: "Morgan", permission: "owner", job_title: "Founder", responsibilities: "Approves access" },
     member_count: 2,
-    access_profile: { tenant_id: "tenant-b", permission: "owner", areas: { team: "manage", billing: "manage", injected: "manage" }, legacy_specialized_permission: false },
     truncated: false,
     members: [
       { user_id: "u1", name: "Morgan", permission: "owner", job_title: "Founder", responsibilities: "Approves access" },
@@ -26,8 +25,5 @@ describe("Paige tenant team context", () => {
     expect(block).toContain("NEVER grant authority");
     expect(block).toContain('"enforced_permission":"member"');
     expect(block).toContain("do not send, mutate access, or take any external action");
-    expect(block).toContain('"effective_access":{"enforced_permission":"owner"');
-    expect(block).toContain('"team":"manage"');
-    expect(block).not.toContain("injected");
   });
 });

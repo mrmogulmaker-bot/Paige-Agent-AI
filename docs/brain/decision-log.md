@@ -620,13 +620,3 @@ migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is st
 merge or deployment.
 
 - **Client identity contract (green draft, Gate 2 pending, 2026-09-01)** — Preserve existing client UUIDs and references; fail closed if any historical client lacks a tenant; backfill only missing references with nonsequential `CLT-…` values; make UUID, tenant, and reference immutable; route browser creation through `create_contact()`; keep invite acceptance as the only consent linkage path; expose `client_ref`, not raw UUIDs, to Paige. No merge or deployment authorized.
-
-## 2026-09-01 — Solo Team reusable access profiles approved for production draft
-
-The owner approved turning Settings → Team → Roles & access into a configuration surface. The product contract is tenant-scoped reusable profiles for Owner/Admin/Member: Owner is fixed; only the active workspace Owner may edit Admin and Member profiles; Hidden/View/Manage choices are capped by server-enforced role ceilings. A person's job title and responsibilities remain descriptive work context and never alter authorization.
-
-The Team domain owns storage, validation, optimistic concurrency, audit evidence, and the server-resolved effective profile. The canonical Solo shell remains one tenant-agnostic shell and may only consume that profile; it must not branch layout, routes, geometry, responsive behavior, or PAIGE workspace by tenant identity, URL, fixture, or demo state. Settings owns vertical reachability; no nested roster or role-matrix scrollbar is introduced.
-
-Paige Chat consumes the same server-resolved Team context, with allowlisted access areas and tenant mismatch refusal. Paige may read confirmed roster/work context and explain or propose a change, but cannot widen access, self-authorize, silently save, or treat authored titles as permission. A governed proposal card/tool remains a separate owning contract unless and until it has real confirmation and durable outcome handling.
-
-Implementation is a green-draft candidate only. Merge, migration application, deployment, authenticated tenant proof, and production acceptance require the owner's exact-head Gate 2 approval.
