@@ -5462,6 +5462,38 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "crm_list_documents",
+              description: "Admin/coach only. List the documents already uploaded onto client files, so you can name one before routing it. Returns the file id, filename, type, size, which client it is currently filed on, and who can see it. It does NOT return the document's contents or a download link — you cannot read what is inside these files, and you must not pretend to. Use this to find the file id that crm_file_document needs.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "Optional. Only files currently filed on this client. Omit to list recent files across the workspace." },
+                  query: { type: "string", description: "Optional. Match on the filename." }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_file_document",
+              description: "Admin/coach only. Route a document that has ALREADY been uploaded onto the right client's file, and set who can see it. Use it when the operator says a file landed on the wrong client, or asks you to share an internal document with a client, or tells you where an upload belongs. You cannot upload a document and you cannot read one — the bytes must already exist, and you find the file with crm_list_documents first. You are deciding two things and must say both out loud before you do it: WHICH client it lands on, and WHETHER that client can see it. 'shared' means the client reads it in their own portal; 'internal' means only the team does. Never move a document the client uploaded themselves — that is their record of what they sent, and re-filing it misrepresents where it came from. Propose it and wait for the operator to approve.",
+              parameters: {
+                type: "object",
+                properties: {
+                  file_id: { type: "string", description: "client_files.id, from crm_list_documents. Never invent one." },
+                  contact_id: { type: "string", description: "The client the document should be filed on (from crm_search_contacts). This is the routing decision — get it right." },
+                  visibility: { type: "string", enum: ["internal", "shared"], description: "'internal' — only the team sees it. 'shared' — the client sees it in their portal. Say which one you are proposing, in those words." },
+                  description: { type: "string", description: "Optional short note about what the document is, in the operator's own words." }
+                },
+                required: ["file_id", "contact_id", "visibility"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -6595,6 +6627,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_create_task: "creating a task",
       crm_log_activity: "logging an activity",
     crm_add_note: "adding a note to a client's record",
+      crm_file_document: "filing a document on a client's record",
       pipeline_create: "creating a pipeline",
       pipeline_add_stage: "adding a pipeline stage",
       pipeline_configure: "configuring the pipeline",
@@ -6638,7 +6671,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
 
     // A human one-liner of exactly what a mutating call will do — shown to the
     // operator when Paige pauses for confirmation.
-    const describeConfirm = (name: string, a: any): string => {
+    //
+    // ASYNC, as of the document-routing tool, for one reason: an approval card that says "file this
+    // document on this client's record" is not approvable. The operator is being asked to agree to
+    // a DESTINATION and a VISIBILITY, and both arrive here as uuids. A card that cannot name them
+    // is asking for a yes to something unnamed, which is the shape of consent this project keeps
+    // refusing elsewhere. So the one case that needs real names resolves them, under the CALLER's
+    // own client, and every other case stays exactly the synchronous string it was.
+    //
+    // The names are read from the database, never taken from the model. A model-supplied label
+    // would be strictly worse than no label: it can say "Dana Whitfield" while `contact_id` points
+    // somewhere else, and the card is the artefact the approval is bound to.
+    const describeConfirm = async (name: string, a: any): Promise<string> => {
       switch (name) {
         // The money one. The number and the fact that it charges have to be IN the
         // sentence — "buy a number?" is not a proposal anyone can actually approve.
@@ -6701,6 +6745,44 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "crm_add_note": {
           const preview = String(a?.body ?? "").replace(/\s+/g, " ").trim().slice(0, 90);
           return `Add a note to this client's record: "${preview}${String(a?.body ?? "").length > 90 ? "…" : ""}". Only your team sees it — the client will not.`;
+        }
+        case "crm_file_document": {
+          // WHAT THIS CARD HAS TO CARRY. Two decisions, and the second one is the dangerous half:
+          // `shared` puts a document in front of a real person outside the workspace, and that
+          // cannot be undone by moving it back — they may already have read it. So the visibility
+          // is stated as a CONSEQUENCE ("they will be able to open and read it"), not as a setting
+          // name, because "visibility: shared" is a field and "the client can read it" is what the
+          // operator is actually agreeing to.
+          const shared = a?.visibility === "shared";
+          const tenantForCard = personaCtx?.tenant_id ?? null;
+          let fileLabel = "that document";
+          let clientLabel = "that client";
+          try {
+            const fileId = typeof a?.file_id === "string" ? a.file_id.trim() : "";
+            if (UUIDISH.test(fileId)) {
+              // The caller's own client, so a file they cannot see resolves to nothing and the card
+              // stays unnamed rather than leaking a filename from another workspace.
+              const { data: f } = await supabaseClient
+                .from("client_files").select("original_filename").eq("id", fileId).maybeSingle();
+              const fn = typeof f?.original_filename === "string" ? f.original_filename.trim() : "";
+              if (fn) fileLabel = `"${fn.slice(0, 80)}"`;
+            }
+            const contactId = typeof a?.contact_id === "string" ? a.contact_id.trim() : "";
+            if (UUIDISH.test(contactId) && tenantForCard) {
+              const { data: c } = await supabaseClient
+                .from("clients").select("first_name, last_name, entity_name")
+                .eq("id", contactId).eq("tenant_id", tenantForCard).maybeSingle();
+              const nm = [c?.first_name, c?.last_name].filter((x) => typeof x === "string" && x.trim()).join(" ").trim()
+                || (typeof c?.entity_name === "string" ? c.entity_name.trim() : "");
+              if (nm) clientLabel = nm.slice(0, 80);
+            }
+          } catch {
+            // A card that cannot name things is worse than one that can, and far better than one
+            // that names them wrongly. Fall through with the unnamed wording (§13).
+          }
+          return shared
+            ? `File ${fileLabel} on ${clientLabel}'s record and SHARE IT WITH THEM — ${clientLabel} will be able to open and read it in their portal. Sharing cannot be taken back once they have seen it.`
+            : `File ${fileLabel} on ${clientLabel}'s record, visible to your team only. ${clientLabel} will not see it.`;
         }
         case "crm_update_pipeline_stage":
           return `Move the client to stage "${a?.status || ""}".`;
@@ -7209,7 +7291,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               : null;
 
             if (!approvedArgs) {
-              const summary = describeConfirm(tc.function.name, gateArgs);
+              const summary = await describeConfirm(tc.function.name, gateArgs);
               // Persist BEFORE answering, so that when the person does say yes there is something
               // to redeem. If this write fails the gate still refuses, and says so honestly rather
               // than telling them it is pending. Failing closed is the only acceptable direction.
@@ -8077,6 +8159,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "zapier_run_action" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_add_note" ||
+          tc.function.name === "crm_list_documents" ||
+          tc.function.name === "crm_file_document" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
           tc.function.name === "crm_list_deals" ||
@@ -8880,6 +8964,110 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                         note_id: noteRow?.id,
                         contact_id: noteContactId,
                         note: "Filed on their record where the team can see it. The client cannot — say so if it matters to them.",
+                      };
+                }
+              }
+            } else if (tc.function.name === "crm_list_documents") {
+              // READ ONLY, and deliberately narrow. `storage_path` is NOT selected and no signed
+              // URL is minted: this tool exists so a routing decision can name a real file, not so
+              // Paige can open one. She cannot read what is inside these documents, and the tool
+              // description says so, because a model that receives a path will eventually try.
+              if (!crmTenantId) {
+                result = { success: false, error: "I can't tell which workspace to look in, so I won't guess at a file list." };
+              } else {
+                let q = supabaseClient
+                  .from("client_files")
+                  .select("id, contact_id, original_filename, mime_type, size_bytes, visibility, description, created_at")
+                  .eq("tenant_id", crmTenantId)
+                  .order("created_at", { ascending: false })
+                  .limit(25);
+                const listContact = typeof args.contact_id === "string" ? args.contact_id.trim() : "";
+                if (UUIDISH.test(listContact)) q = q.eq("contact_id", listContact);
+                const listQuery = typeof args.query === "string" ? args.query.trim() : "";
+                if (listQuery) q = q.ilike("original_filename", `%${listQuery.replace(/[%_]/g, "")}%`);
+                const { data: fileRows, error: listErr } = await q;
+                result = listErr
+                  ? { success: false, error: "I couldn't read the document list, so I don't know what's on file. Say that rather than guessing." }
+                  : {
+                      success: true,
+                      documents: (fileRows ?? []).map((f: any) => ({
+                        file_id: f.id, contact_id: f.contact_id, filename: f.original_filename,
+                        mime_type: f.mime_type, size_bytes: f.size_bytes, visibility: f.visibility,
+                        description: f.description, uploaded_at: f.created_at,
+                      })),
+                      note: "You cannot open these — you know their names and where they are filed, nothing more.",
+                    };
+              }
+            } else if (tc.function.name === "crm_file_document") {
+              // §9 — THE DESTINATION IS RESOLVED, NEVER TRUSTED, exactly as in `crm_add_note`. The
+              // difference is that this tool MOVES an existing row, so there are two ids a model
+              // could get wrong and two ways to be wrong about each: the file might not be ours,
+              // and the client might not be ours. Both are checked here in words, and both are
+              // ALSO constrained by the database (20261036000000), so a mistake in this code
+              // cannot become a misfiled document — it can only become a worse error message.
+              const docFileId = typeof args.file_id === "string" ? args.file_id.trim() : "";
+              const docContactId = typeof args.contact_id === "string" ? args.contact_id.trim() : "";
+              const docVisibility = typeof args.visibility === "string" ? args.visibility.trim() : "";
+              if (!UUIDISH.test(docFileId)) {
+                result = { success: false, error: "I need the document's file id to move it — list the documents first and use that id." };
+              } else if (!UUIDISH.test(docContactId)) {
+                result = { success: false, error: "I need the client's contact id to file this against — look them up first and use that id." };
+              } else if (docVisibility !== "internal" && docVisibility !== "shared") {
+                // `client_upload` is a real value of the enum and is deliberately NOT accepted:
+                // it means "the client sent us this", which is a fact about where a document came
+                // from. Nothing Paige does later can make that true, so she may not assert it.
+                result = { success: false, error: "I can only file a document as internal or shared with the client. I can't mark something as a client upload — that would claim they sent it." };
+              } else if (!crmTenantId) {
+                result = { success: false, error: "I can't tell which workspace this document belongs to, so I won't move it anywhere." };
+              } else {
+                // The CALLER's client throughout. RLS refuses a file or a client this person cannot
+                // see at all; the explicit tenant filters refuse ones they CAN see through a
+                // non-tenant policy — `client_files` admits a coach on assignment alone, with no
+                // tenant predicate, so "visible to me" is not "mine" here either.
+                const { data: docRow, error: docErr } = await supabaseClient
+                  .from("client_files")
+                  .select("id, contact_id, tenant_id, visibility, original_filename")
+                  .eq("id", docFileId).eq("tenant_id", crmTenantId).maybeSingle();
+                const { data: docClient, error: docClientErr } = await supabaseClient
+                  .from("clients").select("id, first_name, last_name")
+                  .eq("id", docContactId).eq("tenant_id", crmTenantId).maybeSingle();
+                if (docErr || docClientErr) {
+                  result = { success: false, error: "I couldn't confirm the document or the client, so I haven't moved anything." };
+                } else if (!docRow) {
+                  result = { success: false, error: "That document isn't in this workspace, so I can't move it. List the documents and use an id from there." };
+                } else if (!docClient) {
+                  // Same answer whether the client belongs to another tenant or does not exist —
+                  // telling them apart reveals whether an id is real somewhere else (§9).
+                  result = { success: false, error: "That client isn't in this workspace, so I can't file a document on them. Search for them by name and try again." };
+                } else if (docRow.visibility === "client_upload") {
+                  // The provenance rule, stated once here and once in the tool description. A file
+                  // the client uploaded is their record of what they sent; re-filing it onto
+                  // someone else — or relabelling it as ours — destroys the one fact it carries.
+                  result = { success: false, error: "That document was uploaded by the client themselves. I won't re-file it — it's their record of what they sent, and moving it would misrepresent where it came from. Someone can do it by hand on the client's file if it's genuinely wrong." };
+                } else {
+                  const { data: movedDoc, error: moveErr } = await supabaseClient
+                    .from("client_files")
+                    .update({
+                      contact_id: docContactId,
+                      tenant_id: crmTenantId,
+                      visibility: docVisibility,
+                      ...(typeof args.description === "string" && args.description.trim()
+                        ? { description: args.description.trim().slice(0, 500) }
+                        : {}),
+                    })
+                    .eq("id", docFileId)
+                    .select("id, contact_id, visibility").maybeSingle();
+                  result = (moveErr || !movedDoc)
+                    ? { success: false, error: "The document did not move. Tell the operator plainly that it is still where it was, and don't say otherwise." }
+                    : {
+                        success: true,
+                        file_id: movedDoc.id,
+                        contact_id: movedDoc.contact_id,
+                        visibility: movedDoc.visibility,
+                        moved_from_contact_id: docRow.contact_id !== docContactId ? docRow.contact_id : undefined,
+                        note: movedDoc.visibility === "shared"
+                          ? "Filed on their record AND visible to them in their portal — say that plainly, because they can read it now."
+                          : "Filed on their record where the team can see it. The client cannot — say so if it matters.",
                       };
                 }
               }
@@ -9977,7 +10165,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         "crm_update_contact", "crm_create_contact", "crm_delete_contact", "crm_log_activity",
         "crm_assign_contact", "crm_assign_coach", "crm_update_pipeline_stage", "program_enroll",
       ]);
-      const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task", "crm_add_note"]);
+      const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task", "crm_add_note", "crm_file_document"]);
       /**
        * WHAT EACH WRITE TOUCHES — one map, read by both the rail and the audit row.
        *
@@ -10013,7 +10201,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
         program_enroll: "clients", update_client_data: "clients",
-        crm_log_activity: "communication_log", crm_add_note: "client_notes", crm_create_task: "tasks", plan_assign_task: "tasks",
+        crm_log_activity: "communication_log", crm_add_note: "client_notes", crm_file_document: "client_files", crm_create_task: "tasks", plan_assign_task: "tasks",
         update_business_profile: "tenants",
         pipeline_create: "pipelines", pipeline_add_stage: "pipelines",
         deal_create: "deals", deal_move_stage: "deals",

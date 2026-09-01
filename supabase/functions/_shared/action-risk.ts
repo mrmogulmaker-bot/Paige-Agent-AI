@@ -95,6 +95,18 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["growth_page_publish", "high", "puts a page live at a public URL"],
   ["growth_funnel_publish", "high", "puts a whole sequence live"],
   ["program_enroll", "high", "enrols a real person into a programme"],
+  // Filing a document is HIGH because one of its two outcomes hands a real document to a real
+  // person outside the workspace, and that cannot be walked back — moving it to `internal`
+  // afterwards does not unread it. The class is a property of the ACTION, so it does not soften
+  // when the arguments happen to say `internal`: rule 2 of this file is that nothing in a request
+  // may lower a classification, and splitting this into a share tool and a file tool purely to win
+  // a cheaper gate for one path would be that same lowering wearing a second tool name.
+  //
+  // It also sits alongside `document_generate`, which is `ordinary` on the stated grounds that
+  // "producing an artefact is not handing it to anyone, and giving it to a client is the separate
+  // act where the visibility decision belongs." This IS that separate act. The two entries are the
+  // two halves of one sentence, and they only stay coherent together.
+  ["crm_file_document", "high", "can put a document in front of the client, which cannot be undone"],
 
   // ── high: spends money ────────────────────────────────────────────────────────────────────
   ["marketplace_install", "high", "installs a paid capability"],

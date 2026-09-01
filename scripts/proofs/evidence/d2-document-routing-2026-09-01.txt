@@ -1,0 +1,37 @@
+D2 document routing — proof output, production (xygzykjyynhzqytbqnzu), 2026-09-01.
+Run from scripts/proofs/d2-document-routing-proof.sql inside BEGIN … ROLLBACK.
+15/15 ok.
+
+ok  P0 the actor is an ordinary tenant admin, not a platform owner - so no clause below is escaped
+ok  B1 TODAY a document can be moved onto ANOTHER TENANT's client (rows moved: 1) - the hole is real
+ok  B2 TODAY a NOTE can be re-filed onto another tenant's client too (rows moved: 1) - D1 closed INSERT only
+ok  F1 STILL BROKEN (not fixed by this migration): a data-subject export raises 42703 (column "user_id" of relation "pii_access_log" does not exist)
+ok  F1 STILL BROKEN (not fixed by this migration): a data-subject portability raises 42703 (column "user_id" of relation "pii_access_log" does not exist)
+ok  F1 STILL BROKEN (not fixed by this migration): a data-subject correct raises 42703 (column "user_id" of relation "pii_access_log" does not exist)
+ok  F1 STILL BROKEN (not fixed by this migration): a data-subject delete raises 42703 (column "user_id" of relation "pii_access_log" does not exist)
+ok  A1 a document can no longer be moved onto another tenant's client (42501)
+ok  A2 the row's tenant stamp can no longer disagree with its client's tenant (42501)
+ok  A3 a LEGITIMATE re-file within the tenant still works (rows: 1) - so A1/A2 are not passing because everything is blocked
+ok  A4 the existing share toggle in ContactFilesPanel still works (rows: 1)
+ok  A5 a new document cannot be filed onto another tenant's client (42501)
+ok  A6 the existing upload path still works for the caller's own client (rows: 1)
+ok  A7 a note can no longer be re-filed onto another tenant's client (42501)
+ok  A8 the existing pin toggle in ContactNotesPanel still works (rows: 1)
+
+WHAT THE EARLIER RUNS FOUND, kept because the corrections are the point of the BEFORE leg:
+
+  Run 1 — B1 and B2 were ABSENT from the output. They were written inside a
+  SAVEPOINT that the file then rolled back, which discarded the result rows along
+  with the mutations. Replaced with compensating writes. An absent assertion reads
+  at a glance like one that was never written.
+
+  Run 1 — B3 disproved the written diagnosis. The claim was that the data-subject
+  export raises on client_files.client_id. It raises EARLIER, on the pii_access_log
+  insert, and never reaches that line. The column names were genuinely wrong (proved
+  separately by a direct query) but they are not why the function fails.
+
+  Run 2 — the repaired function still raised: deals.contact_id, then clients.zip,
+  then clients.ssn_last_4. Three more references to columns that do not exist, each
+  surfacing only once the one in front of it was fixed. The fix was withdrawn and
+  the whole thing recorded as a finding instead; see task DSR1 and the header of
+  migration 20261036000000.
