@@ -29,7 +29,7 @@ const state = vi.hoisted(() => ({
   isAdmin: true as boolean | null,
   registration: null as Record<string, unknown> | null,
   regError: null as { message: string } | null,
-  legal: { legal_business_name: "Test Workspace LLC", website: "https://example.com" } as Record<string, unknown> | null,
+  legal: { legal_business_name: "Test Workspace LLC", website_url: "https://example.com" } as Record<string, unknown> | null,
 }));
 
 const PREPARABLE = {
@@ -137,7 +137,7 @@ const DRAFTED = {
     help_message: "Reply HELP and we'll call you.",
   },
   legal_business_name: "Test Workspace LLC",
-  website: "https://example.com",
+  website_url: "https://example.com",
   saved: true,
 };
 
@@ -147,7 +147,7 @@ beforeEach(() => {
   state.isAdmin = true;
   state.registration = null;
   state.regError = null;
-  state.legal = { legal_business_name: "Test Workspace LLC", website: "https://example.com" };
+  state.legal = { legal_business_name: "Test Workspace LLC", website_url: "https://example.com" };
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });

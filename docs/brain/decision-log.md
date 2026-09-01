@@ -618,3 +618,14 @@ migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is st
 merge or deployment.
 
 - **Client identity contract (green draft, Gate 2 pending, 2026-09-01)** — Preserve existing client UUIDs and references; fail closed if any historical client lacks a tenant; backfill only missing references with nonsequential `CLT-…` values; make UUID, tenant, and reference immutable; route browser creation through `create_contact()`; keep invite acceptance as the only consent linkage path; expose `client_ref`, not raw UUIDs, to Paige. No merge or deployment authorized.
+
+## 2026-09-01 — Setup owns tenant A2P legal identity; implementation draft, Gate 2 pending
+
+Each tenant enters and owner-confirms its legal sender identity once in Setup. The canonical legal
+record synchronizes to `tenant_legal_profile`; the full registration number is write-only and stored
+in Vault, while the browser can reload only its last four digits. The authorized representative must
+be an active, already-confirmed Team representative. PAIGE may help explain or propose ordinary
+business facts, but cannot invent a tax number or select the legal representative. Tenant provider
+resources belong to that tenant's Twilio subaccount; the platform operator's primary TrustHub profile
+remains a separate master-account concern. Customer Profile, Trust Product, Brand, Campaign, and
+Messaging Service identifiers stay server-owned. This draft does not submit to Twilio, merge, deploy, or claim authenticated production proof.

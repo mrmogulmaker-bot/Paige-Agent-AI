@@ -24,11 +24,14 @@ import {
 } from "./settings-setup-contract";
 import "./settings-setup.css";
 
+type SetupEditableTextField = SoloSetupTextField | "businessRegistrationNumber";
+
 type FieldDefinition = {
-  key: SoloSetupTextField;
+  key: SetupEditableTextField;
   label: string;
   hint?: string;
   multiline?: boolean;
+  options?: ReadonlyArray<{ value: string; label: string }>;
 };
 
 const identityFields: FieldDefinition[] = [
@@ -41,6 +44,31 @@ const identityFields: FieldDefinition[] = [
   { key: "industry", label: "Industry" },
   { key: "naicsCode", label: "NAICS code", hint: "Optional. Enter only a code the owner has confirmed." },
   { key: "sicCode", label: "SIC code", hint: "Optional. Enter only a code the owner has confirmed." },
+];
+
+const carrierIdentityFields: FieldDefinition[] = [
+  { key: "entityType", label: "Legal entity type", options: [
+    { value: "", label: "Choose the legal entity type" },
+    ...["Co-operative", "Corporation", "Limited Liability Corporation", "Non-profit Corporation", "Partnership"].map((value) => ({ value, label: value })),
+  ] },
+  { key: "stateOfFormation", label: "State of formation", hint: "Use the two-letter state abbreviation for a U.S. entity." },
+  { key: "businessRegistrationIdentifier", label: "Registration identifier", hint: "For a U.S. entity or international tax ID, use EIN.", options: [
+    ...["EIN", "DUNS", "CBN", "CN", "ACN", "CIN", "VAT", "VATRN", "RN"].map((value) => ({ value, label: value })),
+    { value: "OTHER", label: "Other" },
+  ] },
+  { key: "businessRegistrationNumber", label: "EIN or tax registration number", hint: "Stored encrypted. Leave blank to keep the saved number." },
+  { key: "regionsOfOperation", label: "Regions of operation", hint: "Use USA_AND_CANADA, AFRICA, ASIA, EUROPE, or LATIN_AMERICA. Separate multiple regions with commas." },
+  { key: "registeredStreet", label: "Registered street address" },
+  { key: "registeredStreetSecondary", label: "Suite or address line 2" },
+  { key: "registeredCity", label: "Registered city" },
+  { key: "registeredRegion", label: "State or province" },
+  { key: "registeredPostalCode", label: "Postal code" },
+  { key: "registeredIsoCountry", label: "Country code", hint: "Two-letter ISO country code, such as US." },
+  { key: "authorizedRepresentativePhone", label: "Representative phone", hint: "Use E.164 format, such as +14045550123." },
+  { key: "authorizedRepresentativeJobPosition", label: "Representative position", options: [
+    { value: "", label: "Choose the representative position" },
+    ...["Director", "GM", "VP", "CEO", "CFO", "General Counsel", "Other"].map((value) => ({ value, label: value })),
+  ] },
 ];
 
 const modelFields: FieldDefinition[] = [
@@ -89,15 +117,17 @@ function BriefFields({ fields, draft, editing, errors, onChange }: {
   fields: FieldDefinition[];
   draft: SoloSetupBrief;
   editing: boolean;
-  errors: Partial<Record<SoloSetupTextField, string>>;
-  onChange: (field: SoloSetupTextField, value: string) => void;
+  errors: Partial<Record<SetupEditableTextField | "authorizedRepresentativeUserId", string>>;
+  onChange: (field: SetupEditableTextField, value: string) => void;
 }) {
   return <div className="setup-fields">
     {fields.map((field) => <div className={field.multiline ? "setup-field setup-field--wide" : "setup-field"} key={field.key}>
       <div className="setup-field__label"><label htmlFor={`setup-${field.key}`}>{field.label}</label><SourceBadge source={draft.provenance[field.key]?.source}/></div>
       {editing ? field.multiline
         ? <textarea id={`setup-${field.key}`} name={field.key} value={draft[field.key]} onChange={(event) => onChange(field.key, event.target.value)} aria-invalid={Boolean(errors[field.key])} aria-describedby={errors[field.key] ? `setup-${field.key}-error` : undefined}/>
-        : <input id={`setup-${field.key}`} name={field.key} value={draft[field.key]} onChange={(event) => onChange(field.key, event.target.value)} aria-invalid={Boolean(errors[field.key])} aria-describedby={errors[field.key] ? `setup-${field.key}-error` : undefined}/>
+        : field.options
+          ? <select id={`setup-${field.key}`} name={field.key} value={draft[field.key]} onChange={(event) => onChange(field.key, event.target.value)} aria-invalid={Boolean(errors[field.key])} aria-describedby={errors[field.key] ? `setup-${field.key}-error` : undefined}>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          : <input id={`setup-${field.key}`} name={field.key} type={field.key === "businessRegistrationNumber" ? "password" : undefined} autoComplete={field.key === "businessRegistrationNumber" ? "off" : undefined} value={draft[field.key]} onChange={(event) => onChange(field.key, event.target.value)} aria-invalid={Boolean(errors[field.key])} aria-describedby={errors[field.key] ? `setup-${field.key}-error` : undefined}/>
         : <ReadValue>{draft[field.key]}</ReadValue>}
       {field.hint && <small>{field.hint}</small>}
       {errors[field.key] && <small id={`setup-${field.key}-error`} className="setup-field__error">{errors[field.key]}</small>}
@@ -109,7 +139,7 @@ export function SoloSetupView({ account }: { account: string }) {
   const data = useSoloSetupBrief();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.brief);
-  const [errors, setErrors] = useState<Partial<Record<SoloSetupTextField, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<SetupEditableTextField | "authorizedRepresentativeUserId", string>>>({});
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [proposalId, setProposalId] = useState<string | null>(null);
   const errorSummary = useRef<HTMLDivElement>(null);
@@ -134,7 +164,7 @@ export function SoloSetupView({ account }: { account: string }) {
     setEditing(false);
   };
 
-  const change = (field: SoloSetupTextField, value: string) => {
+  const change = (field: SetupEditableTextField, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
   };
@@ -217,17 +247,36 @@ export function SoloSetupView({ account }: { account: string }) {
     </aside>}
 
     <nav className="setup-jump" aria-label="Business brief sections">
-      <a href="#business-identity">Identity</a><a href="#representation">Representation</a><a href="#business-model">Business model</a><a href="#direction">Direction</a><a href="#paige-brief">Paige brief</a><a href="#architecture">How Paige uses it</a>
+      <a href="#business-identity">Identity</a><a href="#carrier-identity">Carrier identity</a><a href="#representation">Representation</a><a href="#business-model">Business model</a><a href="#direction">Direction</a><a href="#paige-brief">Paige brief</a><a href="#architecture">How Paige uses it</a>
     </nav>
 
     <Section id="business-identity" eyebrow="Business identity" title="The business Paige is representing" description="Record the names and contact details the owner can stand behind. Optional industry codes remain blank until the owner confirms them.">
       <BriefFields fields={identityFields} draft={draft} editing={editing} errors={errors} onChange={change}/>
     </Section>
 
+    <Section id="carrier-identity" eyebrow="Carrier identity" title="The legal sender carriers will verify" description="These owner-confirmed facts feed the tenant's Secondary Customer Profile and Brand registration. They never inherit from the agency or Paige platform account.">
+      <div className="setup-boundary"><ShieldCheck aria-hidden/><div><strong>Full registration numbers are sealed</strong><span>{draft.businessRegistrationNumberLast4 ? `A number ending in ${draft.businessRegistrationNumberLast4} is stored securely. Enter a new number only to replace it.` : "No EIN or tax registration number is stored yet."}</span></div></div>
+      <BriefFields fields={carrierIdentityFields} draft={draft} editing={editing} errors={errors} onChange={change}/>
+    </Section>
+
     <Section id="representation" eyebrow="Representation" title="Who represents this business" description="Designate the owners or executives Paige should understand as business representatives. Team remains the source of truth for people, invitations, access and roles.">
       <div className="setup-boundary"><Users aria-hidden/><div><strong>Team owns invitations, access and workspace roles</strong><span>Setup only selects from people already in Team. It does not create a second roster.</span></div></div>
       {editing ? <fieldset className="setup-people"><legend>Business representatives</legend>{data.representatives.map((person) => <label key={person.id}><input type="checkbox" value={person.id} checked={draft.representativeUserIds.includes(person.id)} disabled={person.status !== "Active"} onChange={toggleRepresentative}/><span><strong>{person.name}</strong><small>{person.role} · {person.status}{person.email ? ` · ${person.email}` : ""}</small></span></label>)}</fieldset>
         : <div className="setup-people setup-people--read"><h3>Business representatives <SourceBadge source={draft.provenance.representatives?.source}/></h3>{selectedRepresentatives.length ? selectedRepresentatives.map((person) => <div key={person.id}><span>{person.name}</span><small>{person.role}</small></div>) : <p>No business representative has been confirmed yet.</p>}</div>}
+      <div className="setup-field setup-field--wide">
+        <div className="setup-field__label"><label htmlFor="setup-authorized-representative">A2P authorized representative</label><SourceBadge source={draft.provenance.authorizedRepresentative?.source}/></div>
+        {editing
+          ? <select id="setup-authorized-representative" value={draft.authorizedRepresentativeUserId} onChange={(event) => {
+              setDraft((current) => ({ ...current, authorizedRepresentativeUserId: event.target.value }));
+              setErrors((current) => ({ ...current, authorizedRepresentativeUserId: undefined }));
+            }} aria-invalid={Boolean(errors.authorizedRepresentativeUserId)}>
+              <option value="">Choose a confirmed representative</option>
+              {selectedRepresentatives.filter((person) => person.status === "Active").map((person) => <option key={person.id} value={person.id}>{person.name} · {person.role}</option>)}
+            </select>
+          : <ReadValue>{selectedRepresentatives.find((person) => person.id === draft.authorizedRepresentativeUserId)?.name}</ReadValue>}
+        {errors.authorizedRepresentativeUserId && <small className="setup-field__error">{errors.authorizedRepresentativeUserId}</small>}
+        <small>Twilio may contact this person during vetting. The representative must remain an active Team member.</small>
+      </div>
       <div className="setup-email-grid">
         <div><Mail aria-hidden/><span>Platform-assigned sending email</span><ReadValue>{data.managedSendingEmail}</ReadValue><SourceBadge source="connection_sourced"/></div>
         <div><Mail aria-hidden/><span>Primary business email</span><ReadValue>{data.primaryBusinessEmail}</ReadValue><SourceBadge source="connection_sourced"/></div>

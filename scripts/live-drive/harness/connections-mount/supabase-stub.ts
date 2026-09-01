@@ -124,6 +124,18 @@ function seed(): Record<string, Row[]> {
         phone: "+1 555 0111", website_url: "https://viewer.example.invalid",
       },
     ],
+    user_roles: [
+      { user_id: "u1", role: "admin" },
+      { user_id: "u2", role: "member" },
+    ],
+    coach_client_profiles_safe: [
+      { user_id: "u1", full_name: "Harness Owner", avatar_url: null, suspended_at: null, suspended_reason: null },
+      { user_id: "u2", full_name: "Harness Teammate", avatar_url: null, suspended_at: null, suspended_reason: null },
+    ],
+    tenant_members: [
+      { tenant_id: TENANT, user_id: "u1", role: "owner", is_owner: true, status: "active" },
+      { tenant_id: TENANT, user_id: "u2", role: "member", is_owner: false, status: "active" },
+    ],
     staff_calendar_settings: [{
       user_id: "harness-user",
       google_calendar_connected: true, google_email: "harness@example.invalid",
@@ -306,6 +318,42 @@ export const supabase = {
   rpc: (name: string, args?: Record<string, unknown>) => {
     if (name === "current_user_tenant_id") return Promise.resolve(ok(TENANT));
     if (name === "is_current_user_tenant_admin") return Promise.resolve(ok(state() !== "readonly"));
+    if (name === "tenant_roster_excluded_user_ids") return Promise.resolve(ok([]));
+    if (name === "get_solo_setup_identity") {
+      const stored = db.tenants[0]?.brand as Record<string, unknown> | undefined;
+      const businessBrief = stored?.business_brief ?? {
+        legalName: "Harness Advisory LLC", publicName: "Harness Advisory", dbaName: "",
+        website: "https://harness.example.invalid", address: "123 Harness Way, Atlanta, GA 30303",
+        phone: "+14045550123", industry: "PROFESSIONAL_SERVICES", naicsCode: "541611", sicCode: "8742",
+        entityType: "Limited Liability Corporation", stateOfFormation: "GA",
+        businessRegistrationIdentifier: "EIN", regionsOfOperation: "USA_AND_CANADA",
+        registeredStreet: "123 Harness Way", registeredStreetSecondary: "", registeredCity: "Atlanta",
+        registeredRegion: "GA", registeredPostalCode: "30303", registeredIsoCountry: "US",
+        authorizedRepresentativePhone: "+14045550123", authorizedRepresentativeJobPosition: "CEO",
+        representativeUserIds: ["u1"], authorizedRepresentativeUserId: "u1",
+        offers: "Harness advisory services", deliveryModel: "Remote and scheduled",
+        idealCustomer: "Harness client", customerSegments: "Owner-led businesses", serviceArea: "United States",
+        currentPriority: "Verify the carrier identity flow", goals90Day: "Complete registration readiness",
+        annualDirection: "Operate with governed communications", successDefinition: "Accurate carrier records",
+        constraints: "Never infer legal facts", brandVoice: "Clear and grounded",
+        operatingPreferences: "Ask when evidence is missing", doNotAssume: "Provider approval",
+        provenance: {}, updatedAt: "2026-09-01T00:00:00.000Z",
+      };
+      return Promise.resolve(ok({
+        tenant_id: TENANT, tenant_name: "Harness workspace", business_brief: businessBrief,
+        pending_proposal: null, primary_business_email: "owner@harness.example.invalid",
+        can_edit: state() !== "readonly", business_registration_number_last_4: "6789",
+      }));
+    }
+    if (name === "save_solo_setup_identity") {
+      const brief = (args?._brief ?? {}) as Record<string, unknown>;
+      const safeBrief = { ...brief };
+      delete safeBrief.businessRegistrationNumber;
+      const brand = db.tenants[0].brand as Record<string, unknown>;
+      brand.business_brief = safeBrief;
+      persist();
+      return Promise.resolve(ok({ business_brief: safeBrief, businessRegistrationNumberLast4: "6789" }));
+    }
 
     // Who could be added as a host. Real shape: every teammate, each flagged with
     // whether they are already on THIS calendar — the surface filters, not the RPC.
@@ -436,6 +484,18 @@ export const supabase = {
   },
   functions: {
     invoke: (fn: string, opts?: { body?: Record<string, unknown> }) => {
+      if (fn === "admin-list-users") {
+        return Promise.resolve({
+          data: {
+            scoped: true,
+            users: [
+              { id: "u1", email: "owner@harness.example.invalid", created_at: "2026-01-01T00:00:00.000Z", last_sign_in_at: "2026-09-01T00:00:00.000Z" },
+              { id: "u2", email: "team@harness.example.invalid", created_at: "2026-02-01T00:00:00.000Z", last_sign_in_at: "2026-09-01T00:00:00.000Z" },
+            ],
+          },
+          error: null,
+        });
+      }
       // `useSoloComms` awaits this read FIRST and rethrows its error, so a blanket
       // failure short-circuited the hook before it consumed the plan rows, the
       // subscription RPC or the admin RPC. Billing then rendered its error/retry

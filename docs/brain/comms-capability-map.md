@@ -283,3 +283,16 @@ re-planning them.
   operator query.
 - The claim that two tenant numbers are live at the provider comes from `docs/brain/config-registry.md`
   (dated 2026-08-09). Treat it as a dated secondary source, not a fresh reading.
+
+## Setup → tenant A2P identity seam — draft 2026-09-01
+
+Setup is the tenant-facing owner of legal business name, entity details, registration identifier,
+registered address, operating regions, public website, support phone, and the authorized
+representative. The full registration number crosses a write-only RPC seam into Vault and is never
+stored in `tenants.brand`, returned to PAIGE context, or reloaded to the browser. The canonical legal
+record is `tenant_legal_profile`; Messaging registration consumes that record instead of maintaining
+a second owner-entered copy.
+
+Provider submission remains a separate governed server action. Each tenant maps to its own Twilio
+subaccount resources: Secondary Customer Profile → Trust Product/Brand → Campaign → Messaging Service.
+The platform operator maps to the master account's Primary Customer Profile. Browser callers cannot write provider SIDs or submission/approval state. This draft adds the data contract only; live provider submission, status ingestion, authenticated preview, merge, and deployment remain UNVERIFIED.

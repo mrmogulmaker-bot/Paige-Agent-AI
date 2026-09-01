@@ -1610,3 +1610,18 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   A future communications read may consume only the canonical server-resolved `can_send_sms` result
   when that narrow contract exists. Systems Check does not own Settings, Calendar, Conversations,
   Mind, the shared shell, provider configuration, or new backend logic.
+
+### Setup-owned A2P legal identity — implementation draft (2026-09-01)
+
+- **Status:** local implementation draft; Gate 2 pending. Not merged, deployed, provider-submitted,
+  or production-accepted.
+- **Human owner:** each tenant confirms legal identity in Setup. The full registration number is
+  write-only and vaulted; only its last four digits return to the client.
+- **Canonical data:** `tenant_legal_profile` supplies legal name, entity/formation details, public
+  website, structured registered address, regions, registration identifier, and an active confirmed
+  Team member as authorized representative. Messaging registration consumes this record.
+- **Provider architecture:** platform operator Primary Customer Profile on the Twilio master account;
+  each client uses a Secondary Customer Profile and downstream Brand/Campaign/Messaging Service in
+  its own subaccount. Provider identifiers and submission state are server-owned.
+- **PAIGE boundary:** may explain missing fields and propose non-sensitive facts for confirmation;
+  cannot invent the tax number, choose the representative, submit, purchase, or imply approval.
