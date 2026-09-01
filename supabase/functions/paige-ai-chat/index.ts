@@ -6065,7 +6065,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const confirmAdmin = createClient(supabaseUrl, supabaseServiceKey);
             const confirmTenantId = personaCtx?.tenant_id ?? null;
             const confirmArgsHash = await toolArgsHash(tc.function.name, gateArgs);
-            const confirmSummary = describeConfirm(tc.function.name, gateArgs);
 
             // A guard that is not deployed yet must not take the platform down with it. The edge
             // bundle and the migration ship on the same merge but through SEPARATE workflows, so
@@ -6128,7 +6127,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     _requested_by: user.id,
                     _tool_key: tc.function.name,
                     _args_hash: confirmArgsHash,
-                    _summary: confirmSummary,
+                    // Computed HERE, not above: it is a stored label the claim path never reads,
+                    // and calling it on that path would be new exposure for no gain.
+                    _summary: describeConfirm(tc.function.name, gateArgs),
                   });
                   if (openErr) console.error("[confirm-binding] open failed for", tc.function.name, openErr);
                 } catch (e) {
