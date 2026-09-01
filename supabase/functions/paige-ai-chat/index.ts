@@ -10516,7 +10516,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         } catch (e) { console.error("[paige] write attribution threw", String(e)); }
       };
 
-      const emitRailForTool = (tc: any, res: any, label: string): void => {
+      // ASYNC, and it must stay so (merge repair, 2026-09-02): `resolveRailContactId` became a
+      // lookup on main, so the body awaits. Resolving the merge to this branch's synchronous
+      // signature made the whole function un-typecheckable under deno — caught by the ratchet,
+      // not by `tsc`, because the frontend typecheck never reads this file.
+      const emitRailForTool = async (tc: any, res: any, label: string): Promise<void> => {
         try {
           const name: string = tc?.function?.name ?? "";
           // DERIVED, not frozen: anything the target map says lands on a client belongs on that
