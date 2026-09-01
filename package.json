@@ -40,6 +40,7 @@
     "lint:readiness-copy": "node scripts/ci/readiness-copy-parity.mjs",
     "lint:readiness-copy:test": "node scripts/ci/readiness-copy-parity.mjs --self-test",
     "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",
+    "smoke:comms-domain-audit": "node scripts/comms-domain-audit-smoke.mjs",
     "smoke:comms-purchase-safety": "node scripts/comms-purchase-safety-smoke.mjs",
     "smoke:mcp-registry": "node scripts/mcp-registry-provider-smoke.mjs",
     "smoke:mcp-transport": "node scripts/mcp-transport-smoke.mjs",

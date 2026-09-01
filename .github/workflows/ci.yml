@@ -365,6 +365,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run smoke:comms-tenant-scope
 
+      # Drives the REAL manage-tenant-domain handler. Adding, re-pointing or removing
+      # a sending domain changes the identity every outbound message carries, and none
+      # of it left a trace until now. `deno check` proves the audit writes compile; only
+      # driving the handler proves they fire on the right paths — and, just as much,
+      # that a rejected verb, a foreign row and a DNS poll that found nothing write
+      # NOTHING. 16 of its 20 assertions fail against the version before the change;
+      # the 4 that pass are exactly those negative controls.
+      - name: Smoke — sending-domain changes leave audit evidence
+        if: ${{ !cancelled() }}
+        run: npm run smoke:comms-domain-audit
+
       - name: Smoke — client-memory authorization (§9 cross-client fail-closed)
         if: ${{ !cancelled() }}
         run: npm run test:client-memory-authz

@@ -60,7 +60,11 @@ Deno.serve(async (req) => {
   // Locate the tenant's Gmail connector (service role, explicitly tenant-scoped §9).
   const { data: row } = await admin
     .from("channel_connectors")
-    .select("id, credentials_vault_ref")
+    // `inbound_address` is selected for the audit row below, not for the teardown.
+    // Without it the entry would record `address: null` on every disconnect, which
+    // reads as "no address" rather than "never asked for" — an audit row inventing
+    // its own key field is the §13 failure `comms-purchase-number` names explicitly.
+    .select("id, credentials_vault_ref, inbound_address")
     .eq("tenant_id", callerTenant)
     .eq("channel_type", "email")
     .eq("provider", "gmail")
@@ -113,6 +117,32 @@ Deno.serve(async (req) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  /**
+   * Evidence that Paige's permission to send as this account was revoked.
+   *
+   * This is the same class of act as `quickbooks-disconnect`, which has always
+   * written `audit_logs`; this seam wrote nothing, so revoking a third-party
+   * send grant left no attributable trace anywhere.
+   *
+   * NEVER BLOCKING (the `comms-purchase-number` pattern): the grant is already
+   * revoked and the row already deactivated by the time this runs, so a failed
+   * audit write must not report a completed disconnect as a failure. Logged
+   * loudly, never swallowed (§32).
+   *
+   * NO SECRET: the refresh token lives in Vault and its `credentials_vault_ref`
+   * has just been nulled. Neither the token nor the ref goes in here. The
+   * address does, because an audit row that does not say WHICH account lost the
+   * grant is not evidence of anything.
+   */
+  const { error: auditErr } = await admin.from("audit_logs").insert({
+    user_id: user.id,
+    entity: "gmail_connection",
+    action: "comms:sending_account_disconnected",
+    entity_id: row.id,
+    data: { tenant_id: callerTenant, address: row.inbound_address ?? null, provider: "gmail" },
+  });
+  if (auditErr) console.error("[gmail-disconnect] audit write failed:", auditErr.message);
 
   return new Response(JSON.stringify({ ok: true, disconnected: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },

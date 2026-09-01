@@ -305,6 +305,50 @@ Deno.serve(async (req) => {
       }
     }
 
+    /**
+     * Evidence that this workspace granted Paige permission to send as a Google
+     * account. It is the counterpart of the disconnect entry, and the pair is
+     * what makes the grant's lifetime answerable at all.
+     *
+     * Placed AFTER both write branches so it records a grant that actually
+     * landed: every failure path above returns before reaching here, including
+     * the two that report the address is already connected under another tenant.
+     * `reconnected` distinguishes re-authorising an address this workspace
+     * already held from granting one for the first time.
+     *
+     * `entity_id` is null on a FIRST connect, honestly: the insert above does not
+     * return the new row's id, and widening it would change a write path whose
+     * error handling is load-bearing for the unique-index race below it. The row
+     * is still identified — tenant, provider and address pin it exactly — and a
+     * null here means "not captured", never "no connector".
+     *
+     * NEVER BLOCKING (the `comms-purchase-number` pattern): the grant exists and
+     * the connector row is written by the time this runs, so a failed audit write
+     * must not turn a completed connection into a reported failure. Logged
+     * loudly, never swallowed (§32).
+     *
+     * NO SECRET: the refresh token is in Vault and the access token is not
+     * persisted at all. Neither, nor the vault ref, appears here. The address
+     * does, because an audit row that does not say WHICH account was granted is
+     * not evidence of anything.
+     */
+    const { error: auditErr } = await admin.from("audit_logs").insert({
+      user_id: user.id,
+      entity: "gmail_connection",
+      action: "comms:sending_account_connected",
+      entity_id: ownRow?.id ?? null,
+      data: {
+        tenant_id: tenantId,
+        address: gmailAddr,
+        provider: "gmail",
+        reconnected: Boolean(ownRow?.id),
+        // The scope actually granted, so the record cannot later be read as
+        // broader than it was. This connection asks to SEND only.
+        scope: "gmail.send",
+      },
+    });
+    if (auditErr) console.error("[gmail-oauth-callback] audit write failed:", auditErr.message);
+
     return new Response(
       JSON.stringify({ ok: true, gmail_address: gmailAddr, return_origin: parsed.r ?? null }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
