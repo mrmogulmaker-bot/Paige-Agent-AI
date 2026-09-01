@@ -24,8 +24,6 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
-import { useSoloBusiness } from "./data/useSoloBusiness";
-import { useSoloOwner } from "./data/useSoloOwner";
 import { useSoloComms } from "./data/useSoloComms";
 import {
   useSoloNumbers, EMPTY_NUMBER_FILTERS,
@@ -46,6 +44,7 @@ import {
 } from "./settings-contract";
 import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
+import { SoloSetupView } from "./settings-setup";
 import "./settings.css";
 
 function Truth({ value, capability = false }: { value: SettingsTruth; capability?: boolean }) {
@@ -104,32 +103,6 @@ function useManagedIdentity() {
     return () => activeGate.clear();
   }, [tenantLoading, load]);
   return { ...state, loading: tenantLoading || state.loading || Boolean(activeTenantId && state.tenantId !== activeTenantId), retry: load };
-}
-
-function SetupView() {
-  const business = useSoloBusiness();
-  const owner = useSoloOwner();
-  const { activeTenant } = useTenantContext();
-  const account = String(activeTenant?.account_number ?? "");
-  const pending = [business.name, business.brand.website, business.brand.business_phone, owner.owner.name, owner.owner.email].filter(Boolean).length;
-  return <div className="ss-grid">
-    <Card title="Setup readiness" icon={CheckCircle2} truth="PARTIAL">
-      <div className="ss-progress"><div><strong>{pending}/5</strong><span>supported details present</span></div><progress value={pending} max={5}/></div>
-      <p className="ss-note">Setup supplies optional facts and evidence. PAIGE Systems Check owns the daily assessment.</p>
-      <div className="ss-actions"><Link to={account ? `/solo/${account}/command-center/systems-check` : "/admin"}>Open Systems Check <ExternalLink/></Link><Link to={account ? `/solo/${account}/analytics` : "/admin/analytics"}>Open Public Presence <ExternalLink/></Link></div>
-    </Card>
-    <Card title="Business profile" icon={Building2} truth="PARTIAL">
-      <ReadState loading={business.loading} error={business.error} retry={business.refresh}>
-        <div className="ss-fields"><Field label="Business name" value={business.name}/><Field label="Website" value={business.brand.website}/><Field label="Phone" value={business.brand.business_phone}/><Field label="Industry" value={business.brand.industry}/></div>
-      </ReadState>
-    </Card>
-    <Card title="Owner details" icon={Users} truth="PARTIAL">
-      <ReadState loading={owner.loading} error={owner.error} retry={owner.refresh}>
-        <div className="ss-fields"><Field label="Name" value={owner.owner.name}/><Field label="Work email" value={owner.owner.email}/><Field label="Phone" value={owner.owner.phone}/><Field label="Website" value={owner.owner.website}/></div>
-      </ReadState>
-    </Card>
-    <Card title="Formation & operating details" icon={FileLock2} truth="UNAVAILABLE"><p>There is no proven structured entity, formation, filing, or operating-details store in this frontend contract. PAIGE ingestion remains unavailable here.</p></Card>
-  </div>;
 }
 
 function TeamView() {
@@ -1596,9 +1569,9 @@ export function SoloSettings() {
     }
   }, [tab, segment]);
   const current = SOLO_SETTINGS_DESTINATIONS.find(item => item.key === tab) ?? SOLO_SETTINGS_DESTINATIONS[0];
-  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SetupView/>;
+  const view = tab === "team" ? <TeamView/> : tab === "connections" ? <ConnectionsView initialSegment={segment}/> : tab === "integrations" ? <SoloIntegrationsView/> : tab === "notifications" ? <NotificationsView/> : tab === "security-data" ? <SecurityView/> : tab === "vault" ? <VaultView/> : tab === "billing" ? <BillingView/> : <SoloSetupView account={account}/>;
   return <div ref={rootRef} className="solo-settings">
-    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
+    <header className="ss-page-head"><div><span>Solo settings</span><h1>{current.label}</h1><p>{current.key === "setup" ? "The owner-confirmed business truth Paige may use to understand and support this workspace." : current.key === "connections" ? "Communications owns whether a message can send. Calendars owns scheduling, links, routing and notification rules." : current.key === "integrations" ? "External tools, bridges, and safe configuration handoffs." : "Account configuration with honest runtime boundaries."}</p></div><Truth value={current.truth}/></header>
     {entry && <div className="ss-return"><span>Opened from {entry.origin === "calendar" ? "Calendar" : "Conversations"}</span>{entry.returnTo ? <Link to={entry.returnTo}>Return to {entry.origin === "calendar" ? "Calendar" : "Conversations"}</Link> : <span>Return address rejected</span>}</div>}
     <div className="ss-content" data-settings-tab={tab} data-tab-count={tabs.length}>{view}</div>
   </div>;

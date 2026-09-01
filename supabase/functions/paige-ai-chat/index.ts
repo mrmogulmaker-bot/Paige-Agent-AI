@@ -136,7 +136,7 @@ function describeStep(
     // Pipeline (owner)
     case "pipeline_create": return { label: "Building your pipeline", group: "owner" };
     case "pipeline_add_stage": return { label: "Adding a pipeline stage", group: "owner" };
-    case "pipeline_suggest_from_program": return { label: "Mapping out your sales process", group: "owner" };
+    case "pipeline_configure": return { label: "Configuring your pipeline", group: "owner" };
     case "deal_create": return { label: "Adding the deal", group: "owner" };
     case "deal_move_stage": return { label: "Moving the deal", group: "owner" };
     case "crm_pipeline_summary": case "crm_list_deals": return { label: "Reviewing your pipeline", group: "owner" };
@@ -3761,13 +3761,13 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
 - "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
 - "What tasks are overdue?" → crm_list_tasks with overdue=true.
-- "Set up a pipeline for my program" / "Help me figure out my sales process" → if they describe a program or offer, pipeline_suggest_from_program to draft the stages, read them back, refine, then pipeline_create (confirm-gated). You can also design the stages conversationally yourself; use the proposer when they've described a program/offer so the result matches the app.
+- "Set up a pipeline for my program" / "Help me organize this workflow" → read the tenant's current pipeline context, propose an editable name, purpose, and stage list in the operator's own vocabulary, refine it with them, then use pipeline_configure (confirm-gated) to save the draft. Do not impose preset stages, a generic sales taxonomy, won/lost meanings, or activation. Activate only after the operator reviews the saved draft and explicitly asks.
 - "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
 - "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
 
 Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
 
-BUSINESS PROFILE — YOU SET IT UP, YOU NEVER PUNT IT BACK. When the operator asks to "set up my business profile", "add our company details", or update their business name, website, address, phone, legal entity, logo, or brand colors, that is YOUR job — you own it. NEVER say "that's on you to set up" or send them off to a settings page; you have update_business_profile and you drive it. First, use what you can already see (pull the business name, website, colors, logo, sending identity from the workspace's existing profile — don't ask for what you already have). One nuance on "website": the workspace's Paige portal domain/subdomain is NOT necessarily their real business/marketing website — if you only have the portal domain, ask for (or confirm) their actual business website rather than presenting the portal URL as it. Then ask ONE tight, grouped set of questions for only the details that are actually missing — business/company name, website, mailing or registered address, phone, legal entity name, logo, brand colors, and the name/email outbound mail should come from. Read back what you're about to save in one plain line, get their yes, then call update_business_profile with confirm:true. This is the workspace's OWN company identity — if they want to store details about one of their CLIENTS instead, that's crm_update_contact, not this. Be the one who proposes it: if they only mention one detail in passing ("our new number is…"), offer to round out the whole profile while you're at it.
+BUSINESS BRIEF — YOU HELP THE OWNER COMPLETE IT, BUT YOU NEVER SILENTLY CHANGE BUSINESS TRUTH. When the operator asks to "set up my business", "add our company details", or tells you about their identity, offers, customers, direction, goals, constraints, voice, or operating preferences, use the business brief already present in your context and ask ONE tight grouped set of questions only for what is missing. The Paige workspace URL is not automatically the real business website; never substitute it. Read back the proposed change, get their yes, then call propose_business_brief_update with confirm:true. That stages a visible suggestion in Settings → Setup; it does NOT save the brief. Tell the owner to review and save it there. Setup owns business truth. Team owns people, invitations, access and roles. Connections owns email/provider/payment configuration. Never put an email-provider change or a new team member into the business brief. If they are updating a CLIENT instead, use crm_update_contact.
 
 ACTION BUS — you run the business's departments and route work between them on your action bus. Your departments: ${deptRosterLine}. Owner Ops works for the coach/consultant/agency and Client Experience works for each client; the specialist desks (marketing, sales, finance, operations, and the rest) own their own lane of work. When work needs to move — a follow-up to send, an at-risk client to flag, a campaign to draft, a task to queue — file it to the department that owns it and drive it:
 - action_file starts a tracked hand-off (pick the action_kind: owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation, etc.).
@@ -4259,8 +4259,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "propose_business_brief_update",
+              description: "Admin/coach only. Stage a bounded suggestion for THIS workspace's Solo Setup business brief. This never changes confirmed business truth: it creates a visible proposal that an owner must review and save in Settings -> Setup. Use for business identity, offers, customers, direction, goals, constraints, brand voice, operating preferences, and do-not-assume boundaries. Do not use for Team membership/roles or email/provider/payment configuration. PROPOSE FIRST in chat, get the operator's yes, then call with confirm:true unless Trust Compass already allows automatic proposal staging.",
+              parameters: {
+                type: "object",
+                properties: {
+                  legalName: { type: "string" }, publicName: { type: "string" }, dbaName: { type: "string" },
+                  website: { type: "string" }, address: { type: "string" }, phone: { type: "string" }, industry: { type: "string" },
+                  naicsCode: { type: "string", description: "Only a code explicitly supplied or confirmed by the owner." },
+                  sicCode: { type: "string", description: "Only a code explicitly supplied or confirmed by the owner." },
+                  offers: { type: "string" }, deliveryModel: { type: "string" }, idealCustomer: { type: "string" },
+                  customerSegments: { type: "string" }, serviceArea: { type: "string" }, currentPriority: { type: "string" },
+                  goals90Day: { type: "string" }, annualDirection: { type: "string" }, successDefinition: { type: "string" },
+                  constraints: { type: "string" }, brandVoice: { type: "string" }, operatingPreferences: { type: "string" },
+                  doNotAssume: { type: "string" }, reason: { type: "string", description: "Short owner-facing reason for the proposed update." },
+                  confirm: { type: "boolean", description: "Set true only after the operator approves staging this proposal." }
+                },
+                required: ["reason"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "update_business_profile",
-              description: "Admin/coach only. Set up or update THIS workspace's OWN business/company profile — the tenant's business name, website, mailing/registered address, phone, legal entity name, logo, brand colors, and email sending identity. Use this whenever the operator asks to \"set up my business profile\", \"add our company details\", \"update our address / phone / website\", or hands you any of those company facts. This is the tenant's OWN business identity, NOT a client or contact record (for a client, use crm_update_contact instead). Only pass the fields you're setting; omitted fields are left as-is (existing values are preserved — this merges, it never wipes the rest of the brand). PROPOSE FIRST: read back exactly what you'll save in one plain line, get the operator's yes, then call again with confirm:true — unless the workspace autonomy policy has set this action to auto. Returns the persisted profile.",
+              description: "Legacy brand-asset compatibility tool. Business identity fields are staged as an owner-reviewable Solo Setup proposal, never written directly; logo and brand colors still merge through the established Brand Kit seam. Email sending identity is not changed here—Connections owns email/provider configuration. Prefer propose_business_brief_update for business truth. PROPOSE FIRST and get the operator's yes before confirm:true.",
               parameters: {
                 type: "object",
                 properties: {
@@ -4277,52 +4300,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   confirm: { type: "boolean", description: "Set true ONLY after the operator has approved the change. Leave unset on the first (proposal) call." }
                 },
                 required: []
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "pipeline_create",
-              description: "Admin/coach only. Create a new sales/delivery pipeline with ordered stages. Use when the operator asks you to set up a pipeline for their program or business. PROPOSE FIRST: describe the pipeline and its stages, get the operator's yes, then call again with confirm:true — unless the workspace autonomy policy has set this action to auto. Each stage: label, probability 0-100, stage_type open|won|lost (exactly one won, one lost). Returns the new pipeline id.",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string", description: "Pipeline name in the tenant's own language." },
-                  description: { type: "string" },
-                  is_default: { type: "boolean", description: "Make this the tenant's default pipeline." },
-                  stages: {
-                    type: "array",
-                    description: "Ordered stages, first to last.",
-                    items: {
-                      type: "object",
-                      properties: {
-                        label: { type: "string" },
-                        probability: { type: "number" },
-                        stage_type: { type: "string", enum: ["open", "won", "lost"] }
-                      },
-                      required: ["label"]
-                    }
-                  }
-                },
-                required: ["name"]
-              }
-            }
-          },
-          {
-            type: "function",
-            function: {
-              name: "pipeline_add_stage",
-              description: "Admin/coach only. Add a single stage to an existing pipeline. Propose the stage first and call again with confirm:true once the operator approves — unless the workspace has set this action to auto.",
-              parameters: {
-                type: "object",
-                properties: {
-                  pipeline_id: { type: "string" },
-                  label: { type: "string" },
-                  probability: { type: "number" },
-                  stage_type: { type: "string", enum: ["open", "won", "lost"] }
-                },
-                required: ["pipeline_id", "label"]
               }
             }
           },
@@ -4846,14 +4823,46 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
-              name: "pipeline_suggest_from_program",
-              description: "Admin/coach only. When the operator wants help figuring out what their SALES PROCESS should look like from a described program/offer/service, use this to get a tuned, guard-railed proposal (4-7 stages in their own vocabulary, exactly one won and one lost). Pass the operator's own description of the program/offer as program_text (a paragraph or more — ask for it if they haven't given it). This RETURNS a proposal only; it does NOT create anything. Read the proposed stages back to the operator, refine conversationally, then call pipeline_create (confirm-gated) to build it. Prefer this over inventing stages yourself when they describe a program or offer.",
+              name: "pipeline_configure",
+              description: "Admin only. The complete governed pipeline.configure capability shared with the Campaigns Pipeline workspace. Read configuration with crm_pipeline_summary, propose an editable tenant-specific shape, then use this tool for create, rename, describe, activate, archive, restore, or delete pipeline; create, edit, reorder, archive, restore, or delete stage; and move a deal. create-pipeline may include an explicit editable stages array or no stages for a blank draft; it never substitutes presets. Every write is tenant-scoped, attributable, idempotent, version-checked, and confirm-gated. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
               parameters: {
                 type: "object",
                 properties: {
-                  program_text: { type: "string", description: "The operator's description of their program/offer/service, in their words (min ~1 paragraph)." }
+                  command: {
+                    type: "object",
+                    description: "One explicit pipeline.configure command. Use current tenant ids and versions. Omit stages for a blank draft; when present, stages are the operator-approved editable proposal.",
+                    properties: {
+                      type: { type: "string", enum: ["create-pipeline", "update-pipeline", "activate-pipeline", "archive-pipeline", "restore-pipeline", "delete-pipeline", "create-stage", "update-stage", "archive-stage", "restore-stage", "delete-stage", "reorder-stages", "move-deal"] },
+                      pipelineId: { type: "string", description: "Current tenant pipeline id." },
+                      stageId: { type: "string", description: "Current tenant stage id." },
+                      dealId: { type: "string", description: "Current tenant deal id." },
+                      targetStageId: { type: "string", description: "Active stage id in the deal's current pipeline." },
+                      expectedVersion: { type: "integer", minimum: 1, description: "Version read immediately before proposing this write." },
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      label: { type: "string" },
+                      movePolicy: { type: "string", enum: ["direct", "approval"] },
+                      orderedIds: { type: "array", items: { type: "string" }, description: "Every active stage id exactly once, in the requested order." },
+                      reason: { type: "string", description: "Short operator-visible reason for a deal move." },
+                      stages: {
+                        type: "array",
+                        description: "Optional explicit stages for an editable draft. Never generate a preset taxonomy.",
+                        items: {
+                          type: "object",
+                          properties: {
+                            label: { type: "string" },
+                            description: { type: "string" },
+                            movePolicy: { type: "string", enum: ["direct", "approval"] },
+                          },
+                          required: ["label"],
+                        },
+                      },
+                    },
+                    required: ["type"],
+                  },
+                  idempotency_key: { type: "string", description: "A stable unique key for this exact proposed write. Reuse it only when retrying the identical command." }
                 },
-                required: ["program_text"]
+                required: ["command", "idempotency_key"]
               }
             }
           },
@@ -5455,10 +5464,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // future accidental re-registration still cannot inherit read semantics.
       "marketplace_install", "marketplace_uninstall",
       "crm_update_contact", "crm_create_contact", "crm_delete_contact",
+      "propose_business_brief_update",
       "update_business_profile",
       "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
       "crm_create_task", "crm_log_activity",
-      "pipeline_create", "pipeline_add_stage",
+      "pipeline_create", "pipeline_add_stage", "pipeline_configure",
       "deal_create", "deal_move_stage",
       "member_grant_role", "member_revoke_role",
       "calendar_book_meeting", "program_enroll",
@@ -5489,6 +5499,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_update_contact: "updating a contact",
       crm_create_contact: "adding a contact",
       crm_delete_contact: "deleting a contact",
+      propose_business_brief_update: "staging a business brief suggestion",
       update_business_profile: "updating your business profile",
       crm_update_pipeline_stage: "moving a client's stage",
       crm_assign_coach: "assigning a coach",
@@ -5497,6 +5508,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_log_activity: "logging an activity",
       pipeline_create: "creating a pipeline",
       pipeline_add_stage: "adding a pipeline stage",
+      pipeline_configure: "configuring the pipeline",
       deal_create: "adding a deal",
       deal_move_stage: "moving a deal",
       member_grant_role: "granting a staff role",
@@ -5552,6 +5564,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Create a pipeline "${a?.name || "Untitled"}"${Array.isArray(a?.stages) && a.stages.length ? ` with ${a.stages.length} stage${a.stages.length === 1 ? "" : "s"}${a.stages.map((s: any) => s?.label).filter(Boolean).length ? ` (${a.stages.map((s: any) => s?.label).filter(Boolean).join(" → ")})` : ""}` : ""}.`;
         case "pipeline_add_stage":
           return `Add stage "${a?.label || ""}" to the pipeline.`;
+        case "pipeline_configure":
+          return `Run the requested governed pipeline change (${String(a?.command?.type || "configuration").replaceAll("-", " ")}).`;
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
         case "deal_move_stage":
@@ -5568,7 +5582,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "update_business_profile": {
           const labels: Record<string, string> = { name: "business name", website: "website", address: "address", phone: "phone", legal_entity_name: "legal entity", logo_url: "logo", primary_color: "primary color", accent_color: "accent color", from_name: "sending name", support_email: "support email" };
           const fields = Object.keys(labels).filter((k) => typeof a?.[k] === "string" && a[k].trim());
-          return `Save your business profile${fields.length ? ` (${fields.map((k) => labels[k]).join(", ")})` : ""}.`;
+          return `Stage business-truth changes for Setup review and save any brand assets${fields.length ? ` (${fields.map((k) => labels[k]).join(", ")})` : ""}. Email configuration will not change here.`;
+        }
+        case "propose_business_brief_update": {
+          const fields = ["legalName","publicName","dbaName","website","address","phone","industry","naicsCode","sicCode","offers","deliveryModel","idealCustomer","customerSegments","serviceArea","currentPriority","goals90Day","annualDirection","successDefinition","constraints","brandVoice","operatingPreferences","doNotAssume"].filter((key) => typeof a?.[key] === "string" && a[key].trim());
+          return `Stage a business brief suggestion${fields.length ? ` (${fields.join(", ")})` : ""}. The owner will still review and save it in Setup.`;
         }
         case "crm_update_pipeline_stage":
           return `Move the client to stage "${a?.status || ""}".`;
@@ -6417,12 +6435,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_create_contact" ||
           tc.function.name === "crm_update_contact" ||
           tc.function.name === "crm_delete_contact" ||
+          tc.function.name === "propose_business_brief_update" ||
           tc.function.name === "update_business_profile" ||
           tc.function.name === "pipeline_create" ||
           tc.function.name === "pipeline_add_stage" ||
+          tc.function.name === "pipeline_configure" ||
           tc.function.name === "deal_create" ||
           tc.function.name === "deal_move_stage" ||
-          tc.function.name === "pipeline_suggest_from_program" ||
           tc.function.name === "member_grant_role" ||
           tc.function.name === "member_revoke_role" ||
           tc.function.name === "calendar_book_meeting" ||
@@ -6898,6 +6917,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, contact_id: args.contact_id };
+            } else if (tc.function.name === "propose_business_brief_update") {
+              if (!crmTenantId) {
+                result = { success: false, error: "tenant_not_resolved" };
+              } else {
+                const fields = ["legalName","publicName","dbaName","website","address","phone","industry","naicsCode","sicCode","offers","deliveryModel","idealCustomer","customerSegments","serviceArea","currentPriority","goals90Day","annualDirection","successDefinition","constraints","brandVoice","operatingPreferences","doNotAssume"] as const;
+                const patch: Record<string, string> = {};
+                for (const field of fields) {
+                  const value = args?.[field];
+                  if (typeof value === "string" && value.trim()) patch[field] = value.trim();
+                }
+                if (!Object.keys(patch).length) {
+                  result = { success: false, error: "Nothing to propose yet. Include at least one confirmed business-brief detail." };
+                } else {
+                  const { data: proposal, error } = await admin.rpc("stage_solo_business_brief_proposal", {
+                    _tenant_id: crmTenantId,
+                    _actor_user_id: user.id,
+                    _patch: patch,
+                    _reason: typeof args?.reason === "string" ? args.reason : "Paige suggested an update based on the owner conversation.",
+                  });
+                  if (error) throw error;
+                  result = {
+                    success: true,
+                    proposal_id: proposal?.id ?? null,
+                    persisted: false,
+                    owner_confirmation_required: true,
+                    next_step: "Review and save the suggestion in Settings -> Setup.",
+                  };
+                }
+              }
             } else if (tc.function.name === "update_business_profile") {
               // §18 chat-surface TWIN of paige-mcp's update_tenant_branding — SAME home
               // (tenants.name + tenants.brand jsonb), shallow-merged, never a new table and
@@ -6914,42 +6962,88 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   error: "You're signed in as the platform operator, which doesn't have its own business profile to set up — this edits a specific business's company details. Open (or switch into) the workspace whose profile you want to configure and I'll set it up there.",
                 };
               } else {
-                const BRAND_KEYS = ["website", "address", "phone", "legal_entity_name", "logo_url", "primary_color", "accent_color", "from_name", "support_email"] as const;
+                if ([args?.from_name, args?.support_email].some((value) => typeof value === "string" && value.trim())) {
+                  result = {
+                    success: false,
+                    configuration_handoff: "connections",
+                    error: "Email sending identity is configured in Settings -> Connections. I did not change it from chat.",
+                  };
+                  toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
+                  continue;
+                }
+                const briefPatch: Record<string, string> = {};
+                const businessFieldMap = {
+                  name: "publicName",
+                  website: "website",
+                  address: "address",
+                  phone: "phone",
+                  legal_entity_name: "legalName",
+                } as const;
+                for (const [legacyKey, briefKey] of Object.entries(businessFieldMap)) {
+                  const value = args?.[legacyKey];
+                  if (typeof value === "string" && value.trim()) briefPatch[briefKey] = value.trim();
+                }
+                const BRAND_KEYS = ["logo_url", "primary_color", "accent_color"] as const;
                 const brandPatch: Record<string, unknown> = {};
                 for (const k of BRAND_KEYS) {
                   const v = args?.[k];
                   if (typeof v === "string" && v.trim().length) brandPatch[k] = v.trim();
                 }
-                const newName = (typeof args?.name === "string" && args.name.trim().length) ? args.name.trim() : null;
-                if (!newName && Object.keys(brandPatch).length === 0) {
-                  result = { success: false, error: "Nothing to save yet — give me at least one detail (business name, website, address, phone, legal entity, logo, brand colors, or sending identity)." };
+                if (Object.keys(briefPatch).length === 0 && Object.keys(brandPatch).length === 0) {
+                  result = { success: false, error: "Nothing to stage or save yet — provide a business-brief detail or a brand asset." };
                 } else {
-                  // Shallow-merge into the existing brand, exactly like update_tenant_branding —
-                  // preserve every key the operator didn't touch; never overwrite the whole object.
-                  const { data: curRow } = await admin.from("tenants").select("brand").eq("id", crmTenantId).maybeSingle();
-                  const curBrand = (curRow?.brand && typeof curRow.brand === "object") ? (curRow.brand as Record<string, unknown>) : {};
-                  const nextBrand = { ...curBrand, ...brandPatch };
-                  const patch: Record<string, unknown> = { brand: nextBrand };
-                  if (newName) patch.name = newName;
-                  const { data: updated, error } = await admin
-                    .from("tenants")
-                    .update(patch)
-                    .eq("id", crmTenantId) // §9: only ever the caller's OWN server-resolved tenant
-                    .select("id, name, brand")
-                    .single();
-                  if (error) throw error;
-                  // audit_logs columns are entity/entity_id/data (NOT resource_type/resource_id/
-                  // metadata — that shape errors 42703). Best-effort: log a failure loudly (§13 —
-                  // never a silently-swallowed audit) but don't fail the operator's write on it.
-                  const { error: auditErr } = await admin.from("audit_logs").insert({
-                    user_id: user.id,
-                    action: "update_business_profile",
-                    entity: "tenants",
-                    entity_id: crmTenantId,
-                    data: { keys: [...(newName ? ["name"] : []), ...Object.keys(brandPatch)], via: "paige" },
-                  });
-                  if (auditErr) console.warn("[update_business_profile] audit insert failed:", auditErr.message);
-                  result = { success: true, tenant: updated };
+                  let proposal: any = null;
+                  if (Object.keys(briefPatch).length) {
+                    const staged = await admin.rpc("stage_solo_business_brief_proposal", {
+                      _tenant_id: crmTenantId,
+                      _actor_user_id: user.id,
+                      _patch: briefPatch,
+                      _reason: "Paige suggested an update based on the owner conversation.",
+                    });
+                    if (staged.error) throw staged.error;
+                    proposal = staged.data;
+                  }
+                  let brand: any = null;
+                  if (Object.keys(brandPatch).length) {
+                    // Preserve this legacy tool's established Brand Kit behavior: merge only
+                    // the requested visual assets and retain every existing brand child,
+                    // including the brief/proposal staged above. Business truth never enters
+                    // this direct asset write.
+                    const { data: currentTenant, error: readBrandError } = await admin
+                      .from("tenants")
+                      .select("brand")
+                      .eq("id", crmTenantId)
+                      .maybeSingle();
+                    if (readBrandError) throw readBrandError;
+                    const currentBrand = currentTenant?.brand && typeof currentTenant.brand === "object"
+                      ? currentTenant.brand as Record<string, unknown>
+                      : {};
+                    const mergedBrand = { ...currentBrand, ...brandPatch };
+                    const { data: updatedTenant, error: updateBrandError } = await admin
+                      .from("tenants")
+                      .update({ brand: mergedBrand })
+                      .eq("id", crmTenantId)
+                      .select("brand")
+                      .single();
+                    if (updateBrandError) throw updateBrandError;
+                    brand = updatedTenant?.brand ?? mergedBrand;
+                    const { error: auditError } = await admin.from("audit_logs").insert({
+                      user_id: user.id,
+                      action: "update_business_profile",
+                      entity: "tenants",
+                      entity_id: crmTenantId,
+                      data: { keys: Object.keys(brandPatch), via: "paige", scope: "brand_assets_only" },
+                    });
+                    if (auditError) console.warn("[update_business_profile] audit insert failed:", auditError.message);
+                  }
+                  result = {
+                    success: true,
+                    business_truth_persisted: false,
+                    proposal_id: proposal?.id ?? null,
+                    brand_assets_saved: Object.keys(brandPatch),
+                    brand,
+                    next_step: proposal ? "Review and save the business-brief suggestion in Settings -> Setup." : null,
+                  };
                 }
               }
             } else if (tc.function.name === "pipeline_create") {
@@ -7081,21 +7175,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   }
                 }
               }
-            } else if (tc.function.name === "pipeline_suggest_from_program") {
-              // Route the operator's program/offer description through the tuned pipeline-suggest
-              // proposer (the same guard-railed engine behind the "Build from a program" dialog),
-              // so consultative sales-process design in chat matches the UI instead of ad-hoc stages.
-              // Returns a PROPOSAL only — Paige reads it back and calls pipeline_create to build it.
-              const { data: sug, error: serr } = await supabaseClient.functions.invoke("pipeline-suggest", {
-                body: { program_text: args.program_text },
-              });
-              // pipeline-suggest returns its internal-failure body with HTTP 200, so functions.invoke
-              // sees no transport error — check the payload's own `error` field too, or Paige would
-              // "read back" an error object as if it were a real proposal (§13 truthfulness).
-              if (serr || (sug as any)?.error || !(sug as any)?.proposed_pipeline) {
-                result = { success: false, error: "Couldn't draft a pipeline from that — try describing the program in a bit more detail." };
+            } else if (tc.function.name === "pipeline_configure") {
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
-                result = { success: true, suggestion: sug };
+                const { data: configured, error: configureError } = await supabaseClient.rpc("configure_tenant_pipeline", {
+                  _tenant_id: tenantId,
+                  _command: args.command,
+                  _idempotency_key: args.idempotency_key,
+                  _actor_kind: "paige",
+                });
+                if (configureError) throw configureError;
+                result = { success: (configured as any)?.ok !== false, ...(configured as any) };
               }
             } else if (tc.function.name === "member_grant_role") {
               const { error } = await supabaseClient.rpc("grant_tenant_member_role", {
