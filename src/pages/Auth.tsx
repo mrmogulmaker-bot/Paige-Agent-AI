@@ -53,6 +53,8 @@ const Auth = () => {
   const [consentAgreements, setConsentAgreements] = useState(false);
   const [consentDataUsage, setConsentDataUsage] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [consentSms, setConsentSms] = useState(false);
   const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -287,6 +289,16 @@ const Auth = () => {
           return;
         }
 
+        const normalizedMobile = mobileNumber.replace(/[\s().-]/g, "");
+        if (consentSms && !/^\+[1-9]\d{7,14}$/.test(normalizedMobile)) {
+          toast({
+            title: "Mobile number required",
+            description: "Enter your mobile number with country code, for example +12125551212.",
+            variant: "destructive",
+          });
+          return;
+        }
+
         const consentTimestamp = new Date().toISOString();
 
         // Capture any plan intent BEFORE we create the account, so it's set before
@@ -315,6 +327,8 @@ const Auth = () => {
             password,
             fullName,
             marketingOptIn: consentMarketing,
+            phone: consentSms ? normalizedMobile : undefined,
+            smsConsent: consentSms,
             // A client accepting a tenant's invite already got the tenant's
             // branded invite email — don't also send the Paige welcome (§9).
             suppressWelcome: isClientInvite,
@@ -777,6 +791,26 @@ const Auth = () => {
                 />
               </div>
 
+              {!isLogin && !isClientInvite && (
+                <div className="space-y-2">
+                  <Label htmlFor="mobile" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Mobile Number <span className="normal-case tracking-normal">(optional)</span>
+                  </Label>
+                  <Input
+                    id="mobile"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="+12125551212"
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(e.target.value)}
+                    disabled={isLoading}
+                    className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                  />
+                  <p className="text-xs text-muted-foreground">Include the country code. A mobile number is required only if you choose text messages.</p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -863,6 +897,22 @@ const Auth = () => {
 
                   {/* The platform-marketing opt-in is nonsensical for a tenant's
                       customer accepting a portal invite — hide it there (§9). */}
+                  {!isClientInvite && (
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <Checkbox
+                        checked={consentSms}
+                        onCheckedChange={(v) => setConsentSms(!!v)}
+                        className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
+                      />
+                      <span className="text-xs text-foreground/85 leading-relaxed">
+                        I agree to receive account and service text messages from Paige Agent AI at the mobile number I provided. Consent is not a condition of purchase. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help. See our{" "}
+                        <Link to="/privacy" target="_blank" className="underline text-accent hover:opacity-80">Privacy Policy</Link>
+                        {" "}and{" "}
+                        <Link to="/sms-terms" target="_blank" className="underline text-accent hover:opacity-80">Messaging Terms</Link>.
+                      </span>
+                    </label>
+                  )}
+
                   {!isClientInvite && (
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <Checkbox

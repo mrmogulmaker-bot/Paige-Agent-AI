@@ -2,6 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "bun install",
   "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/sms-terms", "destination": "/sms-terms.html" },
+    { "source": "/auth", "destination": "/auth.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -15,6 +18,12 @@
     },
     {
       "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/(privacy|sms-terms|auth).html",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
