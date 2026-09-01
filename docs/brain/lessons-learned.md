@@ -759,3 +759,76 @@ wrong classification. Each was real and each was smaller. The record is now accu
 anyone raised, and the remaining risk is no longer in this text — it is in the two product defects
 it documents, which are filed as their own work.
 
+
+## A verification sweep that filters by content deletes the evidence (2026-09-01, #708)
+
+**Symptom.** A change removed two vendored skill bundles and their assembled `LICENSE`. The
+close-out sweep for claims the change falsified was reported clean. Two files still asserted the
+redistribution had happened, and pointed readers at the two deleted paths — one of them
+`config-registry.md`, the mandatory source for that configuration.
+
+**Root cause — the sweep, not the writing.** The command was:
+
+```
+grep -rn "vendored" docs/ | grep -iv "not vendored\|before vendoring\|the vendoring was"
+```
+
+Every `-v` term had been added to suppress a line already known to be fine. **Both offending lines
+matched one of those exclusions.** The filter written to reduce noise removed exactly the signal.
+
+**Why this is worse than the spelling problem the close-out step already warns about.** Varying the
+spelling can only *miss* a hit that was never retrieved. A content filter *deletes* a hit you had
+in hand — and it fails **silently**, because the output looks identical whether the sweep found
+nothing or hid everything. There is no signal distinguishing "clean" from "blinded".
+
+**The rules, both cheap. Note what each one is about — the property, not the mechanism:**
+
+1. **Every omitted match must stay auditable.** The defect was not `grep -v` as such; it was that
+   the excluded set vanished without being seen or counted. A **path** filter hides a stale claim
+   just as effectively — narrowing to `docs/brain/` would have missed a `docs/doctrine/` copy — so
+   "filter by path, not content" is the wrong invariant. A content filter is fine *when the excluded
+   stream is retained and READ*. **Counting it is not enough** — in the anchoring incident the
+   excluded stream contained both stale claims, so `wc -l` would have reported "2 omitted",
+   satisfied any "reviewed or counted" wording, and revealed neither. A count establishes that
+   omissions exist; it says nothing about whether they are false. If a count is all you have, any
+   **nonzero** result has to trigger reading them. In practice: sweep unfiltered and read the hits,
+   or if volume genuinely forces narrowing, read what the narrowing removed. Output too long to
+   read is information about the claim's blast radius, not permission to stop looking.
+2. **Search and assess EVERY occurrence; correct each one that is actually false.** Not "fix it
+   everywhere" — identical wording can appear in a dated decision-log entry that was true when
+   written, in a quotation, in a corrections log that must name what it reversed (§50), or in a
+   scope where the claim still holds. Rewriting those corrupts an honest record rather than
+   repairing it, and §58 forbids purging legitimate audit entries. The failure being guarded
+   against is *not looking* at the other occurrences, which is different from *not changing* them.
+   In the anchoring case all three happened to be false and all three were changed — that was the
+   finding, not the rule.
+
+**Both rules above were themselves over-stated in their first draft, and that is the sharpest thing
+in this entry.** They began as *"narrow by path, never by content"* and *"fix a flagged claim
+everywhere"* — a banned mechanism and a universal instruction, written inside a lesson about not
+generalising past the evidence. Review caught both: a path filter hides just as well, and blanket
+"fix everywhere" would have someone rewrite a dated log entry that was true when written.
+
+The generalisation is the reflex, not the exception. A rule derived from one incident wants to be
+stated as a mechanism (*don't use this tool*) because that is concrete and checkable, when what the
+incident actually taught is a property (*don't leave omissions unaudited*).
+
+**This is not an argument against mechanism-form rules as such** — and that qualifier is itself a
+correction, because the first draft of this paragraph said the mechanism form is simply "wrong".
+Where a mechanism genuinely has no permitted safe use, banning it outright is the right control and
+is *meant* to be blunt: §50's prohibition on the listed third-party marks is exactly that, and a
+meta-rule that reads as "prefer properties to mechanisms" could be used to argue it down. The
+failure mode is narrower — a mechanism-form rule that **overgeneralises past its evidence**, so it
+forbids safe uses of the named tool while permitting the same failure by other means.
+
+The test, which distinguishes the two cases: state what property was violated, then ask whether the
+rule as phrased would catch a version of the failure **using different means**. If it would not, it
+describes the incident rather than the lesson. If it would — because the mechanism itself is the
+whole hazard — the mechanism form is correct and should stay blunt.
+
+**Recorded here rather than in a sibling PR, and that is part of the lesson too.** These two defects
+were found reviewing this change, and the first draft put them in a different PR's branch to avoid
+a merge conflict in this file. That defers the capture to another PR's merge and ordering — §BRAIN.3
+says *same change*, and "it was more convenient to put it elsewhere" is precisely the reasoning the
+rule exists to refuse. Caught on review, in a PR whose own subject is making that capture
+enforceable.
