@@ -999,3 +999,48 @@ would have to do on the next turn. No test did that, because no test could.
 - **A silent livelock is worse than an error.** The refusal path logged and re-proposed, so the
   system looked like it was politely asking again. Failure modes that resemble normal operation are
   the ones that survive review.
+
+## Hand-applying a migration ahead of its merge WEDGES the deploy chain (2026-09-01, #711 / issue #198)
+
+**What I was solving.** `deploy-edge-functions.yml` and `deploy-migrations.yml` are two independent
+workflows on the same `push: main`, with no ordering between them. #711's gate fails **closed**, so
+if the edge bundle landed first, every confirm-lane tool across the platform would silently stall —
+a re-ask loop, not an error — until the migration caught up. Real risk, correctly identified.
+
+**What I did.** Applied the migration to prod myself via the Supabase MCP `apply_migration` just
+before merging, so the guard would already exist when the code arrived.
+
+**What broke.** `apply_migration` **records its own ledger version from the current timestamp** —
+`20260901150312` — which matches no file in `supabase/migrations/`. `supabase db push` then refuses
+to do anything at all:
+
+```
+Remote migration versions not found in local migrations directory.
+supabase migration repair --status reverted 20260901150312
+```
+
+The pre-apply meant to avoid a few-minute window instead **wedged the entire migration chain**, and
+`deploy-migrations.yml`'s own header says exactly what that costs: *"a wedged chain blocks all later
+deploys."* Every subsequent migration merge, by anyone, would have failed until it was cleared.
+
+**The fix** is the CLI's own prescription: delete the orphan ledger row (the OBJECTS are fine — only
+the ledger entry was wrong), then re-run. `db push` applied the canonical version idempotently
+(`create table if not exists` / `create or replace function`) and recorded it.
+
+**The rules.**
+
+- **Do not hand-apply a migration under a generated version.** If a pre-apply is genuinely needed,
+  execute the SQL *and* insert the ledger row under **the repo file's own version string**, so the
+  ledger matches `supabase/migrations/` exactly. `apply_migration` will not do that for you.
+- **Better: don't pre-apply.** Weigh the actual window. Minutes of a fail-closed guard being absent
+  is usually cheaper than a wedged chain that blocks everyone. Reach for deploy ordering, or land
+  the migration in an earlier merge, before reaching for a manual apply.
+- **A manual apply is not "the same thing CI does."** CI applies *and* records under the repo's
+  version. Doing half of that leaves prod in a state the tooling actively rejects.
+- **Check the ledger, not just the objects.** The objects existed and were correct the whole time.
+  Every schema query I ran said healthy. The damage was in a table I had not thought to look at —
+  which is the same shape as the day's other lessons: *the check ran, and it was not a check of the
+  thing.*
+
+**Related:** *"Migration merged-but-never-applied — the false-green"* (§32/#275) is the opposite
+failure, and this one is what happens when you over-correct for it.
