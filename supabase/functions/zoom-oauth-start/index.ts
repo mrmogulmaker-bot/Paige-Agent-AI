@@ -101,11 +101,26 @@ Deno.serve(async (req) => {
       });
     }
 
+
+    // The workspace the caller is STANDING IN, resolved server-side from their
+    // verified JWT and carried in the SIGNED state (§9 — never a body field; the
+    // callback re-checks authority before honouring it).
+    //
+    // Without this the callback falls back to `get_user_primary_tenant`, which for
+    // a multi-workspace person is a DIFFERENT tenant from the one they were
+    // looking at — measured on production, a real user's `active_tenant_id` and
+    // their primary tenant disagree. Storing the wrong tenant is worse than the
+    // null this replaced, because `staff_calendar_settings` carries a tenant-admin
+    // read policy that a null never matched: a wrong tenant would expose the
+    // connected address and the encrypted refresh token to admins of a workspace
+    // the person never chose. `w`, not `t` — `t` is this state's timestamp.
+    const { data: activeTenant } = await supa.rpc("current_user_tenant_id");
     const state = await signState({
       u: user.id,
       n: crypto.randomUUID(),
       t: Date.now(),
       r: returnOrigin,
+      w: typeof activeTenant === "string" ? activeTenant : null,
     });
 
     // Scopes are granted by the Zoom app config (meeting:write, user:read).

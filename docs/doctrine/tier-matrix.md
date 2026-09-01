@@ -42,6 +42,8 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
   `_kind='consumer'` mint for an **agency** target, §32.a-proven; #460 narrowed that guard to agency-only
   so Enterprise passes).
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
+- **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.
+
   (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
   `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
 - **`subaccount_management` = Agency + Enterprise; `fleet_console` = God** only.
@@ -930,10 +932,59 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 
 | Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
 |---|---|---|---|---|---|---|---|
-| `connections/communications` | Business-phone search (`PROPOSED`, non-mutating), the PAIGE-managed sending identity, custom sending domains, connected mailbox (`UNAVAILABLE`) | **partly wired** — identity + domains read real rows; number search runs nothing | N/A | N/A | ✓ | N/A | — |
+| `connections/communications` | **Live business-phone search and purchase**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — number search and purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; domains add/refresh/set_default/remove via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect` | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
+| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+
+**Two ledger corrections, recorded rather than backfilled quietly (§13/§66).**
+The `connections/communications` row above previously claimed **editable business details**. That
+editor was DELETED in `22271bbb` on an owner ruling — the business owner, legal name, address and
+phone belong to Setup, and Connections owns only what the platform hands the tenant from its own
+server. The row is corrected here rather than left describing a surface that no longer exists. The
+same row also described number search as `PROPOSED` and non-mutating; it is now live, which is the
+other half of this touch.
+
+**What `connections/registration` proves about itself, and what it does not (§13/§32).**
+`src/solo/settings.registration.test.tsx` (12 tests, mounted) covers the ways this surface can
+lie, and all four were proven to FAIL against a deliberately broken implementation before being
+trusted: an unresolved workspace or a failed read collapsing into "nothing registered" above a PAID
+re-draft that would overwrite reviewed copy; a registration past preparation still offering an
+editor the save seam refuses; and a saved registration reported as filed. **Filing is genuinely
+absent** — the TrustHub calls were removed and `comms-a2p-submit` returns `a2p_submit_wired: false`
+— so no state on this surface may read as submitted, and scoping the submission path is separate
+work. What is NOT proven: authenticated runtime. No live model draft was run and no registration was
+saved against production by the session that built this (§32.c).
+
+**Two defects the peer-gate (§39) caught that the green suite could not, recorded because both were
+green for the SAME reason — a fixture written from the same belief as the code.**
+The number search read `retail_price.retail_monthly_cents`, which is the DATABASE column; the
+response key is `monthly_cents`. Every price therefore resolved to null, every row rendered "—"
+*without* the "pricing pending" note (suppressed because the server correctly reported the type as
+priced), and the purchase confirm offered "an unlisted monthly price" for a charge whose amount the
+response was carrying. Both the unit fixture and the harness stub encoded the wrong key, so a
+CORRECT implementation would have failed those tests and the broken one passed. Separately, the
+registration form rendered the legal name, website and EIN as editable inputs over fields
+`comms-a2p-submit` documents as "validated and then DISCARDED" — a save that reports success and
+throws the typing away (§70). Both fixtures now carry the real shapes, the identity fields are
+read-only reflections pointing at Setup, and the browser drive asserts no typeable box exists over
+them.
+
+**What `connections/communications` proves about itself, and what it does not (§13/§32).**
+
+The three action layers added on 2026-08-31 are covered by
+`src/solo/settings.connections-actions.test.tsx` (14 tests, mounted so effects run) and by the
+tenant-resolution smoke `scripts/tenant-for-user-smoke.mts` (8 checks, wired into CI). Both honesty
+rows — a rejected write never rendering as success, and an unreadable connector record never
+rendering as "not connected" — were proven to FAIL against a deliberately broken implementation
+before being trusted.
+
+What is NOT proven: authenticated runtime. No OAuth was performed and no sending domain was created
+against a live provider by the session that built this, so "the owner can complete the Google
+connect flow end to end" is OWED to a session that drives it, or to the owner. The scope granted is
+`gmail.send` — this surface connects a SENDING account and proves nothing about inbound mail, and
+there is no Outlook function in the repo at all.
 
 **What `connections/calendars` proves about itself, and what it does not (§13/§32).**
 Its geometry, scroll ownership and fold-out behaviour are MEASURED, not asserted:

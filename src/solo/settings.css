@@ -92,9 +92,9 @@
 .ss-return { display: flex; max-width: 1180px; align-items: center; justify-content: space-between; gap: 10px; margin: -4px auto 14px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--pg-accent) 30%, var(--pg-line)); border-radius: var(--pg-r-chip); color: var(--pg-muted); background: color-mix(in srgb, var(--pg-accent) 6%, var(--pg-surface)); font-size: 10px; }
 .tcs-main--settings-scrollbar-hidden { scrollbar-width: none; -ms-overflow-style: none; }
 [data-tenant-shell] .tcs-main--settings-scrollbar-hidden::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.ss-phone-setup { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--pg-accent) 28%, var(--pg-line)); box-shadow: inset 3px 0 var(--pg-accent), var(--pg-e1), var(--pg-rim); }
+.ss-phone-setup, .ss-reg-setup { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--pg-accent) 28%, var(--pg-line)); box-shadow: inset 3px 0 var(--pg-accent), var(--pg-e1), var(--pg-rim); }
 .ss-phone-heading { min-width: 0; flex: 1; }
-.ss-phone-setup .ss-phone-title { margin: 0 0 2px; font: 650 18px/1.1 var(--pg-font-display); letter-spacing: -.02em; }
+.ss-phone-setup .ss-phone-title, .ss-reg-setup .ss-phone-title { margin: 0 0 2px; font: 650 18px/1.1 var(--pg-font-display); letter-spacing: -.02em; }
 .ss-phone-heading p { margin: 0; }
 .ss-phone-contract { max-width: 82ch; }
 .ss-phone-search { display: grid; grid-template-columns: minmax(190px, 1.25fr) minmax(170px, .8fr) auto; gap: 9px; align-items: end; margin-top: 11px; }
@@ -220,3 +220,76 @@
  */
 .tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown { scrollbar-width: auto; -ms-overflow-style: auto; }
 [data-tenant-shell] .tcs-main--settings-scrollbar-hidden.tcs-main--settings-scrollbar-shown::-webkit-scrollbar { display: block; width: 10px; height: 10px; }
+
+/* --- Editable Connections controls -----------------------------------------
+   Business details, sending domains and the Google sending account became
+   editable on 2026-08-31. These rules deliberately REUSE the field, control and
+   callout declarations already proven by `.ss-phone-search` / `.ss-phone-
+   unavailable` above rather than introducing a second visual language for the
+   same job — same heights, same radii, same tokens. `.ss-form` is the general
+   case `.ss-phone-search` was the one-off of.
+
+   Every colour is a token; nothing here is a literal, and nothing overrides a
+   theme, so the surface stays correct in both. */
+.ss-form { display: grid; gap: 9px; align-items: end; margin-top: 11px; }
+.ss-form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 9px; align-items: end; }
+.ss-form label { display: grid; min-width: 0; gap: 5px; color: var(--pg-muted); font-size: 9px; font-weight: 650; }
+.ss-form input, .ss-form select {
+  width: 100%; min-width: 0; height: 34px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  padding: 0 10px; color: var(--pg-ink); background: var(--pg-lift); font-size: 11px;
+}
+.ss-form input:disabled { opacity: .55; cursor: not-allowed; }
+
+/* The act. Accent is spent here and nowhere else on these cards. */
+.ss-btn {
+  display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--pg-accent); border-radius: var(--pg-r-chip); padding: 0 12px;
+  color: white; background: var(--pg-accent); font-size: 10px; font-weight: 700; cursor: pointer;
+}
+.ss-btn svg { width: 13px; height: 13px; }
+.ss-btn:disabled { opacity: .5; cursor: not-allowed; }
+/* Everything that is not the act: same geometry, no accent. */
+.ss-btn--quiet { color: var(--pg-ink); background: var(--pg-lift); border-color: var(--pg-line); }
+.ss-btn--danger { color: var(--pg-destructive, #d9534f); background: transparent; border-color: color-mix(in srgb, var(--pg-destructive, #d9534f) 32%, var(--pg-line)); }
+.ss-btn--sm { min-height: 26px; padding: 0 9px; font-size: 9px; }
+.ss-btn--sm svg { width: 11px; height: 11px; }
+
+.ss-form-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Registration copy. These fields are prose a carrier reads, not one-line settings,
+   so they get the full width and a taller box than `.ss-form-row` gives. */
+.ss-reg-draft { display: grid; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--pg-line); }
+.ss-field-block { display: grid; gap: 5px; min-width: 0; color: var(--pg-muted); font-size: 9px; font-weight: 650; }
+.ss-field-block > input, .ss-field-block textarea {
+  width: 100%; min-width: 0;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  padding: 8px 10px; color: var(--pg-ink); background: var(--pg-lift);
+  font: 400 11px/1.5 inherit; resize: vertical;
+}
+.ss-field-block > input { height: 34px; padding: 0 10px; }
+.ss-field-block :disabled { opacity: .55; cursor: not-allowed; }
+.ss-sample-row { display: flex; gap: 6px; align-items: center; }
+.ss-sample-row input { flex: 1 1 auto; }
+/* Per-row controls inside `.ss-list`, so a domain can be verified or removed
+   without leaving the list it is listed in. */
+.ss-row-actions { display: flex; flex: none; gap: 6px; align-items: center; }
+
+/* Outcome of a write. Mirrors `.ss-phone-unavailable`, keyed by tone so a
+   failure and a success are not the same colour. */
+.ss-outcome {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 10px;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  color: var(--pg-muted); background: var(--pg-surface); font-size: 10px;
+}
+.ss-outcome svg { width: 15px; height: 15px; flex: none; }
+.ss-outcome strong { color: var(--pg-ink); }
+.ss-outcome[data-tone="ok"] { border-color: color-mix(in srgb, var(--pg-success, #2e9e6b) 30%, var(--pg-line)); background: color-mix(in srgb, var(--pg-success, #2e9e6b) 7%, var(--pg-surface)); }
+.ss-outcome[data-tone="ok"] svg { color: var(--pg-success, #2e9e6b); }
+.ss-outcome[data-tone="bad"] { border-color: color-mix(in srgb, var(--pg-destructive, #d9534f) 30%, var(--pg-line)); background: color-mix(in srgb, var(--pg-destructive, #d9534f) 7%, var(--pg-surface)); }
+.ss-outcome[data-tone="bad"] svg { color: var(--pg-destructive, #d9534f); }
+
+@container (max-width: 560px) {
+  .ss-form-row { grid-template-columns: 1fr; }
+  .ss-list > div { flex-wrap: wrap; }
+}

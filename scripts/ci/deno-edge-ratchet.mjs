@@ -375,7 +375,26 @@ const MAX_ATTEMPTS = 2;
  * introduce a consumed input nothing fingerprints. Adding any flag is therefore a deliberate edit
  * to the test as well, where its DEP_INPUTS consequence has to be stated.
  */
-export const CHECK_FLAGS = Object.freeze(["--no-lock"]);
+// `--node-modules-dir=none` is not a preference, it is what makes `npm:` specifiers
+// checkable AT ALL from this repository.
+//
+// The repo root carries a `package.json` for the frontend. Deno walks up from the entry
+// file, finds it, and switches to node_modules resolution — after which every
+// `npm:@supabase/supabase-js@2` import fails with "Could not find a matching package …
+// run `deno install`". That is not a defect in the function: `npm:` is a valid Deno
+// specifier, Supabase's edge runtime resolves it, and more than twenty deployed functions
+// import that way today. It is this harness importing the frontend's package.json into a
+// check that has nothing to do with it.
+//
+// The consequence was invisible because it only fires when such a function is IN the
+// affected set: the ratchet reported `resolution-failure` on BOTH legs and blocked with
+// "not ratchetable, nothing was checked". So a gate that exists to type-check edge
+// functions could not type-check the ones using the commonest npm import in the tree, and
+// nobody found out until a change to `_shared/twilio.ts` pulled two of them in.
+//
+// This flag WIDENS what the ratchet can grade; it suppresses nothing. Functions that were
+// previously unratchetable now get checked on both legs and compared like everything else.
+export const CHECK_FLAGS = Object.freeze(["--no-lock", "--node-modules-dir=none"]);
 export function checkArgv(entry) {
   return ["check", ...CHECK_FLAGS, entry];
 }

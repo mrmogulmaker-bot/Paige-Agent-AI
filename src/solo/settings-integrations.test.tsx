@@ -38,7 +38,15 @@ vi.mock("@/integrations/supabase/client", () => ({
     rpc,
     // Defined inline: `vi.mock` is hoisted above any top-level const.
     from: () => ({
-      select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }),
+      select: () => {
+        // `.is` is here because the REAL chain has it: `useSoloAutomations` reads
+        // pipeline_stages as .eq(...).is("archived_at", null).order(...). Without it the
+        // read throws inside a `Promise.all`, which surfaces as an UNHANDLED REJECTION —
+        // every assertion in this file still passes and the run still fails, which is a
+        // worse failure mode than a red assertion because the summary reads green.
+        const ordered = { order: () => Promise.resolve({ data: [], error: null }) };
+        return { eq: () => ({ ...ordered, is: () => ordered }) };
+      },
     }),
     functions: { invoke },
   },

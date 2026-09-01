@@ -13,6 +13,7 @@ import {
   Search,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   TriangleAlert,
   Users,
   Webhook,
@@ -22,6 +23,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { useSoloComms } from "./data/useSoloComms";
+import {
+  useSoloNumbers, EMPTY_NUMBER_FILTERS,
+  type NumberSearchFilters, type SearchOutcome,
+} from "./data/useSoloNumbers";
+import { useSoloA2P, type EditDraft } from "./data/useSoloA2P";
+import { rememberOAuthReturn } from "./data/oauthReturn";
 import { SoloIntegrationsView } from "./settings-integrations";
 import {
   createSettingsRequestGate,
@@ -478,9 +485,9 @@ const PROVIDERS = [
  * made number search read as the whole feature and pushed messaging
  * registration, sending identity and delivery below the fold.
  */
-type ConnectionsSegment = "communications" | "calendars" | "health" | "available";
+type ConnectionsSegment = "communications" | "calendars" | "registration" | "health" | "available";
 
-const CONNECTIONS_SEGMENTS: readonly ConnectionsSegment[] = ["communications", "calendars", "health", "available"];
+const CONNECTIONS_SEGMENTS: readonly ConnectionsSegment[] = ["communications", "calendars", "registration", "health", "available"];
 
 /**
  * The segment named in the address, if it is one we actually have.
@@ -495,7 +502,12 @@ function requestedSegment(search: string): ConnectionsSegment | undefined {
 }
 
 function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegment }) {
+  // The account slug, for the one link this surface owes to Setup — where the
+  // business record actually lives.
+  const account = useParams().account ?? "";
   const comms = useSoloComms();
+  const numbers = useSoloNumbers();
+  const a2p = useSoloA2P();
   const identity = useManagedIdentity();
   // The owner-locked Connections shape, from #660: Communications owns whether a
   // message can send, Calendars owns scheduling configuration, Health reports
@@ -521,6 +533,10 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
   const TABS = [
     ["communications", "Communications"],
     ["calendars", "Calendars"],
+    // Its own area, not a card inside Communications (owner-authorised, 2026-08-31).
+    // The flow is a form plus seven fields of regulatory copy; inline, it buried the
+    // things a person opens Communications to check.
+    ["registration", "Registration"],
     ["health", "Health"],
     ["available", "Available"],
   ] as const;
@@ -580,6 +596,21 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
 
     {view === "calendars" && <CalendarsView/>}
 
+    {view === "registration" && <div className="ss-sections">
+      <Subsection id="ss-sub-a2p" title="Carrier registration"
+        blurb="Before a carrier will deliver your texts, it needs your business on record and the exact wording of what you send.">
+        <div className="ss-grid">
+          {/* One card, deliberately. A "where this stands" card here would have restated
+              the grading that Communications already carries — two homes for one answer,
+              free to disagree the moment either is edited. The panel reports the
+              registration's own state as part of doing the work. */}
+          <RegistrationPanel a2p={a2p} account={account}
+            status={r ? { tone: registrationStep(r).tone, state: registrationStep(r).state, detail: registrationStep(r).detail } : null}
+            statusLoading={readiness.loading}/>
+        </div>
+      </Subsection>
+    </div>}
+
     {view === "communications" && <div className="ss-sections">
       {readFailureNotice}
       <Subsection id="ss-sub-phone" title="Business phone"
@@ -591,10 +622,22 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
             <ReadState loading={readiness.loading} error={null} retry={readiness.retry}>
               {r ? <><p>{phoneStep(r).detail}</p>
                 {r.number === "assigned" && <div className="ss-fields"><Field label="Number" value={r.number_e164}/></div>}
+                {/* The readiness record names ONE number; a business may own several.
+                    Listing them here keeps this card the single place a person looks for
+                    "what numbers do we have", rather than a partial answer. It used to
+                    render only when there were TWO or more, so the FIRST number a
+                    workspace ever bought appeared nowhere until a separate readiness read
+                    caught up — and nowhere at all if that read lagged or failed. */}
+                {numbers.owned.length > 0 && <div className="ss-list" style={{ marginTop: 9 }}>
+                  {numbers.owned.map((n) => <div key={n.id}>
+                    <span><strong>{n.phoneNumber}</strong><small>{n.friendlyName ?? (n.isPrimary ? "primary" : "additional")}</small></span>
+                    <Status tone={n.isPrimary ? "ok" : "neutral"}>{n.isPrimary ? "Primary" : (n.status ?? "active")}</Status>
+                  </div>)}
+                </div>}
               </> : noRecord("number")}
             </ReadState>
           </Card>
-          <PhoneSetupPanel/>
+          <PhoneSetupPanel numbers={numbers} onPurchased={readiness.retry}/>
         </div>
       </Subsection>
 
@@ -608,10 +651,32 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
               {r ? <>
                 <p>{registrationStep(r).detail}</p>
                 <StepRows steps={stepByName(r, businessDetailsStep(r).n)}/>
-                <p className="ss-note">Filing with a carrier is not something this surface can do. A registration can be
-                  prepared and saved here; it stops at <strong>prepared, not submitted</strong>.</p>
               </> : noRecord("registration")}
             </ReadState>
+            {/* This card GRADES; it does not act. Its previous sentence said a
+                registration could be "prepared and saved here", which stopped being true
+                the moment the editor existed elsewhere — this card has no controls at
+                all. So the sentence now points at the one place the act lives (§18),
+                rather than describing a capability this card does not have (§13). */}
+            <p className="ss-note">
+              Filing with a carrier is not something this product can do yet. Preparing and
+              saving a registration happens in{" "}
+              <button type="button" className="ss-linklike" onClick={() => setView("registration")}>Registration</button>,
+              where it stops at <strong>prepared, not submitted</strong>.
+            </p>
+            {/* These three fields live in SETUP, not here (owner ruling,
+                2026-08-31): the business owner, legal name, address and phone are
+                Setup's, and Connections owns only what we hand the tenant from our
+                own server — the sending domain and the email address on it.
+
+                So this card GRADES them and points at their one home. An earlier
+                revision of this branch put an editor here, which made Connections a
+                second place to type a business name while `SuBusiness` on Setup was
+                already the first — exactly the duplication §18 exists to stop. */}
+            <p className="ss-note">
+              Your legal name, website and business phone live in{" "}
+              <Link to={`/solo/${account}/settings/setup`}>Setup</Link>. Carriers read them from there.
+            </p>
           </Card>
           <Card title="Consent and opt-outs" icon={ShieldCheck}
             truth={r ? consentStep(r).truth : "PARTIAL"}
@@ -635,11 +700,20 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
           </Card>
           <Card title="Custom sending domains" icon={Globe2} truth={domainPresentation.capability} capabilityTruth actions={<Status tone={domainPresentation.tone}>{domainPresentation.accountLabel}</Status>}>
             <OrthogonalConnectionState {...domainPresentation}/>
-            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>{comms.domains.length ? <div className="ss-list">{comms.domains.map(domain=><div key={domain.id}><span><strong>{domain.domain}</strong><small>{domain.fromEmailLocal}@{domain.domain}</small></span><Status tone={domain.status === "verified" ? "ok" : "warn"}>{domain.status}</Status></div>)}</div> : <div className="ss-empty"><WifiOff/>No custom sending domain is reported.</div>}</ReadState>
+            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}><SendingDomainsPanel comms={comms}/></ReadState>
           </Card>
-          <Card title="Connected mailbox" icon={Mail} truth="UNAVAILABLE" capabilityTruth>
-            <OrthogonalConnectionState accountLabel="Unavailable" healthLabel="Not measurable" tone="neutral"/>
-            <p>No current Settings read proves a connected inbound Gmail or Outlook mailbox. OAuth setup must not be represented as connected until that contract exists.</p>
+          {/* SENDING ACCOUNT, not "mailbox". The scope granted is `gmail.send`
+              only, so inbound remains genuinely unproven — but the outbound half
+              is live, and reporting the whole card UNAVAILABLE hid a capability
+              that had already shipped. Outlook has no function in this repo at
+              all, so it is named as absent rather than implied as coming. */}
+          <Card title="Connected sending account" icon={Mail}
+            truth={comms.mailbox?.connected ? "LIVE" : "PARTIAL"} capabilityTruth
+            actions={<Status tone={comms.mailbox?.connected ? "ok" : "neutral"}>{comms.mailbox?.connected ? "Connected" : "Not connected"}</Status>}>
+            <ReadState loading={comms.loading} error={comms.error} retry={comms.refresh}>
+              <GoogleSendingAccountPanel comms={comms}/>
+            </ReadState>
+            <p className="ss-note">Google only. There is no Outlook connection on this platform yet, and none is implied here.</p>
           </Card>
         </div>
       </Subsection>
@@ -744,24 +818,559 @@ function ConnectionsView({ initialSegment }: { initialSegment?: ConnectionsSegme
  * one card inside the Business phone subsection, and it still states its own
  * ceiling: no provider search runs from here.
  */
-function PhoneSetupPanel() {
-  const [searchAttempted, setSearchAttempted] = useState(false);
-  return <section className="ss-card" aria-labelledby="ss-phone-title">
+/* ---------------------------------------------------------------------------
+ * Editable Connections controls.
+ *
+ * These three panels exist because the cards above them used to REPORT a state
+ * and offer no way to change it — "business name still missing" with no field,
+ * "Not configured" with no control, "Unavailable" for a capability whose backend
+ * had shipped. Describing a capability is not providing it (§70).
+ *
+ * Each takes the ALREADY-MOUNTED `useSoloComms()` value as a prop. Calling the
+ * hook again inside a panel would create a second copy of this surface's state
+ * and a second set of network reads, so a save in one place would leave the
+ * other showing a stale answer.
+ *
+ * Shared contract, all three: the control is disabled while a write is in
+ * flight, the outcome states what actually happened, and the adapter re-reads
+ * afterwards so what appears is the PERSISTED value rather than what was typed
+ * (§70.1 — a toast is not persistence).
+ * ------------------------------------------------------------------------- */
+
+type WriteState = { tone: "ok" | "bad"; message: string } | null;
+
+function Outcome({ state }: { state: WriteState }) {
+  if (!state) return null;
+  return <div className="ss-outcome" data-tone={state.tone} role="status" aria-live="polite">
+    {state.tone === "ok" ? <CheckCircle2 aria-hidden/> : <TriangleAlert aria-hidden/>}
+    <span>{state.message}</span>
+  </div>;
+}
+
+/** Shown in place of the controls when the caller may not write here (§9). */
+function NotYours({ what }: { what: string }) {
+  return <p className="ss-note">Only a workspace admin can change {what}. Your access here is read-only.</p>;
+}
+
+function SendingDomainsPanel({ comms }: { comms: ReturnType<typeof useSoloComms> }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ domain: "", fromEmailLocal: "no-reply", fromName: "" });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+
+  const run = async (key: string, fn: () => Promise<{ ok: boolean; error: string | null }>, okMessage: string) => {
+    setBusy(key); setOutcome(null);
+    const res = await fn();
+    setBusy(null);
+    setOutcome(res.ok ? { tone: "ok", message: okMessage } : { tone: "bad", message: res.error ?? "That didn't work." });
+    return res.ok;
+  };
+
+  if (!comms.canManage) return <NotYours what="sending domains"/>;
+
+  return <>
+    {comms.domains.length > 0 && <div className="ss-list">
+      {comms.domains.map((d) => <div key={d.id}>
+        <span>
+          <strong>{d.domain}{d.isDefault ? " · default" : ""}</strong>
+          <small>{d.fromEmailLocal}@{d.domain}</small>
+        </span>
+        <Status tone={d.status === "verified" ? "ok" : "warn"}>{d.status}</Status>
+        <div className="ss-row-actions">
+          {/* "Check DNS" rather than "Verify": this asks the provider what the
+              records currently say. It cannot make an unpublished record exist,
+              and a button that implied otherwise would promise a result the
+              person has to produce at their registrar. */}
+          <button type="button" className="ss-btn ss-btn--quiet ss-btn--sm" disabled={busy !== null}
+            onClick={() => run(`refresh:${d.id}`, () => comms.refreshDomain(d.id), `Re-read the DNS records for ${d.domain}.`)}>
+            {busy === `refresh:${d.id}` ? <RefreshCw className="ss-spin" aria-hidden/> : <RefreshCw aria-hidden/>}Check DNS
+          </button>
+          {!d.isDefault && d.status === "verified" && <button type="button" className="ss-btn ss-btn--quiet ss-btn--sm" disabled={busy !== null}
+            onClick={() => run(`default:${d.id}`, () => comms.setDefaultDomain(d.id), `${d.domain} is now the default sender.`)}>
+            Make default
+          </button>}
+          <button type="button" className="ss-btn ss-btn--danger ss-btn--sm" disabled={busy !== null}
+            onClick={() => { if (window.confirm(`Remove ${d.domain}? Mail already sent is unaffected, but this domain stops being available as a sender.`)) void run(`remove:${d.id}`, () => comms.removeDomain(d.id), `${d.domain} removed.`); }}>
+            Remove
+          </button>
+        </div>
+      </div>)}
+    </div>}
+
+    {comms.domains.length === 0 && <div className="ss-empty"><WifiOff aria-hidden/>No custom sending domain yet — mail goes out on the PAIGE-managed identity above.</div>}
+
+    {!showAdd && <div className="ss-form-actions" style={{ marginTop: 11 }}>
+      <button type="button" className="ss-btn" onClick={() => { setShowAdd(true); setOutcome(null); }}>
+        <Globe2 aria-hidden/>Add a domain
+      </button>
+    </div>}
+
+    {showAdd && <form className="ss-form" onSubmit={async (e) => {
+      e.preventDefault();
+      if (!form.domain.trim() || !form.fromName.trim()) { setOutcome({ tone: "bad", message: "A domain and a From name are both required." }); return; }
+      const ok = await run("add", () => comms.addDomain(form), "Registered. Publish the DNS records it returns, then Check DNS.");
+      if (ok) { setShowAdd(false); setForm({ domain: "", fromEmailLocal: "no-reply", fromName: "" }); }
+    }}>
+      <div className="ss-form-row">
+        <label><span>Domain</span>
+          <input value={form.domain} onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value }))} placeholder="mail.yourbusiness.com" disabled={busy !== null} autoFocus/></label>
+        <label><span>Sends from</span>
+          <input value={form.fromEmailLocal} onChange={(e) => setForm((f) => ({ ...f, fromEmailLocal: e.target.value }))} placeholder="no-reply" disabled={busy !== null}/></label>
+        <label><span>From name</span>
+          <input value={form.fromName} onChange={(e) => setForm((f) => ({ ...f, fromName: e.target.value }))} placeholder="Your business" disabled={busy !== null}/></label>
+      </div>
+      <div className="ss-form-actions">
+        <button type="submit" className="ss-btn" disabled={busy !== null}>
+          {busy === "add" ? <RefreshCw className="ss-spin" aria-hidden/> : <CheckCircle2 aria-hidden/>}
+          {busy === "add" ? "Registering…" : "Register domain"}
+        </button>
+        <button type="button" className="ss-btn ss-btn--quiet" disabled={busy !== null} onClick={() => { setShowAdd(false); setOutcome(null); }}>Cancel</button>
+      </div>
+      <p className="ss-note">Registering a domain creates it at the email provider and returns DNS records for you to publish. It does not send anything.</p>
+    </form>}
+
+    <Outcome state={outcome}/>
+  </>;
+}
+
+/**
+ * The Google sending account.
+ *
+ * Called a SENDING ACCOUNT, never a mailbox: `gmail-oauth-start` requests
+ * `gmail.send` and `userinfo.email` and nothing else, so no inbound scope is
+ * granted and nothing here proves mail is read. The card this replaced said
+ * "no Settings read proves a connected mailbox" — true about inbound, and it
+ * had been reading as though the whole capability were missing when the
+ * outbound half had shipped and simply was not wired to a read.
+ */
+function GoogleSendingAccountPanel({ comms }: { comms: ReturnType<typeof useSoloComms> }) {
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+
+  if (!comms.canManage) return <NotYours what="the connected sending account"/>;
+
+  if (comms.mailbox === null) {
+    // Distinct from "not connected": the read itself did not come back.
+    return <p className="ss-note">The connected-account record could not be read, so this is unknown rather than empty. Reload to try again.</p>;
+  }
+
+  if (comms.mailbox.connected) {
+    return <>
+      <div className="ss-fields">
+        <Field label="Google account" value={comms.mailbox.address}/>
+        <Field label="Status" value={comms.mailbox.status}/>
+      </div>
+      <div className="ss-form-actions" style={{ marginTop: 11 }}>
+        <button type="button" className="ss-btn ss-btn--danger" disabled={busy}
+          onClick={async () => {
+            if (!window.confirm("Disconnect this Google account? PAIGE stops sending as it, and the stored token is revoked.")) return;
+            setBusy(true); setOutcome(null);
+            const res = await comms.disconnectGmail();
+            setBusy(false);
+            setOutcome(res.ok ? { tone: "ok", message: "Disconnected." } : { tone: "bad", message: res.error ?? "That didn't work." });
+          }}>
+          {busy ? <RefreshCw className="ss-spin" aria-hidden/> : null}{busy ? "Disconnecting…" : "Disconnect"}
+        </button>
+      </div>
+      <p className="ss-note">This account is authorised to SEND only. Reading incoming mail is a separate permission this connection does not request.</p>
+      <Outcome state={outcome}/>
+    </>;
+  }
+
+  return <>
+    <p>Connect a Google account so PAIGE can send email as you, rather than from the managed identity.</p>
+    <div className="ss-form-actions" style={{ marginTop: 11 }}>
+      <button type="button" className="ss-btn" disabled={busy}
+        onClick={async () => {
+          setBusy(true); setOutcome(null);
+          const { url, error } = await comms.startGmailConnect();
+          setBusy(false);
+          if (!url) { setOutcome({ tone: "bad", message: error ?? "Couldn't start the Google sign-in." }); return; }
+          // Record where to come back to BEFORE leaving. Without this the Gmail
+          // callback falls back to the legacy admin route and a Solo tenant is
+          // returned to a page they cannot open, so the flow never closes on the
+          // card they started from. Same-origin absolute path only — the store
+          // refuses anything else at both ends.
+          rememberOAuthReturn(`${window.location.pathname}${window.location.search}`);
+          // This is a same-tab redirect the person asked for by clicking. It is
+          // NOT a background navigation: nothing here leaves for a provider until
+          // the button is pressed (§38).
+          window.location.assign(url);
+        }}>
+        {busy ? <RefreshCw className="ss-spin" aria-hidden/> : <ExternalLink aria-hidden/>}
+        {busy ? "Opening Google…" : "Connect a Google account"}
+      </button>
+    </div>
+    <p className="ss-note">You'll sign in at Google and grant permission to send. PAIGE never sees your password, and asks for send permission only.</p>
+    <Outcome state={outcome}/>
+  </>;
+}
+
+/**
+ * Find and buy a number.
+ *
+ * This panel used to be `PROPOSED` and inert: it rendered a search form, and pressing
+ * Search ran nothing and said so. Meanwhile `comms-search-numbers` and
+ * `comms-purchase-number` were real, and one workspace had already bought two numbers
+ * through the legacy route a Solo tenant never sees. The capability was built and then
+ * orphaned; this is the caller it was missing.
+ *
+ * MONEY (§38). Buying is a real charge, so Buy is a deliberate two-step: pick a number,
+ * then confirm the price. Nothing here purchases on its own, retries a purchase, or
+ * reports one that did not complete.
+ */
+function PhoneSetupPanel({ numbers, onPurchased }: {
+  numbers: ReturnType<typeof useSoloNumbers>;
+  onPurchased: () => void;
+}) {
+  const [filters, setFilters] = useState<NumberSearchFilters>(EMPTY_NUMBER_FILTERS);
+  const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [buying, setBuying] = useState<string | null>(null);
+  const [bought, setBought] = useState<WriteState>(null);
+
+  const set = <K extends keyof NumberSearchFilters>(k: K) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setFilters((f) => ({ ...f, [k]: e.target.value as NumberSearchFilters[K] }));
+    };
+
+  const tollFree = filters.kind === "tollfree";
+
+  const runSearch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSearching(true); setBought(null);
+    setOutcome(await numbers.search(filters));
+    setSearching(false);
+  };
+
+  const buy = async (phoneNumber: string, priceCents: number | null) => {
+    const price = priceCents === null ? "an unlisted monthly price" : `$${(priceCents / 100).toFixed(2)} a month`;
+    if (!window.confirm(`Buy ${phoneNumber} for ${price}?\n\nThis charges your workspace and the number becomes yours immediately.`)) return;
+    setBuying(phoneNumber); setBought(null);
+    const res = await numbers.purchase(phoneNumber);
+    setBuying(null);
+    if (res.ok) {
+      setBought({ tone: "ok", message: `${phoneNumber} is yours. It's on this business now.` });
+      // The readiness ladder grades whether a number is assigned from a separate read.
+      onPurchased();
+      // Drop the bought number from the results rather than leaving a Buy button on
+      // something already owned.
+      setOutcome((o) => o?.state === "results"
+        ? { ...o, numbers: o.numbers.filter((n) => n.phoneNumber !== phoneNumber) }
+        : o);
+    } else {
+      setBought({ tone: "bad", message: res.error ?? "That purchase didn't complete." });
+    }
+  };
+
+  return <section className="ss-card ss-phone-setup" aria-labelledby="ss-phone-title">
     <header>
       <span className="ss-card-icon"><Search aria-hidden/></span>
       <div className="ss-phone-heading">
         <h2 id="ss-phone-title" className="ss-phone-title">Find a number</h2>
       </div>
-      <Truth value="PROPOSED"/>
+      <Truth value="LIVE"/>
     </header>
     <div className="ss-card-body">
-      <p className="ss-phone-contract">Choose a locality and the capabilities you need. Live availability, pricing, purchase and assignment are not connected in this Settings contract.</p>
-      <form className="ss-phone-search" onSubmit={(event) => { event.preventDefault(); setSearchAttempted(true); }}>
-        <label><span>Area code or locality</span><input type="search" name="phone-locality" placeholder="Atlanta or 404" autoComplete="off"/></label>
-        <label><span>Required capabilities</span><select name="phone-capabilities" defaultValue="sms-voice"><option value="sms-voice">SMS + voice</option><option value="sms">SMS</option><option value="voice">Voice</option></select></label>
-        <button type="submit"><Search aria-hidden/>Search numbers</button>
-      </form>
-      {searchAttempted && <div className="ss-phone-unavailable" role="status"><TriangleAlert aria-hidden/><span><strong>Number search is not connected yet.</strong> No provider search ran, and no number, charge, or account data changed.</span></div>}
+      {!numbers.canManage
+        ? <NotYours what="the numbers on this business"/>
+        : <>
+          <p className="ss-phone-contract">Search live availability and buy a number for this business. Prices are monthly.</p>
+          <form className="ss-form" onSubmit={runSearch}>
+            <div className="ss-form-row">
+              <label><span>Type</span>
+                <select value={filters.kind} onChange={set("kind")} disabled={searching}>
+                  <option value="local">Local number</option>
+                  <option value="tollfree">Toll-free (800, 833, 844…)</option>
+                </select></label>
+              {/* A toll-free prefix IS the area code, so offering both would contradict itself. */}
+              <label><span>Area code</span>
+                <input value={filters.areaCode} onChange={set("areaCode")} placeholder={tollFree ? "n/a for toll-free" : "404"}
+                  inputMode="numeric" maxLength={3} disabled={searching || tollFree}/></label>
+              {/* Toll-free numbers have no geography — the provider's toll-free inventory
+                  does not accept a state or a city — so these are disabled rather than
+                  sent as filters that cannot match and then reported as "no numbers". */}
+              <label><span>State</span>
+                <input value={filters.region} onChange={set("region")} placeholder={tollFree ? "n/a for toll-free" : "GA"}
+                  maxLength={2} disabled={searching || tollFree}/></label>
+            </div>
+            <div className="ss-form-row">
+              <label><span>City</span>
+                <input value={filters.locality} onChange={set("locality")} placeholder={tollFree ? "n/a for toll-free" : "Atlanta"}
+                  disabled={searching || tollFree}/></label>
+              <label><span>Number starts with</span>
+                <input value={filters.startsWith} onChange={set("startsWith")} placeholder="555" inputMode="numeric" maxLength={7} disabled={searching}/></label>
+            </div>
+            <div className="ss-form-actions">
+              <button type="submit" className="ss-btn" disabled={searching}>
+                {searching ? <RefreshCw className="ss-spin" aria-hidden/> : <Search aria-hidden/>}
+                {searching ? "Searching…" : "Search numbers"}
+              </button>
+              {outcome && <button type="button" className="ss-btn ss-btn--quiet" disabled={searching}
+                onClick={() => { setFilters(EMPTY_NUMBER_FILTERS); setOutcome(null); setBought(null); }}>Clear</button>}
+            </div>
+          </form>
+
+          {/* A setup gap is its own answer, not an empty list — saying "no numbers found"
+              would blame the search for something it did not do. */}
+          {outcome?.state === "needs_config" && <div className="ss-phone-unavailable" role="status">
+            <TriangleAlert aria-hidden/><span><strong>This business can't buy a number yet.</strong> {outcome.message}</span>
+          </div>}
+
+          {outcome?.state === "error" && <Outcome state={{ tone: "bad", message: outcome.message }}/>}
+
+          {outcome?.state === "results" && outcome.numbers.length === 0 &&
+            <div className="ss-empty"><WifiOff aria-hidden/>No numbers matched those filters. Try a wider search.</div>}
+
+          {outcome?.state === "results" && outcome.numbers.length > 0 && <>
+            <div className="ss-list" style={{ marginTop: 11 }}>
+              {outcome.numbers.map((n) => <div key={n.phoneNumber}>
+                <span>
+                  <strong>{n.phoneNumber}</strong>
+                  <small>
+                    {[n.locality, n.region].filter(Boolean).join(", ") || "—"}
+                    {" · "}
+                    {[n.capabilities.sms && "text", n.capabilities.mms && "picture", n.capabilities.voice && "calls"]
+                      .filter(Boolean).join(" · ") || "no capabilities listed"}
+                  </small>
+                </span>
+                <Status tone="neutral">{n.priceCents === null ? "—" : `$${(n.priceCents / 100).toFixed(2)}/mo`}</Status>
+                <div className="ss-row-actions">
+                  <button type="button" className="ss-btn ss-btn--sm" disabled={buying !== null}
+                    onClick={() => void buy(n.phoneNumber, n.priceCents)}>
+                    {buying === n.phoneNumber ? <RefreshCw className="ss-spin" aria-hidden/> : null}
+                    {buying === n.phoneNumber ? "Buying…" : "Buy"}
+                  </button>
+                </div>
+              </div>)}
+            </div>
+            {!outcome.priceConfigured && <p className="ss-note">
+              Prices show as “—” because this number type has no price on file yet. Buying is still possible; the charge is whatever the provider bills.
+            </p>}
+          </>}
+
+          <Outcome state={bought}/>
+        </>}
+    </div>
+  </section>;
+}
+
+/**
+ * Carrier registration, where a Solo tenant can actually reach it.
+ *
+ * THE CEILING IS STATED, NOT IMPLIED (§13). Filing with a carrier does not exist in this
+ * product: `comms-a2p-submit` refuses submission and returns `a2p_submit_wired: false`.
+ * So this surface offers exactly the two acts that ARE real — Paige drafts the regulatory
+ * copy, and the reviewed copy is saved — and says plainly that the filing step is not one
+ * of them. A "Submit to carriers" button here would be a control that cannot do the thing
+ * it names, which is the failure this whole surface was rebuilt to stop.
+ *
+ * Drafting is a PAID model call that OVERWRITES saved copy, so it is offered only where
+ * there is nothing to lose: no saved registration, or an explicit re-draft the person
+ * confirms. Every "we don't know" path below therefore avoids the re-draft button, because
+ * showing it to someone whose registration exists but could not be read is how reviewed
+ * compliance prose gets destroyed by a surface trying to be helpful.
+ */
+function RegistrationPanel({ a2p, account, status, statusLoading }: {
+  a2p: ReturnType<typeof useSoloA2P>;
+  account: string;
+  /** Graded by the readiness ladder, passed in rather than re-derived (§57). */
+  status: { tone: string; state: string; detail: string } | null;
+  statusLoading: boolean;
+}) {
+  const [legal, setLegal] = useState("");
+  const [site, setSite] = useState("");
+  const [hint, setHint] = useState("");
+  const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [outcome, setOutcome] = useState<WriteState>(null);
+
+  // The stored legal name and website arrive after the read, and the save seam REFUSES
+  // without the legal name. Filling the fields once, without clobbering typing in
+  // progress, is what makes a resumed registration actionable rather than merely visible.
+  const storedLegal = a2p.legalBusinessName;
+  const storedSite = a2p.website;
+  useEffect(() => { if (storedLegal) setLegal((p) => p || storedLegal); }, [storedLegal]);
+  useEffect(() => { if (storedSite) setSite((p) => p || storedSite); }, [storedSite]);
+  // The saved copy, re-opened. `p ?? …` so a refresh never discards an unsaved edit.
+  const resumed = a2p.resumed;
+  useEffect(() => { if (resumed) setDraft((p) => p ?? resumed); }, [resumed]);
+
+  const edit = <K extends keyof EditDraft>(k: K, v: EditDraft[K]) =>
+    setDraft((d) => (d ? { ...d, [k]: v } : d));
+
+  const runDraft = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (draft && !window.confirm("Paige will write new copy over what's here. Continue?")) return;
+    setDrafting(true); setOutcome(null);
+    const res = await a2p.draftWithPaige({ legalBusinessName: legal, website: site, useCaseHint: hint });
+    setDrafting(false);
+    if (res.ok && res.draft) {
+      setDraft(res.draft);
+      setOutcome({ tone: "ok", message: "Paige drafted your registration and saved it. Review it below, then save your edits." });
+    } else {
+      setOutcome({ tone: "bad", message: res.error ?? "That draft didn't run." });
+    }
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    setSaving(true); setOutcome(null);
+    const res = await a2p.saveReviewed({ legalBusinessName: legal, website: site, draft });
+    setSaving(false);
+    setOutcome(res.ok
+      // Saying "saved" and stopping would let someone read it as filed. It is not.
+      ? { tone: "ok", message: "Your registration is saved. It has not been filed with any carrier — nothing here can do that yet." }
+      : { tone: "bad", message: res.error ?? "That save didn't complete." });
+  };
+
+  const addSample = () => setDraft((d) => d
+    ? { ...d, samples: [...d.samples, { id: `new-sample-${Date.now()}`, text: "" }] } : d);
+  const removeSample = (id: string) => setDraft((d) => d
+    ? { ...d, samples: d.samples.filter((s) => s.id !== id) } : d);
+  const setSample = (id: string, text: string) => setDraft((d) => d
+    ? { ...d, samples: d.samples.map((s) => (s.id === id ? { ...s, text } : s)) } : d);
+
+  const reg = a2p.read.state === "ok" ? a2p.read.registration : null;
+  const canSave = Boolean(draft && legal.trim() && draft.use_case.trim() && draft.campaign_description.trim()
+    && draft.samples.some((s) => s.text.trim()));
+
+  const body = () => {
+    // The two unknown states come FIRST, and deliberately outrank the authority check.
+    // Both of them return before the admin answer is read, so `canManage` is false for
+    // want of an answer rather than because the person lacks authority — and telling
+    // someone their access is read-only, when what actually happened is that we could not
+    // identify their workspace, is a confident claim made out of ignorance. Neither says
+    // anything about whether a registration exists either, so neither offers the paid draft.
+    if (a2p.read.state === "unidentified") return <div className="ss-next" role="status">
+      <strong>We couldn&rsquo;t tell which business you&rsquo;re in</strong>
+      <p>Nothing is being claimed about this business&rsquo;s registration until that read succeeds.</p>
+      <p><button type="button" className="ss-retry" onClick={a2p.refresh}>Try again</button></p>
+    </div>;
+    if (a2p.read.state === "unreadable") return <div className="ss-next" role="status">
+      <strong>We couldn&rsquo;t read this business&rsquo;s registration</strong>
+      <p>It may well exist — we just didn&rsquo;t get an answer, so nothing is being claimed either way.</p>
+      <p><button type="button" className="ss-retry" onClick={a2p.refresh}>Try again</button></p>
+    </div>;
+    if (!a2p.canManage) return <NotYours what="this business's carrier registration"/>;
+    if (a2p.locked) return <>
+      <p>This registration has moved past preparation, so its copy is locked. Changes now go through the carrier, not through here.</p>
+      <div className="ss-fields">
+        <Field label="Status" value={reg?.status ?? null}/>
+        <Field label="Use case" value={reg?.use_case ?? null}/>
+      </div>
+    </>;
+
+    return <>
+      {/* READ-ONLY, deliberately, and this is the second time this branch has had to
+          learn it. Both `comms-a2p-draft` and `comms-a2p-submit` read the legal name
+          from `tenant_legal_profile` and IGNORE the one in the request body — submit's
+          own header says the three identity fields are "validated and then DISCARDED
+          here". An earlier revision rendered them as text inputs, so a person could
+          correct their legal name, press Save, be told the registration was saved, and
+          find the old value still there on reload. A typeable box over a discarded
+          field is a save that lies (§70). These reflect the stored record and send
+          people to its one home (§18). EIN was dropped outright: nothing reads it,
+          nothing stores it, and an input for it was a box that ate typing. */}
+      <div className="ss-fields">
+        <Field label="Legal business name" value={legal || null}/>
+        <Field label="Website" value={site || null}/>
+      </div>
+      <p className="ss-note">
+        These come from <Link to={`/solo/${account}/settings/setup`}>Setup</Link>, which is
+        where they are edited. Carriers check them against your registration, so a mismatch
+        there is what gets one rejected.
+      </p>
+
+      {/* The gate in front of the SPEND. `comms-a2p-draft` refuses with
+          LEGAL_PROFILE_REQUIRED when no legal name is stored — the default state of a
+          workspace that has not filled in its business profile — so without this the
+          commonest outcome of pressing this button was a refusal, over and over. */}
+      {!legal.trim()
+        ? <div className="ss-next" role="status">
+            <strong>Add your legal business name first</strong>
+            <p>Carriers register a legal entity, so there is nothing to prepare until yours
+              is on file. Add it in <Link to={`/solo/${account}/settings/setup`}>Setup</Link>,
+              then come back.</p>
+          </div>
+        : <form className="ss-form" onSubmit={runDraft}>
+            <div className="ss-form-row">
+              <label><span>What do you text clients about?</span>
+                <input value={hint} onChange={(e) => setHint(e.target.value)}
+                  placeholder="Appointment reminders and follow-ups" disabled={drafting || saving}/></label>
+            </div>
+            <div className="ss-form-actions">
+              <button type="submit" className="ss-btn" disabled={drafting || saving}>
+                {drafting ? <RefreshCw className="ss-spin" aria-hidden/> : <Sparkles aria-hidden/>}
+                {drafting ? "Paige is writing…" : draft ? "Draft again with Paige" : "Draft with Paige"}
+              </button>
+            </div>
+          </form>}
+
+      {draft && <div className="ss-reg-draft">
+        <label className="ss-field-block"><span>Use case</span>
+          <input value={draft.use_case} onChange={(e) => edit("use_case", e.target.value)} disabled={saving}/></label>
+        <label className="ss-field-block"><span>What carriers will read</span>
+          <textarea rows={4} value={draft.campaign_description}
+            onChange={(e) => edit("campaign_description", e.target.value)} disabled={saving}/></label>
+
+        <div className="ss-field-block">
+          <span>Sample messages</span>
+          {draft.samples.map((s) => <div key={s.id} className="ss-sample-row">
+            <input value={s.text} onChange={(e) => setSample(s.id, e.target.value)}
+              placeholder="A real text you would send" disabled={saving}/>
+            <button type="button" className="ss-btn ss-btn--sm ss-btn--quiet" disabled={saving || draft.samples.length <= 1}
+              onClick={() => removeSample(s.id)} aria-label={`Remove sample ${s.text || "message"}`}>Remove</button>
+          </div>)}
+          <button type="button" className="ss-btn ss-btn--sm ss-btn--quiet" disabled={saving} onClick={addSample}>Add a sample</button>
+        </div>
+
+        <label className="ss-field-block"><span>How people agree to be texted</span>
+          <textarea rows={3} value={draft.optin_flow} onChange={(e) => edit("optin_flow", e.target.value)} disabled={saving}/></label>
+        <div className="ss-form-row">
+          <label><span>Confirmation reply</span>
+            <input value={draft.optin_message} onChange={(e) => edit("optin_message", e.target.value)} disabled={saving}/></label>
+          <label><span>STOP reply</span>
+            <input value={draft.optout_message} onChange={(e) => edit("optout_message", e.target.value)} disabled={saving}/></label>
+          <label><span>HELP reply</span>
+            <input value={draft.help_message} onChange={(e) => edit("help_message", e.target.value)} disabled={saving}/></label>
+        </div>
+
+        <div className="ss-form-actions">
+          <button type="button" className="ss-btn" disabled={!canSave || saving} onClick={() => void save()}>
+            {saving ? <RefreshCw className="ss-spin" aria-hidden/> : null}
+            {saving ? "Saving…" : "Save registration"}
+          </button>
+          {!canSave && <span className="ss-note">
+            A legal business name, a use case, what carriers will read, and at least one sample message are all required.
+          </span>}
+        </div>
+      </div>}
+
+      <Outcome state={outcome}/>
+    </>;
+  };
+
+  return <section className="ss-card ss-reg-setup" aria-labelledby="ss-reg-title">
+    <header>
+      <span className="ss-card-icon"><ShieldCheck aria-hidden/></span>
+      <div className="ss-phone-heading"><h2 id="ss-reg-title" className="ss-phone-title">Prepare your registration</h2></div>
+      <Truth value={a2p.locked ? "PARTIAL" : "LIVE"}/>
+    </header>
+    <div className="ss-card-body">
+      <p className="ss-phone-contract">
+        Carriers require a registered business before any text sends. Paige writes the regulatory
+        copy for you; you review it and save it.
+      </p>
+      {!statusLoading && status && <p className="ss-note"><Status tone={status.tone}>{status.state}</Status> {status.detail}</p>}
+      <ReadState loading={a2p.loading} error={null} retry={a2p.refresh}>{body()}</ReadState>
+      {/* Stated once, where the acts are, rather than only in a status card further up. */}
+      <p className="ss-note">
+        <strong>Filing is the step this product does not have yet.</strong> Saving prepares the
+        registration; sending it to a carrier is separate work that has not been built, so nothing
+        here will ever report your registration as filed.
+      </p>
     </div>
   </section>;
 }

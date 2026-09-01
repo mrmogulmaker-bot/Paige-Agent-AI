@@ -646,6 +646,13 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
+
+- Gate 1 locks the board-first Pipeline interaction inside the existing six-tab Campaigns shell. The only post-approval prototype refinement is the smaller page-title word "Pipeline"; lane, card, detail, and supporting-control geometry remain frozen.
+- The draft adds multiple tenant-owned pipelines, optional blank or simple starter creation, tenant-owned stage name/description/order/archive/restore controls, contextual deal detail, focused-stage compact behavior, and subordinate routing/repair evidence. Campaign linkage is optional; it is not the only reason to create a pipeline.
+- The durable contract is tenant-scoped and callable. Read-only members can inspect but not mutate. Occupied stages fail closed on archive. No revenue, ROI, payment, client-health, or unsupported portal facts are inferred.
+- Truth status: local contract/render tests and production build are green. Migration persistence, authenticated save/reload, permission, retry, abandonment, account-switch, preview runtime, and exact-head Gate 2 are UNVERIFIED until the draft CI/preview and owner release gate run. Do not merge or deploy without the separate exact-head Gate 2 request.
+
 ### Solo Clients → Conversations — implementation awaiting exact-head release verification (2026-08-28)
 
 The owner-approved Solo redesign is intentionally confined to the existing workspace directly below

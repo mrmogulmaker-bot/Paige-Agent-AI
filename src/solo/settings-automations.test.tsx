@@ -65,7 +65,13 @@ vi.mock("@/integrations/supabase/client", () => {
           const settle = () => db.holdReads
             ? new Promise<typeof result>((done) => db.releaseReads.push(() => done(result)))
             : Promise.resolve(result);
-          return { eq: () => ({ order: settle }) };
+          // The chain has to mirror the REAL builder, not the shape this test happened
+          // to need when it was written. `useSoloAutomations` reads pipeline_stages as
+          // .eq(...).is("archived_at", null).order(...) — a link this mock did not have,
+          // so `.is` was undefined, the read threw, and the whole surface sat on
+          // "Checking what is set up…" while fifteen assertions blamed the copy.
+          const ordered = { order: settle };
+          return { eq: () => ({ ...ordered, is: () => ordered }) };
         },
         insert: (values: Record<string, unknown>) => {
           db.writes.push({ table, op: "insert", values });
