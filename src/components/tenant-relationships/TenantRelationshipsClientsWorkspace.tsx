@@ -310,6 +310,8 @@ function SoloPeopleView({
   const dismissedDeepLinkId = useRef<string | null>(null);
   const focusedSelectedId = useRef<string | null>(null);
   const backRef = useRef<HTMLButtonElement | null>(null);
+  const editorOriginRef = useRef<string | null>(null);
+  const restoreEditorOriginRef = useRef<string | null>(null);
   const deepLinked = deepLinkedContactId
     ? data.people.find(({ id }) => id === deepLinkedContactId) ?? data.deepLinkedPerson ?? null
     : null;
@@ -317,6 +319,14 @@ function SoloPeopleView({
   const selected = deepLinkedContactId
     ? (deepLinkDismissed ? null : deepLinked)
     : data.people.find(({ id }) => id === selectedContactId) ?? null;
+
+  useEffect(() => {
+    setEditorOpen(false);
+    setEditorContact(null);
+    editorOriginRef.current = null;
+    restoreEditorOriginRef.current = null;
+  }, [activeTenantId]);
+
   const query = search.trim().toLowerCase();
   const people = useMemo(() => {
     if (!query) return data.people;
@@ -389,6 +399,13 @@ function SoloPeopleView({
     queueMicrotask(() => (rowRefs.current.get(id) ?? searchRef.current)?.focus());
   }, [selected]);
 
+  useEffect(() => {
+    if (editorOpen || !restoreEditorOriginRef.current) return;
+    const origin = restoreEditorOriginRef.current;
+    restoreEditorOriginRef.current = null;
+    queueMicrotask(() => workspaceRef.current?.querySelector<HTMLButtonElement>(`[data-contact-editor-origin="${origin}"]`)?.focus());
+  }, [editorOpen]);
+
   const selectPerson = (id: string) => {
     dismissedDeepLinkId.current = null;
     lastSelectedId.current = id;
@@ -406,19 +423,48 @@ function SoloPeopleView({
   if (data.peopleLoading) return <BoundedState eyebrow="People · LIVE" title="Loading the authorized book" detail="The previous account and selected record are cleared while this account resolves." kind="loading" />;
   if (data.peopleError) return <BoundedState eyebrow="People · UNAVAILABLE" title="We couldn't load People" detail="No count, record, or relationship state is inferred from a failed read." kind="error" onRetry={() => void data.retryPeople()} />;
   const staleDeepLink = Boolean(deepLinkedContactId && !selected && !data.deepLinkLoading);
-  const openNewContact = () => {
+  const openNewContact = (event: React.MouseEvent<HTMLButtonElement>) => {
+    editorOriginRef.current = event.currentTarget.dataset.contactEditorOrigin ?? null;
     setEditorContact(null);
     setEditorOpen(true);
   };
-  const openEditContact = () => {
+  const openEditContact = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!selected) return;
+    editorOriginRef.current = event.currentTarget.dataset.contactEditorOrigin ?? null;
     setEditorContact(selected);
     setEditorOpen(true);
+  };
+  const changeEditorOpen = (next: boolean) => {
+    if (!next) restoreEditorOriginRef.current = editorOriginRef.current;
+    setEditorOpen(next);
   };
   const handleSaved = async (contactId: string) => {
     await data.retryPeople();
     selectPerson(contactId);
   };
+
+  if (editorOpen) {
+    return (
+      <section
+        ref={workspaceRef}
+        className="trc-solo-people"
+        data-solo-client-record
+        data-contact-editor-active="true"
+        data-record-selected="false"
+        data-record-layout={recordLayout}
+        data-active-tenant={activeTenantId}
+        aria-label="People contact editor workspace"
+      >
+        <PeopleContactEditor
+          open
+          onOpenChange={changeEditorOpen}
+          tenantId={activeTenantId}
+          contact={editorContact}
+          onSaved={handleSaved}
+        />
+      </section>
+    );
+  }
 
   return (
     <section
@@ -442,7 +488,7 @@ function SoloPeopleView({
         <span className="trc-people-actions">
           {search && <button type="button" onClick={() => setSearch("")}>Clear search</button>}
           <RoleGate allow={["admin", "super_admin", "coach"]} fallback={<ProofPill>Read only</ProofPill>}>
-            <button type="button" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
+            <button type="button" data-contact-editor-origin="toolbar-new" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
           </RoleGate>
         </span>
       </header>
@@ -493,7 +539,7 @@ function SoloPeopleView({
               <span>{query ? "The loaded list is unchanged. Clear search to see every loaded record." : "Create the first tenant-scoped Person or Business record."}</span>
               {query ? <button type="button" onClick={() => setSearch("")}>Clear search</button> : (
                 <RoleGate allow={["admin", "super_admin", "coach"]} fallback={<ProofPill>Read only</ProofPill>}>
-                  <button type="button" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
+                  <button type="button" data-contact-editor-origin="empty-new" onClick={openNewContact}><Plus aria-hidden /> New contact</button>
                 </RoleGate>
               )}
             </div>
@@ -520,13 +566,6 @@ function SoloPeopleView({
           )}
         </section>
       </div>
-      <PeopleContactEditor
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-        tenantId={activeTenantId}
-        contact={editorContact}
-        onSaved={handleSaved}
-      />
     </section>
   );
 }
@@ -542,7 +581,7 @@ function ClientRecord({
   backRef: (node: HTMLButtonElement | null) => void;
   onBack: () => void;
   openPaige: () => void;
-  onEdit: () => void;
+  onEdit: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const isBusiness = person.recordType === "business";
   return (
@@ -559,7 +598,7 @@ function ClientRecord({
         </div>
         <div className="trc-record-actions">
           <RoleGate allow={["admin", "super_admin", "coach"]} fallback={null}>
-            <button type="button" onClick={onEdit}><Pencil aria-hidden /> Edit contact</button>
+            <button type="button" data-contact-editor-origin="record-edit" onClick={onEdit}><Pencil aria-hidden /> Edit contact</button>
           </RoleGate>
           <button type="button" onClick={openPaige}><Sparkles aria-hidden /> Open PAIGE workspace</button>
           <span>Enrichment · UNAVAILABLE</span>
