@@ -88,8 +88,19 @@ export interface SoloNumbersData {
   canManage: boolean;
   refresh: () => void;
   search: (filters: NumberSearchFilters) => Promise<SearchOutcome>;
-  /** Buys ONE number. Never called except from a person's click (§38). */
-  purchase: (phoneNumber: string) => Promise<{ ok: boolean; error: string | null }>;
+  /**
+   * Buys ONE number. Never called except from a person's click (§38).
+   *
+   * `agreedMonthlyCents` is the price the person was actually shown and agreed to. The
+   * server refuses the purchase if the live price no longer matches it, so a price that
+   * moved between the search and the click is never silently charged. Omit it (or pass
+   * `null`) only when the operator has not priced this number type and there is therefore
+   * no amount to hold anyone to.
+   */
+  purchase: (
+    phoneNumber: string,
+    agreedMonthlyCents?: number | null,
+  ) => Promise<{ ok: boolean; error: string | null }>;
   /** Names or renames a number. An empty string clears the name. */
   rename: (id: string, friendlyName: string) => Promise<{ ok: boolean; error: string | null }>;
   /** Chooses which number this business calls and texts FROM. */
