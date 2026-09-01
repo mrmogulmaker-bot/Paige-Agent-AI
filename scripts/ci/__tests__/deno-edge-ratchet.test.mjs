@@ -300,9 +300,40 @@ console.log("\ndependency fingerprint is coupled to the flags the check actually
       CHECK_FLAGS.includes("--no-lock"), JSON.stringify(CHECK_FLAGS));
 
     // THE FLAG LIST ITSELF. Without this, a resolution-changing flag can be added silently.
+    //
+    // `--node-modules-dir=none` was added deliberately, and this is where its DEP_INPUTS
+    // consequence is stated, as the comment above requires.
+    //
+    // WHY: the repo root carries a `package.json` for the frontend. Deno walks up from the
+    // entry file, finds it, switches to node_modules resolution, and then refuses every
+    // `npm:` specifier with "Could not find a matching package ... run `deno install`". More
+    // than twenty deployed functions import `npm:@supabase/supabase-js@2`, so the gate
+    // reported `resolution-failure` on BOTH legs for each of them and blocked with "nothing
+    // was checked". The flag stops that walk-up; `npm:` then resolves from Deno's cache
+    // exactly as it does when no package.json is in scope.
+    //
+    // DEP_INPUTS CONSEQUENCE: none is added, and one is REMOVED. Unlike `--config` or
+    // `--import-map`, this flag introduces no new file the compiler reads. It makes
+    // `package.json`, `package-lock.json` and `node_modules/` stop influencing resolution —
+    // which is why the existing "no npm lockfile is fingerprinted" assertion below is not
+    // merely still true but now true BY CONSTRUCTION rather than by luck.
+    //
+    // AND IT DOES NOT NEUTER THE GATE, which is the danger the exact-list pin exists for.
+    // `--no-remote`, `--no-npm` and `--cached-only` all SUPPRESS resolution and would make a
+    // check pass by checking less. This one RESTORES resolution: it turns two functions that
+    // were unratchetable into functions that are graded on both legs. The assertion below
+    // names those flags so the distinction survives the next edit to this list.
     check("CHECK_FLAGS is exactly the flag set this gate is proven against",
-      JSON.stringify(CHECK_FLAGS) === JSON.stringify(["--no-lock"]),
+      JSON.stringify(CHECK_FLAGS) === JSON.stringify(["--no-lock", "--node-modules-dir=none"]),
       `${JSON.stringify(CHECK_FLAGS)} - adding a flag changes what the check resolves; state its DEP_INPUTS consequence here`);
+
+    // Resolution-SUPPRESSING flags stay out, by name. The exact-list pin above already
+    // catches them, but only as an opaque mismatch; this says which ones and why.
+    for (const banned of ["--no-remote", "--no-npm", "--cached-only", "--config", "--import-map"]) {
+      check(`CHECK_FLAGS does not carry ${banned} (it would check less, or read an unfingerprinted input)`,
+        !CHECK_FLAGS.some((f) => f === banned || f.startsWith(`${banned}=`)),
+        JSON.stringify(CHECK_FLAGS));
+    }
 
     // THE INVARIANT, stated in both directions.
     const lockDisabled = CHECK_FLAGS.includes("--no-lock");
@@ -867,6 +898,38 @@ console.log("\nrunner — against a real deno");
       check("real deno: and the head leg is classified `diagnostics`",
         regressed.evidence?.functions?.[0]?.head?.outcome === "diagnostics",
         JSON.stringify(regressed.evidence?.functions?.[0]?.head?.outcome));
+
+      // THE REGRESSION THAT SENT ME HERE. A function importing `npm:` from a repository
+      // that has a root package.json must stay RATCHETABLE. Drop `--node-modules-dir=none`
+      // from CHECK_FLAGS and this fails with "Could not find ... node_modules", which is
+      // precisely how two real functions went ungraded until a shared-file change pulled
+      // them into an affected set.
+      //
+      // Failure is read, not assumed: only a node_modules complaint is treated as the
+      // defect. A network failure fetching the package proves nothing either way and is
+      // reported UNVERIFIED rather than failed, so this cannot become a flake that trains
+      // people to ignore the gate.
+      const NPMFN = "disposable-ratchet-npm-probe";
+      writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "host-app", private: true }));
+      writeFn(root, NPMFN, "npm", 'import { createClient } from "npm:@supabase/supabase-js@2";\nexport const madeClient = typeof createClient;');
+      git("add", "-A"); git("commit", "-qm", "npm probe");
+      const npmSha = git("rev-parse", "HEAD").trim();
+      const bare2 = mkdtempSync(path.join(tmpdir(), "ratchet-npm-"));
+      const npmRun = runRunner({ repo: root, base: npmSha, head: npmSha, fns: [NPMFN], plan: {}, shimDir: bare2 });
+      const npmLeg = npmRun.evidence?.functions?.[0]?.head ?? {};
+      const raw = String(npmLeg.raw ?? "");
+      if (/node_modules/i.test(raw)) {
+        check("real deno: an `npm:` import under a root package.json stays ratchetable",
+          false, `the node_modules walk-up is back - CHECK_FLAGS=${JSON.stringify(R.CHECK_FLAGS)}\n${raw.slice(0, 400)}`);
+      } else if (npmLeg.outcome === "resolution-failure") {
+        console.log("  UNVERIFIED  npm-resolution leg - the package could not be fetched here.");
+        console.log(`              Not the node_modules defect: ${raw.slice(0, 200).replace(/\n/g, " ")}`);
+      } else {
+        check("real deno: an `npm:` import under a root package.json stays ratchetable",
+          npmRun.status === 0 && npmLeg.outcome === "clean",
+          `status=${npmRun.status} outcome=${npmLeg.outcome}\n${raw.slice(0, 400)}`);
+      }
+      rmSync(bare2, { recursive: true, force: true });
       rmSync(bare, { recursive: true, force: true });
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
