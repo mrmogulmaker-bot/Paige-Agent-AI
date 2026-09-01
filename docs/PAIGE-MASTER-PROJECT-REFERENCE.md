@@ -143,7 +143,12 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
 | S1 | Every provider call files its `paige_llm_trace` row under the tenant whose evidence it carries. Eight of nine call sites passed no trace context and wrote untenanted platform rows — the ones carrying the MOST evidence. | `paige-ai-chat`, `_shared/claude.ts` seam |
 | S2 | A focused-CLIENT switch now ends the conversation the way an account switch does (one composite scope epoch). The isolation fence stopped being opt-in — the one surface that focuses clients did not set the flag. `paige_chat_turn_append` gained a tenant predicate. A refused client focus is released, and the refusal survives the reset it causes. | `PaigeAIChat.tsx`, `PaigeWorkspace.tsx`, migration `20261018000000` |
 | S3 | **A credit report dropped into chat no longer writes eight tables unasked.** It produces a proposal a person reviews field by field; approval carries KEYS, never values, and the server writes from its own stored extraction. Prohibited sensitive categories excluded; uncertainty omitted rather than defaulted. | `paige-ai-chat`, new `_shared/credit-extraction-payload.ts`, new `paige-apply-extraction`, migration `20261019000000` |
-| S4 | An approval is BOUND to the call it approved (fingerprint issued with the refusal, echoed back, re-derived at the gate) — `confirm:true` alone no longer opens it. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. | `paige-ai-chat`, migrations `20261020000000`, `20261021000000` |
+| S4 | An approval is BOUND to the call it approved, not to a boolean. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. **The binding MECHANISM changed twice after this — read R1 and R2 below before trusting any description of it.** | `paige-ai-chat`, migrations `20261020000000`, `20261021000000` |
+| R1 | S4's mechanism (the surface echoes a fingerprint back) made every gated tool **un-executable on five of the six chat surfaces**, because only `PaigeAIChat` sends the echo — and the client-portal seat lost `update_client_data`, its only write. The proposed call is now persisted and approval carries a TOKEN; the STORED arguments execute, so the model never restates the call and a document-sized argument cannot livelock. | `paige-ai-chat`, migration `20261023000000` |
+| R2 | **R1 opened a self-approval hole and this closes it — see §10.** A proposal records the request that minted it and the claim excludes it, so a token cannot be redeemed by the turn that issued it. | `paige-ai-chat`, migration `20261026000000` |
+| A | §67 **the process record**: `paige_automations` + `paige_automation_acts` + a trigger catalogue. A grant is fingerprinted over the act chain, so changing the chain drops an `auto` grant back to `confirm` — the human approved a specific sequence. | migration `20261022000000` |
+| B | §67 **the resolver**: `resolve_automation_autonomy` = `min(grant, most restrictive act floor, Trust Compass ceiling)`, returning `capped_by` (which bound is holding it) and `dark` (why it could never fire) as separate answers. | migration `20261024000000` |
+| C | §67 **the chat seam**: five tools. A tenant describes repeatable work and Paige builds it — born `confirm` + `draft`, explicitly, whatever the request said. **She can build a process; she can never arm one.** | `paige-ai-chat`, migration `20261025000000` |
 | S5 | The automatic URL fetch is tier-gated — a portal client pasting a link no longer causes server-side egress. (The raw provider-payload spread was already closed on `main` by the MCP registry work; nothing rebuilt.) | `paige-ai-chat` |
 | S6 | Removed four claims with no capability behind them: three dead composer shortcuts, an unbound ⌘K, a panel saying voice input was off while the mic worked, and a session-summary hook that had been sending `Bearer undefined` since it was written. | `PaigeAIChat.tsx`, `TenantCommandCenterShell.tsx`, `SoloPaigeWorkspace.tsx`, `usePaigeMemory.ts` |
 
@@ -156,6 +161,16 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
 - **`runGeneralDocumentExtraction` is still undefined** — called, never defined, one of the 14
   baseline `deno check` errors. Non-credit documents therefore still produce no proposal.
 - **`paige-mcp` does not consult `resolve_tool_autonomy`** — a second, still-ungoverned write path.
+  Pre-existing, NOT introduced by this branch. It is scope-enforced (`workflows.run` etc.), not
+  lane-enforced. Deliberately not fixed here: MCP callers have no confirm affordance, so gating it
+  would make every MCP write un-executable — the exact failure R1 exists to undo.
+- **Approval on five of the six chat surfaces is still MODEL-ASSERTED.** A new request proves a
+  person sent another message, not that the message was a yes. Only a surface that renders the
+  summary and echoes back its fingerprint proves a human approved THAT call, and one surface does
+  (`PaigeAIChat`). Building the card on the other five is interface work owed to CD (§00).
+- **Triggers do not EMIT yet** (slice D of the autonomy architecture). Four trigger rows are seeded —
+  only the ones verified against production — not the eighty the design pack declares, because
+  `is_live` is the field a builder trusts to decide what it may offer a tenant.
 - **Design items are owed to CD**, listed in `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md` §4b.
 
 **Live platform finding, surfaced by the S4 proof and worth an operator's attention on its own:**
@@ -1077,6 +1092,55 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-09-01 — I closed a gate by handing the key to the model. Two reviews, two holes, and the
+  second one was mine (branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT
+  MERGED).** Recorded in full because the shape of the mistake matters more than the fix.
+
+  **The property that was protecting every write was STRUCTURAL.** The confirm gate's re-entry test
+  read `approvedConfirmations`, which arrives only in the validated REQUEST BODY — and a model
+  cannot write a request body. Self-approval was impossible by construction, not by instruction.
+
+  **Repair 1 (`20261023000000`) traded that away without noticing.** The echo mechanism it replaced
+  was genuinely broken — only one of six chat surfaces sends the echo, so every confirm-gated tool
+  had become permanently un-executable on the other five, and the client-portal seat had lost
+  `update_client_data`, its only write. The fix returned a `confirm_token` so approval could be
+  expressed anywhere. But it returned it **in the tool result**, and the agentic loop feeds tool
+  results straight back into the model's own context and issues another round. The model could
+  replay its own token and execute — one round after proposing, with no operator — across all 48
+  gated tools, including role grants, a permanent workflow delete, and `automation_set_grant`, the
+  one tool §67 says Paige must never be able to use on herself. The card the person eventually saw
+  was an Approve button for something that had already run.
+
+  **Every test I had written kept passing**, because each supplied the token the way a SURFACE
+  would and none ever asked whether the MODEL could supply it. That is the transferable lesson: I
+  tested the mechanism I had built rather than the adversary it exists to stop. An independent
+  adversarial review driving the real handler found it; no static reading would have.
+
+  **Repair 2 (`20261026000000`) restores a structural floor.** A proposal records the request that
+  minted it; the claim excludes it. A model cannot start an HTTP request — only a person sending
+  another message can — so same-turn self-approval is impossible again, while approval from a later
+  message still works and the five-surface outage stays closed.
+
+  **What repair 2 does NOT prove, stated because an ambiguous sentence here is how the first hole
+  got written:** a new request proves a person sent another message, not that the message was a
+  yes. On the five surfaces without a confirm card the yes is still model-asserted prose — the
+  trust level those surfaces always had, now with arguments pinned server-side, a single-use claim,
+  and scope re-checked at redemption. Only a surface that renders the summary and echoes back its
+  fingerprint turns "a person replied" into "a person approved THIS". That is interface work owed
+  to CD (§00), and it is the real close-out.
+
+  **Three transferable rules, each paid for:**
+  1. **When a fix removes a structural impossibility and replaces it with an instruction, that is
+     the regression** — even when the thing it fixes is real. "Do NOT retry" in a tool result is
+     not a gate.
+  2. **A test that supplies a credential the way the honest caller would cannot tell you whether a
+     dishonest caller could supply it too.** Adversary-shaped fixtures, not just happy-path ones.
+  3. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
+     branch and they found FOUR vacuous tests — checks passing while reading an empty object, or
+     because deleting the code under test made it throw instead of misbehave. Two of those were in
+     the very tests written to prove this repair.
+
 
 - **2026-08-30 — the honesty of a compliance surface rested on nobody exercising a policy
   (PR #672, owner-approved).** `tenant_a2p_registrations`' RLS UPDATE and INSERT policies are
