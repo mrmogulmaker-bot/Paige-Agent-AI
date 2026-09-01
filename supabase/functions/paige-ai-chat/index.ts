@@ -28,6 +28,7 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // paige_owner_memory identity rows + live platform state and renders the operator briefing injected
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
 import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
+import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -3349,6 +3350,22 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // gets the neutral core. The tenant's authored persona leads either way.
     const systemPrompt = fundingEnabled ? FUNDING_SKILL_PROMPT : NEUTRAL_CORE_PROMPT;
 
+    // Tenant-team awareness is resolved through the caller-JWT client. The RPC
+    // accepts no tenant/person selector and returns only confirmed active members
+    // for the authenticated speaker's active workspace. Any mismatch/error is a
+    // fail-closed NO-OP; request-body context is never used as a fallback.
+    let tenantTeamContext = "";
+    if (personaCtx.tenant_id) {
+      try {
+        // RPC is introduced by the Solo Team migration and may precede generated types.
+        const { data: teamData, error: teamError } = await supabaseClient.rpc("get_paige_team_context" as never);
+        if (teamError) throw teamError;
+        tenantTeamContext = buildTenantTeamContextBlock(teamData, personaCtx.tenant_id) ?? "";
+      } catch (e) {
+        console.warn("[paige-ai-chat] tenant team context unavailable:", (e as Error)?.message);
+      }
+    }
+
     // PAIGE VOICE — the platform-DEFAULT "how you talk" block (persona-layer-1 voice fix).
     // It sits RIGHT AFTER the tenant persona and BEFORE the operating core so the model
     // reads WHO you are → HOW you talk → (then) task/tool/context — instead of burying the
@@ -3370,6 +3387,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
       { role: "system", content: PAIGE_VOICE_BLOCK },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
+      ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
