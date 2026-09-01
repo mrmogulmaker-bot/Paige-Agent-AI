@@ -156,7 +156,7 @@ const go = (k) => {
 // own account to their own, and canonicalize a bare /solo/{n} -> its default branch.
 // Acts ONLY once the caller's own account_number is known, so a mid-load null never
 // bounces.
-const { activeTenant, activeTenantId } = useTenantContext();
+const { activeTenant, activeTenantId, activeUserId } = useTenantContext();
 const paigeTabEpochRef=React.useRef(activeTenantId);
 React.useLayoutEffect(()=>{if(paigeTabEpochRef.current===activeTenantId)return;paigeTabEpochRef.current=activeTenantId;setPaigeDockedTab('chat')},[activeTenantId]);
 const urlSplat = urlParams["*"] || "";
@@ -240,10 +240,14 @@ const contextualNavigation=route==='settings'&&urlDriven?{
   activeId:settingsActive,
   items:SOLO_SETTINGS_DESTINATIONS.map(item=>({id:item.key,label:item.label,href:`/solo/${urlAccount}/settings/${item.key}${location.search}`,icon:SETTINGS_ICONS[item.key]})),
 }:undefined;
+// Presentation only; authorization stays in the owning server/RLS contracts.
+// `owner_user_id` and the authenticated subject both come from useTenantContext,
+// so a URL/account name can never manufacture the visible Owner claim.
+const shellRole = activeUserId != null && activeTenant?.owner_user_id === activeUserId ? "admin" : "coach";
 return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
-userRole="admin"
+userRole={shellRole}
 contextualNavigation={contextualNavigation}
 soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey} full={route==='paige'} dockedTab={paigeDockedTab} onDockedTabChange={setPaigeDockedTab}/>}
 paigeFull={route==='paige'}

@@ -4499,6 +4499,7 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "What tasks are overdue?" → crm_list_tasks with overdue=true.
 - "Set up a pipeline for my program" / "Help me organize this workflow" → read the tenant's current pipeline context with pipeline_catalogue, propose an editable name, purpose, and stage list in the operator's own vocabulary, refine it with them, then use pipeline_configure (confirm-gated) to save the draft. Do not impose preset stages, a generic sales taxonomy, won/lost meanings, or activation. Activate only after the operator reviews the saved draft and explicitly asks.
 - "Archive that pipeline" → require one exact PPL reference. Call pipeline_archive_preview, state the returned exact name, reference, deal count, and consequence, wait for the owner's confirmation, then call pipeline_configure with the same token and confirmed reference. Archive never inherits auto mode and hard delete is unavailable.
+- "Organize my pipelines" → pipeline_catalogue returns tenant folders (including empty folders), virtual Unfiled, and each exact pipeline/folder binding even with zero deals. Use pipeline_configure to create, rename, restore, or move exact pipelines by id + PPL reference. Folder archive is owner-only and always confirm-gated: call pipeline_folder_archive_preview for the exact folder id, state its returned name, pipeline count, and consequence, wait for the owner confirmation card, then pass the same token/id/name to pipeline_configure. Folders are one level only and never alter stages, deals, or pipeline identity.
 - "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
 - "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
 
@@ -5628,7 +5629,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "pipeline_catalogue",
-              description: "Read the tenant's pipeline catalogue directly from pipeline records, including zero-deal pipelines. Duplicate and similar names are separate records. Returns each exact PPL reference and truthful compact metadata; never infer stages or split a display name into multiple pipelines.",
+              description: "Read the tenant's pipeline catalogue directly from pipeline records, including zero-deal pipelines, empty one-level folders, and virtual Unfiled. Duplicate and similar pipeline names are separate records. Returns each exact PPL reference, folder binding, and truthful compact metadata; never infer stages or split a display name into multiple pipelines.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5654,8 +5655,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "pipeline_folder_archive_preview",
+              description: "Owner only. Resolve one exact tenant folder id and prepare its owner-visible archive confirmation. Returns the exact folder name, pipeline count, current version, consequence, and a short-lived token. This does not archive anything.",
+              parameters: {
+                type: "object",
+                properties: { folder_id: { type: "string", description: "Exact folder id returned by pipeline_catalogue." } },
+                required: ["folder_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "pipeline_configure",
-              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; or move a deal. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
+              description: "Admin only. The governed pipeline-owning capability shared with the Campaigns Pipeline workspace. Read with pipeline_catalogue, then create, rename, describe, activate, archive, or restore a pipeline; create, edit, reorder, archive, or restore a stage; move a deal; or create, rename, archive, restore, and organize one-level tenant folders. Hard delete is unavailable here. create-pipeline may include explicit editable stages or no stages for a blank draft; it never substitutes presets. Pipeline archive requires pipeline_archive_preview plus owner confirmation of that exact reference. Folder archive always requires owner confirmation of the exact selected folder name and moves every assigned pipeline to Unfiled without changing its lifecycle status. Never infer stage meaning, revenue, ROI, payment, client health, or portal engagement.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5663,11 +5676,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     type: "object",
                     description: "One explicit pipeline.configure command. Use current tenant ids and versions. Omit stages for a blank draft; when present, stages are the operator-approved editable proposal.",
                     properties: {
-                      type: { type: "string", enum: ["create-pipeline", "update-pipeline", "activate-pipeline", "archive-pipeline", "restore-pipeline", "create-stage", "update-stage", "archive-stage", "restore-stage", "reorder-stages", "move-deal"] },
+                      type: { type: "string", enum: ["create-pipeline", "update-pipeline", "activate-pipeline", "archive-pipeline", "restore-pipeline", "create-stage", "update-stage", "archive-stage", "restore-stage", "reorder-stages", "move-deal", "create-folder", "rename-folder", "archive-folder", "restore-folder", "move-pipeline-to-folder"] },
                       pipelineId: { type: "string", description: "Current tenant pipeline id." },
                       pipelineRef: { type: "string", description: "Exact server-issued PPL reference. Required for archive." },
                       confirmedReference: { type: "string", description: "The exact PPL reference the owner confirmed. Required for archive." },
-                      confirmationToken: { type: "string", description: "Short-lived token from pipeline_archive_preview. Required for archive." },
+                      confirmationToken: { type: "string", description: "Short-lived token from the matching pipeline or folder archive preview. Required for archive." },
+                      folderId: { type: ["string", "null"], description: "Current tenant folder id, or null for virtual Unfiled." },
+                      confirmedName: { type: "string", description: "Exact current folder name shown to and confirmed by the owner. Required for folder archive." },
                       stageId: { type: "string", description: "Current tenant stage id." },
                       dealId: { type: "string", description: "Current tenant deal id." },
                       targetStageId: { type: "string", description: "Active stage id in the deal's current pipeline." },
@@ -6780,6 +6795,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (a?.command?.type === "archive-pipeline" && a?._archive) {
             return `Archive "${a._archive.name}" (${a._archive.short_ref}) with ${a._archive.deal_count} deal${a._archive.deal_count === 1 ? "" : "s"}. This removes it from active selection; it does not hard-delete the pipeline or its history.`;
           }
+          if (a?.command?.type === "archive-folder") {
+            const folderCount = typeof a?._folderArchive?.pipeline_count === "number" ? a._folderArchive.pipeline_count : null;
+            return `Archive the exact folder "${a?.command?.confirmedName || "selected folder"}"${folderCount === null ? "" : ` with ${folderCount} assigned pipeline record${folderCount === 1 ? "" : "s"}`}. Every assigned pipeline moves to Unfiled and keeps its current lifecycle status; no pipeline, deal, stage, or history is deleted.`;
+          }
           return `Run the requested governed pipeline change (${String(a?.command?.type || "configuration").replaceAll("-", " ")}).`;
         case "deal_create":
           return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
@@ -7254,6 +7273,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
           let autoMode = await resolveToolAutonomy(tc.function.name);
           const isPipelineArchive = tc.function.name === "pipeline_configure" && gateArgs?.command?.type === "archive-pipeline";
+          const isPipelineFolderArchive = tc.function.name === "pipeline_configure" && gateArgs?.command?.type === "archive-folder";
           if (isPipelineArchive) {
             autoMode = "confirm";
             const tenantId = personaCtx?.tenant_id;
@@ -7297,6 +7317,63 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               continue;
             }
             gateArgs._archive = { name: archivePipeline.name, short_ref: archivePipeline.short_ref, deal_count: archiveBinding.expected_deal_count };
+          }
+          if (isPipelineFolderArchive) {
+            autoMode = "confirm";
+            const tenantId = personaCtx?.tenant_id;
+            const token = String(gateArgs?.command?.confirmationToken || "");
+            const gateAdmin = createClient(supabaseUrl, supabaseServiceKey);
+            const idempotencyKey = String(gateArgs?.idempotency_key || "");
+            const { data: replay, error: replayError } = tenantId && idempotencyKey
+              ? await gateAdmin.rpc("replay_pipeline_folder_archive_as_paige", {
+                _tenant_id: tenantId,
+                _requested_by: user.id,
+                _command: gateArgs.command,
+                _idempotency_key: idempotencyKey,
+              })
+              : { data: null, error: null };
+            if (replayError) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "folder_archive_replay_refused", message: "That archive retry did not exactly match the committed tenant, owner, command, and idempotency key. No new change was made." }) });
+              continue;
+            }
+            if ((replay as any)?.replayed === true) {
+              const replayedResult = (replay as any)?.result ?? {};
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: replayedResult?.ok !== false, ...replayedResult, replayed: true }) });
+              continue;
+            }
+            const { data: folderBinding } = tenantId && token
+              ? await gateAdmin.from("pipeline_folder_archive_confirmations")
+                .select("folder_id,folder_name,expected_pipeline_count,expires_at,used_at,created_at")
+                .eq("token", token).eq("tenant_id", tenantId).eq("requested_by", user.id).maybeSingle()
+              : { data: null };
+            const { data: archiveFolder } = folderBinding
+              ? await gateAdmin.from("pipeline_folders").select("id,name").eq("id", folderBinding.folder_id).eq("tenant_id", tenantId).maybeSingle()
+              : { data: null };
+            const previewPredatesTurn = folderBinding ? new Date(folderBinding.created_at).getTime() < startedAt : false;
+            if (!folderBinding || folderBinding.used_at || new Date(folderBinding.expires_at).getTime() <= Date.now() || !archiveFolder) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "folder_archive_preview_required", message: "Run pipeline_folder_archive_preview with the exact folder id before asking the owner to confirm. No folder was changed." }) });
+              continue;
+            }
+            if (String(gateArgs?.command?.folderId || "") !== archiveFolder.id || String(gateArgs?.command?.confirmedName || "") !== archiveFolder.name) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "folder_archive_preview_mismatch", message: "The archive command must use the exact folder id and name returned by its preview. No folder was changed." }) });
+              continue;
+            }
+            // REWRITTEN ONTO THE GENERAL GATE, 2026-09-02 — the same rewrite the pipeline archive
+            // above received, applied to the folder archive #718 added afterwards on the retired
+            // channel. Removed here: a `confirmedActions` echo, and a comparison of the operator's
+            // last message against the exact string "Approved — run it.". Prose a model can
+            // produce is not evidence a person approved anything, and a second way into one gate
+            // is how the gate acquires a hole nobody is watching.
+            //
+            // KEPT, because the fingerprint does not do it: the archive is bound to a
+            // server-issued preview of ITSELF, and that preview must predate the turn. The id and
+            // name were already checked against the preview above, so what runs is the folder the
+            // owner was shown — not a folder the model re-named on the confirming turn.
+            if (!previewPredatesTurn) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "folder_archive_preview_required", message: `Show the owner the "${archiveFolder.name}" preview and let them read it before asking them to confirm. No folder was changed.` }) });
+              continue;
+            }
+            gateArgs._folderArchive = { name: archiveFolder.name, pipeline_count: folderBinding.expected_pipeline_count };
           }
           // #292 — inside a STUDIO session the creative BUILD tools run at auto. The Vibe Studio IS the
           // propose→build surface: the customer already asked, the design agent's core says "build,
@@ -8274,6 +8351,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "pipeline_add_stage" ||
           tc.function.name === "pipeline_catalogue" ||
           tc.function.name === "pipeline_archive_preview" ||
+          tc.function.name === "pipeline_folder_archive_preview" ||
           tc.function.name === "pipeline_configure" ||
           tc.function.name === "deal_create" ||
           tc.function.name === "deal_move_stage" ||
@@ -9095,6 +9173,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   _tenant_id: tenantId,
                   _requested_by: user.id,
                   _pipeline_ref: args.pipeline_ref,
+                });
+                if (previewError) throw previewError;
+                result = { success: (preview as any)?.ok !== false, ...(preview as any) };
+              }
+            } else if (tc.function.name === "pipeline_folder_archive_preview") {
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
+              } else {
+                const { data: preview, error: previewError } = await admin.rpc("prepare_pipeline_folder_archive_as_paige", {
+                  _tenant_id: tenantId,
+                  _requested_by: user.id,
+                  _folder_id: args.folder_id,
                 });
                 if (previewError) throw previewError;
                 result = { success: (preview as any)?.ok !== false, ...(preview as any) };

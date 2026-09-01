@@ -15,7 +15,9 @@ const harness = vi.hoisted(() => ({
     submissions: [],
     pipelineWorkspace: {
       canManage: true,
-      pipelines: [{ id: "pipeline-1", shortRef: "PPL-4K8MX", name: "Client onboarding", description: "", isDefault: true, lifecycleStatus: "active", version: 1, createdAt: "2026-08-20T12:00:00Z", updatedAt: "2026-08-28T12:00:00Z", createdThrough: "owner", createdByName: "Toni", requestedByName: null, stageCount: 1, dealCount: 1 }],
+      canArchiveFolders: true,
+      folders: [{ id: "folder-1", name: "Campaign pipelines", lifecycleStatus: "active", version: 1, pipelineCount: 1 }, { id: "folder-empty", name: "Future ideas", lifecycleStatus: "active", version: 1, pipelineCount: 0 }],
+      pipelines: [{ id: "pipeline-1", shortRef: "PPL-4K8MX", folderId: "folder-1", folderName: "Campaign pipelines", name: "Client onboarding", description: "", isDefault: true, lifecycleStatus: "active", version: 1, createdAt: "2026-08-20T12:00:00Z", updatedAt: "2026-08-28T12:00:00Z", createdThrough: "owner", createdByName: "Toni", requestedByName: null, stageCount: 1, dealCount: 1 }],
       stages: [{ id: "stage-1", pipelineId: "pipeline-1", label: "New", description: "Awaiting review", orderIndex: 1, archivedAt: null, version: 1 }],
       deals: [{ id: "deal-1", title: "Onboarding work", pipelineId: "pipeline-1", stageId: "stage-1", clientName: "Example client", owner: "Assigned owner", status: "open", source: "Source recorded", nextAction: "Review intake", updatedAt: "2026-08-28T12:00:00Z", version: 1, history: [] }],
     },
@@ -50,6 +52,10 @@ function renderAt(path: string) {
   act(() => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
 }
 
+function rerenderAt(path: string) {
+  act(() => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <output data-location>{location.pathname}{location.search}</output>;
@@ -59,6 +65,10 @@ afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
   harness.state.tenantId = "tenant-1";
+  if (harness.state.pipelineWorkspace) {
+    (harness.state.pipelineWorkspace as { canManage: boolean; canArchiveFolders: boolean }).canManage = true;
+    (harness.state.pipelineWorkspace as { canManage: boolean; canArchiveFolders: boolean }).canArchiveFolders = true;
+  }
 });
 
 describe("Solo Campaigns rendered flows", () => {
@@ -90,6 +100,87 @@ describe("Solo Campaigns rendered flows", () => {
     expect(host.textContent).toContain("Archive");
     expect(host.textContent).not.toContain("Delete stage");
     expect(host.textContent).not.toContain("Delete pipeline");
+  });
+
+  it("filters and organizes exact pipelines without changing the board", async () => {
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    renderAt("/solo/42/growth/pipeline");
+    expect([...host.querySelectorAll(".pipeline-folder-filter option")].map((option)=>option.textContent)).toEqual(["All pipelines", "Campaign pipelines", "Future ideas", "Unfiled"]);
+    const filter = host.querySelector(".pipeline-folder-filter") as HTMLSelectElement;
+    act(()=>{filter.value="folder-empty";filter.dispatchEvent(new Event("change",{bubbles:true}));});
+    expect(host.textContent).toContain("No pipelines in this folder");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Folders") as HTMLButtonElement).click());
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("Folder organizer");
+    expect(host.textContent).toContain("PPL-4K8MX");
+    const move = host.querySelector(".pipeline-folder-pipeline select") as HTMLSelectElement;
+    act(()=>{move.value="";move.dispatchEvent(new Event("change",{bubbles:true}));});
+    await act(async()=> ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Move") as HTMLButtonElement).click());
+    expect(action).toHaveBeenCalledWith(expect.objectContaining({type:"move-pipeline-to-folder",pipelineId:"pipeline-1",pipelineRef:"PPL-4K8MX",folderId:null}));
+  });
+
+  it("requires the exact folder name and preserves each pipeline lifecycle status in Unfiled", async () => {
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Folders") as HTMLButtonElement).click());
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Archive folder") as HTMLButtonElement).click());
+    expect(host.querySelector(".pipeline-folder-archive")?.textContent).toContain("move to Unfiled and keep the current lifecycle status");
+    const input = host.querySelector(".pipeline-folder-archive input") as HTMLInputElement;
+    const archive = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Archive exact folder") as HTMLButtonElement;
+    expect(archive.disabled).toBe(true);
+    act(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(input,"Campaign pipelines");input.dispatchEvent(new Event("input",{bubbles:true}));});
+    expect(archive.disabled).toBe(false);
+    await act(async()=>archive.click());
+    expect(action).toHaveBeenCalledWith(expect.objectContaining({type:"archive-folder",folderId:"folder-1",confirmedName:"Campaign pipelines",expectedVersion:1}));
+  });
+
+  it("returns keyboard focus to the exact Folders opener after Escape", () => {
+    renderAt("/solo/42/growth/pipeline");
+    const opener = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Folders") as HTMLButtonElement;
+    opener.focus();
+    act(() => opener.click());
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("reserves Unfiled and exposes owner-only folder archive truthfully", () => {
+    const workspace = harness.state.pipelineWorkspace as { canManage: boolean; canArchiveFolders: boolean };
+    workspace.canArchiveFolders = false;
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Folders") as HTMLButtonElement).click());
+    expect(host.textContent).toContain("Only the workspace owner can archive a folder");
+    expect([...host.querySelectorAll("button")].some((button)=>button.textContent==="Archive folder")).toBe(false);
+    const input = host.querySelector(".pipeline-folder-create input") as HTMLInputElement;
+    act(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set?.call(input,"Unfiled");input.dispatchEvent(new Event("input",{bubbles:true}));});
+    expect(host.textContent).toContain("Unfiled is the built-in view");
+    expect(([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create folder") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("moves an archived active folder filter to Unfiled and shows its pipelines", () => {
+    const workspace = harness.state.pipelineWorkspace as { folders: Array<{ id: string; lifecycleStatus: string }>; pipelines: Array<{ id: string; folderId: string | null }> };
+    renderAt("/solo/42/growth/pipeline");
+    const filter = host.querySelector(".pipeline-folder-filter") as HTMLSelectElement;
+    act(()=>{filter.value="folder-1";filter.dispatchEvent(new Event("change",{bubbles:true}));});
+    workspace.folders = workspace.folders.map((folder)=>folder.id==="folder-1"?{...folder,lifecycleStatus:"archived"}:folder);
+    workspace.pipelines = workspace.pipelines.map((pipeline)=>pipeline.id==="pipeline-1"?{...pipeline,folderId:null}:pipeline);
+    rerenderAt("/solo/42/growth/pipeline");
+    expect((host.querySelector(".pipeline-folder-filter") as HTMLSelectElement).value).toBe("unfiled");
+    expect(host.textContent).toContain("Client onboarding");
+  });
+
+  it("keeps folder writes unavailable to read-only members", () => {
+    const workspace = harness.state.pipelineWorkspace as unknown as PipelineWorkspaceFixture & { canManage: boolean };
+    workspace.canManage = false;
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Folders") as HTMLButtonElement).click());
+    expect(host.textContent).toContain("Read-only access");
+    expect(([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create folder") as HTMLButtonElement).disabled).toBe(true);
+    expect(([...host.querySelectorAll("button")].find((button)=>button.textContent==="Direct PAIGE") as HTMLButtonElement).disabled).toBe(true);
+    expect((host.querySelector(".pipeline-folder-pipeline select") as HTMLSelectElement).disabled).toBe(true);
+    workspace.canManage = true;
   });
 
   it("distinguishes zero-deal duplicate names and archives only the typed exact reference", async () => {

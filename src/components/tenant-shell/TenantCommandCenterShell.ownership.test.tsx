@@ -130,6 +130,67 @@ const PaigeWorkspaceFixture = () => {
 };
 
 describe("tenant shell owns one PAIGE surface", () => {
+  it("renders one canonical Solo shell structure for different server-resolved tenants", () => {
+    const renderTenant = (
+      accountNumber: string,
+      accountName: string,
+      userRole: "admin" | "coach",
+    ) => {
+      window.localStorage.setItem("paige.tenantShell.navExpanded", "true");
+      const host = document.createElement("div");
+      const root = createRoot(host);
+
+      act(() => root.render(
+        <MemoryRouter initialEntries={[`/solo/${accountNumber}/growth/pipeline`]}>
+          <TenantCommandCenterShell
+            accountName={accountName}
+            accountType="standalone"
+            userRole={userRole}
+            brandHomeHref={`/solo/${accountNumber}/command-center`}
+            soloPaigeWorkspace={<div data-canonical-paige-workspace />}
+            onSignOut={vi.fn()}
+          >
+            <div data-pipeline-domain>Pipeline domain</div>
+          </TenantCommandCenterShell>
+        </MemoryRouter>,
+      ));
+
+      const shell = host.querySelector<HTMLElement>("[data-tenant-shell]");
+      const fingerprint = {
+        shellClass: shell?.className,
+        destinations: [...host.querySelectorAll<HTMLElement>("[data-tenant-destination]")]
+          .map((item) => [item.dataset.tenantDestination, item.textContent?.trim()]),
+        paigeWorkspaces: host.querySelectorAll("#tenant-paige-workspace").length,
+        pipelineDomains: host.querySelectorAll("[data-pipeline-domain]").length,
+        workspaceClaim: host.querySelector(".tcs-account-seal small")?.textContent,
+      };
+
+      act(() => root.unmount());
+      return fingerprint;
+    };
+
+    const affectedTenant = renderTenant("410001", "First example business", "admin");
+    const knownGoodTenant = renderTenant("410002", "Second example business", "coach");
+
+    expect({ ...affectedTenant, workspaceClaim: undefined }).toEqual({
+      ...knownGoodTenant,
+      workspaceClaim: undefined,
+    });
+    expect(affectedTenant.workspaceClaim).toBe("Owner workspace");
+    expect(knownGoodTenant.workspaceClaim).toBe("Team workspace");
+    expect(affectedTenant.destinations.map(([id]) => id)).toEqual([
+      "command", "clients", "campaigns", "marketplace", "analytics", "settings",
+    ]);
+    expect(affectedTenant.paigeWorkspaces).toBe(1);
+    expect(affectedTenant.pipelineDomains).toBe(1);
+  });
+
+  it("derives the Solo workspace claim from server-resolved tenant ownership", () => {
+    const owner = source("src/solo/SoloApp.tsx");
+    expect(owner).not.toContain('userRole="admin"');
+    expect(owner).toContain("activeTenant?.owner_user_id === activeUserId");
+  });
+
   it.each([
     ["light", "Obsidian", "dark"],
     ["dark", "Mineral", "light"],

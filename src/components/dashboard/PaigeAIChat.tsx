@@ -37,6 +37,10 @@ import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/c
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
+// REMOVED 2026-09-02 with the channel they described: `PipelineConfirmedAction` and
+// `PaigeConfirmation` typed the token echo that #709 and #718 sent alongside the general
+// approval. The surface now echoes one thing — the fingerprint of the exact call it rendered —
+// and both archives keep their server-issued preview binding as a precondition on the server.
 type Message = {
   /** Stable id — survives array splices; underwrites copy/retry/feedback (1c-vi). */
   id: string;

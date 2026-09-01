@@ -211,6 +211,10 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
   // which is the duplication the merge removed. The archive itself stays gated, and additionally
   // cannot run unless this preview exists and predates the turn.
   ["pipeline_archive_preview", "mints the archive's own single-use binding and shows the consequence; the archive it prepares is the gated act"],
+  // #718 added the folder twin. Same shape, same reason: a single-use, expiring, tenant- and
+  // requester-scoped row whose only job is to show the owner what archiving the folder costs
+  // before they answer. The archive it prepares is the gated act.
+  ["pipeline_folder_archive_preview", "mints the folder archive's own single-use binding and shows the consequence; the archive it prepares is the gated act"],
 ]);
 
 /**

@@ -815,10 +815,22 @@ Grouped:
 
 ### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
 
+- **Canonical Solo ownership contract (owner-locked 2026-09-01).** There is exactly one Solo shell
+  for every current and future Solo tenant. `src/solo/SoloEntry.tsx` dispatches the authenticated
+  Solo route, `src/solo/SoloApp.tsx` composes the domain surfaces, and
+  `src/components/tenant-shell/TenantCommandCenterShell.tsx` owns the shared rail, header, page host,
+  responsive behavior and one PAIGE workspace. Tenant identity, data, roles, permissions,
+  entitlements and capability truth come only from server-resolved tenant context and domain
+  contracts. An account number, account name, fixture, demo state or URL value may address a route;
+  it must never select a different Solo shell, layout, navigation system, responsive behavior, page
+  host or PAIGE workspace. A Solo UI change must prove the affected context and a different known-good
+  Solo context at 1536x770, 1366x768, 1024x768 and 900x1000 with PAIGE closed and open. Settings,
+  Connections and Integrations may own visible scrolling; Command Center, Clients, Campaigns and
+  Analytics remain form-fitting unless the owner explicitly changes that contract.
 - Gate 1 locks the board-first Pipeline interaction inside the existing six-tab Campaigns shell. The only post-approval prototype refinement is the smaller page-title word "Pipeline"; lane, card, detail, and supporting-control geometry remain frozen.
-- The draft adds multiple tenant-owned pipelines, optional blank or simple starter creation, tenant-owned stage name/description/order/archive/restore controls, contextual deal detail, focused-stage compact behavior, and subordinate routing/repair evidence. Campaign linkage is optional; it is not the only reason to create a pipeline.
+- The draft adds multiple tenant-owned pipelines, blank-first creation with only owner-authored custom stages, tenant-owned stage name/description/order/archive/restore controls, contextual deal detail, focused-stage compact behavior, subordinate routing/repair evidence, stable short references and one-level tenant-owned folders with a virtual Unfiled view. No preset pipeline or stage taxonomy is supplied. Campaign linkage is optional; it is not the only reason to create a pipeline.
 - The durable contract is tenant-scoped and callable. Read-only members can inspect but not mutate. Occupied stages fail closed on archive. No revenue, ROI, payment, client-health, or unsupported portal facts are inferred.
-- Truth status: local contract/render tests and production build are green. Migration persistence, authenticated save/reload, permission, retry, abandonment, account-switch, preview runtime, and exact-head Gate 2 are UNVERIFIED until the draft CI/preview and owner release gate run. Do not merge or deploy without the separate exact-head Gate 2 request.
+- Truth status: local contract/render tests, production build and the draft checks are green on the recorded exact head. The deterministic browser proof covers both example Solo contexts at the four locked viewports with PAIGE closed/open; it is local rendered evidence, not authenticated tenant proof. Migration persistence, authenticated save/reload, permission, retry, abandonment, account-switch and production runtime remain UNVERIFIED. Do not merge or deploy without the separate exact-head Gate 2 request.
 
 ### Solo Clients → Conversations — implementation awaiting exact-head release verification (2026-08-28)
 
@@ -1218,6 +1230,12 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+- **2026-09-01 — the Pipeline draft entry still claimed optional starter creation after the owner
+  removed every preset pipeline and preset stage.** The implemented creation path is blank-first and
+  sends only stages the owner explicitly authors; PAIGE may propose a custom pipeline through the
+  governed contract, but no generic sales taxonomy is supplied. Section 5 now states that exact
+  contract and also records the canonical one-shell rule for all Solo tenants so an account where a
+  defect was observed can never become a separate shell implementation.
 - **2026-09-01 — I closed a gate by handing the key to the model. Two reviews, two holes, and the
   second one was mine (branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT
   MERGED).** Recorded in full because the shape of the mistake matters more than the fix.

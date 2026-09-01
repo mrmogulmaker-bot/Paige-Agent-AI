@@ -24,6 +24,7 @@ const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/mig
 const activeReorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831223000_solo_pipeline_active_reorder.sql"), "utf8");
 const pipelineManagementMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831224500_solo_pipeline_governed_management.sql"), "utf8");
 const pipelineIdentityMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260901045935_pipeline_identity_catalogue.sql"), "utf8");
+const pipelineFoldersMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260901144648_solo_pipeline_folders.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 const paigeChat = readFileSync(resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"), "utf8");
 const paigeChatSurface = readFileSync(resolve(process.cwd(), "src/components/dashboard/PaigeAIChat.tsx"), "utf8");
@@ -120,7 +121,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain("Ask PAIGE");
     expect(source).toContain("Add a stage");
     expect(source).toContain("Focused stage");
-    expect(source).toContain("??workspace.pipelines[0]");
+    expect(source).toContain('folderFilter==="all"?workspace.pipelines[0]:null');
     expect(source).toContain("Routing, approvals, and repair evidence");
     expect(source).not.toMatch(/pipeline.*revenue|pipeline.*ROI|pipeline.*payment/i);
     expect(pipelineManagementMigration).not.toContain("_default_stages");
@@ -189,6 +190,88 @@ describe("Solo Campaigns approved contract", () => {
   // duplicate — is now structural instead of compared: the archive resolves its target from
   // the server's own binding row (`archiveBinding.pipeline_id`, scoped to tenant and
   // requester), so a name was never the thing being trusted. Asserted directly above.
+
+  it("binds a folder archive to its own server-issued preview, not to a client-echoed approval", () => {
+    // REPLACES a test of `hasExactPipelineFolderArchiveApproval`, removed with the second
+    // approval channel it exercised (#718 rebuilt for folders what #709 had built for
+    // pipelines; both are now the one fingerprint gate). The property that test protected —
+    // an approval for one folder cannot archive another, or the same folder under a stale
+    // name — is now structural rather than compared, and asserted against the handler.
+    expect(paigeChat).not.toMatch(/hasExactPipelineFolderArchiveApproval\(/);
+    expect(paigeChat).not.toMatch(/ownerApprovedThisTurn/);
+    // Bound to THIS tenant and THIS requester, single-use, expiring, and it must predate the
+    // turn — minting a preview and acting on it in one breath is the turn approving itself.
+    expect(paigeChat).toContain('.eq("token", token).eq("tenant_id", tenantId).eq("requested_by", user.id)');
+    expect(paigeChat).toContain("folderBinding.used_at");
+    expect(paigeChat).toContain("folder_archive_preview_required");
+    // The folder that gets archived is the one the preview named, so a model cannot re-title
+    // it on the confirming turn and archive something the owner never read.
+    expect(paigeChat).toContain("folder_archive_preview_mismatch");
+    expect(paigeChat).toContain('.eq("id", folderBinding.folder_id).eq("tenant_id", tenantId)');
+  });
+
+  it("implements tenant-owned one-level Pipeline folders through the governed contract", () => {
+    expect(pipelineFoldersMigration).toContain("create table public.pipeline_folders");
+    expect(pipelineFoldersMigration).not.toContain("parent_id");
+    expect(pipelineFoldersMigration).toContain("lifecycle_status");
+    expect(pipelineFoldersMigration).toContain("folder_id uuid");
+    expect(pipelineFoldersMigration).toContain("foreign key (tenant_id,folder_id)");
+    expect(pipelineFoldersMigration).toContain("enable row level security");
+    expect(pipelineFoldersMigration).toContain("revoke insert,update,delete on public.pipeline_folders,public.pipelines from authenticated");
+    for (const action of ["create_folder", "rename_folder", "archive_folder", "restore_folder", "move_pipeline_to_folder"]) {
+      expect(pipelineFoldersMigration + adapter + source).toContain(action);
+    }
+    expect(pipelineFoldersMigration).toContain("'folders'");
+    expect(pipelineFoldersMigration).toContain("'unfiled_count'");
+    expect(pipelineFoldersMigration).toContain("set folder_id=null");
+    expect(pipelineFoldersMigration).toContain("'active_pipeline_count'");
+    expect(pipelineFoldersMigration).toContain("'archived_pipeline_count'");
+    expect(pipelineFoldersMigration).toContain("'active_pipelines_moved_to_unfiled'");
+    expect(pipelineFoldersMigration).toContain("'archived_pipelines_moved_to_unfiled'");
+    expect(pipelineFoldersMigration).toMatch(/select count\(\*\)::int into _count from public\.pipelines where tenant_id=_tenant_id and folder_id=_folder\.id;/);
+    expect(pipelineFoldersMigration).not.toMatch(/expected_pipeline_count[\s\S]{0,500}lifecycle_status<>'archived'/);
+    expect(source).toContain("keep the current lifecycle status");
+    expect(paigeChat).toContain("keeps its current lifecycle status");
+    expect(pipelineFoldersMigration).toContain("PIPELINE_FOLDER_TENANT_MISMATCH");
+    expect(pipelineFoldersMigration).toContain("PIPELINE_FOLDER_OWNER_REQUIRED");
+    expect(pipelineFoldersMigration).toContain("pipeline_folder_archive_confirmations");
+    expect(pipelineFoldersMigration).toContain("prepare_pipeline_folder_archive_as_paige");
+    expect(pipelineFoldersMigration).toContain("expected_pipeline_count");
+    expect(pipelineFoldersMigration).toContain("used_at=now()");
+    expect(pipelineFoldersMigration).toContain("_cached.command_hash<>_hash");
+    expect(pipelineFoldersMigration).toContain("return _cached.result||jsonb_build_object");
+    expect(pipelineFoldersMigration).toContain("replay_pipeline_folder_archive_as_paige");
+    expect(pipelineFoldersMigration).toContain("'replayed',true");
+    expect(pipelineFoldersMigration).toContain("lower(btrim(name))<>'unfiled'");
+    expect(adapter).toContain("can_archive_folders");
+    expect(pipelineFoldersMigration).toContain("pipeline_command_results");
+    expect(pipelineFoldersMigration).toContain("audit_logs");
+    expect(source).toContain("Unfiled");
+    expect(source).toContain("Folder organizer");
+    expect(source).toContain("Archive folder");
+    expect(source).toContain("Direct PAIGE");
+    expect(source).toContain("Only the workspace owner can archive a folder");
+    expect(paigeChat).toContain('name: "pipeline_folder_archive_preview"');
+    // The folder archive's APPROVAL is asserted in its own test above, against the one
+    // fingerprint gate. This line used to pin the retired echo and was updated with it,
+    // rather than deleted: what belongs in THIS test is the folder contract, which is the
+    // replay guard that makes an archive retry safe.
+    expect(paigeChat).toContain("replay_pipeline_folder_archive_as_paige");
+    expect(paigeChat).toContain("folder_archive_replay_refused");
+    expect(paigeChat).toContain("a._folderArchive.pipeline_count");
+    // The replay guard runs BEFORE the preview lookup, so a retry of a committed archive is
+    // answered from its recorded result rather than by burning a second single-use preview.
+    expect(paigeChat.indexOf('gateAdmin.rpc("replay_pipeline_folder_archive_as_paige"')).toBeLessThan(paigeChat.indexOf('.from("pipeline_folder_archive_confirmations")'));
+    // The `kind: "pipeline_folder_archive"` discriminator that used to be asserted here on both
+    // the handler and the surface belonged to the retired approval echo, not to folders. The
+    // surface carries no folder-specific approval shape now — one fingerprint covers every
+    // gated action — so asserting its ABSENCE is what keeps the channel from being rebuilt.
+    expect(paigeChatSurface).not.toMatch(/pipeline_folder_archive|approvalKind|folderName\?:/);
+    expect(css).toContain(".pipeline-action-new");
+    expect(css).toContain(".pipeline-action-manage");
+    expect(css).toContain(".pipeline-action-folders");
+    expect(css).toContain("translateY(-2px)");
+  });
 
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
     for (const contract of ["get_pipeline_workspace", "get_pipeline_routing_evidence", "configure_tenant_pipeline"]) {
