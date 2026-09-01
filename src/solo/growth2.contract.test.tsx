@@ -135,6 +135,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(pipelineIdentityMigration).toContain("unique (tenant_id,short_ref)");
     expect(pipelineIdentityMigration).toContain("where tenant_id is null");
     expect(pipelineIdentityMigration).toContain("PIPELINE_TENANT_REQUIRED");
+    expect(pipelineIdentityMigration).toContain("extensions.gen_random_bytes(1)");
     expect(pipelineIdentityMigration).not.toContain("PIPELINE_TENANT_BACKFILL_REQUIRED");
     expect(pipelineIdentityMigration).toContain("get_pipeline_catalogue");
     expect(pipelineIdentityMigration).toContain("stage_count");

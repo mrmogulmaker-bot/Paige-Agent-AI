@@ -28,7 +28,7 @@ begin
   for _attempt in 1..64 loop
     _candidate:='PPL-';
     for _i in 0..4 loop
-      _candidate:=_candidate||substr(_alphabet,1+(get_byte(gen_random_bytes(1),0)%length(_alphabet)),1);
+      _candidate:=_candidate||substr(_alphabet,1+(get_byte(extensions.gen_random_bytes(1),0)%length(_alphabet)),1);
     end loop;
     if not exists(select 1 from public.pipelines p where p.tenant_id is not distinct from _tenant and p.short_ref=_candidate) then return _candidate; end if;
   end loop;
