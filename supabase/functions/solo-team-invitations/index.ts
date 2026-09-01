@@ -13,6 +13,13 @@ type InviteAction =
   | { action: "create"; email?: string; permission?: string; jobTitle?: string; responsibilities?: string }
   | { action: "resend" | "revoke"; inviteId?: string };
 
+type PreparedInvite = {
+  id?: string;
+  token?: string;
+  email?: string;
+  expires_at?: string;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
@@ -44,7 +51,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, state: "revoked" });
     }
 
-    let invite: { id?: string; token?: string; email?: string; expires_at?: string } | null = null;
+    let invite: PreparedInvite | null = null;
     if (body.action === "create") {
       const { data, error } = await admin.rpc("create_solo_team_invite", {
         _actor: user.id,
@@ -54,12 +61,12 @@ Deno.serve(async (req) => {
         _responsibilities: body.responsibilities ?? null,
       });
       if (error) throw error;
-      invite = data as typeof invite;
+      invite = data as PreparedInvite | null;
     } else if (body.action === "resend") {
       if (!body.inviteId) return json({ ok: false, error: "Invitation is required" }, 400);
       const { data, error } = await admin.rpc("resend_solo_team_invite", { _actor: user.id, _invite_id: body.inviteId });
       if (error) throw error;
-      invite = data as typeof invite;
+      invite = data as PreparedInvite | null;
     } else {
       return json({ ok: false, error: "Unsupported action" }, 400);
     }
