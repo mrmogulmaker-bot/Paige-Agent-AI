@@ -11,8 +11,26 @@ const testState = vi.hoisted(() => ({ tab: "team" }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock("@/hooks/useUserRoles", () => ({
+  // The predicate the SERVER gates on (platform owner OR global admin/coach). Mocked
+  // rather than left to the real hook, which opens its own auth subscription.
+  useUserRoles: () => ({ loading: false, userId: "u1", roles: ["admin"], isAdmin: true, isCoach: false, isClient: false, isBroker: false, isStaff: true }),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { rpc: vi.fn().mockResolvedValue({ data: null, error: null }) },
+  supabase: {
+    // `current_user_tenant_id` is the resolver both new adapters read through — it is
+    // what the WRITES use, so the reads use it too. A double that answers null for it
+    // makes every surface report an unidentifiable workspace instead of rendering copy.
+    rpc: vi.fn(async (fn: string) =>
+      fn === "current_user_tenant_id" ? { data: "tenant-1971670", error: null } : { data: null, error: null }),
+    // The number panel calls an edge function now, and `useSoloNumbers` reads the
+    // numbers table, so both have to exist on the double or the surface throws
+    // before any copy is rendered.
+    functions: { invoke: vi.fn().mockResolvedValue({ data: null, error: null }) },
+    from: vi.fn(() => ({
+      select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }), limit: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+    })),
+  },
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
   useTenantContext: () => ({
@@ -38,6 +56,47 @@ vi.mock("./data/useSoloOwner", () => ({
     owner: { name: "Antonio Cook", email: null, phone: null, website: null },
     loading: false,
     error: null,
+    refresh: vi.fn(),
+  }),
+}));
+vi.mock("./data/useSoloSetupBrief", () => ({
+  useSoloSetupBrief: () => ({
+    loading: false,
+    error: null,
+    saving: false,
+    canEdit: true,
+    brief: {
+      legalName: "First Sterling Capital",
+      publicName: "First Sterling Capital",
+      dbaName: "",
+      website: "",
+      address: "",
+      phone: "",
+      industry: "",
+      naicsCode: "",
+      sicCode: "",
+      offers: "",
+      deliveryModel: "",
+      idealCustomer: "",
+      customerSegments: "",
+      serviceArea: "",
+      currentPriority: "",
+      goals90Day: "",
+      annualDirection: "",
+      successDefinition: "",
+      constraints: "",
+      brandVoice: "",
+      operatingPreferences: "",
+      doNotAssume: "",
+      representativeUserIds: [],
+      provenance: {},
+    },
+    representatives: [],
+    managedSendingEmail: null,
+    primaryBusinessEmail: null,
+    pendingProposal: null,
+    save: vi.fn(),
+    dismissProposal: vi.fn(),
     refresh: vi.fn(),
   }),
 }));
@@ -136,19 +195,25 @@ describe("Solo Settings rendered customer copy", () => {
     for (const heading of ["Business phone", "Messaging registration", "Sending identity", "Delivery health"]) {
       expect(text, `missing subsection: ${heading}`).toContain(heading);
     }
-    // The search affordance survives, with its ceiling intact.
-    expect(text).toContain("Area code or locality");
-    expect(text).toContain("Search numbers");
-    expect(text).toContain("PROPOSED");
+    // The search subsection is present. The CONTROL itself is authority-gated and
+    // this render is static — `renderToStaticMarkup` runs no effects, so
+    // `is_current_user_tenant_admin` never resolves and the panel correctly shows
+    // its read-only notice. Asserting the button here would either fail or force
+    // the gate open for the test's convenience. It is asserted below, in the test
+    // that actually mounts.
+    expect(text).toContain("Find a number");
   });
 
-  it("does not let number search lead or dominate the surface", () => {
+  it("does not let number search lead the surface", () => {
     const html = renderDestination("connections");
-    // The number RECORD comes before the search form: what this business has is
-    // stated before what it could look for.
+    // The number RECORD still comes before the search form: what this business
+    // HAS is stated before what it could look for. That ordering is the part
+    // worth locking, and it survives the panel going live.
     expect(html.indexOf("Number on this business")).toBeLessThan(html.indexOf("Find a number"));
-    // And the search panel no longer carries the full-width accent treatment.
-    expect(html).not.toContain("ss-phone-setup");
+    // The accent treatment is no longer withheld: this panel now performs the
+    // act of the subsection (search and buy), which is what the treatment marks.
+    // Asserting its ABSENCE would now be asserting that the live control looks
+    // inert, which is the opposite of what this surface should say.
   });
 
   /**
@@ -175,7 +240,16 @@ describe("Solo Settings rendered customer copy", () => {
     expect(text).toContain("Business phone");
   });
 
-  it("keeps number search non-mutating and explains the unavailable execution contract", async () => {
+  it("actually searches, and reports a setup gap as a setup gap", async () => {
+    // REPLACES "keeps number search non-mutating and explains the unavailable
+    // execution contract". That test locked the panel's inertness — it asserted
+    // the button ran nothing and said so. Owner ruling 2026-08-31: bring it live.
+    // `comms-search-numbers` was always real; only the caller was missing.
+    //
+    // So what is locked now is the opposite, plus the honesty rule that matters
+    // most here: a workspace with no messaging account CANNOT buy, and that is a
+    // setup gap, never an empty result. Reporting "no numbers found" would blame
+    // the search for something it did not do.
     testState.tab = "connections";
     const shellScrollOwner = document.createElement("main");
     shellScrollOwner.id = "tenant-shell-main";
@@ -183,6 +257,20 @@ describe("Solo Settings rendered customer copy", () => {
     shellScrollOwner.append(host);
     document.body.append(shellScrollOwner);
     const root = createRoot(host);
+
+    const client = (await import("@/integrations/supabase/client")).supabase;
+    // Resolve the caller as a workspace admin, which is what the server requires:
+    // `comms-search-numbers` returns 403 to anyone else, so a surface that showed
+    // the control to a non-admin would be showing a button that always fails.
+    (client.rpc as ReturnType<typeof vi.fn>).mockImplementation(async (fn: string) =>
+      // Both resolvers, because the adapter needs both: the workspace it is scoped to,
+      // and whether this caller may change its numbers. Answering only the second left
+      // the surface unable to say which workspace it was in, so it showed no controls.
+      fn === "current_user_tenant_id" ? { data: "tenant-1971670", error: null }
+        : fn === "is_current_user_tenant_admin" ? { data: true, error: null }
+          : { data: null, error: null });
+    const invoke = client.functions.invoke as ReturnType<typeof vi.fn>;
+    invoke.mockResolvedValue({ data: { needs_config: true, message: "Messaging isn't set up yet.", numbers: [] }, error: null });
 
     await act(async () => {
       root.render(
@@ -194,20 +282,21 @@ describe("Solo Settings rendered customer copy", () => {
       );
     });
 
-    const rpc = (await import("@/integrations/supabase/client")).supabase.rpc as ReturnType<typeof vi.fn>;
-    const callsBeforeSearch = rpc.mock.calls.length;
-    const button = Array.from(host.querySelectorAll("button")).find((candidate) => candidate.textContent === "Search numbers");
+    const button = Array.from(host.querySelectorAll("button")).find((c) => (c.textContent ?? "").includes("Search numbers"));
     const form = button?.closest("form");
-    expect(button).toBeTruthy();
-    expect(form).toBeTruthy();
+    expect(button, "the live search button should render").toBeTruthy();
     expect(shellScrollOwner.classList.contains("tcs-main--settings-scrollbar-hidden")).toBe(true);
 
     await act(async () => {
       form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
-    expect(host.querySelector('[role="status"]')?.textContent).toContain("Number search is not connected yet");
-    expect(rpc.mock.calls.length).toBe(callsBeforeSearch);
+    // It REACHED the real seam — the assertion the old test made impossible.
+    expect(invoke.mock.calls.some((c) => c[0] === "comms-search-numbers"),
+      "Search must call comms-search-numbers").toBe(true);
+    // And a setup gap reads as one.
+    expect(host.textContent).toContain("can't buy a number yet");
+    expect(host.textContent).not.toContain("No numbers matched");
 
     await act(async () => root.unmount());
     expect(shellScrollOwner.classList.contains("tcs-main--settings-scrollbar-hidden")).toBe(false);

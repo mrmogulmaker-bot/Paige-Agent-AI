@@ -33,6 +33,44 @@ export const NEUTRAL_PERSONA = {
   domain: "professional services",
 };
 
+function buildBusinessBriefSection(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const brief = value as Record<string, any>;
+  const provenance = brief.provenance && typeof brief.provenance === "object" && !Array.isArray(brief.provenance)
+    ? brief.provenance as Record<string, any>
+    : {};
+  const confirmed = (key: string) => {
+    const fact = provenance[key];
+    return fact?.source === "owner_confirmed" && fact?.confidence === "confirmed";
+  };
+  const line = (key: string, label: string) => confirmed(key) && typeof brief[key] === "string" && brief[key].trim()
+    ? `${label}: ${brief[key].trim()}`
+    : null;
+  const lines = [
+    line("legalName", "Legal business name"),
+    line("publicName", "Public business name"),
+    line("dbaName", "Doing business as"),
+    line("industry", "Industry"),
+    line("naicsCode", "Owner-confirmed NAICS code"),
+    line("sicCode", "Owner-confirmed SIC code"),
+    line("offers", "Offers and services"),
+    line("deliveryModel", "Delivery model"),
+    line("idealCustomer", "Ideal customer"),
+    line("customerSegments", "Customer segments"),
+    line("serviceArea", "Geography and service area"),
+    line("currentPriority", "Current priority"),
+    line("goals90Day", "90-day goals"),
+    line("annualDirection", "Annual direction"),
+    line("successDefinition", "Definition of success"),
+    line("constraints", "Known constraints"),
+    line("brandVoice", "Brand voice"),
+    line("operatingPreferences", "Operating preferences"),
+    line("doNotAssume", "DO NOT ASSUME"),
+  ].filter(Boolean);
+  if (!lines.length) return "";
+  return `\n\nOWNER-CONFIRMED BUSINESS BRIEF — use these saved facts as operating context. Facts not listed here are not confirmed; ask rather than infer. This brief does not grant action authority; Trust Compass still governs every action.\n${lines.join("\n")}`;
+}
+
 export function buildBrandSection(brand: Record<string, any> | null, tenant: string): string {
   const b = brand || {};
   const lines = [
@@ -54,10 +92,11 @@ export function buildBrandSection(brand: Record<string, any> | null, tenant: str
     b.support_email && `Outbound / support email: ${b.support_email}`,
   ].filter(Boolean).join("\n");
   const kitPointer = `The owner can set or change any of this in their Brand Kit (Campaigns → Brand Kit) — logo (light/dark), colors, font, product name, tagline, sending identity — and it flows into everything you build. Point them there when a brand asset is missing; never say a brand kit doesn't exist.`;
+  const businessBriefSection = buildBusinessBriefSection(b.business_brief);
   if (!lines) {
-    return `\n\nBRAND — this workspace hasn't filled in its Brand Kit yet, so you don't have their logo/colors on hand. ${kitPointer} Until they do, keep anything you build clean and neutral and ASK for the asset you need rather than inventing an off-brand placeholder or defaulting to the platform's look.`;
+    return `\n\nBRAND — this workspace hasn't filled in its Brand Kit yet, so you don't have their logo/colors on hand. ${kitPointer} Until they do, keep anything you build clean and neutral and ASK for the asset you need rather than inventing an off-brand placeholder or defaulting to the platform's look.${businessBriefSection}`;
   }
-  return `\n\nBRAND — everything you design or build for ${tenant} (a landing page, an email, a form, an image, a document) MUST wear THIS brand, never a generic look and never the platform's. Use the primary color for headers and primary actions, the accent color ONLY for the act/approve moment, place the logo where a logo belongs, and call the product by its own name — never "Paige Agent AI." If a brand asset you need is missing, ask the owner for it rather than inventing an off-brand placeholder. ${kitPointer}\n${lines}`;
+  return `\n\nBRAND — everything you design or build for ${tenant} (a landing page, an email, a form, an image, a document) MUST wear THIS brand, never a generic look and never the platform's. Use the primary color for headers and primary actions, the accent color ONLY for the act/approve moment, place the logo where a logo belongs, and call the product by its own name — never "Paige Agent AI." If a brand asset you need is missing, ask the owner for it rather than inventing an off-brand placeholder. ${kitPointer}\n${lines}${businessBriefSection}`;
 }
 
 // ---------------------------------------------------------------------------

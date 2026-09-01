@@ -3758,7 +3758,7 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 
 Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
 
-BUSINESS PROFILE — YOU SET IT UP, YOU NEVER PUNT IT BACK. When the operator asks to "set up my business profile", "add our company details", or update their business name, website, address, phone, legal entity, logo, or brand colors, that is YOUR job — you own it. NEVER say "that's on you to set up" or send them off to a settings page; you have update_business_profile and you drive it. First, use what you can already see (pull the business name, website, colors, logo, sending identity from the workspace's existing profile — don't ask for what you already have). One nuance on "website": the workspace's Paige portal domain/subdomain is NOT necessarily their real business/marketing website — if you only have the portal domain, ask for (or confirm) their actual business website rather than presenting the portal URL as it. Then ask ONE tight, grouped set of questions for only the details that are actually missing — business/company name, website, mailing or registered address, phone, legal entity name, logo, brand colors, and the name/email outbound mail should come from. Read back what you're about to save in one plain line, get their yes, then call update_business_profile with confirm:true. This is the workspace's OWN company identity — if they want to store details about one of their CLIENTS instead, that's crm_update_contact, not this. Be the one who proposes it: if they only mention one detail in passing ("our new number is…"), offer to round out the whole profile while you're at it.
+BUSINESS BRIEF — YOU HELP THE OWNER COMPLETE IT, BUT YOU NEVER SILENTLY CHANGE BUSINESS TRUTH. When the operator asks to "set up my business", "add our company details", or tells you about their identity, offers, customers, direction, goals, constraints, voice, or operating preferences, use the business brief already present in your context and ask ONE tight grouped set of questions only for what is missing. The Paige workspace URL is not automatically the real business website; never substitute it. Read back the proposed change, get their yes, then call propose_business_brief_update with confirm:true. That stages a visible suggestion in Settings → Setup; it does NOT save the brief. Tell the owner to review and save it there. Setup owns business truth. Team owns people, invitations, access and roles. Connections owns email/provider/payment configuration. Never put an email-provider change or a new team member into the business brief. If they are updating a CLIENT instead, use crm_update_contact.
 
 ACTION BUS — you run the business's departments and route work between them on your action bus. Your departments: ${deptRosterLine}. Owner Ops works for the coach/consultant/agency and Client Experience works for each client; the specialist desks (marketing, sales, finance, operations, and the rest) own their own lane of work. When work needs to move — a follow-up to send, an at-risk client to flag, a campaign to draft, a task to queue — file it to the department that owns it and drive it:
 - action_file starts a tracked hand-off (pick the action_kind: owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation, etc.).
@@ -4250,8 +4250,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "propose_business_brief_update",
+              description: "Admin/coach only. Stage a bounded suggestion for THIS workspace's Solo Setup business brief. This never changes confirmed business truth: it creates a visible proposal that an owner must review and save in Settings -> Setup. Use for business identity, offers, customers, direction, goals, constraints, brand voice, operating preferences, and do-not-assume boundaries. Do not use for Team membership/roles or email/provider/payment configuration. PROPOSE FIRST in chat, get the operator's yes, then call with confirm:true unless Trust Compass already allows automatic proposal staging.",
+              parameters: {
+                type: "object",
+                properties: {
+                  legalName: { type: "string" }, publicName: { type: "string" }, dbaName: { type: "string" },
+                  website: { type: "string" }, address: { type: "string" }, phone: { type: "string" }, industry: { type: "string" },
+                  naicsCode: { type: "string", description: "Only a code explicitly supplied or confirmed by the owner." },
+                  sicCode: { type: "string", description: "Only a code explicitly supplied or confirmed by the owner." },
+                  offers: { type: "string" }, deliveryModel: { type: "string" }, idealCustomer: { type: "string" },
+                  customerSegments: { type: "string" }, serviceArea: { type: "string" }, currentPriority: { type: "string" },
+                  goals90Day: { type: "string" }, annualDirection: { type: "string" }, successDefinition: { type: "string" },
+                  constraints: { type: "string" }, brandVoice: { type: "string" }, operatingPreferences: { type: "string" },
+                  doNotAssume: { type: "string" }, reason: { type: "string", description: "Short owner-facing reason for the proposed update." },
+                  confirm: { type: "boolean", description: "Set true only after the operator approves staging this proposal." }
+                },
+                required: ["reason"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "update_business_profile",
-              description: "Admin/coach only. Set up or update THIS workspace's OWN business/company profile — the tenant's business name, website, mailing/registered address, phone, legal entity name, logo, brand colors, and email sending identity. Use this whenever the operator asks to \"set up my business profile\", \"add our company details\", \"update our address / phone / website\", or hands you any of those company facts. This is the tenant's OWN business identity, NOT a client or contact record (for a client, use crm_update_contact instead). Only pass the fields you're setting; omitted fields are left as-is (existing values are preserved — this merges, it never wipes the rest of the brand). PROPOSE FIRST: read back exactly what you'll save in one plain line, get the operator's yes, then call again with confirm:true — unless the workspace autonomy policy has set this action to auto. Returns the persisted profile.",
+              description: "Legacy brand-asset compatibility tool. Business identity fields are staged as an owner-reviewable Solo Setup proposal, never written directly; logo and brand colors still merge through the established Brand Kit seam. Email sending identity is not changed here—Connections owns email/provider configuration. Prefer propose_business_brief_update for business truth. PROPOSE FIRST and get the operator's yes before confirm:true.",
               parameters: {
                 type: "object",
                 properties: {
@@ -5339,6 +5362,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // future accidental re-registration still cannot inherit read semantics.
       "marketplace_install", "marketplace_uninstall",
       "crm_update_contact", "crm_create_contact", "crm_delete_contact",
+      "propose_business_brief_update",
       "update_business_profile",
       "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
       "crm_create_task", "crm_log_activity",
@@ -5365,6 +5389,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_update_contact: "updating a contact",
       crm_create_contact: "adding a contact",
       crm_delete_contact: "deleting a contact",
+      propose_business_brief_update: "staging a business brief suggestion",
       update_business_profile: "updating your business profile",
       crm_update_pipeline_stage: "moving a client's stage",
       crm_assign_coach: "assigning a coach",
@@ -5432,7 +5457,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "update_business_profile": {
           const labels: Record<string, string> = { name: "business name", website: "website", address: "address", phone: "phone", legal_entity_name: "legal entity", logo_url: "logo", primary_color: "primary color", accent_color: "accent color", from_name: "sending name", support_email: "support email" };
           const fields = Object.keys(labels).filter((k) => typeof a?.[k] === "string" && a[k].trim());
-          return `Save your business profile${fields.length ? ` (${fields.map((k) => labels[k]).join(", ")})` : ""}.`;
+          return `Stage business-truth changes for Setup review and save any brand assets${fields.length ? ` (${fields.map((k) => labels[k]).join(", ")})` : ""}. Email configuration will not change here.`;
+        }
+        case "propose_business_brief_update": {
+          const fields = ["legalName","publicName","dbaName","website","address","phone","industry","naicsCode","sicCode","offers","deliveryModel","idealCustomer","customerSegments","serviceArea","currentPriority","goals90Day","annualDirection","successDefinition","constraints","brandVoice","operatingPreferences","doNotAssume"].filter((key) => typeof a?.[key] === "string" && a[key].trim());
+          return `Stage a business brief suggestion${fields.length ? ` (${fields.join(", ")})` : ""}. The owner will still review and save it in Setup.`;
         }
         case "crm_update_pipeline_stage":
           return `Move the client to stage "${a?.status || ""}".`;
@@ -6281,6 +6310,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_create_contact" ||
           tc.function.name === "crm_update_contact" ||
           tc.function.name === "crm_delete_contact" ||
+          tc.function.name === "propose_business_brief_update" ||
           tc.function.name === "update_business_profile" ||
           tc.function.name === "pipeline_create" ||
           tc.function.name === "pipeline_add_stage" ||
@@ -6522,6 +6552,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, contact_id: args.contact_id };
+            } else if (tc.function.name === "propose_business_brief_update") {
+              if (!crmTenantId) {
+                result = { success: false, error: "tenant_not_resolved" };
+              } else {
+                const fields = ["legalName","publicName","dbaName","website","address","phone","industry","naicsCode","sicCode","offers","deliveryModel","idealCustomer","customerSegments","serviceArea","currentPriority","goals90Day","annualDirection","successDefinition","constraints","brandVoice","operatingPreferences","doNotAssume"] as const;
+                const patch: Record<string, string> = {};
+                for (const field of fields) {
+                  const value = args?.[field];
+                  if (typeof value === "string" && value.trim()) patch[field] = value.trim();
+                }
+                if (!Object.keys(patch).length) {
+                  result = { success: false, error: "Nothing to propose yet. Include at least one confirmed business-brief detail." };
+                } else {
+                  const { data: proposal, error } = await admin.rpc("stage_solo_business_brief_proposal", {
+                    _tenant_id: crmTenantId,
+                    _actor_user_id: user.id,
+                    _patch: patch,
+                    _reason: typeof args?.reason === "string" ? args.reason : "Paige suggested an update based on the owner conversation.",
+                  });
+                  if (error) throw error;
+                  result = {
+                    success: true,
+                    proposal_id: proposal?.id ?? null,
+                    persisted: false,
+                    owner_confirmation_required: true,
+                    next_step: "Review and save the suggestion in Settings -> Setup.",
+                  };
+                }
+              }
             } else if (tc.function.name === "update_business_profile") {
               // §18 chat-surface TWIN of paige-mcp's update_tenant_branding — SAME home
               // (tenants.name + tenants.brand jsonb), shallow-merged, never a new table and
@@ -6538,42 +6597,88 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   error: "You're signed in as the platform operator, which doesn't have its own business profile to set up — this edits a specific business's company details. Open (or switch into) the workspace whose profile you want to configure and I'll set it up there.",
                 };
               } else {
-                const BRAND_KEYS = ["website", "address", "phone", "legal_entity_name", "logo_url", "primary_color", "accent_color", "from_name", "support_email"] as const;
+                if ([args?.from_name, args?.support_email].some((value) => typeof value === "string" && value.trim())) {
+                  result = {
+                    success: false,
+                    configuration_handoff: "connections",
+                    error: "Email sending identity is configured in Settings -> Connections. I did not change it from chat.",
+                  };
+                  toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
+                  continue;
+                }
+                const briefPatch: Record<string, string> = {};
+                const businessFieldMap = {
+                  name: "publicName",
+                  website: "website",
+                  address: "address",
+                  phone: "phone",
+                  legal_entity_name: "legalName",
+                } as const;
+                for (const [legacyKey, briefKey] of Object.entries(businessFieldMap)) {
+                  const value = args?.[legacyKey];
+                  if (typeof value === "string" && value.trim()) briefPatch[briefKey] = value.trim();
+                }
+                const BRAND_KEYS = ["logo_url", "primary_color", "accent_color"] as const;
                 const brandPatch: Record<string, unknown> = {};
                 for (const k of BRAND_KEYS) {
                   const v = args?.[k];
                   if (typeof v === "string" && v.trim().length) brandPatch[k] = v.trim();
                 }
-                const newName = (typeof args?.name === "string" && args.name.trim().length) ? args.name.trim() : null;
-                if (!newName && Object.keys(brandPatch).length === 0) {
-                  result = { success: false, error: "Nothing to save yet — give me at least one detail (business name, website, address, phone, legal entity, logo, brand colors, or sending identity)." };
+                if (Object.keys(briefPatch).length === 0 && Object.keys(brandPatch).length === 0) {
+                  result = { success: false, error: "Nothing to stage or save yet — provide a business-brief detail or a brand asset." };
                 } else {
-                  // Shallow-merge into the existing brand, exactly like update_tenant_branding —
-                  // preserve every key the operator didn't touch; never overwrite the whole object.
-                  const { data: curRow } = await admin.from("tenants").select("brand").eq("id", crmTenantId).maybeSingle();
-                  const curBrand = (curRow?.brand && typeof curRow.brand === "object") ? (curRow.brand as Record<string, unknown>) : {};
-                  const nextBrand = { ...curBrand, ...brandPatch };
-                  const patch: Record<string, unknown> = { brand: nextBrand };
-                  if (newName) patch.name = newName;
-                  const { data: updated, error } = await admin
-                    .from("tenants")
-                    .update(patch)
-                    .eq("id", crmTenantId) // §9: only ever the caller's OWN server-resolved tenant
-                    .select("id, name, brand")
-                    .single();
-                  if (error) throw error;
-                  // audit_logs columns are entity/entity_id/data (NOT resource_type/resource_id/
-                  // metadata — that shape errors 42703). Best-effort: log a failure loudly (§13 —
-                  // never a silently-swallowed audit) but don't fail the operator's write on it.
-                  const { error: auditErr } = await admin.from("audit_logs").insert({
-                    user_id: user.id,
-                    action: "update_business_profile",
-                    entity: "tenants",
-                    entity_id: crmTenantId,
-                    data: { keys: [...(newName ? ["name"] : []), ...Object.keys(brandPatch)], via: "paige" },
-                  });
-                  if (auditErr) console.warn("[update_business_profile] audit insert failed:", auditErr.message);
-                  result = { success: true, tenant: updated };
+                  let proposal: any = null;
+                  if (Object.keys(briefPatch).length) {
+                    const staged = await admin.rpc("stage_solo_business_brief_proposal", {
+                      _tenant_id: crmTenantId,
+                      _actor_user_id: user.id,
+                      _patch: briefPatch,
+                      _reason: "Paige suggested an update based on the owner conversation.",
+                    });
+                    if (staged.error) throw staged.error;
+                    proposal = staged.data;
+                  }
+                  let brand: any = null;
+                  if (Object.keys(brandPatch).length) {
+                    // Preserve this legacy tool's established Brand Kit behavior: merge only
+                    // the requested visual assets and retain every existing brand child,
+                    // including the brief/proposal staged above. Business truth never enters
+                    // this direct asset write.
+                    const { data: currentTenant, error: readBrandError } = await admin
+                      .from("tenants")
+                      .select("brand")
+                      .eq("id", crmTenantId)
+                      .maybeSingle();
+                    if (readBrandError) throw readBrandError;
+                    const currentBrand = currentTenant?.brand && typeof currentTenant.brand === "object"
+                      ? currentTenant.brand as Record<string, unknown>
+                      : {};
+                    const mergedBrand = { ...currentBrand, ...brandPatch };
+                    const { data: updatedTenant, error: updateBrandError } = await admin
+                      .from("tenants")
+                      .update({ brand: mergedBrand })
+                      .eq("id", crmTenantId)
+                      .select("brand")
+                      .single();
+                    if (updateBrandError) throw updateBrandError;
+                    brand = updatedTenant?.brand ?? mergedBrand;
+                    const { error: auditError } = await admin.from("audit_logs").insert({
+                      user_id: user.id,
+                      action: "update_business_profile",
+                      entity: "tenants",
+                      entity_id: crmTenantId,
+                      data: { keys: Object.keys(brandPatch), via: "paige", scope: "brand_assets_only" },
+                    });
+                    if (auditError) console.warn("[update_business_profile] audit insert failed:", auditError.message);
+                  }
+                  result = {
+                    success: true,
+                    business_truth_persisted: false,
+                    proposal_id: proposal?.id ?? null,
+                    brand_assets_saved: Object.keys(brandPatch),
+                    brand,
+                    next_step: proposal ? "Review and save the business-brief suggestion in Settings -> Setup." : null,
+                  };
                 }
               }
             } else if (tc.function.name === "pipeline_create") {

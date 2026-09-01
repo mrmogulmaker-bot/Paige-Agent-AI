@@ -426,12 +426,28 @@ export async function createSubaccountApiKey(subaccountSid: string): Promise<Twi
 
 export interface AvailableNumberSearch {
   areaCode?: string;
+  /**
+   * Twilio's `Contains` pattern. Digits match literally and `*` is a single-character
+   * wildcard, so a caller wanting numbers that BEGIN with something passes the trailing
+   * wildcards themselves (`555****`). Letters are accepted and mapped to the keypad by
+   * Twilio, which is how a vanity search works.
+   */
   contains?: string;
   /** ISO country for the AvailablePhoneNumbers path; defaults to "US". */
   country?: string;
-  /** Number type segment; defaults to "Local". */
+  /** Number type segment; defaults to "Local". `TollFree` is how an 800/833/844… is found. */
   type?: "Local" | "TollFree" | "Mobile";
   smsEnabled?: boolean;
+  /**
+   * Two-letter state or province, e.g. `GA`. Twilio's `InRegion`.
+   *
+   * Added 2026-08-31: every other filter below was already reaching Twilio and simply had
+   * no control on any surface, but region genuinely was not passed at all — searching by
+   * state was impossible rather than merely unexposed.
+   */
+  inRegion?: string;
+  /** City, e.g. `Atlanta`. Twilio's `InLocality`. Same story as `inRegion`. */
+  inLocality?: string;
 }
 
 /**
@@ -454,6 +470,8 @@ export async function listAvailableNumbers(
     {
       AreaCode: opts.areaCode,
       Contains: opts.contains,
+      InRegion: opts.inRegion,
+      InLocality: opts.inLocality,
       // Capabilities are DISPLAY, not a gate (§36, bug #149): when the caller does not
       // explicitly constrain SMS, OMIT the SmsEnabled param entirely so Twilio returns
       // ALL numbers (SMS-capable or not) — undefined is dropped by formEncode. Only pass

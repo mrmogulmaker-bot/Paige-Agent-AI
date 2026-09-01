@@ -92,9 +92,9 @@
 .ss-return { display: flex; max-width: 1180px; align-items: center; justify-content: space-between; gap: 10px; margin: -4px auto 14px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--pg-accent) 30%, var(--pg-line)); border-radius: var(--pg-r-chip); color: var(--pg-muted); background: color-mix(in srgb, var(--pg-accent) 6%, var(--pg-surface)); font-size: 10px; }
 .tcs-main--settings-scrollbar-hidden { scrollbar-width: none; -ms-overflow-style: none; }
 [data-tenant-shell] .tcs-main--settings-scrollbar-hidden::-webkit-scrollbar { width: 0; height: 0; display: none; }
-.ss-phone-setup { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--pg-accent) 28%, var(--pg-line)); box-shadow: inset 3px 0 var(--pg-accent), var(--pg-e1), var(--pg-rim); }
+.ss-phone-setup, .ss-reg-setup { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--pg-accent) 28%, var(--pg-line)); box-shadow: inset 3px 0 var(--pg-accent), var(--pg-e1), var(--pg-rim); }
 .ss-phone-heading { min-width: 0; flex: 1; }
-.ss-phone-setup .ss-phone-title { margin: 0 0 2px; font: 650 18px/1.1 var(--pg-font-display); letter-spacing: -.02em; }
+.ss-phone-setup .ss-phone-title, .ss-reg-setup .ss-phone-title { margin: 0 0 2px; font: 650 18px/1.1 var(--pg-font-display); letter-spacing: -.02em; }
 .ss-phone-heading p { margin: 0; }
 .ss-phone-contract { max-width: 82ch; }
 .ss-phone-search { display: grid; grid-template-columns: minmax(190px, 1.25fr) minmax(170px, .8fr) auto; gap: 9px; align-items: end; margin-top: 11px; }
@@ -312,6 +312,21 @@
 .ss-btn--sm svg { width: 11px; height: 11px; }
 
 .ss-form-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Registration copy. These fields are prose a carrier reads, not one-line settings,
+   so they get the full width and a taller box than `.ss-form-row` gives. */
+.ss-reg-draft { display: grid; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--pg-line); }
+.ss-field-block { display: grid; gap: 5px; min-width: 0; color: var(--pg-muted); font-size: 9px; font-weight: 650; }
+.ss-field-block > input, .ss-field-block textarea {
+  width: 100%; min-width: 0;
+  border: 1px solid var(--pg-line); border-radius: var(--pg-r-chip);
+  padding: 8px 10px; color: var(--pg-ink); background: var(--pg-lift);
+  font: 400 11px/1.5 inherit; resize: vertical;
+}
+.ss-field-block > input { height: 34px; padding: 0 10px; }
+.ss-field-block :disabled { opacity: .55; cursor: not-allowed; }
+.ss-sample-row { display: flex; gap: 6px; align-items: center; }
+.ss-sample-row input { flex: 1 1 auto; }
 /* Per-row controls inside `.ss-list`, so a domain can be verified or removed
    without leaving the list it is listed in. */
 .ss-row-actions { display: flex; flex: none; gap: 6px; align-items: center; }

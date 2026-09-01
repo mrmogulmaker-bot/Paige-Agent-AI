@@ -32,6 +32,11 @@ const state = vi.hoisted(() => ({
   readinessRetry: vi.fn(),
 }));
 
+vi.mock("@/hooks/useUserRoles", () => ({
+  // The predicate the SERVER gates on (platform owner OR global admin/coach). Mocked
+  // rather than left to the real hook, which opens its own auth subscription.
+  useUserRoles: () => ({ loading: false, userId: "u1", roles: ["admin"], isAdmin: true, isCoach: false, isClient: false, isBroker: false, isStaff: true }),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) =>
