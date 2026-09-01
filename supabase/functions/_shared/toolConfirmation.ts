@@ -9,48 +9,85 @@
  * `needs_confirm` that preceded it, or to anything a human said. Two consequences, both reachable:
  *
  *   1. A model emitting `confirm:true` on its FIRST call executed immediately.
- *   2. Worse, the bypass needed no human turn at all. The tool loop dedupes rounds on the exact
- *      argument string, and `{…}` vs `{…,"confirm":true}` are different signatures — so a model
- *      could call, receive `needs_confirm`, and re-call with `confirm:true` inside the SAME HTTP
- *      turn, up to MAX_ROUNDS, with no message from the operator in between.
+ *   2. Worse, the bypass needed no human turn. The tool loop dedupes rounds on the exact argument
+ *      string, and `{…}` vs `{…,"confirm":true}` are different signatures — so a model could call,
+ *      receive `needs_confirm`, and re-call with `confirm:true` inside the SAME HTTP turn.
  *
- * That made the flag *enforced but self-asserted*: real against a careless actor, worthless
- * against a deliberate one. This module supplies the missing half — a record only the SERVER can
- * mint, which must already exist, must match THIS action, and must predate the current turn.
+ * WHAT MAY AND MAY NOT BE BOUND — the constraint that shapes everything below
+ * --------------------------------------------------------------------------
+ * Conversation history is rebuilt as `{ role, content }` ONLY (`index.ts` ~4005). Tool calls and
+ * tool results do NOT cross a turn boundary, and the Approve control sends just the words
+ * "Approved — run it." So on the confirming turn the model has to REGENERATE its arguments from
+ * prose alone.
+ *
+ * A first version of this module hashed the WHOLE argument object. That is unsatisfiable for any
+ * tool whose arguments are authored content — `document_generate` requires `blocks`, the entire
+ * document; two generations are never byte-equal. The result was a silent livelock: approve →
+ * re-author → different hash → refuse → re-propose, forever, with nothing executing and no error.
+ * The peer-gate caught it; neither the SQL proof (hashes passed as literals) nor the unit tests
+ * (hand-written 1–2 key objects) could, because neither crosses a turn.
+ *
+ * So the rule is: **bind only on values the human actually SAW in the confirmation summary, which
+ * are exactly the values the model can read back out of its own visible prose.** A phone number or
+ * a role name is in that sentence. A twelve-block document is not.
+ *
+ * Everything else is bound at TOOL level: a proposal for `document_generate` can only be spent on
+ * `document_generate`. Combined with one-open-proposal-per-tool and single use, that gives one
+ * approval → one execution, which is the property that actually matters.
  *
  * WHAT THIS PROVES, AND WHAT IT DOES NOT (§13 — the honest bound)
  * --------------------------------------------------------------
- * PROVES: the action was proposed by the server first; the operator's client took a turn in
- * between; the thing being executed is the thing that was proposed; and the approval is spent
- * once. A model can no longer act on a confirm-gated tool inside a single turn, nor swap the
- * action out from under an approval.
+ * PROVES: the server proposed first; the operator's client took a turn in between; one approval
+ * buys exactly one execution; and for the listed high-consequence tools, the identity the human
+ * was shown is the identity that runs.
  *
- * DOES NOT PROVE: that the human said *yes*. The intervening turn is a human turn, not a grant —
- * a model could still read "no, don't" as approval. Binding to an authenticated approval CLICK is
- * the stronger step, and it needs per-surface UI work: today only `PaigeAIChat` renders
- * `PaigeConfirmCard`, and `useSoloChat` drops the confirm frame outright. That is tracked
- * separately rather than half-built here.
+ * DOES NOT PROVE: that the human said *yes* — an intervening turn is a turn, not a grant. Nor,
+ * for tools outside the identity list, that the CONTENT is unchanged from what was proposed;
+ * only the tool and the fact of approval are bound. Binding to an authenticated approval CLICK is
+ * the stronger step and needs per-surface UI work (only `PaigeAIChat` renders `PaigeConfirmCard`;
+ * `useSoloChat` drops the confirm frame). Tracked separately rather than half-built here.
  *
  * WHY A SECOND HOME WAS NOT BUILT (§18)
  * -------------------------------------
- * `pipeline_archive_confirmations` (#709) already implements exactly this shape for ONE tool —
- * server-minted token, tenant + requester scoping, `expires_at`/`used_at`, a `for update` claim,
- * and a `created_at < turn start` check. This generalizes that pattern to every mutating tool
- * instead of forking a rival mechanism. The pipeline path keeps its own stricter checks on top
- * (an exact approval token echoed back from the confirmation card); nothing there is relaxed.
+ * `pipeline_archive_confirmations` (#709) already implements this shape for ONE tool. This
+ * generalizes it instead of forking a rival. That path keeps its own stricter checks on top — an
+ * exact token echoed back through the CLIENT, which is the mechanism this one cannot yet use.
  *
  * Kept free of Deno globals on purpose so `src/**` vitest can exercise it directly.
  */
 
-/** Arguments the model sent, minus the self-asserted flag, with keys deeply ordered. */
+/**
+ * Fields that are (a) named in the confirmation summary the operator reads, and therefore (b)
+ * recoverable by the model from its own prose on the next turn. ONLY these may enter an identity.
+ *
+ * Adding a tool here makes its approval stricter. Adding a field that is NOT in the summary
+ * re-creates the livelock above, so the test for membership is: *does the operator see this value
+ * in the sentence they are agreeing to?*
+ *
+ * A tool absent from this map binds at tool level. That is the safe default, not an oversight.
+ */
+export const TOOL_IDENTITY_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  // Money. The number is in the sentence; the amount is separately guarded by the quote check
+  // ahead of the gate and re-verified server-side against platform_number_pricing.
+  comms_buy_number: ["phone_number"],
+  // Authority.
+  member_grant_role: ["user_id", "role"],
+  member_revoke_role: ["user_id", "role"],
+  // Destruction.
+  crm_delete_contact: ["contact_id"],
+  n8n_delete_workflow: ["workflow_id"],
+  n8n_archive_workflow: ["workflow_id"],
+  // External side effects through the tenant's own connected apps.
+  zapier_run_action: ["tool_name"],
+  comms_set_primary_number: ["number_id"],
+});
+
+/** Deeply order object keys so a re-emitted payload with a different key order still matches. */
 export function canonicalizeToolArgs(args: unknown): unknown {
   if (Array.isArray(args)) return args.map(canonicalizeToolArgs);
   if (args && typeof args === "object") {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(args as Record<string, unknown>).sort()) {
-      // `confirm` is the flag under test — it MUST NOT enter the hash, or the proposal
-      // (confirm absent) could never match the confirmation (confirm true).
-      if (key === "confirm") continue;
       out[key] = canonicalizeToolArgs((args as Record<string, unknown>)[key]);
     }
     return out;
@@ -59,11 +96,29 @@ export function canonicalizeToolArgs(args: unknown): unknown {
 }
 
 /**
- * Stable identity for "this exact action". Binds the proposal to the confirmation so an approval
- * for one action cannot be spent on a different one.
+ * The identity subset for one call: the listed fields and nothing else.
+ *
+ * Note what this does NOT do. It does not strip `confirm`, or `confirm_new`, or any other flag —
+ * it never sees them, because it only ever reads an allowlist. That is why a legitimate second-call
+ * field (`crm_create_contact`'s `confirm_new` on a dedup retry) cannot silently invalidate an
+ * approval, which a whole-object hash did.
  */
-export async function toolArgsHash(toolKey: string, args: unknown): Promise<string> {
-  const payload = JSON.stringify({ t: toolKey, a: canonicalizeToolArgs(args) });
+export function toolIdentity(toolKey: string, args: unknown): Record<string, unknown> {
+  const fields = TOOL_IDENTITY_FIELDS[toolKey];
+  if (!fields) return {};
+  const src = (args && typeof args === "object" && !Array.isArray(args))
+    ? args as Record<string, unknown>
+    : {};
+  const out: Record<string, unknown> = {};
+  for (const f of [...fields].sort()) {
+    if (src[f] !== undefined) out[f] = canonicalizeToolArgs(src[f]);
+  }
+  return out;
+}
+
+/** Stable identity for "this exact approvable thing". Tool-level unless the tool is listed above. */
+export async function toolIdentityHash(toolKey: string, args: unknown): Promise<string> {
+  const payload = JSON.stringify({ t: toolKey, i: toolIdentity(toolKey, args) });
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -71,15 +126,15 @@ export async function toolArgsHash(toolKey: string, args: unknown): Promise<stri
 /** What the caller reports back from the atomic DB claim. */
 export type ConfirmationClaim = {
   ok: boolean;
-  /** Why the claim failed. Advisory only — every failure resolves the same way. */
+  /** Advisory only — every failure resolves the same way, so this must never become a branch. */
   reason?: "no_open_confirmation" | "same_turn" | "expired" | "already_used" | "error";
 };
 
 export type ConfirmDecision =
-  /** Run it. Either the workspace granted `auto`, or a real server-held proposal was consumed. */
+  /** Run it: the workspace granted `auto`, or a real server-held proposal was consumed. */
   | { kind: "execute" }
-  /** Do not run. Mint a proposal and return needs_confirm. `revalidate` = an approval was claimed
-   *  but did not match, so the operator is being asked again about the action as it now stands. */
+  /** Do not run. Mint a proposal and return needs_confirm. `revalidate` = an approval was
+   *  asserted but nothing backed it, so the operator is asked again. */
   | { kind: "propose"; revalidate: boolean }
   /** Turned off for this workspace. */
   | { kind: "disabled" };
@@ -102,12 +157,10 @@ export function decideToolConfirmation(input: {
 
   if (input.confirmFlag !== true) return { kind: "propose", revalidate: false };
 
-  // The model asserts approval. That assertion is worth nothing by itself: it is only a
-  // request to spend a server-held proposal, and the server decides whether one exists.
+  // The model asserts approval. That assertion is worth nothing by itself: it is only a request
+  // to spend a server-held proposal, and the server decides whether one exists.
   if (input.claim?.ok === true) return { kind: "execute" };
 
-  // Fail CLOSED, but never into a dead end: the operator is asked again about this exact
-  // action. A stale, spent, same-turn, or mismatched approval is not an error the operator
-  // can act on — it is simply not an approval for what is now being attempted.
+  // Fail CLOSED, but never into a dead end: ask again about the action as it now stands.
   return { kind: "propose", revalidate: true };
 }

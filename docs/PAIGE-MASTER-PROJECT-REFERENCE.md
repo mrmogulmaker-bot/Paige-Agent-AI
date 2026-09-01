@@ -135,8 +135,15 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 `confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
 in `paige-ai-chat` mints a `paige_tool_confirmations` row on every `needs_confirm`, and a later
-`confirm:true` executes ONLY by atomically consuming a row bound to that action's SHA-256 argument
-hash, that requester and tenant, unspent, unexpired, and **created before the current turn began**.
+`confirm:true` executes ONLY by atomically consuming a row for that tool, requester and tenant that
+is unspent, unsuperseded, unexpired, and **created before the current turn began**. Minting
+supersedes any earlier open proposal for the same tool, so one approval buys exactly one execution.
+
+For a short list of high-consequence tools (`TOOL_IDENTITY_FIELDS`) the row also pins the identity
+the operator was shown — the phone number, the user and role, the contact or workflow id. It
+deliberately does **not** pin whole arguments: history carries only `{role, content}`, so the model
+re-authors its arguments from prose on the confirming turn, and hashing a `document_generate`
+payload made the flow unapprovable. That version was caught by the §39 peer-gate before merge.
 
 **What this closed.** The gate previously tested `gateArgs.confirm`, which is
 `JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
@@ -152,8 +159,10 @@ said *yes*. Binding to an authenticated approval click needs per-surface UI work
 tracked separately. `auto` is unchanged and still carries no confirmation, by design (§67).
 
 **§18:** generalizes `pipeline_archive_confirmations` (#709), which already did this for one tool.
-Not a rival seam. **Proof:** 9/9 behavioural assertions against prod inside `BEGIN … ROLLBACK`,
-plus 28 unit tests with a negative control that rejects the old implementation.
+Not a rival seam. **Proof:** 11/11 behavioural assertions against prod inside `BEGIN … ROLLBACK`
+via the committed `scripts/tool-confirmation-sql-proof.sql`, plus 46 unit tests including explicit
+livelock regressions. Inside a studio thread `STUDIO_AUTO_TOOLS` still flips five build tools to
+`auto`, so the binding does not reach those there.
 
 
 ### §65 operator route tree — AUTHORED from the Super Admin design pack (2026-08-18, PR #541)

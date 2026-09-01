@@ -933,3 +933,58 @@ confidence about a different artifact.
   a rollback you did not check is a rollback you are assuming.
 - **A green suite next to a red artifact is worse than a red suite**, because it is read as
   permission to stop looking.
+
+## A proof only tests what crosses its own boundary (2026-09-01, the confirm-binding livelock)
+
+**What happened.** The first version of the confirm-binding hashed the **whole argument object** and
+required the confirming call to reproduce it. Against that, the evidence looked overwhelming:
+
+- 11 behavioural assertions against the real database, `pass=N fail=0`
+- 28 unit tests on the decision module
+- a **negative control** proving those tests reject the old implementation
+- `tsc` 0 · 1630 vitest tests · production build · seven CI lint gates
+- a CI script that imports and executes the real edge handler: 71 passed
+
+Every one of them passed. The design was **unusable**.
+
+Conversation history is rebuilt as `{ role, content }` only — tool calls and tool results **do not
+cross a turn boundary** — and Approve sends the literal words "Approved — run it." So on the
+confirming turn the model has to regenerate its arguments from prose. For `document_generate`,
+whose `blocks` argument *is* the authored document, two generations are never byte-equal. Approve →
+re-author → hash differs → refuse → re-propose. Forever, silently, with nothing executing and no
+error surfaced. The same file already carried a comment recording that exact re-ask loop as a flaky
+model bug; the hash would have made it structural.
+
+**Why nothing caught it.** Look at where each proof lives:
+
+| Proof | What it crossed | What it could never cross |
+|---|---|---|
+| SQL `BEGIN…ROLLBACK` | the database boundary | hashes were passed in **as literals** — no arguments were ever generated |
+| Unit tests | the function boundary | hand-written 1–2 key objects — nothing re-authored |
+| CI handler harness | one HTTP request | **one** turn; it never sends a second |
+| tsc / build / lints | the type and syntax boundary | behaviour of any kind |
+
+The defect lived in the gap **between two turns**, and not one instrument reached across it. This
+is the sharpest form of a lesson already recorded twice here — *a predicate proof is not a write
+proof*, *a sweep that filters by content deletes the evidence*. Same shape again: **the check ran,
+and it was not a check of the thing.**
+
+**What actually caught it:** the §39 peer-gate — an independent adversarial read of the pushed diff,
+whose brief was explicitly *"find what those assertions structurally could not test."* It traced the
+history construction, found `aiMessages.push({ role, content })`, and reasoned about what the model
+would have to do on the next turn. No test did that, because no test could.
+
+**The rules.**
+
+- **Before trusting a proof, name its boundary.** Write down what the instrument crosses and what it
+  cannot. If the defect class you care about lives outside every boundary you listed, you have no
+  coverage, however many assertions are green.
+- **Multi-turn behaviour needs a multi-turn instrument, or an adversarial reader.** We have neither
+  a two-turn harness nor a reason to build one for this alone — so the peer-gate is the control, and
+  it is not optional on anything whose correctness spans turns.
+- **Ask what the model must REPRODUCE.** Any cross-turn binding is a demand for regeneration. If the
+  thing being bound is not in the visible prose, the model cannot produce it, and the binding is a
+  livelock rather than a guard. This is now the design rule: *bind only on what the human saw.*
+- **A silent livelock is worse than an error.** The refusal path logged and re-proposed, so the
+  system looked like it was politely asking again. Failure modes that resemble normal operation are
+  the ones that survive review.

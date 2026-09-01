@@ -137,7 +137,7 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   | Sends an agreed price | yes, required | **no** — posts `{ phone_number }` | **no** — posts `{ phone_number }` |
   | Quote guard | **enforced** — refuses without a whole, positive `monthly_cents`, *ahead of* the autonomy gate so it binds at `auto` too | n/a | n/a |
   | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **no** — branch skipped | **no** — branch skipped |
-  | Confirmation step | **enforced and server-bound since 2026-09-01** — `confirm:true` no longer decides anything on its own. It must SPEND a server-minted `paige_tool_confirmations` row that matches this exact action (args hash), belongs to this requester and tenant, is unspent and unexpired, and **was created before the current turn began**. A first-call `confirm:true` and a same-turn propose-then-self-approve are both refused; a failed claim re-proposes rather than dead-ending. **Still not proof the human said YES** — it proves a turn intervened, not what was in it. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
+  | Confirmation step | **enforced and server-bound since 2026-09-01** — `confirm:true` no longer decides anything on its own. It must SPEND a server-minted `paige_tool_confirmations` row for this tool, requester and tenant that is unspent, unsuperseded, unexpired, and **was created before the current turn began** — and for `comms_buy_number` the row also pins the PHONE NUMBER the operator was shown (not the price: that has its own quote guard and server re-verification, and pinning it would refuse a legitimate re-quote). A first-call `confirm:true` and a same-turn propose-then-self-approve are both refused; a failed claim re-proposes rather than dead-ending. **Still not proof the human said YES** — it proves a turn intervened, not what was in it. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
   | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise **`—`** |
   | What can go wrong | **one unattended path now, not two** — a workspace on `auto` still buys with no gate at all (chosen, and by design). At `confirm` the first-call/same-turn bypass is closed; what remains is that an intervening human turn is not the same as a human saying yes, so a model could still read a refusal as approval | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
 
@@ -155,11 +155,14 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   - **CORRECTED 2026-09-01 — Layer 2 below was the defect, and it is now closed.** The text is kept
     because the *shape* of the failure is the durable lesson; the current state is stated first.
     **Now:** at `confirm` the model's flag only selects a branch. Executing requires consuming a
-    server-minted `paige_tool_confirmations` row bound to this action's argument hash, this
-    requester and tenant, unspent, unexpired, and **created before the turn started** — so neither
+    server-minted `paige_tool_confirmations` row for this tool, requester and tenant —
+    pinned to the phone number shown — unspent, unsuperseded, unexpired, and **created before the
+    turn started** — so neither
     a first-call `confirm:true` nor a same-turn propose-and-self-approve can reach an execution.
-    Proven against the database: 9/9, including same-turn refusal, cross-action, cross-tool and
-    cross-user refusal, single-use, and both RPCs closed to non-`service_role`.
+    Proven against the database: 11/11 via the committed
+    `scripts/tool-confirmation-sql-proof.sql` — same-turn refusal, cross-identity, cross-tool and
+    cross-user refusal, supersede, one-approval-one-execution, retained audit rows, and both RPCs
+    closed to non-`service_role`.
     **What is still NOT proven: that the human said yes.** An intervening turn is a turn, not a
     grant. Binding to an authenticated approval *click* needs per-surface UI work and is tracked
     separately. `auto` remains unconfirmed by design.
