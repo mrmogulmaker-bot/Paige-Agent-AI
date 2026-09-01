@@ -218,6 +218,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:migration-versions:test
 
+      # An audit row that names a table which does not exist is unresolvable, and reads as correct.
+      # The harness already asserted a rail event NAMES a record; a wrong name satisfies that. This
+      # checks the name is true, which needs a schema and so belongs here rather than in the harness.
+      - name: Every attribution target is a real table (a rail row must resolve)
+        if: ${{ !cancelled() }}
+        run: npm run lint:write-targets
+
+      - name: Attribution-target guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:write-targets:test
+
       - name: Every write tool is classified by the action-risk policy
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk

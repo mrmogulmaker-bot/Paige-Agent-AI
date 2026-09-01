@@ -37,6 +37,8 @@
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
     "lint:action-risk": "node scripts/ci/action-risk-lint.mjs",
+    "lint:write-targets": "node scripts/ci/write-target-lint.mjs",
+    "lint:write-targets:test": "node scripts/ci/write-target-lint.mjs --self-test",
     "lint:migration-versions": "node scripts/ci/migration-version-collision-lint.mjs",
     "lint:migration-versions:test": "node scripts/ci/migration-version-collision-lint.mjs --self-test",
     "lint:vector-path": "node scripts/ci/vector-search-path-lint.mjs",

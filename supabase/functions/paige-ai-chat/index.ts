@@ -9990,18 +9990,37 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
        * external provider call has no row in this database at all. Saying "external_provider"
        * honestly beats naming a table that does not exist.
        */
+      // WHAT THIS NAMES, AND WHY FOUR OF THESE WERE WRONG (corrected 2026-09-01).
+      //
+      // This is the `target_type` on the attribution row: the record a write actually landed on, so
+      // a person tracing "what did Paige change" reaches a real row. Four entries named tables that
+      // have NEVER existed — `activities`, `calendar_events`, `content`, `event_kinds` — so every
+      // audit row for seven tools pointed at nothing. Grounded against production and against the
+      // handlers' own dispatch: `crm_log_activity` writes `communication_log`,
+      // `calendar_book_meeting` writes `internal_bookings` via `create_internal_booking`, the
+      // content family writes `marketing_content` (the `document_generate` handler says so in its
+      // own comment) except `content_save`, which writes `studio_artifact_versions` via
+      // `save_artifact_version`, and `author_event_kind` writes `paige_event_kinds`.
+      //
+      // The existing harness checks could not catch this: 19.7 and 19.8 assert that a rail event
+      // NAMES a record, which a wrong name satisfies perfectly. Presence and truth are different
+      // properties, and only the second one makes the trail usable. `lint:write-targets` now checks
+      // truth, because it is the one that needs a schema to decide.
+      //
+      // Values that are deliberately NOT tables are declared as such in that guard, not left to be
+      // guessed from context.
       const WRITE_TARGET: Record<string, string> = {
         crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
         program_enroll: "clients", update_client_data: "clients",
-        crm_log_activity: "activities", crm_add_note: "client_notes", crm_create_task: "tasks", plan_assign_task: "tasks",
+        crm_log_activity: "communication_log", crm_add_note: "client_notes", crm_create_task: "tasks", plan_assign_task: "tasks",
         update_business_profile: "tenants",
         pipeline_create: "pipelines", pipeline_add_stage: "pipelines",
         deal_create: "deals", deal_move_stage: "deals",
         member_grant_role: "user_roles", member_revoke_role: "user_roles",
-        calendar_book_meeting: "calendar_events",
-        draft_marketing_content: "content", generate_image: "content", content_save: "content",
-        document_generate: "content",
+        calendar_book_meeting: "internal_bookings",
+        draft_marketing_content: "marketing_content", generate_image: "marketing_content", content_save: "studio_artifact_versions",
+        document_generate: "marketing_content",
         growth_page_save: "growth_pages", growth_page_publish: "growth_pages",
         growth_funnel_build: "growth_funnels", growth_funnel_publish: "growth_funnels",
         action_file: "paige_actions", action_advance: "paige_actions",
@@ -10014,7 +10033,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         save_to_knowledge_base: "knowledge_base",
         plan_create: "plans", plan_add_milestone: "plans", plan_set_reminder: "plans",
         plan_update_item: "plans", plan_remove_item: "plans",
-        author_event_kind: "event_kinds",
+        author_event_kind: "paige_event_kinds",
         automation_draft: "paige_automations",
         marketplace_install: "marketplace", marketplace_uninstall: "marketplace",
         // Merged from main 2026-09-01. Read off each tool's ACTUAL execution path, not its name:
