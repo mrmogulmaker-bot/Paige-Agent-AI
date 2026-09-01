@@ -271,6 +271,20 @@ Ivanna) and `ELEVENLABS_VOICE_ID` (only for the `elevenlabs.ts` legacy path). #4
 
 ---
 
+## Repo-local agent config (`.claude/`)
+
+`.gitignore` ignores `.claude/*` and then NEGATES the parts that are shared, so session-local
+state stays out while shared assets are versioned. Two negations exist:
+
+| Path | Why it is versioned |
+|---|---|
+| `!.claude/commands/` | Shared project commands (e.g. `/edge-drift`) — "so every session (and every teammate) gets them" |
+| `!.claude/skills/` | The §69 delivery skill (`flow-by-flow` + its required sibling `flow-prototype`). The account-synced install delivers `SKILL.md` ONLY — no `references/`, no `templates/` — so on a fresh container `SKILL.md`'s first instruction (*read `references/orchestration.md`*) points at a file that does not exist, and §69's "say so plainly" never fires because a skill WAS found. Versioning it is also §64: a container-local install dies with the container |
+
+Contains **no secrets** — these are markdown process documents. Vendored third-party content is
+MIT; see `.claude/skills/LICENSE` and `PROVENANCE.md`, including the open item that the upstream
+notice could not be obtained and the shipped `LICENSE` is assembled from upstream's own declaration.
+
 ## GitHub Actions / CI (✅ `.github/workflows/`)
 
 | Workflow | Trigger | Purpose |

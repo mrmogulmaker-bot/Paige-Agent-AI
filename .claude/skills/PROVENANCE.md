@@ -17,8 +17,23 @@ are preserved verbatim in each `SKILL.md` and must stay there. **They are a matc
 must stay on the same version** — that is the skill's own Gate 5, and `flow-by-flow` cannot
 complete its approval step without `flow-prototype`.
 
-No upstream copyright line was published with the bundle beyond the frontmatter above, so none
-is invented here. If upstream later publishes a full `LICENSE`, add it rather than paraphrasing.
+### The license notice — read `LICENSE` in this directory, and read why it says what it says
+
+MIT's redistribution condition requires the copyright and permission notice to accompany copies.
+These two bundles ship **no** standalone `LICENSE` or `NOTICE`, and carry no upstream URL from
+which one could be fetched — while the Anthropic-authored skills installed beside them *do* ship
+a `LICENSE.txt`, so this is an absence in these two specifically, not something the install
+stripped.
+
+`LICENSE` therefore carries the standard MIT permission text corresponding to the `license: MIT`
+these bundles declare, with the holder taken from the `author` field they publish, and it says
+so about itself in its own opening paragraphs. It was **assembled from that declaration, not
+transcribed from an upstream notice anyone here has seen**, and an authoritative upstream notice
+supersedes it verbatim. No year is asserted, because none is published and inventing one would be
+the fabrication the file exists to avoid.
+
+**This is a live open item, not a closed one.** If an authoritative notice can be obtained from
+the author, replace `LICENSE` with it and delete this caveat.
 
 ## What we changed — one local addition, 2026-09-01
 
