@@ -171,6 +171,14 @@ function describeStep(
   }
 }
 
+async function resolveClientReference(admin: any, tenantId: string | null, clientRef: unknown): Promise<string | null> {
+  if (!tenantId || typeof clientRef !== "string" || !clientRef.trim()) return null;
+  const { data, error } = await admin.from("clients").select("id")
+    .eq("tenant_id", tenantId).eq("account_number", clientRef.trim().toUpperCase()).maybeSingle();
+  if (error || !data?.id) return null;
+  return data.id;
+}
+
 // Fire-and-forget analytics writer for Paige internals (RAG, Firecrawl, legal flags).
 // Uses the service-role client and never blocks the chat response.
 async function logAnalyticsEvent(
@@ -3794,7 +3802,7 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
 - "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
 
-Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
+Always resolve names/emails to client_ref via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
 
 BUSINESS BRIEF — YOU HELP THE OWNER COMPLETE IT, BUT YOU NEVER SILENTLY CHANGE BUSINESS TRUTH. When the operator asks to "set up my business", "add our company details", or tells you about their identity, offers, customers, direction, goals, constraints, voice, operating preferences, or business representatives, use the business brief already present in your context and ask ONE tight grouped set of questions only for what is missing. The Paige workspace URL is not automatically the real business website; never substitute it. A business representative is an existing active Team member selected in Setup; it is not a Team membership or role change. Resolve a named representative with crm_list_team, then propose their returned user id in representativeUserIds. Never invent an id or add a person to Team. Read back the proposed change, get their yes, then call propose_business_brief_update with confirm:true. That stages a visible suggestion in Settings → Setup; it does NOT save the brief. Tell the owner to review and save it there. Setup owns business truth. Team owns people, invitations, access and roles. Connections owns email/provider/payment configuration. Never put an email-provider change or a new team member into the business brief. If they are updating a CLIENT instead, use crm_update_contact.
 
@@ -4194,11 +4202,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: {
                 type: "object",
                 properties: {
-                  client_id: { type: "string", description: "clients.id UUID of the client to update." },
+                  client_ref: { type: "string", description: "Tenant-scoped client reference from crm_search_contacts." },
                   status: { type: "string", enum: ["pending", "active", "inactive", "archived"], description: "Target pipeline stage. pending=Lead, active=In Progress, inactive=Paused, archived=Closed." },
                   reason: { type: "string", description: "Short reason for the change, stored in audit log." }
                 },
-                required: ["client_id", "status"]
+                required: ["client_ref", "status"]
               }
             }
           },
@@ -4211,9 +4219,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 type: "object",
                 properties: {
                   coach_email: { type: "string", description: "Email of the coach user. Must be an existing auth user with coach or admin role." },
-                  client_ids: { type: "array", items: { type: "string" }, description: "Array of clients.id UUIDs." }
+                  client_refs: { type: "array", items: { type: "string" }, description: "Client references returned by crm_search_contacts." }
                 },
-                required: ["coach_email", "client_ids"]
+                required: ["coach_email", "client_refs"]
               }
             }
           },
@@ -4264,11 +4272,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "crm_update_contact",
-              description: "Admin/coach only. Update fields on an existing contact (client). Resolve the contact first with crm_search_contacts to get its id. Only pass the fields you want to change; omitted fields are left as-is. Governed by the workspace autonomy policy: unless the operator has set this action to auto, PROPOSE the change first, get their yes, then call again with confirm:true (internal data, not outbound).",
+              description: "Admin/coach only. Update fields on an existing contact (client). Resolve the contact first with crm_search_contacts to get its client_ref. Only pass the fields you want to change; omitted fields are left as-is. Governed by the workspace autonomy policy: unless the operator has set this action to auto, PROPOSE the change first, get their yes, then call again with confirm:true (internal data, not outbound).",
               parameters: {
                 type: "object",
                 properties: {
-                  contact_id: { type: "string", description: "clients.id UUID (from crm_search_contacts)." },
+                  client_ref: { type: "string", description: "Tenant-scoped client reference from crm_search_contacts." },
                   first_name: { type: "string" },
                   last_name: { type: "string" },
                   email: { type: "string" },
@@ -4281,7 +4289,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   status: { type: "string", enum: ["pending","active","inactive","archived"] },
                   assigned_coach_user_id: { type: "string", description: "Auth user UUID of the coach to assign." }
                 },
-                required: ["contact_id"]
+                required: ["client_ref"]
               }
             }
           },
@@ -4372,10 +4380,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: {
                 type: "object",
                 properties: {
-                  contact_id: { type: "string", description: "clients.id UUID." },
+                  client_ref: { type: "string", description: "Tenant-scoped client reference from crm_search_contacts." },
                   confirm: { type: "boolean", description: "Set true ONLY after the operator has explicitly confirmed the deletion." }
                 },
-                required: ["contact_id"]
+                required: ["client_ref"]
               }
             }
           },
@@ -4769,7 +4777,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "crm_search_contacts",
-              description: "Admin/coach only. Search the CRM contacts (clients table) across the entire platform. Use to resolve names/emails to client_id, list leads by lifecycle stage, filter by assigned coach, find recently added contacts, or browse the customer base. Returns up to 25 contacts with id, name, email, phone, lifecycle_stage, source, assigned_coach_user_id, tags, lead_score, last_contacted_at, created_at.",
+              description: "Admin/coach only. Search CRM contacts in the current server-resolved tenant only. Use to resolve names/emails to client_ref, list leads by lifecycle stage, filter by assigned coach, find recently added contacts, or browse the customer base. Returns up to 25 contacts with client_ref, name, email, phone, lifecycle_stage, source, assigned_coach_user_id, tags, lead_score, last_contacted_at, created_at.",
               parameters: {
                 type: "object",
                 properties: {
@@ -4792,9 +4800,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: {
                 type: "object",
                 properties: {
-                  client_id: { type: "string", description: "clients.id UUID." }
+                  client_ref: { type: "string", description: "Tenant-scoped client reference returned by crm_search_contacts." }
                 },
-                required: ["client_id"]
+                required: ["client_ref"]
               }
             }
           },
@@ -6933,31 +6941,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   filing_with_a_carrier_is_not_built: true,
                 };
             } else if (tc.function.name === "crm_update_pipeline_stage") {
-              const { error } = await admin
-                .from("clients")
+              const clientId = await resolveClientReference(admin, crmTenantId, args.client_ref);
+              if (!clientId) throw new Error("contact_not_found");
+              const { error } = await admin.from("clients")
                 .update({ status: args.status, updated_at: new Date().toISOString() })
-                .eq("id", args.client_id)
-                .eq("tenant_id", crmTenantId); // §9: only a client in the caller's OWN tenant
+                .eq("id", clientId).eq("tenant_id", crmTenantId);
               if (error) throw error;
               await admin.from("audit_logs").insert({
-                user_id: user.id,
-                action: "crm_pipeline_change",
-                resource_type: "clients",
-                resource_id: args.client_id,
-                metadata: { status: args.status, reason: args.reason || null, via: "paige" },
+                user_id: user.id, action: "crm_pipeline_change", resource_type: "clients",
+                resource_id: clientId, metadata: { status: args.status, reason: args.reason || null, via: "paige" },
               });
-              result = { success: true, client_id: args.client_id, status: args.status };
+              result = { success: true, client_ref: args.client_ref, status: args.status };
             } else if (tc.function.name === "crm_assign_coach") {
               // Look up coach by email via auth admin
               const { data: u } = await admin.auth.admin.listUsers();
               const coach = u?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.coach_email || "").toLowerCase());
               if (!coach) throw new Error(`Coach not found for email ${args.coach_email}`);
-              const ids = Array.isArray(args.client_ids) ? args.client_ids : [];
-              const { error } = await admin
-                .from("clients")
+              const refs = Array.isArray(args.client_refs) ? args.client_refs : [];
+              const ids = (await Promise.all(refs.map((ref: unknown) =>
+                resolveClientReference(admin, crmTenantId, ref)))).filter(Boolean) as string[];
+              if (ids.length !== refs.length) throw new Error("one_or_more_contacts_not_found");
+              const { error } = await admin.from("clients")
                 .update({ assigned_coach_user_id: coach.id, updated_at: new Date().toISOString() })
-                .in("id", ids)
-                .eq("tenant_id", crmTenantId); // §9: never reassign another tenant's clients
+                .in("id", ids).eq("tenant_id", crmTenantId);
               if (error) throw error;
               await admin.from("audit_logs").insert({
                 user_id: user.id,
@@ -7021,15 +7027,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // a SILENT dedup bypass.
                 console.warn("crm_create_contact: no resolved tenant for dedup lookup — proceeding without fuzzy check (operator/tenant-less path).");
               }
+              const duplicateRefs = new Map<string, string>();
+              if (dupeMatches.length && dedupTenantId) {
+                const { data: identities } = await admin.from("clients").select("id, account_number")
+                  .eq("tenant_id", dedupTenantId).in("id", dupeMatches.map((d: any) => d.id));
+                for (const identity of identities ?? []) duplicateRefs.set(identity.id, identity.account_number);
+              }
               if (dupeMatches.length > 0) {
                 // Do NOT insert. Hand the matches back so the LLM asks the §15
                 // "is this the same person?" question. To create anyway → confirm_new;
-                // to update instead → crm_update_contact with the matching contact_id.
+                // to update instead → crm_update_contact with the matching client_ref.
                 result = {
                   success: false,
                   needs_dedup_confirmation: true,
                   matches: dupeMatches.map((d: any) => ({
-                    contact_id: d.id,
+                    client_ref: duplicateRefs.get(d.id) ?? null,
                     name: [d.first_name, d.last_name].filter(Boolean).join(" ").trim() || d.entity_name || "(no name)",
                     email: d.email,
                     phone: d.phone,
@@ -7062,12 +7074,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
                 });
                 if (error) throw error;
-                result = { success: true, contact_id: newId };
+                const { data: createdIdentity } = await admin.from("clients").select("account_number")
+                  .eq("id", newId).eq("tenant_id", dedupTenantId).maybeSingle();
+                result = { success: true, client_ref: createdIdentity?.account_number ?? null };
               }
             } else if (tc.function.name === "crm_update_contact") {
-              if (!args.contact_id) throw new Error("contact_id is required");
+              const contactId = await resolveClientReference(admin, crmTenantId, args.client_ref);
+              if (!contactId) throw new Error("contact_not_found");
               const { error } = await supabaseClient.rpc("update_contact", {
-                p_contact_id: args.contact_id,
+                p_contact_id: contactId,
                 p_first_name: args.first_name ?? null,
                 p_last_name: args.last_name ?? null,
                 p_email: args.email ?? null,
@@ -7081,7 +7096,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
               });
               if (error) throw error;
-              result = { success: true, contact_id: args.contact_id };
+              result = { success: true, client_ref: args.client_ref };
             } else if (tc.function.name === "propose_business_brief_update") {
               if (!crmTenantId) {
                 result = { success: false, error: "tenant_not_resolved" };
@@ -7399,12 +7414,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } else if (tc.function.name === "crm_delete_contact") {
               // Confirm is enforced by the central autonomy gate above (destructive
               // → defaults to 'confirm'); by here we're cleared to execute.
+              const contactId = await resolveClientReference(admin, crmTenantId, args.client_ref);
+              if (!contactId) throw new Error("contact_not_found");
               const { data: del, error } = await supabaseClient.functions.invoke("delete-contact", {
-                body: { contact_id: args.contact_id },
+                body: { contact_id: contactId },
               });
               if (error) throw error;
               if ((del as any)?.error) throw new Error((del as any).error);
-              result = { success: true, deleted: args.contact_id };
+              result = { success: true, deleted: args.client_ref };
             } else if (tc.function.name === "draft_marketing_content") {
               const { data: cd, error } = await supabaseClient.functions.invoke("content-draft", {
                 body: { channel: args.channel, brief: args.brief, tone: args.tone ?? null, variations: args.variations ?? 1, tenant_id: personaCtx?.tenant_id ?? null },
@@ -7916,7 +7933,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } else if (tc.function.name === "crm_search_contacts") {
               const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
               let q = admin.from("clients").select(
-                "id, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, lead_score, assigned_coach_user_id, last_contacted_at, created_at"
+                "account_number, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, lead_score, assigned_coach_user_id, last_contacted_at, created_at"
               ).eq("tenant_id", crmTenantId);
               if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
               if (args.status) q = q.eq("status", args.status);
@@ -7942,9 +7959,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const [col, asc] = sortMap[args.sort || "recent"] || sortMap.recent;
               const { data, error } = await q.order(col, { ascending: asc, nullsFirst: false }).limit(limit);
               if (error) throw error;
-              result = { success: true, count: data?.length || 0, contacts: data || [] };
+              result = { success: true, count: data?.length || 0, contacts: (data || []).map(({ account_number, ...contact }: any) => ({ ...contact, client_ref: account_number })) };
             } else if (tc.function.name === "crm_get_contact_summary") {
-              const id = args.client_id;
+              const id = await resolveClientReference(admin, crmTenantId, args.client_ref);
               // §9 IDOR FIX: scope the contact fetch to the caller's tenant so a
               // foreign client_id resolves to null → contact_not_found (never
               // another tenant's contact). Deals are tenant-scoped too as
@@ -8483,21 +8500,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         program_enroll: "clients", crm_log_activity: "activities", crm_create_task: "tasks",
         calendar_book_meeting: "calendar_events",
       };
-      const resolveRailContactId = (args: any, out: any): string | null => {
-        // A bulk assign (client_ids[]) only maps cleanly to ONE rail when it's a
-        // single target; multi-target bulk ops don't fall back to the focused client.
-        if (Array.isArray(args?.client_ids)) {
-          return args.client_ids.length === 1 && typeof args.client_ids[0] === "string" ? args.client_ids[0] : null;
+      const resolveRailContactId = async (args: any, out: any): Promise<string | null> => {
+        // A bulk assign maps cleanly to one rail only when it names one client.
+        if (Array.isArray(args?.client_refs)) {
+          return args.client_refs.length === 1
+            ? await resolveClientReference(supabaseClient, personaCtx?.tenant_id ?? null, args.client_refs[0]) : null;
         }
-        // Require an EXPLICIT contact reference from the tool itself — do NOT fall
-        // back to the focused client. A general task/note (crm_create_task,
-        // crm_log_activity) that carries no contact_id would otherwise be
-        // misattributed to whoever is focused (§13 truthfulness). Under-emit over
-        // mis-attribute: if the tool didn't name a contact, no rail event.
+        const clientRef = out?.client_ref ?? args?.client_ref ?? null;
+        if (clientRef) return await resolveClientReference(supabaseClient, personaCtx?.tenant_id ?? null, clientRef);
+        // Legacy/internal tools may still carry an already tenant-validated UUID.
         const cand = out?.contact_id ?? args?.contact_id ?? args?.client_id ?? null;
         return typeof cand === "string" && cand ? cand : null;
       };
-      const emitRailForTool = (tc: any, res: any, label: string): void => {
+      const emitRailForTool = async (tc: any, res: any, label: string): Promise<void> => {
         try {
           const name: string = tc?.function?.name ?? "";
           const isCrm = RAIL_CRM_TOOLS.has(name);
@@ -8506,7 +8521,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           let args: any = {}; try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
           let out: any = {}; try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
           if (out?.success !== true) return; // never mirror a non-success
-          const contactId = resolveRailContactId(args, out);
+          const contactId = await resolveRailContactId(args, out);
           if (!contactId) return; // rail is per-client — skip general/non-client actions
           void supabaseClient.rpc("record_rail_event", {
             p_contact_id: contactId,
@@ -8681,7 +8696,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 if (!derived) continue; // gated/stub calls dropped (never render as failure)
                 // Mirror a successful client-scoped mutation onto the rail (§8) —
                 // fire-and-forget, guarded, and only on real success (ok === true).
-                if (ok) emitRailForTool(tc, res, derived.label);
+                if (ok) void emitRailForTool(tc, res, derived.label);
                 const st = {
                   id: `${round}:${tc.id}`, round, seq: ++stepSeq, kind: "action" as const,
                   label: derived.label, group: derived.group,

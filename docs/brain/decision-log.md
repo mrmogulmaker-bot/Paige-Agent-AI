@@ -616,3 +616,5 @@ work details as untrusted reference data, and stays proposal-only until the owne
 Local structural, test, security-lint, type-ratchet and build evidence is green; authenticated runtime,
 migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is still required before
 merge or deployment.
+
+- **Client identity contract (green draft, Gate 2 pending, 2026-09-01)** — Preserve existing client UUIDs and references; fail closed if any historical client lacks a tenant; backfill only missing references with nonsequential `CLT-…` values; make UUID, tenant, and reference immutable; route browser creation through `create_contact()`; keep invite acceptance as the only consent linkage path; expose `client_ref`, not raw UUIDs, to Paige. No merge or deployment authorized.

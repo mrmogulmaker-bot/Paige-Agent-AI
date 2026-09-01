@@ -593,6 +593,7 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
    filter is the dangerous shape; a count that silently reads 0 is the same class.
 
+- A UUID default is not a complete identity contract. Every producer must converge on a required immutable tenant binding, and an AI-facing lookup must return a stable human reference while resolving the internal UUID only inside a server-validated tenant boundary. A service-role query with an ID filter is not tenant safety unless the tenant predicate is present in the same query.
 ## A predicate proof is not a write proof (2026-09-01, #695 → #699)
 
 **Symptom.** A one-time backfill in `20260901010000` chose a primary phone number for any workspace
