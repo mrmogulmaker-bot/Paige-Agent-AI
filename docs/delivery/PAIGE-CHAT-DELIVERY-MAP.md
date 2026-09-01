@@ -250,6 +250,8 @@ in `docs/doctrine/tier-matrix.md` per §66.
 
 | **C1 — every write is attributable** | One seam at the point every executed tool passes through files a `paige_audit_log` row: entity + record, actor, tenant, risk class, the AUTHORITY it ran on, and the real outcome. The rail's membership is derived from the same target map (adding `update_client_data`) and `ref_id` is filled, so an event can name the record it changed. Two policy defects closed: a `client` seat could not record its own action, and a tenant admin could read every untenanted row. | 8 mutations driven, all red on the check built for them · 5-case prod rollback proof with 2 negative controls that confirmed both defects were real first |
 
+| **M1 — Paige opens knowing what she is carrying** | `paige_operating_memory()` composes open commitments, live processes, work in flight, and what she last did with its real outcome. Nothing stored, so nothing can go stale. No tenant parameter; SECURITY INVOKER. A failed read renders nothing rather than implying nothing is outstanding. | 6 mutations driven, all red on the check built for them · 11-case prod rollback proof across two identically-seeded tenants, with a control that the function did not already exist |
+
 **Owner ruling absorbed (2026-09-01).** *"Paige may never grant or raise her own autonomy through
 Chat, regardless of action class or owner wording."* `automation_set_grant` and `automation_set_state`
 are `owner_only` and refuse down every channel, including a clicked card. **Named rather than

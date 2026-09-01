@@ -60,6 +60,13 @@ const NEUTRAL_CTX = (userContext: string, clientContext: string) =>
     timezoneNote: " (timezone: America/New_York)",
     clientContext,
     memoryBlock: "",
+    // Not empty: this block is assembled server-side and injected into the prompt, so the §2
+    // deny-list must scan its wrapper text too. An empty string here would exempt the newest
+    // prompt section from the very scan that exists to catch vertical language reaching a
+    // coaching-generic tenant.
+    operatingMemoryBlock:
+      "\n\n=== WHAT YOU ARE CARRYING (from the record, not from this conversation) ===\n" +
+      "You owe them:\n- Send the recap (task, open, due 2026-09-03)\n=== END ===\n",
     sessionDocContext: "",
     userContext,
     fetchedUrlContent: "",

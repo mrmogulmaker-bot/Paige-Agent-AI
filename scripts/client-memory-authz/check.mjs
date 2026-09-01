@@ -2051,5 +2051,124 @@ const mirrorConfirms = (st) => (t, row) => {
     "the rail set is hand-listed again");
 }
 
+// ── 20. PAIGE OPENS KNOWING WHAT SHE IS CARRYING ─────────────────────────────────────────────
+//
+// A transcript is not memory: it is what was SAID, not what is OWED, and it does not survive a new
+// thread, a compaction, or a person coming back a week later. `paige_operating_memory()` composes
+// the four places that already hold the answer — open commitments, live processes, work in flight,
+// and what she actually did with its real outcome — and this section proves the composed read
+// reaches the turn, carries the outcome honestly, and is scoped.
+{
+  const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const OM = {
+    commitments: [{ id: "1", kind: "task", title: "SEND-THE-RECAP", status: "open", due_at: "2026-09-03T10:00:00Z" }],
+    in_flight: [{ id: "2", title: "DRAFT-AWAITING-YOU", status: "pending_approval", awaiting_approval: true }],
+    processes: [{ id: "3", name: "NEW-LEAD-WELCOME", granted_lane: "auto", state: "live" }],
+    recent: [{ action: "crm_create_contact", target_type: "clients", outcome: "failed" }],
+    scope: { tenant_id: CALLER_TENANT, user_id: USER, contact_id: null },
+  };
+  const carrying = (extra = {}) => drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    rpcOverrides: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      paige_operating_memory: { data: OM, error: null },
+    },
+    ...extra,
+  });
+  const prompt = (r) => r.modelEgress.map((b) => (typeof b === "string" ? b : JSON.stringify(b)))
+    .join("\n").replace(/\\"/g, '"').replace(/\\n/g, "\n");
+
+  const opened = await carrying();
+  const p0 = prompt(opened);
+  assert("20.0 the operating memory is actually read (guards this section)",
+    opened.rec.rpc.some((c) => c.name === "paige_operating_memory"),
+    JSON.stringify(opened.rec.rpc.map((c) => c.name).slice(0, 12)));
+  assert("20.1 what she OWES reaches the turn",
+    p0.includes("SEND-THE-RECAP"), "the commitment never reached the prompt");
+  assert("20.2 what is WAITING ON THE PERSON reaches the turn, marked as waiting on them",
+    /DRAFT-AWAITING-YOU — WAITING ON THEIR APPROVAL/.test(p0),
+    "work stopped at an approval is not distinguished from work in progress");
+  assert("20.3 what runs WITHOUT being asked reaches the turn, with whether it acts alone",
+    /NEW-LEAD-WELCOME \(acts on its own\)/.test(p0),
+    "a live process is not distinguished from one that still asks first");
+  // §13 — the outcome travels with the action. A list of attempts read as a list of successes is
+  // the exact over-claim the write trail exists to prevent.
+  assert("20.4 what she last did carries its REAL outcome, not just that it happened",
+    /crm_create_contact on clients — failed/.test(p0),
+    "a failed action is presented without its failure");
+
+  // ── 20.5 SCOPE. The read takes NO tenant argument — scope is derived server-side from the
+  // session — and when a client is in focus it narrows to that client, which is what stops a
+  // switch carrying the previous client's open work into the new scope (§S2).
+  const omCall = opened.rec.rpc.find((c) => c.name === "paige_operating_memory");
+  assert("20.5 the read is not handed a tenant by the request",
+    !!omCall && !Object.keys(omCall.args ?? {}).some((k) => /tenant/i.test(k)),
+    JSON.stringify(omCall?.args ?? null));
+  assert("20.5b …and it narrows to the client in focus",
+    omCall?.args?.p_contact_id === OWN, JSON.stringify(omCall?.args ?? null));
+  assert("20.5c …and it is asked as the CALLER, so RLS is the boundary",
+    omCall?.client !== "service", JSON.stringify({ client: omCall?.client }));
+
+  // ── 20.5d BOTH PROMPT PATHS, NOT JUST THE VERTICAL ONE. §2: `FUNDING_SKILL_PROMPT` is the
+  // opt-in funding skill and `buildNeutralCorePrompt` is what every tenant that has NOT opted in
+  // receives. The first wiring of this reached only the funding one, so the memory landed for the
+  // vertical and not for the platform default — the exact shape §2 exists to catch, and invisible
+  // to any check that only drove a funding tenant. 20.1–20.4 above drive the NEUTRAL default;
+  // this drives the funding path so neither can regress while the other stays green.
+  const funding = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    rpcOverrides: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      paige_operating_memory: { data: OM, error: null },
+      get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT, tenant_name: "T", playbook_config: null, playbook_slug: null, funding_enabled: true, brand: null }], error: null },
+    },
+  });
+  assert("20.5d the funding-skill prompt carries it too",
+    prompt(funding).includes("SEND-THE-RECAP"),
+    "the opt-in funding path lost the operating memory");
+
+  // ── 20.6 AN ERROR IS NOT "NOTHING OPEN". Rendering an empty block on a failed read would tell
+  // the person, with confidence, that they have no outstanding commitments. Kills: treating the
+  // error branch as an empty result, which is the friendliest-looking way to lie.
+  const broke = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    rpcOverrides: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      paige_operating_memory: { data: null, error: { message: "denied", code: "42501" } },
+    },
+  });
+  const p1 = prompt(broke);
+  assert("20.6 a failed read says NOTHING rather than implying there is nothing outstanding",
+    !p1.includes("WHAT YOU ARE CARRYING"), "an unavailable read rendered as an empty carrying block");
+  assert("20.6b …and the failure is logged rather than swallowed",
+    broke.logged.some((l) => l.msg.includes("operating memory unavailable")),
+    JSON.stringify(broke.logged.map((l) => l.msg).slice(0, 6)));
+
+  // ── 20.7 …and a genuinely EMPTY carry renders nothing either, so the block's presence always
+  // means there is something to say. Kills: emitting a header with no content under it.
+  const empty = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    rpcOverrides: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      paige_operating_memory: { data: { commitments: [], in_flight: [], processes: [], recent: [] }, error: null },
+    },
+  });
+  assert("20.7 nothing outstanding renders no block at all",
+    !prompt(empty).includes("WHAT YOU ARE CARRYING"), "an empty carry still emitted a header");
+
+  // ── 20.8 A REFUSED client focus does no operating-memory read for that client. The refusal
+  // path clears the focus, so the read must not be handed an id the turn was not allowed to use.
+  const refused = await drive({
+    clientId: FOREIGN, stream: true, extraBody: { threadId: THREAD },
+    rpcOverrides: {
+      get_actor_access: { data: { tier: "tenant" }, error: null },
+      paige_operating_memory: { data: OM, error: null },
+    },
+  });
+  assert("20.8 a refused client focus never asks for that client's carrying list",
+    !refused.rec.rpc.some((c) => c.name === "paige_operating_memory" && c.args?.p_contact_id === FOREIGN),
+    JSON.stringify(refused.rec.rpc.filter((c) => c.name === "paige_operating_memory").map((c) => c.args)));
+}
+
 console.log(`\n${checks - failures} passed, ${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

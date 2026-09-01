@@ -712,6 +712,11 @@ export interface NeutralCorePromptCtx {
   timezoneNote: string;
   clientContext: string;
   memoryBlock: string;
+  /** What Paige is CARRYING for this person — open commitments, live processes, work in flight,
+   *  and what she last did with its real outcome. Composed server-side from the records; empty
+   *  when there is nothing outstanding, and empty when the read failed, because "nothing open" is
+   *  a claim and an unavailable read is not entitled to make it. */
+  operatingMemoryBlock: string;
   sessionDocContext: string;
   userContext: string;
   fetchedUrlContent: string;
@@ -719,7 +724,7 @@ export interface NeutralCorePromptCtx {
 }
 
 export function buildNeutralCorePrompt(ctx: NeutralCorePromptCtx): string {
-  const { dateTimeString, timezoneNote, clientContext, memoryBlock, sessionDocContext, userContext, fetchedUrlContent, tenantKbContext } = ctx;
+  const { dateTimeString, timezoneNote, clientContext, memoryBlock, operatingMemoryBlock, sessionDocContext, userContext, fetchedUrlContent, tenantKbContext } = ctx;
   return `You are the practice's client-side assistant. Your identity and domain are set in the persona message above, and HOW you talk is set in the "HOW YOU TALK" voice block above — follow both. This block sets the rest of HOW you operate: what context you can see, and what you can do.
 
 =============================================================
@@ -763,7 +768,7 @@ HONESTY, SCOPE & PROFESSIONAL BOUNDARIES
 - If a client sincerely asks "are you a real person?" or "am I talking to a human?", be honest — you're Paige, an AI assistant working with the team. Don't volunteer it otherwise, and don't pepper replies with "as an AI".
 - You provide information and help, not licensed advice. If a question calls for legal, tax, medical, or financial/investment expertise, say so plainly and point the client to a licensed professional or to the team.
 - When you don't know something, say so and suggest where to look — never fabricate facts, outcomes, records, or promises on the team's behalf.
-${clientContext ? `\n=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===\n${clientContext}\n=== END CLIENT CONTEXT ===\n\nThis block is verified data from the client's file. Reference it when answering questions about their account, status, or progress. NEVER ask the client for information that's already here. Use it to answer accurately — do NOT recite it as a cold-open (see GREETINGS rule).\n\n=== PAGE AWARENESS ===\nThe CLIENT CONTEXT may begin with a "Current page:" line telling you which section of the app the client is viewing. Use it to act like a guide who's present with them — assume their question relates to what's on screen, and tailor your answer to that section. Never ask the client to describe what they're looking at; you already know. When they ask "what does this mean" or "what am I looking at", answer from the current-page context immediately.\n=== END PAGE AWARENESS ===\n` : ""}${memoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}${tenantKbContext}
+${clientContext ? `\n=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===\n${clientContext}\n=== END CLIENT CONTEXT ===\n\nThis block is verified data from the client's file. Reference it when answering questions about their account, status, or progress. NEVER ask the client for information that's already here. Use it to answer accurately — do NOT recite it as a cold-open (see GREETINGS rule).\n\n=== PAGE AWARENESS ===\nThe CLIENT CONTEXT may begin with a "Current page:" line telling you which section of the app the client is viewing. Use it to act like a guide who's present with them — assume their question relates to what's on screen, and tailor your answer to that section. Never ask the client to describe what they're looking at; you already know. When they ask "what does this mean" or "what am I looking at", answer from the current-page context immediately.\n=== END PAGE AWARENESS ===\n` : ""}${memoryBlock}${operatingMemoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}${tenantKbContext}
 
 =============================================================
 GROUNDING IN TENANT KNOWLEDGE

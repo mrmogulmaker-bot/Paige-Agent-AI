@@ -1029,6 +1029,9 @@ five of six surfaces without any ledger row noticing.
 | Reads their own tenant's audit rows | ✓ | ✓ (admin) | ✓ (admin) | ✓ (admin) | ✓ (admin) | own rows only | 403 |
 | Reads ANOTHER tenant's audit rows | ✓ (operator) | — | — | — | — | — | 403 |
 | Per-client rail names the record it changed (`ref_id`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Opens knowing what it is carrying (`paige_operating_memory`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …scoped to THEIR tenant, and their own work within it | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …narrowed to the focused client when one is in focus | — | — | — | ✓ | ✓ | ✓ | 403 |
 
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
@@ -1136,6 +1139,27 @@ source of truth about the live database; a grep of `supabase/migrations/` is not
 dispatching a specialist needs the approval card — but the orchestrator it calls runs under the
 service role, so what that specialist then does is governed by its own surface, not by this gate.
 The dispatch is attributable; the specialist's own writes are the orchestrator's to account for.
+
+**PAIGE OPENS KNOWING WHAT SHE IS CARRYING — composed, never stored.** A transcript is what was
+SAID, not what is OWED, and it does not survive a new thread, a compaction, or a person coming back
+a week later. `paige_operating_memory()` composes the four records that already held the answer:
+open commitments (`plan_items`), live processes (`paige_automations`), work in flight including
+anything stopped at an approval (`paige_actions`), and what she last did WITH ITS REAL OUTCOME
+(`paige_audit_log`, from C1).
+
+There is no fifth table and no copy that can go stale. A summary store would need a writer on every
+one of those four paths and would be wrong the moment one was missed.
+
+**Scope is derived, not passed.** The function takes NO tenant argument — it resolves from
+`auth.uid()` and `current_user_tenant_id()` — so nothing in a request can aim it at another tenant
+(#588's lesson). It is SECURITY INVOKER (§59), so RLS remains the boundary rather than this body
+re-implementing four isolation rules correctly and forever. When a client is in focus it narrows to
+that client, which is what stops a switch carrying the previous client's open work into the new
+scope (§S2). Proven on production across two tenants seeded identically: A sees all four of its own
+sections, none of B's, and not a teammate's commitment inside its own tenant.
+
+**§13 — an unavailable read renders NOTHING.** "Nothing outstanding" is a claim, and a read that
+failed is not entitled to make it. The failure is logged instead.
 
 **THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
 earlier commit message said two tools "both default to confirm now"; that is true inside the chat

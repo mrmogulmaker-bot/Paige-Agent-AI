@@ -151,6 +151,7 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
 | B | §67 **the resolver**: `resolve_automation_autonomy` = `min(grant, most restrictive act floor, Trust Compass ceiling)`, returning `capped_by` (which bound is holding it) and `dark` (why it could never fire) as separate answers. | migration `20261024000000` |
 | C | §67 **the chat seam**: five tools. A tenant describes repeatable work and Paige builds it — born `confirm` + `draft`, explicitly, whatever the request said. **She can build a process; she can never arm one.** Two of the five (`automation_set_grant`, `automation_set_state`) became `owner_only` under R3 and now refuse in chat outright — so **`paige_automations.granted_lane` and `.state` are currently settable by nothing**, the Settings control being owed to CD (§00). Automations were already inert (no trigger emits), so nothing regressed. | `paige-ai-chat`, migration `20261025000000` |
 | C1 | **Every write Paige performs now says what changed, for whom, on whose authority, and whether it worked.** Ten of forty-nine mutations reached the per-client rail and three wrote a bespoke `audit_logs` row; everything else — publishes, documents, provider calls, role grants, deals, plans — left no trace, and the rail's `ref_id` was hardcoded null so even a mirrored event could not name the record it changed. One seam at the point every executed tool passes through, into `paige_audit_log` (which already carries `tenant_id`). The rail's membership is derived from the same target map, which added `update_client_data` — the most-used per-client write, and the client seat's only one. **A `client` seat could not record its own action at all** (the insert policy required `is_staff`), and a tenant-level admin could read every UNTENANTED audit row; both closed. | `paige-ai-chat`, migration `20261027000000` |
+| M1 | **Paige opens knowing what she is carrying.** A transcript is what was SAID, not what is OWED, and it does not survive a new thread, a compaction, or a person returning a week later. Everything needed already existed in four places and nothing read them together. `paige_operating_memory()` composes open commitments (`plan_items`), live processes (`paige_automations`), work in flight including anything stopped at an approval (`paige_actions`), and what she last did with its real outcome (`paige_audit_log`) — **nothing is stored, so no copy can go stale.** SECURITY INVOKER so RLS stays the boundary; **no tenant parameter at all** — scope is `auth.uid()` + `current_user_tenant_id()`. A failed read renders NOTHING rather than implying nothing is outstanding. | migration `20261028000000`, `paige-ai-chat`, `_shared/client-context.ts` |
 | S5 | The automatic URL fetch is tier-gated — a portal client pasting a link no longer causes server-side egress. (The raw provider-payload spread was already closed on `main` by the MCP registry work; nothing rebuilt.) | `paige-ai-chat` |
 | S6 | Removed four claims with no capability behind them: three dead composer shortcuts, an unbound ⌘K, a panel saying voice input was off while the mic worked, and a session-summary hook that had been sending `Bearer undefined` since it was written. | `PaigeAIChat.tsx`, `TenantCommandCenterShell.tsx`, `SoloPaigeWorkspace.tsx`, `usePaigeMemory.ts` |
 
@@ -1166,7 +1167,14 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
      defects were different and smaller. A grep of `supabase/migrations/` is not a description of
      prod; the near-miss was shipping a security fix for a vulnerability that did not exist while
      the two that did went unnamed.
-  5. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
+  5. **There are TWO system-prompt paths, and the one that matters is the default.** The first
+     wiring of the operating memory reached only `FUNDING_SKILL_PROMPT` — the opt-in funding
+     skill — while every tenant that has NOT opted in receives `buildNeutralCorePrompt`. So the
+     memory landed for the vertical and not for the platform default: §2's exact failure shape,
+     and invisible to any check that happened to drive a funding tenant. Both paths are now
+     driven by separate checks. When adding anything to the prompt, ask which of the two you
+     wired, then wire the other.
+  6. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
      branch and they found FOUR vacuous tests — checks passing while reading an empty object, or
      because deleting the code under test made it throw instead of misbehave. Two of those were in
      the very tests written to prove this repair.
