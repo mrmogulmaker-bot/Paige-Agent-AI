@@ -90,6 +90,10 @@ export interface SoloNumbersData {
   search: (filters: NumberSearchFilters) => Promise<SearchOutcome>;
   /** Buys ONE number. Never called except from a person's click (§38). */
   purchase: (phoneNumber: string) => Promise<{ ok: boolean; error: string | null }>;
+  /** Names or renames a number. An empty string clears the name. */
+  rename: (id: string, friendlyName: string) => Promise<{ ok: boolean; error: string | null }>;
+  /** Chooses which number this business calls and texts FROM. */
+  setPrimary: (id: string) => Promise<{ ok: boolean; error: string | null }>;
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -290,6 +294,49 @@ export function useSoloNumbers(): SoloNumbersData {
     }
   }, [load]);
 
+  /**
+   * The two edits a bought number needs, and neither existed.
+   *
+   * `is_primary` decides which number outbound calls and texts come FROM — it is read by
+   * `voice-twiml` and `send-message` to pick the caller ID — and until the migration beside this
+   * change, NOTHING in the repository ever wrote it. Every row was `false`, so the ordering both
+   * readers rely on was a tie, and `voice-twiml` has no secondary sort: a business with two
+   * numbers called out from whichever row Postgres returned. Buying a second number for a
+   * different part of the business made the first one unpredictable.
+   *
+   * Both go through SECURITY DEFINER RPCs that re-enforce the caller's scope in-body (§59); the
+   * set-primary one also clears the previous primary in the same transaction, because
+   * `uq_tenant_phone_numbers_primary` is a partial unique on (tenant_id) WHERE is_primary.
+   */
+  const runNumberRpc = useCallback(async (fn: string, params: Record<string, unknown>) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types (repo-wide pattern)
+      const { error: rpcError } = await (supabase as any).rpc(fn, params);
+      if (rpcError) {
+        const { message } = await resolveFunctionError({
+          error: null,
+          data: { error: { code: rpcError.hint || rpcError.message, message: rpcError.message } },
+          action: fn === "tenant_phone_number_set_primary" ? "change your sending number" : "rename that number",
+        });
+        return { ok: false, error: message };
+      }
+      await load();
+      return { ok: true, error: null };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "That change didn't save." };
+    }
+  }, [load]);
+
+  const rename = useCallback(
+    (id: string, friendlyName: string) =>
+      runNumberRpc("tenant_phone_number_rename", { _id: id, _friendly_name: friendlyName }),
+    [runNumberRpc],
+  );
+  const setPrimary = useCallback(
+    (id: string) => runNumberRpc("tenant_phone_number_set_primary", { _id: id }),
+    [runNumberRpc],
+  );
+
   return useMemo(() => ({
     loading: loading || tenantLoading,
     error,
@@ -298,6 +345,6 @@ export function useSoloNumbers(): SoloNumbersData {
     // list whenever the server legitimately resolved a different one.
     owned: loadedTenantId ? owned : [],
     canManage: loadedTenantId ? canManage : false,
-    refresh, search, purchase,
-  }), [loading, tenantLoading, loadedTenantId, error, owned, canManage, refresh, search, purchase]);
+    refresh, search, purchase, rename, setPrimary,
+  }), [loading, tenantLoading, loadedTenantId, error, owned, canManage, refresh, search, purchase, rename, setPrimary]);
 }

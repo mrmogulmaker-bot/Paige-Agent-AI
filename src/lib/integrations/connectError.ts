@@ -107,6 +107,19 @@ const COMMS_COPY: Record<string, string> = {
   MISSING_USE_CASE: "Say what you use texting for — carriers read that line.",
   MISSING_DESCRIPTION: "The description carriers read can’t be empty.",
   MISSING_SAMPLES: "Include at least one real sample message — carriers check them.",
+  // The two RPCs raise UPPERCASE hints and `PERMISSION_CODES` holds only lowercase
+  // "forbidden", so a permanent authorization refusal fell through to "try again in a
+  // moment" — advice that will never work. Reachable, not theoretical: the buttons gate on
+  // `is_current_user_tenant_admin` while the RPC requires a GLOBAL admin/coach row, so a
+  // tenant admin without one sees the control, clicks, and is told to retry.
+  FORBIDDEN: "You don’t have permission to change this business’s numbers — ask a workspace admin.",
+  NUMBER_ID_REQUIRED: "We couldn’t tell which number you meant. Reload and try again.",
+  NUMBER_NOT_FOUND: "We couldn’t find that number on this business.",
+  NUMBER_NOT_ACTIVE: "That number isn’t active, so it can’t be the one you send from.",
+  NAME_TOO_LONG: "That name is too long — keep it under 120 characters.",
+  NO_TENANT: "We couldn’t tell which business you’re in.",
+  TENANT_MISMATCH: "That number belongs to a different business.",
+  TENANT_REQUIRED: "We couldn’t tell which business this is for.",
   REGISTRATION_IMMUTABLE:
     "This registration has moved past preparation, so its wording is locked. Changes now go through the carrier.",
 };

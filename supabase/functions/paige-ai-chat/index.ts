@@ -76,6 +76,33 @@ function describeStep(
   if (name === "web_fetch") return null;
   if (failed && typeof out?.error === "string" &&
       /not enabled|disabled|permission|not allowed|restricted|forbidden/i.test(out.error)) return null;
+  // A tool the operator switched OFF, and a proposal still waiting on their answer, are not
+  // failures — and rendering them as failures is worse than noise: "Did not buy that number"
+  // on the turn where Paige is ASKING says she tried and could not, when she has not tried.
+  // The regex above misses both: the `off` message says "is turned off for this workspace",
+  // and a `needs_confirm` result carries no `error` at all.
+  if (out?.needs_confirm === true || out?.disabled === true) return null;
+
+  switch (name) {
+    case "comms_connection_summary":
+      return { label: failed ? "Couldn't read your connection" : "Checked how your business is connected", group: "owner" };
+    case "comms_list_numbers":
+      return { label: failed ? "Couldn't read your numbers" : "Checked your business numbers", group: "owner" };
+    case "comms_search_numbers":
+      return { label: failed ? "Couldn't search numbers" : "Searched available numbers", group: "owner" };
+    case "comms_buy_number":
+      // Never "Bought" on a failure — a step trace that reports a purchase the provider
+      // refused is the same lie as a fabricated delivery.
+      return { label: failed ? "Did not buy that number" : "Bought a number", group: "owner", detail: args?.phone_number };
+    case "comms_name_number":
+      return { label: failed ? "Couldn't rename that number" : "Renamed a number", group: "owner" };
+    case "comms_set_primary_number":
+      return { label: failed ? "Couldn't change your sending number" : "Changed which number you send from", group: "owner" };
+    case "comms_registration_status":
+      return { label: failed ? "Couldn't read your registration" : "Checked your carrier registration", group: "owner" };
+    case "comms_draft_registration":
+      return { label: failed ? "Couldn't draft your registration" : "Drafted your carrier registration", group: "owner" };
+  }
 
   switch (name) {
     // Action bus (§8)
@@ -5246,6 +5273,113 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
+          // ── The business phone line and its carrier registration ──────────────
+          // These exist so Paige can DO this, not just describe it. Before them the
+          // capability shipped as a surface only a human could click: she could not tell
+          // an operator they were about to text from an unpredictable number, could not
+          // offer a second line for a different part of the business, and could not
+          // prepare a registration on request. §10 — a feature only reachable by a click
+          // is a dead end.
+          //
+          // Every one of them derives the workspace SERVER-SIDE. No tenant crosses this
+          // seam from the model, which is the §9 pattern the underlying functions already
+          // enforce and which the model must not be able to influence.
+          {
+            type: "function",
+            function: {
+              name: "comms_connection_summary",
+              description: "Admin only. The ONE read to start from for anything about this business's communications: which channels exist, which number it sends from, whether texting can actually send and why not, and — the part that decides what you may offer — WHICH comms actions this workspace currently permits Paige to take. Read it before proposing anything: an action listed as off has been switched off deliberately, so offer to do it and you are offering something the operator has forbidden. Carries no credentials, tokens, domains or provider payloads by design.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_list_numbers",
+              description: "Admin only. List the phone numbers this business owns, with which one is PRIMARY — the number its outbound calls and texts actually come from. Use this before offering to buy another number, before changing which one is primary, and any time the operator asks what numbers they have. If a business owns more than one number and none is primary, say so plainly: the number it sends from is then unpredictable, and setting one fixes it.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_search_numbers",
+              description: "Admin only. Search live availability for a phone number this business could buy. Read-only — nothing is reserved and nothing is charged. Filters: number_type local or tollfree, area_code (three digits, ignored for toll-free because a toll-free prefix IS the area code), in_region (two-letter state), in_locality (city), starts_with (digits the number should begin with, matched from the start of the ten-digit number, so with an area code set they follow it). Toll-free inventory has no geography — do not send in_region or in_locality with it. If the workspace has no messaging account yet the tool answers needs_config: that is a setup gap, NOT an empty result, and saying 'no numbers found' would blame the search for something it did not do.",
+              parameters: {
+                type: "object",
+                properties: {
+                  number_type: { type: "string", enum: ["local", "tollfree"], description: "local (an ordinary area-code number) or tollfree (800/833/844/855/866/877/888)." },
+                  area_code: { type: "string", description: "Three digits. Omit for toll-free." },
+                  in_region: { type: "string", description: "Two-letter state, e.g. GA. Local numbers only." },
+                  in_locality: { type: "string", description: "City, e.g. Atlanta. Local numbers only." },
+                  starts_with: { type: "string", description: "Digits the number should begin with." }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_buy_number",
+              description: "Admin only. BUY a phone number for this business. THIS SPENDS REAL MONEY — a monthly charge that starts immediately — so always show the number and its exact monthly price from comms_search_numbers and get a clear yes before calling with confirm:true. Never buy a number the operator did not name. Provider inventory goes stale between a search and a buy, so a refusal here is normal and final for that number: pick another rather than retrying the same one. If the reply says the number was bought but could not be recorded, the operator IS being billed for it — tell them so and do NOT buy a replacement.",
+              parameters: {
+                type: "object",
+                properties: {
+                  phone_number: { type: "string", description: "E.164, exactly as comms_search_numbers returned it, e.g. +14045550123." },
+                  friendly_name: { type: "string", description: "Optional label, e.g. 'Intake line'." }
+                },
+                required: ["phone_number"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_name_number",
+              description: "Admin only. Name or rename one of this business's numbers — 'Intake line', 'Billing', 'Front desk'. Pass an empty string to clear the name. Get the id from comms_list_numbers. This changes a label only; it never changes which number the business sends from.",
+              parameters: {
+                type: "object",
+                properties: {
+                  number_id: { type: "string", description: "The number's id from comms_list_numbers." },
+                  friendly_name: { type: "string", description: "The new label, or an empty string to clear it." }
+                },
+                required: ["number_id", "friendly_name"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_set_primary_number",
+              description: "Admin only. Choose which of this business's numbers its outbound calls and texts come FROM. This is the setting that decides what a client sees on their phone, so changing it changes how every future call and text is identified — confirm which number the operator means before calling with confirm:true. The number must be active. Get the id from comms_list_numbers.",
+              parameters: {
+                type: "object",
+                properties: { number_id: { type: "string", description: "The number's id from comms_list_numbers." } },
+                required: ["number_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_registration_status",
+              description: "Admin only. Report where this business's carrier (10DLC) registration stands, and whether texting can send at all. Carriers require a registered business before any text is delivered. IMPORTANT AND NOT NEGOTIABLE: filing with a carrier does not exist in this product — a registration can be prepared and saved, and it stops at prepared. Never tell an operator their registration has been filed, submitted or is under review; nothing here can produce that state.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "comms_draft_registration",
+              description: "Admin only. Have Paige write the regulatory 10DLC copy carriers read — the campaign description, sample messages, and the opt-in, STOP and HELP replies — and save it as a prepared registration. This COSTS A MODEL CALL and OVERWRITES any copy already saved, so if a registration is already prepared, say what is there and get an explicit yes before redrafting. It refuses unless the business's legal name is on file in Setup; if it does, tell the operator to add it there rather than offering to try again. Saving is not filing: the result is prepared, never submitted.",
+              parameters: {
+                type: "object",
+                properties: { use_case_hint: { type: "string", description: "One line on what this business texts clients about, e.g. 'appointment reminders and follow-ups'." } },
+                required: []
+              }
+            }
+          },
           {
             type: "function",
             function: {
@@ -5349,11 +5483,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
       "author_event_kind",
+      // Buying a number is a REAL monthly charge and drafting a registration is a paid
+      // model call that overwrites saved compliance copy; setting the primary changes what
+      // every client sees on their phone. All four default to `confirm` — Paige proposes.
+      "comms_buy_number", "comms_name_number", "comms_set_primary_number", "comms_draft_registration",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
     // raw internal tool_key (§11: no backend function names in visible copy).
     const TOOL_LABELS: Record<string, string> = {
+      comms_buy_number: "buying a phone number",
+      comms_name_number: "renaming a phone number",
+      comms_set_primary_number: "changing which number you send from",
+      comms_draft_registration: "drafting your carrier registration",
       crm_update_contact: "updating a contact",
       crm_create_contact: "adding a contact",
       crm_delete_contact: "deleting a contact",
@@ -5406,6 +5548,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // operator when Paige pauses for confirmation.
     const describeConfirm = (name: string, a: any): string => {
       switch (name) {
+        // The money one. The number and the fact that it charges have to be IN the
+        // sentence — "buy a number?" is not a proposal anyone can actually approve.
+        case "comms_buy_number":
+          return `Buy ${a?.phone_number || "that number"} for this business${a?.friendly_name ? ` and label it "${a.friendly_name}"` : ""}. This starts a monthly charge.`;
+        case "comms_name_number":
+          return String(a?.friendly_name ?? "").trim()
+            ? `Label that number "${a.friendly_name}".`
+            : `Clear that number's label.`;
+        case "comms_set_primary_number":
+          return `Make that number the one this business calls and texts from — it is what clients will see.`;
+        case "comms_draft_registration":
+          return `Have Paige write your carrier registration copy and save it as prepared. This replaces any copy already saved. It does not file anything.`;
         case "pipeline_create":
           return `Create a pipeline "${a?.name || "Untitled"}"${Array.isArray(a?.stages) && a.stages.length ? ` with ${a.stages.length} stage${a.stages.length === 1 ? "" : "s"}${a.stages.map((s: any) => s?.label).filter(Boolean).length ? ` (${a.stages.map((s: any) => s?.label).filter(Boolean).join(" → ")})` : ""}` : ""}.`;
         case "pipeline_add_stage":
@@ -6323,7 +6477,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_get_contact_summary" ||
           tc.function.name === "crm_list_deals" ||
           tc.function.name === "crm_list_tasks" ||
-          tc.function.name === "crm_pipeline_summary"
+          tc.function.name === "crm_pipeline_summary" ||
+          tc.function.name === "comms_connection_summary" ||
+          tc.function.name === "comms_list_numbers" ||
+          tc.function.name === "comms_search_numbers" ||
+          tc.function.name === "comms_buy_number" ||
+          tc.function.name === "comms_name_number" ||
+          tc.function.name === "comms_set_primary_number" ||
+          tc.function.name === "comms_registration_status" ||
+          tc.function.name === "comms_draft_registration"
         ) {
           // Role gate: admin or coach only
           const { data: roleRows } = await supabase
@@ -6373,7 +6535,239 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               continue;
             }
 
-            if (tc.function.name === "crm_update_pipeline_stage") {
+            // ── The business phone line ───────────────────────────────────────
+            // `functions.invoke` puts NOTHING useful on `error.message` for a non-2xx: it is
+            // the literal string "Edge Function returned a non-2xx status code", and the honest
+            // JSON body lives on `error.context`. So `if (e) throw e` discards exactly the
+            // reply that matters most on this seam:
+            //
+            //   number_bought_but_record_failed (500) — Twilio HAS charged the tenant and the
+            //   row failed to write, so the response carries `twilio_sid` for reconciliation.
+            //   Thrown away, Paige reports a plain failure, and the documented next step after a
+            //   failed buy is to pick another number — a SECOND monthly charge on top of an
+            //   unrecorded first one.
+            //
+            //   LEGAL_PROFILE_REQUIRED (422), REGISTRATION_IMMUTABLE (422), number_unavailable
+            //   (409) — each names precisely what to do next, and each arrived as the same
+            //   generic sentence.
+            //
+            // `src/lib/integrations/connectError.ts` exists to fix this exact trap on the
+            // frontend, and this PR edits it. The edge function was reproducing the bug the
+            // helper was written to kill.
+            const asToolRecord = (v: unknown): Record<string, unknown> =>
+              v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+            /** The body of a non-2xx invoke, or the 2xx data. Never throws. */
+            const readInvokeBody = async (err: unknown, data: unknown): Promise<Record<string, unknown>> => {
+              if (!err) return asToolRecord(data);
+              // deno-lint-ignore no-explicit-any
+              const ctx = (err as any)?.context;
+              if (ctx && typeof ctx.json === "function") {
+                try { return asToolRecord(await ctx.json()); } catch { /* non-JSON body */ }
+              }
+              if (ctx && typeof ctx === "object") return asToolRecord(ctx);
+              return {};
+            };
+
+            // Everything here goes through the SAME seams the Connections surface uses —
+            // `comms-search-numbers`, `comms-purchase-number`, `comms-a2p-draft`, and the
+            // two RPCs. No second path, and no tenant from the model.
+            //
+            // The seams and RPCs derive the workspace from the verified JWT themselves. The one
+            // DIRECT table read here (`comms_list_numbers`) does not get that for free and is
+            // filtered explicitly — see the note on that branch (§9/§18).
+            if (tc.function.name === "comms_connection_summary") {
+              // Point 3 of the owner's brief: a tenant-scoped, SAFE capability summary.
+              //
+              // Safe is a construction here, not an intention. It reads two seams that hold no
+              // secrets — the readiness resolver and the governed-tool catalogue — and it names
+              // the fields it returns one at a time rather than spreading a record. Nothing from
+              // `channel_connectors`, no OAuth token, no sending domain, no provider payload can
+              // reach the model through this path even if those reads later grow new columns.
+              const [readyRes, toolsRes] = await Promise.all([
+                supabaseClient.rpc("tenant_comms_readiness"),
+                supabaseClient.rpc("list_tool_autonomy"),
+              ]);
+              if (readyRes.error) throw readyRes.error;
+              const r = (readyRes.data ?? {}) as Record<string, unknown>;
+              // Comms only. The owner's brief is explicit that this connects THESE capabilities;
+              // handing Paige the whole platform catalogue here would be the generic capability
+              // project they ruled out.
+              const permitted = ((toolsRes.data ?? []) as Array<Record<string, unknown>>)
+                .filter((row) => row.category === "Comms")
+                .map((row) => ({ action: row.label, key: row.tool_key, permission: row.mode }));
+              result = {
+                success: true,
+                channels: {
+                  // Reported from the readiness resolver, never inferred from the presence of a row.
+                  sms: { usable: r.can_send_sms === true, blocked_reason: r.blocked_reason ?? null },
+                },
+                number: { state: r.number ?? "absent", e164: r.number_e164 ?? null },
+                registration: r.a2p ?? "absent",
+                permitted_actions: permitted,
+                // The two ceilings on what may be offered, said plainly so they are not inferred.
+                filing_with_a_carrier_is_not_built: true,
+                sending_a_message_is_not_yours_to_do_here: true,
+                ...(toolsRes.error
+                  // An unreadable permission list is NOT "no permissions" and is NOT "all of
+                  // them". Say the read failed and propose nothing that depends on it.
+                  ? { permissions_unreadable: true }
+                  : {}),
+              };
+            } else if (tc.function.name === "comms_list_numbers") {
+              // EXPLICITLY tenant-filtered, and it has to be. This is the one comms branch that
+              // reads a table directly instead of going through a seam that derives the tenant,
+              // and `tenant_phone_numbers_select` admits `is_platform_owner() OR (tenant = mine
+              // AND role)` — the operator disjunct is UNBOUNDED. Without the filter a caller
+              // holding both super_admin and admin passes the role gate and RLS then hands back
+              // EVERY tenant's numbers, straight into the model's context. The comment beside
+              // this block used to claim each seam derives the workspace itself; that was true
+              // of the RPCs and false of this read.
+              if (!crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+                });
+                continue;
+              }
+              const { data: rows, error: e } = await supabaseClient
+                .from("tenant_phone_numbers")
+                .select("id, phone_number, friendly_name, is_primary, status")
+                .eq("tenant_id", crmTenantId)
+                .order("is_primary", { ascending: false })
+                .order("purchased_at", { ascending: false, nullsFirst: false })
+                .limit(50);
+              if (e) throw e;
+              const list = (rows ?? []) as Array<Record<string, unknown>>;
+              const active = list.filter((r) => r.status === "active");
+              result = {
+                success: true,
+                numbers: list,
+                // Stated rather than left for the model to infer: with more than one active
+                // number and no primary, which one a call or text goes out from is decided
+                // by row order, not by anyone's choice.
+                sending_number_is_ambiguous: active.length > 1 && !active.some((r) => r.is_primary === true),
+              };
+            } else if (tc.function.name === "comms_search_numbers") {
+              const { data: d, error: e } = await supabaseClient.functions.invoke("comms-search-numbers", {
+                body: {
+                  number_type: args.number_type === "tollfree" ? "tollfree" : "local",
+                  // A toll-free prefix IS the area code, and toll-free inventory carries no
+                  // geography, so those three are dropped rather than sent to be ignored.
+                  area_code: args.number_type === "tollfree" ? undefined : (args.area_code || undefined),
+                  in_region: args.number_type === "tollfree" ? undefined : (args.in_region || undefined),
+                  in_locality: args.number_type === "tollfree" ? undefined : (args.in_locality || undefined),
+                  starts_with: args.starts_with || undefined,
+                },
+              });
+              if (e) throw e;
+              // NOT projectOutcomeForModel. That is the MCP/Zapier governed-call envelope
+              // projector: it branches on `error`-without-`status`, on an `actions` array, and
+              // on `status`, and returns `unexpected_response` for anything else. This response
+              // is `{numbers, needs_config, price_configured}` — none of the three — so EVERY
+              // successful search reached the model as a failure, and the `needs_config` setup
+              // gap arrived stripped of its message and indistinguishable from an empty shelf.
+              // Copying the Zapier branch's shape without checking the projector's contract is
+              // what did it. Named fields instead, so nothing unanticipated crosses either.
+              const sr = asToolRecord(d);
+              result = {
+                success: sr.needs_config !== true,
+                needs_config: sr.needs_config === true,
+                message: typeof sr.message === "string" ? sr.message : null,
+                price_configured: sr.price_configured === true,
+                numbers: (Array.isArray(sr.numbers) ? sr.numbers : []).map((n) => {
+                  const row = asToolRecord(n);
+                  const price = asToolRecord(row.retail_price);
+                  return {
+                    phone_number: row.phone_number,
+                    locality: row.locality ?? null,
+                    region: row.region ?? null,
+                    capabilities: row.capabilities ?? {},
+                    monthly_cents: typeof price.monthly_cents === "number" ? price.monthly_cents : null,
+                  };
+                }),
+              };
+            } else if (tc.function.name === "comms_buy_number") {
+              const { data: d, error: e } = await supabaseClient.functions.invoke("comms-purchase-number", {
+                body: { phone_number: args.phone_number, friendly_name: args.friendly_name || undefined },
+              });
+              const rec = await readInvokeBody(e, d);
+              // A 200 is not a purchase. The function says `purchased` when it bought and
+              // `already_owned` when the workspace held it before we asked; anything else
+              // reaching the model as a success would have Paige congratulate someone on a
+              // number they do not have and a charge that never started.
+              const bought = rec.purchased === true || rec.already_owned === true;
+              // Named fields, not a spread. The record carries `twilio_sid`/`sid` — provider
+              // internals the tenant is never shown (comms-search-numbers states that rule in
+              // its own header) — and a spread also hands the model every future response key
+              // nobody anticipated. The sibling summary branch already does it this way.
+              result = bought
+                ? {
+                  success: true,
+                  phone_number: rec.phone_number ?? args.phone_number,
+                  already_owned: rec.already_owned === true,
+                  charge_wired: rec.charge_wired === true,
+                }
+                : {
+                  success: false,
+                  error: rec.error ?? "purchase_failed",
+                  // Carried DELIBERATELY: this is the one failure where money was already
+                  // spent, and Paige must say so instead of offering to buy another.
+                  ...(rec.error === "number_bought_but_record_failed"
+                    ? { money_already_spent: true, phone_number: rec.phone_number ?? args.phone_number }
+                    : {}),
+                };
+            } else if (tc.function.name === "comms_name_number") {
+              const { data: d, error: e } = await supabaseClient.rpc("tenant_phone_number_rename", {
+                _id: args.number_id,
+                _friendly_name: typeof args.friendly_name === "string" ? args.friendly_name : "",
+              });
+              if (e) throw e;
+              result = { success: true, number: d };
+            } else if (tc.function.name === "comms_set_primary_number") {
+              const { data: d, error: e } = await supabaseClient.rpc("tenant_phone_number_set_primary", {
+                _id: args.number_id,
+              });
+              if (e) throw e;
+              result = { success: true, number: d };
+            } else if (tc.function.name === "comms_registration_status") {
+              const { data: d, error: e } = await supabaseClient.rpc("tenant_comms_readiness");
+              if (e) throw e;
+              const r = (d ?? {}) as Record<string, unknown>;
+              result = {
+                success: true,
+                can_send_sms: r.can_send_sms === true,
+                blocked_reason: r.blocked_reason ?? null,
+                registration: r.a2p ?? "absent",
+                number: r.number ?? "absent",
+                number_e164: r.number_e164 ?? null,
+                // Repeated at the seam, not only in the tool description, because this is
+                // the claim the surface exists to stop anyone making.
+                filing_with_a_carrier_is_not_built: true,
+              };
+            } else if (tc.function.name === "comms_draft_registration") {
+              const { data: d, error: e } = await supabaseClient.functions.invoke("comms-a2p-draft", {
+                body: { use_case_hint: args.use_case_hint || undefined },
+              });
+              const rec = await readInvokeBody(e, d);
+              // needs_config is an honest refusal, not a draft. Shaping it as one would put
+              // empty regulatory copy in front of someone as though Paige had written it.
+              // The refusal codes arrive as `{ error: { code, message } }` on a 422, so the code
+              // is one level down. Surfacing it is the whole point: LEGAL_PROFILE_REQUIRED means
+              // "add the legal name in Setup", not "try again".
+              const draftErr = typeof rec.error === "string"
+                ? rec.error
+                : (asToolRecord(rec.error).code as string | undefined) ?? null;
+              result = (rec.needs_config === true || draftErr)
+                ? { success: false, error: draftErr ?? "draft_failed", needs_config: rec.needs_config === true }
+                : {
+                  success: true,
+                  draft: rec.draft ?? null,
+                  saved: rec.saved === true,
+                  submitted: false,
+                  filing_with_a_carrier_is_not_built: true,
+                };
+            } else if (tc.function.name === "crm_update_pipeline_stage") {
               const { error } = await admin
                 .from("clients")
                 .update({ status: args.status, updated_at: new Date().toISOString() })

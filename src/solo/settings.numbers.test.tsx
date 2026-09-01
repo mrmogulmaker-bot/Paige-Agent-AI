@@ -25,6 +25,8 @@ const state = vi.hoisted(() => ({
   owned: [] as unknown[],
   isAdmin: true as boolean | null,
   tenantId: "tenant-1971670" as string | null,
+  rpcCalls: [] as Array<{ fn: string; args?: Record<string, unknown> }>,
+  rpcError: null as { message: string; hint?: string } | null,
 }));
 
 vi.mock("@/hooks/useUserRoles", () => ({
@@ -39,10 +41,16 @@ vi.mock("@/hooks/useUserRoles", () => ({
 }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    rpc: vi.fn(async (fn: string) =>
+    rpc: vi.fn(async (fn: string, args?: Record<string, unknown>) =>
       // `current_user_tenant_id` is the resolver the WRITES use, so the reads now use it
       // too — a double that cannot answer it makes the surface look unidentifiable.
-      fn === "current_user_tenant_id"
+      fn === "tenant_phone_number_set_primary" || fn === "tenant_phone_number_rename"
+        // The ARGUMENTS are recorded, not just the name. Recording only the name let a
+        // `setPrimary` that passed the wrong id, or a `rename` that sent `friendly_name`
+        // instead of the `_friendly_name` the RPC actually declares, satisfy every assertion
+        // in this file — the double answers unconditionally, so nothing would notice.
+        ? (state.rpcCalls.push({ fn, args }), state.rpcError ? { data: null, error: state.rpcError } : { data: {}, error: null })
+        : fn === "current_user_tenant_id"
         ? { data: state.tenantId, error: state.tenantId ? null : { message: "no tenant" } }
         : fn === "is_current_user_tenant_admin"
           ? { data: state.isAdmin, error: null }
@@ -110,6 +118,9 @@ const text = () => host.textContent ?? "";
 function button(label: string): HTMLButtonElement | undefined {
   return [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(label)) as HTMLButtonElement | undefined;
 }
+function buttonContaining(label: string): HTMLButtonElement | undefined {
+  return [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(label)) as HTMLButtonElement | undefined;
+}
 function field(placeholder: string): HTMLInputElement {
   const el = host.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`);
   if (!el) throw new Error(`no input ${JSON.stringify(placeholder)}`);
@@ -139,6 +150,8 @@ beforeEach(() => {
   state.owned = [];
   state.isAdmin = true;
   state.tenantId = "tenant-1971670";
+  state.rpcCalls = [];
+  state.rpcError = null;
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -265,6 +278,74 @@ describe("Buying a number spends money, and says so honestly", () => {
     state.invoke = vi.fn(async () => ({ data: { needs_config: true, error: "twilio_subaccount_not_provisioned" }, error: null }));
     await act(async () => { button("Buy")?.click(); });
     expect(text()).not.toContain("is yours");
+  });
+});
+
+describe("A number you own is a number you can change", () => {
+  const TWO = [
+    { id: "n1", phone_number: "+14045550101", is_primary: false, status: "active", friendly_name: null },
+    { id: "n2", phone_number: "+14045550102", is_primary: false, status: "active", friendly_name: null },
+  ];
+
+  it("says WHICH number the business sends from, and warns when nothing decides it", async () => {
+    // `is_primary` is what voice-twiml and send-message use to pick the caller ID, and nothing
+    // in the platform ever wrote it — so two numbers meant the one a client sees was decided by
+    // row order. Silence here is what let that sit unnoticed.
+    state.owned = TWO;
+    await mount();
+    expect(text()).toContain("Pick the number this business sends from");
+    expect(text()).toContain("isn’t decided");
+  });
+
+  it("does not warn when one number already holds it", async () => {
+    state.owned = [{ ...TWO[0], is_primary: true }, TWO[1]];
+    await mount();
+    expect(text()).not.toContain("Pick the number this business sends from");
+    expect(text()).toContain("Sends from this");
+  });
+
+  it("changes which number the business sends from", async () => {
+    state.owned = TWO;
+    await mount();
+    await act(async () => { buttonContaining("Send from this")?.click(); });
+    const call = state.rpcCalls.find((c) => c.fn === "tenant_phone_number_set_primary");
+    expect(call, "the set-primary RPC should have been called").toBeTruthy();
+    // The id the server is told to make primary must be the row whose button was pressed.
+    expect(call?.args?._id).toBe("n1");
+    expect(text()).toContain("is now the number you send from");
+  });
+
+  it("NEVER reports a refused change as saved", async () => {
+    state.owned = TWO;
+    await mount();
+    state.rpcError = { message: "NUMBER_NOT_ACTIVE", hint: "NUMBER_NOT_ACTIVE" };
+    await act(async () => { buttonContaining("Send from this")?.click(); });
+    expect(text()).not.toContain("is now the number you send from");
+    expect(host.querySelector('.ss-outcome[data-tone="bad"]')).toBeTruthy();
+    // The server named the reason; it must not arrive as "try again in a moment".
+    expect(text()).toContain("isn’t active");
+  });
+
+  it("renames a number, and can clear the name again", async () => {
+    state.owned = [{ ...TWO[0], friendly_name: "Intake line" }];
+    await mount();
+    await act(async () => { buttonContaining("Rename")?.click(); });
+    type("Intake line", "");
+    await act(async () => { buttonContaining("Save label")?.click(); });
+    const call = state.rpcCalls.find((c) => c.fn === "tenant_phone_number_rename");
+    expect(call, "the rename RPC should have been called").toBeTruthy();
+    expect(call?.args?._id).toBe("n1");
+    // The parameter name matters: the RPC declares `_friendly_name`, and "" is what CLEARS it.
+    expect(call?.args).toHaveProperty("_friendly_name", "");
+    expect(text()).toContain("Label cleared.");
+  });
+
+  it("offers no rename or send-from control to someone the server would refuse", async () => {
+    state.owned = TWO;
+    state.isAdmin = false;
+    await mount();
+    expect(buttonContaining("Send from this")).toBeUndefined();
+    expect(buttonContaining("Rename")).toBeUndefined();
   });
 });
 
