@@ -44,21 +44,24 @@ export type SoloCampaignsState = {
   artifacts: CampaignArtifact[];
   submissions: CampaignSubmission[];
   pipelineWorkspace: PipelineWorkspace;
-  pipelineAction: (action: PipelineAction) => Promise<{ ok: boolean; message: string }>;
+  pipelineAction: (action: PipelineAction) => Promise<{ ok: boolean; message: string; data?: Record<string, unknown> }>;
   retry: () => void;
 };
 
-export type PipelineStage = { id: string; pipelineId: string; label: string; description: string; orderIndex: number; archivedAt: string | null };
-export type PipelineDeal = { id: string; title: string; pipelineId: string; stageId: string; clientName: string; owner: string; status: string; source: string; nextAction: string; updatedAt: string; portalAvailable: boolean; history: { summary: string; createdAt: string }[] };
-export type PipelineRecord = { id: string; name: string; description: string; isDefault: boolean };
+export type PipelineStage = { id: string; pipelineId: string; label: string; description: string; orderIndex: number; archivedAt: string | null; movePolicy: "direct" | "approval"; version: number };
+export type PipelineDeal = { id: string; title: string; pipelineId: string; stageId: string; clientName: string; owner: string; status: string; source: string; nextAction: string; updatedAt: string; version: number; history: { summary: string; createdAt: string }[] };
+export type PipelineRecord = { id: string; name: string; description: string; isDefault: boolean; lifecycleStatus: "draft" | "active" | "archived"; version: number };
 export type PipelineWorkspace = { canManage: boolean; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
+type CommandBase = { idempotencyKey?: string };
 export type PipelineAction =
-  | { type: "create-pipeline"; name: string; description: string; starter: "blank" | "simple" }
-  | { type: "update-pipeline"; pipelineId: string; name: string; description: string }
-  | { type: "create-stage"; pipelineId: string; label: string; description: string }
-  | { type: "update-stage"; stageId: string; label: string; description: string }
-  | { type: "archive-stage" | "restore-stage"; stageId: string }
-  | { type: "reorder-stages"; pipelineId: string; orderedIds: string[] };
+  | (CommandBase & { type: "create-pipeline"; name: string; description: string })
+  | (CommandBase & { type: "update-pipeline"; pipelineId: string; name: string; description: string; expectedVersion: number })
+  | (CommandBase & { type: "activate-pipeline" | "archive-pipeline" | "restore-pipeline" | "delete-pipeline"; pipelineId: string; expectedVersion: number })
+  | (CommandBase & { type: "create-stage"; pipelineId: string; label: string; description: string; movePolicy: "direct" | "approval"; expectedVersion: number })
+  | (CommandBase & { type: "update-stage"; stageId: string; label: string; description: string; movePolicy: "direct" | "approval"; expectedVersion: number })
+  | (CommandBase & { type: "archive-stage" | "restore-stage" | "delete-stage"; stageId: string; expectedVersion: number })
+  | (CommandBase & { type: "reorder-stages"; pipelineId: string; orderedIds: string[]; expectedVersion: number })
+  | (CommandBase & { type: "move-deal"; dealId: string; targetStageId: string; expectedVersion: number; reason?: string });
 
 type PageRow = { id: string; slug: string; title: string; status: string; updated_at: string };
 type FunnelRow = { id: string; slug: string; name: string; status: string; updated_at: string };
@@ -89,9 +92,9 @@ type RoutingEvidenceRow = {
 type RoutingEvidencePayload = { routes?: RoutingEvidenceRow[] };
 type PipelineWorkspacePayload = {
   can_manage?: boolean;
-  pipelines?: { id: string; name: string; description?: string | null; is_default?: boolean }[];
-  stages?: { id: string; pipeline_id: string; label: string; description?: string | null; order_index: number; archived_at?: string | null }[];
-  deals?: { id: string; title: string; pipeline_id: string; stage_id: string; client_name?: string | null; owner_user_id?: string | null; status?: string | null; source?: string | null; next_action?: string | null; updated_at: string; portal_available?: boolean; history?: { summary: string; createdAt: string }[] }[];
+  pipelines?: { id: string; name: string; description?: string | null; is_default?: boolean; lifecycle_status?: "draft" | "active" | "archived"; version?: number }[];
+  stages?: { id: string; pipeline_id: string; label: string; description?: string | null; order_index: number; archived_at?: string | null; move_policy?: "direct" | "approval"; version?: number }[];
+  deals?: { id: string; title: string; pipeline_id: string; stage_id: string; client_name?: string | null; owner_user_id?: string | null; status?: string | null; source?: string | null; next_action?: string | null; updated_at: string; version?: number; history?: { summary: string; createdAt: string }[] }[];
 };
 
 const emptyPipeline: PipelineWorkspace = { canManage: false, pipelines: [], stages: [], deals: [] };
@@ -108,41 +111,27 @@ export function useSoloCampaigns(): SoloCampaignsState {
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
   const pipelineAction = useCallback(async (action: PipelineAction) => {
     if (!activeTenantId) return { ok: false, message: "No tenant workspace is selected." };
-    let name = "";
-    let args: Record<string, unknown> = {};
-    if (action.type === "create-pipeline") {
-      name = "create_tenant_pipeline";
-      const stages = action.starter === "simple" ? [
-        { label: "New", description: "New work awaiting review", stage_type: "open" },
-        { label: "In progress", description: "Work currently moving forward", stage_type: "open" },
-        { label: "Complete", description: "Work completed", stage_type: "won" },
-      ] : [];
-      args = { _tenant_id: activeTenantId, _name: action.name, _description: action.description || null, _stages: stages };
-    } else if (action.type === "update-pipeline") {
-      name = "update_pipeline_details";
-      args = { _pipeline_id: action.pipelineId, _name: action.name, _description: action.description || null };
-    } else if (action.type === "create-stage") {
-      name = "manage_pipeline_stage";
-      args = { _action: "create", _pipeline_id: action.pipelineId, _stage_id: null, _label: action.label, _description: action.description || null };
-    } else if (action.type === "update-stage") {
-      name = "manage_pipeline_stage";
-      args = { _action: "update", _pipeline_id: null, _stage_id: action.stageId, _label: action.label, _description: action.description || null };
-    } else if (action.type === "archive-stage" || action.type === "restore-stage") {
-      name = "manage_pipeline_stage";
-      args = { _action: action.type === "archive-stage" ? "archive" : "restore", _pipeline_id: null, _stage_id: action.stageId, _label: null, _description: null };
-    } else if (action.type === "reorder-stages") {
-      name = "reorder_pipeline_stages";
-      args = { _pipeline_id: action.pipelineId, _ordered_ids: action.orderedIds };
-    } else {
-      return { ok: false, message: "That pipeline action is not supported." };
-    }
-    const { error } = await supabase.rpc(name as never, args as never);
+    const { idempotencyKey, ...command } = action;
+    const name = "configure_tenant_pipeline";
+    const args = { _tenant_id: activeTenantId, _command: command, _idempotency_key: idempotencyKey ?? crypto.randomUUID(), _actor_kind: "human" };
+    const { data, error } = await supabase.rpc(name as never, args as never);
     if (error) {
       console.error("[solo-pipeline] action failed", { action: action.type, error });
-      return { ok: false, message: "That change could not be saved. Nothing else was changed." };
+      const detail = String(error.message || "");
+      const message = detail.includes("PIPELINE_VERSION_CONFLICT") ? "This record changed somewhere else. The board was refreshed; review the current stage before trying again."
+        : detail.includes("PIPELINE_DEPENDENCIES_UNRESOLVED") ? "Delete is blocked until its deals, routes, approvals, automations, and retained history are resolved."
+        : detail.includes("PIPELINE_APPROVAL_REQUIRED") ? "Approval is required. The deal stayed in its current stage and a held request was recorded."
+        : "That change could not be saved. Nothing else was changed.";
+      setRefreshKey((key) => key + 1);
+      return { ok: false, message };
     }
     setRefreshKey((key) => key + 1);
-    return { ok: true, message: "Saved to this tenant’s pipeline." };
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const dependencyText = payload.dependencies && typeof payload.dependencies === "object"
+      ? Object.entries(payload.dependencies as Record<string, unknown>).map(([key, value]) => `${key}: ${value}`).join(" · ")
+      : "";
+    const message = `${typeof payload.message === "string" ? payload.message : "Saved to this tenant’s pipeline."}${dependencyText ? ` ${dependencyText}` : ""}`;
+    return { ok: payload.ok !== false, message, data: payload };
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -234,9 +223,9 @@ export function useSoloCampaigns(): SoloCampaignsState {
         const rawPipeline = (pipelineResponse.data ?? {}) as unknown as PipelineWorkspacePayload;
         const pipelineWorkspace: PipelineWorkspace = {
           canManage: rawPipeline.can_manage === true,
-          pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, name: row.name, description: row.description ?? "", isDefault: row.is_default === true })),
-          stages: (rawPipeline.stages ?? []).map((row) => ({ id: row.id, pipelineId: row.pipeline_id, label: row.label, description: row.description ?? "", orderIndex: row.order_index, archivedAt: row.archived_at ?? null })),
-          deals: (rawPipeline.deals ?? []).map((row) => ({ id: row.id, title: row.title, pipelineId: row.pipeline_id, stageId: row.stage_id, clientName: row.client_name || "Client not recorded", owner: row.owner_user_id ? "Assigned owner" : "Owner not recorded", status: row.status || "Not recorded", source: row.source || "Source not recorded", nextAction: row.next_action || "Next action not recorded", updatedAt: row.updated_at, portalAvailable: row.portal_available === true, history: row.history ?? [] })),
+          pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, name: row.name, description: row.description ?? "", isDefault: row.is_default === true, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1 })),
+          stages: (rawPipeline.stages ?? []).map((row) => ({ id: row.id, pipelineId: row.pipeline_id, label: row.label, description: row.description ?? "", orderIndex: row.order_index, archivedAt: row.archived_at ?? null, movePolicy: row.move_policy ?? "direct", version: row.version ?? 1 })),
+          deals: (rawPipeline.deals ?? []).map((row) => ({ id: row.id, title: row.title, pipelineId: row.pipeline_id, stageId: row.stage_id, clientName: row.client_name || "Client not recorded", owner: row.owner_user_id ? "Assigned owner" : "Owner not recorded", status: row.status || "Not recorded", source: row.source || "Source not recorded", nextAction: row.next_action || "Next action not recorded", updatedAt: row.updated_at, version: row.version ?? 1, history: row.history ?? [] })),
         };
         const artifacts: CampaignArtifact[] = [
           ...pages.filter((row) => row.status === "published").map((row) => ({
@@ -270,4 +259,3 @@ export function useSoloCampaigns(): SoloCampaignsState {
   };
   return { ...visibleState, retry, pipelineAction };
 }
-

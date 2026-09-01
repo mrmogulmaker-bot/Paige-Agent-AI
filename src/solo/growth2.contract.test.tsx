@@ -22,6 +22,7 @@ const reorderMigration = readFileSync(resolve(process.cwd(), "supabase/migration
 const defaultCreatorMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831220000_solo_pipeline_default_creator_lock.sql"), "utf8");
 const defaultSetterMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831221500_solo_pipeline_default_setter_lock.sql"), "utf8");
 const activeReorderMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831223000_solo_pipeline_active_reorder.sql"), "utf8");
+const pipelineManagementMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260831224500_solo_pipeline_governed_management.sql"), "utf8");
 const submissionProcessor = readFileSync(resolve(process.cwd(), "supabase/functions/growth-process-submission/index.ts"), "utf8");
 const paigeChat = readFileSync(resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"), "utf8");
 const paigeMcp = readFileSync(resolve(process.cwd(), "supabase/functions/paige-mcp/index.ts"), "utf8");
@@ -101,10 +102,12 @@ describe("Solo Campaigns approved contract", () => {
 
   it("implements the approved tenant-owned Pipeline contract without a fixed campaign or sales taxonomy", () => {
     expect(source).toContain('title="Deal workspace"');
-    expect(source).toContain("New pipeline");
-    expect(source).toContain("Blank pipeline");
-    expect(source).toContain("Simple starter stages");
-    expect(source).toContain("Configure stages");
+    expect(source).toContain("New deal");
+    expect(source).toContain("Create blank pipeline");
+    expect(source).not.toMatch(/starter stages|preset pipeline|simple starter/i);
+    expect(source).toContain("Pipeline configuration");
+    expect(source).toContain("Back to board");
+    expect(source).toContain("Ask PAIGE");
     expect(source).toContain("Add a stage");
     expect(source).toContain("Focused stage");
     expect(source).toContain("??workspace.pipelines[0]");
@@ -113,10 +116,12 @@ describe("Solo Campaigns approved contract", () => {
   });
 
   it("uses callable tenant-safe reads and writes for the complete stage lifecycle", () => {
-    for (const contract of ["get_pipeline_workspace", "get_pipeline_routing_evidence", "create_tenant_pipeline", "update_pipeline_details", "manage_pipeline_stage", "reorder_pipeline_stages"]) {
+    for (const contract of ["get_pipeline_workspace", "get_pipeline_routing_evidence", "configure_tenant_pipeline"]) {
       expect(adapter + migration + routingMigration).toContain(contract);
     }
-    for (const action of ["create", "update", "archive", "restore"]) expect(migration).toContain(`_action='${action}'`);
+    for (const action of ["create_pipeline", "update_pipeline", "activate_pipeline", "archive_pipeline", "restore_pipeline", "delete_pipeline", "create_stage", "update_stage", "archive_stage", "restore_stage", "delete_stage", "reorder_stages", "move_deal"]) {
+      expect(adapter + source + pipelineManagementMigration).toContain(action);
+    }
     expect(migration).toContain("PIPELINE_STAGE_OCCUPIED");
     expect(migration).toContain("public.is_tenant_admin(_tenant)");
     expect(migration).toContain("revoke all on function public.get_pipeline_workspace(uuid) from public,anon");
@@ -149,7 +154,7 @@ describe("Solo Campaigns approved contract", () => {
     expect(directArchiveMigration).toContain("exists(select 1 from public.deals d where d.stage_id=old.id)");
     expect(reorderMigration).toContain("pg_advisory_xact_lock(hashtextextended('pipeline-stage-order:'||_pipeline_id::text,0))");
     expect(source).toContain("[data.tenantId]");
-    expect(source).toContain('setNewPipeline({name:"",description:"",starter:"blank"})');
+    expect(source).toContain('setNewPipeline({name:"",description:""})');
     expect(adapter).toContain("state.tenantId === synchronousTenantId");
     expect(adapter).toContain('synchronousTenantId ? "loading" as const');
     expect(pipelineSettings).toContain('rpc("reorder_pipeline_stages" as never');
@@ -173,5 +178,21 @@ describe("Solo Campaigns approved contract", () => {
     expect(css).toContain(".pipeline-board{");
     expect(css).toContain(".pipeline-card{");
   });
-});
 
+  it("implements governed drag, keyboard, compact move, and portal-unavailable contracts", () => {
+    expect(source).toContain('draggable={workspace.canManage}');
+    expect(source).toContain('event.dataTransfer.setData("text/pipeline-deal"');
+    expect(source).toContain('event.key===" "');
+    expect(source).toContain('event.key==="Escape"');
+    expect(source).toContain("Move deal");
+    expect(source).toContain("Moving…");
+    expect(source).toContain("No portal activity source connected");
+    expect(source).toContain("Send customer invite");
+    expect(source).toContain("Customer portal is not available yet");
+    expect(adapter).toContain('name = "configure_tenant_pipeline"');
+    expect(pipelineManagementMigration).toContain("PIPELINE_VERSION_CONFLICT");
+    expect(pipelineManagementMigration).toContain("pipeline_command_results");
+    expect(pipelineManagementMigration).toContain("record_rail_event");
+    expect(pipelineManagementMigration).toContain("PIPELINE_DEPENDENCIES_UNRESOLVED");
+  });
+});
