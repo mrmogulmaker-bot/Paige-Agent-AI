@@ -3,6 +3,11 @@
 // notify-approval-event pattern: insert into paige_admin_notifications +
 // send a transactional email per recipient.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  resolveCanonicalAppPath,
+  type CanonicalDestination,
+  type CanonicalTier,
+} from "../_shared/canonical-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +74,8 @@ Deno.serve(async (req) => {
   const recipients: Recipient[] = [];
   let title = "";
   let bodyText = "";
-  let link = "/admin";
+  let tenantId: string | null = body.tenant_id ?? null;
+  let destination: CanonicalDestination = "home";
   let severity: "info" | "warning" | "urgent" = "info";
   let contactId: string | null = null;
   let workflowKey = `team.${body.event}`;
@@ -100,13 +106,14 @@ Deno.serve(async (req) => {
     }
     const { data: task } = await supabase
       .from("tasks")
-      .select("id,title,description,due_date,deal_id")
+      .select("id,title,description,due_date,deal_id,tenant_id")
       .eq("id", body.task_id)
       .maybeSingle();
     if (!task) return json({ error: "task not found" }, 404);
     title = `New task assigned: ${task.title ?? "Task"}`;
     bodyText = `${task.description ?? ""}${task.due_date ? `\nDue ${new Date(task.due_date).toLocaleDateString()}` : ""}`.trim();
-    link = "/admin/tasks";
+    tenantId = task.tenant_id ?? tenantId;
+    destination = "tasks";
     const r = await resolveUser(body.assignee_user_id);
     if (r) recipients.push(r);
   } else if (body.event === "form_submission") {
@@ -131,7 +138,8 @@ Deno.serve(async (req) => {
           .join("\n")
       : "";
     bodyText = `Source: ${sub.source ?? "direct"}\n\n${preview}`;
-    link = `/admin/campaigns?tab=submissions`;
+    tenantId = sub.tenant_id ?? tenantId;
+    destination = "marketplace_submissions";
     severity = "info";
 
     // Recipients: admins in tenant. Fall back to all admins.
@@ -151,7 +159,7 @@ Deno.serve(async (req) => {
     contactId = body.contact_id;
     const { data: c } = await supabase
       .from("clients")
-      .select("id, first_name, last_name, business_name")
+      .select("id, first_name, last_name, business_name, tenant_id")
       .eq("id", body.contact_id)
       .maybeSingle();
     const name =
@@ -160,7 +168,8 @@ Deno.serve(async (req) => {
       "a client";
     title = `New client assigned: ${name}`;
     bodyText = `You've been assigned as the coach for ${name}.`;
-    link = `/admin/contacts/${body.contact_id}`;
+    tenantId = c?.tenant_id ?? tenantId;
+    destination = "contacts";
     const r = await resolveUser(body.coach_user_id);
     if (r) recipients.push(r);
   } else if (body.event === "booking_created") {
@@ -169,7 +178,7 @@ Deno.serve(async (req) => {
     }
     const { data: booking } = await supabase
       .from("internal_bookings")
-      .select("id,title,guest_name,start_at,timezone,contact_id")
+      .select("id,title,guest_name,start_at,timezone,contact_id,tenant_id")
       .eq("id", body.booking_id)
       .maybeSingle();
     if (!booking) return json({ error: "booking not found" }, 404);
@@ -180,7 +189,8 @@ Deno.serve(async (req) => {
     }).format(new Date(booking.start_at));
     title = `New booking: ${booking.guest_name ?? "a guest"}`;
     bodyText = `${booking.title ?? "Session"} — ${whenLabel}`;
-    link = "/admin/calendar";
+    tenantId = booking.tenant_id ?? tenantId;
+    destination = "calendar";
     // Every host in the group (round-robin picks one; collective attends all;
     // class always has exactly one) gets their own in-app + email notice.
     for (const uid of Array.from(new Set(body.host_user_ids))) {
@@ -191,7 +201,25 @@ Deno.serve(async (req) => {
     return json({ error: `unknown event: ${body.event}` }, 400);
   }
 
-  // In-app notifications
+  let link: string | null = null;
+  if (tenantId) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("account_type, account_number")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (tenant) {
+      link = resolveCanonicalAppPath({
+        actor: "account",
+        tier: String(tenant.account_type ?? "") as CanonicalTier,
+        account: tenant.account_number,
+        destination,
+      });
+    }
+  }
+
+  // In-app notifications. A missing mounted capability is intentionally non-clickable
+  // instead of emitting a dead or legacy address.
   const notifRows = recipients.map((r) => ({
     severity,
     title,
@@ -235,7 +263,7 @@ Deno.serve(async (req) => {
             eventType: body.event,
             title,
             body: bodyText,
-            actionUrl: `${APP_BASE}${link}`,
+            actionUrl: link ? `${APP_BASE}${link}` : null,
           },
         }),
       });

@@ -60,6 +60,8 @@ Deno.serve(async (req) => {
   const messageSid = params.get("MessageSid") ?? crypto.randomUUID();
   const bodyRaw = (params.get("Body") ?? "").trim();
   const bodyUpper = bodyRaw.toUpperCase();
+  const optOutType = (params.get("OptOutType") ?? "").trim().toUpperCase();
+  const keyword = optOutType || bodyUpper;
 
   if (!fromPhone) return twiml();
   const fromNorm = normalizePhone(fromPhone);
@@ -71,25 +73,93 @@ Deno.serve(async (req) => {
   // Keyword handling. Opt-out state for the operator number is enforced by Twilio's own
   // Advanced Opt-Out on the Messaging Service; here we acknowledge and still THREAD the
   // message so the operator has the full record (§13 — we never drop a real inbound).
-  if (STOP_KEYWORDS.includes(bodyUpper)) {
+  if (optOutType === "STOP" || STOP_KEYWORDS.includes(keyword)) {
+    await revokePlatformSmsConsent(admin, fromNorm);
     await persistInbound(admin, fromNorm, toPhone, bodyRaw, messageSid, "opt_out");
     return twiml();
   }
-  if (START_KEYWORDS.includes(bodyUpper)) {
+  if (optOutType === "START" || START_KEYWORDS.includes(keyword)) {
+    const restored = await restorePlatformSmsConsent(admin, fromNorm);
     await persistInbound(admin, fromNorm, toPhone, bodyRaw, messageSid, "opt_in");
-    return twiml("You are re-subscribed to Paige Agent AI SMS. Reply STOP to opt out.");
+    if (optOutType) return twiml();
+    return restored
+      ? twiml("Paige Agent AI: You are subscribed to recurring account and service text messages. Message frequency varies. Reply HELP for help or STOP to opt out.")
+      : twiml("Paige Agent AI: We could not restore text messages for this number. Sign in at https://paigeagent.ai/auth?mode=login or email support@paigeagent.ai for help.");
   }
-  if (bodyUpper === "HELP" || bodyUpper === "INFO") {
+  if (optOutType === "HELP" || keyword === "HELP" || keyword === "INFO") {
     await persistInbound(admin, fromNorm, toPhone, bodyRaw, messageSid, "help");
-    return twiml("Paige Agent AI support: support@paigeagent.ai. Reply STOP to unsubscribe.");
+    return optOutType
+      ? twiml()
+      : twiml("Paige Agent AI: For help, email support@paigeagent.ai. Reply STOP to opt out.");
   }
 
   await persistInbound(admin, fromNorm, toPhone, bodyRaw, messageSid, null);
   return twiml();
 });
 
+// Supabase's generated database type is intentionally unavailable in this
+// standalone webhook. Keep the service client dynamic, as the existing inbound
+// handlers do, so helper parameters retain the runtime client's table surface.
 // deno-lint-ignore no-explicit-any
 type Admin = any;
+
+async function revokePlatformSmsConsent(admin: Admin, phone: string): Promise<void> {
+  const { error } = await admin
+    .from("communications_consents")
+    .update({ revoked_at: new Date().toISOString(), withdrawn_reason: "sms_stop_keyword" })
+    .eq("phone", phone)
+    .is("tenant_id", null)
+    .is("contact_id", null)
+    .not("consent_granted_at", "is", null)
+    .is("revoked_at", null);
+  if (error) console.error("[paige-operator-sms-inbound] consent revocation failed:", error.message);
+}
+
+async function restorePlatformSmsConsent(admin: Admin, phone: string): Promise<boolean> {
+  const { data: active } = await admin
+    .from("communications_consents")
+    .select("id")
+    .eq("phone", phone)
+    .is("tenant_id", null)
+    .is("contact_id", null)
+    .not("consent_granted_at", "is", null)
+    .is("revoked_at", null)
+    .is("withdrawn_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (active) return true;
+
+  const { data: prior, error: priorError } = await admin
+    .from("communications_consents")
+    .select("user_id,email")
+    .eq("phone", phone)
+    .is("tenant_id", null)
+    .is("contact_id", null)
+    .not("consent_granted_at", "is", null)
+    .order("consent_granted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (priorError || !prior?.user_id) return false;
+
+  const now = new Date().toISOString();
+  const { error } = await admin.from("communications_consents").insert({
+    user_id: prior.user_id,
+    email: prior.email,
+    phone,
+    sms_transactional: true,
+    sms_marketing: false,
+    source: "sms_start_keyword",
+    source_url: "https://paigeagent.ai/sms-terms#start",
+    disclosure_version: "paige-platform-sms-keyword-start-v1-2026-08-31",
+    consent_granted_at: now,
+    user_agent: "Twilio inbound START/UNSTOP keyword",
+  });
+  if (error) {
+    console.error("[paige-operator-sms-inbound] consent restore failed:", error.message);
+    return false;
+  }
+  return true;
+}
 
 // Upsert the operator thread for the sender, then insert the inbound message (idempotent
 // on the Twilio MessageSid via the partial unique index — a re-delivery is a no-op).

@@ -16,6 +16,7 @@ const footerLinks = {
   legal: [
     { name: "Terms of Service", href: "/terms" },
     { name: "Privacy Policy", href: "/privacy" },
+    { name: "Messaging Terms", href: "/sms-terms" },
     { name: "E-Sign Consent", href: "/legal/esign" },
     { name: "AI Disclaimer", href: "/legal/ai-disclaimer" },
   ],
@@ -71,18 +72,13 @@ export function Footer() {
           <div className="flex flex-wrap items-center gap-3">
             <SecurityBadge />
             <span className="text-[11px] text-primary-foreground/60">
-              AES-256 encryption · SOC 2 infrastructure · TLS 1.3 transport
+              Access controls · encrypted transport · service monitoring
             </span>
           </div>
           <p className="text-[11px] text-primary-foreground/60 leading-relaxed max-w-4xl">
             Paige is an AI business-operations platform for coaches, consultants, and agencies. It
             brings client management, workflow automation, scheduling, and an AI assistant into a
-            single workspace so teams can run their practice more efficiently.
-          </p>
-          <p className="text-[11px] text-primary-foreground/50 leading-relaxed max-w-4xl">
-            Paige Agent AI Inc. is a Delaware corporation operating under license from
-            Aedis Brands LLC, a wholly-owned subsidiary of Givalli Heritage Holdings Inc.
-            (Delaware).
+            single workspace so teams can run their business more efficiently.
           </p>
           <p className="text-sm text-center opacity-60">
             © {year} Paige Agent AI Inc. All rights reserved.

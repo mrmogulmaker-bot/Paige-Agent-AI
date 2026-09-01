@@ -85,6 +85,18 @@ serve(async (req) => {
       }
     }
 
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) throw new Error('Unauthorized');
+    if (bearer !== supabaseServiceKey) {
+      const authed = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error } = await authed.auth.getUser();
+      if (error || !user) throw new Error('Unauthorized');
+      if (user.id !== userId) throw new Error('Forbidden');
+    }
+
     console.log(`Processing command: ${functionName} for user ${userId}`);
     console.log('Parameters:', parameters);
 
@@ -111,7 +123,7 @@ serve(async (req) => {
           break;
 
         case 'send_sms_reminder':
-          result = await handleSendSMS(supabaseUrl, userId, parameters);
+          result = await handleSendSMS(supabaseUrl, supabaseServiceKey, userId, parameters);
           break;
 
         case 'send_funding_report':
@@ -201,10 +213,10 @@ async function handleCreateDispute(_supabase: any, _userId: string, _params: any
   throw new Error("Dispute creation removed under §194. Paige provides credit monitoring only.");
 }
 
-async function handleSendSMS(supabaseUrl: string, userId: string, params: any) {
+async function handleSendSMS(supabaseUrl: string, serviceKey: string, userId: string, params: any) {
   const response = await fetch(`${supabaseUrl}/functions/v1/send-sms-reminder`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
     body: JSON.stringify({
       to: params.phoneNumber,
       message: params.message,

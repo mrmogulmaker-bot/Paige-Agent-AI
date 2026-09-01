@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     severity: "urgent",
     title: `Bridge auth failures (${failures.length})`,
     body: message,
-    link_to: `/admin/settings`,
+    link_to: `/operator/settings/integrations/health`,
     source_workflow_key: "bridge_auth_failure",
     scope: "admin",
   });

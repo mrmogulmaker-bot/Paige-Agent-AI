@@ -52,7 +52,9 @@
     "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs",
     "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs",
     "test:client-memory-authz": "node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs",
-    "lint:no-shadowed-credential": "node scripts/ci/no-shadowed-credential-lint.mjs"
+    "lint:no-shadowed-credential": "node scripts/ci/no-shadowed-credential-lint.mjs",
+    "lint:user-facing-admin-urls": "node scripts/ci/user-facing-admin-producer-lint.mjs",
+    "lint:user-facing-admin-urls:test": "node scripts/ci/user-facing-admin-producer-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
