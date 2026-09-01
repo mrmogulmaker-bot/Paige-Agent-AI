@@ -667,7 +667,7 @@ safety property is the more dangerous of the two, because the next session quote
 |---|---|---|
 | **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
 | **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
-| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the `confirm` gate itself:** it tests `gateArgs.confirm`, parsed from the model's own arguments, with nothing binding it to a human's yes |
 | **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
 
 Never write "never" about the bottom three rows. For anything money-, permission-, or
@@ -684,6 +684,22 @@ copied and the prose is what gets skimmed.
 **How it was caught, honestly:** not by me. The §39 peer-gate caught it — an automated reviewer
 reading the actual diff, which is precisely the layer that exists because the author's own proof
 cannot see what the author already believes.
+
+**The hardest instance came last, and it is the one to remember.** After four rounds of correcting
+overstatements, the record still described the agent `confirm` lane as the one with complete
+authorization — operator sees the amount, confirms, server re-verifies. The confirmation half is
+**model-asserted**: the gate tests `gateArgs.confirm`, parsed from the model's own tool arguments,
+and nothing ties it to the `needs_confirm` that preceded it or to anything a human said. A model
+emitting `confirm:true` on its first call executes immediately. **The platform already has the
+enforced pattern** — outbound sends file a real approval row and wait — and this gate does not use
+it.
+
+So a confirmation that LOOKS like a two-step handshake, has a system prompt and a tool note both
+telling the model to ask first, and produces exactly the right behaviour every time the model
+complies, is still **prompt-level**. That is the trap in its purest form: *the mechanism was
+indistinguishable from enforcement in every observation, because a well-behaved model is
+observationally identical to a guard.* The only way to tell them apart is to find the line that
+would refuse — and if you cannot point at it, there isn't one.
 
 **It then happened TWICE MORE, in the fix for it.** The corrected text — written while composing
 this very lesson — still carried two overstatements, both caught on the next review round:

@@ -137,7 +137,7 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   | Sends an agreed price | yes, required | **no** — posts `{ phone_number }` | **no** — posts `{ phone_number }` |
   | Quote guard | **enforced** — refuses without a whole, positive `monthly_cents`, *ahead of* the autonomy gate so it binds at `auto` too | n/a | n/a |
   | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **no** — branch skipped | **no** — branch skipped |
-  | Confirmation step | at `confirm` only; **none at `auto`** | yes — a `window.confirm` (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
+  | Confirmation step | **model-asserted, not enforced** — the gate tests `gateArgs.confirm`, parsed from the model's own tool arguments (`index.ts` ~5973). Nothing binds it to the prior `needs_confirm` or to a human's yes, so a model emitting `confirm:true` on its FIRST call executes immediately at `confirm` mode. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
   | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise **`—`** |
   | What can go wrong | a workspace on `auto` buys unattended | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
 
@@ -151,8 +151,18 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
     comment reads *"safe default — never assume autopilot"*. But `comms_buy_number` is a
     registered switchable tool: **a workspace that sets it to `auto` gets a validly-quoted
     purchase executed with no confirmation** (`index.ts` ~5977: *"autoMode === 'auto' … fall
-    through to execute"*). `off` disables it. The price check is a guarantee **in the agent
-    lane**; the confirmation is a default.
+    through to execute"*). `off` disables it.
+  - **NO LANE HAS SERVER-ENFORCED HUMAN CONFIRMATION FOR A PURCHASE, and this is the correction
+    that matters most here.** At `confirm` the gate is `autoMode === "confirm" && gateArgs.confirm
+    !== true`, and `gateArgs` is `JSON.parse(tc.function.arguments)` — **the model's own output**.
+    There is no pending-proposal row, no token, nothing tying `confirm:true` to the `needs_confirm`
+    that preceded it or to anything a human said. The system prompt and the `needs_confirm` note
+    both *instruct* the model to ask first; that is steering, exactly like the no-retry rule two
+    bullets down. **The platform already has the enforced pattern and this gate does not use it** —
+    outbound sends file a real `approval_id` row and wait (`index.ts` ~8251). So: the price check
+    is enforced in the agent lane; **every confirmation on this path is prompt-level or
+    client-side**, and the only human gate that a person actually meets is Solo's browser
+    `window.confirm`.
   - **Prompt-level only — NOT enforced.** "A refusal is final for that number, pick another
     rather than retrying the same one" and "if it was bought but not recorded, do not buy a
     replacement" live in the tool *description*. They steer the model; nothing rejects a retry.
@@ -241,12 +251,12 @@ voice route unless someone sets it by hand in the console.
 **Owner authorization required** (each is a provider action, and each is a separate Trust Compass
 capability per `connections-rail-contract.md` §0b):
 6. ~~Live number search, and purchase (a recurring charge).~~ **REACHABLE 2026-09-01 (#695/#699) —
-   but the authorization is only complete in ONE of the three lanes.** In the `comms_buy_number`
-   agent lane at `confirm`, the operator is shown the amount, confirms it, and the server
-   re-verifies it before any charge — that is the full sequence. Every other lane is missing part
-   of it: the agent lane at `auto` skips the confirmation, Solo skips the server re-verification,
-   and the legacy tab skips both and has no confirmation step at all. See the lane table above
-   before treating this item as closed.
+   and NO lane carries the full authorization.** The agent lane at `confirm` re-verifies the price
+   server-side but its confirmation is **model-asserted**, not enforced — nothing binds
+   `confirm:true` to a human's yes. The agent lane at `auto` has no confirmation at all. Solo has a
+   real browser confirmation but no server-side price check. The legacy tab has neither. **Do not
+   treat this item as closed:** what shipped is reachability, not the authorization the item
+   originally meant. See the lane table above, and the tracked follow-up covering both UI lanes.
 7. Re-stamping webhook URLs on already-purchased numbers.
 8. Setting `VoiceUrl` on numbers — without it tenant inbound calling cannot work.
 9. Recording/transcription and the live co-pilot — grants #4 and #5, and it spends per call.
