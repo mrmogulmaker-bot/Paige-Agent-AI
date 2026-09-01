@@ -141,6 +141,43 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise the same words *"an unlisted monthly price"* **since 2026-09-01**. The `—` is still what the search RESULTS ROW renders; it is no longer what the person is asked to agree to |
   | What can go wrong | **one unattended path now, not two** — a workspace on `auto` still buys with no gate at all (chosen, and by design). At `confirm` the first-call/same-turn bypass is closed; what remains is that an intervening human turn is not the same as a human saying yes, so a model could still read a refusal as approval | an unpriced number is bought for an unnamed sum. *A price change between search and buy is now caught — the server re-verifies and refuses* | the same as Solo since 2026-09-01. *Was: all of the above, plus no confirmation at all — a single click started a recurring charge* |
 
+  ### Audit evidence on the Communications write seams (measured 2026-09-01)
+
+  | Seam | Real action | `audit_logs` |
+  |---|---|---|
+  | `comms-purchase-number` | buys a number | **yes**, since #695 — non-blocking, four exits incl. charged-but-unrecorded |
+  | `manage-tenant-domain` | add · set default · remove · verify transition | **yes**, since 2026-09-01 |
+  | `gmail-oauth-callback` | grants `gmail.send` on an account | **yes**, since 2026-09-01 |
+  | `gmail-disconnect` | revokes that grant | **yes**, since 2026-09-01 |
+
+  Before this, only the phone-number purchase left a trace. Adding, re-pointing or removing a
+  sending domain — which changes the identity every outbound message carries — and granting or
+  revoking Paige's permission to send as a Google account all wrote **nothing**. The comparison
+  that settled it: `quickbooks-disconnect` has always audited the same class of act.
+
+  **The Rail is deliberately NOT used, and cannot be.** `record_rail_event` is contact-keyed and
+  raises when the contact does not resolve in the tenant; a sending domain and a Google account
+  belong to the WORKSPACE, not to any one client. `comms-purchase-number` recorded this reasoning
+  first and it applies unchanged here — so for these actions the answer to "Rail or audit?" is
+  audit, on the record, rather than an omission.
+
+  **Shape** follows the established one exactly (§18): `audit_logs` has no `tenant_id` column (it
+  is in the §51 no-tenant-id governance set), so the tenant goes inside `data`, as every other
+  writer does. Actor is `user.id` from the verified JWT; tenant is server-derived; neither is ever
+  taken from a request body (§9). Every write is **non-blocking** (the `comms-purchase-number`
+  pattern, not `quickbooks-disconnect`'s): the change has already landed by the time it runs, so a
+  failed audit write is logged loudly and never turns a completed change into a reported failure.
+
+  **No secret is recorded anywhere:** the Resend API key is never referenced, the Gmail refresh
+  token stays in Vault and its `credentials_vault_ref` is never written. The email address IS
+  recorded, because an entry that does not say which identity changed is not evidence.
+
+  **Honest bound (§13):** `npm run smoke:comms-domain-audit` drives the REAL
+  `manage-tenant-domain` handler and proves the writes fire on the right paths and NOT on a
+  rejected verb, a foreign row, a read, or a DNS poll that found nothing. The two gmail writes are
+  covered by `deno check` only — no smoke drives them, and that is stated rather than implied.
+  Whether a row actually lands in prod is a live-drive check that has not been run.
+
   ### Blocking reasons and their next steps — held by CI as of 2026-09-01
 
   `tenant_comms_readiness()` returns exactly six `blocked_reason` values
