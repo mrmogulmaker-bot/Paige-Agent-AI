@@ -26,10 +26,21 @@ export type UseRailEventsOptions =
   | { scope: "client"; contactId: string | null };
 
 export type UseRailEventsResult = {
-  /** Most-recent events first, capped at ~50. */
+  /** Most-recent events first, capped at ~50. Backfilled history plus anything live since mount. */
   events: RailEvent[];
   /** True once the private broadcast channel reports SUBSCRIBED. */
   connected: boolean;
+  /** False until the history read has settled — either way. */
+  historyLoaded: boolean;
+  /**
+   * Why the history is missing, when it is. `null` means it loaded.
+   *
+   * §13 — AN EMPTY LIST IS NOT AN ANSWER ON ITS OWN. "nothing has happened" and "the read failed"
+   * render identically as an empty feed, and the second one told the operator, with confidence,
+   * that Paige had done nothing. A caller that wants to say "nothing yet" needs to know which of
+   * the two it is looking at, so the distinction is exposed rather than flattened here.
+   */
+  historyError: string | null;
 };
 
 /** How many recent events we retain in memory. */
@@ -75,6 +86,39 @@ function coerceRailEvent(raw: unknown): RailEvent | null {
 }
 
 /**
+ * Which column scopes the history read.
+ *
+ * §9 — THIS IS THE WHOLE ISOLATION DECISION FOR THE BACKFILL, so it is a named function rather
+ * than a ternary buried in an effect. A client feed narrowed by `tenant_id` would show one portal
+ * client every other client's events; a tenant feed narrowed by `contact_id` would show a staff
+ * surface almost nothing. RLS would still refuse the first — `pce_client_read` requires the
+ * contact be linked to the caller — but a filter that depends on RLS to correct it is one policy
+ * change away from being the leak, and the mistake is a single word.
+ */
+export function railHistoryFilter(
+  opts: UseRailEventsOptions,
+  id: string,
+): { column: "contact_id" | "tenant_id"; value: string } {
+  return opts.scope === "client"
+    ? { column: "contact_id", value: id }
+    : { column: "tenant_id", value: id };
+}
+
+/**
+ * Merge backfilled history UNDER whatever is already live, newest first, deduped by id, capped.
+ *
+ * History goes second on purpose: a frame that arrived while the read was in flight is newer than
+ * every row it returns. Dedupe is by id because the SAME event reaches this both ways — it is
+ * broadcast and persisted by one call in `record_rail_event` — and the two race either direction.
+ * Without it the feed shows a doubled line for anything that happens while a surface is opening,
+ * which is exactly when someone is most likely to be watching.
+ */
+export function mergeRailHistory(live: RailEvent[], history: RailEvent[], cap = MAX_EVENTS): RailEvent[] {
+  const seen = new Set(live.map((e) => e.id));
+  return [...live, ...history.filter((e) => !seen.has(e.id))].slice(0, cap);
+}
+
+/**
  * useRailEvents — live subscriber for the Paige Context Rail.
  *
  * Paige Context Rail STEP 2. A rail write in `record_rail_event` broadcasts,
@@ -106,6 +150,8 @@ export function useRailEvents(
 
   const [events, setEvents] = useState<RailEvent[]>([]);
   const [connected, setConnected] = useState<boolean>(false);
+  const [historyLoaded, setHistoryLoaded] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // Guards against setState after unmount / after the id changed.
   const mountedRef = useRef<boolean>(false);
@@ -121,6 +167,8 @@ export function useRailEvents(
     if (!topic || !id) {
       setConnected(false);
       setEvents([]);
+      setHistoryLoaded(false);
+      setHistoryError(null);
       return () => {
         mountedRef.current = false;
       };
@@ -129,6 +177,49 @@ export function useRailEvents(
     // A fresh topic is a fresh stream — drop any events from the prior scope.
     setEvents([]);
     setConnected(false);
+    setHistoryLoaded(false);
+    setHistoryError(null);
+
+    // ── HISTORY. This hook used to subscribe and nothing else, so every rail surface started
+    // EMPTY on every mount and showed only what happened to arrive while it was open. The durable
+    // rows were already there — `record_rail_event` has been writing them all along — and no feed
+    // read them. An operator who opened the page a minute after Paige acted saw nothing, which
+    // reads as "she has done nothing" rather than "you were not watching".
+    //
+    // §9 — the scoping is the TABLE's, not this query's. `pce_client_read` admits a row only when
+    // it is audience client/both, `visibility='client_visible'`, and the contact is linked to the
+    // caller; `pce_staff_read` requires the caller's active tenant plus a staff role. So the read
+    // reproduces exactly what the broadcast topics already enforce — owner-internal events cannot
+    // reach a portal client through this path any more than through the live one — and the filter
+    // below narrows WITHIN that, it does not widen it.
+    void (async () => {
+      try {
+        let q = supabase
+          .from("paige_client_events")
+          .select("id,event_kind,surface,actor_type,audience,visibility,title,summary,occurred_at,contact_id")
+          .order("occurred_at", { ascending: false })
+          .limit(MAX_EVENTS);
+        const f = railHistoryFilter(opts, id);
+        q = q.eq(f.column, f.value);
+        const { data, error } = await q;
+        if (!mountedRef.current) return;
+        if (error) {
+          // Never invent an empty history out of a failed read (§13).
+          setHistoryError(error.message || "could not load activity history");
+          setHistoryLoaded(true);
+          return;
+        }
+        const history = (data ?? []).map(coerceRailEvent).filter((e): e is RailEvent => e !== null);
+        // Merge UNDER anything already live: a frame that arrived while this was in flight is
+        // newer than every backfilled row, and re-adding it would double it in the feed.
+        setEvents((live) => mergeRailHistory(live, history));
+        setHistoryLoaded(true);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        setHistoryError(err instanceof Error ? err.message : "could not load activity history");
+        setHistoryLoaded(true);
+      }
+    })();
 
     // Private broadcast channel — receive-only. RLS on `realtime.messages`
     // decides what actually lands here (own tenant / own client-visible only).
@@ -148,7 +239,9 @@ export function useRailEvents(
             return;
           }
           if (!mountedRef.current) return;
-          setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+          // Dedupe by id: an event can reach this both live and through the history read, and the
+          // two races either way round.
+          setEvents((prev) => (prev.some((e) => e.id === event.id) ? prev : [event, ...prev].slice(0, MAX_EVENTS)));
           onEventRef.current?.(event);
         } catch (err) {
           // Live telemetry: swallow. A bad frame must never break the app.
@@ -173,5 +266,5 @@ export function useRailEvents(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topic, id]);
 
-  return { events, connected };
+  return { events, connected, historyLoaded, historyError };
 }
