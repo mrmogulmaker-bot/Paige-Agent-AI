@@ -631,3 +631,11 @@ business facts, but cannot invent a tax number or select the legal representativ
 resources belong to that tenant's Twilio subaccount; the platform operator's primary TrustHub profile
 remains a separate master-account concern. Customer Profile, Trust Product, Brand, Campaign, and
 Messaging Service identifiers stay server-owned. This draft does not submit to Twilio, merge, deploy, or claim authenticated production proof.
+
+## 2026-09-01 — Solo Team scope corrected; cross-domain access profile rejected
+
+The owner explicitly rejected the proposed cross-domain Hidden/View/Manage workstream. The Solo Team assignment remains roster, invitations and lifecycle, existing Owner/Admin/Member roles, informational job title/responsibilities, and truthful PAIGE Team context. The unreleased broad draft was reverted locally and was never pushed, merged, migrated, or deployed.
+
+PAIGE receives the server-resolved active-tenant roster plus Team invitation lifecycle under the existing Team owner/admin visibility boundary. She may identify, draft, recommend, and prepare; she may not silently invite, mutate roles, grant elevated access, or bypass Team authorization. Invitation tokens never enter the context.
+
+The narrow draft requires a new exact-head Gate 2 packet before merge or deployment. Authenticated browser interaction and migration application remain UNVERIFIED until directly exercised.

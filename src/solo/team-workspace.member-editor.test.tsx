@@ -81,6 +81,25 @@ describe("Solo Team member work-details dialog", () => {
     await act(async () => root.unmount());
   });
 
+  it("labels unsaved work-details abandonment as Cancel and performs no write", async () => {
+    const onClose = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<MemberEditor member={member} workspace={workspace} onClose={onClose} onSaved={vi.fn()} />));
+
+    const title = host.querySelector<HTMLInputElement>('input[placeholder="e.g. Client Success Manager"]')!;
+    expect(Array.from(host.querySelectorAll("button")).some((button) => button.textContent?.trim() === "Close")).toBe(true);
+    await act(async () => setValue(title, "Delivery Lead"));
+    const cancel = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Cancel") as HTMLButtonElement;
+    expect(cancel).toBeTruthy();
+    await act(async () => cancel.click());
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+
   it("keeps saved values visible and never changes permission during a work-details save", async () => {
     mocks.rpc.mockResolvedValueOnce({
       data: { membership_id: member.membership_id, job_title: "Operations Lead", responsibilities: "Owns delivery and weekly planning." },
