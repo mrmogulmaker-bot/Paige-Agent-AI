@@ -27,9 +27,11 @@
  * The peer-gate caught it; neither the SQL proof (hashes passed as literals) nor the unit tests
  * (hand-written 1–2 key objects) could, because neither crosses a turn.
  *
- * So the rule is: **bind only on values the human actually SAW in the confirmation summary, which
- * are exactly the values the model can read back out of its own visible prose.** A phone number or
- * a role name is in that sentence. A twelve-block document is not.
+ * So the rule is: **bind only on values the model can genuinely reproduce next turn** — which means
+ * either a value the operator SAW in the summary (and can therefore be read back out of prose), or
+ * a stable database id the model can look up again. A phone number, a role name, a contact id: all
+ * recoverable. A twelve-block document: never. The two tiers are spelt out on TOOL_IDENTITY_FIELDS
+ * below, because conflating them is exactly how the first version went wrong.
  *
  * Everything else is bound at TOOL level: a proposal for `document_generate` can only be spent on
  * `document_generate`. Combined with one-open-proposal-per-tool and single use, that gives one
@@ -57,12 +59,33 @@
  */
 
 /**
- * Fields that are (a) named in the confirmation summary the operator reads, and therefore (b)
- * recoverable by the model from its own prose on the next turn. ONLY these may enter an identity.
+ * Fields a confirming call must reproduce. Adding a tool here makes its approval stricter; adding
+ * the WRONG field re-creates the livelock above, so membership has a test — and the two tiers below
+ * exist because that test has two honest answers, not one.
  *
- * Adding a tool here makes its approval stricter. Adding a field that is NOT in the summary
- * re-creates the livelock above, so the test for membership is: *does the operator see this value
- * in the sentence they are agreeing to?*
+ * TIER 1 — the value is rendered in `describeConfirm`, so the operator SEES it and the model can
+ * read it straight back out of its own visible prose. Reproduction is essentially certain.
+ *     comms_buy_number.phone_number   "Buy +1555…"
+ *     member_grant_role.role          'Grant the "admin" role…'
+ *     n8n_*_workflow.workflow_id      "…the n8n automation w_123"
+ *     zapier_run_action.tool_name     'Run the Zapier action "send_email"'
+ *
+ * TIER 2 — a stable database id that is NOT in the summary (the summary says "the contact", "a team
+ * member", "that number"). The model must re-derive it by looking the subject up again. For a
+ * stable row keyed on a name the operator just used, that re-lookup is deterministic in practice —
+ * but it is not guaranteed, so the worst case is ONE EXTRA APPROVAL, never an impossibility.
+ *     member_grant_role.user_id · member_revoke_role.user_id
+ *     crm_delete_contact.contact_id · comms_set_primary_number.number_id
+ *
+ * That is the whole distinction that matters: a looked-up id can be re-derived; AUTHORED CONTENT
+ * cannot. `document_generate`'s `blocks` is a fresh generation every time, which is why pinning it
+ * livelocked and why no tier-2 entry may ever be content.
+ *
+ * These four are pinned anyway because each guards an irreversible or privilege-changing act, where
+ * an extra ask costs far less than the wrong subject. (`role` is tier 1 and carries the escalation
+ * direction on its own, so even a failed `user_id` match cannot turn a coach grant into an admin
+ * one.) That the summaries do not name their subject is a real §13/§36 gap in copy the operator is
+ * asked to approve — it is filed separately, not silently fixed here.
  *
  * A tool absent from this map binds at tool level. That is the safe default, not an oversight.
  */
