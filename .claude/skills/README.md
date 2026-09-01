@@ -5,7 +5,7 @@ installed **per-account**, not vendored here. This directory holds our own addit
 
 | Path | What it is |
 |---|---|
-| `knowledge-closeout/SKILL.md` | Ours. The repo-specific close-out step: record what a task taught in `docs/brain/`, then sweep for the claims it falsified. Bound to §0 / §BRAIN.3 / §66 |
+| `second-brain/SKILL.md` | Ours. BOTH bookends: read the brain before work (so nothing already written down gets re-diagnosed), and record + sweep before calling it done. Bound to §0 / §BRAIN.3 / §66 |
 
 ---
 
@@ -58,7 +58,7 @@ Two consequences:
 
 So the owner's addition reached **zero** future sessions.
 
-**What ships instead:** `knowledge-closeout/SKILL.md` — our own skill, in git, present on every
+**What ships instead:** `second-brain/SKILL.md` — our own skill, in git, present on every
 fresh container, adding to flow-by-flow without touching it. It is also the better home, because a
 third-party generic skill cannot know that this repo's knowledge lives in `docs/brain/` and that §0,
 §BRAIN.3 and §66 each bind a different file.
@@ -69,6 +69,31 @@ distinguished from inside this container. It does not matter for correctness —
 self-contained either way — and it is stated rather than assumed.
 
 ---
+
+## An upstream skill update is NOT visible from inside a running container (2026-09-01)
+
+The owner reported that another agent had updated `flow-by-flow` to include the second-brain habit.
+**This container cannot see that update**, and the distinction matters:
+
+```
+synced/<bucket>/flow-by-flow/SKILL.md   77,739 bytes   mtime 2026-08-30 20:53
+grep -ci "second brain|knowledge capture|docs/brain|Gate 6"   ->   0
+```
+
+Byte-identical to yesterday. The only recently-modified files under `~/.claude/skills/` are the
+container-local modular copies this session edited itself.
+
+**What that does and does not mean.** It does NOT mean the update was not made — it very likely was,
+upstream. It means the synced snapshot appears to be taken when the container starts and is not
+refreshed mid-session, so an update made after startup is invisible here until a new session.
+
+**The consequence to plan around:** an upstream skill edit does not reach a session already running,
+and cannot be confirmed from inside one. That is precisely why the Paige-specific half lives in
+`second-brain/` **in this repository** — a repo file is on disk at checkout, versioned, reviewable,
+and visible to the session that needs it, with no sync timing to reason about.
+
+Do not assert an upstream skill contains something on the strength of having been told it does.
+State what this container can see, and say the rest is unverifiable from here.
 
 ## Why the third-party bundles are still NOT vendored
 
@@ -92,7 +117,7 @@ and commit it verbatim alongside the bundles · obtain written redistribution pe
 it here · decide the risk is acceptable for a private repo and say so on the record · or leave it,
 which now costs almost nothing, because the synced install is complete and our addition is in git.
 
-**Nothing third-party is present in this directory.** `knowledge-closeout/SKILL.md` is our own
+**Nothing third-party is present in this directory.** `second-brain/SKILL.md` is our own
 authorship. (An earlier revision of #708 vendored both MIT bundles with an assembled `LICENSE` and a
 `PROVENANCE.md`; all were removed before merge. Those paths do not exist — do not follow references
 to them.)
@@ -101,6 +126,6 @@ to them.)
 
 ## If you ever gain the ability to push the synced bundle
 
-Mirror `knowledge-closeout/SKILL.md` into it as a new Gate 6 plus a close-out section — do not
+Mirror `second-brain/SKILL.md` into it as a new gate plus a read-first and a close-out section — do not
 re-derive it, and do not fork a second copy of the content (§18). This file stays the one home for
 the *reason*; that skill stays the one home for the *procedure*.
