@@ -1,1 +1,0 @@
-[0m[32mCheck[0m supabase/functions/subagent-email-composer/index.ts

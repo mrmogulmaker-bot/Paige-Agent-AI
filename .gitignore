@@ -53,3 +53,8 @@ scripts/live-drive/harness/tmp/
 # ad-hoc diagnosis. Scratch by convention — never a deliverable, and a blanket
 # `git add -A` swept one into a commit once.
 scripts/live-drive/zz-*
+
+# Deno edge-ratchet evidence — CI artifacts, regenerated per run (77 of these were
+# committed by accident in ec96762ea and only noticed when a local ratchet run
+# reported them as deletions).
+deno-ratchet-evidence/
