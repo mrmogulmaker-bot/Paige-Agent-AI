@@ -735,3 +735,48 @@ the recollection label, dropping the record-wins tiebreak and un-threading the e
 exactly the check built for it red. Deno diagnostics on the handler unchanged at 14.
 
 **Not merged, not deployed.** The authenticated live drive remains UNVERIFIED.
+
+## 2026-09-02 — Two branches built the same approval gate. One survives (merge of `origin/main` into `codex/paige-knowledge-active-tenant-isolation-v2`)
+
+**The clash.** The Campaigns/Pipelines branch and the Chat branch independently built "a mutating
+call runs only if the operator approved THAT call." Merging them naively would have left both
+running, and the weaker one would have been a way round the stronger one.
+
+- **Chat branch (kept):** the server hashes the exact tool call into a **fingerprint**, streams it
+  on the confirm card, and requires the browser to echo it back in the request BODY. The gate runs
+  the call whose fingerprint arrived, or none. A model cannot produce the body.
+- **Pipelines branch (retired):** for one action out of forty-eight, a `confirmedActions` array
+  carrying a token, plus a comparison of the operator's last message against the exact string
+  `"Approved — run it."`
+
+The prose comparison is the specific thing the fingerprint exists to remove: anything that can
+write a message can write that sentence, so a model could approve its own call by quoting the
+operator. Retired with it: `supabase/functions/_shared/pipelineArchiveApproval.ts` and
+`hasExactPipelineArchiveApproval`, whose only remaining caller was its own test.
+
+**What the Pipelines branch got right, and is kept.** A pipeline archive is bound to a
+**server-issued preview of itself** — `pipeline_archive_preview` mints a row in
+`pipeline_archive_confirmations` that is single-use, expiring, and scoped to this tenant and this
+requester, and the archive refuses unless that row exists AND predates the turn. Minting a preview
+and acting on it in one breath is the turn approving itself. The fingerprint does not do this, so
+it survives as a **precondition** that runs before the gate — not as a second approval.
+
+**Where the duplicate-name property went.** The retired helper compared a client-supplied token and
+a `PPL-` reference, so an approval for one pipeline could not archive its same-named duplicate.
+That is now structural instead of compared: the archive reads its target from
+`archiveBinding.pipeline_id`, so a name was never the thing being trusted.
+
+**`pipeline_archive_preview` arrived unclassified**, and `lint:action-risk` refused it — correctly:
+it persists a row, so the verb backstop read it as a write. Exempted in
+`_shared/action-risk.ts` `NON_MUTATING_EXEMPT` with the reason recorded: gating it would demand an
+approval to be shown the consequences of a decision not yet made, which is a second approval in
+front of one act. Catalogue now: 31 ordinary · 24 high · 2 owner-only · 4 exempt · 0 unclassified.
+
+**The standing order this sets (owner, 2026-09-01/02).** Other agents are building platform
+departments that each point at Paige. Where their work and the Chat build disagree about how Paige
+is governed, **the Chat build rules and the clashing code is rewritten onto it** — not carried
+alongside it. Two correct implementations of one gate are worse than one, because the weaker is a
+bypass of the stronger. Call the clash out, rewrite, and record it here.
+
+**Evidence.** tsc 0 · vitest 1673/1673 · 22 CI guards green · vite build clean. Merge commit
+`ed3de6f1a`. Not deployed; the authenticated live drive remains UNVERIFIED.
