@@ -671,3 +671,28 @@ protection — a reader who has to go find the exception will not.
 **How it was caught, honestly:** not by me. The §39 peer-gate caught it — an automated reviewer
 reading the actual diff, which is precisely the layer that exists because the author's own proof
 cannot see what the author already believes.
+
+**It then happened TWICE MORE, in the fix for it.** The corrected text — written while composing
+this very lesson — still carried two overstatements, both caught on the next review round:
+
+1. *"Every money-spent exit writes an audit row"*, filed under **Enforced**. `writePurchaseAudit`
+   is non-blocking **by design** — its own comment says a failed audit must not turn a completed
+   purchase into a reported failure — so a failed insert is logged and nothing else changes. A
+   completed charge with no audit row is reachable. The exit *attempts* the write.
+2. *"No purchase without a whole, positive `monthly_cents`"* and *"the server re-verifies"*, both
+   stated categorically. They bind the **agent lane only**. Solo `PhoneSetupPanel` and legacy
+   `NumbersTab` post `{ phone_number }` with no amount, and the server's check is guarded on
+   `if (agreedMonthlyCents !== null)` — skipped entirely for them.
+
+**That recurrence is the actual lesson, and it is worth more than the original.** Knowing the rule
+did not prevent breaking it three times in one wave, because the failure is not ignorance — it is
+that a protection you built *feels* total from the inside. The author remembers the guard they
+wrote and not the branch that skips it. So the rule needs a mechanical form, not a principle:
+
+> Before writing any protective sentence, find the code that makes it true, and then find **every
+> caller that does not go through it**. If you have not enumerated the callers, write "in the
+> `<lane>` lane" instead of a bare claim — and if you cannot name the lane, you do not yet know
+> what you are asserting.
+
+That is §37's producer inventory pointed at prose instead of an endpoint, and it applies for the
+same reason: what breaks a categorical claim is always the caller nobody listed.

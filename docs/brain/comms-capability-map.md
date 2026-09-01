@@ -121,24 +121,37 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   number bought this way still has no inbound voice route (see the gap below). The panel still
   renders an honest unavailable — `needs_config` — when the workspace cannot buy yet; that is a
   configured refusal, not the old inert form.
-- **What actually protects the money, separated by how strong each guarantee is.** Read this
-  distinction before quoting any of it as a safety property.
-  - **Enforced in code.** No purchase happens without a whole, positive `monthly_cents` —
-    `paige-ai-chat` refuses `comms_buy_number` outright, and that guard sits *ahead of* the
-    autonomy gate, so it binds in every lane including `auto`. `comms-purchase-number` then
-    re-verifies the amount against `platform_number_pricing` and returns `price_changed` /
-    `price_unverifiable` rather than spending. Every exit where money may already have left
-    writes an audit row.
+- **What actually protects the money. There are TWO purchase lanes and they are not equally
+  protected — do not quote a protection without naming its lane.** The server branches on whether
+  the caller sent an agreed amount (`if (agreedMonthlyCents !== null)`), and only one lane does.
+
+  | | **Agent lane** — `comms_buy_number` | **UI lanes** — Solo `PhoneSetupPanel`, legacy `NumbersTab` |
+  |---|---|---|
+  | Sends an agreed price | yes, required | **no** — both post `{ phone_number }` only |
+  | Quote guard | **enforced** — `paige-ai-chat` refuses without a whole, positive `monthly_cents`, and the guard sits *ahead of* the autonomy gate, so it binds at `auto` too | n/a |
+  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals, checked *before* `purchaseNumber` | **no** — the branch is skipped entirely |
+  | Human sees the amount before buying | at `confirm`, in the confirmation; not at `auto` | yes — price shown beside Buy, deliberate two-step |
+  | What can go wrong | a workspace on `auto` buys with no confirmation | **a price change between search and buy is not caught** — the UI shows the figure `comms-search-numbers` read, then buys without re-reading it |
+
+  The UI lanes' behaviour is deliberate and pre-existing — the function comments it: *"the
+  marketplace UI does not [send an amount] … so its behaviour is byte-for-byte what it was."*
+  It is recorded here as a **known gap**, not as a protection.
+
   - **Configurable, and it defaults safe.** `resolveToolAutonomy` defaults to `confirm` — the
-    comment reads *"safe default — never assume autopilot"* — so out of the box Paige proposes,
-    names the amount, and waits for an explicit yes. But `comms_buy_number` is a registered
-    switchable tool: **a workspace that sets it to `auto` gets a validly-quoted purchase executed
-    with no confirmation** (`index.ts` ~5977: *"autoMode === 'auto' … fall through to execute"*).
-    `off` disables it entirely. So the price check is a guarantee; the confirmation is a default.
+    comment reads *"safe default — never assume autopilot"*. But `comms_buy_number` is a
+    registered switchable tool: **a workspace that sets it to `auto` gets a validly-quoted
+    purchase executed with no confirmation** (`index.ts` ~5977: *"autoMode === 'auto' … fall
+    through to execute"*). `off` disables it. The price check is a guarantee **in the agent
+    lane**; the confirmation is a default.
   - **Prompt-level only — NOT enforced.** "A refusal is final for that number, pick another
     rather than retrying the same one" and "if it was bought but not recorded, do not buy a
     replacement" live in the tool *description*. They steer the model; nothing rejects a retry.
-  - **The Solo UI path** is always the deliberate two-step, independent of all of the above.
+  - **Auditing is BEST-EFFORT, not guaranteed.** Every exit where money may already have left
+    *attempts* an `audit_logs` write, and `writePurchaseAudit` is non-blocking **by design** —
+    its own comment: *"A failed audit write must not turn a completed purchase into a reported
+    failure — the number is bought and the charge has started either way."* A failed insert is
+    logged to `console.error` and nothing else changes. **So a completed charge with no audit
+    row is reachable**, and reconciliation cannot assume the table is complete.
 - **`NumbersTab.tsx` (17 KB)** stays the operator-side surface on the legacy route.
 - `import_tenant_phone_number` — a correct, tenant-pinned RPC with **zero callers anywhere**.
 - `provision-tenant-twilio` — deployed, operator-gated, **zero callers**, and carries an `adopt`
