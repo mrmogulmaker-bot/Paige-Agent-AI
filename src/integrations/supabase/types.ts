@@ -21471,6 +21471,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      upsert_contact: {
+        Args: {
+          p_actor_user_id?: string
+          p_channel?: string
+          p_contact_id?: string
+          p_patch: Json
+          p_tenant_id?: string
+        }
+        Returns: string
+      }
       update_profile_ssn: {
         Args: {
           _date_of_birth: string
