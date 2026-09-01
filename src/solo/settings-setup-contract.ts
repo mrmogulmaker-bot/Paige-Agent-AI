@@ -17,6 +17,18 @@ export const SOLO_SETUP_TEXT_FIELDS = [
   "industry",
   "naicsCode",
   "sicCode",
+  "entityType",
+  "stateOfFormation",
+  "businessRegistrationIdentifier",
+  "regionsOfOperation",
+  "registeredStreet",
+  "registeredStreetSecondary",
+  "registeredCity",
+  "registeredRegion",
+  "registeredPostalCode",
+  "registeredIsoCountry",
+  "authorizedRepresentativePhone",
+  "authorizedRepresentativeJobPosition",
   "offers",
   "deliveryModel",
   "idealCustomer",
@@ -35,8 +47,13 @@ export const SOLO_SETUP_TEXT_FIELDS = [
 export type SoloSetupTextField = (typeof SOLO_SETUP_TEXT_FIELDS)[number];
 
 export type SoloSetupBrief = Record<SoloSetupTextField, string> & {
+  /** Write-only. The server removes this before saving the business brief and stores it in Vault. */
+  businessRegistrationNumber: string;
+  /** Read-only masked state returned by the Setup identity seam. */
+  businessRegistrationNumberLast4: string;
   representativeUserIds: string[];
-  provenance: Partial<Record<SoloSetupTextField | "representatives", SetupFactProvenance>>;
+  authorizedRepresentativeUserId: string;
+  provenance: Partial<Record<SoloSetupTextField | "representatives" | "authorizedRepresentative", SetupFactProvenance>>;
   updatedAt?: string;
 };
 
@@ -57,6 +74,20 @@ export const EMPTY_SOLO_SETUP_BRIEF: SoloSetupBrief = {
   industry: "",
   naicsCode: "",
   sicCode: "",
+  entityType: "",
+  stateOfFormation: "",
+  businessRegistrationIdentifier: "EIN",
+  businessRegistrationNumber: "",
+  businessRegistrationNumberLast4: "",
+  regionsOfOperation: "USA_AND_CANADA",
+  registeredStreet: "",
+  registeredStreetSecondary: "",
+  registeredCity: "",
+  registeredRegion: "",
+  registeredPostalCode: "",
+  registeredIsoCountry: "US",
+  authorizedRepresentativePhone: "",
+  authorizedRepresentativeJobPosition: "",
   offers: "",
   deliveryModel: "",
   idealCustomer: "",
@@ -71,6 +102,7 @@ export const EMPTY_SOLO_SETUP_BRIEF: SoloSetupBrief = {
   operatingPreferences: "",
   doNotAssume: "",
   representativeUserIds: [],
+  authorizedRepresentativeUserId: "",
   provenance: {},
 };
 
@@ -84,7 +116,7 @@ export function cleanSoloSetupBrief(value: unknown, fallbackName = ""): SoloSetu
   const brief = { ...EMPTY_SOLO_SETUP_BRIEF, provenance: {} } as SoloSetupBrief;
   for (const field of SOLO_SETUP_TEXT_FIELDS) {
     const raw = source[field];
-    brief[field] = typeof raw === "string" ? raw.trim() : "";
+    brief[field] = typeof raw === "string" ? raw.trim() : EMPTY_SOLO_SETUP_BRIEF[field];
     const p = provenanceSource[field];
     if (isRecord(p) && ["owner_confirmed", "connection_sourced", "needs_confirmation"].includes(String(p.source))) {
       brief.provenance[field] = {
@@ -97,23 +129,32 @@ export function cleanSoloSetupBrief(value: unknown, fallbackName = ""): SoloSetu
     }
   }
   if (!brief.publicName) brief.publicName = fallbackName.trim();
+  brief.businessRegistrationNumber = "";
+  brief.businessRegistrationNumberLast4 = typeof source.businessRegistrationNumberLast4 === "string"
+    ? source.businessRegistrationNumberLast4.trim().slice(-4)
+    : "";
   brief.representativeUserIds = Array.isArray(source.representativeUserIds)
     ? Array.from(new Set(source.representativeUserIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim())).map((id) => id.trim())))
     : [];
-  const representativeProvenance = provenanceSource.representatives;
-  if (isRecord(representativeProvenance) && ["owner_confirmed", "needs_confirmation"].includes(String(representativeProvenance.source))) {
-    brief.provenance.representatives = {
-      source: representativeProvenance.source as SetupFactSource,
-      confidence: representativeProvenance.confidence === "confirmed" ? "confirmed" : "unknown",
-      ...(typeof representativeProvenance.confirmedAt === "string" ? { confirmedAt: representativeProvenance.confirmedAt } : {}),
-    };
+  brief.authorizedRepresentativeUserId = typeof source.authorizedRepresentativeUserId === "string"
+    ? source.authorizedRepresentativeUserId.trim()
+    : "";
+  for (const key of ["representatives", "authorizedRepresentative"] as const) {
+    const p = provenanceSource[key];
+    if (isRecord(p) && ["owner_confirmed", "needs_confirmation"].includes(String(p.source))) {
+      brief.provenance[key] = {
+        source: p.source as SetupFactSource,
+        confidence: p.confidence === "confirmed" ? "confirmed" : "unknown",
+        ...(typeof p.confirmedAt === "string" ? { confirmedAt: p.confirmedAt } : {}),
+      };
+    }
   }
   if (typeof source.updatedAt === "string") brief.updatedAt = source.updatedAt;
   return brief;
 }
 
-export function validateSoloSetupBrief(brief: SoloSetupBrief): Partial<Record<SoloSetupTextField, string>> {
-  const errors: Partial<Record<SoloSetupTextField, string>> = {};
+export function validateSoloSetupBrief(brief: SoloSetupBrief): Partial<Record<SoloSetupTextField | "businessRegistrationNumber" | "authorizedRepresentativeUserId", string>> {
+  const errors: Partial<Record<SoloSetupTextField | "businessRegistrationNumber" | "authorizedRepresentativeUserId", string>> = {};
   if (![brief.legalName, brief.publicName, brief.dbaName].some((value) => value.trim())) {
     errors.publicName = "Add at least one legal, public, or doing-business-as business name.";
   }
@@ -131,17 +172,37 @@ export function validateSoloSetupBrief(brief: SoloSetupBrief): Partial<Record<So
   if (brief.sicCode.trim() && !/^\d{4}$/.test(brief.sicCode.trim())) {
     errors.sicCode = "SIC codes use 4 digits. Leave blank if the owner has not confirmed one.";
   }
+  if (brief.businessRegistrationIdentifier === "EIN" && (brief.businessRegistrationNumber ?? "").trim()) {
+    const digits = (brief.businessRegistrationNumber ?? "").replace(/\D/g, "");
+    if (!/^\d{9}$/.test(digits)) errors.businessRegistrationNumber = "An EIN must contain exactly 9 digits.";
+  }
+  if ((brief.authorizedRepresentativePhone ?? "").trim() && !/^\+[1-9]\d{7,14}$/.test((brief.authorizedRepresentativePhone ?? "").trim())) {
+    errors.authorizedRepresentativePhone = "Use a complete E.164 phone number, including + and country code.";
+  }
+  if ((brief.registeredRegion ?? "").trim() && (brief.registeredRegion ?? "").trim().length !== 2) {
+    errors.registeredRegion = "Use the two-letter state or province abbreviation.";
+  }
+  if ((brief.registeredIsoCountry ?? "").trim() && !/^[A-Za-z]{2}$/.test((brief.registeredIsoCountry ?? "").trim())) {
+    errors.registeredIsoCountry = "Use a two-letter ISO country code.";
+  }
+  if (brief.authorizedRepresentativeUserId && !(brief.representativeUserIds ?? []).includes(brief.authorizedRepresentativeUserId)) {
+    errors.authorizedRepresentativeUserId = "Choose an authorized representative from the confirmed business representatives.";
+  }
   return errors;
 }
 
 export function prepareOwnerConfirmedBrief(brief: SoloSetupBrief, confirmedAt = new Date().toISOString()): SoloSetupBrief {
   const cleaned = cleanSoloSetupBrief(brief);
+  cleaned.businessRegistrationNumber = (brief.businessRegistrationNumber ?? "").trim();
   const provenance: SoloSetupBrief["provenance"] = {};
   for (const field of SOLO_SETUP_TEXT_FIELDS) {
     if (cleaned[field]) provenance[field] = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
   }
   if (cleaned.representativeUserIds.length) {
     provenance.representatives = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
+  }
+  if (cleaned.authorizedRepresentativeUserId) {
+    provenance.authorizedRepresentative = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
   }
   return { ...cleaned, provenance };
 }
@@ -155,6 +216,10 @@ export function applySetupProposal(current: SoloSetupBrief, proposal: SoloSetupP
   if (Array.isArray(proposal.patch.representativeUserIds)) {
     next.representativeUserIds = proposal.patch.representativeUserIds;
   }
+  // PAIGE proposals never carry the full registration number or choose the legal
+  // representative. Those are direct owner-confirmation fields.
+  next.businessRegistrationNumber = current.businessRegistrationNumber;
+  next.authorizedRepresentativeUserId = current.authorizedRepresentativeUserId;
   return cleanSoloSetupBrief(next);
 }
 

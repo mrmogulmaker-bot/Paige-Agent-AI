@@ -1440,3 +1440,12 @@ Grounded from live prod ref `xygzykjyynhzqytbqnzu` on 2026-08-02 via `pg_get_fun
 and `information_schema`. Update this doc when a resolver body changes on prod, when the six
 tiers are extended by owner ruling, or when a logged hazard (#589, profile-key drift) is fixed
 — re-quote the live body, never edit the resolution order from memory.
+
+## Setup legal sender identity — draft placement (2026-09-01)
+
+The editable surface added by this draft is Solo Setup only. It resolves the active tenant on the
+server, synchronizes owner-confirmed legal sender facts into that tenant's canonical legal profile,
+and exposes only masked registration-number state on reload. This does **not** make the form reachable
+from Agency, sub-account, Enterprise, pure-client, or platform-operator surfaces. Those tiers may
+later consume or administer the same canonical record only through a separately approved flow.
+The platform operator's master-account Primary Customer Profile is distinct from every tenant's subaccount Secondary Customer Profile.

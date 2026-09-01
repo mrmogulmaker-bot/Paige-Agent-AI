@@ -416,3 +416,13 @@ A name here proves the edge code references it; it does not prove the secret is 
 *Regenerate the verified rows whenever infra changes; any config-touching PR updates this file in the
 same commit (§BRAIN.3). Never paste a secret value — if you need to prove a secret is set, cite the
 deploy/CI check, not the value.*
+
+### A2P legal identity ownership — draft 2026-09-01
+
+- Tenant legal sender data is owner-confirmed in Setup and canonical in `tenant_legal_profile`.
+- Full EIN/tax registration numbers are write-only from the browser and stored in Supabase Vault;
+  browser reads receive only the last four digits.
+- Tenant Customer Profile, Trust Product, Brand, Campaign, and Messaging Service SIDs are
+  server-owned fields on the tenant's A2P registration record.
+- The platform operator's Twilio Primary Customer Profile belongs to the master account and must not
+  be copied into tenant subaccounts. No SID or secret value belongs in this registry.
