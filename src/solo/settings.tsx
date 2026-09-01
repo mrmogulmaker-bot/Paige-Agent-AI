@@ -1050,7 +1050,9 @@ function PhoneSetupPanel({ numbers, onPurchased }: {
     const price = priceCents === null ? "an unlisted monthly price" : `$${(priceCents / 100).toFixed(2)} a month`;
     if (!window.confirm(`Buy ${phoneNumber} for ${price}?\n\nThis charges your workspace and the number becomes yours immediately.`)) return;
     setBuying(phoneNumber); setBought(null);
-    const res = await numbers.purchase(phoneNumber);
+    // The same figure the confirm just named. Anything else would be agreeing to one
+    // price and sending another.
+    const res = await numbers.purchase(phoneNumber, priceCents);
     setBuying(null);
     if (res.ok) {
       setBought({ tone: "ok", message: `${phoneNumber} is yours. It's on this business now.` });

@@ -267,10 +267,26 @@ export function useSoloNumbers(): SoloNumbersData {
     }
   }, []);
 
-  const purchase = useCallback(async (phoneNumber: string) => {
+  /**
+   * `agreedMonthlyCents` is the price the person was SHOWN and clicked yes to — not a
+   * hint. The server re-reads `platform_number_pricing` and refuses with `price_changed`
+   * when it no longer matches, so sending it is what makes "you agreed to $1.20" mean
+   * anything. Omitting it (which this lane did) skipped that check entirely: the guard is
+   * written `if (agreedMonthlyCents !== null)`, so a price that moved between the search
+   * and the click was simply charged.
+   *
+   * `null` when the operator has not priced this number type. The check is then skipped,
+   * exactly as before — there is no amount to hold anyone to.
+   */
+  const purchase = useCallback(async (phoneNumber: string, agreedMonthlyCents: number | null = null) => {
     try {
       const { data, error: fnError } = await supabase.functions.invoke("comms-purchase-number", {
-        body: { phone_number: phoneNumber },
+        body: {
+          phone_number: phoneNumber,
+          ...(typeof agreedMonthlyCents === "number" && Number.isFinite(agreedMonthlyCents)
+            ? { agreed_monthly_cents: Math.round(agreedMonthlyCents) }
+            : {}),
+        },
       });
       const rec = asRecord(data);
       // Both shapes checked. A purchase that reports success when the provider refused

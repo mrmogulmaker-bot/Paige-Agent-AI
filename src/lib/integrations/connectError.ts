@@ -99,6 +99,13 @@ const COMMS_COPY: Record<string, string> = {
     "Messaging isn’t finished being set up for this business yet, so a number can’t be attached safely.",
   number_bought_but_record_failed:
     "The number was bought and you are being billed for it, but we couldn’t attach it to this business. Don’t buy another — tell us and we’ll attach this one.",
+  // Only reachable once a lane SENDS the amount it displayed. Both are the server
+  // refusing to charge a price the person was not shown — the good outcome, but only
+  // if the copy says what happened, or "buy" just looks broken.
+  price_changed:
+    "That number’s price changed while you were looking at it, so nothing was bought. Search again to see what it costs now.",
+  price_unverifiable:
+    "We couldn’t confirm this number’s price, so nothing was bought. Try again shortly — no charge was made.",
   phone_number_required: "Pick a number from the search results first.",
   LEGAL_PROFILE_REQUIRED:
     "Carriers need your legal business name before a registration can be prepared. Add it in Setup, then come back.",
