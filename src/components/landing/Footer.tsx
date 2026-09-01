@@ -80,11 +80,6 @@ export function Footer() {
             brings client management, workflow automation, scheduling, and an AI assistant into a
             single workspace so teams can run their business more efficiently.
           </p>
-          <p className="text-[11px] text-primary-foreground/50 leading-relaxed max-w-4xl">
-            Paige Agent AI Inc. is a Delaware corporation operating under license from
-            Aedis Brands LLC, a wholly-owned subsidiary of Givalli Heritage Holdings Inc.
-            (Delaware).
-          </p>
           <p className="text-sm text-center opacity-60">
             © {year} Paige Agent AI Inc. All rights reserved.
           </p>
