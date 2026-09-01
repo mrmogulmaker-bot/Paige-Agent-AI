@@ -144,7 +144,7 @@ export function useSoloA2P(): SoloA2PData {
           .select("brand_status, campaign_status, status, brand_sid, campaign_sid, messaging_service_sid, use_case, campaign_description, sample_messages, optin_flow, optin_message, optout_message, help_message, submitted_at, approved_at")
           .eq("tenant_id", tenantId).limit(1).maybeSingle(),
         untyped.from("tenant_legal_profile")
-          .select("legal_business_name, website")
+          .select("legal_business_name, website_url")
           .eq("tenant_id", tenantId).limit(1).maybeSingle(),
         untyped.rpc("is_current_user_tenant_admin"),
       ]);
@@ -180,7 +180,7 @@ export function useSoloA2P(): SoloA2PData {
       // therefore never fill them. On a switch the stored value WINS outright, for the
       // same reason as above.
       if (str(lp.legal_business_name)) setLegal((prev) => (switched ? str(lp.legal_business_name) : prev || str(lp.legal_business_name)));
-      if (str(lp.website)) setWebsite((prev) => (switched ? str(lp.website) : prev || str(lp.website)));
+      if (str(lp.website_url)) setWebsite((prev) => (switched ? str(lp.website_url) : prev || str(lp.website_url)));
       setCanManage(adminRes.data === true || isStaff); // fail-closed on both halves
     } catch (e) {
       if (!gate.current.isCurrent(token)) return;

@@ -60,6 +60,8 @@ import "@/solo/settings.css";
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") === "light" ? "light" : "dark";
+const secondContext = params.get("tenant") === "second";
+const harnessAccountName = secondContext ? "Second harness workspace" : "Harness workspace";
 // Opt-in reproduction of the pre-#681 clipped host, so the reachability checks can
 // be shown to fail when the scroll owner is removed.
 const clipped = params.get("host") === "clipped";
@@ -121,7 +123,7 @@ function Shell() {
   } : undefined;
 
   return <TenantCommandCenterShell
-    accountName="Harness workspace"
+    accountName={harnessAccountName}
     accountType="standalone"
     userRole="admin"
     contextualNavigation={contextualNavigation}

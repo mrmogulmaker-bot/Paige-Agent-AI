@@ -16,6 +16,12 @@ type SetupRow = {
   pending_proposal?: unknown;
   primary_business_email?: string | null;
   can_edit?: boolean;
+  business_registration_number_last_4?: string | null;
+};
+
+type SaveRow = {
+  business_brief?: unknown;
+  businessRegistrationNumberLast4?: string | null;
 };
 
 type IdentityRow = { default_email_sender?: string | null };
@@ -26,6 +32,16 @@ function proposalOf(value: unknown): SoloSetupProposal | null {
   if (typeof raw.id !== "string" || typeof raw.reason !== "string" || typeof raw.proposedAt !== "string") return null;
   if (!raw.patch || typeof raw.patch !== "object" || Array.isArray(raw.patch)) return null;
   return { id: raw.id, reason: raw.reason, proposedAt: raw.proposedAt, patch: raw.patch as Partial<SoloSetupBrief> };
+}
+
+function withRegistrationLast4(value: unknown, last4: unknown): unknown {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    ...source,
+    businessRegistrationNumberLast4: typeof last4 === "string" ? last4 : "",
+  };
 }
 
 export type SoloSetupBriefData = {
@@ -73,9 +89,9 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
     }
     try {
       const [briefResult, identityResult] = await Promise.all([
-        // New migration-backed RPC; generated types are refreshed after production apply.
+        // Migration-backed canonical Setup + legal-sender read. Generated types refresh after apply.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).rpc("get_solo_business_brief"),
+        (supabase as any).rpc("get_solo_setup_identity"),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).rpc("resolve_tenant_domain_identity"),
       ]);
@@ -84,7 +100,10 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
       const row = (Array.isArray(briefResult.data) ? briefResult.data[0] : briefResult.data) as SetupRow | null;
       const identity = (Array.isArray(identityResult.data) ? identityResult.data[0] : identityResult.data) as IdentityRow | null;
       if (!row || row.tenant_id !== activeTenantId) throw new Error("The active workspace could not be resolved safely.");
-      setBrief(cleanSoloSetupBrief(row.business_brief, row.tenant_name ?? ""));
+      setBrief(cleanSoloSetupBrief(
+        withRegistrationLast4(row.business_brief, row.business_registration_number_last_4),
+        row.tenant_name ?? "",
+      ));
       setPendingProposal(proposalOf(row.pending_proposal));
       setResolvedTenantId(row.tenant_id ?? null);
       setCanEdit(row.can_edit === true);
@@ -111,14 +130,19 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
     if (!canEditCurrentTenant) return { ok: false, error: "This workspace has not resolved safely for editing." };
     setSaving(true);
     try {
+      // Atomic seam: general business brief + legal profile + vaulted registration number.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: saveError } = await (supabase as any).rpc("save_solo_business_brief", {
+      const { data, error: saveError } = await (supabase as any).rpc("save_solo_setup_identity", {
         _brief: next,
         _expected_updated_at: brief.updatedAt ?? null,
         _proposal_id: proposalId,
       });
       if (saveError) throw saveError;
-      setBrief(cleanSoloSetupBrief(data));
+      const row = (data ?? {}) as SaveRow;
+      setBrief(cleanSoloSetupBrief(withRegistrationLast4(
+        row.business_brief,
+        row.businessRegistrationNumberLast4,
+      )));
       if (proposalId) setPendingProposal(null);
       return { ok: true };
     } catch (caught) {

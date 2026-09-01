@@ -119,4 +119,25 @@ describe("Solo Setup owner flow", () => {
 
     await act(async () => root.unmount());
   });
+
+  it("renders carrier-safe legal identity controls", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<MemoryRouter><SoloSetupView account="1971670" /></MemoryRouter>));
+
+    expect(host.textContent).toContain("The legal sender carriers will verify");
+    expect(host.textContent).toContain("Full registration numbers are sealed");
+    await act(async () => {
+      Array.from(host.querySelectorAll("button")).find((node) => node.textContent?.trim() === "Edit brief")?.click();
+    });
+
+    expect(host.querySelector<HTMLInputElement>('#setup-businessRegistrationNumber')?.type).toBe("password");
+    expect(host.querySelectorAll('#setup-entityType option')).toHaveLength(6);
+    expect(host.querySelectorAll('#setup-businessRegistrationIdentifier option')).toHaveLength(10);
+    expect(host.querySelectorAll('#setup-authorizedRepresentativeJobPosition option')).toHaveLength(8);
+    expect(host.querySelector('#setup-authorized-representative')).toBeTruthy();
+
+    await act(async () => root.unmount());
+  });
 });

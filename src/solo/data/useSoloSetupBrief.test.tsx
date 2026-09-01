@@ -22,7 +22,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn((name: string) => {
       if (name === "resolve_tenant_domain_identity") return Promise.resolve({ data: null, error: null });
-      if (name === "get_solo_business_brief") {
+      if (name === "get_solo_setup_identity") {
         const tenantId = testState.tenantId;
         return new Promise((resolve) => testState.pending.push({ tenantId, resolve }));
       }

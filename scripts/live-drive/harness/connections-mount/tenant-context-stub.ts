@@ -4,7 +4,10 @@
  * the SHIPPED surface and its SHIPPED data hook under measurement while the one
  * thing a harness genuinely cannot supply is answered.
  */
-const HARNESS_TENANT = { id: "harness-tenant", account_number: "1971670", name: "Harness workspace" };
+const SECOND_CONTEXT = new URLSearchParams(window.location.search).get("tenant") === "second";
+const HARNESS_TENANT = SECOND_CONTEXT
+  ? { id: "harness-tenant-second", account_number: "2072681", name: "Second harness workspace" }
+  : { id: "harness-tenant", account_number: "1971670", name: "Harness workspace" };
 
 export function useTenantContext() {
   return {
