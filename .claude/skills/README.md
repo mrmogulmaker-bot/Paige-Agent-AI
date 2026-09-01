@@ -130,18 +130,3 @@ Mirror `second-brain/SKILL.md` into it as a new gate plus a read-first and a clo
 re-derive it, and do not fork a second copy of the content (§18). This file stays the one home for
 the *reason*; that skill stays the one home for the *procedure*.
 
-## The paired read step — `knowledge-first`
-
-`knowledge-closeout` makes the brain true. Nothing made anyone read it, so a session could
-re-diagnose a system the brain already documents and then dutifully record what it rediscovered —
-the cost of the record with none of the return.
-
-`.claude/skills/knowledge-first/SKILL.md` is the other half, added 2026-09-02 at the owner's
-request: read `docs/brain/` at the start of **inspection**, before code, then let the code decide
-and correct the record in the same change. It is deliberately not the very first step — the owner's
-own framing was *"maybe not the very first step, but one of our first steps"* — and it sits where
-flow-by-flow already says *"inspect before asking."*
-
-It is repo-local and our own content, like `knowledge-closeout`: it adds to flow-by-flow rather
-than modifying it, so nothing third-party is vendored.
-

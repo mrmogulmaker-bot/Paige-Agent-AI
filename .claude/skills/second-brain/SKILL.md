@@ -31,12 +31,24 @@ Paige-specific half. It is our own content and adds to flow-by-flow rather than 
 | `docs/doctrine/tier-matrix.md` | Anything whose visibility or gating differs per account type |
 | `docs/brain/decision-log.md` | Before re-opening anything that smells like a settled decision |
 
+**Why this is a STEP and not a habit.** `CLAUDE.md` §BRAIN.1 already requires reading
+`docs/brain/README.md` at **session** start. That is a different trigger: delivery work runs per
+**task**, and one session works many. The fourth task of a long session is exactly where an
+assumption formed during the first gets acted on, and exactly where nothing fires.
+
+**Read it even when you are certain.** Certainty carried from earlier in the session is precisely
+the state the record exists to check, and precisely the state in which nobody opens it.
+
 **Answer from the record, never from memory.** "Do we have X? / is Y built? / where does Z live? /
 what did we decide about W?" all resolve to a file, then to that file's cited source. Asserting a
 capability exists — or doesn't — without checking is a §13 honesty failure, not a small slip.
 
 **A settled decision stays settled.** If the decision log already records a ruling, do not re-surface
 it as an open question. Raise it only with new evidence, and say what the evidence is.
+
+**A silent brain is a finding too.** If the record has nothing on the area, say so explicitly —
+it usually means STEP 3 has real work to do at the end of this task. "The brain is silent here" and
+"I did not look" are different claims, and only one of them can be checked.
 
 **When the brain and the code disagree, the CODE wins** — and the disagreement is itself a finding.
 Fix the record in the same change (§13 correction), don't quietly work around it.
