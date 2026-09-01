@@ -169,3 +169,11 @@ RLS-scoped to `current_user_tenant_id()`. §37 producer inventory required befor
 star — every seam is OS surface area) · §51/§53 (tier + operator role gating) · §52 (already-briefed
 operator context) · §60 (declared tier availability) · §BRAIN.1–.3 (second-brain discipline) ·
 `cd-pack-port-playbook.md` (how a tier surface gets ported in the first place).
+
+## Solo Team context — narrow contract, Gate 2 pending
+
+`get_paige_team_context()` is the Team-owned hydration seam for the authenticated speaker's active tenant. It carries confirmed active roster identity, existing enforced role, informational job title/responsibilities, and—only for an existing Team owner/admin—the Team invitation lifecycle without a token. A missing stored name retains the verified account email so PAIGE can identify the real teammate without inventing a name.
+
+PAIGE may use this reference context to identify the right teammate, draft or prepare an invitation, recommend a role change, and prepare the governed Team action. She may not send an invitation, change a role, grant access, or take an external action from context alone; the existing Team authorization and confirmation flow remains the owning write path.
+
+There is no cross-domain Hidden/View/Manage profile in this contract. Clients, Campaigns, Analytics, Connections, Integrations, Billing, Mind, Trust Compass, Systems Check, Rail, and the canonical Solo shell are unchanged.
