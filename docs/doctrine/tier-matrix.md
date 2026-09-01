@@ -1035,6 +1035,9 @@ five of six surfaces without any ledger row noticing.
 | Reads client memory for their OWN tenant's clients | ✓ | ✓ (admin) | ✓ (admin) | ✓ (admin) | ✓ (admin) | own only | 403 |
 | Reads ANOTHER tenant's client memory | ✓ (operator) | — | — | — | — | — | 403 |
 | Writes client memory into another tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
+| Files a note onto their OWN client (`crm_add_note`) | ✓ | ✓ (admin/coach) | ✓ (admin/coach) | ✓ (admin/coach) | ✓ (admin/coach) | — | 403 |
+| Files a note onto ANOTHER tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
+| A client can read notes filed about them | — | — | — | — | — | — | 403 |
 
 **The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
 confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,

@@ -5405,6 +5405,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "crm_add_note",
+              description: "Admin/coach only. File a note onto a client's record — the notes panel their team reads, not the activity timeline. Use it when the operator tells you something worth keeping about a client ('note that Dana wants to close before year end', 'she's moving offices in March'), or dictates one. You must know WHICH client: resolve them with crm_search_contacts first and use that contact id — never guess, and never file against the client merely because they're the one in focus if the operator named someone else. The note is STAFF-ONLY: the client cannot see it, and you should say so plainly rather than implying they might. Propose it first and only file it once the operator says yes, unless the workspace set this to auto.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "The client's contact id (from crm_search_contacts). This is the routing decision — get it right." },
+                  body: { type: "string", description: "The note, in the operator's own words where you have them. Do not editorialise or add conclusions they did not draw." },
+                  tags: { type: "array", items: { type: "string" }, description: "Optional short tags." },
+                  pinned: { type: "boolean", description: "Pin it to the top of their notes. Only when the operator asks." }
+                },
+                required: ["contact_id", "body"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -6392,6 +6409,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_assign_contact: "assigning a contact",
       crm_create_task: "creating a task",
       crm_log_activity: "logging an activity",
+    crm_add_note: "adding a note to a client's record",
       pipeline_create: "creating a pipeline",
       pipeline_add_stage: "adding a pipeline stage",
       deal_create: "adding a deal",
@@ -6457,6 +6475,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           const labels: Record<string, string> = { name: "business name", website: "website", address: "address", phone: "phone", legal_entity_name: "legal entity", logo_url: "logo", primary_color: "primary color", accent_color: "accent color", from_name: "sending name", support_email: "support email" };
           const fields = Object.keys(labels).filter((k) => typeof a?.[k] === "string" && a[k].trim());
           return `Save your business profile${fields.length ? ` (${fields.map((k) => labels[k]).join(", ")})` : ""}.`;
+        }
+        case "crm_add_note": {
+          const preview = String(a?.body ?? "").replace(/\s+/g, " ").trim().slice(0, 90);
+          return `Add a note to this client's record: "${preview}${String(a?.body ?? "").length > 90 ? "…" : ""}". Only your team sees it — the client will not.`;
         }
         case "crm_update_pipeline_stage":
           return `Move the client to stage "${a?.status || ""}".`;
@@ -7798,6 +7820,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "zapier_list_actions" ||
           tc.function.name === "zapier_run_action" ||
           tc.function.name === "crm_log_activity" ||
+          tc.function.name === "crm_add_note" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
           tc.function.name === "crm_list_deals" ||
@@ -8220,6 +8243,57 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: false, error: "Couldn't draft a pipeline from that — try describing the program in a bit more detail." };
               } else {
                 result = { success: true, suggestion: sug };
+              }
+            } else if (tc.function.name === "crm_add_note") {
+              // §9 — THE DESTINATION IS RESOLVED, NEVER TRUSTED. `contact_id` is a routing
+              // decision a MODEL made, so it is checked against the caller's own tenant before
+              // anything is written. The database enforces the same rule (the insert policy in
+              // 20261031000000 requires the contact to be ours), but a refusal there arrives as a
+              // bare 42501 the operator cannot act on; resolving here means we can say WHICH part
+              // was wrong, in words, instead of "permission denied".
+              const noteContactId = typeof args.contact_id === "string" ? args.contact_id.trim() : "";
+              if (!UUIDISH.test(noteContactId)) {
+                result = { success: false, error: "I need the client's contact id to file this — look them up first and use that id." };
+              } else if (!crmTenantId) {
+                result = { success: false, error: "I can't tell which workspace this note belongs to, so I won't file it anywhere." };
+              } else {
+                // The CALLER's client, not the service role. RLS refuses a client this person
+                // cannot see at all, and the explicit tenant filter refuses one they CAN see
+                // through a non-tenant policy (a coach assignment reaches across workspaces —
+                // "visible to me" is not "mine"). Either layer alone is insufficient here.
+                const { data: noteClient, error: noteClientErr } = await supabaseClient
+                  .from("clients").select("id, first_name, last_name")
+                  .eq("id", noteContactId).eq("tenant_id", crmTenantId).maybeSingle();
+                if (noteClientErr) {
+                  result = { success: false, error: "I couldn't confirm which client that is, so I haven't filed the note." };
+                } else if (!noteClient) {
+                  // Deliberately the same answer whether the client belongs to another tenant or
+                  // does not exist: distinguishing them tells a caller whether an id is real
+                  // somewhere else, which is a probe (§9).
+                  result = { success: false, error: "That client isn't in this workspace, so I can't file a note on them. Search for them by name and try again." };
+                } else {
+                  // The caller's client, so RLS is the boundary rather than a predicate this code
+                  // is trusted to remember — and `author_user_id` is the real person, never Paige.
+                  const { data: noteRow, error: noteErr } = await supabaseClient
+                    .from("client_notes")
+                    .insert({
+                      contact_id: noteContactId,
+                      tenant_id: crmTenantId,
+                      author_user_id: user.id,
+                      body: String(args.body ?? "").slice(0, 8000),
+                      tags: Array.isArray(args.tags) ? args.tags.slice(0, 8).map((t: any) => String(t).slice(0, 40)) : [],
+                      pinned: args.pinned === true,
+                    })
+                    .select("id").single();
+                  result = noteErr
+                    ? { success: false, error: "The note did not save. Tell the operator plainly that it is not on the file, and don't say it is." }
+                    : {
+                        success: true,
+                        note_id: noteRow?.id,
+                        contact_id: noteContactId,
+                        note: "Filed on their record where the team can see it. The client cannot — say so if it matters to them.",
+                      };
+                }
               }
             } else if (tc.function.name === "member_grant_role") {
               const { error } = await supabaseClient.rpc("grant_tenant_member_role", {
@@ -9315,7 +9389,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         "crm_update_contact", "crm_create_contact", "crm_delete_contact", "crm_log_activity",
         "crm_assign_contact", "crm_assign_coach", "crm_update_pipeline_stage", "program_enroll",
       ]);
-      const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task"]);
+      const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task", "crm_add_note"]);
       /**
        * WHAT EACH WRITE TOUCHES — one map, read by both the rail and the audit row.
        *
@@ -9332,7 +9406,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         crm_create_contact: "clients", crm_update_contact: "clients", crm_delete_contact: "clients",
         crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
         program_enroll: "clients", update_client_data: "clients",
-        crm_log_activity: "activities", crm_create_task: "tasks", plan_assign_task: "tasks",
+        crm_log_activity: "activities", crm_add_note: "client_notes", crm_create_task: "tasks", plan_assign_task: "tasks",
         update_business_profile: "tenants",
         pipeline_create: "pipelines", pipeline_add_stage: "pipelines",
         deal_create: "deals", deal_move_stage: "deals",

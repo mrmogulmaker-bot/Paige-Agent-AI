@@ -106,6 +106,10 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["crm_update_pipeline_stage", "ordinary", "moves a client between stages"],
   ["crm_create_task", "ordinary", "files work on the operator's own queue"],
   ["crm_log_activity", "ordinary", "appends to a client's timeline"],
+  // Staff-only by construction — `client_notes` has no client-facing read policy at all — and
+  // deletable by its author or a tenant admin. The destination is constrained by the database
+  // (20261031000000), so a wrong routing decision cannot land on another tenant's client.
+  ["crm_add_note", "ordinary", "files a staff-only note on a client's record"],
   ["update_business_profile", "ordinary", "edits the workspace's own profile"],
   ["pipeline_create", "ordinary", "creates a pipeline the operator can delete"],
   ["pipeline_add_stage", "ordinary", "adds a stage to a pipeline"],

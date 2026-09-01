@@ -177,6 +177,13 @@ async function drive({
    *  became autonomy-gated: proving the tool loop still reaches write-back requires driving a
    *  tenant that has deliberately set that tool to `auto`. */
   rpcOverrides = {},
+  /** Extra SERVICE-ROLE tables, merged over the service defaults.
+   *
+   *  This exists because the default `serviceTables.clients` answers for ANY id and ignores an
+   *  `eq("tenant_id", …)` filter entirely — so a handler that scopes by tenant on the service
+   *  client looks correct whether it does or not. A check that could not override it was grading
+   *  the fixture, not the code. */
+  serviceTablesExtra = {},
   /** Extra RLS-emulating tables merged over the defaults — needed for the confirm store, whose
    *  rows a scenario has to author because they model a claim that mutates as it is read. */
   tablesExtra = {},
@@ -222,6 +229,7 @@ async function drive({
         const idEq = filters.find((f) => f[0] === "eq" && f[1] === "id")?.[2];
         return idEq ? [{ id: idEq, tenant_id: "99999999-9999-4999-8999-999999999999" }] : [];
       },
+      ...serviceTablesExtra,
     },
     tables: {
       // RLS emulation: only rows this caller may see, and only when the filters match.
@@ -2168,6 +2176,140 @@ const mirrorConfirms = (st) => (t, row) => {
   assert("20.8 a refused client focus never asks for that client's carrying list",
     !refused.rec.rpc.some((c) => c.name === "paige_operating_memory" && c.args?.p_contact_id === FOREIGN),
     JSON.stringify(refused.rec.rpc.filter((c) => c.name === "paige_operating_memory").map((c) => c.args)));
+}
+
+// ── 21. A NOTE LANDS ON THE RIGHT CLIENT'S FILE, AND ONLY ON CONFIRMATION ────────────────────
+//
+// The routing decision — WHICH client this is about — is now made by a model, so it is the thing
+// that has to be constrained. `client_notes` is staff-only by construction (it has no
+// client-facing read policy at all), so "visibility" has exactly one honest value and the confirm
+// says it rather than offering a choice that does not exist.
+{
+  const THREAD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const OWN_CONTACT = "11111111-1111-4111-8111-111111111111";
+  const CONFIRM = { rpcOverrides: {
+    resolve_tool_autonomy: { data: "confirm", error: null },
+    get_actor_access: { data: { tier: "tenant" }, error: null },
+    get_paige_persona_context: { data: [{ tenant_id: CALLER_TENANT, tenant_name: "T", playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null }], error: null },
+  } };
+  const AUTO = { rpcOverrides: { ...CONFIRM.rpcOverrides, resolve_tool_autonomy: { data: "auto", error: null } } };
+  // The tool is admin/coach gated, and `clients` answers only for rows in the caller's tenant —
+  // which is what makes the foreign-contact case below a real refusal and not an empty fixture.
+  const CRM = {
+    user_roles: () => [{ role: "admin" }],
+    clients: (filters) => {
+      const eq = (c) => filters.find((f) => f[0] === "eq" && f[1] === c)?.[2];
+      const id = eq("id"), ten = eq("tenant_id");
+      if (id === OWN_CONTACT && (ten === undefined || ten === CALLER_TENANT)) {
+        return [{ id: OWN_CONTACT, first_name: "Dana", last_name: "Reyes", tenant_id: CALLER_TENANT }];
+      }
+      if (id === OWN) return [{ id: OWN, tenant_id: CALLER_TENANT }];
+      return [];
+    },
+  };
+  const notes = (r) => r.rec.inserts.filter((i) => i.table === "client_notes").map((i) => i.row);
+  const prompt = (r) => r.modelEgress.map((b) => (typeof b === "string" ? b : JSON.stringify(b)))
+    .join("\n").replace(/\\"/g, '"');
+
+  // ── 21.1 A note is PROPOSED, not filed, at the default lane.
+  const st = makeConfirmStore();
+  const proposed = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "crm_add_note", args: { contact_id: OWN_CONTACT, body: "Wants to close before year end." } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st.table, ...CRM }, serviceTablesExtra: { ...CRM },
+    onInsert: mirrorConfirms(st),
+  });
+  assert("21.1 filing a note is proposed, not performed",
+    notes(proposed).length === 0, JSON.stringify(notes(proposed)));
+
+  // ── 21.2 …and the card says what is being filed AND who will see it. A confirm that does not
+  // state visibility leaves the operator to assume, and the assumption people make about a note
+  // on someone's file is the wrong one.
+  const wire = prompt(proposed);
+  assert("21.2 the card quotes the note and states it is staff-only",
+    /Wants to close before year end/.test(wire) && /Only your team sees it — the client will not/.test(wire),
+    (wire.match(/"confirm_summary":"[^"]{0,200}/) ?? ["no summary on the wire"])[0]);
+
+  // ── 21.3 On approval the note is filed — tenant stamped, author the REAL person, not Paige.
+  const approved = await drive({
+    clientId: OWN, stream: true,
+    extraBody: { threadId: THREAD, approvedConfirmations: [st.rows[0]?.fingerprint] },
+    toolCall: { name: "crm_add_note", args: { contact_id: OWN_CONTACT, body: "Wants to close before year end." } },
+    ...CONFIRM,
+    tablesExtra: { paige_pending_confirmations: st.table, ...CRM }, serviceTablesExtra: { ...CRM },
+    onInsert: mirrorConfirms(st),
+  });
+  const row = notes(approved)[0];
+  assert("21.3 an approved note is filed on the named client",
+    !!row && row.contact_id === OWN_CONTACT && /year end/.test(String(row.body)),
+    JSON.stringify(notes(approved)));
+  assert("21.4 …stamped with the tenant, and authored by the PERSON rather than by Paige",
+    row?.tenant_id === CALLER_TENANT && row?.author_user_id === USER,
+    JSON.stringify({ tenant_id: row?.tenant_id, author: row?.author_user_id }));
+  // Written as the caller so RLS decides, not as service role which would bypass every policy
+  // this slice's migration adds.
+  const q = approved.rec.from.find((f) => f.table === "client_notes" && f.op === "insert");
+  assert("21.5 …written as the CALLER, so the destination policy actually applies",
+    !!q && q.client !== "service", JSON.stringify(q ?? "no insert recorded"));
+
+  // ── 21.6 THE ROUTING DECISION IS CHECKED, NOT TRUSTED. A model naming another tenant's client
+  // files nothing — this is the whole point of the slice.
+  const foreignNote = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "crm_add_note", args: { contact_id: FOREIGN, body: "should never land" } },
+    ...AUTO,
+    tablesExtra: { ...CRM }, serviceTablesExtra: { ...CRM },
+  });
+  assert("21.6 §9 a note aimed at another tenant's client is NOT filed",
+    notes(foreignNote).length === 0, JSON.stringify(notes(foreignNote)));
+  assert("21.6b …and the refusal does not reveal whether that client exists elsewhere",
+    !prompt(foreignNote).includes("belongs to another"),
+    "the refusal distinguishes 'other tenant' from 'no such client', which is a probe");
+
+  // ── 21.6c THE CASE RLS DOES NOT CATCH, and the reason the explicit tenant filter is there.
+  // `OTHERTEN` is a client this caller CAN see — a coach assignment reaches across workspaces —
+  // but which another tenant owns. RLS on `clients` returns the row happily; only the explicit
+  // `eq("tenant_id", …)` refuses it. Without this check, deleting that filter failed nothing,
+  // because the fixture's foreign client is invisible for a different reason.
+  const visibleButForeign = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "crm_add_note", args: { contact_id: OTHERTEN, body: "should never land" } },
+    ...AUTO,
+    tablesExtra: { ...CRM, clients: (filters) => {
+      const eq = (c) => filters.find((f) => f[0] === "eq" && f[1] === c)?.[2];
+      const id = eq("id"), ten = eq("tenant_id");
+      // Visible to this caller, owned elsewhere: returned UNLESS the caller scoped by tenant.
+      if (id === OTHERTEN) return ten === undefined ? [{ id: OTHERTEN, tenant_id: OTHER_TENANT }] : [];
+      if (id === OWN) return [{ id: OWN, tenant_id: CALLER_TENANT }];
+      return [];
+    } },
+    serviceTablesExtra: { clients: () => [] },
+  });
+  assert("21.6c a client the caller can SEE but does not own is still refused",
+    notes(visibleButForeign).length === 0, JSON.stringify(notes(visibleButForeign)));
+
+  // ── 21.7 …and a nonsense id is refused before any lookup, with something the operator can act on.
+  const badId = await drive({
+    clientId: OWN, stream: true, extraBody: { threadId: THREAD },
+    toolCall: { name: "crm_add_note", args: { contact_id: "not-a-uuid", body: "x" } },
+    ...AUTO,
+    tablesExtra: { ...CRM }, serviceTablesExtra: { ...CRM },
+  });
+  assert("21.7 a malformed contact id files nothing and asks for a real one",
+    notes(badId).length === 0 && /look them up first/.test(prompt(badId)),
+    JSON.stringify(notes(badId)));
+
+  // ── 21.8 The note reaches the client's rail and the write trail, like every other write (C1).
+  const railed = approved.rec.rpc.find((c) => c.name === "record_rail_event");
+  assert("21.8 the note appears on that client's rail, pointing at the record",
+    !!railed && railed.args?.p_ref_table === "client_notes",
+    JSON.stringify(railed?.args ?? "no rail event"));
+  const audit = approved.rec.inserts.find((i) => i.table === "paige_audit_log")?.row;
+  assert("21.9 …and files an attribution row naming the entity and the approval it ran on",
+    audit?.action === "crm_add_note" && audit?.target_type === "client_notes"
+      && audit?.payload?.authorised_by === "operator_card",
+    JSON.stringify(audit ?? "no attribution row"));
 }
 
 console.log(`\n${checks - failures} passed, ${failures} failed`);
