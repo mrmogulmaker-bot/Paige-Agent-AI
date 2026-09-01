@@ -30,7 +30,7 @@ declare
   _u uuid; _u2 uuid; _tok uuid; _tok2 uuid; _r jsonb;
   _out text := ''; _pass int := 0; _fail int := 0;
   _later timestamptz := now() + interval '1 minute';
-  _retained int;
+  _retained int; _t uuid; _tokA uuid; _tokB uuid;
 begin
   perform set_config('request.jwt.claim.role','service_role',true);
   perform set_config('request.jwt.claims','{"role":"service_role"}',true);
@@ -91,7 +91,58 @@ begin
   if _retained >= 2 then _pass:=_pass+1; _out:=_out||E'\nPASS  spent/superseded proposals are RETAINED ('||_retained||' rows)';
   else _fail:=_fail+1; _out:=_out||E'\nFAIL  spent/superseded proposals are RETAINED ('||_retained||' rows)'; end if;
 
-  -- 10/11 ─ §59: the grant is not the guard; the body refuses a non-service_role caller
+  -- 12 ─ BATCH. THE REGRESSION THAT ROUND 2 CAUGHT. Two identities for ONE tool must BOTH stay
+  --      claimable. Superseding on tool_key alone killed the first at birth, so "delete these two
+  --      contacts" could never execute either — a silent forever-loop. The 11 assertions before
+  --      this one all reused a single identity and could not see it.
+  _tokA := public.paige_tool_confirmation_open(null,_u,'crm_delete_contact','IDENT_BATCH_A','delete A');
+  _tokB := public.paige_tool_confirmation_open(null,_u,'crm_delete_contact','IDENT_BATCH_B','delete B');
+  _r := public.paige_tool_confirmation_claim(null,_u,'crm_delete_contact','IDENT_BATCH_A', _later);
+  if (_r->>'ok')='true' then _pass:=_pass+1; _out:=_out||E'\nPASS  BATCH: first of two identities on one tool is claimable';
+  else _fail:=_fail+1; _out:=_out||E'\nFAIL  BATCH: first of two identities on one tool is claimable -> '||_r::text; end if;
+  _r := public.paige_tool_confirmation_claim(null,_u,'crm_delete_contact','IDENT_BATCH_B', _later);
+  if (_r->>'ok')='true' then _pass:=_pass+1; _out:=_out||E'\nPASS  BATCH: second identity is ALSO claimable (livelock closed)';
+  else _fail:=_fail+1; _out:=_out||E'\nFAIL  BATCH: second identity is ALSO claimable (livelock closed) -> '||_r::text; end if;
+
+  -- 13 ─ …while a DUPLICATE identity still supersedes, so one approval is still one execution
+  perform public.paige_tool_confirmation_open(null,_u,'n8n_delete_workflow','IDENT_DUP','w');
+  perform public.paige_tool_confirmation_open(null,_u,'n8n_delete_workflow','IDENT_DUP','w again');
+  _r := public.paige_tool_confirmation_claim(null,_u,'n8n_delete_workflow','IDENT_DUP', _later);
+  _r := public.paige_tool_confirmation_claim(null,_u,'n8n_delete_workflow','IDENT_DUP', _later);
+  if (_r->>'ok')='false' then _pass:=_pass+1; _out:=_out||E'\nPASS  duplicate identity still supersedes — one approval, one execution -> '||_r::text;
+  else _fail:=_fail+1; _out:=_out||E'\nFAIL  duplicate identity still supersedes -> '||_r::text; end if;
+
+  -- 14 ─ a superseded row now says so, instead of reporting "no_open_confirmation"
+  perform public.paige_tool_confirmation_open(null,_u,'zapier_run_action','IDENT_S','one');
+  perform public.paige_tool_confirmation_open(null,_u,'zapier_run_action','IDENT_S','two');
+  _r := public.paige_tool_confirmation_claim(null,_u,'zapier_run_action','IDENT_S', now() - interval '1 hour');
+  if (_r->>'reason') = 'superseded' then _pass:=_pass+1; _out:=_out||E'\nPASS  a retired proposal reports a truthful reason -> '||_r::text;
+  else _fail:=_fail+1; _out:=_out||E'\nFAIL  a retired proposal reports a truthful reason -> '||_r::text; end if;
+
+  -- 15 ─ §9: a TENANT-scoped proposal. Every assertion above passes tenant NULL, so the
+  --      IS NOT DISTINCT FROM matching was never actually exercised against a real tenant.
+  select id into _t from public.tenants order by created_at asc limit 1;
+  if _t is not null then
+    perform public.paige_tool_confirmation_open(_t,_u,'comms_set_primary_number','IDENT_T','n');
+    _r := public.paige_tool_confirmation_claim(null,_u,'comms_set_primary_number','IDENT_T', _later);
+    if (_r->>'ok')='false' then _pass:=_pass+1; _out:=_out||E'\nPASS  a TENANT proposal is not claimable with a NULL tenant -> '||_r::text;
+    else _fail:=_fail+1; _out:=_out||E'\nFAIL  a TENANT proposal is not claimable with a NULL tenant -> '||_r::text; end if;
+    _r := public.paige_tool_confirmation_claim(_t,_u,'comms_set_primary_number','IDENT_T', _later);
+    if (_r->>'ok')='true' then _pass:=_pass+1; _out:=_out||E'\nPASS  …and IS claimable with its own tenant';
+    else _fail:=_fail+1; _out:=_out||E'\nFAIL  …and IS claimable with its own tenant -> '||_r::text; end if;
+  else _out:=_out||E'\nSKIP  tenant-scoped checks (no tenants row)'; end if;
+
+  -- 16 ─ §59: a NULL auth.role(). A bare `<>` yields NULL, the `if` does not fire, and the body
+  --      would run. Assertions 10/11 only ever tested the string 'authenticated'.
+  perform set_config('request.jwt.claim.role','',true);
+  perform set_config('request.jwt.claims','',true);
+  begin
+    _tok := public.paige_tool_confirmation_open(null,_u,'crm_delete_contact','IDENT_NULLROLE',null);
+    _fail:=_fail+1; _out:=_out||E'\nFAIL  a NULL auth.role() is BLOCKED (IT SUCCEEDED)';
+  exception when insufficient_privilege then _pass:=_pass+1; _out:=_out||E'\nPASS  a NULL auth.role() is BLOCKED';
+  end;
+
+  -- 17/18 ─ §59: the grant is not the guard; the body refuses a non-service_role caller
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claims','{"role":"authenticated"}',true);
   begin

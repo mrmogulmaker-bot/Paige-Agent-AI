@@ -5,7 +5,11 @@
  * !== true) { propose }` — and `gateArgs` is the MODEL'S OWN OUTPUT. Tests marked REGRESSION are
  * written so the old behaviour cannot satisfy them.
  *
- * The LIVELOCK block is the more important half. A first version of this binding hashed the WHOLE
+ * The LIVELOCK block is the more important half. Read its caveat: for an UNPINNED tool
+ * `toolIdentity` returns `{}`, so "these two payloads hash the same" holds for any two payloads and
+ * would pass against an implementation that pins nothing at all. What those cases actually lock in
+ * is that those tools stay OUT of the map — which is asserted directly at the end of this file, and
+ * is the assertion carrying the guarantee. A first version of this binding hashed the WHOLE
  * argument object, which is unsatisfiable across a turn: history is rebuilt as `{role, content}`
  * only, so the model regenerates its arguments from prose, and for a tool whose arguments ARE the
  * authored content two generations are never byte-equal. Approve → re-author → refuse →
@@ -183,6 +187,66 @@ describe("toolIdentityHash — what IS pinned, for the tools whose identity the 
   it("is stable for a tool with no arguments at all", async () => {
     expect(await toolIdentityHash("document_generate", undefined))
       .toBe(await toolIdentityHash("document_generate", {}));
+  });
+});
+
+describe("pinned identity for multiplexed and publish-live tools", () => {
+  it("REGRESSION: pipeline_configure — an archive approval cannot be spent on a different command", async () => {
+    // It multiplexes 11 command types behind one tool name. Unpinned, they all hashed identically,
+    // and the strict token check only fires for archive-pipeline, so the siblings executed on
+    // credit the archive path had minted.
+    const archivePipeline = await toolIdentityHash("pipeline_configure", {
+      command: { type: "archive-pipeline", pipelineRef: "PPL-7", confirmationToken: "t" },
+    });
+    for (const other of ["archive-stage", "move-deal", "update-pipeline", "create-stage"]) {
+      expect(
+        await toolIdentityHash("pipeline_configure", { command: { type: other } }),
+        `${other} shares an approval with archive-pipeline`,
+      ).not.toBe(archivePipeline);
+    }
+  });
+
+  it("pipeline_configure ignores everything except the command type", async () => {
+    const a = await toolIdentityHash("pipeline_configure", { command: { type: "move-deal", dealId: "d1" } });
+    const b = await toolIdentityHash("pipeline_configure", { command: { type: "move-deal", dealId: "d2" } });
+    expect(b).toBe(a);
+  });
+
+  it.each([
+    ["n8n_run_workflow", { workflow_id: "w1" }, { workflow_id: "w2" }],
+    ["n8n_activate_workflow", { workflow_id: "w1" }, { workflow_id: "w2" }],
+    ["n8n_deactivate_workflow", { workflow_id: "w1" }, { workflow_id: "w2" }],
+    ["n8n_update_workflow", { workflow_id: "w1" }, { workflow_id: "w2" }],
+    ["growth_page_publish", { page_id: "p1" }, { page_id: "p2" }],
+    ["growth_funnel_publish", { funnel_id: "f1" }, { funnel_id: "f2" }],
+  ])("REGRESSION: %s — publishing/running a DIFFERENT subject is a different approval", async (tool, a, b) => {
+    expect(await toolIdentityHash(tool, b)).not.toBe(await toolIdentityHash(tool, a));
+  });
+
+  it("a dotted path that does not resolve is omitted, not recorded as undefined", () => {
+    expect(toolIdentity("pipeline_configure", {})).toEqual({});
+    expect(toolIdentity("pipeline_configure", { command: "not-an-object" })).toEqual({});
+    expect(toolIdentity("pipeline_configure", { command: { type: "x" } })).toEqual({ "command.type": "x" });
+  });
+});
+
+describe("the map's boundary — this is what the LIVELOCK cases actually guarantee", () => {
+  it.each([
+    ["document_generate"], ["growth_page_save"], ["n8n_create_workflow"],
+    ["draft_marketing_content"], ["content_save"], ["crm_create_task"],
+    ["crm_create_contact"], ["generate_image"], ["growth_funnel_build"],
+  ])("%s is NOT pinned — its arguments are authored content the model re-writes", (tool) => {
+    expect(TOOL_IDENTITY_FIELDS[tool]).toBeUndefined();
+  });
+
+  it("no pinned field is a content-bearing argument", () => {
+    // A tier-2 entry may be a looked-up id; it may never be something the model composes.
+    const contentish = /^(blocks|body|content|nodes|connections|prompt|notes|description|steps|stages)$/;
+    for (const [tool, fields] of Object.entries(TOOL_IDENTITY_FIELDS)) {
+      for (const f of fields) {
+        expect(contentish.test(f.split(".").pop()!), `${tool}.${f} looks like authored content`).toBe(false);
+      }
+    }
   });
 });
 

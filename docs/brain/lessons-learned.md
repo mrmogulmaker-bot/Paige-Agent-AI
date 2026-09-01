@@ -722,7 +722,8 @@ on its first call executes immediately. The platform already has the enforced pa
 sends file a real approval row and wait — and this gate does not use it.
 
 > **CLOSED 2026-09-01.** It uses one now. `confirm:true` must spend a server-minted
-> `paige_tool_confirmations` row bound to the action's argument hash, the requester and the tenant,
+> `paige_tool_confirmations` row bound to the TOOL — and, for a listed set, an identity subset;
+> NOT the whole arguments, which livelocked and was blocked — plus the requester and the tenant,
 > unspent, unexpired, and created *before the turn began* — mirroring
 > `pipeline_archive_confirmations` (#709) rather than forking a rival seam. The finding above
 > stands as written; only its present tense expired. **The bound is still honest: an intervening
@@ -983,8 +984,17 @@ would have to do on the next turn. No test did that, because no test could.
   a two-turn harness nor a reason to build one for this alone — so the peer-gate is the control, and
   it is not optional on anything whose correctness spans turns.
 - **Ask what the model must REPRODUCE.** Any cross-turn binding is a demand for regeneration. If the
-  thing being bound is not in the visible prose, the model cannot produce it, and the binding is a
-  livelock rather than a guard. This is now the design rule: *bind only on what the human saw.*
+  thing being bound cannot be regenerated, the binding is a livelock rather than a guard. The design
+  rule is *bind only on what the model can reproduce* — a value it can read back out of its own
+  prose, or a stable id it can look up again. **Not** "only what the human saw": that was the first
+  wording here, and the shipped map already breaks it for three tier-2 ids, so it described an
+  intention rather than the code.
+- **A second round found a second livelock inside the fix for the first.** The supersede keyed on
+  the tool while the claim keyed on tool+identity, so proposing a second subject retired the first
+  at birth and a batch ("delete these two contacts") could never execute either. Same silent shape,
+  different clause. **When you fix a livelock, check that the fix's own keys agree with each other**
+  — and add the assertion that would have caught it, which here was simply *two identities on one
+  tool*. The eleven assertions that passed reused a single identity throughout.
 - **A silent livelock is worse than an error.** The refusal path logged and re-proposed, so the
   system looked like it was politely asking again. Failure modes that resemble normal operation are
   the ones that survive review.

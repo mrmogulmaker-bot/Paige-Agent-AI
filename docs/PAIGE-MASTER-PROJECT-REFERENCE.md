@@ -139,17 +139,32 @@ in `paige-ai-chat` mints a `paige_tool_confirmations` row on every `needs_confir
 is unspent, unsuperseded, unexpired, and **created before the current turn began**. Minting
 supersedes any earlier open proposal for the same tool, so one approval buys exactly one execution.
 
-For a short list of high-consequence tools (`TOOL_IDENTITY_FIELDS`) the row also pins the identity
-the operator was shown — the phone number, the user and role, the contact or workflow id. It
-deliberately does **not** pin whole arguments: history carries only `{role, content}`, so the model
-re-authors its arguments from prose on the confirming turn, and hashing a `document_generate`
-payload made the flow unapprovable. That version was caught by the §39 peer-gate before merge.
+For a list of high-consequence tools (`TOOL_IDENTITY_FIELDS`) the row also pins an identity. Some
+of those values ARE shown to the operator (the phone number, the role, a workflow or page id);
+others — `user_id`, `contact_id`, `number_id` — are **not**, and the pin there buys less than it
+looks like: a mismatch re-renders the *same* sentence, so a second yes executes on the new subject.
+It closes an accidental swap; it does not let the operator tell two subjects apart. Naming the
+subject in the summary is filed separately.
+
+It deliberately does **not** pin whole arguments: history carries only `{role, content}`, so the
+model re-authors its arguments from prose on the confirming turn, and hashing a `document_generate`
+payload made the flow unapprovable.
+
+**Any user turn satisfies the gate — including "no, don't."** This proves a turn intervened, never
+that the operator agreed.
+
+**Both versions before this one were BLOCKED by the §39 peer-gate**, the first for that
+whole-argument hash, the second for a supersede that keyed on the tool alone while the claim keyed
+on tool+identity — which livelocked any *batch* ("delete these two contacts") in exactly the same
+silent way. Neither was reachable by the SQL proof or the unit tests as they stood.
 
 **What this closed.** The gate previously tested `gateArgs.confirm`, which is
 `JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
 its first call executed immediately; and because the tool loop dedupes rounds on the exact argument
 string, it could even propose and self-approve **inside a single HTTP turn** with no operator
-message in between. **52 tools** reach that gate, including `member_grant_role`,
+message in between. `MUTATING_TOOLS` carries **52 entries**, two of which (`marketplace_install`,
+`marketplace_uninstall`) are containment tombstones with no tool definition and no dispatch branch
+and can never reach it. The rest include `member_grant_role`,
 `n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`.
 
 **What it does NOT claim (§13).** It proves the server proposed first, that a turn intervened, that

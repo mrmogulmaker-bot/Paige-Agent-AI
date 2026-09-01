@@ -40,14 +40,32 @@
  * WHAT THIS PROVES, AND WHAT IT DOES NOT (§13 — the honest bound)
  * --------------------------------------------------------------
  * PROVES: the server proposed first; the operator's client took a turn in between; one approval
- * buys exactly one execution; and for the listed high-consequence tools, the identity the human
- * was shown is the identity that runs.
+ * buys exactly one execution; and for the listed tools, the pinned identity of the approval is the
+ * identity that runs.
+ *
+ * Note the wording: *the pinned identity*, not "the identity the human was shown". For tier 2 the
+ * human was shown nothing identifying at all, and the pin buys less than it looks like — a
+ * mismatch merely re-renders the SAME sentence, so a second yes executes on the new subject. It
+ * costs a round-trip and closes an accidental swap; it does not let the operator tell two subjects
+ * apart. Fixing that needs the summary to name its subject, which is filed separately.
  *
  * DOES NOT PROVE: that the human said *yes* — an intervening turn is a turn, not a grant. Nor,
  * for tools outside the identity list, that the CONTENT is unchanged from what was proposed;
  * only the tool and the fact of approval are bound. Binding to an authenticated approval CLICK is
  * the stronger step and needs per-surface UI work (only `PaigeAIChat` renders `PaigeConfirmCard`;
  * `useSoloChat` drops the confirm frame). Tracked separately rather than half-built here.
+ *
+ * KNOWN LIMIT — NO SESSION OR THREAD SCOPING
+ * -------------------------------------------
+ * A proposal is keyed on (requester, tenant, tool, identity) and nothing else. Six surfaces call
+ * `paige-ai-chat`, so two open tabs — or the floating chatbot alongside the main console — will
+ * silently supersede each other's pending approvals for the same tool. It FAILS CLOSED (the loser
+ * is asked again rather than executing), so this is friction, not a hole, and it is stated here
+ * rather than left to be rediscovered. The twin this generalizes avoids it by echoing an exact
+ * token back through the CLIENT, which is the mechanism this one deliberately does not yet use.
+ *
+ * Switching active tenant between the proposing and confirming turn has the same effect and the
+ * same failure direction, since `personaCtx.tenant_id` is part of the key.
  *
  * WHY A SECOND HOME WAS NOT BUILT (§18)
  * -------------------------------------
@@ -103,6 +121,20 @@ export const TOOL_IDENTITY_FIELDS: Readonly<Record<string, readonly string[]>> =
   // External side effects through the tenant's own connected apps.
   zapier_run_action: ["tool_name"],
   comms_set_primary_number: ["number_id"],
+  // Running or publishing something LIVE. describeConfirm renders each of these ids verbatim
+  // ("…the n8n automation w_123", "…goes LIVE at its public URL"), so they are tier 1.
+  n8n_run_workflow: ["workflow_id"],
+  n8n_activate_workflow: ["workflow_id"],
+  n8n_deactivate_workflow: ["workflow_id"],
+  n8n_update_workflow: ["workflow_id"],
+  growth_page_publish: ["page_id"],
+  growth_funnel_publish: ["funnel_id"],
+  // pipeline_configure MULTIPLEXES eleven command types behind one tool name — archive-pipeline,
+  // archive-stage, move-deal, update-pipeline and more. Unpinned, they all hashed identically, so
+  // an approval for "Archive Sales Q3 (PPL-7) with 41 deals" could be spent on archive-stage: the
+  // strict token check above only fires for `archive-pipeline`, so the sibling commands were
+  // executing on credit the archive path had minted. command.type is rendered in the summary.
+  pipeline_configure: ["command.type"],
 });
 
 /** Deeply order object keys so a re-emitted payload with a different key order still matches. */
@@ -134,7 +166,19 @@ export function toolIdentity(toolKey: string, args: unknown): Record<string, unk
     : {};
   const out: Record<string, unknown> = {};
   for (const f of [...fields].sort()) {
-    if (src[f] !== undefined) out[f] = canonicalizeToolArgs(src[f]);
+    // A dotted name walks one nested path (`command.type`). Anything missing along the way is
+    // simply omitted, never recorded as undefined — an absent field must not create a distinct
+    // identity from a field that was never named.
+    let cur: unknown = src;
+    for (const seg of f.split(".")) {
+      if (cur && typeof cur === "object" && !Array.isArray(cur)) {
+        cur = (cur as Record<string, unknown>)[seg];
+      } else {
+        cur = undefined;
+        break;
+      }
+    }
+    if (cur !== undefined) out[f] = canonicalizeToolArgs(cur);
   }
   return out;
 }

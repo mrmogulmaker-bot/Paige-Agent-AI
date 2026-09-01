@@ -78,7 +78,9 @@ create or replace function public.paige_tool_confirmation_open(
 ) returns uuid language plpgsql security definer set search_path = public as $$
 declare _token uuid;
 begin
-  if auth.role() <> 'service_role' then raise exception 'TOOL_CONFIRMATION_FORBIDDEN' using errcode = '42501'; end if;
+  -- coalesce, not a bare <>: when auth.role() is NULL the comparison is NULL, the `if` does not
+  -- fire, and the body would proceed. Three-valued logic is exactly what §59 exists to catch.
+  if coalesce(auth.role(), '') <> 'service_role' then raise exception 'TOOL_CONFIRMATION_FORBIDDEN' using errcode = '42501'; end if;
   if _requested_by is null or coalesce(_tool_key,'') = '' or coalesce(_identity_hash,'') = '' then
     raise exception 'TOOL_CONFIRMATION_INVALID' using errcode = '22023';
   end if;
@@ -86,17 +88,29 @@ begin
   -- Supersede rather than delete: the history of what was proposed and spent is the audit trail
   -- for a mechanism guarding role grants and recurring charges, and deleting it on the next
   -- proposal would destroy exactly the record anyone would later want.
+  -- `identity_hash` is NOT optional here. Superseding on tool_key alone, while `claim` selects on
+  -- tool_key AND identity_hash, makes at most ONE identity per tool claimable — and the runtime
+  -- mints one row per propose, sequentially, in a single round. So "delete these two contacts" or
+  -- "buy both numbers" proposed A then B, superseded A at birth, and then NEITHER could ever be
+  -- claimed: each revalidation re-minted one and killed the other, forever, silently. That is the
+  -- same livelock the whole-argument hash caused, in a different shape. Identical-hash duplicates
+  -- still supersede each other, so one approval still buys exactly one execution.
   update public.paige_tool_confirmations
      set superseded_at = now()
    where requested_by = _requested_by
      and tenant_id is not distinct from _tenant_id
      and tool_key = _tool_key
+     and identity_hash = _identity_hash
      and used_at is null
      and superseded_at is null;
 
-  -- Bounded without a scheduled job, and only well after anything could still matter.
+  -- Bounded without a scheduled job, and only well after anything could still matter: 7 days
+  -- against a 30-minute expiry, so it can never race a claimable row. Scoped by tool_key as well,
+  -- so two concurrent opens for DIFFERENT tools cannot take row locks in opposite orders.
+  -- NOTE: this DOES eventually remove spent rows. The retention is 7 days, not forever.
   delete from public.paige_tool_confirmations
    where requested_by = _requested_by
+     and tool_key = _tool_key
      and created_at < now() - interval '7 days';
 
   insert into public.paige_tool_confirmations(tenant_id, requested_by, tool_key, identity_hash, summary)
@@ -115,7 +129,9 @@ create or replace function public.paige_tool_confirmation_claim(
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare _row public.paige_tool_confirmations%rowtype; _reason text;
 begin
-  if auth.role() <> 'service_role' then raise exception 'TOOL_CONFIRMATION_FORBIDDEN' using errcode = '42501'; end if;
+  -- coalesce, not a bare <>: when auth.role() is NULL the comparison is NULL, the `if` does not
+  -- fire, and the body would proceed. Three-valued logic is exactly what §59 exists to catch.
+  if coalesce(auth.role(), '') <> 'service_role' then raise exception 'TOOL_CONFIRMATION_FORBIDDEN' using errcode = '42501'; end if;
   if _requested_by is null or _turn_started_at is null then
     return jsonb_build_object('ok', false, 'reason', 'no_open_confirmation');
   end if;
@@ -147,6 +163,7 @@ begin
   -- (re-propose), so the reason must never become a branch the caller can steer.
   select case
            when bool_or(used_at is not null) then 'already_used'
+           when bool_or(superseded_at is not null) then 'superseded'
            when bool_or(created_at >= _turn_started_at) then 'same_turn'
            when bool_or(expires_at <= now()) then 'expired'
            else 'no_open_confirmation'
@@ -164,4 +181,4 @@ revoke all on function public.paige_tool_confirmation_claim(uuid,uuid,text,text,
 grant execute on function public.paige_tool_confirmation_claim(uuid,uuid,text,text,timestamptz) to service_role;
 
 comment on table public.paige_tool_confirmations is
-  'Server-minted proposals for confirm-lane Paige tools. A model cannot mint one, so confirm:true alone can no longer execute anything. At most one claimable proposal per requester+tenant+tool; spent and superseded rows are retained as the audit trail. Binding only -- it grants no authority and replaces no permission check.';
+  'Server-minted proposals for confirm-lane Paige tools. A model cannot mint one, so confirm:true alone can no longer execute anything. At most one claimable proposal per requester+tenant+tool; spent and superseded rows are kept for 7 days as a short audit trail, not indefinitely. Binding only -- it grants no authority and replaces no permission check.';

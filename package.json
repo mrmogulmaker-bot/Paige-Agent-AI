@@ -54,7 +54,8 @@
     "test:client-memory-authz": "node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs",
     "lint:no-shadowed-credential": "node scripts/ci/no-shadowed-credential-lint.mjs",
     "lint:user-facing-admin-urls": "node scripts/ci/user-facing-admin-producer-lint.mjs",
-    "lint:user-facing-admin-urls:test": "node scripts/ci/user-facing-admin-producer-lint.mjs --self-test"
+    "lint:user-facing-admin-urls:test": "node scripts/ci/user-facing-admin-producer-lint.mjs --self-test",
+    "proof:tool-confirmation": "node scripts/run-tool-confirmation-proof.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
