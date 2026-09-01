@@ -38,6 +38,14 @@ export type TeamWorkspaceRecord = {
   invitations: TeamInviteRecord[];
 };
 
+export function memberVisibleIdentity(member: Pick<TeamMemberRecord, "full_name" | "email">): { primary: string; secondary: string | null } {
+  const verifiedName = member.full_name?.trim();
+  const email = member.email?.trim();
+  if (verifiedName) return { primary: verifiedName, secondary: email || null };
+  if (email) return { primary: email, secondary: null };
+  return { primary: "Team member", secondary: null };
+}
+
 export function permissionPresentation(permission: TeamPermission, isOwner: boolean): { label: string; mutable: boolean } {
   if (isOwner || permission === "owner") return { label: "Owner", mutable: false };
   if (permission === "admin") return { label: "Admin", mutable: true };

@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   inviteLifecycle,
+  memberVisibleIdentity,
   normalizeTeamWorkspace,
   permissionPresentation,
   validateWorkProfile,
@@ -92,23 +93,42 @@ function Modal({ title, description, onClose, children }: { title: string; descr
   </div>;
 }
 
-function MemberEditor({ member, workspace, onClose, onSaved }: { member: TeamMemberRecord; workspace: TeamWorkspaceRecord; onClose: () => void; onSaved: () => void }) {
-  const [editing, setEditing] = useState(false);
+export function MemberEditor({ member, workspace, onClose, onSaved }: { member: TeamMemberRecord; workspace: TeamWorkspaceRecord; onClose: () => void; onSaved: () => void | Promise<void> }) {
   const [title, setTitle] = useState(member.job_title ?? "");
   const [responsibilities, setResponsibilities] = useState(member.responsibilities ?? "");
+  const [savedTitle, setSavedTitle] = useState(member.job_title ?? "");
+  const [savedResponsibilities, setSavedResponsibilities] = useState(member.responsibilities ?? "");
+  const [saveConfirmed, setSaveConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [permissionDraft, setPermissionDraft] = useState<string | null>(null);
   const errors = validateWorkProfile(title, responsibilities);
   const permission = permissionPresentation(member.permission, member.is_owner);
+  const identity = memberVisibleIdentity(member);
+  const dirty = title !== savedTitle || responsibilities !== savedResponsibilities;
+
   const save = async () => {
-    if (Object.keys(errors).length) return;
+    if (!workspace.can_manage_profiles || !dirty || Object.keys(errors).length) return;
     setSaving(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
-    const { error } = await (supabase as any).rpc("set_solo_team_member_work_profile", { _member_user_id: member.user_id, _job_title: title, _responsibilities: responsibilities });
+    const { data, error } = await (supabase as any).rpc("set_solo_team_member_work_profile", {
+      _member_user_id: member.user_id,
+      _job_title: title,
+      _responsibilities: responsibilities,
+    });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success("Work details saved. Permission was not changed."); setEditing(false); onSaved();
+
+    const nextTitle = typeof data?.job_title === "string" ? data.job_title : data?.job_title === null ? "" : title.trim();
+    const nextResponsibilities = typeof data?.responsibilities === "string" ? data.responsibilities : data?.responsibilities === null ? "" : responsibilities.trim();
+    setTitle(nextTitle);
+    setSavedTitle(nextTitle);
+    setResponsibilities(nextResponsibilities);
+    setSavedResponsibilities(nextResponsibilities);
+    setSaveConfirmed(true);
+    toast.success("Work details saved. Permission was not changed.");
+    await onSaved();
   };
+
   const changePermission = async () => {
     if (!permissionDraft) return;
     setSaving(true);
@@ -117,19 +137,21 @@ function MemberEditor({ member, workspace, onClose, onSaved }: { member: TeamMem
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Permission changed to ${permissionPresentation(permissionDraft, false).label}.`); setPermissionDraft(null); onSaved(); onClose();
+
   };
-  return <Modal title={member.full_name || member.email || "Team member"} description="Work details describe what this person does. Permission controls what they can access." onClose={onClose}>
+
+  return <Modal title={identity.primary} description="Work details describe what this person does. Permission controls what they can access." onClose={onClose}>
     <div className="stw-modal-body">
-      <div className="stw-person-summary"><span className="stw-avatar">{initials(member)}</span><div><strong>{member.full_name || "Name not provided"}</strong><span>{member.email || "Email unavailable"}</span></div><span className="stw-pill" data-tone={member.is_owner ? "owner" : "neutral"}>{permission.label}</span></div>
+      <div className="stw-person-summary"><span className="stw-avatar">{initials(member)}</span><div><strong>{identity.primary}</strong>{identity.secondary && <span>{identity.secondary}</span>}</div><span className="stw-pill" data-tone={member.is_owner ? "owner" : "neutral"}>{permission.label}</span></div>
       <div className="stw-separation-note"><ShieldCheck/><span><strong>Permission and job title are separate.</strong> Renaming this person never changes access.</span></div>
-      <label>Job title<input value={title} disabled={!editing} maxLength={121} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Client Success Manager"/>{errors.title && <small role="alert">{errors.title}</small>}</label>
-      <label>Responsibilities<textarea value={responsibilities} disabled={!editing} maxLength={2001} onChange={(e) => setResponsibilities(e.target.value)} rows={5} placeholder="What this person owns, decides, and hands off."/>{errors.responsibilities && <small role="alert">{errors.responsibilities}</small>}</label>
+      <label>Job title<input value={title} disabled={!workspace.can_manage_profiles || saving} maxLength={121} onChange={(e) => { setTitle(e.target.value); setSaveConfirmed(false); }} placeholder="e.g. Client Success Manager"/>{errors.title && <small role="alert">{errors.title}</small>}</label>
+      <label>Responsibilities<textarea value={responsibilities} disabled={!workspace.can_manage_profiles || saving} maxLength={2001} onChange={(e) => { setResponsibilities(e.target.value); setSaveConfirmed(false); }} rows={5} placeholder="What this person owns, decides, and hands off."/>{errors.responsibilities && <small role="alert">{errors.responsibilities}</small>}</label>
+      {saveConfirmed && <div className="stw-separation-note" role="status"><ShieldCheck/><span>Work details saved. Permission was not changed.</span></div>}
       {workspace.can_change_permissions && permission.mutable && <div className="stw-permission-change"><label>Enforced permission<select value={permissionDraft ?? member.permission} onChange={(e) => setPermissionDraft(e.target.value)}><option value="admin">Admin</option><option value="member">Member</option></select></label>{permissionDraft && permissionDraft !== member.permission && <div className="stw-confirm"><p>Change access from {permission.label} to {permissionPresentation(permissionDraft, false).label}? This changes authorization, not the job title.</p><button className="stw-btn secondary" onClick={() => setPermissionDraft(null)}>Cancel</button><button className="stw-btn" disabled={saving} onClick={changePermission}>Confirm access change</button></div>}</div>}
     </div>
-    <footer className="stw-modal-actions">{editing ? <><button className="stw-btn secondary" onClick={() => { setTitle(member.job_title ?? ""); setResponsibilities(member.responsibilities ?? ""); setEditing(false); }}>Cancel</button><button className="stw-btn" disabled={saving || Object.keys(errors).length > 0} onClick={save}>{saving ? "Saving…" : "Save work details"}</button></> : <><button className="stw-btn secondary" onClick={onClose}>Close</button>{workspace.can_manage_profiles && <button className="stw-btn" onClick={() => setEditing(true)}>Edit work details</button>}</>}</footer>
+    <footer className="stw-modal-actions"><button className="stw-btn secondary" onClick={onClose}>Close</button>{workspace.can_manage_profiles && <button className="stw-btn" disabled={saving || !dirty || Object.keys(errors).length > 0} onClick={save}>{saving ? "Saving…" : "Save work details"}</button>}</footer>
   </Modal>;
 }
-
 function InviteDialog({ onClose, onInvited }: { onClose: () => void; onInvited: () => void }) {
   const [email, setEmail] = useState(""); const [permission, setPermission] = useState("member"); const [title, setTitle] = useState(""); const [responsibilities, setResponsibilities] = useState(""); const [sending, setSending] = useState(false); const [reviewing, setReviewing] = useState(false);
   const errors = validateWorkProfile(title, responsibilities); const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
