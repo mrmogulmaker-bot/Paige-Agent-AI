@@ -932,7 +932,7 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 
 | Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
 |---|---|---|---|---|---|---|---|
-| `connections/communications` | **Live business-phone search, purchase, rename and choose-what-you-send-from**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — search/purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; rename and set-primary run `tenant_phone_number_rename` / `tenant_phone_number_set_primary`; domains via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. **Paige can drive all of it** — eight `comms_*` tools, four of them governed and switchable | N/A | N/A | ✓ | N/A | — |
+| `connections/communications` | **Live business-phone search, purchase, rename and choose-what-you-send-from**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — search/purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; rename and set-primary run `tenant_phone_number_rename` / `tenant_phone_number_set_primary`; domains via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. **Paige can drive the PHONE half** — eight `comms_*` tools cover search, purchase, rename, set-primary and registration; **domains and the Google sending account stay click-only** and Paige has no tool for either | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
 | `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
@@ -956,16 +956,29 @@ human click. It now carries eight `comms_*` tools. Four mutate and are in `MUTAT
 catalogue rows under a new `Comms` category, so each defaults to `confirm` and the operator can turn
 it off: buying a number (a real monthly charge), choosing what the business sends from (what a client
 sees on their phone), renaming, and drafting the registration (a paid model call that overwrites
-saved compliance copy). `comms_connection_summary` is the safe read Paige starts from — channels,
+saved compliance copy). **What they do NOT cover, stated so the row above is not read as more than
+it says:** the sending domains and the Google sending account. Both are operable by a person on this
+surface and neither has a Paige tool, so that half of Connections is still click-only. Naming the
+gap here rather than letting "Paige-callable comms" imply the whole surface is the point of the
+entry. `comms_connection_summary` is the safe read Paige starts from — channels,
 number, registration state, and which comms actions this workspace currently permits. It carries no
 credentials, tokens, domains or provider payloads by construction, naming each field it returns
 rather than spreading a record. **Honest limit:** the Trust Compass ceiling clamps these at RENDER
 only (`clampMode` in `useToolAutonomy`); `resolve_tool_autonomy`, which the runtime actually
 consults, never reads the compass. The per-tool floor is the enforcement today. That gap predates
-this slice and is not closed by it.
+this slice and is not closed by it. **Two smaller limits, recorded at the seam** (header of
+`20260901010000`): an operator acting as a tenant cannot reach the two new RPCs through Paige,
+because the executor calls them with `_id` alone and never passes the act-as tenant — a refusal,
+not a leak; and the role half of their gate is tenant-agnostic (`user_roles` has no `tenant_id`),
+inherited verbatim from the table's own RLS policy so the write seam admits exactly who the read
+seam does.
 
 **Attributable evidence.** `comms-purchase-number` now writes an `audit_logs` row
-(`comms:number_purchased`) naming the caller, tenant, number and SID. It records `price_recorded:
+(`comms:number_purchased`) naming the caller, tenant, number and SID — at **all three** exits
+that follow a real charge, including the one where the provider took the money and our own insert
+then failed. That last row carries `recorded: false`, because a purchase we could not write down is
+exactly the event an audit trail exists for; an earlier revision of this branch declared the writer
+inside the insert-race branch, so two of the three money-spent exits recorded nothing. It records `price_recorded:
 false` rather than a price, because that seam genuinely never receives one — the retail figure lives
 in `comms-search-numbers`. The Rail is deliberately not used and cannot be: `record_rail_event` is
 contact-keyed and a purchased number belongs to the workspace, not to any one client.

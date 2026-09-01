@@ -25,7 +25,7 @@ const state = vi.hoisted(() => ({
   owned: [] as unknown[],
   isAdmin: true as boolean | null,
   tenantId: "tenant-1971670" as string | null,
-  rpcCalls: [] as string[],
+  rpcCalls: [] as Array<{ fn: string; args?: Record<string, unknown> }>,
   rpcError: null as { message: string; hint?: string } | null,
 }));
 
@@ -41,11 +41,15 @@ vi.mock("@/hooks/useUserRoles", () => ({
 }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    rpc: vi.fn(async (fn: string) =>
+    rpc: vi.fn(async (fn: string, args?: Record<string, unknown>) =>
       // `current_user_tenant_id` is the resolver the WRITES use, so the reads now use it
       // too — a double that cannot answer it makes the surface look unidentifiable.
       fn === "tenant_phone_number_set_primary" || fn === "tenant_phone_number_rename"
-        ? (state.rpcCalls.push(fn), state.rpcError ? { data: null, error: state.rpcError } : { data: {}, error: null })
+        // The ARGUMENTS are recorded, not just the name. Recording only the name let a
+        // `setPrimary` that passed the wrong id, or a `rename` that sent `friendly_name`
+        // instead of the `_friendly_name` the RPC actually declares, satisfy every assertion
+        // in this file — the double answers unconditionally, so nothing would notice.
+        ? (state.rpcCalls.push({ fn, args }), state.rpcError ? { data: null, error: state.rpcError } : { data: {}, error: null })
         : fn === "current_user_tenant_id"
         ? { data: state.tenantId, error: state.tenantId ? null : { message: "no tenant" } }
         : fn === "is_current_user_tenant_admin"
@@ -304,7 +308,10 @@ describe("A number you own is a number you can change", () => {
     state.owned = TWO;
     await mount();
     await act(async () => { buttonContaining("Send from this")?.click(); });
-    expect(state.rpcCalls).toContain("tenant_phone_number_set_primary");
+    const call = state.rpcCalls.find((c) => c.fn === "tenant_phone_number_set_primary");
+    expect(call, "the set-primary RPC should have been called").toBeTruthy();
+    // The id the server is told to make primary must be the row whose button was pressed.
+    expect(call?.args?._id).toBe("n1");
     expect(text()).toContain("is now the number you send from");
   });
 
@@ -325,7 +332,11 @@ describe("A number you own is a number you can change", () => {
     await act(async () => { buttonContaining("Rename")?.click(); });
     type("Intake line", "");
     await act(async () => { buttonContaining("Save label")?.click(); });
-    expect(state.rpcCalls).toContain("tenant_phone_number_rename");
+    const call = state.rpcCalls.find((c) => c.fn === "tenant_phone_number_rename");
+    expect(call, "the rename RPC should have been called").toBeTruthy();
+    expect(call?.args?._id).toBe("n1");
+    // The parameter name matters: the RPC declares `_friendly_name`, and "" is what CLEARS it.
+    expect(call?.args).toHaveProperty("_friendly_name", "");
     expect(text()).toContain("Label cleared.");
   });
 

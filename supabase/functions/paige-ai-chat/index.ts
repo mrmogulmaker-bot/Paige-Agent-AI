@@ -70,6 +70,19 @@ function describeStep(
   let out: any = {};
   try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
   const failed = out?.success === false;
+
+  // Drop policy-gated rejections (funding-not-enabled, permission-denied) and the
+  // web_fetch stub — never render these as work or as failure.
+  if (name === "web_fetch") return null;
+  if (failed && typeof out?.error === "string" &&
+      /not enabled|disabled|permission|not allowed|restricted|forbidden/i.test(out.error)) return null;
+  // A tool the operator switched OFF, and a proposal still waiting on their answer, are not
+  // failures — and rendering them as failures is worse than noise: "Did not buy that number"
+  // on the turn where Paige is ASKING says she tried and could not, when she has not tried.
+  // The regex above misses both: the `off` message says "is turned off for this workspace",
+  // and a `needs_confirm` result carries no `error` at all.
+  if (out?.needs_confirm === true || out?.disabled === true) return null;
+
   switch (name) {
     case "comms_connection_summary":
       return { label: failed ? "Couldn't read your connection" : "Checked how your business is connected", group: "owner" };
@@ -90,12 +103,6 @@ function describeStep(
     case "comms_draft_registration":
       return { label: failed ? "Couldn't draft your registration" : "Drafted your carrier registration", group: "owner" };
   }
-
-  // Drop policy-gated rejections (funding-not-enabled, permission-denied) and the
-  // web_fetch stub — never render these as work or as failure.
-  if (name === "web_fetch") return null;
-  if (failed && typeof out?.error === "string" &&
-      /not enabled|disabled|permission|not allowed|restricted|forbidden/i.test(out.error)) return null;
 
   switch (name) {
     // Action bus (§8)
@@ -6510,11 +6517,45 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
 
             // ── The business phone line ───────────────────────────────────────
+            // `functions.invoke` puts NOTHING useful on `error.message` for a non-2xx: it is
+            // the literal string "Edge Function returned a non-2xx status code", and the honest
+            // JSON body lives on `error.context`. So `if (e) throw e` discards exactly the
+            // reply that matters most on this seam:
+            //
+            //   number_bought_but_record_failed (500) — Twilio HAS charged the tenant and the
+            //   row failed to write, so the response carries `twilio_sid` for reconciliation.
+            //   Thrown away, Paige reports a plain failure, and the documented next step after a
+            //   failed buy is to pick another number — a SECOND monthly charge on top of an
+            //   unrecorded first one.
+            //
+            //   LEGAL_PROFILE_REQUIRED (422), REGISTRATION_IMMUTABLE (422), number_unavailable
+            //   (409) — each names precisely what to do next, and each arrived as the same
+            //   generic sentence.
+            //
+            // `src/lib/integrations/connectError.ts` exists to fix this exact trap on the
+            // frontend, and this PR edits it. The edge function was reproducing the bug the
+            // helper was written to kill.
+            const asToolRecord = (v: unknown): Record<string, unknown> =>
+              v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+            /** The body of a non-2xx invoke, or the 2xx data. Never throws. */
+            const readInvokeBody = async (err: unknown, data: unknown): Promise<Record<string, unknown>> => {
+              if (!err) return asToolRecord(data);
+              // deno-lint-ignore no-explicit-any
+              const ctx = (err as any)?.context;
+              if (ctx && typeof ctx.json === "function") {
+                try { return asToolRecord(await ctx.json()); } catch { /* non-JSON body */ }
+              }
+              if (ctx && typeof ctx === "object") return asToolRecord(ctx);
+              return {};
+            };
+
             // Everything here goes through the SAME seams the Connections surface uses —
             // `comms-search-numbers`, `comms-purchase-number`, `comms-a2p-draft`, and the
-            // two RPCs. No second path, and no tenant from the model: each seam derives
-            // the workspace from the verified JWT, so Paige can only ever act on the
-            // workspace whose session she is running in (§9/§18).
+            // two RPCs. No second path, and no tenant from the model.
+            //
+            // The seams and RPCs derive the workspace from the verified JWT themselves. The one
+            // DIRECT table read here (`comms_list_numbers`) does not get that for free and is
+            // filtered explicitly — see the note on that branch (§9/§18).
             if (tc.function.name === "comms_connection_summary") {
               // Point 3 of the owner's brief: a tenant-scoped, SAFE capability summary.
               //
@@ -6554,11 +6595,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   : {}),
               };
             } else if (tc.function.name === "comms_list_numbers") {
+              // EXPLICITLY tenant-filtered, and it has to be. This is the one comms branch that
+              // reads a table directly instead of going through a seam that derives the tenant,
+              // and `tenant_phone_numbers_select` admits `is_platform_owner() OR (tenant = mine
+              // AND role)` — the operator disjunct is UNBOUNDED. Without the filter a caller
+              // holding both super_admin and admin passes the role gate and RLS then hands back
+              // EVERY tenant's numbers, straight into the model's context. The comment beside
+              // this block used to claim each seam derives the workspace itself; that was true
+              // of the RPCs and false of this read.
+              if (!crmTenantId) {
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+                });
+                continue;
+              }
               const { data: rows, error: e } = await supabaseClient
                 .from("tenant_phone_numbers")
                 .select("id, phone_number, friendly_name, is_primary, status")
+                .eq("tenant_id", crmTenantId)
                 .order("is_primary", { ascending: false })
-                .order("purchased_at", { ascending: false, nullsFirst: false });
+                .order("purchased_at", { ascending: false, nullsFirst: false })
+                .limit(50);
               if (e) throw e;
               const list = (rows ?? []) as Array<Record<string, unknown>>;
               const active = list.filter((r) => r.status === "active");
@@ -6583,21 +6642,62 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 },
               });
               if (e) throw e;
-              result = projectOutcomeForModel(d);
+              // NOT projectOutcomeForModel. That is the MCP/Zapier governed-call envelope
+              // projector: it branches on `error`-without-`status`, on an `actions` array, and
+              // on `status`, and returns `unexpected_response` for anything else. This response
+              // is `{numbers, needs_config, price_configured}` — none of the three — so EVERY
+              // successful search reached the model as a failure, and the `needs_config` setup
+              // gap arrived stripped of its message and indistinguishable from an empty shelf.
+              // Copying the Zapier branch's shape without checking the projector's contract is
+              // what did it. Named fields instead, so nothing unanticipated crosses either.
+              const sr = asToolRecord(d);
+              result = {
+                success: sr.needs_config !== true,
+                needs_config: sr.needs_config === true,
+                message: typeof sr.message === "string" ? sr.message : null,
+                price_configured: sr.price_configured === true,
+                numbers: (Array.isArray(sr.numbers) ? sr.numbers : []).map((n) => {
+                  const row = asToolRecord(n);
+                  const price = asToolRecord(row.retail_price);
+                  return {
+                    phone_number: row.phone_number,
+                    locality: row.locality ?? null,
+                    region: row.region ?? null,
+                    capabilities: row.capabilities ?? {},
+                    monthly_cents: typeof price.monthly_cents === "number" ? price.monthly_cents : null,
+                  };
+                }),
+              };
             } else if (tc.function.name === "comms_buy_number") {
               const { data: d, error: e } = await supabaseClient.functions.invoke("comms-purchase-number", {
                 body: { phone_number: args.phone_number, friendly_name: args.friendly_name || undefined },
               });
-              if (e) throw e;
-              const rec = (d ?? {}) as Record<string, unknown>;
+              const rec = await readInvokeBody(e, d);
               // A 200 is not a purchase. The function says `purchased` when it bought and
               // `already_owned` when the workspace held it before we asked; anything else
               // reaching the model as a success would have Paige congratulate someone on a
               // number they do not have and a charge that never started.
               const bought = rec.purchased === true || rec.already_owned === true;
+              // Named fields, not a spread. The record carries `twilio_sid`/`sid` — provider
+              // internals the tenant is never shown (comms-search-numbers states that rule in
+              // its own header) — and a spread also hands the model every future response key
+              // nobody anticipated. The sibling summary branch already does it this way.
               result = bought
-                ? { success: true, ...rec }
-                : { success: false, ...(rec.error ? { error: rec.error } : {}), ...rec };
+                ? {
+                  success: true,
+                  phone_number: rec.phone_number ?? args.phone_number,
+                  already_owned: rec.already_owned === true,
+                  charge_wired: rec.charge_wired === true,
+                }
+                : {
+                  success: false,
+                  error: rec.error ?? "purchase_failed",
+                  // Carried DELIBERATELY: this is the one failure where money was already
+                  // spent, and Paige must say so instead of offering to buy another.
+                  ...(rec.error === "number_bought_but_record_failed"
+                    ? { money_already_spent: true, phone_number: rec.phone_number ?? args.phone_number }
+                    : {}),
+                };
             } else if (tc.function.name === "comms_name_number") {
               const { data: d, error: e } = await supabaseClient.rpc("tenant_phone_number_rename", {
                 _id: args.number_id,
@@ -6630,13 +6730,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const { data: d, error: e } = await supabaseClient.functions.invoke("comms-a2p-draft", {
                 body: { use_case_hint: args.use_case_hint || undefined },
               });
-              if (e) throw e;
-              const rec = (d ?? {}) as Record<string, unknown>;
+              const rec = await readInvokeBody(e, d);
               // needs_config is an honest refusal, not a draft. Shaping it as one would put
               // empty regulatory copy in front of someone as though Paige had written it.
-              result = (rec.needs_config === true || rec.error)
-                ? { success: false, ...rec }
-                : { success: true, ...rec, submitted: false, filing_with_a_carrier_is_not_built: true };
+              // The refusal codes arrive as `{ error: { code, message } }` on a 422, so the code
+              // is one level down. Surfacing it is the whole point: LEGAL_PROFILE_REQUIRED means
+              // "add the legal name in Setup", not "try again".
+              const draftErr = typeof rec.error === "string"
+                ? rec.error
+                : (asToolRecord(rec.error).code as string | undefined) ?? null;
+              result = (rec.needs_config === true || draftErr)
+                ? { success: false, error: draftErr ?? "draft_failed", needs_config: rec.needs_config === true }
+                : {
+                  success: true,
+                  draft: rec.draft ?? null,
+                  saved: rec.saved === true,
+                  submitted: false,
+                  filing_with_a_carrier_is_not_built: true,
+                };
             } else if (tc.function.name === "crm_update_pipeline_stage") {
               const { error } = await admin
                 .from("clients")

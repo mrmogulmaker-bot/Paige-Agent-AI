@@ -31,6 +31,24 @@
 --     admin/coach — the same predicate the table's RLS admits. A service caller (Paige's headless
 --     agent, auth.uid() IS NULL) must name the tenant explicitly and can never infer one.
 -- §13 Both RAISE with stable hints rather than returning a quiet no-op, so a refusal is legible.
+--
+-- TWO LIMITS, RECORDED RATHER THAN LEFT FOR SOMEONE TO REDISCOVER (§13).
+--
+--   1. OPERATOR ACT-AS CANNOT REACH THESE THROUGH PAIGE. The `_tenant_id` parameter exists so a
+--      platform owner (or a service caller) can name the workspace, but `paige-ai-chat`'s executor
+--      calls both RPCs with `_id` alone. A tenant-less operator therefore resolves
+--      `current_user_tenant_id()` to NULL and gets NO_TENANT rather than a cross-tenant write --
+--      a refusal, not a leak, and the SAFE direction to be wrong in. Passing the act-as tenant
+--      through the executor is the follow-up; nothing here has to change for it.
+--
+--   2. THE ROLE HALF OF THE GATE IS TENANT-AGNOSTIC (§53). `user_roles` carries no tenant_id, so
+--      `has_any_role(caller, array['admin','coach'])` asks "is this person an admin ANYWHERE",
+--      not "in this workspace". It cannot become a cross-tenant write here, because the tenant is
+--      the caller's OWN resolved tenant and the row must belong to it -- the two predicates are
+--      ANDed, and only the second one decides whose data is touched. This is inherited verbatim
+--      from `tenant_phone_numbers_select`, the table's own RLS policy; matching it deliberately is
+--      what keeps the write seam from admitting anyone the read seam does not. Fixing the class
+--      means fixing the policy, and that is a platform-wide slice, not this one.
 
 -- ── 1. Set which number this business calls and texts from ──────────────────────────────
 create or replace function public.tenant_phone_number_set_primary(
@@ -76,6 +94,15 @@ begin
       raise exception 'FORBIDDEN' using hint = 'FORBIDDEN';
     end if;
   end if;
+
+  -- Serialise per tenant BEFORE reading. `select ... for update` locks only the target row,
+  -- so when a workspace currently has NO primary — the state of every workspace between its
+  -- first purchase and its first choice — two concurrent calls both clear zero rows and both
+  -- then try to set one. The second loses to `uq_tenant_phone_numbers_primary` with a raw
+  -- 23505 that carries no hint, so it surfaces to the person as "try again in a moment"
+  -- instead of what happened. Nothing corrupts either way; the advisory lock makes the second
+  -- caller wait and then succeed, which is what they asked for.
+  perform pg_advisory_xact_lock(hashtextextended(v_tenant::text, 0));
 
   -- The row must be THIS tenant's, and it must be usable. Making a released or suspended number
   -- primary would point every outbound call at a number that cannot carry one.
@@ -184,9 +211,13 @@ update public.tenant_phone_numbers t
    select distinct on (n.tenant_id) n.id
      from public.tenant_phone_numbers n
     where n.status = 'active'
+      -- `and p.status = 'active'`: a workspace whose only primary is released or suspended has
+      -- NOT decided anything — its caller ID points at a dead number — so it must still be
+      -- backfilled. Unreachable today (nothing is primary before this migration), reachable
+      -- later through import or a service write.
       and not exists (
         select 1 from public.tenant_phone_numbers p
-         where p.tenant_id = n.tenant_id and p.is_primary
+         where p.tenant_id = n.tenant_id and p.is_primary and p.status = 'active'
       )
     order by n.tenant_id, n.purchased_at asc nulls last, n.created_at asc, n.id asc
  );

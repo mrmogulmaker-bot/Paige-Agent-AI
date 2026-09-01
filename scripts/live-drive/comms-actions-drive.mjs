@@ -354,12 +354,45 @@ async function run() {
       (await rows(page, "tenant_phone_numbers")).find((r) => r.is_primary === true)?.phone_number === "+14045550101",
       JSON.stringify((await rows(page, "tenant_phone_numbers")).map((r) => [r.phone_number, r.is_primary])));
 
+    // RENAME is the other half of "can I change this", and it has a property the
+    // purchase does not: it must be able to go BACK to nothing. `import_tenant_phone_number`
+    // coalesces, so it can set a label and never remove one — a control that half works. The
+    // round trip below is set → reload → clear, because only the reload distinguishes a label
+    // that saved from a label that is merely on the screen.
+    await secondRow.locator("button", { hasText: "Rename" }).click();
+    await page.locator('input[placeholder="Intake line"]').fill("Intake line");
+    await page.locator("button", { hasText: "Save label" }).click();
+    await page.waitForTimeout(900);
+    t = await bodyText(page);
+    record("numbers", "names a number so a person can tell two apart",
+      /Label saved/i.test(t), t.slice(0, 260));
+    record("numbers", "and the label REACHED THE STORE",
+      (await rows(page, "tenant_phone_numbers"))
+        .find((r) => r.phone_number === "+14045550101")?.friendly_name === "Intake line",
+      JSON.stringify((await rows(page, "tenant_phone_numbers")).map((r) => [r.phone_number, r.friendly_name])));
+
     await page.screenshot({ path: path.join(OUT, "numbers-bought.png") });
     await page.reload({ waitUntil: "networkidle" });
     await clearBackdrop(page);
     await select(page, "Communications");
     t = await bodyText(page);
     record("numbers", "and it is still there after a reload", /\+14045550101/.test(t), t.slice(0, 300));
+    record("numbers", "and so is the label", /Intake line/.test(t), t.slice(0, 400));
+
+    // CLEARING it. An empty box is the documented way to remove a label, and if this
+    // silently kept the old one the control would be exactly the half-working one the RPC
+    // was written to replace.
+    const renamed = page.locator(".ss-list > div", { hasText: "+14045550101" }).first();
+    await renamed.locator("button", { hasText: "Rename" }).click();
+    await page.locator('input[placeholder="Intake line"]').fill("");
+    await page.locator("button", { hasText: "Save label" }).click();
+    await page.waitForTimeout(900);
+    t = await bodyText(page);
+    record("numbers", "and the label can be REMOVED, not only replaced",
+      /Label cleared/i.test(t)
+        && (await rows(page, "tenant_phone_numbers"))
+             .find((r) => r.phone_number === "+14045550101")?.friendly_name == null,
+      JSON.stringify((await rows(page, "tenant_phone_numbers")).map((r) => [r.phone_number, r.friendly_name])));
     await page.close();
   }
 
