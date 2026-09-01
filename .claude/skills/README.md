@@ -21,10 +21,20 @@ synced/<bucket>/flow-prototype/SKILL.md
 `SKILL.md`'s first instruction is *"Read `references/orchestration.md` for every task."* On a fresh
 remote container that file does not exist.
 
-**A half-installed skill is worse than a missing one.** §69 says a session that cannot find the
-skill must *"say so plainly and not silently improvise its own process"* — but a skill **was**
-found, so that branch never runs. The session reads an index it cannot follow and proceeds anyway,
-which is the silent improvisation §69 exists to prevent, reached through the door §69 left open.
+**A half-installed skill is a worse starting position than a missing one**, and the reason is about
+what the state *affords*, not about what any given session will do. §69 says a session that cannot
+find the skill must *"say so plainly and not silently improvise its own process."* Here a skill
+**is** found — so nothing about the situation announces itself as the not-found case, and the gap
+only surfaces when the session tries to open `references/orchestration.md` and it is not there.
+
+**What happens next is not determined, and this file will not claim otherwise.** §69 also requires
+opening that file before acting, so a session following it properly will hit the absence and can
+report it — nothing in the repository forces anyone to carry on regardless. But nothing stops them
+either: there is no loader, no check, and no failing branch, and the missing piece is a reference
+rather than the thing §69 names. The risk is that the session proceeds having read an index it
+cannot follow, which is the silent improvisation §69 exists to prevent, reached through a door §69
+did not anticipate. **No session has been observed doing this** — it is the available failure mode,
+recorded so it is expected rather than rediscovered.
 
 It is also §64: these are ephemeral containers, so a container-local install dies with the
 container.
