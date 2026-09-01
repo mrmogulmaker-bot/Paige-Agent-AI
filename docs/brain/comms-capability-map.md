@@ -118,12 +118,27 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
   which reach only the "prepared" ceiling above.
 - **What it still cannot do, and these are the edges that matter.** Nothing here sends an SMS — the
   A2P ceiling at the top of this file governs that and is unchanged. Nothing sets `VoiceUrl`, so a
-  number bought this way still has no inbound voice route (see the gap below). Purchase is never
-  autonomous and is never retried: `paige-ai-chat` refuses `comms_buy_number` without a whole,
-  positive `monthly_cents`, and `comms-purchase-number` re-verifies that amount against the
-  operator's own price table and returns `price_changed` / `price_unverifiable` rather than
-  spending. The panel still renders an honest unavailable — `needs_config` — when the workspace
-  cannot buy yet; that is a configured refusal, not the old inert form.
+  number bought this way still has no inbound voice route (see the gap below). The panel still
+  renders an honest unavailable — `needs_config` — when the workspace cannot buy yet; that is a
+  configured refusal, not the old inert form.
+- **What actually protects the money, separated by how strong each guarantee is.** Read this
+  distinction before quoting any of it as a safety property.
+  - **Enforced in code.** No purchase happens without a whole, positive `monthly_cents` —
+    `paige-ai-chat` refuses `comms_buy_number` outright, and that guard sits *ahead of* the
+    autonomy gate, so it binds in every lane including `auto`. `comms-purchase-number` then
+    re-verifies the amount against `platform_number_pricing` and returns `price_changed` /
+    `price_unverifiable` rather than spending. Every exit where money may already have left
+    writes an audit row.
+  - **Configurable, and it defaults safe.** `resolveToolAutonomy` defaults to `confirm` — the
+    comment reads *"safe default — never assume autopilot"* — so out of the box Paige proposes,
+    names the amount, and waits for an explicit yes. But `comms_buy_number` is a registered
+    switchable tool: **a workspace that sets it to `auto` gets a validly-quoted purchase executed
+    with no confirmation** (`index.ts` ~5977: *"autoMode === 'auto' … fall through to execute"*).
+    `off` disables it entirely. So the price check is a guarantee; the confirmation is a default.
+  - **Prompt-level only — NOT enforced.** "A refusal is final for that number, pick another
+    rather than retrying the same one" and "if it was bought but not recorded, do not buy a
+    replacement" live in the tool *description*. They steer the model; nothing rejects a retry.
+  - **The Solo UI path** is always the deliberate two-step, independent of all of the above.
 - **`NumbersTab.tsx` (17 KB)** stays the operator-side surface on the legacy route.
 - `import_tenant_phone_number` — a correct, tenant-pinned RPC with **zero callers anywhere**.
 - `provision-tenant-twilio` — deployed, operator-gated, **zero callers**, and carries an `adopt`

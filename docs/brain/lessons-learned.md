@@ -631,3 +631,43 @@ absent amount as the legacy "price shown in the UI" path, skipped verification, 
 number**. A declared contract is not an enforced one; the guard is `isSpendableQuoteCents`, and it
 was extracted into `_shared/purchase-quote.ts` precisely because a money-path guard inside a
 function with no runtime harness is a guard nobody can prove.
+
+## A default is not a guarantee, and a prompt is not an enforcement (2026-09-01, #707)
+
+**Symptom.** A brain record about the number-purchase path stated: *"Purchase is never autonomous
+and is never retried."* Both halves are false, and the record was written by the same session that
+had built the path.
+
+**Root cause, in two parts.**
+
+1. **Default mistaken for guarantee.** `resolveToolAutonomy` defaults to `confirm` — its own
+   comment says *"safe default — never assume autopilot"* — so the observed behaviour is always a
+   confirmation. But `comms_buy_number` is a registered switchable tool, and at `auto` the gate
+   comments its own behaviour plainly: *"autoMode === 'auto' … fall through to execute."* A
+   validly-quoted purchase then runs with no confirmation. What was observed was the default; what
+   was written down was a property.
+2. **Prompt mistaken for mechanism.** *"A refusal is final for that number, pick another rather
+   than retrying"* and *"do not buy a replacement"* live in the tool **description**. They steer a
+   model. Nothing rejects a retry. Enforcement and instruction read identically in a diff, and only
+   one of them survives a model that ignores it.
+
+**Why this one is worth a lesson.** It landed **in the close-out record itself** — the document
+written to stop exactly this. The sweep half of the close-out step looks for claims the change
+*falsified*; it does not look for claims the author *overstated*, and an overstatement about a
+safety property is the more dangerous of the two, because the next session quotes it as settled.
+
+**The rule.** When recording anything protective, separate it by strength and say which is which:
+
+| Strength | Means | Example here |
+|---|---|---|
+| **Enforced** | code refuses; no configuration changes it | no purchase without a whole, positive `monthly_cents`; server re-verifies the price |
+| **Configurable** | safe today, a setting away from not being | `confirm` is the default lane; a workspace may set `auto` |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" |
+
+Never write "never" about the middle or bottom row. For anything money-, permission-, or
+tenant-boundary-shaped, name the lane that removes the protection **in the same sentence** as the
+protection — a reader who has to go find the exception will not.
+
+**How it was caught, honestly:** not by me. The §39 peer-gate caught it — an automated reviewer
+reading the actual diff, which is precisely the layer that exists because the author's own proof
+cannot see what the author already believes.
