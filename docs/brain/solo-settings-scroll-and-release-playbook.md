@@ -176,6 +176,12 @@ mutation occurred in release verification.
 
 ## Canonical sources
 
+**Shell-wide questions go to `docs/doctrine/solo-shell-contract.md`** (added 2026-09-02) — the one
+door to the canonical Solo shell: one shell for every tenant, address-vs-authority, the CSS-clip
+interaction policy, the four-viewport proof bar, and which test or drive enforces each rule. This
+playbook stays the Settings-scoped record; it is not the shell contract.
+
+
 - `src/solo/settings.tsx`
 - `src/solo/settings.css`
 - `src/solo/settings-scroll-owner.ts`
