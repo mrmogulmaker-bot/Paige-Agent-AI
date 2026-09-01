@@ -289,10 +289,10 @@ state stays out while shared assets are versioned. Two negations exist:
 | Path | Why it is versioned |
 |---|---|
 | `!.claude/commands/` | Shared project commands (e.g. `/edge-drift`) — "so every session (and every teammate) gets them" |
-| `!.claude/skills/` | Currently a **README only**. The §69 delivery skill (`flow-by-flow` + its required sibling `flow-prototype`) is **NOT vendored** — its bundle ships no `LICENSE`, and the MIT notice can neither be fetched nor reconstructed without inventing a copyright holder, so redistribution is blocked pending an owner decision. The README records the blocker and the local knowledge-capture close-out step that must survive an upstream update. **Known consequence:** the account-synced install delivers `SKILL.md` ONLY, so on a fresh container the index's first instruction points at a missing `references/orchestration.md`. Nothing announces that as the skill-not-found case §69 anticipates, since a skill *was* found — a session in that state **should say so plainly rather than improvise**, and no mechanism enforces it |
+| `!.claude/skills/` | Holds `README.md` plus **our own** `knowledge-closeout/` skill — the repo close-out procedure (§0/§BRAIN.3/§66), versioned so it loads on every fresh container (§64). The third-party §69 skill (`flow-by-flow` + its sibling `flow-prototype`) is **NOT vendored** — its bundle ships no `LICENSE`, and the MIT notice can neither be fetched nor reconstructed without inventing a copyright holder, so redistribution is blocked pending an owner decision. **Corrected 2026-09-01:** an earlier revision claimed the account-synced install delivers `SKILL.md` only and left §69 half-installed. It does not — the synced `SKILL.md` inlines every `references/*.md` and the template (77 KB) and is self-contained, so a fresh container gets the complete skill. What the snapshot lacks is our 2026-09-01 close-out addition, which is why that now ships as the repo-local skill instead |
 
 Contains **no secrets** — these are markdown process documents, and **no third-party content**:
-`.claude/skills/` holds `README.md` and nothing else. (An earlier revision of #708 vendored the two
+`.claude/skills/` holds `README.md` and our own `knowledge-closeout/SKILL.md`. (An earlier revision of #708 vendored the two
 MIT bundles with an assembled `LICENSE`; both, and a `PROVENANCE.md`, were removed before merge
 because the notice could not be obtained without inventing a copyright holder. Those paths do not
 exist — do not follow references to them.)

@@ -331,7 +331,7 @@ async function deriveTier(actor: ActorCtx): Promise<McpTier> {
 // ---------- Contacts ----------
 mcp.tool("search_contacts", {
   description:
-    "Search Paige contacts (clients table) by name, email, phone, or company. Returns up to `limit` matches with the fields the CRM UI shows. Use this before any other contact tool to resolve a contact_id.",
+    "Search Paige contacts (clients table) by name, email, phone, or company. Returns up to `limit` matches with safe CRM metadata and client_ref. Use client_ref for later contact tools.",
   inputSchema: z.object({
     query: z.string().describe("Free-text match across first/last name, email, phone, entity_name."),
     lifecycle_stage: z.string().optional().describe("Optional filter, e.g. 'qualifying', 'self_serve', 'active'."),
@@ -346,47 +346,50 @@ mcp.tool("search_contacts", {
     let q = applyContactSearchFilter(
       admin
         .from("clients")
-        .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, tenant_id, updated_at")
+        .select("account_number, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, updated_at")
         .eq("tenant_id", tenantId),
       String(args.query),
     );
     if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
     const { data, error } = await q.order("updated_at", { ascending: false }).limit(limit);
     if (error) return err(error.message);
-    return ok({ items: data ?? [], count: (data ?? []).length });
+    return ok({ items: (data ?? []).map(({ account_number, ...item }) => ({ ...item, client_ref: account_number })), count: (data ?? []).length });
   },
 });
 
 mcp.tool("get_contact", {
   description:
     "Fetch a single contact's full Paige profile, including business details, address, owner/coach assignments, and notes.",
-  inputSchema: z.object({ contact_id: z.string().describe("clients.id (uuid)") }),
-  handler: async ({ contact_id }) => {
+  inputSchema: z.object({ client_ref: z.string().describe("Tenant-scoped client reference, for example CLT-A1B2C3D4E5F6.") }),
+  handler: async ({ client_ref }) => {
     const tenantId = await actorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
-    const { data, error } = await admin.from("clients").select("*").eq("id", contact_id).eq("tenant_id", tenantId).maybeSingle();
+    const { data, error } = await admin.from("clients")
+      .select("account_number, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, last_contacted_at, created_at")
+      .eq("account_number", client_ref.trim().toUpperCase()).eq("tenant_id", tenantId).maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found");
     const paigeUrl = await externalActorDestination(tenantId, "contacts");
-    return ok({ contact: data, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
+    return ok({ contact: { ...data, client_ref: data.account_number, account_number: undefined }, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
   },
 });
 
 mcp.tool("lookup_contact_by_account_number", {
   description:
-    "Look up a customer by their tenant-scoped account number (e.g. 'MMA-000123'). Every customer created in Paige gets one auto-assigned. Scoped to the caller's active tenant unless the caller is the platform owner. Returns the full contact record on match.",
+    "Resolve a customer by immutable client_ref within the caller's active tenant. Returns bounded CRM metadata, never an internal UUID.",
   inputSchema: z.object({
-    account_number: z.string().describe("Format: {PREFIX}-{6-digit sequence}, e.g. 'MMA-000123'."),
+    account_number: z.string().describe("Immutable client_ref, for example CLT-A1B2C3D4E5F6."),
   }),
   handler: async ({ account_number }) => {
     const tenantId = await actorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
-    let q = admin.from("clients").select("*").eq("account_number", account_number.trim()).eq("tenant_id", tenantId);
-    const { data, error } = await q.maybeSingle();
+    const { data, error } = await admin.from("clients")
+      .select("account_number, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, last_contacted_at, created_at")
+      .eq("account_number", account_number.trim().toUpperCase()).eq("tenant_id", tenantId).maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found");
     const paigeUrl = await externalActorDestination(tenantId, "contacts");
-    return ok({ contact: data, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
+    return ok({ contact: { ...data, client_ref: data.account_number, account_number: undefined }, ...(paigeUrl ? { paige_url: paigeUrl } : {}) });
   },
 });
 

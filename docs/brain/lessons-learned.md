@@ -593,6 +593,7 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
    filter is the dangerous shape; a count that silently reads 0 is the same class.
 
+- A UUID default is not a complete identity contract. Every producer must converge on a required immutable tenant binding, and an AI-facing lookup must return a stable human reference while resolving the internal UUID only inside a server-validated tenant boundary. A service-role query with an ID filter is not tenant safety unless the tenant predicate is present in the same query.
 ---
 
 ## A green proof can be wrong in the direction that flatters you — and a red one can be the finding
@@ -762,8 +763,8 @@ safety property is the more dangerous of the two, because the next session quote
 |---|---|---|
 | **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
 | **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
-| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both say ask first; nothing checks that anyone did |
-| **Enforced but self-asserted** | code refuses without an assertion the actor can **MINT ITSELF**, and validates only its value — not who issued it. Real against an actor that omits it, worthless against one that supplies it. **The property is mintability, not who transmits it:** a JWT or capability token is also actor-supplied, and is strong precisely because the actor cannot create one the server will accept | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the flag is self-minted and the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction** |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both said ask first; nothing checked that anyone did. *(FIXED 2026-09-01: the flag must now spend a server-minted proposal created before the turn. The prompt text is still only steering — it is no longer the only thing there.)* |
+| **Enforced but self-asserted** | code refuses without an assertion the actor can **MINT ITSELF**, and validates only its value — not who issued it. Real against an actor that omits it, worthless against one that supplies it. **The property is mintability, not who transmits it:** a JWT or capability token is also actor-supplied, and is strong precisely because the actor cannot create one the server will accept | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the flag is self-minted and the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction.** *(The EXAMPLE was fixed 2026-09-01 — `confirm:true` must now spend a server-minted proposal predating the turn. The row's vocabulary is the durable part and stands; do not read the example as current state.)* |
 | **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
 
 Never write "never" about the bottom three rows. For anything money-, permission-, or
@@ -815,6 +816,14 @@ is not what it looks like.** The gate tests `gateArgs.confirm`, which is
 `needs_confirm` that preceded it or to anything a human said, so a model emitting `confirm:true`
 on its first call executes immediately. The platform already has the enforced pattern — outbound
 sends file a real approval row and wait — and this gate does not use it.
+
+> **CLOSED 2026-09-01.** It uses one now. `confirm:true` must spend a server-minted
+> `paige_tool_confirmations` row bound to the TOOL — and, for a listed set, an identity subset;
+> NOT the whole arguments, which livelocked and was blocked — plus the requester and the tenant,
+> unspent, unexpired, and created *before the turn began* — mirroring
+> `pipeline_archive_confirmations` (#709) rather than forking a rival seam. The finding above
+> stands as written; only its present tense expired. **The bound is still honest: an intervening
+> turn is not a human's yes.** That last step needs per-surface UI work and is tracked separately.
 
 **It survived the rule that was written to catch it.** I had just committed *"find the code that
 makes it true, then find every caller that does not go through it"*, applied it to the price
@@ -927,3 +936,161 @@ a merge conflict in this file. That defers the capture to another PR's merge and
 says *same change*, and "it was more convenient to put it elsewhere" is precisely the reasoning the
 rule exists to refuse. Caught on review, in a PR whose own subject is making that capture
 enforceable.
+
+## A file listing is not a file reading (2026-09-01, #708 → corrected same day)
+
+**What happened.** A whole doctrine artifact — a `.claude/skills/README.md`, a `.gitignore` comment,
+a `config-registry` row, a brain index row and a long dated `decision-log` entry — was written,
+reviewed across eight rounds, and merged, asserting that the §69 delivery skill arrives
+**half-installed** on every fresh container: *"the account-synced copy is `SKILL.md` and nothing else
+— no `references/`, no `templates/`."*
+
+The premise was false. The synced `SKILL.md` is **77,739 bytes** and inlines every `references/*.md`
+and the template under a heading that says so in plain words: *"Inlined references (self-contained ·
+2026-08-30)."* Somebody had already solved the sync limitation days earlier. A fresh container
+receives the complete skill, and §69 was never best-effort.
+
+**The mechanism.** A `find` was run. It printed one `SKILL.md` per synced skill and no `references/`
+directory. That listing was treated as an inventory of **content**. It is an inventory of **names**.
+The 77 KB size was in the same output, in the same column, the entire time — the evidence that would
+have falsified the claim was already on screen and was read past. Opening the file cost one command.
+
+**Why the reviews did not catch it.** They were not asked to. Eight rounds examined whether the
+reasoning was sound, whether the claim was over-stated, whether the licence inference was safe,
+whether the sweep was honest — and each of those found something real. Not one of them opened the
+file the argument was about, because the premise was presented as an observation rather than as a
+claim, and observations do not look like the thing to check.
+
+> **A review grades the argument. It does not grade the evidence the argument stands on.**
+> An unexamined premise inherits the credibility of everything correct that was built on top of it,
+> and the more careful the superstructure, the more solid the foundation appears.
+
+**The rules this leaves.**
+
+- **`find` / `ls` / `wc -l` answer "what is named" and "how big". They never answer "what is in it."**
+  Any claim about content is a claim about content, and needs the file opened. A size that looks
+  wrong for the claim — 77 KB for a file asserted to be a bare index — is the tell.
+- **State a premise as a claim, so it can be checked.** "The synced copy is `SKILL.md` only" reads as
+  a finding. "I ran `find` and saw one filename, and did not open it" reads as what it was, and any
+  reviewer would have opened it.
+- **Sweep your own merged work when a later finding contradicts it.** The correction here touched
+  five files; only one was the file the mistake was made in. This is exactly the Gate-6 sweep,
+  pointed at yesterday's own commit.
+- **The correction is worth more than the conclusion was.** The blocker recorded in #708 (the MIT
+  notice cannot be reconstructed) is still entirely true and still stands. What collapsed was the
+  urgency around it — and the fix that followed, shipping our close-out as our *own* repo-local
+  skill, is better than the vendoring it had been reaching for.
+
+**Related:** *"A predicate proof is not a write proof"* (a proof exercising the wrong statement) and
+*"A verification sweep that filters by content deletes the evidence"* (a search that hid its own
+answer) — both above, both 2026-09-01. Three variants of one failure in a day: **the check ran, and
+it was not a check of the thing.**
+
+## Every gate we run is blind to SQL — third occurrence (2026-09-01, the confirm-binding migration)
+
+**What happened.** The migration adding `paige_tool_confirmations` shipped an INSERT with **five
+target columns and four values** — `args_hash`, the column the whole mechanism binds on, was
+missing from the `values` list. Every confirm-gated tool call would have raised
+`42601 INSERT has more target columns than expressions` at runtime, in the one code path that
+decides whether 52 mutating tools may execute.
+
+**What passed anyway, all of it green:**
+
+| Gate | Result |
+|---|---|
+| `tsc --noEmit` | 0 errors |
+| `vitest run` | 124 files, 1630 tests, all passing |
+| `npm run build` | built clean |
+| `lint:views` · `lint:definer-fns` · `lint:tier-features` · `lint:shadow-vars` · `lint:tool-catalogue` · `lint:operator-reach` · `smoke:comms-webhook-auth` | all PASS |
+
+Not one of them parses SQL. They cannot: the migration is a text file that no TypeScript
+tool-chain reads and no CI job executes. **A green pre-merge run says nothing whatsoever about
+whether a migration is valid**, and a defect this crude survived every single check.
+
+The §32 `BEGIN … ROLLBACK` proof caught it on the first attempt, in the first thirty seconds.
+
+**This is the THIRD time this class has cost us.** See *"service_role grants are invisible to every
+pre-merge check we run"* (2026-08-20, itself logged as a second occurrence) and *"Migration
+merged-but-never-applied — the false-green"* (§32 / #275). Same shape each time: the SQL layer is
+outside the reach of everything that reports "green", so confidence from the other gates is
+confidence about a different artifact.
+
+**The rules.**
+
+- **Never merge a migration on the strength of tsc/tests/build/lints.** They are evidence about the
+  TypeScript. Run the SQL. `BEGIN … ROLLBACK` costs one call.
+- **Make the proof BEHAVIOURAL, not just syntactic.** Executing the DDL proves it parses. It does
+  not prove the thing works. This proof asserted nine properties against the real database —
+  same-turn refusal, cross-action, cross-tool and cross-user refusal, single-use, later-turn
+  success, and both RPCs closed to non-`service_role` — and reported `pass=9 fail=0`. A DDL-only
+  proof would have caught the missing column but nothing about whether the guard actually guards.
+- **Force the rollback structurally.** Ending the block with `raise exception` carrying the results
+  aborts the transaction by construction, so the proof cannot half-apply if something later in the
+  batch fails. Verify afterwards that `to_regclass` and the migration ledger are still null/0 —
+  a rollback you did not check is a rollback you are assuming.
+- **A green suite next to a red artifact is worse than a red suite**, because it is read as
+  permission to stop looking.
+
+## A proof only tests what crosses its own boundary (2026-09-01, the confirm-binding livelock)
+
+**What happened.** The first version of the confirm-binding hashed the **whole argument object** and
+required the confirming call to reproduce it. Against that, the evidence looked overwhelming:
+
+- 11 behavioural assertions against the real database, `pass=N fail=0`
+- 28 unit tests on the decision module
+- a **negative control** proving those tests reject the old implementation
+- `tsc` 0 · 1630 vitest tests · production build · seven CI lint gates
+- a CI script that imports and executes the real edge handler: 71 passed
+
+Every one of them passed. The design was **unusable**.
+
+Conversation history is rebuilt as `{ role, content }` only — tool calls and tool results **do not
+cross a turn boundary** — and Approve sends the literal words "Approved — run it." So on the
+confirming turn the model has to regenerate its arguments from prose. For `document_generate`,
+whose `blocks` argument *is* the authored document, two generations are never byte-equal. Approve →
+re-author → hash differs → refuse → re-propose. Forever, silently, with nothing executing and no
+error surfaced. The same file already carried a comment recording that exact re-ask loop as a flaky
+model bug; the hash would have made it structural.
+
+**Why nothing caught it.** Look at where each proof lives:
+
+| Proof | What it crossed | What it could never cross |
+|---|---|---|
+| SQL `BEGIN…ROLLBACK` | the database boundary | hashes were passed in **as literals** — no arguments were ever generated |
+| Unit tests | the function boundary | hand-written 1–2 key objects — nothing re-authored |
+| CI handler harness | one HTTP request | **one** turn; it never sends a second |
+| tsc / build / lints | the type and syntax boundary | behaviour of any kind |
+
+The defect lived in the gap **between two turns**, and not one instrument reached across it. This
+is the sharpest form of a lesson already recorded twice here — *a predicate proof is not a write
+proof*, *a sweep that filters by content deletes the evidence*. Same shape again: **the check ran,
+and it was not a check of the thing.**
+
+**What actually caught it:** the §39 peer-gate — an independent adversarial read of the pushed diff,
+whose brief was explicitly *"find what those assertions structurally could not test."* It traced the
+history construction, found `aiMessages.push({ role, content })`, and reasoned about what the model
+would have to do on the next turn. No test did that, because no test could.
+
+**The rules.**
+
+- **Before trusting a proof, name its boundary.** Write down what the instrument crosses and what it
+  cannot. If the defect class you care about lives outside every boundary you listed, you have no
+  coverage, however many assertions are green.
+- **Multi-turn behaviour needs a multi-turn instrument, or an adversarial reader.** We have neither
+  a two-turn harness nor a reason to build one for this alone — so the peer-gate is the control, and
+  it is not optional on anything whose correctness spans turns.
+- **Ask what the model must REPRODUCE.** Any cross-turn binding is a demand for regeneration. If the
+  thing being bound cannot be regenerated, the binding is a livelock rather than a guard. The design
+  rule is *bind only on what the model can reproduce* — a value it can read back out of its own
+  prose, or a stable id it can look up again. **Not** "only what the human saw": that was the first
+  wording here, and the shipped map already breaks it for three tier-2 ids, so it described an
+  intention rather than the code.
+- **A second round found a second livelock inside the fix for the first.** The supersede keyed on
+  the tool while the claim keyed on tool+identity, so proposing a second subject retired the first
+  at birth and a batch ("delete these two contacts") could never execute either. Same silent shape,
+  different clause. **When you fix a livelock, check that the fix's own keys agree with each other**
+  — and add the assertion that would have caught it, which here was simply *two identities on one
+  tool*. The eleven assertions that passed reused a single identity throughout.
+- **A silent livelock is worse than an error.** The refusal path logged and re-proposed, so the
+  system looked like it was politely asking again. Failure modes that resemble normal operation are
+  the ones that survive review.

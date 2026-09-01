@@ -831,32 +831,12 @@ function SubmissionRow({
     if (!email) return toast.error("Submission has no email — can't create contact");
     setBusy(true);
     try {
-      const { data: existing } = await supabase
-        .from("clients")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .ilike("email", email)
-        .maybeSingle();
-
-      let contactId = existing?.id as string | undefined;
-      if (!contactId) {
-        const { data: inserted, error: insErr } = await supabase
-          .from("clients")
-          .insert({
-            tenant_id: tenantId,
-            first_name: firstName ?? "Unknown",
-            last_name: lastName ?? "",
-            email,
-            phone,
-            entity_name: entity,
-            source: "growth_form",
-            status: "lead",
-          } as any)
-          .select("id")
-          .single();
-        if (insErr) throw insErr;
-        contactId = inserted.id;
-      }
+      const { data: contactId, error: createErr } = await supabase.rpc("create_contact", {
+        p_first_name: firstName ?? "Unknown", p_last_name: lastName ?? "Contact",
+        p_email: email, p_phone: phone, p_entity_name: entity,
+        p_source: "growth_form", p_channel: "form",
+      } as any);
+      if (createErr || !contactId) throw createErr ?? new Error("Contact could not be resolved");
 
       const { error: linkErr } = await supabase
         .from("growth_form_submissions")
@@ -864,7 +844,7 @@ function SubmissionRow({
         .eq("id", sub.id);
       if (linkErr) throw linkErr;
 
-      toast.success(existing ? "Linked to existing contact" : "Contact created");
+      toast.success("Contact ready");
       onConverted(contactId!);
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to send to contact");

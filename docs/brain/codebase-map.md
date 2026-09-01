@@ -302,3 +302,7 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
 - Identity rule: mount Mind only after server-resolved `activeTenantId`, key the child by that epoch,
   and never use the URL account number as read authority.
 
+
+### Client identity contract (2026-09-01)
+
+`public.clients` owns one immutable internal UUID, one immutable tenant binding, and one immutable public-safe `client_ref` stored in `account_number`. `create_contact()` is the authenticated creation seam; trusted edge producers must supply their already server-resolved tenant. Paige Chat and MCP expose `client_ref` plus bounded CRM metadata and resolve the internal UUID only after tenant validation.

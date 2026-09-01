@@ -368,6 +368,11 @@ Deno.serve(async (req) => {
         const ownerId = await resolveOwnerUserId();
         if (!ownerId) return fail(verb, 500, "Platform owner not resolvable for created_by");
 
+        const { data: ownerProfile } = await supabase.from("profiles")
+          .select("active_tenant_id").eq("user_id", ownerId).maybeSingle();
+        const tenantId = ownerProfile?.active_tenant_id ?? null;
+        if (!tenantId) return fail(verb, 409, "tenant_not_resolved");
+
         const nowIso = new Date().toISOString();
 
         // Resolve assigned user mapping (auth.users by email)
@@ -387,6 +392,7 @@ Deno.serve(async (req) => {
             .from("clients")
             .select("id")
             .eq("ghl_contact_id", p.ghl_contact_id)
+            .eq("tenant_id", tenantId)
             .limit(1)
             .maybeSingle();
           existingId = byGhl?.id ?? null;
@@ -396,6 +402,7 @@ Deno.serve(async (req) => {
             .from("clients")
             .select("id")
             .ilike("email", emailLower)
+            .eq("tenant_id", tenantId)
             .limit(1)
             .maybeSingle();
           existingId = byEmail?.id ?? null;
@@ -413,7 +420,7 @@ Deno.serve(async (req) => {
         if (p.source) sharedPatch.source = p.source;
 
         if (existingId) {
-          const { error } = await supabase.from("clients").update(sharedPatch).eq("id", existingId);
+          const { error } = await supabase.from("clients").update(sharedPatch).eq("id", existingId).eq("tenant_id", tenantId);
           if (error) throw error;
           if (assignedUserId) {
             await supabase
@@ -437,6 +444,7 @@ Deno.serve(async (req) => {
           .insert({
             ...sharedPatch,
             created_by: ownerId,
+            tenant_id: tenantId,
             email: emailLower,
             status: "active",
             source: p.source ?? "mma_bridge",

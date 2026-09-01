@@ -367,19 +367,14 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       // only through the consent path (they accept a portal invite → accept_tenant_invite sets
       // linked_user_id), consistent with how the app already models it ("Not Invited" until
       // accepted). This mirrors AddInternalClientDialog, which also creates unlinked contacts.
-      const { error } = await supabase.from("clients" as any).insert({
-        first_name: firstName,
-        last_name: lastName,
-        email: null,
-        status: "active",
-        city: client.city,
-        state: client.state,
-        created_by: user.id,
-        tenant_id: activeTenantId,
-        created_by_channel_type: "manual", // #10 channel-of-origin (move auth user → internal client)
+      const { data: clientId, error } = await supabase.rpc("create_contact", {
+        p_first_name: firstName, p_last_name: lastName, p_email: null,
+        p_source: "manual", p_channel: "manual",
       } as any);
-
-      if (error) throw error;
+      if (error || !clientId) throw error ?? new Error("Client could not be resolved");
+      const { error: detailError } = await supabase.from("clients" as any)
+        .update({ city: client.city, state: client.state } as any).eq("id", clientId);
+      if (detailError) throw detailError;
       toast.success(`${client.full_name} added to Internal Clients — invite them to link their account`);
       fetchAllClients();
     } catch (err: any) {

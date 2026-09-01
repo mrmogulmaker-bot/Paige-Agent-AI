@@ -1188,7 +1188,8 @@ released by case C8 of the migration's §32 proof — a seat with no thread and 
 claim its approval.
 
 **Gating.** No new tier flag. Autonomy is resolved per tenant per tool by `resolve_tool_autonomy`,
-clamped by the Trust Compass ceiling (`20261021000000`); the token changes only how consent is
+clamped by the Trust Compass ceiling (`20261039000000` — renumbered from `20261021000000` on the
+2026-09-02 merge, which collided with main's already-applied tool-confirmation binding); the token changes only how consent is
 carried, never who may act.
 
 **A TOKEN CANNOT BE REDEEMED BY THE TURN THAT MINTED IT — the correction to the row above.** The

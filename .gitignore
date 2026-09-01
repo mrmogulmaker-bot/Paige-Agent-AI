@@ -27,11 +27,11 @@ dist-ssr
 # but DO version shared project commands under .claude/commands/ so every session
 # (and every teammate) gets them.
 #
-# .claude/skills/ is versioned for the same reason. It currently holds a README only: the
-# §69 skill itself is NOT vendored, because its bundle ships no LICENSE and its MIT notice
-# can neither be fetched nor reconstructed without inventing a copyright holder. That README
-# records the blocker, what would unblock it, and the local close-out step that must survive
-# an upstream update. See .claude/skills/README.md before adding anything here.
+# .claude/skills/ is versioned for the same reason: our own knowledge-closeout skill lives
+# there and must reach every fresh container (§64). The third-party §69 skill is NOT vendored,
+# because its bundle ships no LICENSE and its MIT notice can neither be fetched nor
+# reconstructed without inventing a copyright holder.
+# See .claude/skills/README.md before adding anything here.
 .claude/*
 !.claude/commands/
 !.claude/skills/

@@ -131,6 +131,61 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Paige's tool confirmation is bound to SERVER-HELD state (2026-09-01, `20261021000000`)
+
+`confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
+in `paige-ai-chat` mints a `paige_tool_confirmations` row on every `needs_confirm`, and a later
+`confirm:true` executes ONLY by atomically consuming a row for that tool, requester and tenant that
+is unspent, unsuperseded, unexpired, and **created before the current turn began**. Minting
+supersedes any earlier open proposal for the same tool, so one approval buys exactly one execution.
+
+For a list of high-consequence tools (`TOOL_IDENTITY_FIELDS`) the row also pins an identity. Some
+of those values ARE shown to the operator (the phone number, the role, a workflow or page id);
+others — `user_id`, `contact_id`, `number_id` — are **not**, and the pin there buys less than it
+looks like: a mismatch re-renders the *same* sentence, so a second yes executes on the new subject.
+It closes an accidental swap; it does not let the operator tell two subjects apart. Naming the
+subject in the summary is filed separately.
+
+It deliberately does **not** pin whole arguments: history carries only `{role, content}`, so the
+model re-authors its arguments from prose on the confirming turn, and hashing a `document_generate`
+payload made the flow unapprovable.
+
+**Any user turn satisfies the gate — including "no, don't."** This proves a turn intervened, never
+that the operator agreed.
+
+**Both versions before this one were BLOCKED by the §39 peer-gate**, the first for that
+whole-argument hash, the second for a supersede that keyed on the tool alone while the claim keyed
+on tool+identity — which livelocked any *batch* ("delete these two contacts") in exactly the same
+silent way. Neither was reachable by the SQL proof or the unit tests as they stood.
+
+**What this closed.** The gate previously tested `gateArgs.confirm`, which is
+`JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
+its first call executed immediately; and because the tool loop dedupes rounds on the exact argument
+string, it could even propose and self-approve **inside a single HTTP turn** with no operator
+message in between. `MUTATING_TOOLS` carries **52 entries**, two of which (`marketplace_install`,
+`marketplace_uninstall`) are containment tombstones with no tool definition and no dispatch branch
+and can never reach it. The rest include `member_grant_role`,
+`n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`.
+
+**What it does NOT claim (§13).** It proves the server proposed first, that a turn intervened, that
+what runs is what was proposed, and that an approval is spent once. It does **not** prove the human
+said *yes*. Binding to an authenticated approval click needs per-surface UI work — only
+`PaigeAIChat` renders `PaigeConfirmCard`, and `useSoloChat` drops the confirm frame — and is
+tracked separately. `auto` is unchanged and still carries no confirmation, by design (§67).
+
+**§18:** generalizes `pipeline_archive_confirmations` (#709), which already did this for one tool.
+Not a rival seam. **Proof:** 11/11 behavioural assertions against prod inside `BEGIN … ROLLBACK`
+via the committed `scripts/tool-confirmation-sql-proof.sql`, plus 46 unit tests including explicit
+livelock regressions. Inside a studio thread `STUDIO_AUTO_TOOLS` still flips five build tools to
+`auto`, so the binding does not reach those there.
+
+**MERGE CORRECTION, 2026-09-02 (§13).** The binding above shipped, and the branch below
+replaces the RUNTIME half of it: `paige-ai-chat` now gates on `paige_pending_confirmations`,
+which proves everything the row above proves and additionally executes the STORED arguments
+and requires the operator's Approve click — the two things #711 recorded as NOT proven. The
+`paige_tool_confirmations` table and `_shared/toolConfirmation.ts` remain in place but are no
+longer on the execution path. See `docs/brain/decision-log.md`, 2026-09-02.
+
 ### PAIGE Chat — the governed working interface (2026-08-31, branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT YET MERGED)
 
 **Status: on a branch, verified, awaiting Gate 2. Nothing below is live on production yet.** Recorded
@@ -143,7 +198,7 @@ Six vertical slices, each independently reviewed by an adversarial agent, repair
 | S1 | Every provider call files its `paige_llm_trace` row under the tenant whose evidence it carries. Eight of nine call sites passed no trace context and wrote untenanted platform rows — the ones carrying the MOST evidence. | `paige-ai-chat`, `_shared/claude.ts` seam |
 | S2 | A focused-CLIENT switch now ends the conversation the way an account switch does (one composite scope epoch). The isolation fence stopped being opt-in — the one surface that focuses clients did not set the flag. `paige_chat_turn_append` gained a tenant predicate. A refused client focus is released, and the refusal survives the reset it causes. | `PaigeAIChat.tsx`, `PaigeWorkspace.tsx`, migration `20261018000000` |
 | S3 | **A credit report dropped into chat no longer writes eight tables unasked.** It produces a proposal a person reviews field by field; approval carries KEYS, never values, and the server writes from its own stored extraction. Prohibited sensitive categories excluded; uncertainty omitted rather than defaulted. | `paige-ai-chat`, new `_shared/credit-extraction-payload.ts`, new `paige-apply-extraction`, migration `20261019000000` |
-| S4 | An approval is BOUND to the call it approved, not to a boolean. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. **The binding MECHANISM changed twice after this — read R1 and R2 below before trusting any description of it.** | `paige-ai-chat`, migrations `20261020000000`, `20261021000000` |
+| S4 | An approval is BOUND to the call it approved, not to a boolean. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. **The binding MECHANISM changed twice after this — read R1 and R2 below before trusting any description of it.** | `paige-ai-chat`, migrations `20261020000000`, `20261039000000` (renumbered from `20261021000000` on the 2026-09-02 merge — that version was already taken on prod by main's tool-confirmation binding) |
 | R1 | S4's mechanism (the surface echoes a fingerprint back) made every gated tool **un-executable on five of the six chat surfaces**, because only `PaigeAIChat` sends the echo — and the client-portal seat lost `update_client_data`, its only write. The proposed call is now persisted and approval carries a TOKEN; the STORED arguments execute, so the model never restates the call and a document-sized argument cannot livelock. | `paige-ai-chat`, migration `20261023000000` |
 | R2 | **R1 opened a self-approval hole and this closes it — see §10.** The nonce (a token cannot be redeemed by the turn that minted it) held, but was not enough: the token is a fingerprint of the ACTION, so any LATER request that re-proposed the same call got it back and spent it — including one whose human message was "cancel that". **The token is removed.** Approval is a rendered card (unforgeable — a model cannot write a request body) or `confirm: true` (the model's word); both redeem the STORED call. Declining now CANCELS the proposal. | `paige-ai-chat`, migration `20261026000000`, `PaigeConfirmCard.tsx` |
 | R3 | **The risk split became a policy.** `_shared/action-risk.ts` classifies all 51 mutations once — 28 `ordinary` (either channel), 21 `high` (rendered card only; the model's word is refused), 2 `owner_only` (not a chat action at any approval strength). `MUTATING_TOOLS` is that policy's key set, so there is no second list to drift out of step. An unclassified write refuses at dispatch AND fails CI (`lint:action-risk`). **Owner ruling 2026-09-01 absorbed:** Paige may never grant or raise her own autonomy through Chat, so `automation_set_grant`/`automation_set_state` refuse down every channel including a clicked card. | new `_shared/action-risk.ts`, `paige-ai-chat`, new `scripts/ci/action-risk-lint.mjs` |

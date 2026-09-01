@@ -49,23 +49,19 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase.from("clients" as any).insert({
-        created_by: user.id,
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
-        email: form.email.trim() || null,
-        phone: form.phone.trim() || null,
-        street_address: form.street_address.trim() || null,
-        city: form.city.trim() || null,
-        state: form.state.trim() || null,
-        zip_code: form.zip_code.trim() || null,
-        entity_name: form.entity_name.trim() || null,
-        entity_type: form.entity_type || null,
-        current_notes: form.current_notes.trim() || null,
-        created_by_channel_type: "manual", // #10 channel-of-origin (New Internal Client dialog)
+      const { data: clientId, error } = await supabase.rpc("create_contact", {
+        p_first_name: form.first_name.trim(), p_last_name: form.last_name.trim(),
+        p_email: form.email.trim() || null, p_phone: form.phone.trim() || null,
+        p_entity_name: form.entity_name.trim() || null, p_notes: form.current_notes.trim() || null,
+        p_source: "manual", p_channel: "manual",
       } as any);
-
-      if (error) throw error;
+      if (error || !clientId) throw error ?? new Error("Client could not be resolved");
+      const { error: detailError } = await supabase.from("clients" as any).update({
+        street_address: form.street_address.trim() || null, city: form.city.trim() || null,
+        state: form.state.trim() || null, zip_code: form.zip_code.trim() || null,
+        entity_type: form.entity_type || null,
+      } as any).eq("id", clientId);
+      if (detailError) throw detailError;
 
       toast.success(`Client ${form.first_name} ${form.last_name} created`);
       onClientAdded();

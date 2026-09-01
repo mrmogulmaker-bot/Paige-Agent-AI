@@ -78,46 +78,14 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
       primaryOffer === "other" ? (offerCustom.trim() || "other") :
       primaryOffer;
 
-    // Pre-check: this user already has a contact with this email?
-    if (em) {
-      const { data: existing } = await supabase
-        .from("clients")
-        .select("id, first_name, last_name")
-        .eq("created_by", user.id)
-        .eq("email", em)
-        .maybeSingle();
-      if (existing) {
-        setSaving(false);
-        toast.message("Contact already exists", {
-          description: `${existing.first_name || ""} ${existing.last_name || ""} is already in your contacts. Opening it now.`,
-        });
-        onOpenChange(false);
-        onCreated(existing.id);
-        return;
-      }
-    }
-
-    const { data, error } = await supabase
-      .from("clients")
-      .insert({
-        first_name: safeFirst,
-        last_name: safeLast,
-        email: em || null,
-        phone: phone.trim() || null,
-        entity_name: entityName.trim() || null,
-        title: title.trim() || null,
-        lifecycle_stage: lifecycleStage,
-        source,
-        tags,
-        primary_offer: offerValue,
-        current_notes: notes.trim() || null,
-        assigned_coach_user_id: coachId === "unassigned" ? null : coachId,
-        status: "active",
-        created_by: user.id,
-        created_by_channel_type: "manual", // #10 channel-of-origin (manual New Contact UI)
-      } as never)
-      .select("id")
-      .single();
+    // Server-owned contract: tenant, UUID, public reference, and tenant-scoped idempotency.
+    const { data, error } = await supabase.rpc("create_contact", {
+      p_first_name: safeFirst, p_last_name: safeLast, p_email: em || null,
+      p_phone: phone.trim() || null, p_entity_name: entityName.trim() || null,
+      p_title: title.trim() || null, p_lifecycle_stage: lifecycleStage, p_source: source,
+      p_tags: tags, p_primary_offer: offerValue, p_notes: notes.trim() || null,
+      p_assigned_coach_user_id: coachId === "unassigned" ? null : coachId, p_channel: "manual",
+    } as never);
     setSaving(false);
     if (error) {
       console.error("[NewContactDialog] insert failed", error);
@@ -145,7 +113,7 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
     }
     toast.success("Contact created");
     onOpenChange(false);
-    if (data) onCreated(data.id);
+    if (data) onCreated(data);
   };
 
   return (
