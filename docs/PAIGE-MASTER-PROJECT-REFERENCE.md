@@ -131,6 +131,31 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Paige's tool confirmation is bound to SERVER-HELD state (2026-09-01, `20261021000000`)
+
+`confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
+in `paige-ai-chat` mints a `paige_tool_confirmations` row on every `needs_confirm`, and a later
+`confirm:true` executes ONLY by atomically consuming a row bound to that action's SHA-256 argument
+hash, that requester and tenant, unspent, unexpired, and **created before the current turn began**.
+
+**What this closed.** The gate previously tested `gateArgs.confirm`, which is
+`JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
+its first call executed immediately; and because the tool loop dedupes rounds on the exact argument
+string, it could even propose and self-approve **inside a single HTTP turn** with no operator
+message in between. **52 tools** reach that gate, including `member_grant_role`,
+`n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`.
+
+**What it does NOT claim (§13).** It proves the server proposed first, that a turn intervened, that
+what runs is what was proposed, and that an approval is spent once. It does **not** prove the human
+said *yes*. Binding to an authenticated approval click needs per-surface UI work — only
+`PaigeAIChat` renders `PaigeConfirmCard`, and `useSoloChat` drops the confirm frame — and is
+tracked separately. `auto` is unchanged and still carries no confirmation, by design (§67).
+
+**§18:** generalizes `pipeline_archive_confirmations` (#709), which already did this for one tool.
+Not a rival seam. **Proof:** 9/9 behavioural assertions against prod inside `BEGIN … ROLLBACK`,
+plus 28 unit tests with a negative control that rejects the old implementation.
+
+
 ### §65 operator route tree — AUTHORED from the Super Admin design pack (2026-08-18, PR #541)
 
 - ✅ **`OPERATOR_BRANCHES` is authored** (`src/lib/routing/tierBranches.ts`) — **13 branches / 5 settings

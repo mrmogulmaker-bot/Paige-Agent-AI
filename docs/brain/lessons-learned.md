@@ -667,8 +667,8 @@ safety property is the more dangerous of the two, because the next session quote
 |---|---|---|
 | **Enforced** | code refuses; no configuration changes it | **in the `comms_buy_number` lane**, no purchase without a whole, positive `monthly_cents`, and the server re-verifies it. The two UI lanes send no amount and skip the check entirely |
 | **Configurable** | safe today, a setting away from not being | **in the agent lane**, `confirm` is the default; a workspace may set `auto` and lose the confirmation |
-| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both say ask first; nothing checks that anyone did |
-| **Enforced but self-asserted** | code refuses without an assertion the actor can **MINT ITSELF**, and validates only its value — not who issued it. Real against an actor that omits it, worthless against one that supplies it. **The property is mintability, not who transmits it:** a JWT or capability token is also actor-supplied, and is strong precisely because the actor cannot create one the server will accept | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the flag is self-minted and the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction** |
+| **Prompt-level** | steers a model; nothing rejects the act | "don't retry this number", "don't buy a replacement" — tool-description text only. **And the rule binding `confirm:true` to a human's yes** — the system prompt and the `needs_confirm` note both said ask first; nothing checked that anyone did. *(FIXED 2026-09-01: the flag must now spend a server-minted proposal created before the turn. The prompt text is still only steering — it is no longer the only thing there.)* |
+| **Enforced but self-asserted** | code refuses without an assertion the actor can **MINT ITSELF**, and validates only its value — not who issued it. Real against an actor that omits it, worthless against one that supplies it. **The property is mintability, not who transmits it:** a JWT or capability token is also actor-supplied, and is strong precisely because the actor cannot create one the server will accept | the `confirm` gate: `index.ts` ~5973 genuinely refuses whenever `gateArgs.confirm !== true`, so it stops a model that simply calls the tool. But `gateArgs` is the model's own output, so the flag is self-minted and the gate constrains only the careless case. **Splitting this row out is the correction — calling the whole thing prompt-level was itself an overstatement in the other direction.** *(The EXAMPLE was fixed 2026-09-01 — `confirm:true` must now spend a server-minted proposal predating the turn. The row's vocabulary is the durable part and stands; do not read the example as current state.)* |
 | **Best-effort** | attempted, and a failure changes nothing | the `audit_logs` write after a purchase: non-blocking by design, so a charge with no audit row is reachable |
 
 Never write "never" about the bottom three rows. For anything money-, permission-, or
@@ -720,6 +720,13 @@ is not what it looks like.** The gate tests `gateArgs.confirm`, which is
 `needs_confirm` that preceded it or to anything a human said, so a model emitting `confirm:true`
 on its first call executes immediately. The platform already has the enforced pattern — outbound
 sends file a real approval row and wait — and this gate does not use it.
+
+> **CLOSED 2026-09-01.** It uses one now. `confirm:true` must spend a server-minted
+> `paige_tool_confirmations` row bound to the action's argument hash, the requester and the tenant,
+> unspent, unexpired, and created *before the turn began* — mirroring
+> `pipeline_archive_confirmations` (#709) rather than forking a rival seam. The finding above
+> stands as written; only its present tense expired. **The bound is still honest: an intervening
+> turn is not a human's yes.** That last step needs per-surface UI work and is tracked separately.
 
 **It survived the rule that was written to catch it.** I had just committed *"find the code that
 makes it true, then find every caller that does not go through it"*, applied it to the price
@@ -881,3 +888,48 @@ claim, and observations do not look like the thing to check.
 *"A verification sweep that filters by content deletes the evidence"* (a search that hid its own
 answer) — both above, both 2026-09-01. Three variants of one failure in a day: **the check ran, and
 it was not a check of the thing.**
+
+## Every gate we run is blind to SQL — third occurrence (2026-09-01, the confirm-binding migration)
+
+**What happened.** The migration adding `paige_tool_confirmations` shipped an INSERT with **five
+target columns and four values** — `args_hash`, the column the whole mechanism binds on, was
+missing from the `values` list. Every confirm-gated tool call would have raised
+`42601 INSERT has more target columns than expressions` at runtime, in the one code path that
+decides whether 52 mutating tools may execute.
+
+**What passed anyway, all of it green:**
+
+| Gate | Result |
+|---|---|
+| `tsc --noEmit` | 0 errors |
+| `vitest run` | 124 files, 1630 tests, all passing |
+| `npm run build` | built clean |
+| `lint:views` · `lint:definer-fns` · `lint:tier-features` · `lint:shadow-vars` · `lint:tool-catalogue` · `lint:operator-reach` · `smoke:comms-webhook-auth` | all PASS |
+
+Not one of them parses SQL. They cannot: the migration is a text file that no TypeScript
+tool-chain reads and no CI job executes. **A green pre-merge run says nothing whatsoever about
+whether a migration is valid**, and a defect this crude survived every single check.
+
+The §32 `BEGIN … ROLLBACK` proof caught it on the first attempt, in the first thirty seconds.
+
+**This is the THIRD time this class has cost us.** See *"service_role grants are invisible to every
+pre-merge check we run"* (2026-08-20, itself logged as a second occurrence) and *"Migration
+merged-but-never-applied — the false-green"* (§32 / #275). Same shape each time: the SQL layer is
+outside the reach of everything that reports "green", so confidence from the other gates is
+confidence about a different artifact.
+
+**The rules.**
+
+- **Never merge a migration on the strength of tsc/tests/build/lints.** They are evidence about the
+  TypeScript. Run the SQL. `BEGIN … ROLLBACK` costs one call.
+- **Make the proof BEHAVIOURAL, not just syntactic.** Executing the DDL proves it parses. It does
+  not prove the thing works. This proof asserted nine properties against the real database —
+  same-turn refusal, cross-action, cross-tool and cross-user refusal, single-use, later-turn
+  success, and both RPCs closed to non-`service_role` — and reported `pass=9 fail=0`. A DDL-only
+  proof would have caught the missing column but nothing about whether the guard actually guards.
+- **Force the rollback structurally.** Ending the block with `raise exception` carrying the results
+  aborts the transaction by construction, so the proof cannot half-apply if something later in the
+  batch fails. Verify afterwards that `to_regclass` and the migration ledger are still null/0 —
+  a rollback you did not check is a rollback you are assuming.
+- **A green suite next to a red artifact is worse than a red suite**, because it is read as
+  permission to stop looking.

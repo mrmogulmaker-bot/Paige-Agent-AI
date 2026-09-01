@@ -5,6 +5,7 @@ import { embeddingsCompat } from "../_shared/voyage.ts";
 import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 import { isSpendableQuoteCents } from "../_shared/purchase-quote.ts";
 import { hasExactPipelineArchiveApproval } from "../_shared/pipelineArchiveApproval.ts";
+import { toolArgsHash, decideToolConfirmation, type ConfirmationClaim } from "../_shared/toolConfirmation.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -6044,9 +6045,95 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, error: `${(TOOL_LABELS[tc.function.name] || "this action").replace(/^./, (c) => c.toUpperCase())} is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled (don't mention any internal names) and don't retry.` }) });
             continue;
           }
-          if (autoMode === "confirm" && gateArgs.confirm !== true) {
-            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, confirm_summary: describeConfirm(tc.function.name, gateArgs), ...(pipelineArchiveApproval ? { approval_binding: { kind: "pipeline_archive", confirmationToken: pipelineArchiveApproval.confirmationToken, pipelineRef: pipelineArchiveApproval.pipelineRef } } : {}), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
-            continue;
+          if (autoMode === "confirm") {
+            // ── CONFIRMATION BINDING ──────────────────────────────────────────────────────
+            // `gateArgs.confirm` is JSON.parse(tc.function.arguments) — the MODEL'S OWN OUTPUT.
+            // On its own it proves nothing: a model emitting confirm:true on its first call used
+            // to execute immediately, and because the round dedupe keys on the exact argument
+            // string, `{…}` and `{…,"confirm":true}` are different signatures — so it could
+            // even propose and self-approve inside ONE turn with no operator message between.
+            //
+            // So the flag no longer decides anything. It only selects a branch. The ONLY thing
+            // that can execute a confirm-lane tool is consuming a SERVER-MINTED proposal that
+            // matches this exact action and was created BEFORE this turn began.
+            //
+            // Honest bound (§13): this proves the server proposed first, that a turn intervened,
+            // and that what runs is what was proposed. It does NOT prove the human said yes —
+            // binding to an authenticated approval click needs per-surface UI work (only
+            // PaigeAIChat renders PaigeConfirmCard; useSoloChat drops the frame) and is tracked
+            // separately rather than half-built here.
+            const confirmAdmin = createClient(supabaseUrl, supabaseServiceKey);
+            const confirmTenantId = personaCtx?.tenant_id ?? null;
+            const confirmArgsHash = await toolArgsHash(tc.function.name, gateArgs);
+            const confirmSummary = describeConfirm(tc.function.name, gateArgs);
+
+            // A guard that is not deployed yet must not take the platform down with it. The edge
+            // bundle and the migration ship on the same merge but through SEPARATE workflows, so
+            // for the minutes between them the table/functions may not exist. ONLY that specific
+            // condition (undefined_function / undefined_table) falls back to the previous
+            // behaviour, and it says so loudly — every other failure fails CLOSED. Remove this
+            // branch once the migration is confirmed persisted (§32.a).
+            const guardMissing = (err: any) =>
+              err?.code === "42883" || err?.code === "42P01" || /does not exist/i.test(String(err?.message || ""));
+
+            let claim: ConfirmationClaim | undefined;
+            let guardUndeployed = false;
+            if (gateArgs.confirm === true) {
+              try {
+                const { data, error } = await confirmAdmin.rpc("paige_tool_confirmation_claim", {
+                  _tenant_id: confirmTenantId,
+                  _requested_by: user.id,
+                  _tool_key: tc.function.name,
+                  _args_hash: confirmArgsHash,
+                  _turn_started_at: new Date(startedAt).toISOString(),
+                });
+                if (error) {
+                  if (guardMissing(error)) {
+                    guardUndeployed = true;
+                    console.error("[confirm-binding] GUARD NOT DEPLOYED — falling back to the pre-binding gate for", tc.function.name, error);
+                  } else {
+                    console.error("[confirm-binding] claim failed for", tc.function.name, error);
+                    claim = { ok: false, reason: "error" };
+                  }
+                } else {
+                  claim = (data ?? { ok: false, reason: "error" }) as ConfirmationClaim;
+                }
+              } catch (e) {
+                console.error("[confirm-binding] claim threw for", tc.function.name, e);
+                claim = { ok: false, reason: "error" };
+              }
+            }
+
+            const decision = guardUndeployed
+              ? ({ kind: gateArgs.confirm === true ? "execute" : "propose", revalidate: false } as const)
+              : decideToolConfirmation({ autoMode, confirmFlag: gateArgs.confirm, claim });
+
+            if (decision.kind === "propose") {
+              // Mint the proposal this action's future confirm:true will have to spend. If the
+              // insert fails we still refuse — never execute on an unrecorded proposal.
+              if (!guardUndeployed) {
+                try {
+                  const { error: openErr } = await confirmAdmin.rpc("paige_tool_confirmation_open", {
+                    _tenant_id: confirmTenantId,
+                    _requested_by: user.id,
+                    _tool_key: tc.function.name,
+                    _args_hash: confirmArgsHash,
+                    _summary: confirmSummary,
+                  });
+                  if (openErr) console.error("[confirm-binding] open failed for", tc.function.name, openErr);
+                } catch (e) {
+                  console.error("[confirm-binding] open threw for", tc.function.name, e);
+                }
+              }
+              if (decision.revalidate) {
+                // The model asserted approval with nothing to back it — stale, spent, same-turn,
+                // or for a DIFFERENT action than the one approved. Not an error the operator can
+                // act on, so ask again about the action as it now stands rather than dead-ending.
+                console.error("[confirm-binding] REFUSED self-asserted confirm for", tc.function.name, "reason:", claim?.reason ?? "none");
+              }
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, confirm_summary: describeConfirm(tc.function.name, gateArgs), ...(pipelineArchiveApproval ? { approval_binding: { kind: "pipeline_archive", confirmationToken: pipelineArchiveApproval.confirmationToken, pipelineRef: pipelineArchiveApproval.pipelineRef } } : {}), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
+              continue;
+            }
           }
           // autoMode === 'auto', or confirm already satisfied → fall through to execute.
         }
