@@ -206,3 +206,23 @@ CREATE POLICY "Authors and admins can update notes" ON public.client_notes
 -- misleading row behind. The failure is total rather than deceptive. Recorded rather than quietly
 -- deleted, because the false version was the more alarming one and would have been repeated.
 -- ═════════════════════════════════════════════════════════════════════════════════════════════
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+-- A CORRECTION TO THIS FILE'S OWN COMMIT MESSAGE (§13), added 2026-09-01.
+--
+-- Commit 22c14f2e4 — the commit that introduced this migration — says of the data-subject
+-- function: "Corrected to two identifiers, function otherwise verbatim", and describes it as
+-- raising AFTER writing an audit row that claims success. Both statements are wrong, and both
+-- were already corrected in the section above before the file was finished; the commit message
+-- was written first and never caught up.
+--
+--   · There is NO fix in this migration. `grep -c "CREATE OR REPLACE FUNCTION"` over this file
+--     returns 0. The repair was written, rejected twice by its own proof, and withdrawn in favour
+--     of the finding above, because what remains is a legal-compliance decision rather than a
+--     column rename.
+--   · It raises ON the `pii_access_log` write, before either audit row commits, so the statement
+--     aborts whole and leaves nothing behind. The failure is total, not deceptive.
+--
+-- The commit message cannot be edited without rewriting pushed history on a shared branch, so the
+-- correction lives here instead — beside the code, where the next reader is actually looking.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
