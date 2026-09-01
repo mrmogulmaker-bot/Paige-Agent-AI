@@ -12,7 +12,10 @@ import { TenantSystemsCheckSecondaryView } from "./TenantSystemsCheckSecondaryVi
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const useSystemsCheck = vi.fn();
-const tenantHarness = vi.hoisted(() => ({ activeTenantId: "account-a" as string | null }));
+const tenantHarness = vi.hoisted(() => ({
+  activeTenantId: "account-a" as string | null,
+  activeUserId: "user-a" as string | null,
+}));
 
 vi.mock("@/hooks/useSystemsCheck", () => ({
   useSystemsCheck: (...args: unknown[]) => useSystemsCheck(...args),
@@ -198,10 +201,12 @@ describe("tenant Command Center secondary tabs", () => {
     expect(solo).not.toMatch(/background:\s*["'](?:#fff|white|var\(--surface\))["']/i);
   });
 
-  it("keys the canonical Solo workspace by the server-resolved account epoch", () => {
+  it("keys the canonical Solo workspace and Mind preference by authenticated user and account", () => {
     const solo = source("src/solo/CommandCenter.tsx");
     expect(solo).toContain('key={activeTenantId ?? "unresolved"}');
-    expect(solo).toContain("const { activeTenantId } = useTenantContext()");
+    expect(solo).toContain("const { activeTenantId, activeUserId } = useTenantContext()");
+    expect(solo).toContain('key={`${activeUserId ?? "resolving"}:${activeTenantId}`}');
+    expect(solo).toContain("preferenceScope={activeUserId ? { userId: activeUserId, tenantId: activeTenantId } : null}");
   });
 
   it.each([
