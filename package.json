@@ -38,6 +38,7 @@
     "lint:tool-catalogue": "node scripts/ci/tool-catalogue-lint.mjs",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
     "smoke:comms-webhook-auth": "node scripts/comms-webhook-auth-smoke.mjs",
+    "smoke:comms-purchase-safety": "node scripts/comms-purchase-safety-smoke.mjs",
     "smoke:mcp-registry": "node scripts/mcp-registry-provider-smoke.mjs",
     "smoke:mcp-transport": "node scripts/mcp-transport-smoke.mjs",
     "smoke:mcp-egress": "node scripts/mcp-egress-smoke.mjs",
