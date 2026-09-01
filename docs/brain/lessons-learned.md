@@ -709,3 +709,30 @@ wrote and not the branch that skips it. So the rule needs a mechanical form, not
 
 That is §37's producer inventory pointed at prose instead of an endpoint, and it applies for the
 same reason: what breaks a categorical claim is always the caller nobody listed.
+
+### The sweep's own failure mode: a negative filter deletes the evidence (same night, #708)
+
+Four times in one night the writing was fixed and the **sweep** was what fell short. The sharpest
+instance is worth the mechanic:
+
+```
+grep -rn "vendored" docs/ | grep -iv "not vendored\|before vendoring\|the vendoring was"
+```
+
+Reported clean. Two files still asserted a redistribution that had been abandoned, and pointed at
+two deleted paths — **and both matched one of the exclusions.** Every `-v` term had been added to
+suppress a line already known to be fine, and each one also suppressed a line that was not.
+
+**A negative filter in a verification sweep can remove exactly the evidence the sweep exists to
+surface, and it fails silently** — the output looks identical whether it found nothing or hid
+everything. That is strictly worse than the spelling problem the close-out step already warns
+about: varying the spelling can only *miss* a hit; filtering *deletes* one you had.
+
+Two rules, both cheap:
+
+1. **Sweep unfiltered and read the hits.** If the output is too long to read, that is information
+   about the claim's blast radius, not a reason to filter. Narrow by *path*, never by content.
+2. **Fix the claim everywhere, not where it was flagged.** The same night, a reviewer flagged one
+   categorical sentence in one file; the identical sentence was in two others. A correction applied
+   only where someone pointed leaves the wrong version in every place nobody looked — which is the
+   close-out sweep's whole purpose, failing on the correction itself.
