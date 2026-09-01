@@ -3,25 +3,25 @@
   Type '"public"' is not assignable to type 'never'.
       await logCritique(admin, {
 [0m[31m                        ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m250[0m:[0m[33m25[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m250[0m:[0m[33m25[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       await logCritique(admin, {
 [0m[31m                        ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m293[0m:[0m[33m25[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m293[0m:[0m[33m25[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
       await logCritique(admin, {
 [0m[31m                        ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m319[0m:[0m[33m25[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m319[0m:[0m[33m25[0m
 
 [0m[1mTS2345 [0m[ERROR]: Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.
   Type '"public"' is not assignable to type 'never'.
     await logCritique(admin, {
 [0m[31m                      ~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m345[0m:[0m[33m23[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m345[0m:[0m[33m23[0m
 
 [0m[1mTS2769 [0m[ERROR]: No overload matches this call.
   Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "studio_visual_critique_log", never, "POST">', gave the following error.
@@ -30,7 +30,7 @@
     Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
     await admin.from("studio_visual_critique_log").insert({
 [0m[31m                                                   ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m371[0m:[0m[33m52[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/head/supabase/functions/studio-visual-critique/index.ts[0m:[0m[33m371[0m:[0m[33m52[0m
 
 Found 5 errors.
 

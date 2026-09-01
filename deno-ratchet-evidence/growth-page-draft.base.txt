@@ -2,7 +2,7 @@
 [0m[1mTS18048 [0m[ERROR]: 'options' is possibly 'undefined'.
         if (!options.length) type = "text"; // repair, don't drop the question
 [0m[31m             ~~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/_shared/growth-forms.ts[0m:[0m[33m75[0m:[0m[33m14[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/base/supabase/functions/_shared/growth-forms.ts[0m:[0m[33m75[0m:[0m[33m14[0m
 
 [0m[1mTS2769 [0m[ERROR]: No overload matches this call.
   Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "paige_audit_log", never, "POST">', gave the following error.
@@ -11,7 +11,7 @@
     Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
     await admin.from("paige_audit_log").insert({
 [0m[31m                                        ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/_shared/model-router.ts[0m:[0m[33m650[0m:[0m[33m41[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/base/supabase/functions/_shared/model-router.ts[0m:[0m[33m650[0m:[0m[33m41[0m
 
 [0m[1mTS2769 [0m[ERROR]: No overload matches this call.
   Overload 1 of 2, '(values: never, options?: { count?: "exact" | "planned" | "estimated" | undefined; } | undefined): PostgrestFilterBuilder<{ PostgrestVersion: string; }, never, never, null, "studio_deliverable", never, "POST">', gave the following error.
@@ -20,7 +20,7 @@
     Object literal may only specify known properties, and 'tenant_id' does not exist in type 'never[]'.
       .insert({
 [0m[31m       ~~~~~~[0m
-    at [0m[36mfile:///tmp/deno-ratchet-N1dylF/base/supabase/functions/_shared/model-router.ts[0m:[0m[33m735[0m:[0m[33m8[0m
+    at [0m[36mfile:///tmp/deno-ratchet-9zkYCE/base/supabase/functions/_shared/model-router.ts[0m:[0m[33m735[0m:[0m[33m8[0m
 
 Found 3 errors.
 
