@@ -1055,6 +1055,14 @@ that proposed it. The request-body echo remains accepted as stronger evidence wh
 supply it. See `20261026000000`, and checks 18.0–18.4 in the authz harness, which drive a genuinely
 self-approving model rather than describing one.
 
+**AND THE LIMIT, STATED RATHER THAN IMPLIED.** A new request proves a person sent another message.
+It does NOT prove that message was a yes. On the five surfaces with no confirm card the yes is
+still the model reading prose and asserting it — the trust level those surfaces have always had,
+now with the arguments pinned, the claim single-use, and scope re-checked. Only a surface that
+renders the summary and echoes back the fingerprint of what it displayed turns "a person replied"
+into "a person approved THIS", and exactly one surface does that today. Building the card on the
+other five is the real close-out; it is interface work, and it is owed to Claude Design (§00).
+
 **THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
 earlier commit message said two tools "both default to confirm now"; that is true inside the chat
 function and NOT over MCP. `paige-mcp` performs zero autonomy resolution for ANY tool — this is a

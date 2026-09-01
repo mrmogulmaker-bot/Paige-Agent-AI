@@ -29,6 +29,20 @@
 -- five surfaces that cannot echo, which is the outage `20261023000000` existed to end. The echo
 -- remains accepted as STRONGER evidence where a surface can supply it; the nonce is the floor
 -- under both paths.
+--
+-- WHAT THIS DOES AND DOES NOT PROVE — said plainly, because the distinction is the whole point and
+-- an ambiguous sentence here is how the last hole got written. A new request proves A PERSON SENT
+-- ANOTHER MESSAGE. It does NOT prove that message was a yes. On the five surfaces with no confirm
+-- card, the yes is still the model reading prose and asserting it — which is exactly the trust
+-- level those surfaces have always had, and no worse. What is strictly better than before is
+-- everything around it: the arguments are the stored ones so they cannot drift, the claim is
+-- single-use so one yes runs one action, and tenant, thread and focused client are re-checked at
+-- redemption.
+--
+-- The only thing that turns "a person replied" into "a person approved THIS" is a surface that
+-- renders the summary and echoes back the fingerprint of what it displayed. One surface does that
+-- today (`PaigeAIChat`). Building it on the other five is the real close-out, and it is interface
+-- work, not backend work — so it is named here rather than quietly implied to be done.
 
 ALTER TABLE public.paige_pending_confirmations
   ADD COLUMN IF NOT EXISTS issued_in_request uuid;
