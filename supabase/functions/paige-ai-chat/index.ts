@@ -3767,7 +3767,7 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 
 Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
 
-BUSINESS BRIEF — YOU HELP THE OWNER COMPLETE IT, BUT YOU NEVER SILENTLY CHANGE BUSINESS TRUTH. When the operator asks to "set up my business", "add our company details", or tells you about their identity, offers, customers, direction, goals, constraints, voice, or operating preferences, use the business brief already present in your context and ask ONE tight grouped set of questions only for what is missing. The Paige workspace URL is not automatically the real business website; never substitute it. Read back the proposed change, get their yes, then call propose_business_brief_update with confirm:true. That stages a visible suggestion in Settings → Setup; it does NOT save the brief. Tell the owner to review and save it there. Setup owns business truth. Team owns people, invitations, access and roles. Connections owns email/provider/payment configuration. Never put an email-provider change or a new team member into the business brief. If they are updating a CLIENT instead, use crm_update_contact.
+BUSINESS BRIEF — YOU HELP THE OWNER COMPLETE IT, BUT YOU NEVER SILENTLY CHANGE BUSINESS TRUTH. When the operator asks to "set up my business", "add our company details", or tells you about their identity, offers, customers, direction, goals, constraints, voice, operating preferences, or business representatives, use the business brief already present in your context and ask ONE tight grouped set of questions only for what is missing. The Paige workspace URL is not automatically the real business website; never substitute it. A business representative is an existing active Team member selected in Setup; it is not a Team membership or role change. Resolve a named representative with crm_list_team, then propose their returned user id in representativeUserIds. Never invent an id or add a person to Team. Read back the proposed change, get their yes, then call propose_business_brief_update with confirm:true. That stages a visible suggestion in Settings → Setup; it does NOT save the brief. Tell the owner to review and save it there. Setup owns business truth. Team owns people, invitations, access and roles. Connections owns email/provider/payment configuration. Never put an email-provider change or a new team member into the business brief. If they are updating a CLIENT instead, use crm_update_contact.
 
 ACTION BUS — you run the business's departments and route work between them on your action bus. Your departments: ${deptRosterLine}. Owner Ops works for the coach/consultant/agency and Client Experience works for each client; the specialist desks (marketing, sales, finance, operations, and the rest) own their own lane of work. When work needs to move — a follow-up to send, an at-risk client to flag, a campaign to draft, a task to queue — file it to the department that owns it and drive it:
 - action_file starts a tracked hand-off (pick the action_kind: owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation, etc.).
@@ -4260,7 +4260,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "propose_business_brief_update",
-              description: "Admin/coach only. Stage a bounded suggestion for THIS workspace's Solo Setup business brief. This never changes confirmed business truth: it creates a visible proposal that an owner must review and save in Settings -> Setup. Use for business identity, offers, customers, direction, goals, constraints, brand voice, operating preferences, and do-not-assume boundaries. Do not use for Team membership/roles or email/provider/payment configuration. PROPOSE FIRST in chat, get the operator's yes, then call with confirm:true unless Trust Compass already allows automatic proposal staging.",
+              description: "Admin/coach only. Stage a bounded suggestion for THIS workspace's Solo Setup business brief. This never changes confirmed business truth: it creates a visible proposal that an owner must review and save in Settings -> Setup. Use for business identity, existing active Team members designated as business representatives, offers, customers, direction, goals, constraints, brand voice, operating preferences, and do-not-assume boundaries. Resolve representative ids with crm_list_team; never invent ids or change Team membership/roles. Do not use for email/provider/payment configuration. PROPOSE FIRST in chat, get the operator's yes, then call with confirm:true unless Trust Compass already allows automatic proposal staging.",
               parameters: {
                 type: "object",
                 properties: {
@@ -4272,7 +4272,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   customerSegments: { type: "string" }, serviceArea: { type: "string" }, currentPriority: { type: "string" },
                   goals90Day: { type: "string" }, annualDirection: { type: "string" }, successDefinition: { type: "string" },
                   constraints: { type: "string" }, brandVoice: { type: "string" }, operatingPreferences: { type: "string" },
-                  doNotAssume: { type: "string" }, reason: { type: "string", description: "Short owner-facing reason for the proposed update." },
+                  doNotAssume: { type: "string" },
+                  representativeUserIds: { type: "array", items: { type: "string" }, description: "Auth user UUIDs returned by crm_list_team for existing active Team members the owner wants designated as business representatives. This does not change Team membership or roles." },
+                  reason: { type: "string", description: "Short owner-facing reason for the proposed update." },
                   confirm: { type: "boolean", description: "Set true only after the operator approves staging this proposal." }
                 },
                 required: ["reason"]
@@ -5586,6 +5588,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         }
         case "propose_business_brief_update": {
           const fields = ["legalName","publicName","dbaName","website","address","phone","industry","naicsCode","sicCode","offers","deliveryModel","idealCustomer","customerSegments","serviceArea","currentPriority","goals90Day","annualDirection","successDefinition","constraints","brandVoice","operatingPreferences","doNotAssume"].filter((key) => typeof a?.[key] === "string" && a[key].trim());
+          if (Array.isArray(a?.representativeUserIds)) fields.push("business representatives");
           return `Stage a business brief suggestion${fields.length ? ` (${fields.join(", ")})` : ""}. The owner will still review and save it in Setup.`;
         }
         case "crm_update_pipeline_stage":
@@ -6922,10 +6925,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: false, error: "tenant_not_resolved" };
               } else {
                 const fields = ["legalName","publicName","dbaName","website","address","phone","industry","naicsCode","sicCode","offers","deliveryModel","idealCustomer","customerSegments","serviceArea","currentPriority","goals90Day","annualDirection","successDefinition","constraints","brandVoice","operatingPreferences","doNotAssume"] as const;
-                const patch: Record<string, string> = {};
+                const patch: Record<string, string | string[]> = {};
                 for (const field of fields) {
                   const value = args?.[field];
                   if (typeof value === "string" && value.trim()) patch[field] = value.trim();
+                }
+                if (Array.isArray(args?.representativeUserIds)) {
+                  patch.representativeUserIds = Array.from(new Set(args.representativeUserIds.filter((value: unknown): value is string => typeof value === "string" && Boolean(value.trim())).map((value: string) => value.trim())));
                 }
                 if (!Object.keys(patch).length) {
                   result = { success: false, error: "Nothing to propose yet. Include at least one confirmed business-brief detail." };

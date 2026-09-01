@@ -152,6 +152,9 @@ export function applySetupProposal(current: SoloSetupBrief, proposal: SoloSetupP
     const value = proposal.patch[field];
     if (typeof value === "string") next[field] = value;
   }
+  if (Array.isArray(proposal.patch.representativeUserIds)) {
+    next.representativeUserIds = proposal.patch.representativeUserIds;
+  }
   return cleanSoloSetupBrief(next);
 }
 
