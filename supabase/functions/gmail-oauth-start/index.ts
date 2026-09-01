@@ -131,11 +131,22 @@ Deno.serve(async (req) => {
     }
 
     const redirectUri = `${gmailRedirectOrigin(returnOrigin)}/auth/gmail/callback`;
+
+    // The workspace the caller is STANDING IN, resolved server-side from their
+    // verified JWT and carried in the SIGNED state (§9 — never a body field, and
+    // the callback re-checks active membership before honouring it).
+    //
+    // Without this, a person who belongs to more than one tenant would connect
+    // their mailbox to whichever workspace ranked first, not the one they were
+    // looking at. `w`, not `t`: `t` is already this state's timestamp.
+    const { data: activeTenant } = await supa.rpc("current_user_tenant_id");
+
     const state = await signState({
       u: user.id,
       n: crypto.randomUUID(),
       t: Date.now(),
       r: returnOrigin,
+      w: typeof activeTenant === "string" ? activeTenant : null,
     });
 
     const params = new URLSearchParams({

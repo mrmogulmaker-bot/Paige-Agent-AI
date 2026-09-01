@@ -164,7 +164,7 @@ const PROVIDERS: ReadonlyArray<ProviderRow> = [
   // The Zapier slot. It can only ever hold Zapier: the setter writes that provider and
   // that endpoint, and the registry's CHECK refuses a Zapier row that is not OAuth. So
   // the card is named for what it is rather than for the protocol underneath it.
-  { id: "mcp", name: "Zapier", kind: "Apps and actions", filter: "developer", connectable: true,
+  { id: "mcp", name: "Zapier", kind: "MCP connection", filter: "developer", connectable: true,
     note: "" },
   { id: "quickbooks", name: "QuickBooks", kind: "Financial tools", filter: "financial", connectable: false,
     note: "The sync seams exist, but nothing yet proves a connection belongs to this workspace, so no setup is offered." },
@@ -508,12 +508,12 @@ function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: bo
     return ok;
   }, [onChanged]);
 
-  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking direct tool access…</p>;
+  if (m.loading) return <p className="ig-state" role="status"><RefreshCw className="ig-spin" aria-hidden />Checking the n8n MCP connection…</p>;
 
   if (m.error) {
     return <div className="ig-state" role="alert">
       <TriangleAlert aria-hidden />
-      <span>Direct tool access could not be read, so nothing is being claimed either way.</span>
+      <span>The n8n MCP connection could not be read, so nothing is being claimed either way.</span>
       <button type="button" className="ig-btn" onClick={() => void m.reload()}>Try again</button>
     </div>;
   }
@@ -529,7 +529,8 @@ function N8nMcpSection({ onDirtyChange, onChanged }: { onDirtyChange: (dirty: bo
     </dl>}
 
     {!m.configured && !editing && <p className="ig-lede">
-      If your n8n instance publishes its own tools, connect that here so Paige can see what it offers.
+      If your n8n instance runs an MCP server, connect it here so Paige can see the tools it offers.
+      This is separate from the API connection above, and having one does not give you the other.
       You provide the address and a credential; the credential is stored encrypted and is never shown again.
     </p>}
 
@@ -821,11 +822,11 @@ function ProviderPanel({ row, onClose, onChanged }: { row: ProviderRow; onClose:
                   either section can report its own failure without the other looking
                   broken. Unsaved input in either one guards the same close. */}
               <section className="ig-section" aria-labelledby="ig-sec-api">
-                <h3 id="ig-sec-api">Instance API</h3>
+                <h3 id="ig-sec-api">n8n API connection</h3>
                 <N8nPanelBody onDirtyChange={setApiDirty} onChanged={onChanged} />
               </section>
               <section className="ig-section" aria-labelledby="ig-sec-mcp">
-                <h3 id="ig-sec-mcp">Direct tool access</h3>
+                <h3 id="ig-sec-mcp">n8n MCP connection</h3>
                 <N8nMcpSection onDirtyChange={setMcpDirty} onChanged={onChanged} />
               </section>
             </>

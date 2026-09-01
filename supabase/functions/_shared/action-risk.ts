@@ -64,6 +64,8 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
 
   // ── high: cannot be undone ────────────────────────────────────────────────────────────────
   ["crm_delete_contact", "high", "destroys a client record and its related rows"],
+  ["comms_buy_number", "high", "commits the tenant to a recurring charge on a provider account"],
+  ["comms_set_primary_number", "high", "changes the number every client sees when the tenant contacts them"],
   ["n8n_delete_workflow", "high", "permanently deletes an automation"],
   ["plan_remove_item", "high", "cancels a milestone, task or reminder"],
 
@@ -111,8 +113,20 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // (20261031000000), so a wrong routing decision cannot land on another tenant's client.
   ["crm_add_note", "ordinary", "files a staff-only note on a client's record"],
   ["update_business_profile", "ordinary", "edits the workspace's own profile"],
-  ["pipeline_create", "ordinary", "creates a pipeline the operator can delete"],
-  ["pipeline_add_stage", "ordinary", "adds a stage to a pipeline"],
+  // Comms (merged from main 2026-09-01). Naming a number is a label; drafting a registration
+  // prepares compliance copy and explicitly does NOT submit it. Buying a number and changing the
+  // primary are high: one is a recurring charge against a provider account, the other changes the
+  // number every client sees on their phone. Both fall squarely in the owner's high-risk coverage
+  // of billing, connections, provider actions and client-visible changes.
+  ["comms_name_number", "ordinary", "renames a number in the workspace's own list"],
+  ["comms_draft_registration", "ordinary", "drafts carrier copy; submitting it is a separate act"],
+  // `pipeline_create` / `pipeline_add_stage` were classified here and are NOT tools — they exist
+  // only in a label switch. The tool that exists is `pipeline_configure`, and it was omitted, so
+  // deriving the gated set from this policy silently UNGATED a previously-gated write (§58). The
+  // lint could not see it: `configure` was not a mutation verb, so the backstop read it as a query.
+  // Both halves are fixed — the entry below, and `configure` added to MUTATION_VERB.
+  ["pipeline_configure", "ordinary", "saves a pipeline draft the operator reviews; activation is a separate act"],
+  ["propose_business_brief_update", "ordinary", "stages a suggestion the operator approves before it applies"],
   ["deal_create", "ordinary", "adds an opportunity"],
   ["deal_move_stage", "ordinary", "moves a deal between stages"],
   // The client seat's ONLY write, and on the portal it is the client editing their own profile.
@@ -162,9 +176,21 @@ const REASON_BY_TOOL: ReadonlyMap<string, string> = new Map(RISK.map(([t, , why]
  * "this one is fine" is a decision on the record rather than an omission. `runtimeWriteGuard` uses
  * this list, and CI checks it has not grown silently.
  */
+//
+// TWO SHAPES QUALIFY, and the second was added 2026-09-01 when `propose_action` surfaced. The
+// first is "persists nothing" — it drafts in memory and a named separate tool does the saving.
+// The second is "persists ONLY a request for a human decision, and the act that carries the risk
+// is separately gated." Those are different statements and the list would be lying if it made
+// the second wear the first's words.
+//
+// `propose_action` is the second shape, and gating it would be actively wrong: its entire purpose
+// is to route work to a person, so a confirm in front of it asks the operator to approve being
+// asked. The send it proposes is what carries the risk, and the send is gated. Exempting it is a
+// decision on the record — which is the point of this list existing at all.
 const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
   ["growth_page_generate", "drafts a page in memory and returns it; saving is growth_page_save"],
   ["growth_funnel_generate", "drafts a funnel in memory; building it is growth_funnel_build"],
+  ["propose_action", "files a request for the operator's decision and sends nothing; the send it proposes is the gated act"],
 ]);
 
 /**
@@ -173,7 +199,16 @@ const NON_MUTATING_EXEMPT: ReadonlyMap<string, string> = new Map([
  * names this handler declares: it matches every gated tool except `delegate_to_subagent` (which is
  * classified anyway) and exactly two non-persisting generators (exempted above).
  */
-export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire)(_|$)/;
+//
+// EXTENDED 2026-09-01, after it failed to catch six ungoverned writes. `pipeline_configure` was a
+// previously-gated tool this policy omitted, and `comms_buy_number` / `comms_name_number` arrived
+// from main; none matched, so all three read as queries and would have dispatched with no gate at
+// all. `configure`, `buy`, `name` and `propose` are added. A false POSITIVE here is harmless — it
+// forces an explicit classification or a named exemption — while a false negative is an ungoverned
+// write, so this list should err long. It remains a BACKSTOP, never the guard: the reconciliation
+// that actually found those six compared the handler's declared tools against this policy, and
+// that comparison is what `lint:action-risk` runs.
+export const MUTATION_VERB = /(^|_)(create|update|delete|remove|save|send|publish|install|uninstall|grant|revoke|run|assign|enroll|book|set|draft|generate|file|advance|forge|archive|activate|deactivate|move|add|build|log|author|enable|disable|invite|upload|apply|approve|reject|import|export|sync|write|post|schedule|cancel|start|stop|trigger|fire|configure|buy|purchase|name|rename|propose|provision|claim|release)(_|$)/;
 
 /** Every classified action. This is what the handler gates on — there is no second list. */
 export function mutatingTools(): ReadonlySet<string> {

@@ -42,6 +42,8 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
   `_kind='consumer'` mint for an **agency** target, §32.a-proven; #460 narrowed that guard to agency-only
   so Enterprise passes).
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
+- **Solo Campaigns -> Pipeline (Gate 1 approved; draft, not live as of 2026-08-31):** follows the existing Growth exception: Solo + Sub-account + Enterprise + God, not Agency. The base capability is tenant-owned multiple pipelines, explicit stage lifecycle management, board-first deal context, and compact focused-stage operation. Read-only members receive the projection but not stage/pipeline writes. This row remains **DRAFT / UNVERIFIED** until Gate 2, merge, persisted migration apply, and authenticated owner-flow proof; it must not be represented as shipped beforehand.
+
   (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
   `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
 - **`subaccount_management` = Agency + Enterprise; `fleet_console` = God** only.
@@ -930,10 +932,104 @@ Legend as above: **✓** live · **—** not built · **N/A** tier not opened ye
 
 | Segment | What it is | State | Operator | Agency | Solo | Sub-account | Client |
 |---|---|---|---|---|---|---|---|
-| `connections/communications` | Business-phone search (`PROPOSED`, non-mutating), the PAIGE-managed sending identity, custom sending domains, connected mailbox (`UNAVAILABLE`) | **partly wired** — identity + domains read real rows; number search runs nothing | N/A | N/A | ✓ | N/A | — |
+| `connections/communications` | **Live business-phone search, purchase, rename and choose-what-you-send-from**, the PAIGE-managed sending identity, **operable custom sending domains**, **Google sending-account connect/disconnect** | **wired** — search/purchase run `comms-search-numbers` / `comms-purchase-number` against the tenant's own Twilio subaccount; rename and set-primary run `tenant_phone_number_rename` / `tenant_phone_number_set_primary`; domains via `manage-tenant-domain`; the Google account reads `channel_connectors` and connects via `gmail-oauth-start`/`gmail-disconnect`. **Paige can drive the PHONE half** — eight `comms_*` tools cover search, purchase, rename, set-primary and registration; **domains and the Google sending account stay click-only** and Paige has no tool for either | N/A | N/A | ✓ | N/A | — |
 | `connections/calendars` | Connected accounts (Google ✓ real · Zoom ✓ real · Apple honestly *not built*) + the ten-area booking-preset builder over the `calendars` row | **wired** — reads `calendars`, `calendar_hosts`, `profiles`, `staff_calendar_settings`; writes the preset patch and the Live/Draft flag | N/A | N/A | ✓ | N/A | — |
+| `connections/registration` | Carrier (10DLC) registration: **PAIGE drafts the regulatory copy**, **the reviewed copy is saved**. The legal identity is SHOWN, not edited — Setup owns it | **partly wired** — `comms-a2p-draft` (a real model call) and `comms-a2p-submit` (save only) both run; **filing with a carrier does not exist** and the surface says so rather than reporting a submitted state it cannot produce. The grading ladder stays in `communications`; this area holds the acts (§18) | N/A | N/A | ✓ | N/A | — |
 | `connections/health` | Provider-readiness and failure-state vocabulary | **structure-only** — every row reports "Not reported" rather than a measured value | N/A | N/A | ✓ | N/A | — |
 | `connections/available` | The provider catalogue with per-provider truth badges | **structure-only** — a static catalogue, deliberately | N/A | N/A | ✓ | N/A | — |
+
+**The caller-ID defect this slice found, recorded because it shipped invisibly (§13).**
+`tenant_phone_numbers.is_primary` decides which number a workspace's outbound calls and texts come
+FROM — `voice-twiml` and `send-message` both order by it to pick the caller ID — and NOTHING in the
+repository had ever written it. The only `SET is_primary = true` anywhere was on `public.businesses`,
+an unrelated table. Measured on production before the fix: **2 active numbers, 0 primaries, 1
+workspace** — so that workspace's outbound calls resolved to whichever row Postgres returned, and
+`voice-twiml` has no secondary sort at all. Buying a second number for a different part of the
+business made the first one unpredictable. Migration `20260901010000` adds the two write seams that
+did not exist (`tenant_phone_number_set_primary`, `tenant_phone_number_rename`) and backfills a
+deterministic primary for any workspace left in that tie; the backfill was proven in a rollback
+transaction on prod (0 → 1 primary) before merge.
+
+**Paige-callable, and governed (§10/§67).** Before this slice `paige-ai-chat` registered 82 tools and
+none of them touched numbers, calls or carrier registration — the capability was reachable only by a
+human click. It now carries eight `comms_*` tools. Four mutate and are in `MUTATING_TOOLS` with
+catalogue rows under a new `Comms` category, so each defaults to `confirm` and the operator can turn
+it off: buying a number (a real monthly charge), choosing what the business sends from (what a client
+sees on their phone), renaming, and drafting the registration (a paid model call that overwrites
+saved compliance copy). **What they do NOT cover, stated so the row above is not read as more than
+it says:** the sending domains and the Google sending account. Both are operable by a person on this
+surface and neither has a Paige tool, so that half of Connections is still click-only. Naming the
+gap here rather than letting "Paige-callable comms" imply the whole surface is the point of the
+entry. `comms_connection_summary` is the safe read Paige starts from — channels,
+number, registration state, and which comms actions this workspace currently permits. It carries no
+credentials, tokens, domains or provider payloads by construction, naming each field it returns
+rather than spreading a record. **Honest limit:** the Trust Compass ceiling clamps these at RENDER
+only (`clampMode` in `useToolAutonomy`); `resolve_tool_autonomy`, which the runtime actually
+consults, never reads the compass. The per-tool floor is the enforcement today. That gap predates
+this slice and is not closed by it. **Two smaller limits, recorded at the seam** (header of
+`20260901010000`): an operator acting as a tenant cannot reach the two new RPCs through Paige,
+because the executor calls them with `_id` alone and never passes the act-as tenant — a refusal,
+not a leak; and the role half of their gate is tenant-agnostic (`user_roles` has no `tenant_id`),
+inherited verbatim from the table's own RLS policy so the write seam admits exactly who the read
+seam does.
+
+**Attributable evidence.** `comms-purchase-number` now writes an `audit_logs` row
+(`comms:number_purchased`) naming the caller, tenant, number and SID — at **all three** exits
+that follow a real charge, including the one where the provider took the money and our own insert
+then failed. That last row carries `recorded: false`, because a purchase we could not write down is
+exactly the event an audit trail exists for; an earlier revision of this branch declared the writer
+inside the insert-race branch, so two of the three money-spent exits recorded nothing. It records `price_recorded:
+false` rather than a price, because that seam genuinely never receives one — the retail figure lives
+in `comms-search-numbers`. The Rail is deliberately not used and cannot be: `record_rail_event` is
+contact-keyed and a purchased number belongs to the workspace, not to any one client.
+
+**Two ledger corrections, recorded rather than backfilled quietly (§13/§66).**
+The `connections/communications` row above previously claimed **editable business details**. That
+editor was DELETED in `22271bbb` on an owner ruling — the business owner, legal name, address and
+phone belong to Setup, and Connections owns only what the platform hands the tenant from its own
+server. The row is corrected here rather than left describing a surface that no longer exists. The
+same row also described number search as `PROPOSED` and non-mutating; it is now live, which is the
+other half of this touch.
+
+**What `connections/registration` proves about itself, and what it does not (§13/§32).**
+`src/solo/settings.registration.test.tsx` (12 tests, mounted) covers the ways this surface can
+lie, and all four were proven to FAIL against a deliberately broken implementation before being
+trusted: an unresolved workspace or a failed read collapsing into "nothing registered" above a PAID
+re-draft that would overwrite reviewed copy; a registration past preparation still offering an
+editor the save seam refuses; and a saved registration reported as filed. **Filing is genuinely
+absent** — the TrustHub calls were removed and `comms-a2p-submit` returns `a2p_submit_wired: false`
+— so no state on this surface may read as submitted, and scoping the submission path is separate
+work. What is NOT proven: authenticated runtime. No live model draft was run and no registration was
+saved against production by the session that built this (§32.c).
+
+**Two defects the peer-gate (§39) caught that the green suite could not, recorded because both were
+green for the SAME reason — a fixture written from the same belief as the code.**
+The number search read `retail_price.retail_monthly_cents`, which is the DATABASE column; the
+response key is `monthly_cents`. Every price therefore resolved to null, every row rendered "—"
+*without* the "pricing pending" note (suppressed because the server correctly reported the type as
+priced), and the purchase confirm offered "an unlisted monthly price" for a charge whose amount the
+response was carrying. Both the unit fixture and the harness stub encoded the wrong key, so a
+CORRECT implementation would have failed those tests and the broken one passed. Separately, the
+registration form rendered the legal name, website and EIN as editable inputs over fields
+`comms-a2p-submit` documents as "validated and then DISCARDED" — a save that reports success and
+throws the typing away (§70). Both fixtures now carry the real shapes, the identity fields are
+read-only reflections pointing at Setup, and the browser drive asserts no typeable box exists over
+them.
+
+**What `connections/communications` proves about itself, and what it does not (§13/§32).**
+
+The three action layers added on 2026-08-31 are covered by
+`src/solo/settings.connections-actions.test.tsx` (14 tests, mounted so effects run) and by the
+tenant-resolution smoke `scripts/tenant-for-user-smoke.mts` (8 checks, wired into CI). Both honesty
+rows — a rejected write never rendering as success, and an unreadable connector record never
+rendering as "not connected" — were proven to FAIL against a deliberately broken implementation
+before being trusted.
+
+What is NOT proven: authenticated runtime. No OAuth was performed and no sending domain was created
+against a live provider by the session that built this, so "the owner can complete the Google
+connect flow end to end" is OWED to a session that drives it, or to the owner. The scope granted is
+`gmail.send` — this surface connects a SENDING account and proves nothing about inbound mail, and
+there is no Outlook function in the repo at all.
 
 **What `connections/calendars` proves about itself, and what it does not (§13/§32).**
 Its geometry, scroll ownership and fold-out behaviour are MEASURED, not asserted:

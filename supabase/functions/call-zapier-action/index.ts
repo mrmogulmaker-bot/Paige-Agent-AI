@@ -39,7 +39,7 @@
 // decision, and it is empty until somebody makes it.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
-import { mcpListTools } from "../_shared/mcp-client.ts";
+import { mcpListTools, authFromSecret } from "../_shared/mcp-client.ts";
 import { callApprovedCapability, fileGovernedOutcome, projectDiscovery } from "../_shared/mcp-outcome.ts";
 import { discoverAuthorizationServer, discoverProtectedResource, isExpired, refreshTokens } from "../_shared/mcp-oauth.ts";
 
@@ -94,7 +94,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "connection_disabled", detail: "This workspace's Zapier/MCP connection is turned off. Re-enable it in Settings → Integrations → Zapier." });
   }
   const serverUrl: string = secret.server_url;
-  let token: string = secret.auth_token;
 
   // An access token that has lapsed is refreshed here rather than surfacing as a failed
   // action. Rotation is stored immediately: a server that issues a new refresh token has
@@ -143,7 +142,15 @@ Deno.serve(async (req) => {
           detail: "This workspace's Zapier authorization could not be renewed. Reconnect it in Settings → Integrations → Zapier.",
         });
       }
-      token = rotated.accessToken;
+      // Written back onto `secret`, which is the ONE thing the auth is derived from.
+      // A local copy alongside it is what broke this: the rotation updated the copy and
+      // `authFromSecret(secret)` kept reading the expired field, so the first call after
+      // every expiry went out with the dead token and failed even though the refresh and
+      // the database write had both succeeded. Two representations of one fact is the same
+      // defect as the guard-and-mapping split this function was just consolidated to
+      // remove; the fix is the same one -- keep a single representation.
+      secret.auth_token = rotated.accessToken;
+      secret.expires_at = rotated.expiresAt;
     } catch {
       // A grant that can no longer be refreshed has been withdrawn or has expired. Saying
       // so is the honest answer; retrying with the dead token would fail less clearly.
@@ -154,18 +161,16 @@ Deno.serve(async (req) => {
   // carries its secret in the address. Requiring a token here would report a correctly
   // saved connection as missing one, which is the failure that looks exactly like "not
   // connected" and sends the operator to re-enter something that was never absent.
-  const urlIsTheCredential = secret.auth_kind === "url";
-  if (!serverUrl || (!token && !urlIsTheCredential)) {
+  // One call for both the verdict and the auth shape, shared with the connect function so
+  // the two cannot drift apart again.
+  const auth = authFromSecret(secret);
+  if (!auth) {
     return jsonResponse({ ok: false, error: "not_connected", detail: "The Zapier connection is missing its server URL. Reconnect it in Settings → Integrations → Zapier." });
   }
 
   // 3. Discovery, reduced to the workspace's OWN approved names. The provider's
   //    catalogue and its descriptions are provider-written text and do not cross.
-  const auth = urlIsTheCredential
-    ? { kind: "none" as const }
-    : secret.auth_kind === "header" && secret.auth_header_name
-    ? { kind: "header" as const, name: secret.auth_header_name as string, token }
-    : { kind: "bearer" as const, token };
+
   const approved: string[] = Array.isArray(secret.approved_capabilities)
     ? (secret.approved_capabilities as unknown[]).filter((c): c is string => typeof c === "string")
     : [];

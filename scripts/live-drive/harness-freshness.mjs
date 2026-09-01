@@ -39,10 +39,20 @@ import path from "node:path";
  * Each marker must be present on DISK too. A marker that no longer exists in the
  * source is a stale expectation, and silently passing on one would rebuild the
  * blind spot this exists to remove.
+ *
+ * `absent` is the other half, and it was missing until a REMOVAL slipped past.
+ * Presence markers can only ever catch a build that is behind on an ADDITION. A
+ * change that DELETES something — a component, a branch, a call — leaves every
+ * surviving marker intact, so the check passed while the server still served the
+ * deleted code. That cost a real debugging detour: a component removed from the
+ * source kept rendering, threw on data that no longer existed, and read exactly
+ * like a crash in the new code. So a drive whose change removes something names
+ * the removed literals here, and they must be absent from the served module AND
+ * from disk.
  */
 export async function assertHarnessServesWorkingTree(base, expected) {
   const problems = [];
-  for (const { file, markers } of expected) {
+  for (const { file, markers = [], absent = [] } of expected) {
     const abs = path.resolve(file);
     const onDisk = fs.readFileSync(abs, "utf8");
     const absentFromDisk = markers.filter((m) => !onDisk.includes(m));
@@ -61,6 +71,17 @@ export async function assertHarnessServesWorkingTree(base, expected) {
     const absentFromServed = markers.filter((m) => !served.includes(m));
     if (absentFromServed.length) {
       problems.push(`${file}: served module is missing ${JSON.stringify(absentFromServed)}`);
+    }
+    // The removal half. A literal the change DELETED must be gone from disk
+    // (or the expectation is stale) and gone from what the server hands out.
+    const stillOnDisk = absent.filter((m) => onDisk.includes(m));
+    if (stillOnDisk.length) {
+      problems.push(`${file}: expected-removed marker(s) still in the SOURCE — ${JSON.stringify(stillOnDisk)}`);
+      continue;
+    }
+    const stillServed = absent.filter((m) => served.includes(m));
+    if (stillServed.length) {
+      problems.push(`${file}: served module STILL CONTAINS removed ${JSON.stringify(stillServed)}`);
     }
   }
   if (problems.length) {

@@ -85,6 +85,12 @@ multi-channel delivery). A fire is not a delivery.
 `SUPABASE_SERVICE_ROLE_KEY`. Deploy auth uses the `SUPABASE_ACCESS_TOKEN` **repo secret** (per
 `supabase/functions/CLAUDE.md`; ⚠ presence not re-verified this session — CLAUDE.md asserts it is set).
 
+**⚠ In-flight, not deployed (2026-08-31) — Solo Team management:** local branch adds the JWT-verified
+`solo-team-invitations` edge function, the `get_solo_team_workspace` / work-profile / permission /
+invite / acceptance RPC family, and `get_paige_team_context`. The browser receives no raw invite token;
+the invitation function invokes the existing `send-portal-invite` function server-side. Migration
+apply, function deployment, email delivery and authenticated tenant behavior are UNVERIFIED.
+
 ---
 
 ## Stripe (§38 — Paige holds its OWN rails only)

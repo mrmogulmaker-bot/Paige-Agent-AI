@@ -27,6 +27,7 @@
 // sensitive-scope verification. Until then the flow degrades to gmail_oauth_not_configured
 // (or Google rejects the scope at consent) — expected, not a bug.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveTenantForUser } from "../_shared/tenant-for-user.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -201,13 +202,19 @@ Deno.serve(async (req) => {
     const gmailAddr = googleEmail.toLowerCase();
     const accountId = googleSub ?? gmailAddr;
 
-    // Resolve tenant_id SERVER-SIDE from profiles by the state's user id (§9 — never body/state).
+    // Resolve the tenant SERVER-SIDE from the state's user id (§9 — never body).
     // `admin` (service-role) was created above for the has_role gate; reuse it.
-    const { data: prof } = await admin
-      .from("profiles").select("tenant_id").eq("id", parsed.u).maybeSingle();
-    const tenantId = prof?.tenant_id ?? null;
+    //
+    // This used to read `profiles.tenant_id` keyed on `profiles.id`. That column
+    // does not exist and that key is a surrogate, so it returned null for every
+    // user and this endpoint could never succeed — see `_shared/tenant-for-user.ts`.
+    // `parsed.w` is the workspace the person was standing in, carried inside the
+    // SIGNED state, and it is honoured only after an active-membership check.
+    // (`t` is already the state's timestamp — see the expiry check above.)
+    const resolved = await resolveTenantForUser(admin, parsed.u, parsed.w ?? null);
+    const tenantId = resolved.tenantId;
     if (!tenantId) {
-      return new Response(JSON.stringify({ error: "no_tenant_for_user" }), {
+      return new Response(JSON.stringify({ error: "no_tenant_for_user", detail: resolved.error }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

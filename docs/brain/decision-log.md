@@ -1,5 +1,7 @@
 # Decision Log — chronological one-liners
 
+- **Solo Campaigns -> Pipeline Gate 1 approved (2026-08-31; draft, not live)** — owner approved the board-first interaction and ruled the immediate refinement: reduce only the page-title word "Pipeline". Locked outcome: multiple tenant-owned pipelines; campaign linkage optional, not exclusive; tenant-owned stage create/name/describe/reorder/archive/restore through a governed contract; contextual customer/deal detail; compact focused-stage behavior; routing/approval/repair secondary; six Campaigns tabs unchanged. Exact-head Gate 2 is required before merge/deploy. Authenticated durable proof remains UNVERIFIED until preview + persisted migration are available.
+
 What was decided/shipped, newest first. Backfilled from what's discoverable (GitHub PRs, dated
 CLAUDE.md rulings, doc dates). **No invented dates** — where a date isn't in the source it's omitted.
 
@@ -673,3 +675,16 @@ controls measuring the defect first; mutation-tested — the strip mutation driv
 the P6b correction). `test:token-pricing` 20/20 and `test:trace-wiring` 12/12, both wired into CI,
 both mutation-tested at 8 and 6 mutations with every one caught. **Not merged, not deployed, and
 the authenticated live drive remains UNVERIFIED** — no browser capability in this session (§32.c).
+
+---
+
+## 2026-08-31 — Solo Settings Team Gate 1 approved; production branch in flight, not live
+
+The owner approved the roster-first Team design and authorized production implementation. Growth uses
+the Settings page scroll owner plus server search/filter and 25-person Load more pages—never a nested
+people scrollbar. Job title/responsibilities are descriptive only; Owner/Admin/Member remain the
+enforced permissions. Paige context is derived from the authenticated active tenant, treats authored
+work details as untrusted reference data, and stays proposal-only until the owner confirms in Team.
+Local structural, test, security-lint, type-ratchet and build evidence is green; authenticated runtime,
+migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is still required before
+merge or deployment.

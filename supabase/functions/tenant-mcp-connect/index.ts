@@ -1,4 +1,19 @@
 // tenant-mcp-connect — connect, verify and disconnect a workspace's own MCP server.
+// REDEPLOY NOTE (2026-08-31): a deploy that said it succeeded and did not.
+//
+// The edge-function pipeline ran for the commit that added `tools/list` pagination to
+// `_shared/mcp-client.ts`, resolved this function as affected (correctly -- it imports that
+// file), bundled it, and printed "deployed tenant-mcp-connect". The platform record stayed
+// at version 1 with its original timestamp, and the deployed source still had the old
+// single-page reader, while `call-zapier-action` -- bundled from the SAME shared file eight
+// seconds earlier in the SAME run -- advanced to version 45 with the new code.
+//
+// So a green deploy log is not evidence a function is live. The check that caught it was
+// comparing the function's stored `version`/`updated_at` against the run that claimed to
+// deploy it; the source read alone looked like a cache artefact and would have been
+// dismissed. Anything that matters should be verified against the stored record, not the
+// CLI's own report -- the schema twin of "it compiled, therefore it runs".
+
 //
 // WHY THIS IS AN EDGE FUNCTION AND NOT AN RPC. Saving a connection is a database write
 // and lives in `set_tenant_n8n_mcp_connection`, which is where its authority belongs.
@@ -24,7 +39,7 @@
 // than followed, bounded wall clock, bounded response size, fail-closed on every branch.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/adminAuth.ts";
-import { mcpListToolFingerprints, mcpProbe, type McpAuth, type McpErrorCode } from "../_shared/mcp-client.ts";
+import { mcpListToolFingerprints, mcpProbe, type McpAuth, type McpErrorCode, authFromSecret } from "../_shared/mcp-client.ts";
 import {
   buildAuthorizationUrl, createPkce, createState, discoverAuthorizationServer,
   discoverProtectedResource, exchangeCode, OAuthError, registerClient, revokeToken,
@@ -434,14 +449,13 @@ async function resolveConnection(
   if (error) return { error: { error: "secret_lookup_failed" }, status: 500 };
   if (!secret?.configured) return { error: { ok: false, error: "not_connected" }, status: 200 };
   if (secret.enabled === false) return { error: { ok: false, error: "connection_disabled" }, status: 200 };
-  if (!secret.server_url || !secret.auth_token) return { error: { ok: false, error: "not_connected" }, status: 200 };
+  // One call answers both "can this be used?" and "how". They used to be separate here,
+  // and separate again in probeAndRecord, and they drifted.
+  const auth = authFromSecret(secret);
+  if (!auth) return { error: { ok: false, error: "not_connected" }, status: 200 };
   return {
     serverUrl: secret.server_url,
-    auth: secret.auth_kind === "url"
-      ? { kind: "none" }
-      : secret.auth_kind === "header" && secret.auth_header_name
-      ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
-      : { kind: "bearer", token: secret.auth_token },
+    auth,
     approved: Array.isArray(secret.approved_capabilities)
       ? (secret.approved_capabilities as unknown[]).filter((c): c is string => typeof c === "string")
       : [],
@@ -465,16 +479,14 @@ async function probeAndRecord(
     _tenant_id: tenantId,
     _provider: provider,
   });
-  if (error || !secret?.configured || secret?.enabled === false || !secret?.server_url || !secret?.auth_token) {
+  // Same one call, same reason.
+  const probeAuth = error ? null : authFromSecret(secret);
+  if (error || !secret?.configured || secret?.enabled === false || !probeAuth) {
     await record(admin, tenantId, provider, "error", "connection is missing its address or credential");
     return { status: "error", code: "mcp_protocol_error" };
   }
 
-  const auth: McpAuth = secret.auth_kind === "url"
-    ? { kind: "none" }
-    : secret.auth_kind === "header" && secret.auth_header_name
-    ? { kind: "header", name: secret.auth_header_name, token: secret.auth_token }
-    : { kind: "bearer", token: secret.auth_token };
+  const auth: McpAuth = probeAuth;
 
   const result = await mcpProbe({ serverUrl: secret.server_url, auth });
 

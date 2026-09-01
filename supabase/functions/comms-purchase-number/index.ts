@@ -176,6 +176,41 @@ Deno.serve(async (req) => {
 
   const pnSid = (bought.data as Record<string, unknown>).sid as string | undefined; // REAL PNxxx
   const boughtNumber = ((bought.data as Record<string, unknown>).phone_number as string | undefined) ?? phoneNumber;
+
+  // ── Attributable evidence that money was spent ──────────────────────────────────
+  // Called before EVERY exit where Twilio has charged the tenant — there are three, and the
+  // first version of this wrote only the last one. The path it missed is the one that needs it
+  // most: on `number_bought_but_record_failed` the `tenant_phone_numbers` row does NOT exist,
+  // so this audit row is the ONLY record anywhere that a charge started.
+  //
+  // The Rail is deliberately not used and cannot be: `record_rail_event` is contact-keyed and
+  // raises when the contact does not resolve in the tenant, and a purchased number belongs to
+  // the WORKSPACE, not to any one client.
+  //
+  // Never blocking. A failed audit write must not turn a completed purchase into a reported
+  // failure — the number is bought and the charge has started either way. Logged, never
+  // swallowed (§32).
+  const writePurchaseAudit = async (numberRowId: string | null, recorded: boolean) => {
+    const { error: auditErr } = await admin.from("audit_logs").insert({
+      user_id: user.id,
+      entity: "tenant_phone_number",
+      action: "comms:number_purchased",
+      entity_id: numberRowId,
+      data: {
+        tenant_id: tenantId,
+        phone_number: boughtNumber,
+        twilio_sid: pnSid,
+        // Whether the number reached our own records. False is the reconciliation case.
+        recorded_on_tenant: recorded,
+        // No price: this seam genuinely never receives one — the retail figure lives in
+        // `comms-search-numbers`, which reads `platform_number_pricing`. Writing a number this
+        // function did not receive would be an audit row inventing its own key field (§13).
+        price_recorded: false,
+        charge_wired: false,
+      },
+    });
+    if (auditErr) console.error("[comms-purchase-number] audit write failed:", auditErr.message);
+  };
   const capabilities = ((bought.data as Record<string, unknown>).capabilities as Record<string, unknown> | undefined) ?? {};
   const twilioFriendly = (bought.data as Record<string, unknown>).friendly_name as string | undefined;
 
@@ -205,12 +240,14 @@ Deno.serve(async (req) => {
   if (insErr) {
     const code = (insErr as { code?: string }).code;
     if (code === "23505") {
+
       // Race: the row appeared between the pre-check and the insert. Return it idempotently.
       const { data: raced } = await admin
         .from("tenant_phone_numbers")
         .select("id")
         .eq("phone_number", boughtNumber)
         .maybeSingle();
+      await writePurchaseAudit((raced?.id as string | null) ?? null, true);
       return json({
         purchased: true,
         id: raced?.id ?? null,
@@ -223,6 +260,7 @@ Deno.serve(async (req) => {
     }
     // The number IS bought at Twilio but we failed to record it — report BOTH honestly so
     // an operator can reconcile (§13). The real PN SID is included for that reconcile.
+    await writePurchaseAudit(null, false);
     return json({
       error: `number_bought_but_record_failed: ${insErr.message}`,
       phone_number: boughtNumber,
@@ -231,6 +269,7 @@ Deno.serve(async (req) => {
     }, 500);
   }
 
+  await writePurchaseAudit((inserted?.id as string | null) ?? null, true);
   return json({
     purchased: true,
     id: inserted?.id ?? null,

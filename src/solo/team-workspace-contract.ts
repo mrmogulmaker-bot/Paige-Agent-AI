@@ -1,0 +1,79 @@
+export type TeamPermission = "owner" | "admin" | "coach" | "member" | string;
+export type InviteLifecycle = "pending" | "accepted" | "expired" | "revoked";
+
+export type TeamMemberRecord = {
+  membership_id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  status: string;
+  permission: TeamPermission;
+  is_owner: boolean;
+  job_title: string | null;
+  responsibilities: string | null;
+  last_sign_in_at: string | null;
+};
+
+export type TeamInviteRecord = {
+  id: string;
+  email: string | null;
+  permission: TeamPermission;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  uses: number;
+  token?: string | null;
+};
+
+export type TeamWorkspaceRecord = {
+  tenant_id: string;
+  tenant_name: string;
+  viewer_permission: TeamPermission;
+  can_manage_profiles: boolean;
+  can_manage_invitations: boolean;
+  can_change_permissions: boolean;
+  total_members: number;
+  members: TeamMemberRecord[];
+  invitations: TeamInviteRecord[];
+};
+
+export function permissionPresentation(permission: TeamPermission, isOwner: boolean): { label: string; mutable: boolean } {
+  if (isOwner || permission === "owner") return { label: "Owner", mutable: false };
+  if (permission === "admin") return { label: "Admin", mutable: true };
+  if (permission === "member") return { label: "Member", mutable: true };
+  // Existing specialized permissions remain truthful and visible, but this Solo
+  // surface does not invent or reassign capabilities it does not own.
+  return { label: permission ? permission.charAt(0).toUpperCase() + permission.slice(1).replace(/_/g, " ") : "Member", mutable: false };
+}
+
+export function validateWorkProfile(title: string, responsibilities: string): { title?: string; responsibilities?: string } {
+  const errors: { title?: string; responsibilities?: string } = {};
+  if (title.trim().length > 120) errors.title = "Keep the job title to 120 characters or fewer.";
+  if (responsibilities.trim().length > 2_000) errors.responsibilities = "Keep responsibilities to 2,000 characters or fewer.";
+  return errors;
+}
+
+export function inviteLifecycle(invite: Pick<TeamInviteRecord, "uses" | "revoked_at" | "expires_at">, now = new Date()): InviteLifecycle {
+  if (invite.uses > 0) return "accepted";
+  if (invite.revoked_at) return "revoked";
+  if (new Date(invite.expires_at).getTime() <= now.getTime()) return "expired";
+  return "pending";
+}
+
+export function normalizeTeamWorkspace(value: unknown): TeamWorkspaceRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<TeamWorkspaceRecord>;
+  if (!row.tenant_id || !Array.isArray(row.members) || !Array.isArray(row.invitations)) return null;
+  return {
+    tenant_id: row.tenant_id,
+    tenant_name: row.tenant_name || "This workspace",
+    viewer_permission: row.viewer_permission || "member",
+    can_manage_profiles: row.can_manage_profiles === true,
+    can_manage_invitations: row.can_manage_invitations === true,
+    can_change_permissions: row.can_change_permissions === true,
+    total_members: Number(row.total_members) || 0,
+    members: row.members,
+    invitations: row.invitations,
+  };
+}

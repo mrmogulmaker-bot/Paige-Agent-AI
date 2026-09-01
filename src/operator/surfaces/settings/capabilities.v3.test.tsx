@@ -161,5 +161,14 @@ describe("what the surface says about the gap is the measured number", () => {
     expect(catalogue.size).toBeGreaterThanOrEqual(gate.size);
     // Kept explicitly, because it is the one that made this more than bookkeeping.
     expect(catalogue.has("n8n_delete_workflow")).toBe(true);
+
+    // MERGE NOTE (2026-09-01). `main` asserted the OPPOSITE of this: `invisible` has length 23,
+    // with `n8n_delete_workflow` among them. Both were true of their own branch — main still
+    // carries the gap; this branch's migration 20261032000000 closed it. The zero assertion is
+    // kept because it is the stronger invariant, and because a COUNT is what let the gap grow:
+    // every new governed tool required re-agreeing a number, and re-agreeing it is how tools
+    // slipped in ungoverned. Main's four Comms tools arrive with this merge, so keeping zero
+    // obliges the merge to give them catalogue rows rather than to raise a number — which is
+    // exactly the pressure this assertion exists to create.
   });
 });

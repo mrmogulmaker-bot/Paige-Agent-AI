@@ -37,6 +37,11 @@ const rpcState = vi.hoisted(() => ({
   readiness: { data: null as unknown, error: null as { message: string } | null },
 }));
 
+vi.mock("@/hooks/useUserRoles", () => ({
+  // The predicate the SERVER gates on (platform owner OR global admin/coach). Mocked
+  // rather than left to the real hook, which opens its own auth subscription.
+  useUserRoles: () => ({ loading: false, userId: "u1", roles: ["admin"], isAdmin: true, isCoach: false, isClient: false, isBroker: false, isStaff: true }),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn(async (fn: string) =>
@@ -58,7 +63,7 @@ vi.mock("./data/useSoloOwner", () => ({
   useSoloOwner: () => ({ owner: { name: "Antonio Cook", email: null, phone: null, website: null }, loading: false, error: null, refresh: vi.fn() }),
 }));
 vi.mock("./data/useSoloComms", () => ({
-  useSoloComms: () => ({ domains: [], billing: null, loading: false, error: null, refresh: vi.fn() }),
+  useSoloComms: () => ({ business: { name: "", website: "", phone: "" }, mailbox: { connected: false, address: null, displayName: null, provider: null, status: null }, canManage: true, saveBusiness: vi.fn(async () => ({ ok: true, error: null })), addDomain: vi.fn(async () => ({ ok: true, error: null })), refreshDomain: vi.fn(async () => ({ ok: true, error: null })), setDefaultDomain: vi.fn(async () => ({ ok: true, error: null })), removeDomain: vi.fn(async () => ({ ok: true, error: null })), startGmailConnect: vi.fn(async () => ({ url: null, error: null })), disconnectGmail: vi.fn(async () => ({ ok: true, error: null })), domains: [], billing: null, loading: false, error: null, refresh: vi.fn() }),
 }));
 
 const READY = {

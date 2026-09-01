@@ -21,8 +21,10 @@ export type CampaignArtifact = {
   publicHref: string;
   recentSubmissions: number;
   routingConfigured: boolean;
+  routingState: "No route" | "Draft route" | "Approval-gated" | "Human-only" | "Approval-gated + human-only" | "Active + approval-gated" | "Active + human-only" | "Active + approval-gated + human-only" | "Active";
   routingTargets: string[];
   recentDispatches: { succeeded: number; failed: number; other: number };
+  dispatchStatuses: Record<string, number>;
 };
 
 export type CampaignSubmission = {
@@ -36,12 +38,30 @@ export type CampaignSubmission = {
 };
 
 export type SoloCampaignsState = {
+  tenantId: string | null;
   phase: "resolving" | "loading" | "ready" | "error" | "unavailable";
   campaigns: CampaignRecord[];
   artifacts: CampaignArtifact[];
   submissions: CampaignSubmission[];
+  pipelineWorkspace: PipelineWorkspace;
+  pipelineAction: (action: PipelineAction) => Promise<{ ok: boolean; message: string; data?: Record<string, unknown> }>;
   retry: () => void;
 };
+
+export type PipelineStage = { id: string; pipelineId: string; label: string; description: string; orderIndex: number; archivedAt: string | null; movePolicy: "direct" | "approval"; version: number };
+export type PipelineDeal = { id: string; title: string; pipelineId: string; stageId: string; clientName: string; owner: string; status: string; source: string; nextAction: string; updatedAt: string; version: number; history: { summary: string; createdAt: string }[] };
+export type PipelineRecord = { id: string; name: string; description: string; isDefault: boolean; lifecycleStatus: "draft" | "active" | "archived"; version: number };
+export type PipelineWorkspace = { canManage: boolean; pipelines: PipelineRecord[]; stages: PipelineStage[]; deals: PipelineDeal[] };
+type CommandBase = { idempotencyKey?: string };
+export type PipelineAction =
+  | (CommandBase & { type: "create-pipeline"; name: string; description: string })
+  | (CommandBase & { type: "update-pipeline"; pipelineId: string; name: string; description: string; expectedVersion: number })
+  | (CommandBase & { type: "activate-pipeline" | "archive-pipeline" | "restore-pipeline" | "delete-pipeline"; pipelineId: string; expectedVersion: number })
+  | (CommandBase & { type: "create-stage"; pipelineId: string; label: string; description: string; movePolicy: "direct" | "approval"; expectedVersion: number })
+  | (CommandBase & { type: "update-stage"; stageId: string; label: string; description: string; movePolicy: "direct" | "approval"; expectedVersion: number })
+  | (CommandBase & { type: "archive-stage" | "restore-stage" | "delete-stage"; stageId: string; expectedVersion: number })
+  | (CommandBase & { type: "reorder-stages"; pipelineId: string; orderedIds: string[]; expectedVersion: number })
+  | (CommandBase & { type: "move-deal"; dealId: string; targetStageId: string; expectedVersion: number; reason?: string });
 
 type PageRow = { id: string; slug: string; title: string; status: string; updated_at: string };
 type FunnelRow = { id: string; slug: string; name: string; status: string; updated_at: string };
@@ -61,43 +81,82 @@ type SubmissionRow = {
   contact_id: string | null;
   deal_id: string | null;
 };
-type AutomationRow = { id: string; form_id: string; target_slug: string; enabled: boolean };
-type DispatchRow = { automation_id: string; status: string };
+type RoutingEvidenceRow = {
+  id: string;
+  form_id: string;
+  target_slug: string;
+  enabled: boolean;
+  effective_autonomy_lane: "auto" | "confirm" | "off";
+  dispatch_statuses: Record<string, number> | null;
+};
+type RoutingEvidencePayload = { routes?: RoutingEvidenceRow[] };
+type PipelineWorkspacePayload = {
+  can_manage?: boolean;
+  pipelines?: { id: string; name: string; description?: string | null; is_default?: boolean; lifecycle_status?: "draft" | "active" | "archived"; version?: number }[];
+  stages?: { id: string; pipeline_id: string; label: string; description?: string | null; order_index: number; archived_at?: string | null; move_policy?: "direct" | "approval"; version?: number }[];
+  deals?: { id: string; title: string; pipeline_id: string; stage_id: string; client_name?: string | null; owner_user_id?: string | null; status?: string | null; source?: string | null; next_action?: string | null; updated_at: string; version?: number; history?: { summary: string; createdAt: string }[] }[];
+};
 
-const empty = { campaigns: [], artifacts: [], submissions: [] };
+const emptyPipeline: PipelineWorkspace = { canManage: false, pipelines: [], stages: [], deals: [] };
+const empty = { campaigns: [], artifacts: [], submissions: [], pipelineWorkspace: emptyPipeline };
 
 export function useSoloCampaigns(): SoloCampaignsState {
   const { activeTenantId, activeTenant, accountContextLoading } = useTenantContext();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [state, setState] = useState<Omit<SoloCampaignsState, "retry">>({
+  const [state, setState] = useState<Omit<SoloCampaignsState, "retry" | "pipelineAction">>({
+    tenantId: activeTenantId ?? null,
     phase: accountContextLoading ? "resolving" : "loading",
     ...empty,
   });
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
+  const pipelineAction = useCallback(async (action: PipelineAction) => {
+    if (!activeTenantId) return { ok: false, message: "No tenant workspace is selected." };
+    const { idempotencyKey, ...command } = action;
+    const name = "configure_tenant_pipeline";
+    const args = { _tenant_id: activeTenantId, _command: command, _idempotency_key: idempotencyKey ?? crypto.randomUUID(), _actor_kind: "human" };
+    const { data, error } = await supabase.rpc(name as never, args as never);
+    if (error) {
+      console.error("[solo-pipeline] action failed", { action: action.type, error });
+      const detail = String(error.message || "");
+      const message = detail.includes("PIPELINE_VERSION_CONFLICT") ? "This record changed somewhere else. The board was refreshed; review the current stage before trying again."
+        : detail.includes("PIPELINE_DEPENDENCIES_UNRESOLVED") ? "Delete is blocked until its deals, routes, approvals, automations, and retained history are resolved."
+        : detail.includes("PIPELINE_APPROVAL_REQUIRED") ? "Approval is required. The deal stayed in its current stage and a held request was recorded."
+        : "That change could not be saved. Nothing else was changed.";
+      setRefreshKey((key) => key + 1);
+      return { ok: false, message };
+    }
+    setRefreshKey((key) => key + 1);
+    const payload = (data ?? {}) as Record<string, unknown>;
+    const dependencyText = payload.dependencies && typeof payload.dependencies === "object"
+      ? Object.entries(payload.dependencies as Record<string, unknown>).map(([key, value]) => `${key}: ${value}`).join(" · ")
+      : "";
+    const message = `${typeof payload.message === "string" ? payload.message : "Saved to this tenant’s pipeline."}${dependencyText ? ` ${dependencyText}` : ""}`;
+    return { ok: payload.ok !== false, message, data: payload };
+  }, [activeTenantId]);
 
   useEffect(() => {
     let current = true;
     if (accountContextLoading) {
-      setState({ phase: "resolving", ...empty });
+      setState({ tenantId: activeTenantId ?? null, phase: "resolving", ...empty });
       return () => { current = false; };
     }
     if (!activeTenantId) {
-      setState({ phase: "unavailable", ...empty });
+      setState({ tenantId: null, phase: "unavailable", ...empty });
       return () => { current = false; };
     }
 
-    setState({ phase: "loading", ...empty });
+    setState({ tenantId: activeTenantId, phase: "loading", ...empty });
     void (async () => {
       try {
-        const [pageResponse, funnelResponse, formResponse, submissionResponse, automationResponse, dispatchResponse] = await Promise.all([
+        const [pageResponse, funnelResponse, formResponse, submissionResponse, routingResponse, pipelineResponse] = await Promise.all([
           supabase.from("growth_pages").select("id,slug,title,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_funnels").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_forms").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
           supabase.from("growth_form_submissions").select("id,form_id,source,processing_state,created_at,contact_id,deal_id").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(200),
-          supabase.from("growth_form_automations").select("id,form_id,target_slug,enabled").eq("tenant_id", activeTenantId).eq("enabled", true),
-          supabase.from("growth_submission_dispatches").select("automation_id,status").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(200),
+          supabase.rpc("get_pipeline_routing_evidence" as never, { _tenant_id: activeTenantId } as never),
+          supabase.rpc("get_pipeline_workspace" as never, { _tenant_id: activeTenantId } as never),
         ]);
-        const firstError = [pageResponse.error, funnelResponse.error, formResponse.error, submissionResponse.error, automationResponse.error, dispatchResponse.error].find(Boolean);
+        const firstError = [pageResponse.error, funnelResponse.error, formResponse.error, submissionResponse.error, routingResponse.error, pipelineResponse.error].find(Boolean);
         if (firstError) throw firstError;
         if (!current) return;
 
@@ -121,39 +180,61 @@ export function useSoloCampaigns(): SoloCampaignsState {
           counts[row.formId] = (counts[row.formId] ?? 0) + 1;
           return counts;
         }, {});
-        const automations = (automationResponse.data ?? []) as AutomationRow[];
-        const dispatches = (dispatchResponse.data ?? []) as DispatchRow[];
-        const automationsByForm = automations.reduce<Record<string, AutomationRow[]>>((groups, row) => {
+        const routingPayload = (routingResponse.data ?? {}) as unknown as RoutingEvidencePayload;
+        const automations = routingPayload.routes ?? [];
+        const automationsByForm = automations.reduce<Record<string, RoutingEvidenceRow[]>>((groups, row) => {
           (groups[row.form_id] ??= []).push(row);
-          return groups;
-        }, {});
-        const dispatchesByAutomation = dispatches.reduce<Record<string, DispatchRow[]>>((groups, row) => {
-          (groups[row.automation_id] ??= []).push(row);
           return groups;
         }, {});
         const routingEvidence = (formId: string) => {
           const configured = automationsByForm[formId] ?? [];
-          const outcomes = configured.flatMap((automation) => dispatchesByAutomation[automation.id] ?? []);
+          const enabled = configured.filter((automation)=>automation.enabled);
+          const dispatchStatuses = configured.reduce<Record<string, number>>((counts, automation) => {
+            Object.entries(automation.dispatch_statuses ?? {}).forEach(([status, count]) => {
+              counts[status] = (counts[status] ?? 0) + count;
+            });
+            return counts;
+          }, {});
+          const approvalGated = enabled.some((automation)=>automation.effective_autonomy_lane === "confirm");
+          const humanOnly = enabled.some((automation)=>automation.effective_autonomy_lane === "off");
+          const active = enabled.some((automation)=>automation.effective_autonomy_lane === "auto");
           return {
             routingConfigured: configured.length > 0,
-            routingTargets: [...new Set(configured.map((row) => row.target_slug))],
-            recentDispatches: outcomes.reduce((counts, row) => {
-              if (["succeeded", "success", "completed"].includes(row.status)) counts.succeeded += 1;
-              else if (["failed", "error"].includes(row.status)) counts.failed += 1;
-              else counts.other += 1;
+            routingState: configured.length === 0 ? "No route" as const
+              : enabled.length === 0 ? "Draft route" as const
+              : active && approvalGated && humanOnly ? "Active + approval-gated + human-only" as const
+              : active && approvalGated ? "Active + approval-gated" as const
+              : active && humanOnly ? "Active + human-only" as const
+              : approvalGated && humanOnly ? "Approval-gated + human-only" as const
+              : approvalGated ? "Approval-gated" as const
+              : humanOnly ? "Human-only" as const
+              : "Active" as const,
+            routingTargets: [...new Set(enabled.map((row) => row.target_slug))],
+            dispatchStatuses,
+            recentDispatches: Object.entries(dispatchStatuses).reduce((counts, [status, count]) => {
+              if (["succeeded", "success", "completed"].includes(status)) counts.succeeded += count;
+              else if (["failed", "error"].includes(status)) counts.failed += count;
+              else counts.other += count;
               return counts;
             }, { succeeded: 0, failed: 0, other: 0 }),
           };
         };
         const tenantSlug = activeTenant?.slug ?? "";
+        const rawPipeline = (pipelineResponse.data ?? {}) as unknown as PipelineWorkspacePayload;
+        const pipelineWorkspace: PipelineWorkspace = {
+          canManage: rawPipeline.can_manage === true,
+          pipelines: (rawPipeline.pipelines ?? []).map((row) => ({ id: row.id, name: row.name, description: row.description ?? "", isDefault: row.is_default === true, lifecycleStatus: row.lifecycle_status ?? "active", version: row.version ?? 1 })),
+          stages: (rawPipeline.stages ?? []).map((row) => ({ id: row.id, pipelineId: row.pipeline_id, label: row.label, description: row.description ?? "", orderIndex: row.order_index, archivedAt: row.archived_at ?? null, movePolicy: row.move_policy ?? "direct", version: row.version ?? 1 })),
+          deals: (rawPipeline.deals ?? []).map((row) => ({ id: row.id, title: row.title, pipelineId: row.pipeline_id, stageId: row.stage_id, clientName: row.client_name || "Client not recorded", owner: row.owner_user_id ? "Assigned owner" : "Owner not recorded", status: row.status || "Not recorded", source: row.source || "Source not recorded", nextAction: row.next_action || "Next action not recorded", updatedAt: row.updated_at, version: row.version ?? 1, history: row.history ?? [] })),
+        };
         const artifacts: CampaignArtifact[] = [
           ...pages.filter((row) => row.status === "published").map((row) => ({
             id: row.id, type: "page" as const, name: row.title, slug: row.slug, status: row.status,
-            updatedAt: row.updated_at, publicHref: tenantSlug ? `/p/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 },
+            updatedAt: row.updated_at, publicHref: tenantSlug ? `/p/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingState:"No route" as const, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 }, dispatchStatuses:{},
           })),
           ...funnels.filter((row) => row.status === "active").map((row) => ({
             id: row.id, type: "funnel" as const, name: row.name, slug: row.slug, status: row.status,
-            updatedAt: row.updated_at, publicHref: tenantSlug ? `/f/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 },
+            updatedAt: row.updated_at, publicHref: tenantSlug ? `/f/${tenantSlug}/${row.slug}` : "", recentSubmissions: 0, routingConfigured: false, routingState:"No route" as const, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 }, dispatchStatuses:{},
           })),
           ...forms.filter((row) => row.status === "active").map((row) => ({
             id: row.id, type: "form" as const, name: row.name, slug: row.slug, status: row.status,
@@ -161,14 +242,20 @@ export function useSoloCampaigns(): SoloCampaignsState {
             ...routingEvidence(row.id),
           })),
         ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-        setState({ phase: "ready", campaigns, artifacts, submissions });
+        setState({ tenantId: activeTenantId, phase: "ready", campaigns, artifacts, submissions, pipelineWorkspace });
       } catch (error) {
         console.error("[solo-campaigns] read failed", error);
-        if (current) setState({ phase: "error", ...empty });
+        if (current) setState({ tenantId: activeTenantId, phase: "error", ...empty });
       }
     })();
     return () => { current = false; };
   }, [accountContextLoading, activeTenantId, activeTenant?.slug, refreshKey]);
 
-  return { ...state, retry };
+  const synchronousTenantId = activeTenantId ?? null;
+  const visibleState = state.tenantId === synchronousTenantId ? state : {
+    tenantId: synchronousTenantId,
+    phase: accountContextLoading ? "resolving" as const : synchronousTenantId ? "loading" as const : "unavailable" as const,
+    ...empty,
+  };
+  return { ...visibleState, retry, pipelineAction };
 }

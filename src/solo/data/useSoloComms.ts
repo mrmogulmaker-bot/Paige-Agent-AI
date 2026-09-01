@@ -12,19 +12,40 @@
  *      parent agency's — we do NOT fetch a plan and report `isSubAccount` so the
  *      caller renders the honest "managed by your agency" empty state.
  *
- * DEFERRED (§13/§38 — NO fake action): every WRITE — add/refresh/set-default/remove
- * a domain, notification toggles, subscribe/checkout (money, §38) — is a separate
- * slice. This adapter exposes NO mutation; the Setup surface renders those controls
- * DISABLED/Preview.
+ * WRITES (this slice, 2026-08-31). The domain lifecycle, the carrier-facing business
+ * details, and the Google sending-account connection are now real, because a surface
+ * that reports "business name still missing" and gives nobody a field to type it in
+ * is describing a capability rather than providing one (§70). Every write reuses a
+ * seam that ALREADY EXISTED and already enforces authority server-side:
  *
- * §9: no client-supplied tenant_id — the edge fn + RPCs derive scope from the
- * verified session/RLS. Honest degrade (§13): a failed read surfaces an error and
+ *   domains         → `manage-tenant-domain` verbs add/refresh/set_default/remove,
+ *     the same seam `EmailDomainsPanel` has used on the legacy admin route.
+ *   Google account  → `gmail-oauth-start` / `gmail-disconnect`.
+ *
+ * STILL DEFERRED (§13/§38 — NO fake action): notification toggles and
+ * subscribe/checkout (money, §38). Those controls stay DISABLED/Preview.
+ *
+ * NO SILENT PROVIDER ACTION (§38): `startGmailConnect` RETURNS a consent URL and
+ * does not navigate — the CALLER performs the redirect, in response to a click.
+ * Nothing in this adapter reaches a provider, spends money, or changes a
+ * credential on its own. (An earlier version of this note said it "navigates
+ * nowhere. The person clicks it", which read as though no code performed a
+ * redirect at all; the panel does, on the click. Said precisely, since the whole
+ * point of the line is that the boundary is real.)
+ *
+ * §9: no tenant id is passed from the client. `manage-tenant-domain` derives the
+ * tenant from the verified session, the connector read is RLS-scoped, and the
+ * gmail functions resolve it server-side. (This adapter briefly also wrote the
+ * business record via `set_tenant_brand`, which DID take a client-supplied
+ * `_tenant_id`; that editor moved to Setup on the owner's ruling, so the claim is
+ * now true again — it was not while that write lived here.) Honest degrade (§13): a failed read surfaces an error and
  * an empty/`null` shape, never a fabricated domain or plan.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
+import { resolveFunctionError } from "@/lib/integrations/connectError";
 
 export interface SoloDomain {
   id: string;
@@ -53,6 +74,28 @@ export interface SoloBillingPlan {
   hasActiveSub: boolean;
 }
 
+/**
+ * A connected Google sending account.
+ *
+ * NOT called a mailbox, deliberately (§13). `gmail-oauth-start` requests
+ * `gmail.send` and `userinfo.email` only — there is no `gmail.readonly` or
+ * `gmail.modify` in the scope set, so nothing here proves inbound mail is read.
+ * Calling it a mailbox would claim a capability the OAuth grant does not carry.
+ */
+export interface SoloMailbox {
+  connected: boolean;
+  address: string | null;
+  displayName: string | null;
+  provider: string | null;
+  status: string | null;
+}
+
+/** Thrown-free result shape: every mutation reports what actually happened (§13). */
+export interface SoloMutationResult {
+  ok: boolean;
+  error: string | null;
+}
+
 export interface SoloCommsData {
   loading: boolean;
   error: string | null;
@@ -60,9 +103,28 @@ export interface SoloCommsData {
   isSubAccount: boolean;
   domains: SoloDomain[];
   sending: SoloSendingIdentity;
+  /** Null while loading or unresolved; `connected:false` is a real answer. */
+  mailbox: SoloMailbox | null;
   /** Null while loading, for a sub-account (parent-managed), or when unresolved. */
   billing: SoloBillingPlan | null;
+  /** True when the caller may write brand/domains here — fail-closed. */
+  canManage: boolean;
   refresh: () => void;
+
+  /* ----- mutations (this slice) --------------------------------------------
+   * Every one goes through a seam that already existed and already enforces
+   * authority server-side: `manage-tenant-domain` derives its tenant from the
+   * verified session and re-checks the caller's role, and the gmail functions
+   * resolve the tenant server-side. None of them takes a client-supplied
+   * tenant id.
+   */
+  addDomain: (input: { domain: string; fromEmailLocal: string; fromName: string }) => Promise<SoloMutationResult>;
+  refreshDomain: (id: string) => Promise<SoloMutationResult>;
+  setDefaultDomain: (id: string) => Promise<SoloMutationResult>;
+  removeDomain: (id: string) => Promise<SoloMutationResult>;
+  /** Returns the provider consent URL for the CALLER to open. Never auto-navigated. */
+  startGmailConnect: () => Promise<{ url: string | null; error: string | null }>;
+  disconnectGmail: () => Promise<SoloMutationResult>;
 }
 
 /* ----- billing helpers (mirrors SetupBilling) --------------------------------- */
@@ -81,6 +143,15 @@ interface CurrentSub {
   current_period_end?: string | null;
   cancel_at_period_end?: boolean | null;
 }
+
+/** Plain-English phrase per verb, for `resolveFunctionError`'s copy (§3 — no jargon). */
+const DOMAIN_ACTION: Record<string, string> = {
+  add: "add that sending domain",
+  refresh: "check that domain's DNS",
+  set_default: "make that domain the default sender",
+  remove: "remove that sending domain",
+  list: "read your sending domains",
+};
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v : null;
@@ -117,29 +188,75 @@ export function useSoloComms(): SoloCommsData {
     defaultSender: null,
   });
   const [billing, setBilling] = useState<SoloBillingPlan | null>(null);
+  const [mailbox, setMailbox] = useState<SoloMailbox | null>(null);
+  const [canManage, setCanManage] = useState(false);
   const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
   const requestGate = useRef(createSettingsRequestGate());
 
   const load = useCallback(async () => {
     const requestToken = requestGate.current.begin();
-    // Clear the previous account before the next account resolves. Nothing tenant-derived
-    // is allowed to remain visible during the switch.
-    setLoadedTenantId(null);
-    setDomains([]);
-    setSending({ fromName: null, supportEmail: null, defaultSender: null });
-    setBilling(null);
+    // Clear the previous account before the next account resolves — but ONLY when
+    // the account actually CHANGED. Nothing tenant-derived may remain visible
+    // across a switch (§9); blanking on a same-account REFRESH is a different
+    // thing entirely, and it was a real defect once this adapter gained writes.
+    //
+    // Every mutation calls `load()` to re-read the persisted answer. With an
+    // unconditional reset, that re-read momentarily set `canManage` false, and
+    // all three panels early-return a read-only notice on `!canManage` — so the
+    // editor flickered to "Only a workspace admin can change this" and UNMOUNTED
+    // the panel holding the "Saved." confirmation, at the exact moment it had
+    // something to say. Caught by driving the save in a browser; the unit suite
+    // mocks this adapter and cannot see it.
+    const switchingAccount = loadedTenantId !== null && loadedTenantId !== tenantId;
+    if (switchingAccount) {
+      setLoadedTenantId(null);
+      setDomains([]);
+      setSending({ fromName: null, supportEmail: null, defaultSender: null });
+      setBilling(null);
+      setMailbox(null);
+      setCanManage(false);
+    }
     setError(null);
     if (!tenantId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // `loading` means "there is nothing to show for this account yet" — NOT "a
+    // refresh is in flight". Every mutation re-reads, and the panels sit inside a
+    // `ReadState` keyed on this flag: setting it true on a same-account refresh
+    // swapped them for a loading state and UNMOUNTED the panel holding the
+    // result message, so a successful save or domain change reported nothing.
+    // The returned value still gates on `loadedTenantId === tenantId`, so stale
+    // data can never be shown across a switch (§9) — that guarantee does not
+    // depend on this flag.
+    if (loadedTenantId !== tenantId) setLoading(true);
     try {
       // Sending identity is meaningful on every tier; billing is skipped for a
       // sub-account (its plan is the parent agency's — §217/§38).
-      const [domainRes, brandRes, ...billingRes] = await Promise.all([
+      const [domainRes, brandRes, mailboxRes, manageRes, ...billingRes] = await Promise.all([
         supabase.functions.invoke("manage-tenant-domain", { body: { verb: "list" } }),
         supabase.from("tenants").select("brand").eq("id", tenantId).maybeSingle(),
+        // The read the "Connected mailbox" card said did not exist. The contract
+        // DOES exist — `gmail-oauth-callback` writes this row — nobody had wired
+        // the read, so the card reported UNAVAILABLE for a live capability.
+        // NOT `.maybeSingle()`. Nothing constrains this table to one gmail row per
+        // tenant — `gmail-oauth-callback` keys its lookup on `inbound_address`, so
+        // a second Google address INSERTS a second row and never deactivates the
+        // first. `maybeSingle()` throws PGRST116 on two rows, which would have
+        // turned a second connection into a permanently unreadable card.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types (repo-wide pattern, cf. OwnerWelcome/EmailIntegrationConfig)
+        (supabase as any)
+          .from("channel_connectors")
+          .select("provider, from_address, display_name, status, active")
+          .eq("tenant_id", tenantId)
+          .eq("channel_type", "email")
+          .eq("provider", "gmail")
+          .order("active", { ascending: false })
+          .limit(1),
+        // Fail-closed authority for the write controls. The server re-checks on
+        // every mutation regardless; this only decides whether to render them.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated types (repo-wide pattern)
+        supabase.rpc("is_current_user_tenant_admin" as any),
         ...(isSubAccount
           ? []
           : [
@@ -184,6 +301,33 @@ export function useSoloComms(): SoloCommsData {
           ? `${defaultDomainRow.fromEmailLocal}@${defaultDomainRow.domain}`
           : null,
       });
+
+
+      // "Not connected" is a CLAIM ABOUT THE ACCOUNT, and it may only be made
+      // from a read that was actually allowed to see the answer.
+      //
+      // An error is the easy case. The hard one is RLS: `channel_connectors_select`
+      // requires a global admin/coach role on top of the tenant match, so a
+      // tenant_members OWNER without that app_role gets ZERO ROWS AND NO ERROR —
+      // indistinguishable, to a naive guard, from having no connector. Reported as
+      // "Not connected" that invites someone to re-run an OAuth grant they already
+      // hold. So an empty result is only read as "none" when the caller is one the
+      // policy admits; otherwise the card says it could not read it (§13).
+      const canManageRead = manageRes.data === true;
+      setCanManage(canManageRead);
+      const mailboxRows = Array.isArray(mailboxRes.data) ? mailboxRes.data : [];
+      const mailboxRow = asRecord(mailboxRows[0]);
+      if (mailboxRes.error || (mailboxRows.length === 0 && !canManageRead)) {
+        setMailbox(null);
+      } else {
+        setMailbox({
+          connected: Boolean(mailboxRow.active) && str(mailboxRow.status) !== "revoked",
+          address: str(mailboxRow.from_address),
+          displayName: str(mailboxRow.display_name),
+          provider: str(mailboxRow.provider),
+          status: str(mailboxRow.status),
+        });
+      }
 
       // --- billing (skipped for sub-accounts) ---
       if (isSubAccount) {
@@ -238,7 +382,7 @@ export function useSoloComms(): SoloCommsData {
     } finally {
       if (requestGate.current.isCurrent(requestToken)) setLoading(false);
     }
-  }, [tenantId, isSubAccount]);
+  }, [tenantId, isSubAccount, loadedTenantId]);
 
   useEffect(() => {
     const activeGate = requestGate.current;
@@ -251,6 +395,113 @@ export function useSoloComms(): SoloCommsData {
     void load();
   }, [load]);
 
+  /* ----- mutations ---------------------------------------------------------
+   * Shared shape: never throw at the call site, always report what actually
+   * happened, and re-read afterwards so the surface shows the PERSISTED answer
+   * rather than the value that was typed (§70.1 — a toast is not persistence).
+   */
+  const asResult = (e: unknown): SoloMutationResult => ({
+    ok: false,
+    error: e instanceof Error ? e.message : typeof e === "string" ? e : "That didn't save.",
+  });
+
+
+  const domainVerb = useCallback(
+    async (verb: string, payload: Record<string, unknown> = {}): Promise<SoloMutationResult> => {
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke("manage-tenant-domain", {
+          body: { verb, ...payload },
+        });
+        // BOTH shapes, and neither read raw. On a non-2xx, supabase-js sets
+        // `data = null` and `error.message` to "Edge Function returned a non-2xx
+        // status code" — the real code (`invalid_domain`, `forbidden`,
+        // `not_found`) is inside `error.context`. Reading `error.message` shows a
+        // person framework jargon for an ordinary typo, so this goes through the
+        // one home that already exists for exactly this (§18).
+        const inner = asRecord(data).error;
+        if (fnError || inner) {
+          const { message } = await resolveFunctionError({
+            error: fnError, data, action: DOMAIN_ACTION[verb] ?? "update your sending domain",
+          });
+          return { ok: false, error: message };
+        }
+        await load();
+        return { ok: true, error: null };
+      } catch (e) {
+        return asResult(e);
+      }
+    },
+    [load],
+  );
+
+  const addDomain = useCallback(
+    (input: { domain: string; fromEmailLocal: string; fromName: string }) =>
+      domainVerb("add", {
+        domain: input.domain.trim().toLowerCase(),
+        from_email_local: input.fromEmailLocal.trim() || "no-reply",
+        from_name: input.fromName.trim(),
+      }),
+    [domainVerb],
+  );
+  const refreshDomain = useCallback((id: string) => domainVerb("refresh", { id }), [domainVerb]);
+  const setDefaultDomain = useCallback((id: string) => domainVerb("set_default", { id }), [domainVerb]);
+  const removeDomain = useCallback((id: string) => domainVerb("remove", { id }), [domainVerb]);
+
+  /**
+   * Returns Google's consent URL. It does NOT navigate.
+   *
+   * The caller opens it, so the provider handshake is something the person
+   * chose, in a window they can see — never a redirect this adapter performed
+   * on their behalf.
+   */
+  const startGmailConnect = useCallback(async (): Promise<{ url: string | null; error: string | null }> => {
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("gmail-oauth-start", {
+        body: { origin: window.location.origin },
+      });
+      const rec = asRecord(data);
+      const url = str(rec.authorization_url);
+      if (fnError || rec.error || !url) {
+        // The likeliest real answer here is `gmail_oauth_not_configured` — the
+        // function's own header says so — and that is a "not switched on yet"
+        // note, not a failure scream. Left raw it read as "Edge Function returned
+        // a non-2xx status code".
+        const { message } = await resolveFunctionError({
+          error: fnError, data, action: "connect a Google account",
+        });
+        return { url: null, error: message };
+      }
+      return { url, error: null };
+    } catch (e) {
+      return { url: null, error: asResult(e).error };
+    }
+  }, []);
+
+  const disconnectGmail = useCallback(async (): Promise<SoloMutationResult> => {
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("gmail-disconnect", { body: {} });
+      const rec = asRecord(data);
+      if (fnError || rec.error) {
+        const { message } = await resolveFunctionError({
+          error: fnError, data, action: "disconnect the Google account",
+        });
+        return { ok: false, error: message };
+      }
+      // `gmail-disconnect` answers `{ ok: true, disconnected: false }` when it
+      // found no connector to revoke — a NO-OP, not a disconnection. Reporting
+      // that as "Disconnected." tells someone their account is detached while it
+      // is still active and still sending, which is the §13 failure this branch
+      // exists to remove, not to add.
+      if (rec.disconnected === false) {
+        return { ok: false, error: "Nothing was disconnected — no connected Google account was found on this workspace." };
+      }
+      await load();
+      return { ok: true, error: null };
+    } catch (e) {
+      return asResult(e);
+    }
+  }, [load]);
+
   return useMemo(
     () => ({
       loading: loading || tenantLoading || Boolean(tenantId && loadedTenantId !== tenantId),
@@ -259,8 +510,20 @@ export function useSoloComms(): SoloCommsData {
       domains: loadedTenantId === tenantId ? domains : [],
       sending: loadedTenantId === tenantId ? sending : { fromName: null, supportEmail: null, defaultSender: null },
       billing: loadedTenantId === tenantId ? billing : null,
+      mailbox: loadedTenantId === tenantId ? mailbox : null,
+      canManage: loadedTenantId === tenantId ? canManage : false,
       refresh,
+      addDomain,
+      refreshDomain,
+      setDefaultDomain,
+      removeDomain,
+      startGmailConnect,
+      disconnectGmail,
     }),
-    [loading, tenantLoading, tenantId, loadedTenantId, error, isSubAccount, domains, sending, billing, refresh],
+    [
+      loading, tenantLoading, tenantId, loadedTenantId, error, isSubAccount, domains, sending,
+      billing, mailbox, canManage, refresh, addDomain, refreshDomain,
+      setDefaultDomain, removeDomain, startGmailConnect, disconnectGmail,
+    ],
   );
 }

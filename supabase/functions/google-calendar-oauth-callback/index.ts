@@ -2,6 +2,7 @@
 // the refresh token in staff_calendar_settings for the calling user.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encryptSecret } from "../_shared/calendarCrypto.ts";
+import { resolveTenantForUser } from "../_shared/tenant-for-user.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,14 +129,24 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const { data: prof } = await admin
-      .from("profiles").select("tenant_id").eq("id", parsed.u).maybeSingle();
+    // Was `profiles.tenant_id` keyed on `profiles.id`: a column that does not
+    // exist, read with a surrogate key, with the error discarded. It resolved to
+    // null for every user, and this upsert then STORED that null rather than
+    // failing — so connected calendars carry no tenant at all. See
+    // `_shared/tenant-for-user.ts` for the measurement.
+    const resolved = await resolveTenantForUser(admin, parsed.u, parsed.w ?? null);
+    if (!resolved.tenantId) {
+      return new Response(JSON.stringify({ error: "no_tenant_for_user", detail: resolved.error }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { error } = await admin
       .from("staff_calendar_settings")
       .upsert({
         user_id: parsed.u,
-        tenant_id: prof?.tenant_id ?? null,
+        tenant_id: resolved.tenantId,
         google_calendar_connected: true,
         google_refresh_token_encrypted: refreshEnc,
         google_email: googleEmail,

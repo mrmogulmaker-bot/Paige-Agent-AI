@@ -8,13 +8,35 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const harness = vi.hoisted(() => ({
   state: {
+    tenantId: "tenant-1",
     phase: "ready",
     campaigns: [{ id: "campaign-1", name: "Grounded campaign", status: "active", activeCount: 2, completedCount: 4, lastActivityAt: "2026-08-28T12:00:00Z" }],
     artifacts: [{ id: "page-1", type: "page", name: "Published page", slug: "published-page", status: "published", updatedAt: "2026-08-28T12:00:00Z", publicHref: "/p/example/published-page", recentSubmissions: 0, routingConfigured: false, routingTargets: [], recentDispatches: { succeeded: 0, failed: 0, other: 0 } }],
     submissions: [],
+    pipelineWorkspace: {
+      canManage: true,
+      pipelines: [{ id: "pipeline-1", name: "Client onboarding", description: "", isDefault: true, lifecycleStatus: "active", version: 1 }],
+      stages: [{ id: "stage-1", pipelineId: "pipeline-1", label: "New", description: "Awaiting review", orderIndex: 1, archivedAt: null, version: 1 }],
+      deals: [{ id: "deal-1", title: "Onboarding work", pipelineId: "pipeline-1", stageId: "stage-1", clientName: "Example client", owner: "Assigned owner", status: "open", source: "Source recorded", nextAction: "Review intake", updatedAt: "2026-08-28T12:00:00Z", version: 1, history: [] }],
+    },
+    pipelineAction: vi.fn(async () => ({ ok: true, message: "Saved" })),
     retry: vi.fn(),
   } as Record<string, unknown>,
 }));
+
+type PipelineWorkspaceFixture = {
+  canManage: boolean;
+  stages: Array<{
+    id: string;
+    pipelineId: string;
+    label: string;
+    description: string;
+    orderIndex: number;
+    archivedAt: string | null;
+    movePolicy?: "direct" | "approval";
+    version: number;
+  }>;
+};
 
 vi.mock("./useSoloCampaigns", () => ({ useSoloCampaigns: () => harness.state }));
 
@@ -36,9 +58,168 @@ function LocationProbe() {
 afterEach(() => {
   act(() => root?.unmount());
   host?.remove();
+  harness.state.tenantId = "tenant-1";
 });
 
 describe("Solo Campaigns rendered flows", () => {
+  it("renders a board-first Pipeline and opens contextual deal detail without financial claims", () => {
+    renderAt("/solo/42/growth/pipeline");
+    expect(host.textContent).toContain("Client onboarding");
+    expect(host.textContent).toContain("Onboarding work");
+    expect(host.textContent).toContain("Review intake");
+    expect(host.textContent).not.toMatch(/revenue|ROI|payment/i);
+    const card = host.querySelector(".pipeline-card-open") as HTMLButtonElement;
+    act(() => card.click());
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("No portal activity source connected");
+    expect(host.querySelector('[role="dialog"] button[disabled]')?.textContent).toContain("Send customer invite");
+  });
+
+  it("opens the full blank Pipeline configuration workspace from New deal without presets", () => {
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    expect(host.querySelector(".pipeline-config-workspace")?.textContent).toContain("Pipeline configuration");
+    expect(host.textContent).toContain("Create blank pipeline");
+    expect(host.textContent).toContain("Ask PAIGE");
+    expect(host.textContent).not.toMatch(/starter|preset/i);
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent?.includes("Back to board")) as HTMLButtonElement).click());
+    expect(host.querySelector(".pipeline-config-workspace")).toBeNull();
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    expect(host.textContent).toContain("Add a stage");
+    expect(host.textContent).toContain("Archive");
+    expect(host.textContent).toContain("Delete stage");
+    expect(host.textContent).toContain("Delete pipeline");
+  });
+
+  it("prevents overlapping stage creation requests", async () => {
+    let finish: (value: { ok: boolean; message: string }) => void = () => undefined;
+    const pending = new Promise<{ ok: boolean; message: string }>((resolve) => { finish = resolve; });
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    action.mockImplementationOnce(() => pending);
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    const name = host.querySelector(".pipeline-new-stage input") as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Review");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Add stage") as HTMLButtonElement).click());
+    const pendingButton = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Saving…") as HTMLButtonElement;
+    expect(pendingButton.disabled).toBe(true);
+    act(() => pendingButton.click());
+    expect(action).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ ok: true, message: "Stage added" }));
+  });
+
+  it("keeps the creation workspace open and surfaces a failed save", async () => {
+    (harness.state.pipelineAction as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, message: "Pipeline could not be created" });
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Campaign follow-up");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create blank pipeline") as HTMLButtonElement).click();
+    });
+    expect(host.querySelector('.pipeline-config-workspace')).not.toBeNull();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Pipeline could not be created");
+  });
+
+  it("prevents overlapping creation requests while a save is pending", async () => {
+    let finish: (value: { ok: boolean; message: string }) => void = () => undefined;
+    const pending = new Promise<{ ok: boolean; message: string }>((resolve) => { finish = resolve; });
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    action.mockImplementationOnce(() => pending);
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    const name = host.querySelector('.pipeline-create-fields input') as HTMLInputElement;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(name, "Campaign follow-up");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Create blank pipeline") as HTMLButtonElement).click());
+    const pendingButton = [...host.querySelectorAll("button")].find((button)=>button.textContent==="Creating…") as HTMLButtonElement;
+    expect(pendingButton.disabled).toBe(true);
+    act(() => pendingButton.click());
+    expect(action).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ ok: false, message: "Try again" }));
+  });
+
+  it("closes and clears pipeline creation when the tenant changes", () => {
+    renderAt("/solo/42/growth/pipeline");
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).click());
+    expect(host.querySelector('.pipeline-config-workspace')).not.toBeNull();
+    harness.state.tenantId = "tenant-2";
+    act(() => root.render(<MemoryRouter initialEntries={["/solo/42/growth/pipeline"]}><Routes><Route path="/solo/:account/*" element={<><GrowthHub/><LocationProbe/></>}/></Routes></MemoryRouter>));
+    expect(host.querySelector('.pipeline-config-workspace')).toBeNull();
+  });
+
+  it("returns from configuration on Escape and restores the opener", () => {
+    renderAt("/solo/42/growth/pipeline");
+    const opener = [...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement;
+    opener.focus();
+    act(() => opener.click());
+    const workspace = host.querySelector('.pipeline-config-workspace') as HTMLElement;
+    const name = workspace.querySelector("input") as HTMLInputElement;
+    expect(document.activeElement).toBe(name);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('.pipeline-config-workspace')).toBeNull();
+    expect(document.activeElement?.textContent).toBe("New deal");
+  });
+
+  it("moves a deal through the governed command on pointer drop", async () => {
+    const workspace = harness.state.pipelineWorkspace as unknown as PipelineWorkspaceFixture;
+    workspace.stages = [
+      { id: "stage-1", pipelineId: "pipeline-1", label: "New", description: "", orderIndex: 1, archivedAt: null, movePolicy: "direct", version: 1 },
+      { id: "stage-2", pipelineId: "pipeline-1", label: "Review", description: "", orderIndex: 2, archivedAt: null, movePolicy: "direct", version: 1 },
+    ];
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    renderAt("/solo/42/growth/pipeline");
+    const card = host.querySelector(".pipeline-card") as HTMLElement;
+    const lanes = host.querySelectorAll(".pipeline-lane");
+    const transfer = { value: "", setData(_type: string, value: string) { this.value = value; }, getData() { return this.value; }, effectAllowed: "" };
+    const start = new Event("dragstart", { bubbles: true });
+    Object.defineProperty(start, "dataTransfer", { value: transfer });
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", { value: transfer });
+    await act(async () => { card.dispatchEvent(start); lanes[1].dispatchEvent(drop); });
+    expect(action).toHaveBeenCalledWith(expect.objectContaining({ type: "move-deal", dealId: "deal-1", targetStageId: "stage-2", expectedVersion: 1 }));
+    workspace.stages = workspace.stages.slice(0, 1);
+  });
+
+  it("supports keyboard pickup, stage choice, and drop", async () => {
+    const workspace = harness.state.pipelineWorkspace as unknown as PipelineWorkspaceFixture;
+    workspace.stages = [
+      { id: "stage-1", pipelineId: "pipeline-1", label: "New", description: "", orderIndex: 1, archivedAt: null, movePolicy: "direct", version: 1 },
+      { id: "stage-2", pipelineId: "pipeline-1", label: "Review", description: "", orderIndex: 2, archivedAt: null, movePolicy: "direct", version: 1 },
+    ];
+    const action = harness.state.pipelineAction as ReturnType<typeof vi.fn>;
+    action.mockClear();
+    renderAt("/solo/42/growth/pipeline");
+    const card = host.querySelector(".pipeline-card") as HTMLElement;
+    act(() => card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
+    act(() => card.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    await act(async () => card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(action).toHaveBeenCalledWith(expect.objectContaining({ type: "move-deal", targetStageId: "stage-2" }));
+    workspace.stages = workspace.stages.slice(0, 1);
+  });
+
+  it("keeps read-only members inspect-only", () => {
+    const workspace = harness.state.pipelineWorkspace as unknown as PipelineWorkspaceFixture;
+    workspace.canManage = false;
+    renderAt("/solo/42/growth/pipeline");
+    expect((host.querySelector(".pipeline-card") as HTMLElement).draggable).toBe(false);
+    expect([...host.querySelectorAll("button")].some((button)=>button.textContent==="Move deal")).toBe(false);
+    expect(([...host.querySelectorAll("button")].find((button)=>button.textContent==="New deal") as HTMLButtonElement).disabled).toBe(true);
+    act(() => ([...host.querySelectorAll("button")].find((button)=>button.textContent==="Manage") as HTMLButtonElement).click());
+    expect(host.textContent).toContain("Read-only access");
+    workspace.canManage = true;
+  });
+
   it("renders populated grounded rows and closes details with Escape", () => {
     renderAt("/solo/42/growth/catalog");
     expect(host.textContent).toContain("Published page");

@@ -10,6 +10,7 @@
 // page with ?zoom=connected|error. verify_jwt=false for this function (config.toml).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encryptSecret } from "../_shared/calendarCrypto.ts";
+import { resolveTenantForUser } from "../_shared/tenant-for-user.ts";
 
 const enc = new TextEncoder();
 
@@ -179,14 +180,23 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const { data: prof } = await admin
-      .from("profiles").select("tenant_id").eq("id", hostUserId).maybeSingle();
+    // Same defect as the Gmail and Google Calendar callbacks: `profiles.tenant_id`
+    // does not exist and `profiles.id` is a surrogate key, so this resolved to
+    // null for every user and the upsert stored that null. See
+    // `_shared/tenant-for-user.ts`.
+    // This function answers a BROWSER redirect from Zoom, so a failure has to go
+    // back through `redirectTo` like every other error here — a JSON 400 would
+    // leave the host staring at a raw error body instead of the connectors page.
+    const resolved = await resolveTenantForUser(admin, hostUserId, (parsed.w as string | null) ?? null);
+    if (!resolved.tenantId) {
+      return redirectTo(returnOrigin, "error", "no_tenant_for_user");
+    }
 
     const { error } = await admin
       .from("staff_calendar_settings")
       .upsert({
         user_id: hostUserId,
-        tenant_id: prof?.tenant_id ?? null,
+        tenant_id: resolved.tenantId,
         zoom_connected: true,
         zoom_user_id: zoomUserId,
         zoom_email: zoomEmail,

@@ -33,6 +33,7 @@
 // CONFIG-GATED (§13): the transport dep is self-contained; verify_jwt=true (config.toml default).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { assertHostAllowed } from "../_shared/smtp.ts";
+import { resolveTenantForUser } from "../_shared/tenant-for-user.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -163,10 +164,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── Resolve tenant_id SERVER-SIDE from profiles by the caller's user id (§9 — never body). ──
-    const { data: prof } = await admin
-      .from("profiles").select("tenant_id").eq("id", user.id).maybeSingle();
-    const tenantId = prof?.tenant_id ?? null;
+    // ── Resolve the tenant SERVER-SIDE from the caller's user id (§9 — never body). ──
+    // Was `profiles.tenant_id` keyed on `profiles.id`: a non-existent column read
+    // with a surrogate key, so every caller got `no_tenant_for_user`. See
+    // `_shared/tenant-for-user.ts` for the production measurement.
+    // This endpoint is called with the caller's own JWT, so the workspace they
+    // are standing in is one RPC away on the USER client — no signed state
+    // needed. Passing it matters for the same reason it matters in the OAuth
+    // callbacks: without it a multi-workspace person's SMTP server attaches to
+    // whichever tenant ranks first rather than the one they configured it in.
+    const { data: activeTenant } = await userSupa.rpc("current_user_tenant_id");
+    const resolved = await resolveTenantForUser(
+      admin, user.id, typeof activeTenant === "string" ? activeTenant : null,
+    );
+    const tenantId = resolved.tenantId;
     if (!tenantId) {
       return new Response(JSON.stringify({ error: "no_tenant_for_user" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
