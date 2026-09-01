@@ -134,18 +134,30 @@ the TrustHub build, and every step of it is an owner-authorized provider action.
 
   | | **Agent** — `comms_buy_number` | **Solo UI** — `PhoneSetupPanel` | **Legacy UI** — `NumbersTab` |
   |---|---|---|---|
-  | Sends an agreed price | yes, required | **no** — posts `{ phone_number }` | **no** — posts `{ phone_number }` |
+  | Sends an agreed price | yes, required | **yes since 2026-09-01** — sends the `priceCents` the confirm named | **yes since 2026-09-01** — sends `retail_price.monthly_cents`. Both omit the key when the type is unpriced, because there is no amount to hold anyone to |
   | Quote guard | **enforced** — refuses without a whole, positive `monthly_cents`, *ahead of* the autonomy gate so it binds at `auto` too | n/a | n/a |
-  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **no** — branch skipped | **no** — branch skipped |
+  | Server re-verifies vs `platform_number_pricing` | **yes** — `price_changed` / `price_unverifiable` are 409 refusals checked *before* `purchaseNumber` | **yes since 2026-09-01** — the branch now runs, and both codes have their own copy | **yes since 2026-09-01** — same |
   | Confirmation step | **enforced and server-bound since 2026-09-01** — `confirm:true` no longer decides anything on its own. It must SPEND a server-minted `paige_tool_confirmations` row for this tool, requester and tenant that is unspent, unsuperseded, unexpired, and **was created before the current turn began** — and for `comms_buy_number` the row also pins the PHONE NUMBER the operator was shown (not the price: that has its own quote guard and server re-verification, and pinning it would refuse a legitimate re-quote). A first-call `confirm:true` and a same-turn propose-then-self-approve are both refused; a failed claim re-proposes rather than dead-ending. **Still not proof the human said YES** — it proves a turn intervened, not what was in it. None at `auto` | a real `window.confirm` in the browser — client-side, so real for a human using the UI (what it names is the row below) | **NONE** — `onClick={() => void buy(n)}` buys on one click |
   | Amount shown before buying | the amount, at `confirm` | the amount **when one is published**; otherwise the literal words *"an unlisted monthly price"* | the amount when published; otherwise **`—`** |
   | What can go wrong | **one unattended path now, not two** — a workspace on `auto` still buys with no gate at all (chosen, and by design). At `confirm` the first-call/same-turn bypass is closed; what remains is that an intervening human turn is not the same as a human saying yes, so a model could still read a refusal as approval | a price change between search and buy is not caught; an unpriced number is bought for an unnamed sum | **all of the above, plus no confirmation at all** — a single click starts a recurring charge |
 
-  The UI behaviour is deliberate and pre-existing — the function comments it: *"the marketplace UI
-  does not [send an amount] … so its behaviour is byte-for-byte what it was."* Recorded here as a
-  **known gap**, never as a protection. **The legacy operator tab is the weakest path on the
-  platform for starting a recurring charge**, and it is worth knowing that before quoting anything
-  above as a safeguard.
+  **CLOSED 2026-09-01.** The paragraph that stood here recorded the UI lanes as a **known gap**,
+  never a protection: neither sent an amount, so the server's re-verification — guarded
+  `if (agreedMonthlyCents !== null)` — was skipped for both, and the legacy operator tab bought on a
+  single click (`onClick={() => void buy(n)}`) while rendering the price as `—` when the type was
+  unpriced. It was **the weakest path on the platform for starting a recurring charge**.
+
+  Both lanes now send the amount they displayed, and the legacy tab asks first, in the same words
+  Solo already used. `price_changed` and `price_unverifiable` have their own copy on both surfaces —
+  without it the right refusal surfaced as *"try another number"*, which sent people in a loop.
+
+  **The legacy tab had no test at all**, which is how one-click buying survived; it has one now
+  (`NumbersTab.purchase.test.tsx`), and 5 of its 7 cases fail against the previous version. The Solo
+  assertion was loosened enough to miss this (`toMatchObject`) and is now `toEqual`.
+
+  **Still true:** an UNPRICED number is still buyable on both lanes, with the confirm saying *"an
+  unlisted monthly price"*. Whether that should be possible at all is a product question, not a
+  defect, and it has not been ruled on.
 
   - **Configurable, and it defaults safe.** `resolveToolAutonomy` defaults to `confirm` — the
     comment reads *"safe default — never assume autopilot"*. But `comms_buy_number` is a

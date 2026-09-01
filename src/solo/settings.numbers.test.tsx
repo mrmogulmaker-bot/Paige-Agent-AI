@@ -256,7 +256,15 @@ describe("Buying a number spends money, and says so honestly", () => {
     await act(async () => { button("Buy")?.click(); });
     const call = state.invoke.mock.calls.find((c) => c[0] === "comms-purchase-number");
     expect(call).toBeTruthy();
-    expect((call?.[1] as { body?: Record<string, unknown> })?.body).toMatchObject({ phone_number: "+14045550123" });
+    // toEqual, not toMatchObject. The amount the confirm just named has to REACH the
+    // server: `comms-purchase-number` guards its price re-verification on
+    // `if (agreedMonthlyCents !== null)`, so a body without it skips the check entirely
+    // and a price that moved between the search and the click is simply charged. The
+    // looser assertion this replaces passed either way, which is why the gap survived.
+    expect((call?.[1] as { body?: Record<string, unknown> })?.body).toEqual({
+      phone_number: "+14045550123",
+      agreed_monthly_cents: 120,
+    });
   });
 
   it("NEVER reports a refused purchase as a success", async () => {

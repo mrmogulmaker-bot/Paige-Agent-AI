@@ -1044,3 +1044,43 @@ the ledger entry was wrong), then re-run. `db push` applied the canonical versio
 
 **Related:** *"Migration merged-but-never-applied — the false-green"* (§32/#275) is the opposite
 failure, and this one is what happens when you over-correct for it.
+
+---
+
+## Widening an implementation without widening the interface that declares it (2026-09-01, #717)
+
+**What broke.** `useSoloNumbers` exposes its shape through an exported interface,
+`SoloNumbersData`. I widened the *implementation* — `purchase(phoneNumber, agreedMonthlyCents)` —
+and the *call site* in `settings.tsx`, and left the interface at one parameter. The consumer is
+typed against the interface, so the second argument had nowhere to land:
+
+```
+src/solo/settings.tsx: error TS2554: Expected 1 arguments, but got 2.
+```
+
+**Why the suite did not catch it.** It could not. `settings.numbers.test.tsx` renders the REAL
+component through the REAL hook and mocks only the Supabase client, so it asserted the true thing —
+that the request body carries `agreed_monthly_cents: 120` — and passed, correctly. The runtime path
+was right the whole time. Only the *declared contract* was stale, and a stale type is invisible to
+every test that runs the code. **1680 passing tests are not a typecheck**, in the same way a green
+build is not a working render (§32).
+
+**Why I did not catch it either.** I reported "tsc 0" for this branch. That result was real, and it
+was for an earlier state of the tree — the final call-site edit came after it, and I never re-ran.
+`npm run ci:tsc` uses the same `tsconfig.app.json` as `npm run typecheck`, so there was no
+environment difference and nothing subtle: I quoted a gate's verdict from before the last edit.
+
+**The rules.**
+
+- **Re-run the gates AFTER the last edit, not once during the work.** A green result is a statement
+  about a tree state. Quoting it for a different tree state is the same class of claim as reporting
+  a hoped-for outcome (§13), even when every individual run was honest.
+- **When you change a function's signature, grep for every place that DECLARES it, not just every
+  place that calls it.** `grep -rn "purchase: ("` would have found the interface in one command.
+  An exported interface is a second declaration site that the compiler enforces and no test runs.
+- **Read the step list before reading the log.** Four tool calls went into scanning a 9,487-line
+  job log whose tail showed everything passing, because the failing step ran early and every later
+  step carries `if: !cancelled()`. `actions_get / get_workflow_job` returns a per-step
+  conclusion array and named the failing step (#32, "Typecheck (ratchet)") immediately.
+- **The local gate set is the CI gate set, not the subset you remember.** `ci.yml` runs ~28 checks
+  in `verify`; running seven and calling it green is a partial answer reported as a complete one.

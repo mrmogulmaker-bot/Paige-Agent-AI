@@ -141,6 +141,13 @@ function purchaseFailureCopy(code: string | undefined): string {
       return "That one just went to someone else. Pick another and try again.";
     case "number_purchase_failed":
       return "The provider couldn't complete that purchase. Try another number.";
+    // Only reachable now that this lane sends the amount it displayed. The server refusing
+    // to charge a price nobody was shown is the RIGHT outcome — but without these two, it
+    // surfaced as "try another number", which is wrong and sends people in a loop.
+    case "price_changed":
+      return "That number's price changed while you were looking at it, so nothing was bought. Search again to see what it costs now.";
+    case "price_unverifiable":
+      return "We couldn't confirm this number's price, so nothing was bought. Try again shortly — no charge was made.";
     default:
       return "Try another — this one may have just been taken.";
   }
@@ -216,10 +223,27 @@ export function NumbersTab() {
   };
 
   const buy = async (n: SearchNumber) => {
+    // This surface used to buy on a single click — `onClick={() => void buy(n)}`, no
+    // confirmation of any kind — and renders the price as "—" when the operator has not
+    // priced the type. One click could therefore start a recurring charge at an amount
+    // nobody had been shown. The Solo lane already asks; this is the same question, worded
+    // the same way, so the two read as one product rather than two.
+    const priceLabel = n.retail_price ? fmtPrice(n.retail_price) + " a month" : "an unlisted monthly price";
+    if (!window.confirm(
+      `Buy ${fmtE164(n.phone_number)} for ${priceLabel}?\n\nThis charges your business and the number becomes yours immediately.`,
+    )) return;
+
     setBuying(n.phone_number);
     try {
       const { data, error } = await supabase.functions.invoke("comms-purchase-number", {
-        body: { phone_number: n.phone_number },
+        body: {
+          phone_number: n.phone_number,
+          // The amount the operator just agreed to. The server re-reads
+          // `platform_number_pricing` and refuses with `price_changed` if it moved — a
+          // check that was being SKIPPED entirely for this lane, because the guard reads
+          // `if (agreedMonthlyCents !== null)` and this body never carried one.
+          ...(n.retail_price ? { agreed_monthly_cents: n.retail_price.monthly_cents } : {}),
+        },
       });
       if (error) throw error;
       const payload = (data ?? {}) as { phone_number?: string; twilio_sid?: string; error?: string };
