@@ -139,7 +139,6 @@ import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
 // Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
 // (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET); master TWILIO_AUTH_TOKEN absent in prod.
-import { masterBasicAuthHeader } from "../_shared/twilio.ts";
 
 // Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
 // tenant != MMA. These are forward-looking — none are implemented yet but the
@@ -2380,7 +2379,7 @@ mcp.tool("send_transactional_email", {
 // ---------- send_sms ----------
 mcp.tool("send_sms", {
   description:
-    "Send a one-off SMS via Twilio. From-number from TWILIO_PHONE_NUMBER. Auto-appends 'Reply STOP to unsubscribe.' for A2P 10DLC compliance. Respects opt-out flag on contact when contact_id supplied.",
+    "SMS sending is unavailable from this legacy tool. Tenant messages must use the governed Communications sender after that tenant's A2P registration is approved.",
   inputSchema: z.object({
     to_phone: z.string().describe("E.164, e.g. +14705944470"),
     body: z.string(),
@@ -2390,48 +2389,14 @@ mcp.tool("send_sms", {
   annotations: { destructiveHint: false },
   handler: async (args) => {
     if (args.body.length > 1600) return err("body_too_long_max_1600");
-    if (args.contact_id) {
-      const { data: c } = await admin
-        .from("clients").select("sms_opt_out, phone").eq("id", args.contact_id).maybeSingle();
-      if (c && (c as any).sms_opt_out === true) {
-        return ok({ send_id: null, status: "blocked_by_optout", from_phone: null, to: args.to_phone });
-      }
-    }
-    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const authHeader = masterBasicAuthHeader(); // API Key trio (or legacy fallback); null when unconfigured
-    const fromPhone = Deno.env.get("TWILIO_PHONE_NUMBER");
-    if (!accountSid || !authHeader || !fromPhone) return err("twilio_not_configured");
     const send_id = crypto.randomUUID();
-    const STOP_SUFFIX = " Reply STOP to unsubscribe.";
-    const fullBody = args.body.includes("STOP") ? args.body : (args.body + STOP_SUFFIX).slice(0, 1600);
-    const segments = Math.max(1, Math.ceil(fullBody.length / 160));
-    let providerMsgId: string | null = null;
-    let status: "sent" | "failed" = "sent";
-    let errorMsg: string | null = null;
-    try {
-      const body = new URLSearchParams({ To: args.to_phone, From: fromPhone, Body: fullBody });
-      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-        method: "POST",
-        headers: {
-          // @ts-expect-error Legacy send_sms stays fail-closed until governed outbound authorization exists.
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body.toString(),
-      });
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok) { status = "failed"; errorMsg = (j as any)?.message ?? `twilio_${r.status}`; }
-      else providerMsgId = (j as any)?.sid ?? null;
-    } catch (e) {
-      status = "failed";
-      errorMsg = (e as Error).message.slice(0, 300);
-    }
-    await audit("send_sms", "sms", send_id, { to: args.to_phone, contact_id: args.contact_id ?? null, status });
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({
-        send_id, provider_message_id: providerMsgId, status, from_phone: fromPhone, segments, error: errorMsg,
-      }, null, 2) }],
-    };
+    const status = "blocked_a2p_governed_sender_required";
+    await audit("send_sms", "sms", send_id, {
+      to: args.to_phone,
+      contact_id: args.contact_id ?? null,
+      status,
+    });
+    return ok({ send_id, provider_message_id: null, status, from_phone: null, to: args.to_phone });
   },
 });
 

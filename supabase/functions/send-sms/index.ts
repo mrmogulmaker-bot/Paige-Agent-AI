@@ -3,11 +3,9 @@
 // Fails closed on Campaign class and durable platform consent, then applies the
 // registered Paige Agent AI brand/link/HELP/STOP envelope.
 import { createClient } from 'npm:@supabase/supabase-js@2'
-// Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
-// (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET), master TWILIO_AUTH_TOKEN absent in prod.
-import { masterBasicAuthHeader } from '../_shared/twilio.ts'
 import { formatPaigeAgentAiSms } from '../_shared/paige-agent-ai-sms.ts'
 import { normalizePhone } from '../_shared/pre-send-pipeline.ts'
+import { sendOperatorSms } from '../_shared/operator-twilio.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,14 +63,6 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
-  const authHeader = masterBasicAuthHeader() // API Key trio (or legacy fallback); null when unconfigured
-  const fromPhone = Deno.env.get('TWILIO_PHONE_NUMBER')
-
-  if (!accountSid || !authHeader || !fromPhone) {
-    return jsonResp({ error: 'Twilio not configured' }, 500)
-  }
-
   let body: SmsRequest
   try {
     body = await req.json()
@@ -85,6 +75,21 @@ Deno.serve(async (req) => {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+  // The gateway validates a JWT, but that alone does not prove the caller owns
+  // the user_id in the body. Internal service-role callers may address a user;
+  // a human caller may address only their own authenticated account.
+  const authHeader = req.headers.get('Authorization') ?? ''
+  const bearer = authHeader.replace(/^Bearer\s+/i, '').trim()
+  if (!bearer) return jsonResp({ error: 'Unauthorized' }, 401)
+  if (bearer !== supabaseServiceKey) {
+    const authed = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: { user }, error: userError } = await authed.auth.getUser()
+    if (userError || !user) return jsonResp({ error: 'Unauthorized' }, 401)
+    if (user.id !== body.user_id) return jsonResp({ error: 'Forbidden' }, 403)
+  }
 
   // Load preferences (always — needed to find phone if not provided)
   const { data: prefs } = await supabase
@@ -155,29 +160,19 @@ Deno.serve(async (req) => {
     return jsonResp({ success: false, reason: 'body_too_long_max_1600' }, 200)
   }
 
-  // Twilio API
-  const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
-  const formattedTo = normalizedTo
-  const formattedFrom = fromPhone.startsWith('+') ? fromPhone : `+1${fromPhone.replace(/\D/g, '')}`
-
-  const twilioRes = await fetch(twilioUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': authHeader,
-    },
-    body: new URLSearchParams({ To: formattedTo, From: formattedFrom, Body: finalBody }),
-  })
-
-  const twilioData = await twilioRes.json()
-
-  if (!twilioRes.ok) {
-    console.error('Twilio error', twilioData)
-    await logSms(supabase, body.user_id, body.message_type, finalBody, 'failed', undefined, twilioData?.message || 'Twilio error')
-    return jsonResp({ error: twilioData?.message || 'Failed to send SMS' }, 500)
+  // Send only through the operator A2P Messaging Service. The shared seam fails
+  // closed when its MG SID is absent; there is no raw From-number fallback.
+  const twilio = await sendOperatorSms(normalizedTo, finalBody)
+  if (!twilio.ok || !twilio.data) {
+    const reason = twilio.error || 'Failed to send SMS'
+    console.error('Twilio error', reason)
+    await logSms(supabase, body.user_id, body.message_type, finalBody, 'failed', undefined, reason)
+    return jsonResp({ error: reason, needs_config: twilio.needs_config === true }, twilio.needs_config ? 503 : 500)
   }
 
-  await logSms(supabase, body.user_id, body.message_type, finalBody, 'sent', twilioData.sid)
+  const messageSid = (twilio.data as { sid?: string }).sid
 
-  return jsonResp({ success: true, sid: twilioData.sid })
+  await logSms(supabase, body.user_id, body.message_type, finalBody, 'sent', messageSid)
+
+  return jsonResp({ success: true, sid: messageSid })
 })

@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
           sms_marketing: false,
           source: 'sms_start_keyword',
           source_url: 'https://paigeagent.ai/sms-terms#start',
-          disclosure_version: 'paige-platform-account-service-v1-2026-08-31',
+          disclosure_version: 'paige-platform-sms-keyword-start-v1-2026-08-31',
           consent_granted_at: new Date().toISOString(),
           user_agent: 'Twilio inbound START/UNSTOP keyword',
         })
