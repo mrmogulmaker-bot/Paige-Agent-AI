@@ -614,17 +614,40 @@ spelling can only *miss* a hit that was never retrieved. A content filter *delet
 in hand — and it fails **silently**, because the output looks identical whether the sweep found
 nothing or hid everything. There is no signal distinguishing "clean" from "blinded".
 
-**The rules, both cheap:**
+**The rules, both cheap. Note what each one is about — the property, not the mechanism:**
 
-1. **Sweep unfiltered and read the hits.** Output too long to read is information about the claim's
-   blast radius, not a reason to filter. Narrow by **path** if you must — never by content.
-2. **Fix a flagged claim everywhere, not where it was pointed at.** In the same change a reviewer
-   flagged one over-broad sentence in one file; the unfiltered re-sweep found the identical sentence
-   in two others. A correction applied only where someone pointed leaves the wrong version in every
-   place nobody looked — which is the close-out sweep's entire purpose, failing on the correction
-   itself.
+1. **Every omitted match must stay auditable.** The defect was not `grep -v` as such; it was that
+   the excluded set vanished without being seen or counted. A **path** filter hides a stale claim
+   just as effectively — narrowing to `docs/brain/` would have missed a `docs/doctrine/` copy — so
+   "filter by path, not content" is the wrong invariant. A content filter is fine *when its excluded
+   stream is separately reviewed or counted*; an unaudited omission of any kind is not. In practice:
+   sweep unfiltered and read the hits, or if the volume genuinely forces narrowing, look at what the
+   narrowing removed. Output too long to read is information about the claim's blast radius, not
+   permission to stop looking.
+2. **Search and assess EVERY occurrence; correct each one that is actually false.** Not "fix it
+   everywhere" — identical wording can appear in a dated decision-log entry that was true when
+   written, in a quotation, in a corrections log that must name what it reversed (§50), or in a
+   scope where the claim still holds. Rewriting those corrupts an honest record rather than
+   repairing it, and §58 forbids purging legitimate audit entries. The failure being guarded
+   against is *not looking* at the other occurrences, which is different from *not changing* them.
+   In the anchoring case all three happened to be false and all three were changed — that was the
+   finding, not the rule.
 
-**Recorded here rather than in a sibling PR, and that is part of the lesson.** These two defects
+**Both rules above were themselves over-stated in their first draft, and that is the sharpest thing
+in this entry.** They began as *"narrow by path, never by content"* and *"fix a flagged claim
+everywhere"* — a banned mechanism and a universal instruction, written inside a lesson about not
+generalising past the evidence. Review caught both: a path filter hides just as well, and blanket
+"fix everywhere" would have someone rewrite a dated log entry that was true when written.
+
+The generalisation is the reflex, not the exception. A rule derived from one incident wants to be
+stated as a mechanism (*don't use this tool*) because that is concrete and checkable, when what the
+incident actually taught is a property (*don't leave omissions unaudited*). **The mechanism form is
+easier to write, easier to follow, and wrong** — it forbids safe uses and permits unsafe ones that
+happen to use a different tool. When writing any rule from a single failure, state what property
+was violated and check whether the rule as phrased would have caught a version of the failure using
+different means. If it would not, it is describing the incident rather than the lesson.
+
+**Recorded here rather than in a sibling PR, and that is part of the lesson too.** These two defects
 were found reviewing this change, and the first draft put them in a different PR's branch to avoid
 a merge conflict in this file. That defers the capture to another PR's merge and ordering — §BRAIN.3
 says *same change*, and "it was more convenient to put it elsewhere" is precisely the reasoning the
