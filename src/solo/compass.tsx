@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { Ic, Foldout, PageHead, Wrap } from "./_shared";
+import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
 
 export const TC_DEPTS=[
  {id:'exec',n:'Executive',ic:'shield',g:.30,w:[6,3,1],conf:91,trend:2,acts:['Weekly priorities','Board-style summary','Goal tracking','Escalation triage']},
@@ -23,15 +24,29 @@ sub:f=>{subs.add(f);return()=>subs.delete(f)}}})();
 export const useTrust=()=>{const[s,set]=React.useState(TRUST.get());React.useEffect(()=>TRUST.sub(set),[]);return s};
 export const deptTier=id=>{const g=TRUST.of(id);return g>=.6?'green':g>=.34?'amber':'red'};
 
-const TC_LIVE=[
- {d:'cs',t:'Answered Bellweather on the invoice question',tier:'green',w:'4s ago'},
- {d:'tech',t:'Re-ran check 6 after the redirect fix',tier:'green',w:'22s ago'},
- {d:'mkt',t:'Drafted the Q3 nurture email to Sarah Nnadi',tier:'amber',w:'40s ago'},
- {d:'fin',t:'Chased the Ridgeline decline, softest tone first',tier:'amber',w:'1m ago'},
- {d:'ops',t:'Filed the Northwind kickoff notes',tier:'green',w:'2m ago'},
- {d:'legal',t:'Workers\' comp lapsed — needs your decision',tier:'red',w:'3m ago'},
- {d:'cs',t:'Logged Cairn Advisory portal activity',tier:'green',w:'4m ago'},
- {d:'sales',t:'Drafted the Verity Partners proposal follow-up',tier:'amber',w:'6m ago'}];
+// TC_LIVE — REMOVED 2026-09-01, and recorded here rather than deleted quietly (§13/§58).
+//
+// This const held eight lines of invented activity — named clients who do not exist, a named
+// recipient, timings down to "4s ago" — rendered under a green "Live" pill beneath the heading
+// "the last few minutes, as they happened". A placeholder is one thing. A placeholder that
+// asserts liveness and names customers is a claim, and the standing boundary on this work is
+// exact: do not invent activity, revenue, permissions, provider state, customer records, or
+// successful actions.
+//
+// The panel now reads `paige_client_events` — the Rail, the row `record_rail_event` writes when
+// something actually happens — through `useSoloActivityFeed`. The markup below is unchanged; only
+// where the values come from has changed, which is the whole of the fix.
+//
+// ONE THING THE RAIL CANNOT SAY, so the feed does not say it. The amber/red tiers mean "waiting
+// on you" and "your decision". A Rail row is a record that something HAPPENED and carries no
+// approval state, so every real line resolves to `green` — performed and logged — and nothing
+// synthesises the other two. Approval state lives in `paige_actions`; a feed that wants it needs
+// that seam wired, not a guess dressed as a tier.
+//
+// STILL FABRICATED, NOT ADDRESSED HERE: `TC_DRAFT` and `TC_ESC` below. They remain reachable from
+// the canvas orbs (`onOrb`), whose tier comes from the simulated dial rather than from this feed,
+// so wiring the feed removes no affordance (§58). They are their own finding — TC_ESC in
+// particular renders a specific recommendation about a fabricated lapsed insurance policy.
 const TC_DRAFT={dept:'Marketing',type:'Outbound email',conf:91,
  subj:'A quieter way to run your Q3',to:'sarah.nnadi@harpervale.com',from:'jordan@paigeagent.ai',
  why:'She opened the last two teardowns without replying, and her renewal window opens in five weeks. A soft-value email now beats a renewal ask later.',
@@ -323,6 +338,14 @@ const[flow,setFlow]=React.useState(null);
 const[toast,setToast]=React.useState(null);
 const[full,setFull]=React.useState(null);
 const[fold,setFold]=React.useState(null);
+const activity=useSoloActivityFeed();
+// The recorded events, in the shape this panel's markup already renders. `tier` is always
+// 'green' by construction — see the note where TC_LIVE used to be.
+const live=React.useMemo(()=>activity.items.map(a=>({
+ id:a.id,t:a.title,dept:departmentLabel(a.departmentSlug),tier:'green',w:elapsedLabel(a.occurredAt)})),[activity.items]);
+// An empty feed and a failed read look identical if you let them, and the second one tells the
+// operator that Paige has done nothing (§13). They are kept apart here and said apart below.
+const liveState=activity.loading?'loading':activity.error?'error':live.length?'ok':'empty';
 const tot=TC_DEPTS.reduce((a,d)=>[a[0]+d.w[0],a[1]+d.w[1],a[2]+d.w[2]],[0,0,0]);
 const all=tot[0]+tot[1]+tot[2];
 const auto=Math.round(tot[0]/all*100),dr=Math.round(tot[1]/all*100);
@@ -365,14 +388,14 @@ borderRadius:12,padding:'10px 14px',pointerEvents:'none',textAlign:'center',maxW
 <div className="tc-rail">
 <div className="card" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
 <div className="hd" style={{flex:'none'}}><div><h3>Working now</h3><div className="sub">The last few minutes, as they happened</div></div>
-<span className="pill pill-ok"><span className="dot"/>Live</span></div>
-<div className="pane" style={{flex:1}}>{TC_LIVE.map((l,i)=>{const d=TC_DEPTS.find(x=>x.id===l.d);
-return <button key={i} onClick={()=>setFlow(l.tier==='red'?'esc':l.tier==='amber'?'appr':null)} className="row"
+<span className={'pill '+(liveState==='ok'?'pill-ok':'pill-n')}>{liveState==='ok'?<><span className="dot"/>Live</>:liveState==='loading'?'Loading':liveState==='error'?'Unavailable':'Nothing yet'}</span></div>
+<div className="pane" style={{flex:1}}>{liveState!=='ok'?<div className="sub" style={{padding:'16px 20px',fontSize:12.4,lineHeight:1.5}} role={liveState==='error'?'alert':'status'}>{liveState==='loading'?'Reading what she has done…':liveState==='error'?<>Recent activity could not be loaded, so this is not a record of nothing happening. <button className="btn btn-s" style={{marginTop:9}} onClick={activity.refresh}>Try again</button></>:'Nothing recorded yet. Anything Paige or your team does lands here as it happens.'}</div>:live.map((l,i)=>{
+return <button key={l.id} onClick={()=>setFlow(l.tier==='red'?'esc':l.tier==='amber'?'appr':null)} className="row"
 style={{width:'100%',textAlign:'left',gap:11,padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'flex-start'}}>
 <span style={{width:7,height:7,borderRadius:'50%',flex:'none',marginTop:5,
 background:l.tier==='green'?'var(--ok)':l.tier==='amber'?'var(--warn)':'var(--bad)'}}/>
 <span className="grow" style={{minWidth:0}}><span style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.45,display:'block'}}>{l.t}</span>
-<span className="sub" style={{fontSize:11.3}}>{d.n} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
+<span className="sub" style={{fontSize:11.3}}>{l.dept} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
 <span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></button>})}</div></div>
 
 <div className="row" style={{gap:9,flexWrap:'wrap'}}>
@@ -380,17 +403,17 @@ background:l.tier==='green'?'var(--ok)':l.tier==='amber'?'var(--warn)':'var(--ba
 <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>By department</button></div></div>
 
 <div className="tc-railbtn row" style={{gap:9,flexWrap:'wrap'}}>
-<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('live')}><span className="dot" style={{color:'var(--ok)'}}/>Working now · {TC_LIVE.length}</button>
+<button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('live')}><span className="dot" style={{color:'var(--ok)'}}/>Working now · {live.length}</button>
 <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('growth')}><Ic.trend size={14}/>+14%</button>
 <button className="btn btn-s grow" style={{justifyContent:'center'}} onClick={()=>setFold('depts')}><Ic.grid size={14}/>By department</button></div>
 
 <Foldout open={fold==='live'} onClose={()=>setFold(null)} title="Working now" sub="The last few minutes, as they happened">
-<div>{TC_LIVE.map((l,i)=>{const d=TC_DEPTS.find(x=>x.id===l.d);
-return <button key={i} onClick={()=>{setFold(null);setFlow(l.tier==='red'?'esc':l.tier==='amber'?'appr':null)}} className="row"
+<div>{liveState!=='ok'?<div className="sub" style={{padding:'16px 20px',fontSize:12.4,lineHeight:1.5}} role={liveState==='error'?'alert':'status'}>{liveState==='loading'?'Reading what she has done…':liveState==='error'?'Recent activity could not be loaded, so this is not a record of nothing happening.':'Nothing recorded yet. Anything Paige or your team does lands here as it happens.'}</div>:live.map((l,i)=>{
+return <button key={l.id} onClick={()=>{setFold(null);setFlow(l.tier==='red'?'esc':l.tier==='amber'?'appr':null)}} className="row"
 style={{width:'100%',textAlign:'left',gap:11,padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',alignItems:'flex-start'}}>
 <span style={{width:7,height:7,borderRadius:'50%',flex:'none',marginTop:5,background:l.tier==='green'?'var(--ok)':l.tier==='amber'?'var(--warn)':'var(--bad)'}}/>
 <span className="grow" style={{minWidth:0}}><span style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.45,display:'block'}}>{l.t}</span>
-<span className="sub" style={{fontSize:11.3}}>{d.n} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
+<span className="sub" style={{fontSize:11.3}}>{l.dept} · {l.tier==='green'?'performed and logged':l.tier==='amber'?'waiting on you':'your decision'}</span></span>
 <span className="mono sub" style={{fontSize:10.8,flex:'none'}}>{l.w}</span></button>})}</div></Foldout>
 
 <Foldout open={fold==='growth'} onClose={()=>setFold(null)} title="Your trust has grown 14% in 30 days" sub="Four departments moved outward. None moved back.">

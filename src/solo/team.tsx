@@ -4,6 +4,7 @@ import { Ic, Avatar, Meter, SlideOut, SubTabs, Wrap, PageHead } from "./_shared"
 import { TM_DIR_SEED, TmDirectory } from "./team-dir";
 import { TmRoles, InviteFlow } from "./team-roles";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
+import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
 
 export const TM={
 people:[
@@ -51,15 +52,21 @@ gaps:[
   act:'Raise Finance to full autonomy',tone:'warn'},
  {t:'Devon has 20 hours a week and nothing on him',b:'Ridgeline is the obvious first move. It takes 38 hours and returns $2,400 — the worst ratio in the book.',
   act:'Move Ridgeline to Devon',tone:'warn'}],
-feed:[
- {who:'Finance',ai:true,t:'Sent the Ridgeline dunning reminder',d:'Second attempt. Card still declining.',w:'8 min ago'},
- {who:'Jordan Avery',ai:false,t:'Approved the Northwind kickoff sequence',d:'Five emails over fourteen days.',w:'41 min ago'},
- {who:'Marketing',ai:true,t:'Drafted the reframe email for Verity',d:'Waiting on your read. Sales autonomy is draft-only.',w:'1 hr ago'},
- {who:'Operations',ai:true,t:'Rescheduled two discovery calls',d:'Both moved out of your Thursday block.',w:'2 hrs ago'},
- {who:'Jordan Avery',ai:false,t:'Raised Finance autonomy to full',d:'Invoicing and dunning now run without approval.',w:'yesterday'},
- {who:'Systems',ai:true,t:'Reconnected the HubSpot sync',d:'Token expired overnight. Repaired in 40 seconds.',w:'yesterday'},
- {who:'Client Success',ai:true,t:'Answered 6 routine client emails',d:'All inside the approved reply library.',w:'yesterday'},
- {who:'Marketing',ai:true,t:'Flagged a competitor price change',d:'Coach Sarah Linley dropped her mid-tier to $750.',w:'2 days ago'}],
+// feed — REMOVED 2026-09-01 (§13/§58), recorded rather than deleted quietly.
+//
+// Eight invented entries under the heading "What the team did": a dunning reminder to a client
+// who does not exist, a competitor's named coach and her price, a repair that took "40 seconds".
+// None of it read anything. The surface's own "Everything / Paige / People" filter was sorting
+// fiction into two piles.
+//
+// `TmActivity` now reads the Rail (`paige_client_events`) through `useSoloActivityFeed`. The
+// filter finally means something: `ai` comes from the event's `actor_type`, so "Paige" and
+// "People" separate work she did from work a person did, as recorded.
+//
+// STILL FABRICATED, NOT ADDRESSED HERE — their own finding, not this slice's: `perf` below
+// ("147 hours returned", "Response time 2.4h, down from 6.1h") is four measurements with no
+// measurement behind them, and `gaps` names a person who does not exist and attributes two
+// accounts to her. `people` and `clients` are the same class.
 perf:[
  {k:'Accounts carried',v:'8 of 8',s:'All on you',tone:'bad'},
  {k:'Hours returned by Paige',v:'147',s:'This month across six departments',tone:'ok'},
@@ -203,22 +210,34 @@ return <div key={d.n} className="row" style={{gap:12,padding:'11px 14px',borderT
 <span style={{color:'var(--ink)',fontWeight:600}}>Paige's read: </span>Operations and Finance closed 134 items between them without asking you anything, which is where the 147 hours came from. The departments still at draft-only are the ones with queues. Raising Client Success one level would clear three items sitting on your desk today.</div></div></div></div>);
 
 const TmActivity=()=>{const[f,setF]=React.useState('all');
-const rows=TM.feed.filter(x=>f==='all'||(f==='ai'?x.ai:!x.ai));
+const activity=useSoloActivityFeed();
+// `who` is the desk the event names — the Rail carries a department, not a person's name, and
+// joining one in would be a second query for a label plus a way to surface a name the reader may
+// not be entitled to. `d` is the recorded summary or a stated absence, never filler.
+const feed=React.useMemo(()=>activity.items.map(a=>({
+ id:a.id,who:departmentLabel(a.departmentSlug),ai:a.byPaige,t:a.title,
+ d:a.summary??'No detail was recorded.',w:elapsedLabel(a.occurredAt)})),[activity.items]);
+const rows=feed.filter(x=>f==='all'||(f==='ai'?x.ai:!x.ai));
+// Three different answers that would otherwise render as one blank timeline (§13): still
+// reading, could not read, and genuinely nothing yet. The middle one is the one that would
+// otherwise tell an operator their team had done nothing all week.
+const state=activity.loading?'loading':activity.error?'error':rows.length?'ok':'empty';
 return <div className="an-1"><div className="card" style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
 <div className="hd" style={{flex:'none'}}><div><h3>What the team did</h3><div className="sub">People and departments on one timeline</div></div>
 <div className="seg">{[['all','Everything'],['ai','Paige'],['human','People']].map(([k,l])=>
 <button key={k} aria-pressed={f===k} onClick={()=>setF(k)}>{l}</button>)}</div></div>
 <div key={f} className="pane fade-in" style={{flex:1,padding:'14px 18px'}}>
+{state!=='ok'?<div className="sub" style={{fontSize:12.6,lineHeight:1.55,padding:'6px 2px'}} role={state==='error'?'alert':'status'}>{state==='loading'?'Reading what the team has done…':state==='error'?<>This timeline could not be loaded, so it is not a record of nothing happening. <button className="btn btn-s" style={{marginTop:9}} onClick={activity.refresh}>Try again</button></>:f==='all'?'Nothing recorded yet. Work by Paige or by a person lands here as it happens.':f==='ai'?'Nothing recorded from Paige yet.':'Nothing recorded from a person yet.'}</div>:
 <div style={{position:'relative',paddingLeft:26}}>
 <span style={{position:'absolute',left:9,top:6,bottom:6,width:1,background:'var(--line)'}}/>
-{rows.map((r,i)=><div key={i} style={{position:'relative',paddingBottom:i===rows.length-1?0:15}}>
+{rows.map((r,i)=><div key={r.id} style={{position:'relative',paddingBottom:i===rows.length-1?0:15}}>
 <span style={{position:'absolute',left:-22,top:3,width:13,height:13,borderRadius:'50%',border:'2px solid var(--surface)',
 background:r.ai?'var(--violet)':'var(--gold)'}}/>
 <div className="row" style={{gap:9,flexWrap:'wrap'}}>
 <span style={{fontSize:12.9,fontWeight:600}}>{r.t}</span>
 <span className={'pill '+(r.ai?'pill-v':'pill-n')} style={{fontSize:10.2}}>{r.who}</span>
 <span className="mono sub" style={{fontSize:10.6,marginLeft:'auto'}}>{r.w}</span></div>
-<div style={{fontSize:12.2,color:'var(--ink-2)',lineHeight:1.5,marginTop:3}}>{r.d}</div></div>)}</div></div></div></div>};
+<div style={{fontSize:12.2,color:'var(--ink-2)',lineHeight:1.5,marginTop:3}}>{r.d}</div></div>)}</div>}</div></div></div>};
 
 const MemberDrawer=({m,onClose})=>{if(!m)return null;const isDept=!!m.role&&m.level!==undefined;
 return <SlideOut open={!!m} onClose={onClose} title={m.n} sub={isDept?m.role:m.role+' · '+m.dept}
