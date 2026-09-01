@@ -260,6 +260,41 @@ in `docs/doctrine/tier-matrix.md` per §66.
 | **D1 — a note lands on the right client's file** | `crm_add_note` → `client_notes`, confirm-gated, caller-JWT, destination resolved against the caller's tenant AND enforced by the insert policy (a note could previously be filed onto another tenant's client — driven). Visibility stated, not offered: the table has no client-facing read policy. Rail + write trail. | 7 mutations driven, all red on their check · 5-case prod rollback proof with a control that filed the misrouted note first · the fixture that had been hiding it was fixed |
 | **Document routing — BLOCKED, not deferred** | `public.documents` has no `tenant_id` and owner-only RLS, so a document filed to a client is invisible to the team that filed it. Naming the contract gap rather than half-building the flow (§70). | schema read on prod |
 
+### Item 4 (the proactive loop) — inspected, NOT built. One decision is the owner's.
+
+**The execution half already exists and is good.** `paige-action-worker` drains the action bus on a
+`*/2` cron: atomic claim (`FOR UPDATE … SKIP LOCKED`), a sub-agent drafts through the orchestrator,
+the action advances to `drafted` and routes into `paige_pending_approvals`. **Nothing is ever sent** —
+it produces drafts and files them for a human. Fails closed, self-heals a stale claim, and one
+failure never aborts the batch. Building a separate automation emitter would be the "second
+automation system" the charter forbids; the bus IS the loop.
+
+**What is actually wrong, measured on production 2026-09-01:**
+
+| | |
+|---|---|
+| `paige_actions` | 154 rows — **117 still `filed`**, 37 done |
+| the stuck rows | **all one kind: `systems.remediate`** · 9 distinct problems · 13 tenants · re-filed across 6 days (2026-08-10 → 08-18) |
+| `paige_action_kinds` | 34 kinds, **7 with a `draft_subagent_slug`** |
+| `claim_filed_actions` | requires `k.draft_subagent_slug IS NOT NULL`, so it skips `systems.remediate` **by design** |
+| the worker's health | **30,375 successful runs · 0 failures** |
+
+So the Systems Check files a remediation action per failing check per tenant, nothing can ever claim
+them, nothing dedupes a re-file, and the queue only grows — while the drain worker reports success
+thirty thousand times, because *"nothing I could claim"* is indistinguishable from *"nothing to do."*
+That is the same failure shape as the dead vector reads (M2a): a component that fails soft and
+therefore looks healthy.
+
+**THE DECISION, which is the owner's and not CC's:** should `systems.remediate` get a drafting
+sub-agent — so Paige drafts the fix and routes it to approval, which is exactly what the bus is
+for — or should it dedupe and surface to a human as a backlog rather than a queue? Those are
+different products, not different implementations.
+
+**What is a defect either way, and is CC's:** re-filing an identical unresolved action on every run
+(no dedupe on an open action for the same check + tenant), and a drain worker whose success signal
+cannot distinguish "nothing to do" from "nothing I am able to do". The second is charter item 5's
+territory — the activity surface deriving from evidence rather than narration.
+
 **Owner ruling absorbed (2026-09-01).** *"Paige may never grant or raise her own autonomy through
 Chat, regardless of action class or owner wording."* `automation_set_grant` and `automation_set_state`
 are `owner_only` and refuse down every channel, including a clicked card. **Named rather than
