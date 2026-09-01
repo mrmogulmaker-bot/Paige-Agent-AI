@@ -281,6 +281,22 @@ Ivanna) and `ELEVENLABS_VOICE_ID` (only for the `elevenlabs.ts` legacy path). #4
 
 ---
 
+## Repo-local agent config (`.claude/`)
+
+`.gitignore` ignores `.claude/*` and then NEGATES the parts that are shared, so session-local
+state stays out while shared assets are versioned. Two negations exist:
+
+| Path | Why it is versioned |
+|---|---|
+| `!.claude/commands/` | Shared project commands (e.g. `/edge-drift`) — "so every session (and every teammate) gets them" |
+| `!.claude/skills/` | Currently a **README only**. The §69 delivery skill (`flow-by-flow` + its required sibling `flow-prototype`) is **NOT vendored** — its bundle ships no `LICENSE`, and the MIT notice can neither be fetched nor reconstructed without inventing a copyright holder, so redistribution is blocked pending an owner decision. The README records the blocker and the local knowledge-capture close-out step that must survive an upstream update. **Known consequence:** the account-synced install delivers `SKILL.md` ONLY, so on a fresh container the index's first instruction points at a missing `references/orchestration.md`. Nothing announces that as the skill-not-found case §69 anticipates, since a skill *was* found — a session in that state **should say so plainly rather than improvise**, and no mechanism enforces it |
+
+Contains **no secrets** — these are markdown process documents, and **no third-party content**:
+`.claude/skills/` holds `README.md` and nothing else. (An earlier revision of #708 vendored the two
+MIT bundles with an assembled `LICENSE`; both, and a `PROVENANCE.md`, were removed before merge
+because the notice could not be obtained without inventing a copyright holder. Those paths do not
+exist — do not follow references to them.)
+
 ## GitHub Actions / CI (✅ `.github/workflows/`)
 
 | Workflow | Trigger | Purpose |
