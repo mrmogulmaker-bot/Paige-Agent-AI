@@ -2377,6 +2377,7 @@ mcp.tool("send_transactional_email", {
 });
 
 // ---------- send_sms ----------
+// Legacy send_sms stays fail-closed until governed outbound authorization exists.
 mcp.tool("send_sms", {
   description:
     "SMS sending is unavailable from this legacy tool. Tenant messages must use the governed Communications sender after that tenant's A2P registration is approved.",
