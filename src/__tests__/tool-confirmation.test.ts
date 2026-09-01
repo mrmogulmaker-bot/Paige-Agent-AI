@@ -6,9 +6,17 @@
  * "REGRESSION" would have PASSED against that implementation for the wrong reason, or failed
  * because it executed. They are written so the old behaviour cannot satisfy them.
  *
- * There is no runtime harness for the edge function (see scripts/comms-purchase-safety-smoke.mjs),
- * which is exactly why the decision lives in a pure module: it can be exercised for real rather
- * than asserted as source text.
+ * WHERE THIS SITS IN THE EVIDENCE
+ *
+ * `scripts/comms-purchase-safety-smoke.mjs` says paige-ai-chat "has no runtime harness". That is
+ * out of date: `scripts/client-memory-authz/check.mjs` transpiles and IMPORTS the real handler
+ * under Node and invokes it (71 checks, wired into CI). It does not cover this gate, though —
+ * unconfigured RPCs in its fake return `{data: null}`, so every mutating tool simply proposes, and
+ * none of its assertions depend on one executing. A check that wanted to exercise an EXECUTION
+ * would have to configure `paige_tool_confirmation_claim` in its scenario.
+ *
+ * So the decision lives in a pure module: it can be exercised for real here, rather than asserted
+ * as source text, without needing the whole handler booted.
  */
 import { describe, it, expect } from "vitest";
 import {
