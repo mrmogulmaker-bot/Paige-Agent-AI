@@ -80,6 +80,12 @@ class QueryBuilder {
   order(c, o) { this._ordered = true; this._filters.push(["order", c, o]); return this; }
   range(a, b) { this._filters.push(["range", a, b]); return this; }
   limit(n) { this._limit = n; this._filters.push(["limit", n]); return this; }
+  // Real postgrest-js has this. Without it, `traceLLMCall`'s `.insert(record).abortSignal(sig)`
+  // throws a TypeError into its own swallowing catch — the row still lands in the recorder (insert
+  // records synchronously), so an assertion about the row PASSES while the write path it is
+  // supposed to be exercising actually died. A fixture that makes a broken path look healthy is
+  // the failure mode this harness exists to avoid.
+  abortSignal(sig) { void sig; this._filters.push(["abortSignal"]); return this; }
 
   _rows() {
     const svc = this._live().scenario.serviceTables?.[this._table];

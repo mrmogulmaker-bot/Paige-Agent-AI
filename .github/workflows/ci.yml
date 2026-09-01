@@ -366,6 +366,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run test:client-memory-authz
 
+      - name: Smoke — token pricing (§18 one home; no pre-existing pairing reprices)
+        if: ${{ !cancelled() }}
+        run: npm run test:token-pricing
+
+      - name: Smoke — trace cost wiring (a metered call is never recorded as free)
+        if: ${{ !cancelled() }}
+        run: npm run test:trace-wiring
+
       - name: Smoke — active-account Knowledge scope (§9 tenant KB fail-closed)
         if: ${{ !cancelled() }}
         run: npm run test:knowledge-scope

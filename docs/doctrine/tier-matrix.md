@@ -1253,6 +1253,35 @@ renders `granted_lane` alone would be reporting a request as an outcome.
 Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
 inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
+### Platform metering — LLM usage, `meter_llm_usage` (no surface, operator-only seam)
+
+**§66, same commit as the ship.** Paige's model spend is now carried from `paige_llm_trace` into
+`platform_usage_events` as `llm_tokens` usage. This is a BACKEND seam with no tenant-facing surface
+in this slice, so the ledger row records who may INVOKE it, not who may see it.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Run the drain (`meter_llm_usage`) | — | — | — | — | — | — | — |
+| …as `service_role` (Paige's own worker) | ✓ (service context only) | | | | | | |
+| Read one's own usage rows | — (no surface yet) | — | — | — | — | — | 403 |
+
+**Every human tier is a hard `—`, including God, and that is deliberate.** A tenant must never be
+able to write their own usage records, and neither must an operator: the meter derives usage from
+traces, and a hand-invocable meter is a hand-editable bill. `EXECUTE` is revoked from `PUBLIC`,
+`anon` and `authenticated`, and the function additionally raises `42501` when `auth.uid()` is
+non-null — so the guard survives a future grant that a migration adds by accident (§59: the grant is
+never the guard). Proven by case P8 of `scripts/sql/meter-llm-usage-proof.sql`, which drives a real
+`SET LOCAL ROLE authenticated` and asserts the refusal.
+
+**No consumer surface exists yet, and none is claimed.** Nothing reads these rows today — no
+dashboard, no invoice, no plan allowance. Recording usage is not charging for it, and the ledger
+says so rather than letting a future reader infer that billing shipped.
+
+**§13 — what the rows honestly contain.** `quantity` is tokens, measured. The cost is an ESTIMATE in
+metadata, explicitly labelled, never promoted to a billing column, and **null on 197 of the first
+228 rows** because those calls were never priced upstream. The key is always present so the absence
+is stated. See the decision log entry for MET1.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

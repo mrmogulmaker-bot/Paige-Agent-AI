@@ -600,3 +600,76 @@ every function importing it).
 **Also recorded:** Supabase preview pushes only NEW migration files, so a migration edited in place
 leaves the preview branch holding the pre-fix version while its badge stays green. Measured directly,
 not inferred. The from-nothing local replay is the authoritative migration proof.
+
+---
+
+## MET1 — Paige's spend becomes billable usage (2026-09-01, branch `codex/paige-knowledge-active-tenant-isolation-v2`)
+
+**Measured on production before writing anything.** `paige_llm_trace` held 663 rows, 13 tenants,
+newest that day. `platform_usage_events` held 91 rows carrying only `tenant_provisioned` and
+`tts_char`. **Zero LLM usage records had ever been written.** 15,578,931 tokens had been spent on
+tenants' behalf and nothing downstream could see any of it — observable spend, no meter, which is
+the exact state §67 names as the cost half of autonomy: at `confirm` the human is the throttle, at
+`auto` there is none.
+
+**`meter_llm_usage(p_limit)`** — a service-role-only SECURITY DEFINER drain, not a trigger. A
+trigger would run inside the trace insert, so a metering failure would fail the TRACE: breaking
+observability to protect billing, which is backwards. A drain is non-blocking, picks up the backlog
+without a separate backfill, and is idempotent through a partial unique index on
+`(metadata->>'trace_id') WHERE event_type='llm_tokens'` — an index the table had never had, and
+without which a re-run double-counts.
+
+**`platform_usage_events`, not `platform_metered_events`.** The wrong table said so itself: its
+CHECK admits `layer IN ('L1_platform','L3_tenant_passthrough')`, and Paige's own inference is
+neither a platform subscription nor a third-party pass-through. `platform_usage_events` already
+carried `tts_char` in the same shape.
+
+### The finding underneath the finding
+
+A proof case asserted every metered row carries a cost, and **failed**. It was right to. Of 228
+meterable traces, **197 (86%) carried no cost at all — 15,475,175 of 15,578,931 tokens, 99.3%.**
+The 31 priced rows had all come through `_shared/model-router`, which prices every call; the 197
+unpriced had all come through the DIRECT `_shared/claude.ts` path, which has the provider's own
+`usage` object in hand at its trace site and never priced it. The `$1.38` the platform believed it
+had spent was the cost of 0.7% of its tokens.
+
+Fixed at the **writer** rather than at the call sites: `traceLLMCall` now fills the estimate when
+the caller supplied none, so every path — including the seventh nobody has found yet — is priced by
+construction. Token pricing moved into `_shared/token-pricing.ts`, a dependency-free module, because
+`claude.ts` is imported BY the router and cannot import back without a cycle. That cycle is why the
+platform had grown **three** copies of the price table; `eval/scorers.ts` carried one whose own
+comment apologised for it.
+
+**Priced per MODEL for anthropic, not per provider.** The single "anthropic" rate was the reasoning
+tier applied to every Claude call, so 8,535,448 haiku tokens were being valued at roughly 3× list.
+An estimate at the wrong model's list price is not coarse, it is wrong — and wrong in the direction
+that overstates what a tenant owes. Every pre-existing pairing keeps its exact rate, so the §33
+visual-critique cost cap (frontier on `claude-sonnet-5`) computes byte-identically.
+
+**The historical 197 are NOT back-priced.** Deriving a cost for a call whose model pricing at the
+time was never recorded would be inventing a figure and stamping it as measured. They meter their
+TOKENS — the measured quantity — and carry an explicit null cost.
+
+**Recording usage is not charging for it.** Nothing reads a price book, touches an invoice, or sets
+`reconciled_invoice_id`. The cost travels in metadata as a labelled estimate.
+
+### Three lessons this slice paid for
+
+1. **A failing assertion is evidence before it is a defect.** P6 failed, and the reflex was to
+   loosen it. Diagnosing it instead surfaced that 99.3% of the platform's token spend had never been
+   priced. The proof was more correct than the code.
+2. **`->>'key' IS NULL` cannot tell an absent key from an explicit JSON null.** P6b was written to
+   catch exactly the `jsonb_strip_nulls` defect and **passed under it** — vacuous against its own
+   target. It now compares against `'null'::jsonb`. The distinction is the whole point of the fix:
+   a consumer must read "no cost recorded", never infer it from a missing field, and never meet a
+   downstream `COALESCE(cost, 0)` that books unpriced spend as free.
+3. **A test fixture that omits a method makes a dead code path look healthy.** `traceLLMCall` ends
+   `.insert(record).abortSignal(sig)`; the fake had no `abortSignal`, so the chain threw into the
+   writer's own swallowing catch — while the row, recorded one link earlier at `.insert()`, still
+   satisfied every assertion. Added to the fake, plus a check that the chain reached the end.
+
+**Evidence.** Production rollback proof `scripts/sql/meter-llm-usage-proof.sql`, 12/12 including two
+controls measuring the defect first; mutation-tested — the strip mutation drives P6 red (and drove
+the P6b correction). `test:token-pricing` 20/20 and `test:trace-wiring` 12/12, both wired into CI,
+both mutation-tested at 8 and 6 mutations with every one caught. **Not merged, not deployed, and
+the authenticated live drive remains UNVERIFIED** — no browser capability in this session (§32.c).

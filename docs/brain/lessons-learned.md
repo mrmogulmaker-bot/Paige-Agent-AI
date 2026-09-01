@@ -592,3 +592,48 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
 2. Destructure and check `error` on EVERY supabase read. A `{ data }`-only destructure is the bug.
 3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
    filter is the dangerous shape; a count that silently reads 0 is the same class.
+
+---
+
+## A green proof can be wrong in the direction that flatters you — and a red one can be the finding
+
+**2026-09-01, MET1 (metering).** A rollback proof's case P6 asserted that every metered usage row
+carries a cost, and it **failed**. The reflex — and the wrong move — was to loosen the assertion so
+the suite went green. Diagnosing it instead surfaced the real defect: **197 of 228 traces (86%, and
+99.3% of tokens) had never been priced at all.** The direct `_shared/claude.ts` path had the
+provider's own `usage` object in hand at its trace site and never priced it, while `model-router`
+priced everything it touched — so the platform's belief that it had spent `$1.38` was the cost of
+0.7% of its tokens.
+
+**The rule:** when an assertion you wrote fails against real data, the first hypothesis is that the
+assertion is right. Loosening a check to match observed behaviour converts a finding into a
+silence, and does it in the direction that makes the report look better.
+
+## `->>'key' IS NULL` cannot tell "explicitly null" from "key absent"
+
+Same slice, and the sharper half. P6b was written specifically to catch the `jsonb_strip_nulls`
+defect that P6 had just exposed — and it **passed under that exact mutation**, because
+`metadata->>'cost_estimate_usd' IS NULL` is true both when the value is JSON null and when the key
+was never written. A check vacuous against the one thing it was built for.
+
+Compare `metadata->'key' = 'null'::jsonb` (explicitly null) or `metadata ? 'key'` (present at all).
+The distinction is load-bearing whenever absence has meaning: a consumer must be able to read *"no
+cost was recorded"* rather than infer it from a missing field — and must never meet a downstream
+`COALESCE(cost, 0)` that books unpriced spend as free.
+
+**Generalised:** any assertion about ABSENCE must state which absence it means. Three different
+facts — the key is missing, the value is null, the value is zero — collapse into one answer under
+`->>`, and the collapse is invisible in a green run.
+
+## A fixture missing one method makes a dead code path look healthy
+
+`traceLLMCall` ends `.insert(record).abortSignal(signal)`. The recording fake had no `abortSignal`,
+so the chain threw a TypeError straight into the writer's own swallowing catch — and the row, which
+the fake records one link earlier at `.insert()`, still satisfied every assertion written about it.
+Every check about the trace's contents passed while the write path they were grading was dead.
+
+**The tell:** a harness that records at the START of a builder chain proves the chain was BEGUN, not
+that it completed. Where a swallowing catch sits downstream, assert something only the END of the
+chain produces. This is the third time this session that a component failing soft has looked
+healthy — the others being vector reads returning `[]` and a drain worker reporting 30,375
+successes over a queue that never empties.

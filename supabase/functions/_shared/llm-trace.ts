@@ -17,6 +17,9 @@
 //
 // Pure Supabase (§34): a service-role insert into one Postgres table. No vendor observability SDK.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+// Token pricing lives in its own dependency-free module so Node can execute the same source the
+// edge runtime type-checks — see the header there for why it is not in `model-router` (§18).
+import { estimateTokenCostUsd } from "./token-pricing.ts";
 
 // Own the service-role client here (lazy) so EVERY LLM chokepoint can trace with a single
 // traceLLMCall(row) — no caller needs to thread an admin client. Null when there's no service
@@ -47,9 +50,10 @@ export interface TraceCtx {
 }
 
 /** Provenance stamp — bump when the estimator/scrubber/schema changes so a reader knows what produced a row. */
-export const ROUTER_VERSION = "trace-1";
+export const ROUTER_VERSION = "trace-2";
 /** The cost figures in paige_llm_trace are ESTIMATES on this basis — surfaced so no dashboard reads them as a bill. */
 export const COST_BASIS = "list price, in+out tokens, excl caching/thinking/tool round-trips, 2026-07";
+
 
 const EXCERPT_CAP = 32 * 1024; // 32KB per I/O field (S3). Logged here so the cap is never silent (§24).
 
@@ -170,6 +174,15 @@ export function traceLLMCall(row: TraceRow): void {
 
   const inp = toExcerpt(row.input);
   const outp = toExcerpt(row.output);
+  // A caller that priced its own call wins; otherwise price it here so no path can record tokens
+  // without recording what they cost. Only a SUCCEEDED text call is priced: an error carries no
+  // usage, and a per-artifact modality (image/3D/voice) is priced per artifact by the router, which
+  // is the layer that knows the modality. `undefined` from the estimator stays null — no basis is
+  // recorded as no basis, never as zero.
+  const costEstimate = row.cost_estimate_usd ??
+    (row.status === "success"
+      ? (estimateTokenCostUsd(row.provider, row.model, row.tokens_in, row.tokens_out) ?? null)
+      : null);
   const record = {
     tenant_id: cleanTenantId(row.tenant_id),
     // Owner #489 — additive, DISTINCT from tenant_id. Same soft-ref coercion so a malformed/non-uuid
@@ -188,8 +201,8 @@ export function traceLLMCall(row: TraceRow): void {
     tokens_in: row.tokens_in ?? null,
     tokens_out: row.tokens_out ?? null,
     latency_ms: row.latency_ms ?? null,
-    cost_estimate_usd: row.cost_estimate_usd ?? null,
-    cost_basis: row.cost_estimate_usd == null ? null : COST_BASIS,
+    cost_estimate_usd: costEstimate,
+    cost_basis: costEstimate == null ? null : COST_BASIS,
     input_excerpt: inp.text,
     output_excerpt: outp.text,
     input_truncated: inp.truncated,

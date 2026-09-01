@@ -39,6 +39,16 @@ Last full verification pass: **2026-08-09**.
 `platform_phone_numbers`, `platform_subscription_plans`, `platform_subscriptions`,
 `platform_usage_events`, `staff_calendar_settings`.
 
+**`platform_usage_events` now also carries `event_type='llm_tokens'`** (MET1, 2026-09-01, not yet
+merged). `quantity` is tokens; `metadata` carries `trace_id` (uniquely indexed, partial, so a
+re-drain cannot double-count) plus provider/model/status and an explicitly-labelled
+`cost_estimate_usd` that is **null on rows whose upstream call was never priced** — the key is
+always present so the absence is stated rather than inferred. Written ONLY by
+`meter_llm_usage(p_limit)`, service-role only (`EXECUTE` revoked from `anon`/`authenticated`, plus
+an in-body `auth.uid() IS NOT NULL` raise per §59). Nothing reads these rows yet — recording usage
+is not charging for it. Token pricing lives in `supabase/functions/_shared/token-pricing.ts`, the
+one home (§18); `model-router` and `eval/scorers` import it rather than carrying their own copies.
+
 **Platform alerting substrate** (A1, migration `20260922000000`, 2026-08-20 — ✅ §32.b rollback-proved on
 prod pre-merge; ✅ §32.a persisted-apply CONFIRMED post-merge: `schema_migrations` carries
 `20260922000000`, all three tables exist on prod, all three report `relrowsecurity` AND

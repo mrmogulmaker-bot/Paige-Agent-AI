@@ -55,6 +55,8 @@
     "smoke:voice-twiml-handler": "node scripts/voice-twiml-handler-smoke.mjs",
     "test:deno-ratchet": "node scripts/ci/__tests__/deno-edge-ratchet.test.mjs",
     "test:client-memory-authz": "node --import ./scripts/client-memory-authz/register.mjs scripts/client-memory-authz/check.mjs",
+    "test:token-pricing": "node --experimental-strip-types scripts/token-pricing/check.mjs",
+    "test:trace-wiring": "node --import ./scripts/client-memory-authz/register.mjs scripts/token-pricing/trace-wiring.mjs",
     "test:extraction-proposal": "node --import ./scripts/knowledge-scope/register.mjs scripts/extraction-proposal/check.mjs",
     "test:checked-write": "node --import ./scripts/knowledge-scope/register.mjs scripts/checked-write/check.mjs",
     "test:apply-extraction": "node --import ./scripts/apply-extraction/register.mjs scripts/apply-extraction/check.mjs",
