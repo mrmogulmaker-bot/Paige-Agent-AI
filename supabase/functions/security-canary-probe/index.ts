@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
         `Anonymous probe was able to read restricted columns:\n` +
         lines.join("\n") +
         `\n\nReview RLS policies and column GRANTs on growth_forms / growth_pages.`,
-      link_to: `/admin/security`,
+      link_to: `/operator/settings/governance/security`,
       source_workflow_key: "security_canary_regression",
       scope: "admin",
     });
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
                   recipientName: p.full_name?.split(" ")?.[0] ?? null,
                   runAt,
                   regressions: emailRegressions,
-                  reviewUrl: "https://paigeagent.ai/admin/security",
+                  reviewUrl: "https://paigeagent.ai/operator/settings/governance/security",
                 },
               }),
             }).catch((e) => console.error("canary_email_send_failed", p.email, e)),

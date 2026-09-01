@@ -27,7 +27,7 @@ const SecurityCanaryRegressionEmail = ({
   recipientName,
   regressions = [],
   runAt,
-  reviewUrl = 'https://paigeagent.ai/admin/security',
+  reviewUrl = 'https://paigeagent.ai/operator/settings/governance/security',
 }: CanaryRegressionProps) => {
   return (
     <Html lang="en" dir="ltr">
@@ -90,7 +90,7 @@ export const template = {
     regressions: [
       { target: 'growth_forms', leaked_columns: ['tenant_id', 'workflow_slug'], http_status: 200 },
     ],
-    reviewUrl: 'https://paigeagent.ai/admin/security',
+    reviewUrl: 'https://paigeagent.ai/operator/settings/governance/security',
   },
 } satisfies TemplateEntry
 

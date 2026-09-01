@@ -16,6 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
+import { resolveCanonicalAppPath, type CanonicalDestination, type CanonicalTier } from "../_shared/canonical-app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,13 +44,6 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 const ROLE_DASHBOARD: Record<string, string> = {
-  admin: "/admin",
-  owner: "/admin",
-  moderator: "/admin",
-  coach: "/admin/clients",
-  sales_rep: "/admin/pipeline",
-  cs_rep: "/admin/clients",
-  finance: "/admin",
   broker: "/broker/app",
   affiliate: "/app/affiliate",
   viewer: "/app",
@@ -57,8 +51,26 @@ const ROLE_DASHBOARD: Record<string, string> = {
   client: "/app",
 };
 
-function dashboardFor(role: string): string {
-  return ROLE_DASHBOARD[role] ?? "/app";
+async function dashboardFor(role: string, tenantId?: string | null): Promise<string> {
+  if (ROLE_DASHBOARD[role]) return ROLE_DASHBOARD[role];
+  if (!tenantId) return "/login";
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("account_type, account_number")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (!tenant) return "/login";
+  const destination: CanonicalDestination = role === "sales_rep"
+    ? "pipeline"
+    : role === "coach" || role === "cs_rep"
+      ? "contacts"
+      : "home";
+  return resolveCanonicalAppPath({
+    actor: "account",
+    tier: String(tenant.account_type ?? "") as CanonicalTier,
+    account: tenant.account_number,
+    destination,
+  }) ?? "/login";
 }
 
 async function findBtfInvite(tokenHash: string) {
@@ -251,7 +263,7 @@ Deno.serve(async (req) => {
         expired,
         alreadyUsed: !!team.accepted_at && expired === false ? false : false, // team invites are reusable for set-password
         brand: { name: "Paige", program: "Paige Agent AI" },
-        redirectTo: dashboardFor(team.role),
+        redirectTo: await dashboardFor(team.role, team.tenant_id),
       });
     }
 
@@ -399,7 +411,7 @@ Deno.serve(async (req) => {
         ok: true,
         type: "team_member",
         email: team.email,
-        redirectTo: dashboardFor(team.role),
+        redirectTo: await dashboardFor(team.role, team.tenant_id),
       });
     }
   }
