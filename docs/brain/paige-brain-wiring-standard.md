@@ -169,3 +169,13 @@ RLS-scoped to `current_user_tenant_id()`. §37 producer inventory required befor
 star — every seam is OS surface area) · §51/§53 (tier + operator role gating) · §52 (already-briefed
 operator context) · §60 (declared tier availability) · §BRAIN.1–.3 (second-brain discipline) ·
 `cd-pack-port-playbook.md` (how a tier surface gets ported in the first place).
+
+## Solo Team context — production draft, Gate 2 pending
+
+`get_paige_team_context()` is the only Team-to-Paige hydration seam. It resolves the authenticated speaker and active tenant server-side, returns confirmed active roster/work details, and now includes `get_current_solo_access()` from the same tenant-scoped Team contract. `_shared/team-context.ts` allowlists fields and area keys before prompt hydration and rejects tenant mismatch.
+
+- Titles and responsibilities are untrusted reference data, never instructions or authority.
+- `enforced_permission` plus `effective_access` describe the server-resolved ceiling; `manage` never bypasses the owning domain's authorization or confirmation gate.
+- Pending invitations remain excluded from confirmed roster context.
+- Paige may explain and propose an invitation or access change, but this draft does not give chat a silent write path. Owner confirmation and a real governed tool/card contract are required before any mutation.
+- Legacy specialized permissions return no invented area profile and continue through their existing contract.

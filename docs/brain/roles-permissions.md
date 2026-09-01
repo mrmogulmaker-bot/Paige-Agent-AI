@@ -44,9 +44,18 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
 ## Not yet built
 
 - No custom-roles table, no permissions table (`user_roles` is the only role table).
-- On `main`, `tenant_members` has **no work-title/responsibilities columns**. ⚠ **In-flight, not live (2026-08-31):** the Solo Team branch adds `job_title` and `responsibilities` as descriptive tenant data while keeping `role`/`is_owner` as the only enforced permission inputs. Do not report this available until its migration is applied and authenticated behavior is proven.
+- The Solo Team production draft adds `job_title` and `responsibilities` as descriptive tenant data while keeping `role`/`is_owner` as the enforced permission identity. It also adds tenant-scoped reusable Admin and Member access profiles; Owner remains fixed. These profiles are **in flight, not live** until the migration is applied and authenticated behavior is proven.
 - `app_role` has **no** `sales_lead` / `closer` / `appointment_setter` / `sdr` / `sales_ops`
   (only `sales_rep`). The owner-ruled sales catalog is entirely net-new.
+
+## Solo Team access contract — production draft, Gate 2 pending
+
+- `solo_team_access_profiles` stores only Admin and Member area levels for one tenant. It never stores an editable Owner profile.
+- `get_solo_team_access_profiles()`, `get_current_solo_access()`, and `set_solo_team_access_profile()` accept no tenant or user selector; the authenticated actor and active tenant are resolved server-side.
+- Only the active tenant Owner may save. The database validates every area, applies role ceilings, rejects stale versions, and records before/after audit evidence.
+- Custom titles and responsibilities describe work and never change authorization.
+- The canonical Solo shell may consume `get_current_solo_access()` to present or suppress supported destinations, but it must not branch its layout, route host, responsive behavior, or PAIGE workspace by tenant/account/name/fixture/URL. Owning-domain server authorization remains required; shell visibility is not a substitute for RLS or handler checks.
+- Existing specialized permissions keep their current contract until explicitly migrated; null areas mean legacy handling, never invented access.
 
 ## Migration state (6-slice plan, taxonomy doc §6)
 
