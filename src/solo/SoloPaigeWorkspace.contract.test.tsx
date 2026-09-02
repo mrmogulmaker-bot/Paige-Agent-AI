@@ -305,8 +305,21 @@ describe("Solo PAIGE workspace contract", () => {
   it("clears account-authored UI before the next account hydrates", () => {
     const chat = source("src/components/dashboard/PaigeAIChat.tsx");
     const app = source("src/solo/SoloApp.tsx");
-    expect(chat).toMatch(/acceptedEpochRef\.current = activeTenantId;[\s\S]*requestFenceRef\.current\.invalidate\(\);/);
-    expect(chat).toContain("setMessages([mkMsg({ role: \"assistant\", content: openingGreeting })])");
+    // The epoch is now COMPOSITE — the active workspace AND the client in focus — because a
+    // client switch has to end the conversation for the same reason an account switch does:
+    // this component re-POSTs its whole transcript, so the previous client's answers would
+    // otherwise ship under the new scope. The ordering this line exists to pin (accept the new
+    // epoch, THEN invalidate, THEN clear) is unchanged; only the value it keys on widened.
+    expect(chat).toContain("const scopeEpoch = `${activeTenantId ?? \"\"}|${clientId ?? \"\"}`;");
+    // Bounded so it cannot reach the LATER `invalidate()` calls (startNewChat, unmount). The
+    // unbounded `[\s\S]*` version could not fail: inverting the accept/invalidate order left the
+    // whole 507-test suite green.
+    expect(chat).toMatch(/acceptedEpochRef\.current = scopeEpoch;(?:[^\n]*\n){0,6}\s*requestFenceRef\.current\.invalidate\(\);/);
+    // §13 — THIS ASSERTION HAD GONE VACUOUS. The reset now seeds `scopeNotice ?? openingGreeting`,
+    // so the old literal no longer matched the reset at all — it was satisfied by the unrelated
+    // `startNewChat` and controlled-sync sites, and deleting the reset's `setMessages` entirely
+    // left this suite 23/23 green. Caught by an independent reviewer's mutation, not by reading.
+    expect(chat).toContain("setMessages([mkMsg({ role: \"assistant\", content: scopeNotice ?? openingGreeting })])");
     expect(chat).toContain('setInput("")');
     expect(chat).toContain("setAttachedDoc(null)");
     expect(chat).toContain("setIsLoading(false)");
@@ -415,8 +428,14 @@ describe("Solo PAIGE workspace contract", () => {
     const textarea = inputArea.querySelector<HTMLTextAreaElement>("textarea")!;
 
     expect(textarea.placeholder).toBe("Talk while she works…");
-    expect(guidance.textContent).toBe("@ hand it to someone · / call a skill · # remember");
-    expect(guidance.title).toBe("Guidance only — available actions depend on connected capabilities.");
+    // §70/§13 — THIS PINNED A CLAIM WITH NOTHING BEHIND IT. The three sigils it named all did
+    // nothing in Solo: no chips are passed, so the slash menu can never open, and there is no
+    // at-sign or hash handling in the chat at all. The ROW stays, because the three-level composer
+    // is CD's layout and deleting a level would be restyling their surface (§00); the TEXT goes,
+    // because an honest absence is what CC owes a value with no capability behind it. What belongs
+    // here is CD's to decide and is filed as owed.
+    expect(guidance.textContent).toBe("");
+    expect(guidance.querySelector("button, a")).toBeNull();
     expect(guidance.querySelector("button, a")).toBeNull();
     expect(composer.children[0]).toBe(inputArea);
     expect(composer.children[1]).toBe(guidance);

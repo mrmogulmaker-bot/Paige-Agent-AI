@@ -129,3 +129,4 @@ to them.)
 Mirror `second-brain/SKILL.md` into it as a new gate plus a read-first and a close-out section — do not
 re-derive it, and do not fork a second copy of the content (§18). This file stays the one home for
 the *reason*; that skill stays the one home for the *procedure*.
+

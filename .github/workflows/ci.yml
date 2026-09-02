@@ -210,6 +210,78 @@ jobs:
       - name: Blocking reasons carry a next step (Connections has no dead ends)
         if: ${{ !cancelled() }}
         run: npm run lint:readiness-copy
+      # Every mutation Paige can perform carries a risk classification, and an action with no
+      # classification cannot run. This fails the change that would add a write tool without
+      # classifying it — in the repository, rather than in production where the runtime's own
+      # fail-closed guard would turn it into an inert tool nobody understands.
+      # A colliding migration version does not fail on push — it is SKIPPED, and every downstream
+      # signal (CI, the db-live tag, the preview badge) stays green while the migration never
+      # reaches production. The Supabase preview reports only the FIRST duplicate key, so it cannot
+      # be relied on to enumerate them.
+      - name: No migration reuses a version (a reused version is silently skipped, never applied)
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ steps.mergebase.outputs.mb }}
+        run: npm run lint:migration-versions
+
+      - name: Migration-version guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:migration-versions:test
+
+      # An audit row that names a table which does not exist is unresolvable, and reads as correct.
+      # The harness already asserted a rail event NAMES a record; a wrong name satisfies that. This
+      # checks the name is true, which needs a schema and so belongs here rather than in the harness.
+      - name: Every attribution target is a real table (a rail row must resolve)
+        if: ${{ !cancelled() }}
+        run: npm run lint:write-targets
+
+      - name: Attribution-target guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:write-targets:test
+
+      - name: Every write tool is classified by the action-risk policy
+        if: ${{ !cancelled() }}
+        run: npm run lint:action-risk
+
+      # Three separate slices independently built a SECOND way to prove the operator approved
+      # something (#709, #711, #718). Each was competent alone; a door with three locks is only
+      # as strong as the weakest, and nobody inspects the weak one. This fails a new channel —
+      # not a new gated action, which needs no approval path of its own.
+      - name: One approval channel (a second way to say yes is a way in)
+        if: ${{ !cancelled() }}
+        run: npm run lint:approval-gate
+
+      # Owner ruling 2026-09-01: domains own features, the Spine owns governance, Chat is a
+      # consumer. A RATCHET, not a wall — the handler already declares 100 tools inline and the
+      # ruling says migrate one at a time with no big-bang refactor. The baseline may shrink; it
+      # must not grow, so new coupling cannot be added silently.
+      - name: No new tool is hand-wired into the Chat handler
+        if: ${{ !cancelled() }}
+        run: npm run lint:chat-tool-registry
+
+      - name: Chat-tool registry ratchet catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:chat-tool-registry:test
+
+      - name: Approval-channel guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:approval-gate:test
+
+      - name: Action-risk guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:action-risk:test
+
+      # A similarity search whose search_path excludes `extensions` cannot resolve `<=>` and raises
+      # on every call. Three shipped functions were in that state for months, invisible because
+      # every call site degrades to an empty result — "no matches" and "cannot execute" look the
+      # same from outside.
+      - name: Vector searches can resolve their own operator
+        if: ${{ !cancelled() }}
+        run: npm run lint:vector-path
+
+      - name: Vector search-path guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:vector-path:test
 
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
@@ -387,6 +459,30 @@ jobs:
       - name: Smoke — client-memory authorization (§9 cross-client fail-closed)
         if: ${{ !cancelled() }}
         run: npm run test:client-memory-authz
+
+      - name: Smoke — token pricing (§18 one home; no pre-existing pairing reprices)
+        if: ${{ !cancelled() }}
+        run: npm run test:token-pricing
+
+      - name: Smoke — trace cost wiring (a metered call is never recorded as free)
+        if: ${{ !cancelled() }}
+        run: npm run test:trace-wiring
+
+      - name: Smoke — active-account Knowledge scope (§9 tenant KB fail-closed)
+        if: ${{ !cancelled() }}
+        run: npm run test:knowledge-scope
+
+      - name: Smoke — a document PROPOSES (only what was read is offered; the closed set is not the offer)
+        if: ${{ !cancelled() }}
+        run: npm run test:extraction-proposal
+
+      - name: Smoke — approving a proposal writes only what was offered, once, as the caller
+        if: ${{ !cancelled() }}
+        run: npm run test:apply-extraction
+
+      - name: Smoke — a durable write that did not land says so (postgrest resolves, it does not throw)
+        if: ${{ !cancelled() }}
+        run: npm run test:checked-write
 
       - name: Smoke — MCP registry is provider-scoped and its aggregate is deterministic
         if: ${{ !cancelled() }}

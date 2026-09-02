@@ -951,8 +951,12 @@ describe("tenant PAIGE command field", () => {
     const command = host.querySelector<HTMLButtonElement>("[data-tenant-paige-command]");
 
     expect(command).not.toBeNull();
-    expect(command?.textContent).toContain("Direct PAIGE, or press ⌘K");
-    expect(command?.querySelector("kbd")?.textContent).toBe("⌘K");
+    // §13/§70 — THIS PINNED A KEY THAT DID NOTHING. The shell binds ⌘/Ctrl + backslash (see its
+    // keydown handler); ⌘K's global owner is registered only when `launcherEnabled`, which the Solo
+    // app sets false. So the one keyboard hint on the surface named a key that opens nothing, and
+    // this assertion held it there. Corrected to the key that actually works.
+    expect(command?.textContent).toContain("Direct PAIGE, or press ⌘\\");
+    expect(command?.querySelector("kbd")?.textContent).toBe("⌘\\");
     expect(command?.getAttribute("aria-controls")).toBe("tenant-paige-workspace");
     expect(host.querySelectorAll("[data-tenant-paige-command]")).toHaveLength(1);
 

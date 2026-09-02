@@ -76,9 +76,24 @@ describe("what the surface says about the gap is the measured number", () => {
     "utf8",
   ).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, "");
 
-  it("states twenty-three in the shipped foot, and not CD's four", () => {
-    expect(surface).toContain("Twenty-three tools are gated at runtime but missing");
+  /**
+   * THE FOOT NO LONGER CLAIMS A GAP, BECAUSE THERE ISN'T ONE.
+   *
+   * CD's delivered sentence counted four; the true count when it was ported was 23, so it shipped
+   * with the true figure. Migration 20261020000000 then closed the gap to ZERO — and a sentence
+   * describing a gap that no longer exists is a false claim about the platform, rendered on the
+   * platform's own governance surface. So it is removed rather than restated with a new number.
+   *
+   * This asserts the absence in EVERY spelling the claim has ever had, because "it doesn't say 23"
+   * would pass the moment someone wrote "24". The live gap itself is asserted to be zero by the
+   * derivation test below — this one only guards the PROSE from re-acquiring a stale figure.
+   */
+  it("no longer claims a catalogue gap, in any of its historic spellings", () => {
     expect(surface).not.toContain("Four automation tools");
+    expect(surface).not.toMatch(/gated at runtime but missing/);
+    expect(surface).not.toMatch(/governed and invisible/);
+    // And it has not simply been emptied: CD's rules are still the body of it.
+    expect(surface).toContain("Modes are stored per tenant per tool");
   });
 
   it("still carries the two schema rules CD wrote, which are not figures but law", () => {
@@ -93,16 +108,24 @@ describe("what the surface says about the gap is the measured number", () => {
    * silent.
    */
   it("matches the live diff of the runtime gate against the catalogue", () => {
-    const chat = readFileSync(
-      resolve(process.cwd(), "supabase/functions/paige-ai-chat/index.ts"),
+    // The runtime gate is the action-risk policy's key set — the handler no longer holds a literal
+    // of its own, so that the classification and the gated set cannot drift apart. This derives the
+    // gate the same way the runtime does.
+    const policy = readFileSync(
+      resolve(process.cwd(), "supabase/functions/_shared/action-risk.ts"),
       "utf8",
     );
-    const at = chat.indexOf("const MUTATING_TOOLS = new Set<string>([");
+    const at = policy.indexOf("const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [");
     const gate = new Set(
-      [...chat.slice(chat.indexOf("[", at), chat.indexOf("]);", at)).matchAll(/"([a-z0-9_]+)"/g)].map(
-        (m) => m[1],
-      ),
+      [
+        ...policy
+          .slice(at, policy.indexOf("\n];", at))
+          .matchAll(/\[\s*"([a-z0-9_]+)"\s*,\s*"(?:ordinary|high|owner_only)"\s*,/g),
+      ].map((m) => m[1]),
     );
+    // A parse that finds nothing would report a clean gap, which is indistinguishable from a clean
+    // gap. Prove the subject was found before measuring it.
+    expect(gate.size).toBeGreaterThan(40);
 
     const dir = resolve(process.cwd(), "supabase/migrations");
     let catalogue = new Set<string>();
@@ -118,19 +141,34 @@ describe("what the surface says about the gap is the measured number", () => {
     }
 
     const invisible = [...gate].filter((k) => !catalogue.has(k));
-    // Both totals move whenever governed tools ship, and they moved twice for 2026-09-01: the
-    // Pipeline tools on main took 46 → 48 gated and 23 → 25 catalogued, and the four Comms tools
-    // on this branch take it to 52 and 29. Two independent branches each adding a governed tool
-    // is exactly when this test earns its keep, because the merge has to reconcile the totals.
+
+    // THIS USED TO MEASURE THE GAP; IT NOW ASSERTS THERE ISN'T ONE.
     //
-    // The number the SURFACE states is the third assertion — the GAP — and it is unchanged at 23
-    // through both. That is the invariant: a new governed tool only ships with its catalogue row,
-    // so the set of tools the operator cannot turn off can never grow underneath us. The first
-    // two numbers are bookkeeping; the third is the property.
-    expect(gate.size).toBe(52);
-    expect(catalogue.size).toBe(29);
-    expect(invisible).toHaveLength(23);
-    // The one that makes it more than bookkeeping: a permanent delete the operator cannot disable.
-    expect(invisible).toContain("n8n_delete_workflow");
+    // For a long time the gate governed 46 tools and the catalogue listed 23, so 23 were governed
+    // but INVISIBLE — permanently `confirm`, with no way for the tenant to turn them off or on.
+    // Among them `n8n_delete_workflow`, a permanent delete the operator could not disable. The gap
+    // opened when a migration that said it re-declared the catalogue "verbatim" quietly dropped the
+    // n8n rows, and widened one tool at a time after that: a tool added to the gate and not to the
+    // list fails nothing and simply never appears.
+    //
+    // Migration 20261020000000 closes it. Asserting ZERO rather than a number is the point — a
+    // count has to be re-agreed every time the gate changes, and re-agreeing a number is how the
+    // gap grew. The invariant does not need updating; it needs obeying.
+    //
+    // If this fails, do NOT adjust it: a tool was added to `MUTATING_TOOLS` without a catalogue
+    // row, and the fix is the row. The failure message names exactly which.
+    expect(invisible).toEqual([]);
+    expect(catalogue.size).toBeGreaterThanOrEqual(gate.size);
+    // Kept explicitly, because it is the one that made this more than bookkeeping.
+    expect(catalogue.has("n8n_delete_workflow")).toBe(true);
+
+    // MERGE NOTE (2026-09-01). `main` asserted the OPPOSITE of this: `invisible` has length 23,
+    // with `n8n_delete_workflow` among them. Both were true of their own branch — main still
+    // carries the gap; this branch's migration 20261032000000 closed it. The zero assertion is
+    // kept because it is the stronger invariant, and because a COUNT is what let the gap grow:
+    // every new governed tool required re-agreeing a number, and re-agreeing it is how tools
+    // slipped in ungoverned. Main's four Comms tools arrive with this merge, so keeping zero
+    // obliges the merge to give them catalogue rows rather than to raise a number — which is
+    // exactly the pressure this assertion exists to create.
   });
 });

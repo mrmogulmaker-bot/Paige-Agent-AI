@@ -136,8 +136,15 @@ export function TenantPaigeCommandField({
       <span className="tcs-command-glyph" data-state={expanded ? "charged" : "dormant"}>
         <CommandGlyph size={18} />
       </span>
-      <span>Direct PAIGE, or press ⌘K</span>
-      <kbd>⌘K</kbd>
+      {/* §70/§13 — THIS SAID ⌘K, AND ⌘K DOES NOTHING HERE. The shortcut this shell actually
+          binds is ⌘/Ctrl + backslash (see the keydown handler below); the global ⌘K owner is
+          registered only when `launcherEnabled`, which the Solo app sets false. So the one
+          keyboard hint on the surface named a key that opens nothing.
+          Corrected to the key that works rather than removed — a working shortcut nobody is told
+          about is its own kind of undelivered. The glyph, placement and wording are CD's (§00);
+          only the KEY is a fact, and the fact was wrong. */}
+      <span>Direct PAIGE, or press ⌘\</span>
+      <kbd>⌘\</kbd>
     </button>
   );
 }

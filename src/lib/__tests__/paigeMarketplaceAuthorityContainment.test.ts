@@ -193,10 +193,18 @@ describe("PAIGE Marketplace authority containment", () => {
   });
 
   it("cannot restore Marketplace mutation through generic auto or confirm policy", () => {
+    // The gated set moved out of the handler and into the action-risk policy, which classifies
+    // every mutation once. The containment property is unchanged — these two must still be
+    // classified as mutations so a future accidental re-registration cannot inherit read
+    // semantics — so this reads the policy rather than a literal that no longer exists.
+    const policy = readFileSync(
+      resolve(process.cwd(), "supabase/functions/_shared/action-risk.ts"),
+      "utf8",
+    );
     const autonomy = between(
-      chat,
-      "const MUTATING_TOOLS",
-      "const TOOL_LABELS",
+      policy,
+      "const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [",
+      "\n];",
     );
     // Install/remove remain fail-safe mutation tombstones, but have no registered
     // schema or dispatch branch for either `auto` or confirmed execution to reach.

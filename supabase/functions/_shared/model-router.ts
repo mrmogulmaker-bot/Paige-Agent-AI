@@ -209,7 +209,9 @@ export async function routedChatCompletion(jobKind: JobKind, body: OpenAIStyleBo
       tokens_in: tokensIn,
       tokens_out: tokensOut,
       latency_ms: Date.now() - started,
-      cost_estimate_usd: status === "success" ? (estimateCost(provider, "text", tokensIn ?? undefined, tokensOut ?? undefined) ?? null) : null,
+      cost_estimate_usd: status === "success"
+        ? (estimateCost(provider, "text", tokensIn ?? undefined, tokensOut ?? undefined, resp?.model ?? null) ?? null)
+        : null,
       input: body.messages,
       output: status === "success" ? (resp?.choices?.[0]?.message?.content ?? null) : null,
       error_class: status === "error" ? ((err as Error)?.name ?? "error") : null,
@@ -267,7 +269,7 @@ export async function claudeVoicePolish(draft: string, brandVoice?: string): Pro
 // (§3 voice) → persist the artifact → audit. Every existing export above stays untouched (§12).
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import {
   type Modality,
   type Tier,
@@ -293,6 +295,7 @@ import { geminiImage } from "./gemini-image.ts";
 import { renderDoc, type DocFormat } from "./doc-render.ts";
 import { elevenlabsTts } from "./elevenlabs.ts";
 import { traceLLMCall, type TraceCtx } from "./llm-trace.ts";
+import { estimateTokenCostUsd } from "./token-pricing.ts";
 
 // Re-export the shared vocabulary from its one home (§12) so a caller imports everything it
 // needs from the router, not from three files.
@@ -585,13 +588,10 @@ const ROUTE_TABLE: Partial<Record<Modality, Partial<Record<Tier, RouteCell>>>> =
 // ── Cost estimator (CLEARLY-LABELED ESTIMATES, not billed figures) ──────────────────────────
 // Rough public list prices as of 2026-07; text is $/1K tokens, binary is $/artifact. These are
 // planning estimates recorded on the deliverable, NOT an invoice — the true cost is the provider's.
+// Token pricing is NOT here — `_shared/llm-trace.ts` owns it (§18), because `claude.ts` also needs
+// it and cannot import this module without a cycle. Artifact pricing stays here: it is keyed on the
+// modality, which is a routing fact this layer knows and the trace writer does not.
 const COST_ESTIMATES = {
-  text_per_1k: {
-    anthropic: { in: 0.003, out: 0.015 },   // Claude reasoning tier
-    openai: { in: 0.0025, out: 0.010 },      // gpt-4o
-    groq: { in: 0.00059, out: 0.00079 },     // Llama 3.3 70B
-    featherless: { in: 0.0002, out: 0.0002 },// flat-plan host; nominal per-token estimate
-  },
   per_artifact: {
     gemini: 0.039,      // Gemini flash image
     openai: 0.040,      // gpt-image-1 (1024²)
@@ -602,17 +602,18 @@ const COST_ESTIMATES = {
   },
 } as const;
 
-function round4(n: number): number { return Math.round(n * 10000) / 10000; }
-
 /** A clearly-labeled ESTIMATE of this call's cost in USD (undefined when we have no basis). */
-function estimateCost(provider: string, modality: Modality, tokensIn?: number, tokensOut?: number): number | undefined {
-  const kIn = (tokensIn ?? 0) / 1000;
-  const kOut = (tokensOut ?? 0) / 1000;
+function estimateCost(
+  provider: string,
+  modality: Modality,
+  tokensIn?: number,
+  tokensOut?: number,
+  model?: string | null,
+): number | undefined {
   // vision-critique is a Claude text-OUT call (image in, critique text out), so it's token-priced
   // like text — not a per-artifact image cost. Pricing it here gives the §33 cost-cap a real figure.
   if (modality === "text" || modality === "vision-critique") {
-    const c = (COST_ESTIMATES.text_per_1k as Record<string, { in: number; out: number }>)[provider];
-    return c ? round4(kIn * c.in + kOut * c.out) : undefined;
+    return estimateTokenCostUsd(provider, model, tokensIn, tokensOut);
   }
   // openai text is handled above; here openai means gpt-image-1.
   const per = (COST_ESTIMATES.per_artifact as Record<string, number>)[provider];
@@ -620,8 +621,15 @@ function estimateCost(provider: string, modality: Modality, tokensIn?: number, t
 }
 
 // ── Service-role client (lazy) for audit + deliverable persistence ──────────────────────────
-let _admin: ReturnType<typeof createClient> | null = null;
-function getAdmin(): ReturnType<typeof createClient> | null {
+//
+// Typed `SupabaseClient`, NOT `ReturnType<typeof createClient>`. The inferred form resolves every
+// table's row type to `never`, so `.insert({...})` failed overload resolution on both writers below
+// — two long-standing TS2769s that `deno check` reported on every function importing this module.
+// `_shared/llm-trace.ts` already uses this idiom and checks clean. Fixed here rather than left
+// inherited: the deno ratchet stops crediting a diagnostic in a file the change TOUCHES, which is
+// the right rule — editing a file makes you answerable for it.
+let _admin: SupabaseClient | null = null;
+function getAdmin(): SupabaseClient | null {
   if (_admin) return _admin;
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");

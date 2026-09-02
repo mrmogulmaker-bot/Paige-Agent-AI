@@ -36,6 +36,7 @@ class QueryBuilder {
     this._authorization = authorization;
     this._live = liveRef;
     this._filters = [];
+    this._insertError = null;
     this._ordered = false;
     this._limit = null;
     this._op = "select";
@@ -44,7 +45,21 @@ class QueryBuilder {
   // Every filter/shape method records itself and chains. Recording the SHAPE (not just
   // the table) is what lets a check prove an unordered LIMIT 1 pick is gone.
   select(...a) { this._filters.push(["select", a[0]]); return this; }
-  insert(row) { this._op = "insert"; this._live().recorder.inserts.push({ table: this._table, row }); return this; }
+  insert(row) {
+    this._op = "insert";
+    this._live().recorder.inserts.push({ table: this._table, row });
+    // LIVE hook, called synchronously as the write happens. A scenario that mirrors inserts only
+    // AFTER the drive returns cannot model a row being written and then read back WITHIN the same
+    // request — which is precisely the case a self-approval check has to exercise.
+    // A CONSTRAINT VIOLATION IS A RESOLVED ERROR, NOT A THROW (postgrest-js defaults
+    // `shouldThrowOnError` to false). `onInsert` may therefore RETURN an error to model one —
+    // which is how a scenario reproduces the live-proposal unique index rejecting a duplicate.
+    // Without this a fixture can only model a clash by silently dropping the row, and the handler
+    // then sees a clean success: the two states it must tell apart become indistinguishable, and
+    // a check that the distinction is load-bearing passes for the wrong reason.
+    this._insertError = this._live().scenario.onInsert?.(this._table, row) ?? null;
+    return this;
+  }
   update(row) { this._op = "update"; this._live().recorder.inserts.push({ table: this._table, row, update: true }); return this; }
   upsert(row) { this._op = "upsert"; this._live().recorder.inserts.push({ table: this._table, row, upsert: true }); return this; }
   delete() { this._op = "delete"; return this; }
@@ -65,6 +80,12 @@ class QueryBuilder {
   order(c, o) { this._ordered = true; this._filters.push(["order", c, o]); return this; }
   range(a, b) { this._filters.push(["range", a, b]); return this; }
   limit(n) { this._limit = n; this._filters.push(["limit", n]); return this; }
+  // Real postgrest-js has this. Without it, `traceLLMCall`'s `.insert(record).abortSignal(sig)`
+  // throws a TypeError into its own swallowing catch — the row still lands in the recorder (insert
+  // records synchronously), so an assertion about the row PASSES while the write path it is
+  // supposed to be exercising actually died. A fixture that makes a broken path look healthy is
+  // the failure mode this harness exists to avoid.
+  abortSignal(sig) { void sig; this._filters.push(["abortSignal"]); return this; }
 
   _rows() {
     const svc = this._live().scenario.serviceTables?.[this._table];
@@ -90,10 +111,22 @@ class QueryBuilder {
     });
   }
 
+  /** An injected error, optionally scoped to ONE operation.
+   *
+   *  `tableErrors: { client_memory: e }` fails every op on the table; `{ "client_memory:insert": e }`
+   *  fails only the insert. The distinction is load-bearing: failing the READ makes the handler
+   *  refuse for unknown authority and never reach the write, so a table-wide error can never
+   *  witness a rejected WRITE — which is exactly the class of bug the write checks exist to catch. */
+  _injected() {
+    if (this._insertError) return this._insertError;
+    const t = this._live().scenario.tableErrors ?? {};
+    return t[`${this._table}:${this._op}`] ?? t[this._table];
+  }
+
   maybeSingle() {
     this._record(true);
     const rows = this._rows();
-    const injected = this._live().scenario.tableErrors?.[this._table];
+    const injected = this._injected();
     if (injected) return Promise.resolve({ data: null, error: injected });
     return Promise.resolve({ data: rows[0] ?? null, error: null });
   }
@@ -101,7 +134,7 @@ class QueryBuilder {
 
   then(res, rej) {
     this._record(false);
-    const injectedThen = this._live().scenario.tableErrors?.[this._table];
+    const injectedThen = this._injected();
     if (injectedThen) return Promise.resolve({ data: null, error: injectedThen, count: 0 }).then(res, rej);
     return Promise.resolve({ data: this._rows(), error: null, count: this._rows().length }).then(res, rej);
   }

@@ -32,14 +32,15 @@ import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MessageAudioButton } from "@/components/chat/MessageAudioButton";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
+import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
-type PipelineConfirmedAction =
-  | { kind: "pipeline_archive"; confirmationToken: string; pipelineRef: string }
-  | { kind: "pipeline_folder_archive"; confirmationToken: string; folderId: string; folderName: string };
-type PaigeConfirmation = { tool: string; summary: string; approvalToken?: string; pipelineRef?: string; approvalKind?: string; folderId?: string; folderName?: string };
+// REMOVED 2026-09-02 with the channel they described: `PipelineConfirmedAction` and
+// `PaigeConfirmation` typed the token echo that #709 and #718 sent alongside the general
+// approval. The surface now echoes one thing — the fingerprint of the exact call it rendered —
+// and both archives keep their server-issued preview binding as a precondition on the server.
 type Message = {
   /** Stable id — survives array splices; underwrites copy/retry/feedback (1c-vi). */
   id: string;
@@ -53,7 +54,11 @@ type Message = {
   documentFileName?: string;
   documentKind?: AttachedDocKind;
   queued?: QueuedApproval[];
-  confirm?: PaigeConfirmation[];
+  /** `fingerprint` is the server's hash of the EXACT call each summary describes. Approve echoes
+   *  them back so the gate runs that call and not whatever the model re-emits — see the gate's own
+   *  note. Optional: a rehydrated turn has summaries but no live fingerprints, which is correct,
+   *  because a past decision must never be re-fired (§15). */
+  confirm?: Array<{ tool: string; summary: string; fingerprint?: string }>;
   /** True on turns rehydrated from history: their confirm cards render settled,
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
@@ -61,6 +66,11 @@ type Message = {
    *  `paige_artifact` frames and rendered as inline handoff cards. Live-turn only;
    *  the card re-hydrates from marketing_content by id, so it isn't persisted. */
   artifacts?: PaigeArtifact[];
+  /** A document Paige read produced fields she is PROPOSING to record. Nothing has been written
+   *  when this arrives — the card is where a person picks what to keep. Live-turn only: once
+   *  applied or declined the proposal is settled server-side, so a rehydrated turn must not
+   *  re-offer it (§15 — never re-fire a past action). */
+  extractionProposal?: ExtractionProposal;
 };
 
 // crypto.randomUUID is undefined in some insecure-context / older webviews — guard
@@ -118,6 +128,22 @@ export interface PaigeAIChatProps {
   clientId?: string | null;
   /** Prose describing the focused customer — added to the chat POST body. */
   clientContext?: string;
+  /** The chat is telling the surface that OWNS focus to let it go. Two reasons, both cases where
+   *  continuing to assert a focus would make the UI say something untrue:
+   *
+   *  `refused`        — the server returned a PERMISSION verdict: that client is not in this
+   *                     workspace. (Never for the four UNKNOWN refusal categories; a failed RPC is
+   *                     not a fact about ownership.)
+   *  `thread_resumed` — the person opened a saved conversation. Threads in the rail are
+   *                     owner-level (`contact_id IS NULL`) and their content may be about a
+   *                     DIFFERENT client than the one currently focused — focus is not persisted
+   *                     with the thread, so an earlier turn under focus A lives in an owner-level
+   *                     transcript. Replaying it under focus B would ship A's content on the next
+   *                     turn with B's scope. Releasing focus is what makes the resumed conversation
+   *                     mean what it says.
+   *
+   *  Carries the reason only, never a client identifier. */
+  onFocusRelease?: (reason: "refused" | "thread_resumed") => void;
   /** Sticky strip above the message list, shown only when a customer is focused. */
   focusBanner?: React.ReactNode;
   /** Quick-action chips above the composer. */
@@ -209,6 +235,7 @@ const PaigeAIChatInner = ({
   fill = false,
   clientId = null,
   clientContext,
+  onFocusRelease,
   focusBanner,
   chips,
   greeting,
@@ -314,15 +341,70 @@ const PaigeAIChatInner = ({
   const [traceOpen, setTraceOpen] = useState(false);
   const openingGreeting = greeting ?? "Hey, how can I help?";
   const requestFenceRef = useRef(createPaigeRequestFence());
-  const acceptedEpochRef = useRef<string | null>(activeTenantId);
+  // === THE TURN'S SCOPE, AS ONE VALUE (§9, purpose clause 2) ===
+  // A turn is scoped by TWO things, not one: the active workspace, and the client in focus. The
+  // fence, the reset and the dictation epoch were all keyed on the tenant alone, so an account
+  // change ended the conversation correctly and a CLIENT change did not end it at all.
+  //
+  // That mattered because this component re-POSTs its entire local `messages` array on every
+  // turn. Focusing a different client — or clearing focus — left the previous client's answers
+  // in that array, and the next request shipped them to the model under the new scope. The
+  // backend's client-scope guard authorizes the client NAMED in the body; it has no way to know
+  // that the prose already in the transcript is about someone else. So the isolation had to be
+  // here, on the surface that owns the array.
+  //
+  // Composite rather than a second parallel epoch (§18): every mechanism that already keyed on
+  // the tenant now keys on this, and there is one definition of "the scope changed" instead of
+  // two that can disagree.
+  //
+  // Surfaces that never focus a client (Solo, the operator desk) pass no `clientId`, so their
+  // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
+  const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}`;
+  // A refusal releases focus, which CHANGES this epoch, which resets the transcript — so a naive
+  // "clear focus on refusal" deletes the very sentence the person needs to read. The notice is
+  // parked here on the way out and adopted as the opening message on the way back in, so the
+  // explanation survives its own consequence. A ref rather than state: the reset effect has to
+  // read it in the same pass the refusal triggers, without scheduling another render.
+  // STAMPED WITH THE EPOCH IT WAS PARKED UNDER, not a bare string.
+  //
+  // "Cleared on read" is only true if something reads it. When focus is ALREADY null at the moment
+  // the refusal arrives — the person cleared the banner mid-stream, or an earlier reset released it
+  // — `onFocusRelease` is a no-op, the epoch never changes, and an unstamped notice sits in
+  // the ref indefinitely. The next epoch change of ANY kind then adopts it, so switching WORKSPACES
+  // could open the new one with "I couldn't confirm that client belongs to your workspace" about a
+  // client in the other one. Found by an independent reviewer driving exactly that sequence.
+  //
+  // The notice is adopted only when the epoch actually moves OFF the one it was parked under, and
+  // discarded otherwise. A notice about a scope nobody is leaving is not a notice.
+  const pendingScopeNoticeRef = useRef<{ epoch: string; text: string } | null>(null);
+  const acceptedEpochRef = useRef<string>(scopeEpoch);
   const dictationGenerationRef = useRef(0);
   const [cancelled, setCancelled] = useState(false);
-  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | null>(null);
+  // `server` joins `offline` and `timeout` because all three are the same thing to the person:
+  // the turn did not happen and trying again is worth doing. A 4xx is NOT in this set — a request
+  // the server refused on its merits will be refused identically on a retry, and offering one
+  // would be a button that cannot work (§70).
+  const [connectionIssue, setConnectionIssue] = useState<"offline" | "timeout" | "server" | null>(null);
   const retryTurnRef = useRef<{ base: Message[]; rollback: Message[]; userText: string; doc?: AttachedDocument | null } | null>(null);
 
+  // §13 — `!ticket ||` USED TO SHORT-CIRCUIT THIS TO `true`, AND THAT UNDID THE WHOLE FENCE ON THE
+  // ONE SURFACE THAT NEEDED IT. A ticket was only issued when `soloTenantSafety` was set, and the
+  // shared workspace — the only mount that focuses clients — does not set it. So there the ticket
+  // was null, every late result was "accepted", the fetch carried no abort signal, and
+  // `invalidate()` aborted a controller that had never been created.
+  //
+  // The visible consequence was worse than no fence: the scope reset DID run, clearing the
+  // transcript, and then the next streamed chunk called `setMessages([...newMessages, …])` with the
+  // array captured BEFORE the switch — restoring the previous client's question and answer under
+  // the new client's scope, and shipping them on the next turn. The refusal notice was overwritten
+  // by the same mechanism, so the explanation flashed and vanished. An independent reviewer drove
+  // both.
+  //
+  // Acceptance is not a Solo nicety; it is the second half of the isolation the reset starts.
+  // Cancellation, the timeout fence and the offline pre-flight stay behind the flag — those are
+  // genuinely presentational choices — but whether a resolved request may still commit is not.
   const ticketAccepted = useCallback(
-    (ticket: PaigeRequestTicket | null) =>
-      !ticket || requestFenceRef.current.isCurrent(ticket, acceptedEpochRef.current),
+    (ticket: PaigeRequestTicket) => requestFenceRef.current.isCurrent(ticket, acceptedEpochRef.current),
     [],
   );
 
@@ -373,19 +455,41 @@ const PaigeAIChatInner = ({
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
-  // Account changes are a hard frontend isolation boundary. Invalidate first, then
-  // clear every account-derived or account-authored state before the new query can
-  // hydrate. The key on SoloPaigeWorkspace also remounts this tree synchronously;
-  // this engine-level guard rejects work that outlives that presentation boundary.
+  // SCOPE changes — the workspace or the client in focus — are a hard frontend isolation
+  // boundary. Invalidate first, then clear every scope-derived or scope-authored state before
+  // the new query can hydrate. The key on SoloPaigeWorkspace also remounts this tree
+  // synchronously; this engine-level guard rejects work that outlives that boundary.
+  //
+  // §13 — THIS IS NO LONGER GATED ON `soloTenantSafety`, and the removal is deliberate. That
+  // prop conflates two unrelated things: Solo's presentation extras (the offline banner, the
+  // cancel affordance, the tenant-required composer block) and this isolation fence. Only the
+  // first is a Solo choice. Carrying one workspace's transcript into another is a defect on
+  // every surface that mounts this component, and it was live on the shared workspace mount —
+  // which is the ONE surface that focuses clients — precisely because the fence was opt-in.
+  //
+  // The tenant-required blocking stays behind the flag, because it is genuinely Solo-only: the
+  // operator desk is legitimately tenant-less, and un-gating `!activeTenantId` would block its
+  // composer permanently. Un-gating the RESET is safe there for the same reason it is a no-op:
+  // a tenant-less, client-less surface has the constant epoch `"|"`, so this never fires.
   useEffect(() => {
-    if (!soloTenantSafety || acceptedEpochRef.current === activeTenantId) return;
-    acceptedEpochRef.current = activeTenantId;
+    if (acceptedEpochRef.current === scopeEpoch) return;
+    const leavingEpoch = acceptedEpochRef.current;
+    acceptedEpochRef.current = scopeEpoch;
     dictationGenerationRef.current += 1;
     setDictationGeneration(dictationGenerationRef.current);
     requestFenceRef.current.invalidate();
     hydratedFromRef.current = null;
     setActiveThreadId(null);
-    setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
+    // A refusal parked a notice on its way out; adopt it as the opening message so the
+    // explanation survives the reset it caused. Cleared on read — it is a one-shot handoff, not
+    // sticky state, and a stale notice greeting an unrelated switch would be its own lie.
+    // Adopted only by the transition it belongs to: the one LEAVING the epoch the refusal happened
+    // under. Any other epoch change discards it, so a notice cannot survive to greet an unrelated
+    // switch. Discarded either way — it is a one-shot handoff, never sticky state.
+    const parked = pendingScopeNoticeRef.current;
+    pendingScopeNoticeRef.current = null;
+    const scopeNotice = parked?.epoch === leavingEpoch ? parked.text : null;
+    setMessages([mkMsg({ role: "assistant", content: scopeNotice ?? openingGreeting })]);
     setInput("");
     setAttachedDoc(null);
     setIsLoading(false);
@@ -400,7 +504,7 @@ const PaigeAIChatInner = ({
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
     resetTranscriptFollow();
-  }, [activeTenantId, openingGreeting, resetTranscriptFollow, setActiveThreadId, setAttachedDoc, soloTenantSafety]);
+  }, [scopeEpoch, openingGreeting, resetTranscriptFollow, setActiveThreadId, setAttachedDoc]);
 
   useEffect(() => {
     if (!soloTenantSafety) return;
@@ -459,7 +563,10 @@ const PaigeAIChatInner = ({
         const b = (t.bundle_ref ?? {}) as Record<string, unknown>;
         const queued = Array.isArray(b.approval_queued) ? (b.approval_queued as QueuedApproval[]) : undefined;
         const confirm = Array.isArray(b.paige_confirm)
-          ? (b.paige_confirm as PaigeConfirmation[])
+          // Rehydrated summaries only. Deliberately NOT typed with `fingerprint`: a stored turn
+          // carries no live fingerprint, and `confirmResolved` below renders it settled, so there
+          // is nothing here that could re-fire a decision already taken (§15).
+          ? (b.paige_confirm as Array<{ tool: string; summary: string }>)
           : undefined;
         // Honest timestamp: use the turn's stored created_at when present; if the
         // stored turn has none, omit it and the hover time simply hides (never faked).
@@ -487,10 +594,19 @@ const PaigeAIChatInner = ({
       if (!soloTenantSafety) return;
       cancelSoloRequest();
     }
+    // OPENING A SAVED CONVERSATION RELEASES THE FOCUSED CLIENT.
+    //
+    // The rail lists owner-level threads (`contact_id IS NULL`). Focus is not persisted with a
+    // thread, so a transcript written while client A was focused lives in one of these — and
+    // loading it while client B is focused replays A's content and ships it on the next turn under
+    // B's scope. The composite scope epoch closes the LIVE prop path; this is the same carry-over
+    // arriving through persistence, one click away, on the same surface.
+    //
+    // Released rather than refused: the person asked to open this conversation, and it is a
+    // conversation they own. What is not true is that it is about the client currently in focus.
+    if (clientId) onFocusRelease?.("thread_resumed");
     const previousTranscriptThreadId = hydratedFromRef.current;
-    const requestTicket = soloTenantSafety
-      ? requestFenceRef.current.begin(activeTenantId)
-      : null;
+    const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     if (soloTenantSafety) {
       resetTranscriptFollow();
       setHistoryTransitioning(true);
@@ -585,8 +701,11 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, confirmedActions?: PipelineConfirmedAction[]) => {
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
     if (soloTenantSafety && !activeTenantId) return;
+    // Deliberately NOT stored on the retry: an approval is for one call at one moment. Replaying it
+    // on a network retry would re-approve whatever the model emits the second time, which is the
+    // exact substitution the fingerprint exists to prevent.
     retryTurnRef.current = { base, rollback, userText, doc };
     setConnectionIssue(null);
     if (soloTenantSafety && typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -594,9 +713,7 @@ const PaigeAIChatInner = ({
       return;
     }
     const newMessages = base;
-    const requestTicket = soloTenantSafety
-      ? requestFenceRef.current.begin(activeTenantId)
-      : null;
+    const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     setIsLoading(true);
     setCancelled(false);
     setSteps([]); // fresh "watch her work" trace per turn
@@ -665,7 +782,10 @@ const PaigeAIChatInner = ({
             ...(threadId ? { threadId } : {}),
             ...(clientId ? { clientId } : {}),
             ...(clientContext ? { clientContext } : {}),
-            ...(confirmedActions?.length ? { confirmedActions } : {}),
+            // The exact calls the person ticked on a confirm card. The gate will only run a call
+            // whose fingerprint is here; `confirm:true` on its own no longer opens it.
+            ...(approvedFingerprints?.length ? { approvedConfirmations: approvedFingerprints } : {}),
+            ...(declinedFingerprints?.length ? { declinedConfirmations: declinedFingerprints } : {}),
             // Attachment (#480): the edge inlines pdf/image as image_url and docx
             // textContent as a text block. Pass the REAL mimeType/kind/textContent
             // — the hook already extracted docx client-side.
@@ -682,7 +802,10 @@ const PaigeAIChatInner = ({
               : {}),
             ...getUserClock(),
           }),
-          ...(requestTicket ? { signal: requestTicket.signal } : {}),
+          // Always. A conditional signal meant the surface that focuses clients issued
+          // un-abortable requests, so a switch could clear the transcript and then have the still-
+          // running stream write the previous client's content back into it.
+          signal: requestTicket.signal,
         }
       );
 
@@ -707,6 +830,15 @@ const PaigeAIChatInner = ({
         setMessages(rollback);
         setIsLoading(false);
         if (enableHistory) setStreamingThreadId(null);
+        // §70 — A TRANSIENT SERVER FAILURE LEFT NO WAY BACK. Retry existed only for the offline and
+        // timeout cases; a 5xx rolled the turn back with a toast and nothing else, so the person's
+        // message was gone and their only recourse was to type it again from memory. The turn is
+        // already captured in `retryTurnRef`, so the affordance costs nothing but was never offered.
+        //
+        // Deliberately 5xx ONLY. A 4xx — too large, malformed, refused on its merits — will be
+        // refused identically next time, and a Retry button that cannot succeed is exactly the kind
+        // of control §70 counts as not delivered.
+        if (response.status >= 500) setConnectionIssue("server");
         return;
       }
 
@@ -716,10 +848,13 @@ const PaigeAIChatInner = ({
       let queuedThisTurn: QueuedApproval[] = [];
       // Accumulate EVERY pending confirmation this turn — a blanket "Approve" runs
       // all of them, so the operator must see all of them (design-crew B1).
-      const confirmThisTurn: PaigeConfirmation[] = [];
+      const confirmThisTurn: Array<{ tool: string; summary: string; fingerprint?: string }> = [];
       // #29 — deliverables (document/image) Paige persisted this turn, streamed as
       // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
       const artifactsThisTurn: PaigeArtifact[] = [];
+      // The document proposal, if this turn produced one. At most one per turn — a turn carries at
+      // most one attached document — so a variable rather than a list.
+      let proposalThisTurn: ExtractionProposal | null = null;
       let textBuffer = "";
       let streamDone = false;
 
@@ -758,6 +893,68 @@ const PaigeAIChatInner = ({
             // #11 — the server confirmed the transition into the reply. A lightweight signal; the
             // client also derives "writing" from the first content delta below, so this is belt-and-braces.
             if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
+            // The server refused the focused client — that client does not belong to this
+            // workspace. This frame shipped for several releases with NO consumer anywhere in the
+            // app (zero hits repo-wide), which the handler's own comment described as "an
+            // advisory signal is not a control": the refusal reached the transcript as prose while
+            // the surface went on asserting a focus the server had denied.
+            //
+            // Two things happen, in this order. The refusal SENTENCE the server streams is parked
+            // so it survives the transcript reset that releasing focus is about to cause; then the
+            // surface that owns focus is told to let it go. `reason` is one of the handler's fixed
+            // refusal categories — never an identifier for the client that was refused, which is
+            // the whole point of the backend not echoing it.
+            // A document Paige read produced fields she is PROPOSING. NOTHING HAS BEEN WRITTEN.
+            //
+            // This frame existed for several releases with no consumer anywhere in the app, while
+            // the credit-report path wrote eight tables — three FICO columns on `profiles`,
+            // negative items, accounts, inquiries, factor scores, funding readiness — the moment a
+            // PDF was dropped in, and this surface did not even parse the `sync_status` that
+            // reported it. So the write was invisible AND unasked. Now the write waits for the
+            // card below.
+            if (parsed.extraction_proposal?.id && Array.isArray(parsed.extraction_proposal.fields)) {
+              proposalThisTurn = parsed.extraction_proposal as ExtractionProposal;
+              // Committed HERE, not left for a later delta to carry. This frame is emitted at the
+              // CLOSE of the turn, after the last reply token, so no subsequent `setMessages` runs
+              // — a proposal parked in a local and never committed would simply never appear, and
+              // the person would be left with a document Paige said she read and nothing to do
+              // about it. Same shape as the approval and confirm frames above, for the same reason.
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn }]);
+              continue;
+            }
+            if (parsed.client_scope?.status === "refused") {
+              // ONLY a PERMISSION verdict releases focus. Four of the server's six refusal
+              // categories mean UNKNOWN — an RPC blip, a failed authorization read, a thrown
+              // exception — and the handler's own comment says so: "a read failure is UNKNOWN
+              // authority, never permission." Treating those as "this client is not yours"
+              // permanently dropped the operator's focused client on a transient failure and told
+              // them something untrue about who the client belongs to. Both kinds still refuse the
+              // turn; only one is a fact about ownership.
+              const permissionRefusal = parsed.client_scope.kind === "permission";
+              const noticeText = permissionRefusal
+                ? "I couldn't confirm that client belongs to your workspace, so I've let go of that focus. Nothing was saved. Reopen them from your client list if you think that's wrong."
+                : "I couldn't check that client just now, so I stopped rather than guess. Nothing was saved — try that again.";
+              // THE NOTICE GOES IN THIS TURN'S TRANSCRIPT FIRST, unconditionally. That is where an
+              // explanation of a refused turn belongs, and it is what a person sees when nothing
+              // else happens.
+              assistantMessage = assistantMessage ? `${assistantMessage}\n\n${noticeText}` : noticeText;
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage }]);
+              // It is ALSO parked — but only when focus is genuinely about to be released, because
+              // that release resets the transcript and would otherwise delete the line just added.
+              //
+              // §13 — PARKING IT UNCONDITIONALLY WAS WRONG, and a test written for the stranding
+              // case caught it. A notice parked when nothing releases focus survives in the ref and
+              // is adopted by the NEXT epoch change of any kind — so a later, unrelated switch
+              // opened with an explanation of a refusal that had nothing to do with it. Epoch
+              // stamping alone does not fix that: both transitions leave the same epoch. Not
+              // parking it is what fixes it, and it is also the simpler truth — the notice only
+              // needs to survive a reset when a reset is coming.
+              if (permissionRefusal && onFocusRelease) {
+                pendingScopeNoticeRef.current = { epoch: scopeEpoch, text: noticeText };
+                onFocusRelease("refused");
+              }
+              continue;
+            }
             // #12 — conversation-compacting lifecycle (approaching/start/progress/done/skipped).
             if (parsed.paige_compacting) { setCompacting(parsed.paige_compacting as CompactingSignal); continue; }
             // Structured event: Paige queued an action to the approvals desk.
@@ -766,21 +963,13 @@ const PaigeAIChatInner = ({
               // #29 §39 — carry artifacts here too so the invariant "the card survives every rebuild"
               // never depends on the backend's frame ORDER (today approval_queued precedes paige_artifact,
               // but a reorder or a second approval_queued after an artifact must not wipe the card).
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
               continue;
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
-              confirmThisTurn.push({
-                tool: String(parsed.paige_confirm.tool || "action"),
-                summary: String(parsed.paige_confirm.summary),
-                ...(typeof parsed.paige_confirm.approvalToken === "string" && typeof parsed.paige_confirm.pipelineRef === "string"
-                  ? { approvalToken: parsed.paige_confirm.approvalToken, pipelineRef: parsed.paige_confirm.pipelineRef }
-                  : parsed.paige_confirm.approvalKind === "pipeline_folder_archive" && typeof parsed.paige_confirm.approvalToken === "string" && typeof parsed.paige_confirm.folderId === "string" && typeof parsed.paige_confirm.folderName === "string"
-                    ? { approvalKind: "pipeline_folder_archive", approvalToken: parsed.paige_confirm.approvalToken, folderId: parsed.paige_confirm.folderId, folderName: parsed.paige_confirm.folderName }
-                  : {}),
-              });
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary), ...(parsed.paige_confirm.fingerprint ? { fingerprint: String(parsed.paige_confirm.fingerprint) } : {}) });
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
               continue;
             }
             // #29 — Paige handed the user a deliverable (document/image) → attach an inline handoff card.
@@ -799,7 +988,7 @@ const PaigeAIChatInner = ({
             if (content) {
               if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined, extractionProposal: proposalThisTurn ?? undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -842,7 +1031,57 @@ const PaigeAIChatInner = ({
     }
   };
 
-  const handleSend = async (overrideText?: string, confirmedActions?: PipelineConfirmedAction[]) => {
+  /**
+   * Applies exactly what the person ticked — BY KEY, never by value.
+   *
+   * The request carries the upload id and the selected field keys. It does NOT carry the numbers.
+   * The server re-reads its own stored extraction and writes from that, so the human approves and
+   * the server writes the same thing by construction. If the values travelled through the browser,
+   * this surface would be deciding what lands on a credit profile, and "approved" would mean
+   * "posted a form" rather than "agreed to what I was shown".
+   *
+   * An empty selection is a real answer — Skip — not a no-op: it tells the server the person
+   * declined, so the proposal settles instead of sitting open forever.
+   */
+  const applyExtraction = async (proposal: ExtractionProposal, selectedKeys: string[]) => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      toast({ title: "Please sign in", description: "Your session expired. Sign in and try again.", variant: "destructive" });
+      throw new Error("no session");
+    }
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-apply-extraction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ upload_id: proposal.id, approved_keys: selectedKeys }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // The card renders its own error state from a thrown promise. Surfacing the server's
+      // sentence rather than a generic one, because it is the one that says whether anything was
+      // written (§13 — it says "Nothing was changed" when nothing was).
+      toast({ title: "Couldn't save those", description: String(body?.error ?? "Try again in a moment."), variant: "destructive" });
+      throw new Error(String(body?.error ?? "apply failed"));
+    }
+    // §13/§70 — NOTHING IS UNMOUNTED HERE, AND THAT IS THE FIX. The first version marked the turn
+    // settled on success, which unmounted the card in the same commit — reproducing, one step
+    // later, exactly the invisibility this slice is about: the write to a credit profile happened
+    // and the person saw nothing. The card vanished, its own "Saved" state never rendered, and the
+    // only toast was on failure. An independent reviewer read the post-apply DOM and found the
+    // transcript back at the greeting.
+    //
+    // `ExtractionProposalCard` already owns a settled state and shows what was recorded. It only
+    // needed to be left alone to do it. Not re-rendering the message list is also what preserves
+    // that internal state — a `setMessages` here would reconcile the card back to `idle`.
+    //
+    // Re-offering after a reload is not a risk to guard against: `extractionProposal` is live-turn
+    // only and is never rehydrated, so there is nothing to re-offer.
+  };
+
+  /** `approvedFingerprints` carries the exact calls a person ticked on a confirm card. The server's
+   *  gate requires the call it is about to run to be one of them; a `confirm:true` flag alone no
+   *  longer opens it. Absent on every ordinary turn. */
+  const handleSend = async (overrideText?: string, approvedFingerprints?: string[], declinedFingerprints?: string[]) => {
     const text = (overrideText ?? input).trim();
     // Allow a send with text OR an attachment alone (#480). An override (confirm
     // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
@@ -867,7 +1106,7 @@ const PaigeAIChatInner = ({
     setMessages(base);
     setInput("");
     if (currentDoc) setAttachedDoc(null);
-    await streamTurn(base, rollback, userContent, currentDoc, confirmedActions);
+    await streamTurn(base, rollback, userContent, currentDoc, approvedFingerprints, declinedFingerprints);
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -988,7 +1227,11 @@ const PaigeAIChatInner = ({
   /* Hold-to-dictate — neutral/indigo mic, never gold. Dictated words append into
      the composer; the operator edits before sending. The callback closes over the
      authenticated epoch so a late prior-account final cannot enter the new composer. */
-  const dictationEpoch = activeTenantId;
+  // The dictation epoch is the SAME scope value the fence and the reset use. It was
+  // `activeTenantId`, which stopped matching `acceptedEpochRef` the moment that ref became
+  // composite — and the guard below compares the two, so every dictated segment was silently
+  // dropped. Caught by the existing contract suite, which is what it is for.
+  const dictationEpoch = scopeEpoch;
   const micButton = (
     <DictationMicButton
       key={soloTenantSafety ? `${dictationEpoch ?? "resolving"}:${dictationGeneration}` : "shared"}
@@ -1176,18 +1419,17 @@ const PaigeAIChatInner = ({
                         {!!message.confirm?.length && !message.confirmResolved && index === messages.length - 1 && !isLoading && (
                           <PaigeConfirmCard
                             items={message.confirm.map((c) => c.summary)}
+                            // The fingerprints of the exact calls these summaries describe. Without
+                            // them "Approved — run it." is a sentence the model interprets, and the
+                            // call it re-emits need not be the one the person read.
+                            fingerprints={message.confirm.map((c) => c.fingerprint).filter((f): f is string => !!f)}
                             disabled={isLoading}
-                            onApprove={() => void handleSend(
-                              "Approved — run it.",
-                              message.confirm?.flatMap<PipelineConfirmedAction>((confirmation) =>
-                                confirmation.approvalToken && confirmation.pipelineRef
-                                  ? [{ kind: "pipeline_archive" as const, confirmationToken: confirmation.approvalToken, pipelineRef: confirmation.pipelineRef }]
-                                  : confirmation.approvalKind === "pipeline_folder_archive" && confirmation.approvalToken && confirmation.folderId && confirmation.folderName
-                                    ? [{ kind: "pipeline_folder_archive" as const, confirmationToken: confirmation.approvalToken, folderId: confirmation.folderId, folderName: confirmation.folderName }]
-                                  : []
-                              )
-                            )}
-                            onDeny={() => void handleSend("Hold off — skip that one.")}
+                            onApprove={(fps) => void handleSend("Approved — run it.", fps)}
+                            // Declining CANCELS the stored proposal, rather than only saying so in
+                            // prose the model interprets. Without this the row stays live for its
+                            // full window, and a later turn could still act on something the
+                            // person had already said no to.
+                            onDeny={(fps) => void handleSend("Hold off — skip that one.", undefined, fps)}
                           />
                         )}
                         {/* Reloaded from history: the confirm moment already passed —
@@ -1216,6 +1458,21 @@ const PaigeAIChatInner = ({
                                 }}
                               />
                             ))}
+                          </div>
+                        )}
+                        {/* A document Paige read produced fields she is PROPOSING. Nothing has been
+                            written yet; this card is where a person decides what gets recorded. The
+                            same component the client portal already ships — this is a port, not a
+                            new interaction (§00: CD owns how it looks, and it already ruled on
+                            this one). Live-turn only: a rehydrated turn must never re-offer a
+                            proposal that has already been applied or declined server-side. */}
+                        {message.extractionProposal && (
+                          <div className="mt-2">
+                            <ExtractionProposalCard
+                              proposal={message.extractionProposal}
+                              onConfirm={(selectedKeys) => applyExtraction(message.extractionProposal!, selectedKeys)}
+                              onSkip={() => void applyExtraction(message.extractionProposal!, [])}
+                            />
                           </div>
                         )}
                       </>
@@ -1290,7 +1547,7 @@ const PaigeAIChatInner = ({
             )}
             {soloTenantSafety && connectionIssue && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
+                <span>{connectionIssue === "offline" ? "You appear to be offline. This message has not been sent." : connectionIssue === "server" ? "Something went wrong on our side and PAIGE didn't get to answer. Your message wasn't sent — try again." : "PAIGE did not respond before the local timeout. No later chunks will be accepted; earlier server work may still complete."}</span>
                 <Button type="button" variant="outline" size="sm" disabled={!activeTenantId} onClick={() => {
                   const retry = retryTurnRef.current;
                   if (retry) void streamTurn(retry.base, retry.rollback, retry.userText, retry.doc);
@@ -1492,13 +1749,24 @@ const PaigeAIChatInner = ({
                   <div data-solo-composer-input className="min-w-0 px-3.5 pb-1 pt-3">
                     {composerTextarea}
                   </div>
+                  {/* §70/§13 — THREE ADVERTISED AFFORDANCES, NONE OF WHICH EXISTED HERE.
+                      This strip offered three sigils — at-sign for handing work to someone, slash
+                      for calling a skill, hash for remembering something. Solo passes no chips, so
+                      `filteredCommands` is always empty and the slash menu can never open; there is
+                      no at-sign or hash handling anywhere in this file. A person typing any of the
+                      three got nothing and no explanation. "UI that describes a capability without
+                      allowing its human flow" is the §70.1 definition of not delivered.
+
+                      THE ELEMENT STAYS, THE CLAIM GOES. The three-level composer — input, this
+                      row, actions — is a layout CD designed, and deleting a level would be me
+                      restyling their surface, which §00 forbids. So the row renders nothing rather
+                      than something false: an honest absence, which is what CC owes when a value
+                      has no capability behind it. What belongs here instead is CD's to decide, and
+                      it is filed as owed rather than filled in by me. */}
                   <div
                     data-solo-composer-guidance
-                    title="Guidance only — available actions depend on connected capabilities."
                     className="truncate px-3.5 pb-2 text-[10px] leading-4 text-muted-foreground"
-                  >
-                    @ hand it to someone · / call a skill · # remember
-                  </div>
+                  />
                   <div
                     data-solo-composer-actions
                     className="flex min-w-0 items-center gap-1.5 border-t border-border/70 px-2.5 py-2"

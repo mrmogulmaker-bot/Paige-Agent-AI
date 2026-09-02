@@ -179,6 +179,67 @@ via the committed `scripts/tool-confirmation-sql-proof.sql`, plus 46 unit tests 
 livelock regressions. Inside a studio thread `STUDIO_AUTO_TOOLS` still flips five build tools to
 `auto`, so the binding does not reach those there.
 
+**MERGE CORRECTION, 2026-09-02 (§13).** The binding above shipped, and the branch below
+replaces the RUNTIME half of it: `paige-ai-chat` now gates on `paige_pending_confirmations`,
+which proves everything the row above proves and additionally executes the STORED arguments
+and requires the operator's Approve click — the two things #711 recorded as NOT proven. The
+`paige_tool_confirmations` table and `_shared/toolConfirmation.ts` remain in place but are no
+longer on the execution path. See `docs/brain/decision-log.md`, 2026-09-02.
+
+### PAIGE Chat — the governed working interface (2026-08-31, branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT YET MERGED)
+
+**Status: on a branch, verified, awaiting Gate 2. Nothing below is live on production yet.** Recorded
+here per §0 so the next session does not re-diagnose any of it.
+
+Six vertical slices, each independently reviewed by an adversarial agent, repaired, and re-verified.
+
+| Slice | What changed | Where |
+|---|---|---|
+| S1 | Every provider call files its `paige_llm_trace` row under the tenant whose evidence it carries. Eight of nine call sites passed no trace context and wrote untenanted platform rows — the ones carrying the MOST evidence. | `paige-ai-chat`, `_shared/claude.ts` seam |
+| S2 | A focused-CLIENT switch now ends the conversation the way an account switch does (one composite scope epoch). The isolation fence stopped being opt-in — the one surface that focuses clients did not set the flag. `paige_chat_turn_append` gained a tenant predicate. A refused client focus is released, and the refusal survives the reset it causes. | `PaigeAIChat.tsx`, `PaigeWorkspace.tsx`, migration `20261018000000` |
+| S3 | **A credit report dropped into chat no longer writes eight tables unasked.** It produces a proposal a person reviews field by field; approval carries KEYS, never values, and the server writes from its own stored extraction. Prohibited sensitive categories excluded; uncertainty omitted rather than defaulted. | `paige-ai-chat`, new `_shared/credit-extraction-payload.ts`, new `paige-apply-extraction`, migration `20261019000000` |
+| S4 | An approval is BOUND to the call it approved, not to a boolean. `update_client_data` and `delegate_to_subagent` entered the gate. The autonomy catalogue now covers every gated tool (was 23 of 46). **The Trust Compass now actually clamps** what Paige may do unattended. **The binding MECHANISM changed twice after this — read R1 and R2 below before trusting any description of it.** | `paige-ai-chat`, migrations `20261020000000`, `20261039000000` (renumbered from `20261021000000` on the 2026-09-02 merge — that version was already taken on prod by main's tool-confirmation binding) |
+| R1 | S4's mechanism (the surface echoes a fingerprint back) made every gated tool **un-executable on five of the six chat surfaces**, because only `PaigeAIChat` sends the echo — and the client-portal seat lost `update_client_data`, its only write. The proposed call is now persisted and approval carries a TOKEN; the STORED arguments execute, so the model never restates the call and a document-sized argument cannot livelock. | `paige-ai-chat`, migration `20261023000000` |
+| R2 | **R1 opened a self-approval hole and this closes it — see §10.** The nonce (a token cannot be redeemed by the turn that minted it) held, but was not enough: the token is a fingerprint of the ACTION, so any LATER request that re-proposed the same call got it back and spent it — including one whose human message was "cancel that". **The token is removed.** Approval is a rendered card (unforgeable — a model cannot write a request body) or `confirm: true` (the model's word); both redeem the STORED call. Declining now CANCELS the proposal. | `paige-ai-chat`, migration `20261026000000`, `PaigeConfirmCard.tsx` |
+| R3 | **The risk split became a policy.** `_shared/action-risk.ts` classifies all 51 mutations once — 28 `ordinary` (either channel), 21 `high` (rendered card only; the model's word is refused), 2 `owner_only` (not a chat action at any approval strength). `MUTATING_TOOLS` is that policy's key set, so there is no second list to drift out of step. An unclassified write refuses at dispatch AND fails CI (`lint:action-risk`). **Owner ruling 2026-09-01 absorbed:** Paige may never grant or raise her own autonomy through Chat, so `automation_set_grant`/`automation_set_state` refuse down every channel including a clicked card. | new `_shared/action-risk.ts`, `paige-ai-chat`, new `scripts/ci/action-risk-lint.mjs` |
+| A | §67 **the process record**: `paige_automations` + `paige_automation_acts` + a trigger catalogue. A grant is fingerprinted over the act chain, so changing the chain drops an `auto` grant back to `confirm` — the human approved a specific sequence. | migration `20261022000000` |
+| B | §67 **the resolver**: `resolve_automation_autonomy` = `min(grant, most restrictive act floor, Trust Compass ceiling)`, returning `capped_by` (which bound is holding it) and `dark` (why it could never fire) as separate answers. | migration `20261024000000` |
+| C | §67 **the chat seam**: five tools. A tenant describes repeatable work and Paige builds it — born `confirm` + `draft`, explicitly, whatever the request said. **She can build a process; she can never arm one.** Two of the five (`automation_set_grant`, `automation_set_state`) became `owner_only` under R3 and now refuse in chat outright — so **`paige_automations.granted_lane` and `.state` are currently settable by nothing**, the Settings control being owed to CD (§00). Automations were already inert (no trigger emits), so nothing regressed. | `paige-ai-chat`, migration `20261025000000` |
+| C1 | **Every write Paige performs now says what changed, for whom, on whose authority, and whether it worked.** Ten of forty-nine mutations reached the per-client rail and three wrote a bespoke `audit_logs` row; everything else — publishes, documents, provider calls, role grants, deals, plans — left no trace, and the rail's `ref_id` was hardcoded null so even a mirrored event could not name the record it changed. One seam at the point every executed tool passes through, into `paige_audit_log` (which already carries `tenant_id`). The rail's membership is derived from the same target map, which added `update_client_data` — the most-used per-client write, and the client seat's only one. **A `client` seat could not record its own action at all** (the insert policy required `is_staff`), and a tenant-level admin could read every UNTENANTED audit row; both closed. | `paige-ai-chat`, migration `20261027000000` |
+| M1 | **Paige opens knowing what she is carrying.** A transcript is what was SAID, not what is OWED, and it does not survive a new thread, a compaction, or a person returning a week later. Everything needed already existed in four places and nothing read them together. `paige_operating_memory()` composes open commitments (`plan_items`), live processes (`paige_automations`), work in flight including anything stopped at an approval (`paige_actions`), and what she last did with its real outcome (`paige_audit_log`) — **nothing is stored, so no copy can go stale.** SECURITY INVOKER so RLS stays the boundary; **no tenant parameter at all** — scope is `auth.uid()` + `current_user_tenant_id()`. A failed read renders NOTHING rather than implying nothing is outstanding. | migration `20261028000000`, `paige-ai-chat`, `_shared/client-context.ts` |
+| M2a | **Three semantic reads had been raising on every call, and nobody could see it.** `match_paige_memory` (semantic client memory), `match_rag_documents` (document retrieval) and `match_prompt_memory` (the §26 prompt-forge loop) pin `search_path = public` — correct DEFINER practice — but the `vector` type and all sixteen of its operators live in `extensions`, so `<=>` could not resolve and each raised **42883** before returning a row. Driven on prod as a fully authorised caller, so it was never about permissions. **`match_rag_documents` was broken twice**: past the operator error it hit `42P01` from `array_agg(r.id)` over a subquery aliased `d` — one stray token in 3,033 characters, unreachable until now. Every call site degrades to an empty result, which is why "no matches" and "cannot execute" were indistinguishable for months. `lint:vector-path` now fails any similarity function that cannot resolve its own operator. | migration `20261029000000`, new `scripts/ci/vector-search-path-lint.mjs` |
+| M2b | **`client_memory` had no tenant isolation at all** — no tenant column, no restrictive policy, and its widest policy keyed on `has_role(auth.uid(),'admin')`, which is tenant-agnostic (§59). Driven: tenant A's admin read **2 of tenant B's** client memories. Zero rows today, and chat writes into it every turn, so it fills the moment the product is used. Closed by DERIVING the tenant (`client_id → clients.tenant_id`, and for owner rows the subject's `tenant_members`) in a RESTRICTIVE policy — **no producer changes**, which matters because the §37 inventory is 9 edge functions, 6 frontend surfaces and MCP tools, several belonging to surfaces this project does not own. Also: `user_preference` is written at two sites and was rejected by the CHECK (23514, driven) — every preference Paige ever detected was thrown away. | migration `20261030000000` |
+| D1 | **Paige files a note to the right client, on confirmation.** `crm_add_note` writes `client_notes` — the panel a team actually reads, keyed on the contact record — through the CALLER's client so RLS applies. The routing decision is a model's, so the destination is resolved against the caller's tenant before anything is written, and the insert policy now requires it too (a note could previously be filed onto ANOTHER tenant's client while stamping your own — driven, and not a read leak, which is why it would never have been noticed). Visibility is stated rather than offered: `client_notes` has no client-facing read policy at all, so staff-only is a fact, and the card says so. Lands on the client's rail and in the write trail. **The DOCUMENT half is NOT built and is blocked, not deferred:** `public.documents` has no `tenant_id` and owner-only policies, so a document filed to a client would be invisible to the team that filed it — a contract gap on a table this project does not own. | migrations `20261031000000`, `20261032000000` |
+| S5 | The automatic URL fetch is tier-gated — a portal client pasting a link no longer causes server-side egress. (The raw provider-payload spread was already closed on `main` by the MCP registry work; nothing rebuilt.) | `paige-ai-chat` |
+| S6 | Removed four claims with no capability behind them: three dead composer shortcuts, an unbound ⌘K, a panel saying voice input was off while the mic worked, and a session-summary hook that had been sending `Bearer undefined` since it was written. | `PaigeAIChat.tsx`, `TenantCommandCenterShell.tsx`, `SoloPaigeWorkspace.tsx`, `usePaigeMemory.ts` |
+
+**§13 — WHAT IS NOT DONE, so nobody reads the above as more than it is.**
+- **No authenticated live drive.** This session has no browser capability; every §70.1 gate item that
+  requires a person completing the flow on the real platform is **owed to a capable session** (§32.c).
+- **Migrations are rollback-proven, not persisted.** Each was driven on production Postgres inside
+  `BEGIN..ROLLBACK` with negative controls. The §32.a persisted-apply confirmation is owed AFTER a
+  merge the owner authorizes.
+- **`runGeneralDocumentExtraction` is still undefined** — called, never defined, one of the 14
+  baseline `deno check` errors. Non-credit documents therefore still produce no proposal.
+- **`paige-mcp` does not consult `resolve_tool_autonomy`** — a second, still-ungoverned write path.
+  Pre-existing, NOT introduced by this branch. It is scope-enforced (`workflows.run` etc.), not
+  lane-enforced. Deliberately not fixed here: MCP callers have no confirm affordance, so gating it
+  would make every MCP write un-executable — the exact failure R1 exists to undo.
+- **Approval on five of the six chat surfaces is still MODEL-ASSERTED.** A new request proves a
+  person sent another message, not that the message was a yes. Only a surface that renders the
+  summary and echoes back its fingerprint proves a human approved THAT call, and one surface does
+  (`PaigeAIChat`). Building the card on the other five is interface work owed to CD (§00).
+- **Triggers do not EMIT yet** (slice D of the autonomy architecture). Four trigger rows are seeded —
+  only the ones verified against production — not the eighty the design pack declares, because
+  `is_live` is the field a builder trusts to decide what it may offer a tenant.
+- **Design items are owed to CD**, listed in `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md` §4b.
+
+**Live platform finding, surfaced by the S4 proof and worth an operator's attention on its own:**
+`operator_rls_coverage` is **FAILING** on production, which is already capping the platform's trust
+ceiling from 3 to 2 via the §68 decay law.
+
+**Full map:** `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md` (estate grounding, ordered slices, collision
+ownership, what is owed to CD).
 
 ### §65 operator route tree — AUTHORED from the Super Admin design pack (2026-08-18, PR #541)
 
@@ -659,6 +720,7 @@ The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitiv
 - ✅ **Signup completion gate** — migrations `20260714013653` + `20260714015706`.
 - ✅ **Action bus** (§8) — `20260711024632_action_bus.sql` + drainer on */2 cron.
 - ✅ **§16 10-department org model** — `paige_departments` via `20260713120000_org_blueprint_departments.sql`.
+- ✅ **§34-L1 metering — Paige's spend is now BILLABLE usage, not just observable** (MET1, branch `codex/paige-knowledge-active-tenant-isolation-v2`, **NOT MERGED — draft PR, Gate 2 not requested**). `meter_llm_usage(p_limit)` drains `paige_llm_trace` into `platform_usage_events` as `llm_tokens` rows (service-role only, idempotent via a partial unique index on `metadata->>'trace_id'`). **The state it corrects, measured on prod 2026-09-01:** 663 traces, 15,578,931 tokens spent on tenants' behalf, and **zero LLM usage records had ever been written** — the cost half of §67 autonomy, unmetered. **The finding underneath it:** 197 of 228 meterable traces (86%, and 99.3% of tokens) carried NO cost, because the direct `_shared/claude.ts` path traced usage and never priced it while `model-router` did; the platform's `$1.38` estimate covered 0.7% of its tokens. Fixed at the writer (`_shared/token-pricing.ts`, the one home — `claude.ts` cannot import the router without a cycle, which is why THREE copies of the price table had accumulated), and priced per MODEL for anthropic so haiku is no longer valued at ~3× list. Historical rows are NOT back-priced (§13 — that would be invention); they meter tokens and carry an explicit null cost. **Recording usage is not charging for it:** no price book, no invoice, no `reconciled_invoice_id`, and no consumer surface yet. Evidence: `scripts/sql/meter-llm-usage-proof.sql` 12/12 on prod with two controls, mutation-tested; `test:token-pricing` 20/20 + `test:trace-wiring` 12/12, both in CI, 14 mutations all caught. **§32.a persisted-apply and §32.c live drive both OWED.**
 - ✅ **§34 Intelligence spine** (partial): `paige_prompt_template` · `paige_prompt_memory` · `paige_llm_trace` · `paige_eval` · `paige_subagents_talent` · `paige_action_bus_drainer` · `paige_action_worker_cron` · `studio_visual_critique_log`. Prompt-forge at `_shared/prompt-forge.ts`; visual-critique gate at `_shared/visual-critique-gate.ts`.
 - ✅ **`paige_owner_memory` table** — migration `20260810120000`, shipped in PR #406. L6/L8 memory table, distinct from `paige_prompt_memory`.
 - ✅ **Voice = Ivanna** (ConvAI agent live post 2026-08-08 hotfix; in-app chat voice via `_shared/tts-router.ts` `DEFAULT_TTS_VOICE`)
@@ -1181,6 +1243,101 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   governed contract, but no generic sales taxonomy is supplied. Section 5 now states that exact
   contract and also records the canonical one-shell rule for all Solo tenants so an account where a
   defect was observed can never become a separate shell implementation.
+- **2026-09-01 — I closed a gate by handing the key to the model. Two reviews, two holes, and the
+  second one was mine (branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT
+  MERGED).** Recorded in full because the shape of the mistake matters more than the fix.
+
+  **The property that was protecting every write was STRUCTURAL.** The confirm gate's re-entry test
+  read `approvedConfirmations`, which arrives only in the validated REQUEST BODY — and a model
+  cannot write a request body. Self-approval was impossible by construction, not by instruction.
+
+  **Repair 1 (`20261023000000`) traded that away without noticing.** The echo mechanism it replaced
+  was genuinely broken — only one of six chat surfaces sends the echo, so every confirm-gated tool
+  had become permanently un-executable on the other five, and the client-portal seat had lost
+  `update_client_data`, its only write. The fix returned a `confirm_token` so approval could be
+  expressed anywhere. But it returned it **in the tool result**, and the agentic loop feeds tool
+  results straight back into the model's own context and issues another round. The model could
+  replay its own token and execute — one round after proposing, with no operator — across all 48
+  gated tools, including role grants, a permanent workflow delete, and `automation_set_grant`, the
+  one tool §67 says Paige must never be able to use on herself. The card the person eventually saw
+  was an Approve button for something that had already run.
+
+  **Every test I had written kept passing**, because each supplied the token the way a SURFACE
+  would and none ever asked whether the MODEL could supply it. That is the transferable lesson: I
+  tested the mechanism I had built rather than the adversary it exists to stop. An independent
+  adversarial review driving the real handler found it; no static reading would have.
+
+  **Repair 2 (`20261026000000`) restored a structural floor — and was still not enough.** A proposal
+  records the request that minted it; the claim excludes it. That much held: a model cannot start an
+  HTTP request, so same-turn self-approval became impossible again. A third review then broke it a
+  different way and I reproduced it before acting. **The token is the fingerprint of the ACTION, not
+  a secret.** Any LATER request that re-proposed the same call was handed it straight back — and a
+  request is just the next message, whatever that message says. Driven, a turn whose human text was
+  *"No. Do not do that. Cancel it."* executed the stored write and raised an autonomy grant from
+  `confirm` to `auto`. The nonce was never the flaw; **re-issuing the key on demand was.**
+
+  **Repair 3 removes the token rather than patching it, and turns the risk split into a policy.**
+  Approval now arrives down two channels the code names and treats differently: a rendered card
+  (its fingerprint travels in the request body, which a model cannot write) and `confirm: true` (the
+  model's own word). `supabase/functions/_shared/action-risk.ts` decides which channel each action
+  needs, from the action alone — 28 `ordinary`, 21 `high` (card only), 2 `owner_only`. `MUTATING_TOOLS`
+  is that policy's key set, so the two lists that must agree became one. An unclassified write is
+  refused at dispatch and fails CI. Declining a proposal now CANCELS it, instead of leaving it live
+  for its full window while the refusal existed only as prose the model had to keep honouring.
+
+  **What repair 3 still does NOT prove, stated because an ambiguous sentence here is how the first
+  hole got written:** for an ORDINARY action on a card-less surface, the yes is still model-asserted
+  prose. That is the trust level those surfaces have always had, now with the arguments pinned
+  server-side, a single-use claim, scope re-checked at redemption, and a decline that actually kills
+  the proposal. It is not a proof that a human agreed, and it is not claimed as one — which is
+  exactly why nothing irreversible, permission-changing, outward-facing or money-spending is
+  reachable that way any more. Building the card on the other five surfaces is the real close-out;
+  it is interface work owed to CD (§00).
+
+  **Three transferable rules, each paid for:**
+  1. **When a fix removes a structural impossibility and replaces it with an instruction, that is
+     the regression** — even when the thing it fixes is real. "Do NOT retry" in a tool result is
+     not a gate.
+  2. **A test that supplies a credential the way the honest caller would cannot tell you whether a
+     dishonest caller could supply it too.** Adversary-shaped fixtures, not just happy-path ones.
+  3. **A hole closed twice is a hole whose SHAPE you have not understood yet.** Repair 2 fixed the
+     instance the reviewer showed me — same-turn replay — and I treated the class as closed. The
+     class was "the model can obtain a redeemable key", and the second review found the other way to
+     obtain it in an afternoon. When a fix is scoped to the exact reproduction you were handed, ask
+     what the reproduction was an INSTANCE of before calling it done.
+  4. **The live catalogue is the source of truth about the live database, not the migration
+     history.** Extending the audit trail, I read the migrations, found a tenant-agnostic
+     `has_any_role(...)` on SELECT, recognised the §59 trap and wrote a migration justified by
+     "any tenant admin can read every tenant's audit rows". Querying production first showed that
+     is FALSE — a RESTRICTIVE `tenant_isolation` policy exists on that table that NO migration in
+     this repository creates, and being restrictive it ANDs tenant scope onto every read. The real
+     defects were different and smaller. A grep of `supabase/migrations/` is not a description of
+     prod; the near-miss was shipping a security fix for a vulnerability that did not exist while
+     the two that did went unnamed.
+  5. **There are TWO system-prompt paths, and the one that matters is the default.** The first
+     wiring of the operating memory reached only `FUNDING_SKILL_PROMPT` — the opt-in funding
+     skill — while every tenant that has NOT opted in receives `buildNeutralCorePrompt`. So the
+     memory landed for the vertical and not for the platform default: §2's exact failure shape,
+     and invisible to any check that happened to drive a funding tenant. Both paths are now
+     driven by separate checks. When adding anything to the prompt, ask which of the two you
+     wired, then wire the other.
+  6. **A retrieval that degrades to an empty result can be DEAD for months and look healthy.**
+     Three vector searches raised on every call; every caller caught the error and returned `[]`,
+     which is the right shape for a retrieval that must never break a conversation and is exactly
+     what hid it. "Nothing matched" and "this cannot execute" are the same observation from
+     outside. Anything that fails soft needs a check that distinguishes the two — the delivery map
+     had INFERRED one of these was broken and inferred the wrong cause; driving it found the real
+     one, and two more beside it.
+  7. **A test fixture can lie in the direction that makes you feel safe.** The harness's
+     service-role `clients` double answered for ANY id and ignored an `eq("tenant_id", …)` filter
+     entirely — so every service-role tenant check appeared to pass whether the handler scoped or
+     not. A check written against it went green while the handler had genuinely filed a note onto
+     another tenant's client. Fixtures that emulate authorization must be at least as strict as
+     the thing they emulate, or they grade themselves.
+  8. **Mutation-test the fix, not only the feature.** Roughly 40 mutations were driven across this
+     branch and they found FOUR vacuous tests — checks passing while reading an empty object, or
+     because deleting the code under test made it throw instead of misbehave. Two of those were in
+     the very tests written to prove this repair.
 
 - **2026-09-01 — this document asserted that number search was shipped AND that it was the only
   remaining Twilio gap, in three places at once (PR #703 follow-up).** Recording a new capability
@@ -1255,7 +1412,6 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   DIFFERENT documents, and this is the one that answers *"do we already have this?"* — so the entire
   Solo comms capability was absent from it while being live in production. Recorded here rather than
   quietly backfilled, because the failure mode is the doc silently lagging reality.
-
 - **2026-08-30 — the honesty of a compliance surface rested on nobody exercising a policy
   (PR #672, owner-approved).** `tenant_a2p_registrations`' RLS UPDATE and INSERT policies are
   row-scoped with **no column restriction**, so a tenant admin could set `submitted_at` and a

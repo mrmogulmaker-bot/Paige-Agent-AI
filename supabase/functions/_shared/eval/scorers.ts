@@ -13,6 +13,7 @@
 // §34: pure in-repo — model-router only. No vendor eval/judge SDK.
 import { routedChatCompletion } from "../model-router.ts";
 import type { TraceCtx } from "../llm-trace.ts";
+import { estimateTokenCostUsd } from "../token-pricing.ts";
 import type { ScoreResult } from "./types.ts";
 
 /** What a scorer is handed for one case. */
@@ -162,14 +163,13 @@ const JUDGE_SYSTEM =
   'Return STRICT JSON with exactly these keys: {"score": <number 0..1>, "rationale": <string>}. ' +
   "Output ONLY the JSON object — no prose, no code fence.";
 
-// Local, CLEARLY-LABELED cost estimate (estimateCost is not exported from the router). Anthropic
-// reasoning-tier list price, in+out tokens — an estimate recorded on the result, never a bill (§13).
-const ANTHROPIC_IN_PER_1K = 0.003;
-const ANTHROPIC_OUT_PER_1K = 0.015;
-function estimateJudgeCost(tokensIn?: number, tokensOut?: number): number | undefined {
-  if (tokensIn === undefined && tokensOut === undefined) return undefined;
-  const c = ((tokensIn ?? 0) / 1000) * ANTHROPIC_IN_PER_1K + ((tokensOut ?? 0) / 1000) * ANTHROPIC_OUT_PER_1K;
-  return Math.round(c * 1_000_000) / 1_000_000;
+// The judge's cost comes from the ONE pricing home (§18). This used to be a local copy, with a
+// comment explaining that the router did not export its estimator — so the platform carried three
+// token-price tables that could drift apart silently. `_shared/llm-trace.ts` owns the rate now, and
+// this passes the judge's model so a haiku judge is not booked at reasoning-tier prices.
+// Still an estimate recorded on the result, never a bill (§13).
+function estimateJudgeCost(model: string | null, tokensIn?: number, tokensOut?: number): number | undefined {
+  return estimateTokenCostUsd("anthropic", model, tokensIn, tokensOut);
 }
 
 /** Extract the outermost {...} JSON object from a (possibly fenced/prose-wrapped) reply. review.ts idiom. */
@@ -224,7 +224,7 @@ export async function rubricJudge(input: ScorerInput, trace?: TraceCtx): Promise
     const resp = await routedChatCompletion("plan", body, ctx);
     content = resp?.choices?.[0]?.message?.content ?? "";
     model = resp?.model ?? null;
-    costUsd = estimateJudgeCost(resp?.usage?.prompt_tokens, resp?.usage?.completion_tokens);
+    costUsd = estimateJudgeCost(model, resp?.usage?.prompt_tokens, resp?.usage?.completion_tokens);
   } catch (e) {
     console.error("[eval] rubricJudge call failed (non-fatal):", (e as Error)?.message);
     return { scorer: "rubric_judge", scorerKind: "llm_judge", score: null, passed: null, status: "low_confidence", rationale: "judge call errored", judgeModel: model };

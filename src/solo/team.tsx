@@ -4,6 +4,7 @@ import { Ic, Avatar, Meter, SlideOut, SubTabs, Wrap, PageHead } from "./_shared"
 import { TM_DIR_SEED, TmDirectory } from "./team-dir";
 import { TmRoles, InviteFlow } from "./team-roles";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
+import { useSoloActivityFeed, departmentLabel, elapsedLabel } from "./data/useSoloActivityFeed";
 
 export const TM={
 people:[
@@ -44,22 +45,48 @@ accts:[
  {c:'Cairn Advisory',own:'You',hrs:12,val:6200,paige:'Invoicing, recaps',load:'ok'},
  {c:'Mercer Studio',own:'You',hrs:9,val:1180,paige:'Everything routine',load:'light'},
  {c:'Okonkwo Group',own:'Sasha Kim (not invited)',hrs:6,val:600,paige:'Everything routine',load:'light'}],
-gaps:[
- {t:'Two accounts are assigned to a seat that has never signed in',b:'Selby and Okonkwo point at Sasha Kim. In practice you are covering both — 42 hours a month.',
-  act:'Send Sasha the invite',tone:'bad'},
- {t:'No one owns the books',b:'Reconciliation is manual and lands on you the first week of every month. Dolores reads quarterly, which is after the fact.',
-  act:'Raise Finance to full autonomy',tone:'warn'},
- {t:'Devon has 20 hours a week and nothing on him',b:'Ridgeline is the obvious first move. It takes 38 hours and returns $2,400 — the worst ratio in the book.',
-  act:'Move Ridgeline to Devon',tone:'warn'}],
-feed:[
- {who:'Finance',ai:true,t:'Sent the Ridgeline dunning reminder',d:'Second attempt. Card still declining.',w:'8 min ago'},
- {who:'Jordan Avery',ai:false,t:'Approved the Northwind kickoff sequence',d:'Five emails over fourteen days.',w:'41 min ago'},
- {who:'Marketing',ai:true,t:'Drafted the reframe email for Verity',d:'Waiting on your read. Sales autonomy is draft-only.',w:'1 hr ago'},
- {who:'Operations',ai:true,t:'Rescheduled two discovery calls',d:'Both moved out of your Thursday block.',w:'2 hrs ago'},
- {who:'Jordan Avery',ai:false,t:'Raised Finance autonomy to full',d:'Invoicing and dunning now run without approval.',w:'yesterday'},
- {who:'Systems',ai:true,t:'Reconnected the HubSpot sync',d:'Token expired overnight. Repaired in 40 seconds.',w:'yesterday'},
- {who:'Client Success',ai:true,t:'Answered 6 routine client emails',d:'All inside the approved reply library.',w:'yesterday'},
- {who:'Marketing',ai:true,t:'Flagged a competitor price change',d:'Coach Sarah Linley dropped her mid-tier to $750.',w:'2 days ago'}],
+// gaps — REMOVED 2026-09-01 (§13/§58), recorded rather than deleted quietly.
+//
+// Three "findings" rendered under "Where the team is thin · What Paige would fix first", each
+// with an action button offering to act on it. All three were invented. The first named a
+// colleague who does not exist, attributed two named client accounts to them, and put a monthly
+// hours figure on the coverage. The others asserted who owns the books and how often someone
+// reads them, and ranked a named client by invented hours against invented revenue.
+//
+// UNLIKE the activity feed and the approval modals, THIS ONE CANNOT BE WIRED. There is no
+// gap-analysis seam, and the inputs it would need — per-seat capacity in hours, hours spent per
+// client, revenue per client, who reads what and when — are not recorded anywhere in this
+// platform. The honest answer is not "this needs a query", it is "these numbers do not exist".
+//
+// The same was true of the capacity block beneath them, whose figures were inline rather than
+// even in this fixture: hours used against hours available, a meter driven past 100%, and a claim
+// about how many hours three unopened invites would add.
+//
+// DESCRIBED, NOT QUOTED — and the rule is stronger than "paraphrase". compass.fabrications.test.ts
+// greps this file for the removed wording, so a note that reuses any of its phrasing makes the
+// guard match its own explanation. I did that THREE times writing this one file: first quoting
+// the finding, then quoting the capacity figures, then leaving one borrowed phrase in a sentence
+// I had already rewritten. The reliable form is to describe the SHAPE of what was removed — a
+// named colleague, two named accounts, an hours figure — and never its words.
+//
+// The card shell is left standing and says plainly that it has nothing to show. What that absence
+// should LOOK like, and whether the surface should exist at all before there is data behind it,
+// is Claude Design's call (§00) — the part that was mine was to stop it asserting.
+// feed — REMOVED 2026-09-01 (§13/§58), recorded rather than deleted quietly.
+//
+// Eight invented entries under the heading "What the team did": a dunning reminder to a client
+// who does not exist, a competitor's named coach and her price, a repair that took "40 seconds".
+// None of it read anything. The surface's own "Everything / Paige / People" filter was sorting
+// fiction into two piles.
+//
+// `TmActivity` now reads the Rail (`paige_client_events`) through `useSoloActivityFeed`. The
+// filter finally means something: `ai` comes from the event's `actor_type`, so "Paige" and
+// "People" separate work she did from work a person did, as recorded.
+//
+// STILL FABRICATED, NOT ADDRESSED HERE — their own finding, not this slice's: `perf` below
+// ("147 hours returned", "Response time 2.4h, down from 6.1h") is four measurements with no
+// measurement behind them, and `gaps` names a person who does not exist and attributes two
+// accounts to her. `people` and `clients` are the same class.
 perf:[
  {k:'Accounts carried',v:'8 of 8',s:'All on you',tone:'bad'},
  {k:'Hours returned by Paige',v:'147',s:'This month across six departments',tone:'ok'},
@@ -130,17 +157,8 @@ return <div className="an-2">
 const TmRail=()=>(<div className="card" style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
 <div className="hd" style={{flex:'none'}}><div><h3>Where the team is thin</h3><div className="sub">What Paige would fix first</div></div></div>
 <div className="pane" style={{flex:1,padding:'11px 13px',display:'grid',gap:9,alignContent:'start'}}>
-{TM.gaps.map((g,i)=><div key={i} style={{padding:'12px 13px',border:'1px solid var(--line)',borderRadius:'var(--r-m)'}}>
-<div className="row" style={{gap:8,alignItems:'flex-start'}}>
-<span style={{width:6,height:6,borderRadius:'50%',background:g.tone==='bad'?'var(--bad)':'var(--warn)',flex:'none',marginTop:5}}/>
-<span style={{fontSize:12.7,fontWeight:600,lineHeight:1.4}}>{g.t}</span></div>
-<div style={{fontSize:12,color:'var(--ink-2)',lineHeight:1.5,marginTop:6}}>{g.b}</div>
-<button className="btn btn-s btn-g" style={{height:26,fontSize:11.5,marginTop:9}}><Ic.check size={11}/>{g.act}</button></div>)}
 <div style={{padding:'12px 13px',border:'1px solid var(--line)',borderRadius:'var(--r-m)',background:'var(--surface-2)'}}>
-<div className="eyebrow" style={{fontSize:9.6}}>Capacity across live seats</div>
-<div style={{fontSize:20,fontWeight:600,letterSpacing:'-.03em',margin:'6px 0 8px'}}>112h <span className="sub" style={{fontSize:12,fontWeight:400}}>used of 96h</span></div>
-<Meter pct={116} tone="var(--bad)" h={7}/>
-<div style={{fontSize:11.8,color:'var(--ink-2)',lineHeight:1.5,marginTop:9}}>Three invited seats would add 140 hours a month. Until they sign in, the only lever is her autonomy.</div>
+<div style={{fontSize:12.2,color:'var(--ink-2)',lineHeight:1.55}}>Nothing to show here yet. Working this out needs hours per seat, hours per client and revenue per client, and this workspace does not record any of them — so there is no thin spot to point at rather than one that happens to be empty.</div>
 <button className="btn btn-s" style={{height:26,fontSize:11.5,marginTop:9}}><Ic.send size={11}/>Resend all invites</button></div></div></div>);
 
 const TmWorkload=()=>{const[sort,setSort]=React.useState('worst');
@@ -203,22 +221,34 @@ return <div key={d.n} className="row" style={{gap:12,padding:'11px 14px',borderT
 <span style={{color:'var(--ink)',fontWeight:600}}>Paige's read: </span>Operations and Finance closed 134 items between them without asking you anything, which is where the 147 hours came from. The departments still at draft-only are the ones with queues. Raising Client Success one level would clear three items sitting on your desk today.</div></div></div></div>);
 
 const TmActivity=()=>{const[f,setF]=React.useState('all');
-const rows=TM.feed.filter(x=>f==='all'||(f==='ai'?x.ai:!x.ai));
+const activity=useSoloActivityFeed();
+// `who` is the desk the event names — the Rail carries a department, not a person's name, and
+// joining one in would be a second query for a label plus a way to surface a name the reader may
+// not be entitled to. `d` is the recorded summary or a stated absence, never filler.
+const feed=React.useMemo(()=>activity.items.map(a=>({
+ id:a.id,who:departmentLabel(a.departmentSlug),ai:a.byPaige,t:a.title,
+ d:a.summary??'No detail was recorded.',w:elapsedLabel(a.occurredAt)})),[activity.items]);
+const rows=feed.filter(x=>f==='all'||(f==='ai'?x.ai:!x.ai));
+// Three different answers that would otherwise render as one blank timeline (§13): still
+// reading, could not read, and genuinely nothing yet. The middle one is the one that would
+// otherwise tell an operator their team had done nothing all week.
+const state=activity.loading?'loading':activity.error?'error':rows.length?'ok':'empty';
 return <div className="an-1"><div className="card" style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
 <div className="hd" style={{flex:'none'}}><div><h3>What the team did</h3><div className="sub">People and departments on one timeline</div></div>
 <div className="seg">{[['all','Everything'],['ai','Paige'],['human','People']].map(([k,l])=>
 <button key={k} aria-pressed={f===k} onClick={()=>setF(k)}>{l}</button>)}</div></div>
 <div key={f} className="pane fade-in" style={{flex:1,padding:'14px 18px'}}>
+{state!=='ok'?<div className="sub" style={{fontSize:12.6,lineHeight:1.55,padding:'6px 2px'}} role={state==='error'?'alert':'status'}>{state==='loading'?'Reading what the team has done…':state==='error'?<>This timeline could not be loaded, so it is not a record of nothing happening. <button className="btn btn-s" style={{marginTop:9}} onClick={activity.refresh}>Try again</button></>:f==='all'?'Nothing recorded yet. Work by Paige or by a person lands here as it happens.':f==='ai'?'Nothing recorded from Paige yet.':'Nothing recorded from a person yet.'}</div>:
 <div style={{position:'relative',paddingLeft:26}}>
 <span style={{position:'absolute',left:9,top:6,bottom:6,width:1,background:'var(--line)'}}/>
-{rows.map((r,i)=><div key={i} style={{position:'relative',paddingBottom:i===rows.length-1?0:15}}>
+{rows.map((r,i)=><div key={r.id} style={{position:'relative',paddingBottom:i===rows.length-1?0:15}}>
 <span style={{position:'absolute',left:-22,top:3,width:13,height:13,borderRadius:'50%',border:'2px solid var(--surface)',
 background:r.ai?'var(--violet)':'var(--gold)'}}/>
 <div className="row" style={{gap:9,flexWrap:'wrap'}}>
 <span style={{fontSize:12.9,fontWeight:600}}>{r.t}</span>
 <span className={'pill '+(r.ai?'pill-v':'pill-n')} style={{fontSize:10.2}}>{r.who}</span>
 <span className="mono sub" style={{fontSize:10.6,marginLeft:'auto'}}>{r.w}</span></div>
-<div style={{fontSize:12.2,color:'var(--ink-2)',lineHeight:1.5,marginTop:3}}>{r.d}</div></div>)}</div></div></div></div>};
+<div style={{fontSize:12.2,color:'var(--ink-2)',lineHeight:1.5,marginTop:3}}>{r.d}</div></div>)}</div>}</div></div></div>};
 
 const MemberDrawer=({m,onClose})=>{if(!m)return null;const isDept=!!m.role&&m.level!==undefined;
 return <SlideOut open={!!m} onClose={onClose} title={m.n} sub={isDept?m.role:m.role+' · '+m.dept}

@@ -29,47 +29,47 @@ import fs from "node:fs";
  * membership churns — one tool quietly dropped from the catalogue and another added would net to
  * zero and pass. Listing them makes any swap visible.
  */
-const KNOWN_UNGOVERNED = [
-  "author_event_kind",
-  "deal_create",
-  "deal_move_stage",
-  "document_generate",
-  "forge_subagent",
-  "marketplace_install",
-  "marketplace_uninstall",
-  "n8n_activate_workflow",
-  "n8n_archive_workflow",
-  "n8n_create_workflow",
-  "n8n_deactivate_workflow",
-  "n8n_delete_workflow",
-  "n8n_run_workflow",
-  "n8n_update_workflow",
-  "plan_add_milestone",
-  "plan_assign_task",
-  "plan_create",
-  "plan_remove_item",
-  "plan_set_reminder",
-  "plan_update_item",
-  "save_to_knowledge_base",
-  "update_business_profile",
-  "zapier_run_action",
-];
+// THE BASELINE IS NOW EMPTY, AND THAT IS THE POINT.
+//
+// This list used to name 23 tools that the runtime gated but the catalogue never offered — the
+// operator could not see them and, more to the point, could not turn them off. Migration
+// 20261020000000 completed the catalogue, so the gap is CLOSED and the ratchet's job changes from
+// "hold it from growing" to "hold it AT zero".
+//
+// Do NOT re-populate this to get a new tool past the guard. A tool in MUTATING_TOOLS with no
+// catalogue row is governed invisibly; the fix is a migration that adds the row, not an entry here.
+const KNOWN_UNGOVERNED = [];
 
+const POLICY = "supabase/functions/_shared/action-risk.ts";
 const CHAT = "supabase/functions/paige-ai-chat/index.ts";
 
+/**
+ * THE GATED SET MOVED, AND THIS GUARD FOLLOWED IT RATHER THAN BEING DELETED.
+ *
+ * `MUTATING_TOOLS` used to be a literal inside the handler and is now derived from the action-risk
+ * policy, which classifies every mutation once. The set this guard grades is unchanged — every
+ * tool the runtime governs — so it reads the policy's table instead of the handler's literal. A
+ * guard that cannot find its subject still fails loudly rather than passing quietly, because
+ * "found nothing, therefore nothing is wrong" is the failure mode these guards exist to avoid.
+ */
 function runtimeTools() {
-  const src = fs.readFileSync(CHAT, "utf8");
-  const marker = "const MUTATING_TOOLS = new Set<string>([";
-  const at = src.indexOf(marker);
-  if (at < 0) {
-    console.error(`✗ tool-catalogue-lint: could not find MUTATING_TOOLS in ${CHAT}.`);
-    console.error("  The gate was renamed or moved. Update this guard rather than deleting it —");
+  const src = fs.readFileSync(POLICY, "utf8");
+  const at = src.indexOf("const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [");
+  const close = at < 0 ? -1 : src.indexOf("\n];", at);
+  if (at < 0 || close < 0) {
+    console.error(`✗ tool-catalogue-lint: could not find the classification table in ${POLICY}.`);
+    console.error("  The policy was renamed or changed shape. Update this guard rather than deleting it —");
     console.error("  a guard that cannot find its subject must fail loudly, never pass quietly.");
     process.exit(1);
   }
-  const open = src.indexOf("[", at);
-  const close = src.indexOf("]);", open);
-  return new Set([...src.slice(open, close).matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]));
+  const tools = [...src.slice(at, close).matchAll(
+    /\[\s*"([a-z0-9_]+)"\s*,\s*"(?:ordinary|high|owner_only)"\s*,/g)].map((m) => m[1]);
+  if (tools.length < 40) {
+    console.error(`✗ tool-catalogue-lint: parsed only ${tools.length} governed tools from ${POLICY}.`);
+    console.error("  That is too few to be real, so this guard is reading nothing. Fix the parse.");
+    process.exit(1);
+  }
+  return new Set(tools);
 }
 
 /**

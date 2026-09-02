@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { hasExactPipelineArchiveApproval, hasExactPipelineFolderArchiveApproval } from "../../supabase/functions/_shared/pipelineArchiveApproval";
 
 const source = readFileSync(resolve(process.cwd(), "src/solo/growth2.tsx"), "utf8");
 const css = readFileSync(resolve(process.cwd(), "src/solo/solo-campaigns.css"), "utf8");
@@ -153,36 +152,62 @@ describe("Solo Campaigns approved contract", () => {
     expect(paigeChat).toContain('name: "pipeline_archive_preview"');
     expect(pipelineIdentityMigration).toContain("revoke insert,update,delete on public.pipelines,public.pipeline_stages from authenticated");
     expect(pipelineIdentityMigration).toContain("PIPELINE_HARD_DELETE_UNAVAILABLE");
-    expect(paigeChat).toContain("ownerApprovedThisTurn");
+    // REWRITTEN 2026-09-02 onto the one approval gate. This test used to assert a
+    // pipeline-specific approval channel — a `confirmedActions` echo carrying a token, and a
+    // string comparison against the operator's last message. Both were removed when the two
+    // branches merged, because the general fingerprint gate already binds an approval to the
+    // exact call, and prose a model can produce is not evidence a person approved anything.
+    // What the archive still has, and no other action does, is a server-issued preview it is
+    // bound to — asserted below as a PRECONDITION, not as a second approval.
     expect(paigeChat).toContain("previewPredatesTurn");
-    expect(paigeChat).toContain("archive_exact_approval_required");
-    expect(paigeChat).toContain("hasExactPipelineArchiveApproval(confirmedActions, token, archivePipeline.short_ref)");
-    expect(paigeChatSurface).toContain("confirmedActions");
-    expect(paigeChatSurface).toContain("confirmationToken: confirmation.approvalToken");
-    expect(paigeChatSurface).toContain("pipelineRef: confirmation.pipelineRef");
+    expect(paigeChat).toContain("archive_preview_required");
+    // Bound to THIS tenant and THIS requester, single-use, expiring: the four properties that
+    // make the binding a real precondition rather than a flag.
+    expect(paigeChat).toContain('.eq("token", token).eq("tenant_id", tenantId).eq("requested_by", user.id)');
+    expect(paigeChat).toContain("archiveBinding.used_at");
+    expect(paigeChat).toContain("new Date(archiveBinding.expires_at).getTime() <= Date.now()");
+    // The pipeline that gets archived is read from the binding row, never from a name or a
+    // reference the model supplied — which is what makes a same-named duplicate unreachable.
+    expect(paigeChat).toContain('.eq("id", archiveBinding.pipeline_id).eq("tenant_id", tenantId)');
+    // The second approval channel is gone from both sides of the wire.
+    expect(paigeChat).not.toMatch(/hasExactPipelineArchiveApproval\(/);
+    expect(paigeChatSurface).not.toMatch(/confirmedActions|approvalToken|pipelineRef/);
+    // …and what replaced it: the fingerprint of the exact call, echoed by the surface.
+    expect(paigeChatSurface).toContain("approvedConfirmations");
+    expect(paigeChatSurface).toContain("declinedConfirmations");
     expect(source).not.toContain("Delete pipeline");
     expect(source).not.toContain("Delete stage");
   });
 
-  it("cannot reuse approval for one same-name pipeline to archive its duplicate", () => {
-    const approvalForA = [{
-      kind: "pipeline_archive" as const,
-      confirmationToken: "11111111-1111-4111-8111-111111111111",
-      pipelineRef: "PPL-4K8M",
-    }];
+  // REMOVED 2026-09-02, with its subject: `hasExactPipelineArchiveApproval` and the
+  // `supabase/functions/_shared/pipelineArchiveApproval.ts` module it lived in. It matched a
+  // client-supplied approval list against a token and a PPL reference, and it was the only
+  // caller of that module once the merge settled on the general gate (§58 — recorded here
+  // rather than deleted quietly, because a removed guard should leave a note saying what now
+  // holds the property).
+  //
+  // The property it protected — an approval for one pipeline cannot archive its same-named
+  // duplicate — is now structural instead of compared: the archive resolves its target from
+  // the server's own binding row (`archiveBinding.pipeline_id`, scoped to tenant and
+  // requester), so a name was never the thing being trusted. Asserted directly above.
 
-    expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(true);
-    expect(hasExactPipelineArchiveApproval(approvalForA, "22222222-2222-4222-8222-222222222222", "PPL-9Q2X")).toBe(false);
-    expect(hasExactPipelineArchiveApproval(approvalForA, "11111111-1111-4111-8111-111111111111", "PPL-9Q2X")).toBe(false);
-    expect(hasExactPipelineArchiveApproval(undefined, "11111111-1111-4111-8111-111111111111", "PPL-4K8M")).toBe(false);
-  });
-
-  it("cannot reuse a folder approval across token, folder, or name", () => {
-    const approval = [{ kind: "pipeline_folder_archive" as const, confirmationToken: "11111111-1111-4111-8111-111111111111", folderId: "22222222-2222-4222-8222-222222222222", folderName: "Campaign pipelines" }];
-    expect(hasExactPipelineFolderArchiveApproval(approval, approval[0].confirmationToken, approval[0].folderId, approval[0].folderName)).toBe(true);
-    expect(hasExactPipelineFolderArchiveApproval(approval, "33333333-3333-4333-8333-333333333333", approval[0].folderId, approval[0].folderName)).toBe(false);
-    expect(hasExactPipelineFolderArchiveApproval(approval, approval[0].confirmationToken, "44444444-4444-4444-8444-444444444444", approval[0].folderName)).toBe(false);
-    expect(hasExactPipelineFolderArchiveApproval(approval, approval[0].confirmationToken, approval[0].folderId, "Other folder")).toBe(false);
+  it("binds a folder archive to its own server-issued preview, not to a client-echoed approval", () => {
+    // REPLACES a test of `hasExactPipelineFolderArchiveApproval`, removed with the second
+    // approval channel it exercised (#718 rebuilt for folders what #709 had built for
+    // pipelines; both are now the one fingerprint gate). The property that test protected —
+    // an approval for one folder cannot archive another, or the same folder under a stale
+    // name — is now structural rather than compared, and asserted against the handler.
+    expect(paigeChat).not.toMatch(/hasExactPipelineFolderArchiveApproval\(/);
+    expect(paigeChat).not.toMatch(/ownerApprovedThisTurn/);
+    // Bound to THIS tenant and THIS requester, single-use, expiring, and it must predate the
+    // turn — minting a preview and acting on it in one breath is the turn approving itself.
+    expect(paigeChat).toContain('.eq("token", token).eq("tenant_id", tenantId).eq("requested_by", user.id)');
+    expect(paigeChat).toContain("folderBinding.used_at");
+    expect(paigeChat).toContain("folder_archive_preview_required");
+    // The folder that gets archived is the one the preview named, so a model cannot re-title
+    // it on the confirming turn and archive something the owner never read.
+    expect(paigeChat).toContain("folder_archive_preview_mismatch");
+    expect(paigeChat).toContain('.eq("id", folderBinding.folder_id).eq("tenant_id", tenantId)');
   });
 
   it("implements tenant-owned one-level Pipeline folders through the governed contract", () => {
@@ -227,12 +252,21 @@ describe("Solo Campaigns approved contract", () => {
     expect(source).toContain("Direct PAIGE");
     expect(source).toContain("Only the workspace owner can archive a folder");
     expect(paigeChat).toContain('name: "pipeline_folder_archive_preview"');
-    expect(paigeChat).toContain("hasExactPipelineFolderArchiveApproval(confirmedActions, token, archiveFolder.id, archiveFolder.name)");
-    expect(paigeChat).toContain('kind: "pipeline_folder_archive"');
+    // The folder archive's APPROVAL is asserted in its own test above, against the one
+    // fingerprint gate. This line used to pin the retired echo and was updated with it,
+    // rather than deleted: what belongs in THIS test is the folder contract, which is the
+    // replay guard that makes an archive retry safe.
+    expect(paigeChat).toContain("replay_pipeline_folder_archive_as_paige");
+    expect(paigeChat).toContain("folder_archive_replay_refused");
     expect(paigeChat).toContain("a._folderArchive.pipeline_count");
-    expect(paigeChat).toContain('gateAdmin.rpc("replay_pipeline_folder_archive_as_paige"');
+    // The replay guard runs BEFORE the preview lookup, so a retry of a committed archive is
+    // answered from its recorded result rather than by burning a second single-use preview.
     expect(paigeChat.indexOf('gateAdmin.rpc("replay_pipeline_folder_archive_as_paige"')).toBeLessThan(paigeChat.indexOf('.from("pipeline_folder_archive_confirmations")'));
-    expect(paigeChatSurface).toContain('kind: "pipeline_folder_archive"');
+    // The `kind: "pipeline_folder_archive"` discriminator that used to be asserted here on both
+    // the handler and the surface belonged to the retired approval echo, not to folders. The
+    // surface carries no folder-specific approval shape now — one fingerprint covers every
+    // gated action — so asserting its ABSENCE is what keeps the channel from being rebuilt.
+    expect(paigeChatSurface).not.toMatch(/pipeline_folder_archive|approvalKind|folderName\?:/);
     expect(css).toContain(".pipeline-action-new");
     expect(css).toContain(".pipeline-action-manage");
     expect(css).toContain(".pipeline-action-folders");

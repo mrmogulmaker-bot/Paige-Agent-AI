@@ -1,0 +1,53 @@
+name: PAIGE Spine contract
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/paige-spine/**"
+      - "supabase/migrations/**"
+      - "supabase/tests/paige_spine_foundation.sql"
+      - "src/__tests__/paige-spine-*.test.ts"
+      - "scripts/ci/paige-spine-registry-lint.mjs"
+      - "scripts/ci/chat-tool-registry-lint.mjs"
+      - "scripts/proof/paige-spine-local-proof.sql"
+      - ".github/workflows/paige-spine-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/paige-spine/**"
+      - "supabase/migrations/**"
+      - "supabase/tests/paige_spine_foundation.sql"
+      - "src/__tests__/paige-spine-*.test.ts"
+      - "scripts/ci/paige-spine-registry-lint.mjs"
+      - "scripts/ci/chat-tool-registry-lint.mjs"
+      - "scripts/proof/paige-spine-local-proof.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs --self-test
+      - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs
+      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts
+
+  database-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+      - run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
+      - run: supabase db reset
+      - run: supabase test db supabase/tests/paige_spine_foundation.sql

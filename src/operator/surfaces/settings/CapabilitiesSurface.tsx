@@ -270,22 +270,20 @@ export default function CapabilitiesSurface({
 
         {/*
           `capFoot` — L10050. CD's first two sentences are the rule and they port verbatim. Its
-          last one states a FIGURE about our own backend — "Four automation tools are gated at
-          runtime but missing from list_tool_autonomy" — and the real number, measured against
-          `MUTATING_TOOLS` on 2026-08-24, is 23. Shipping "four" would put a false claim about the
-          platform on the platform's own governance surface (§13), so the sentence is carried with
-          the true count and the rest of CD's wording intact. `lint:tool-catalogue` keeps that
-          number honest: it fails when the gap grows, and when it shrinks it says so.
+          last one stated a FIGURE about our own backend — a count of tools gated at runtime but
+          missing from `list_tool_autonomy`. That gap is now ZERO: migration 20261020000000
+          completed the catalogue, so every tool the runtime gates has a row the operator can see
+          and turn off. A sentence describing a gap that no longer exists would be a false claim
+          about the platform on the platform's own governance surface (§13), so it is removed
+          rather than restated. `lint:tool-catalogue` now holds the gap AT zero and fails if a
+          newly gated tool ever reopens one. OWED TO CD: this paragraph is shorter than the
+          delivered `capFoot` by one sentence; whether anything replaces it is CD's call, not ours.
         */}
         <p className="mt-4 max-w-[66ch] border-t border-[var(--pg-line-soft)] pt-[13px] text-[10.5px] leading-[1.55] text-[var(--pg-faint)]">
           Modes are stored per tenant per tool and resolved before she acts — a tool with no row
           resolves to ask first, so nothing is ever on autopilot by accident. Two schema rules hold
           above any setting here: anything sent through approval must carry approval, and autopilot
           is only legal for a tool that records or runs a workflow. Auto-send cannot be expressed.
-          Twenty-three tools are gated at runtime but missing from this catalogue: a migration
-          re-declared it from a copy that predated them, so they are governed and invisible —
-          including a permanent workflow delete. They are counted and held from growing by a CI
-          guard until the catalogue is completed.
         </p>
       </div>
     </div>

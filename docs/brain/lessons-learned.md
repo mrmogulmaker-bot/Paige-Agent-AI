@@ -642,6 +642,101 @@ thrown error. **An exclusion list that failed to load is not an empty exclusion 
    filter is the dangerous shape; a count that silently reads 0 is the same class.
 
 - A UUID default is not a complete identity contract. Every producer must converge on a required immutable tenant binding, and an AI-facing lookup must return a stable human reference while resolving the internal UUID only inside a server-validated tenant boundary. A service-role query with an ID filter is not tenant safety unless the tenant predicate is present in the same query.
+---
+
+## A green proof can be wrong in the direction that flatters you — and a red one can be the finding
+
+**2026-09-01, MET1 (metering).** A rollback proof's case P6 asserted that every metered usage row
+carries a cost, and it **failed**. The reflex — and the wrong move — was to loosen the assertion so
+the suite went green. Diagnosing it instead surfaced the real defect: **197 of 228 traces (86%, and
+99.3% of tokens) had never been priced at all.** The direct `_shared/claude.ts` path had the
+provider's own `usage` object in hand at its trace site and never priced it, while `model-router`
+priced everything it touched — so the platform's belief that it had spent `$1.38` was the cost of
+0.7% of its tokens.
+
+**The rule:** when an assertion you wrote fails against real data, the first hypothesis is that the
+assertion is right. Loosening a check to match observed behaviour converts a finding into a
+silence, and does it in the direction that makes the report look better.
+
+## `->>'key' IS NULL` cannot tell "explicitly null" from "key absent"
+
+Same slice, and the sharper half. P6b was written specifically to catch the `jsonb_strip_nulls`
+defect that P6 had just exposed — and it **passed under that exact mutation**, because
+`metadata->>'cost_estimate_usd' IS NULL` is true both when the value is JSON null and when the key
+was never written. A check vacuous against the one thing it was built for.
+
+Compare `metadata->'key' = 'null'::jsonb` (explicitly null) or `metadata ? 'key'` (present at all).
+The distinction is load-bearing whenever absence has meaning: a consumer must be able to read *"no
+cost was recorded"* rather than infer it from a missing field — and must never meet a downstream
+`COALESCE(cost, 0)` that books unpriced spend as free.
+
+**Generalised:** any assertion about ABSENCE must state which absence it means. Three different
+facts — the key is missing, the value is null, the value is zero — collapse into one answer under
+`->>`, and the collapse is invisible in a green run.
+
+## A fixture missing one method makes a dead code path look healthy
+
+`traceLLMCall` ends `.insert(record).abortSignal(signal)`. The recording fake had no `abortSignal`,
+so the chain threw a TypeError straight into the writer's own swallowing catch — and the row, which
+the fake records one link earlier at `.insert()`, still satisfied every assertion written about it.
+Every check about the trace's contents passed while the write path they were grading was dead.
+
+**The tell:** a harness that records at the START of a builder chain proves the chain was BEGUN, not
+that it completed. Where a swallowing catch sits downstream, assert something only the END of the
+chain produces. This is the third time this session that a component failing soft has looked
+healthy — the others being vector reads returning `[]` and a drain worker reporting 30,375
+successes over a queue that never empties.
+
+---
+
+## A reused migration version does not fail — it is silently SKIPPED
+
+**2026-09-01, merging main into a long-lived branch.** `schema_migrations` is keyed on the VERSION
+alone. When a version is already recorded, `supabase db push` does not error and does not warn: it
+skips the file. The migration merges, CI is green, the `db-live` tag advances, every badge reads
+healthy, and the migration **never exists on production**. The first sign is whatever breaks weeks
+later, in a place that looks unrelated.
+
+**Three collisions arrived in one merge, and only one was reported.** The Supabase preview stops at
+the first duplicate-key error, so it named `20261018000000` and nothing else. Fixing what it named
+would have left two behind and looked resolved:
+
+| version | this branch | already taken by |
+|---|---|---|
+| 20261018000000 | `chat_turn_append_tenant_scope` | main's `secret_read_keeps_its_approvals` |
+| 20261019000000 | `credit_extraction_review_state` | main's `solo_setup_business_brief` |
+| 20261020000000 | `tool_autonomy_catalogue_covers_the_gate` | **prod's** `primary_number_is_always_active` |
+
+**The third is the shape nothing in the repository can see.** It has no duplicate filename anywhere
+— its twin exists only in production's ledger, applied from a branch that is not merged. Scanning
+the tree for repeated prefixes finds nothing. Comparing against the base branch finds nothing. Only
+querying `supabase_migrations.schema_migrations` finds it.
+
+**Three checks, and each misses what the others catch:**
+1. duplicate filenames in the tree — misses both merge shapes;
+2. versions the branch ADDS vs the merge base — misses the production-only twin;
+3. the live ledger — catches all three, needs credentials CI does not have.
+
+`lint:migration-versions` does 1 and 2 offline and **says in its own header that it cannot do 3**.
+The pre-merge check for the third shape is a query against the ledger, and it belongs in the §32.a
+persisted-apply confirmation. A guard trusted for more than it checks is worse than no guard.
+
+**The fix is always to rename the NEW file** to a free, later version. Renumbering the one already
+applied orphans a live row.
+
+**Before renaming, verify three things against the ledger**, or the fix creates its own defect:
+the new name was never applied under its own name (or it re-runs); the replacement versions are
+free; and the replacements sort after everything already applied and before the branch's own later
+migrations, so ordering is preserved.
+
+**This class was already on record.** The `20261004000000` collision with #666 is written up above,
+with the line *"a migration version collision is invisible to every gate."* It stayed invisible
+because nothing mechanical was added at the time — only the note. The lesson behind the lesson:
+recording a failure class without building the check that catches it buys one session's memory,
+not a guard.
+
+---
+
 ## A predicate proof is not a write proof (2026-09-01, #695 → #699)
 
 **Symptom.** A one-time backfill in `20260901010000` chose a primary phone number for any workspace

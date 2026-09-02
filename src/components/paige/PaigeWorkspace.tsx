@@ -180,6 +180,12 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
               greeting="What are we working on today? Point me at a client, or tell me the part of the business you want to move — pipeline, follow-ups, a campaign, a client's file — and I'll take it from there."
               clientId={focusedClient?.id ?? null}
               clientContext={focusProse}
+              // The chat asks for the focus to be released — either the server returned a
+              // permission verdict on this client, or the person opened a saved conversation whose
+              // content is not about them. Either way the banner must stop asserting a focus that
+              // would make the next turn mean something untrue. On a refusal the chat parks its own
+              // explanation across the reset this causes, so the person is still told why.
+              onFocusRelease={clearFocus}
               focusBanner={focusedClient ? <FocusBanner client={focusedClient} onClear={clearFocus} /> : undefined}
               chips={quickChips}
               onTrace={handleTrace}

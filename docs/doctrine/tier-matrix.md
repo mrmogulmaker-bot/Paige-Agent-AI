@@ -1097,6 +1097,394 @@ four `comms_configured` seams and never asserted here, and it is only readable f
 tenant — an operator or agency acting as another account gets `outOfScope`, which the surface states
 as "not readable from here" rather than as a negative.
 
+### PAIGE Chat — the document proposal seam, `/solo/{account}/paige/chat`
+
+**§66, same commit as the ship.** A document dropped into PAIGE Chat now ends in a PROPOSAL a
+person approves, not a write that already happened.
+
+| Surface | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Document upload in chat | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Credit-report auto-write on upload | — | — | — | — | — | — | 403 |
+| `extraction_proposal` card rendered | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| `paige-apply-extraction` (approval writes) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| A truthful `sync_status` on a document turn | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+
+**§13 — THE TWO CLIENT ROWS SAID ✓ AND WERE FALSE, in the ledger §66 exists to keep true.** The
+client portal DOES ship an `ExtractionProposalCard`, but it is fed by a client-side regex over
+TYPED TEXT (`conversationalExtractor`), posts VALUES to `paige-write-back`, and has no consumer for
+the server's `extraction_proposal` frame at all; nothing under `src/components/app/` calls
+`paige-apply-extraction`. Recording a capability on a tier that does not have it is precisely the
+failure mode that makes a session answer "do we have this?" wrongly from the source of truth. Caught
+by an independent reviewer grepping the claim rather than reading it.
+
+The portal and the floating widget DO parse `sync_status`, so the document turn keeps emitting one
+alongside the proposal — otherwise those two surfaces would have gone from showing a sync panel to
+showing nothing, which is a §58 silent removal. That frame now reports `success: false` on a turn
+that wrote nothing, because `SyncStatusPanel` keys "✅ Profile Sync Complete" off `success` and a
+completed sync is not what happened.
+
+**§58 — A SHIPPED CAPABILITY WAS DELIBERATELY REMOVED, and this row is the explicit call-out the
+section requires.** Until this change, a credit-report PDF dropped into chat caused
+`sync-credit-report-data` to write eight tables immediately: three FICO columns on `profiles`,
+`credit_negative_items`, `credit_accounts`, `credit_inquiries`, `credit_factor_scores`,
+`funding_readiness_scores`, and two further `profiles` columns. That path is gone from chat. It is
+not a regression to repair — it is the owner's ruling ("never auto-write extracted fields")
+applied — but it IS a behaviour a tenant could previously rely on, so it is named here rather than
+left to be discovered, and it needs owner sign-off at Gate 2 like any other removal.
+
+**What is NOT changed (§37).** `sync-credit-report-data` itself, and its four non-chat producers —
+`CreditReportUploader`, `ReportUploadTab`, `CreditIntelligence`, and `analyze-credit-report`. Those
+surfaces keep their existing behaviour. Only the chat caller stops writing without asking.
+
+**Gating.** No new tier flag. Document upload is not tier-gated today and this slice does not
+introduce a gate; the proposal follows the document wherever the document is already allowed.
+
+### PAIGE Chat — the autonomy gate, `/solo/{account}/paige/chat` and every other chat surface
+
+**§66, same commit as the ship.** Every mutating tool Paige can call is gated: at `auto` she acts,
+at `confirm` she proposes and waits, at `off` it is refused. What changed is how a person's YES
+reaches the gate — and this row exists because the first attempt silently removed the capability on
+five of six surfaces without any ledger row noticing.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Mutating tool gated before it runs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Operator can see/flip every gated tool (51/51) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| ORDINARY action approvable by `confirm: true` (no card needed) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| HIGH-RISK action approvable — rendered card only | — | — | — | ✓ | ✓ | — | 403 |
+| OWNER-ONLY action approvable from chat | — | — | — | — | — | — | 403 |
+| Unclassified write refused before dispatch | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| `update_client_data` completable by a client seat | n/a | n/a | n/a | n/a | n/a | ✓ | 403 |
+| One approval executes exactly once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| A declined proposal is cancelled, not left live | — | — | — | ✓ | ✓ | — | 403 |
+| Every executed write files an attribution row | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …and the actor can record their OWN action (`paige_audit_log` INSERT) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Reads their own tenant's audit rows | ✓ | ✓ (admin) | ✓ (admin) | ✓ (admin) | ✓ (admin) | own rows only | 403 |
+| Reads ANOTHER tenant's audit rows | ✓ (operator) | — | — | — | — | — | 403 |
+| Per-client rail names the record it changed (`ref_id`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| Opens knowing what it is carrying (`paige_operating_memory`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …scoped to THEIR tenant, and their own work within it | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 403 |
+| …narrowed to the focused client when one is in focus | — | — | — | ✓ | ✓ | ✓ | 403 |
+| Reads client memory for their OWN tenant's clients | ✓ | ✓ (admin) | ✓ (admin) | ✓ (admin) | ✓ (admin) | own only | 403 |
+| Reads ANOTHER tenant's client memory | ✓ (operator) | — | — | — | — | — | 403 |
+| Writes client memory into another tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
+| Files a note onto their OWN client (`crm_add_note`) | ✓ | ✓ (admin/coach) | ✓ (admin/coach) | ✓ (admin/coach) | ✓ (admin/coach) | — | 403 |
+| Files a note onto ANOTHER tenant's client | ✓ (operator) | — | — | — | — | — | 403 |
+| A client can read notes filed about them | — | — | — | — | — | — | 403 |
+
+**The echo row is an honest `—`, not a gap.** Only `PaigeAIChat` (Solo and Sub-account) renders a
+confirm card and echoes back the fingerprint of what it displayed. `useSoloChat`, `FloatingChatbot`,
+`PaigeChat`, `useOperatorChat` and `StudioChat` send no echo and never have. That is why the echo
+cannot be the ONLY way to approve: a rule five of six callers cannot obey is not a rule, it is an
+outage. The token path works on all six, so no tier loses the capability; the echo remains as
+stronger evidence where a surface can supply it — a human demonstrably clicked.
+
+**§58 — the row this table would have caught.** `update_client_data` is the single tool a
+client-portal seat may call. Putting it behind an echo-only gate, on a surface with no confirm
+affordance, removed the Client tier's only write outright. Filling this row honestly at the time
+would have surfaced that before it shipped; it took an independent reviewer instead. Proven
+released by case C8 of the migration's §32 proof — a seat with no thread and no focused client can
+claim its approval.
+
+**Gating.** No new tier flag. Autonomy is resolved per tenant per tool by `resolve_tool_autonomy`,
+clamped by the Trust Compass ceiling (`20261039000000` — renumbered from `20261021000000` on the
+2026-09-02 merge, which collided with main's already-applied tool-confirmation binding); the token changes only how consent is
+carried, never who may act.
+
+**A TOKEN CANNOT BE REDEEMED BY THE TURN THAT MINTED IT — the correction to the row above.** The
+first version of the token gate returned `confirm_token` in the TOOL RESULT, which the agentic loop
+pushes straight back into the model's own context before any human sees anything. The model could
+re-emit the call carrying it and execute, one round after proposing — with no operator involved, on
+all 48 gated tools including role grants, deletes and `automation_set_grant` itself. The property
+that had been holding was structural: `approvedConfirmations` comes only from the request body, and
+a model cannot write a request body. Handing it the token destroyed that.
+
+The floor is now that a proposal records the request that minted it and the claim excludes it. A
+model cannot start an HTTP request; only a person sending another message can. Approval therefore
+still works on every surface — including the five with no confirm card — but never within the turn
+that proposed it. The request-body echo remains accepted as stronger evidence where a surface can
+supply it. See `20261026000000`, and checks 18.0–18.4 in the authz harness, which drive a genuinely
+self-approving model rather than describing one.
+
+**AND THE LIMIT, STATED RATHER THAN IMPLIED.** A new request proves a person sent another message.
+It does NOT prove that message was a yes. On the five surfaces with no confirm card the yes is
+still the model reading prose and asserting it — the trust level those surfaces have always had,
+now with the arguments pinned, the claim single-use, and scope re-checked. Only a surface that
+renders the summary and echoes back the fingerprint of what it displayed turns "a person replied"
+into "a person approved THIS", and exactly one surface does that today. Building the card on the
+other five is the real close-out; it is interface work, and it is owed to Claude Design (§00).
+
+**THE RISK SPLIT IS A POLICY, NOT A COMMENT — and the token is gone entirely.** Two rows above
+changed shape, so the reason is recorded rather than left to a diff.
+
+The token described below was re-obtainable. It is the fingerprint of an ACTION rather than a
+secret, so any later request that re-proposed the same call was handed it straight back and could
+spend it immediately — including a request whose human message was "No. Do not do that." Driven,
+that executed arbitrary stored calls and raised an autonomy grant from `confirm` to `auto`. Removed
+rather than patched: a key anyone can ask for is not a key.
+
+What replaces it is `supabase/functions/_shared/action-risk.ts`, the ONE place that classifies every
+mutation. `classifyAction` takes a tool name and nothing else — no request, no arguments, no calling
+surface — so nothing in a turn can argue about its own risk:
+
+| Class | Count | What it means | How a yes reaches it |
+|---|---:|---|---|
+| `ordinary` | 28 | Reversible, in-tenant, effects stay in the workspace | `confirm: true` (the model reporting a yes) **or** a rendered card |
+| `high` | 21 | Irreversible · changes who may do what · reaches outside the platform · spends money · goes public | The rendered card ONLY. The model's word is refused. |
+| `owner_only` | 2 | Raising Paige's own autonomy | Nothing. Not approvable here at any strength. |
+| *unclassified* | 0 | — | Refused before dispatch, both at the gate and ahead of it |
+
+`owner_only` is `automation_set_grant` and `automation_set_state`, per the owner's ruling of
+2026-09-01: *"Paige may never grant or raise her own autonomy through Chat, regardless of action
+class or owner wording. That remains an owner-controlled Settings policy."* Turning a process LIVE is
+the same decision wearing different clothes, so both refuse. **Consequence, stated rather than
+buried: `paige_automations.granted_lane` and `.state` are currently settable by nothing** — the chat
+tools refuse and no Settings control exists yet. Automations were already inert (no trigger emits —
+slice D), so nothing regressed; the Settings control is owed, and it is interface work belonging to
+Claude Design (§00).
+
+**The gated set is now the policy's key set.** `MUTATING_TOOLS` used to be a literal beside the gate;
+two lists that must agree eventually do not, and the permissive answer was the one that came free.
+CI (`lint:action-risk`) fails any change that adds a write tool without classifying it, or that
+reintroduces the hand-list, or that classifies a delete/publish/grant as `ordinary`. The runtime
+carries the same rule as a last line: a tool whose name reads as a write and carries no
+classification is refused before dispatch, so a missed classification is inert rather than
+ungoverned.
+
+**EVERY WRITE IS ATTRIBUTABLE — and the Client row above changed from a `—` to a `✓`.** One seam,
+at the point every executed tool passes through, files a `paige_audit_log` row carrying the entity
+and record touched, the actor, the tenant, the risk class, **the authority it ran on**, and the real
+outcome. `standing_autonomy_setting` (the operator's earlier decision) and `operator_card` (a yes
+given in this conversation) are recorded as different things, because they are.
+
+Two policy defects had to close first, both confirmed against production before being fixed and both
+in migration `20261027000000`:
+
+1. **The INSERT policy required `is_staff()`**, so a `client` seat could never record its own action
+   — and that seat's one write (`update_client_data`, on their own record) was the single write the
+   trail structurally could not cover. Now `actor_user_id = auth.uid()`, which loses nothing: an
+   actor could only ever insert a row naming themselves.
+2. **A tenant-level `admin` could read every UNTENANTED audit row.** Near-harmless while almost
+   nothing was written there; not once every write files one. §58: this is a narrowing — a tenant
+   admin loses a read they had — and it is a leak closing, not a capability going.
+
+**§13 — a correction to how this was nearly done.** The first version of that migration was
+justified by "a tenant admin can read every tenant's audit rows", read out of the migration history.
+Production says otherwise: a RESTRICTIVE `tenant_isolation` policy exists on this table that **no
+migration in this repository creates**, and it already ANDs tenant scope onto every read. The
+migration was rewritten against the defects that are actually there. The live catalogue is the
+source of truth about the live database; a grep of `supabase/migrations/` is not.
+
+**Still open, named rather than implied:** `delegate_to_subagent` is classified `high`, so
+dispatching a specialist needs the approval card — but the orchestrator it calls runs under the
+service role, so what that specialist then does is governed by its own surface, not by this gate.
+The dispatch is attributable; the specialist's own writes are the orchestrator's to account for.
+
+**PAIGE OPENS KNOWING WHAT SHE IS CARRYING — composed, never stored.** A transcript is what was
+SAID, not what is OWED, and it does not survive a new thread, a compaction, or a person coming back
+a week later. `paige_operating_memory()` composes the four records that already held the answer:
+open commitments (`plan_items`), live processes (`paige_automations`), work in flight including
+anything stopped at an approval (`paige_actions`), and what she last did WITH ITS REAL OUTCOME
+(`paige_audit_log`, from C1).
+
+There is no fifth table and no copy that can go stale. A summary store would need a writer on every
+one of those four paths and would be wrong the moment one was missed.
+
+**Scope is derived, not passed.** The function takes NO tenant argument — it resolves from
+`auth.uid()` and `current_user_tenant_id()` — so nothing in a request can aim it at another tenant
+(#588's lesson). It is SECURITY INVOKER (§59), so RLS remains the boundary rather than this body
+re-implementing four isolation rules correctly and forever. When a client is in focus it narrows to
+that client, which is what stops a switch carrying the previous client's open work into the new
+scope (§S2). Proven on production across two tenants seeded identically: A sees all four of its own
+sections, none of B's, and not a teammate's commitment inside its own tenant.
+
+**§13 — an unavailable read renders NOTHING.** "Nothing outstanding" is a claim, and a read that
+failed is not entitled to make it. The failure is logged instead.
+
+**THE AUTONOMY LANE GOVERNS `paige-ai-chat`, NOT `paige-mcp` — stated rather than implied.** An
+earlier commit message said two tools "both default to confirm now"; that is true inside the chat
+function and NOT over MCP. `paige-mcp` performs zero autonomy resolution for ANY tool — this is a
+pre-existing architectural gap, not a regression introduced with the gate — so an MCP caller
+(including the Super Admin connector) reaches `delegate_to_subagent` and every other write governed
+only by its permission scope (`workflows.run`, enforced at `paige-mcp/index.ts:5159`), never by the
+tenant's autonomy setting or the Trust Compass ceiling.
+
+It is recorded here rather than fixed in passing, deliberately. MCP callers have no confirm
+affordance at all, so bolting the lane onto that surface would make every gated MCP write
+permanently un-executable — which is precisely the failure the confirm-gate repair above exists to
+undo, repeated on a second surface. Closing it properly means giving MCP a way to carry consent
+(the proposal token is the obvious candidate, since it needs no UI), and that is its own slice with
+its own §37 producer inventory. Until then the honest statement is the one above: two different
+boundaries, both real, governing different things.
+
+### PAIGE Chat — a proposal you did not act on is reachable again
+
+**§66, same commit as the ship.** The extraction card is live-turn only and is never rehydrated
+into a reloaded thread, so a person who read Paige's findings and got distracted had no route back
+to them: the row sat at `awaiting_review` forever while every other surface correctly reported the
+upload as analysed. Migration `20261019000000` added a partial index for exactly this question and
+nothing ever asked it.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| `document_pending_reviews` (what is still waiting on me) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| `document_resume_review` (put the card back) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| The resumed card actually renders | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+
+**Chat, not a new surface (§21).** This is something Paige can raise and act on in the
+conversation; it is not a tab, a queue screen, or an inbox. Both tools are READ-only — resuming
+re-shows what was already found and writes nothing, asserted by check 17.4.
+
+**The Client row is `—` for the same reason as the rest of the extraction seam:**
+`clientSeatToolAllowed` admits only `update_client_data`, so neither tool reaches dispatch from a
+portal seat.
+
+**Scope is RLS, not a tenant argument.** Both read `credit_report_uploads` as the caller, so a
+person sees only uploads they can already see. The proposal is re-derived from the stored reading
+via the same `buildCreditProposal` the apply function uses, never trusted from the request — what
+can be re-offered is exactly what could have been offered the first time.
+
+**§13 note on where the frame is emitted.** The agentic path does not pass through the close-out
+chain the document-UPLOAD path uses. The first implementation set the proposal on a variable
+nothing on that path read: the tool reported success, Paige said the choices were back on screen,
+and nothing appeared. Caught by driving it (check 17.2), not by reading it.
+
+### PAIGE Chat — repeatable processes (§67 automations), every chat surface
+
+**§66, same commit as the ship.** A tenant can now describe work they do the same way every time
+and have Paige build it as a process: a trigger, conditions, and an ordered chain of acts, with a
+lane the human grants it.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| See what can start a process (`automation_triggers_list`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| List processes + their resolved posture | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Paige builds one from a description | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Grant a process a lane (`automation_set_grant`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Turn one on / pause it | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Operator can switch these three tools off | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
+
+**The Client row is a hard `—`, enforced twice.** `clientSeatToolAllowed` admits exactly one tool
+for a client-portal seat (`update_client_data`), so none of these reach dispatch; and RLS on
+`paige_automations` is admin-only within the tenant. Proven by check 15.0 in the authz harness,
+which drives a real client seat and asserts nothing is written — it exists because the harness
+defaults to a client seat and that is how the boundary was noticed at all.
+
+**Authoring is not granting, and the tables enforce it.** Paige creates every process at
+`granted_lane='confirm'`, `state='draft'`, explicitly, regardless of what the request said — an
+agent that could compose a process and authorise it in one call would be granting itself autonomy.
+Raising the lane is `automation_set_grant`, which is itself confirm-gated, so a human says yes to
+that specific change. And per `20261022000000`, changing the chain afterwards drops an `auto` grant
+back to `confirm`, because the human approved a specific sequence.
+
+**The resolved posture is what any surface must show, not the stored grant.** A process set to
+`auto` can still be asking — because the Trust Compass ceiling holds it, or because one of its own
+acts always requires approval. `resolve_automation_autonomy` returns both plus `capped_by`, and the
+tool results carry it so Paige tells the operator what will ACTUALLY happen (§13). A surface that
+renders `granted_lane` alone would be reporting a request as an outcome.
+
+**§61 default: no exception.** These follow the standing distribution — God/Solo/Sub-account yes,
+Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
+inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
+
+### PAIGE Chat — the Solo Team seam, `/solo/{account}/paige/chat` and every other chat surface
+
+**§66, same commit as the ship.** Paige could already READ a workspace's team — the roster, each
+person's enforced permission, their work details, and every invitation with its lifecycle, injected
+each turn by `get_paige_team_context`. She could do nothing with any of it. Five tools now let her
+act, and they call the SAME server seam the Team screen calls: `set_solo_team_member_work_profile`
+and `set_solo_team_member_permission` through the caller's own JWT, and the three invitation acts
+through `solo-team-invitations`, whose RPCs are revoked from `authenticated` entirely.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Read the roster + invitations (already shipped) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Edit a teammate's work details (`team_set_work_profile`) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Change a teammate's permission (`team_set_permission`) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Invite someone (`team_invite_member`) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Resend / withdraw an invitation | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+
+**The God row is a `—`, and it is honest rather than a gate.** Every function in this seam derives
+its workspace from `current_user_tenant_id()`, which is null for a tenant-less platform operator, so
+the RPC raises `no active workspace`. The new tenant-agreement precondition refuses first, in words,
+for the same reason. An operator acting inside a tenant they have switched into resolves as that
+tenant and is the Agency ✓ case (§51) — not a cross-tenant reach.
+
+**The Client row is a hard `—`, enforced before dispatch.** `clientSeatToolAllowed`
+(`_shared/actorTier.ts:64`) admits exactly one tool for a client-portal seat, `update_client_data`,
+so none of these five reach the executor at all.
+
+**Describing a job cannot grant one, and that is structural in three places at once.**
+`set_solo_team_member_work_profile` writes two text columns and cannot reach `permission`; the tool
+that calls it takes no permission argument (asserted in `paige-team-capability.test.ts`); and the
+context block marks tenant-authored titles and responsibilities as reference data that never confers
+authority. This is why the work-details tool is `ordinary` while everything else here is `high`.
+
+**Nobody can be made an owner from a conversation, and nobody can raise themselves.**
+`set_solo_team_member_permission` admits only the tenant owner, refuses `owner` as a target value,
+and refuses to touch any row that is already an owner — so the caller's own row is unreachable
+through it. Invitations may grant only Admin or Member, on creation and again on resend. The tool
+schemas offer `["admin","member"]` only, so the operator is never read a card describing something
+that will then fail.
+
+**The write now fails closed on the same disagreement the read already did.** The Team seam resolves
+its workspace with `current_user_tenant_id()`; the conversation resolves its own with
+`get_paige_persona_context`, which prefers a linked `clients` row. For a speaker who is a member of
+one workspace and a client of another these are different tenants — the read handles it
+(`buildTenantTeamContextBlock` returns null and Paige sees no roster) and the write did not, while
+member ids for the other tenant remain obtainable from `crm_list_team`. `teamSeamTenantMismatch`
+asks the read's question before every one of the five acts and refuses on mismatch, on an
+unresolvable persona tenant, and on a roster that will not load.
+
+**An invitation that was created but not emailed says so.** `solo-team-invitations` creates the
+invitation first and delivers second, and the delivery fails on its own — returning `emailed:false`
+beside a live invitation. That flag travels into the tool result with the sentence Paige is expected
+to say, because reporting a send that did not happen leaves the operator waiting on someone who was
+never contacted (§13).
+
+**The class outranks the autonomy switch, platform-wide.** Found while adding these five and older
+than them: the whole risk gate sits inside `if (autoMode === "confirm")`, and `set_tool_autonomy`
+accepts auto|confirm|off for any tool key without consulting its class — so a tenant admin could put
+`automation_set_grant` (owner_only, because it changes how much Paige may do alone) on auto and have
+Paige raise her own autonomy from a conversation. The handler now clamps `auto` down to `confirm` for
+any `high` or `owner_only` action, above the branch and keyed on the class, so it covers all thirty
+rather than the five added with it. `off` survives the clamp: a brake is the operator's to pull at any
+class. The setter still PERSISTS the now-inert `auto` and the capabilities surface still offers it —
+reported, not silently changed, because that RPC has its own callers.
+
+**§61 default: no exception.** God/Solo/Sub-account per the standing distribution, Agency inside a
+workspace it has switched into, Enterprise both. No owner ruling was sought, and none was needed.
+
+### Platform metering — LLM usage, `meter_llm_usage` (no surface, operator-only seam)
+
+**§66, same commit as the ship.** Paige's model spend is now carried from `paige_llm_trace` into
+`platform_usage_events` as `llm_tokens` usage. This is a BACKEND seam with no tenant-facing surface
+in this slice, so the ledger row records who may INVOKE it, not who may see it.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Run the drain (`meter_llm_usage`) | — | — | — | — | — | — | — |
+| …as `service_role` (Paige's own worker) | ✓ (service context only) | | | | | | |
+| Read one's own usage rows | — (no surface yet) | — | — | — | — | — | 403 |
+
+**Every human tier is a hard `—`, including God, and that is deliberate.** A tenant must never be
+able to write their own usage records, and neither must an operator: the meter derives usage from
+traces, and a hand-invocable meter is a hand-editable bill. `EXECUTE` is revoked from `PUBLIC`,
+`anon` and `authenticated`, and the function additionally raises `42501` when `auth.uid()` is
+non-null — so the guard survives a future grant that a migration adds by accident (§59: the grant is
+never the guard). Proven by case P8 of `scripts/sql/meter-llm-usage-proof.sql`, which drives a real
+`SET LOCAL ROLE authenticated` and asserts the refusal.
+
+**No consumer surface exists yet, and none is claimed.** Nothing reads these rows today — no
+dashboard, no invoice, no plan allowance. Recording usage is not charging for it, and the ledger
+says so rather than letting a future reader infer that billing shipped.
+
+**§13 — what the rows honestly contain.** `quantity` is tokens, measured. The cost is an ESTIMATE in
+metadata, explicitly labelled, never promoted to a billing column, and **null on 197 of the first
+228 rows** because those calls were never priced upstream. The key is always present so the absence
+is stated. See the decision log entry for MET1.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

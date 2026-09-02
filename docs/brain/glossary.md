@@ -188,3 +188,24 @@ PR #406). Build order was L1 → L4 → L2 → L5.
 
 *Add a term the moment it costs a session a lookup. When two sources conflict, record both and flag it
 owner-owed — don't paper over the disagreement.*
+
+## Spine · Rail (recorded 2026-09-01, owner-ruled)
+
+- **Rail** — the durable record of what happened: signals, approvals, actions, results,
+  follow-ups. Paige's receipt and history. **One part of the Spine, not a synonym for it.**
+- **Spine** — the whole shared pathway connecting a domain to Paige: safe evidence → approval →
+  domain-owned action → Rail outcome.
+- **The approval step of the Spine** is owned by the Chat build and specified in
+  `docs/doctrine/one-approval-gate.md`. A feature agent adds gated actions freely; changing how
+  approval is PROVEN goes to the Chat build first.
+- The full Spine contract is being grounded by a separate audit; when it lands it is the
+  authority on everything except the approval step, which stays where it is.
+
+## "Trust Compass" names TWO things (recorded 2026-09-01 — verified against prod)
+
+- **`trust_effective_rung()`** — the PLATFORM trust rung (§68), read by `resolve_automation_autonomy`.
+  Real and clamping, but its migration is not applied to production yet.
+- **The Solo Compass dial** — `TRUST` in `src/solo/compass.tsx`, an in-memory object seeded from a
+  fixture. Enforces nothing; dragging it is lost on reload; no server code reads it.
+
+Say which one you mean. Approval authority today is the action-risk policy plus the confirm gate.

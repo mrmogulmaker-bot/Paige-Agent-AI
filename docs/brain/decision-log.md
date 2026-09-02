@@ -1,6 +1,14 @@
 # Decision Log — chronological one-liners
 
 - **Both phone-number UI lanes now send the price they displayed, and the legacy operator tab asks before charging (#717 `0fb179bb`, MERGED 2026-09-01)** — the agent lane had a quote guard and server re-verification; the two lanes a HUMAN clicks had neither. Both posted `{ phone_number }` only, and `comms-purchase-number` guards its `platform_number_pricing` re-check on `if (agreedMonthlyCents !== null)`, so the check was **skipped entirely** for them — a price that moved between the search and the click was simply charged. The legacy `NumbersTab` was worse: `onClick={() => void buy(n)}`, **no confirmation of any kind**, rendering the price as `—` when the operator had not priced the type, so one click could start a recurring charge at an amount nobody was shown. **FIXED:** Solo passes the `priceCents` its confirm already named (it had the figure on screen and simply never sent it); the legacy tab sends `retail_price.monthly_cents` and asks first, in Solo's existing wording so the two read as one product (§6). Both omit the key when the type is unpriced — there is nothing to hold anyone to — which preserves today's behaviour rather than blocking a working path. **§37 consumer half, which is the part that would have been missed:** sending the amount means these lanes can now RECEIVE `price_changed` / `price_unverifiable`, and **neither surface knew those codes** — the right refusal would have surfaced as *"try another number"*. Copy added to both (`connectError.ts` COMMS_COPY and `purchaseFailureCopy`). **The legacy tab had NO test**, which is how one-click buying survived; `NumbersTab.purchase.test.tsx` is its first, and **5 of its 7 cases fail against the previous version**. The Solo assertion used `toMatchObject` and so passed whether or not the amount was sent — now `toEqual`, and it fails against the old code too. **UNRULED:** an unpriced number is still buyable on both lanes with the confirm saying "an unlisted monthly price". Whether that should be possible is a product question, not a defect. **Landed in two commits, and the second is the lesson:** the first widened `purchase()`'s implementation and call site but left the exported `SoloNumbersData` interface declaring one parameter, so CI's typecheck ratchet failed with `TS2554` on `settings.tsx` — a type-only defect no test could catch, because `settings.numbers.test.tsx` drives the real hook and the runtime path was correct throughout. See `lessons-learned.md`, *"Widening an implementation without widening the interface that declares it"*.
+- **⚠ CORRECTED 2026-09-02 (§58 — the entry stays, its runtime claim does not).** The binding
+  described in the next bullet SHIPPED and its migration is applied on prod, but `paige-ai-chat` no
+  longer executes through it. The merge of the Chat branch replaced the runtime half with
+  `paige_pending_confirmations`, which proves everything below AND executes the STORED arguments and
+  requires the operator's Approve click — the two things the bullet itself records as unproven.
+  Read the 2026-09-02 entry at the foot of this file before relying on anything below about what
+  runs. `_shared/toolConfirmation.ts`, its 65 unit tests and `paige_tool_confirmations` remain in
+  the tree; the tests still prove that module's logic and no longer prove anything about the gate.
 - **Paige's `confirm:true` is no longer worth anything on its own — the flag must SPEND a server-minted proposal that predates the turn (2026-09-01)** — the autonomy gate in `paige-ai-chat` (~5973) refused whenever `gateArgs.confirm !== true`, a real gate against a caller that merely invokes a tool — but `gateArgs` is `JSON.parse(tc.function.arguments)`, **the model's own output**. *Enforced but self-asserted.* And the bypass needed no human turn: the round dedupe keys on the exact argument string, so `{…}` and `{…,"confirm":true}` are different signatures and a model could propose, receive `needs_confirm`, and self-approve **inside one HTTP turn**. **52 tools** reach it, including `member_grant_role`, `n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`. **FIXED** by `20261021000000` + two service-role-only RPCs: a `confirm:true` executes only by atomically consuming a proposal for this tool, this requester and tenant, unspent, unsuperseded, unexpired, and **`created_at < turn start`** — the clause that kills the same-turn bypass. **THE DESIGN DECISION WORTH NOT RE-LITIGATING: bind on IDENTITY, never on the whole arguments.** The first version hashed the entire argument object and was **BLOCKED by the §39 peer-gate** as a silent livelock — conversation history is rebuilt as `{role, content}` only (`index.ts` ~4005), tool calls and results do NOT cross a turn, and Approve sends just *"Approved — run it."*, so the model regenerates its arguments from prose; for `document_generate`, whose `blocks` argument **is** the authored document, two generations are never byte-equal, so approve → re-author → refuse → re-propose, forever, with nothing executing and no error. (`index.ts` ~5860 already recorded that exact 4×-reask loop as a flaky bug; the hash would have made it structural.) So the identity is only fields the model can genuinely REPRODUCE next turn, in two honest tiers: **tier 1**, values rendered in `describeConfirm` so the operator sees them and the model reads them back out of prose (`comms_buy_number.phone_number`, `member_grant_role.role`, the n8n `workflow_id`, `zapier_run_action.tool_name`); and **tier 2**, a stable database id the summary does NOT name (`user_id`, `contact_id`, `number_id`) which the model must re-derive by looking the subject up again — deterministic in practice, so the worst case is one extra approval, never an impossibility. The distinction that matters is that a looked-up id can be re-derived and AUTHORED CONTENT cannot. Listed in `TOOL_IDENTITY_FIELDS` ; the tier-2 four are pinned anyway because each guards an irreversible or privilege-changing act. **A real §13/§36 gap surfaced while doing this and is filed rather than silently patched: `crm_delete_contact`'s summary reads "Permanently delete the contact…" and `member_grant_role`'s reads "…to a team member" — neither NAMES the subject, so the sentence the operator is agreeing to does not say who.** Everything else binds at TOOL level, which is the safe default, not an oversight. Price is deliberately NOT in the identity — it has its own quote guard plus server re-verification, and pinning it would livelock a legitimate re-quote. **Multi-spend closed too:** minting SUPERSEDES any earlier open proposal for the same requester+tenant+tool, so at most one is claimable and one approval buys exactly one execution — without that, a model emitting the same call with reordered keys accumulated rows (the dedupe keys on the raw string, the hash canonicalises) and could spend them all on a single human turn. **FAILS CLOSED, deliberately:** an earlier revision carried a "guard not deployed yet" escape that restored the exact self-asserted bypass platform-wide; it is gone. A tool that asks twice while the migration lands beats `member_grant_role` running unguarded (§68). **§18 — not a new mechanism:** generalizes `pipeline_archive_confirmations` (#709); that path keeps its stricter client-echoed token on top, relaxed nowhere. **PROVEN 11/11** against prod inside `BEGIN … ROLLBACK` via the COMMITTED `scripts/tool-confirmation-sql-proof.sql` (rollback verified: `to_regclass` null, ledger 0), plus 46 unit tests including explicit livelock regressions. **THE HONEST BOUND (§13):** proves the server proposed first, that a turn intervened, that one approval buys one execution, and — for the listed tools — that the identity shown is the identity that runs. Does **NOT** prove the operator said *yes*, nor, for unlisted tools, that the CONTENT is unchanged. Binding to an authenticated approval CLICK needs per-surface UI work (`useSoloChat.ts:304` drops the confirm frame entirely) and is tracked separately. **`auto` is unchanged and still has no confirmation — the workspace's own choice (§67).** Note also that `STUDIO_AUTO_TOOLS` flips five build tools to `auto` inside a studio thread, so "all 52" is the gate's reach, not this binding's reach on every surface.
 - **The §69 half-install was NOT real — the synced skill is self-contained; what was actually missing is OUR addition, which now ships as a repo-local skill (2026-09-01)** — #708 recorded, and this log repeated, that the account-synced install delivers **`SKILL.md` only** and therefore left §69 half-installed on every fresh container. **That is false.** Reading the files (rather than listing them) shows `synced/<bucket>/flow-by-flow/SKILL.md` at **77,739 bytes** and `flow-prototype/SKILL.md` at **14,353**, each carrying a section headed *"Inlined references (self-contained · 2026-08-30)"* under which every `references/*.md` and `templates/foundation-pack.md` appears in full — with its own preamble giving the reason: *"save_skill accepts a single content field per skill and cannot push modular reference/template files … Inlining below makes the persistent skill self-contained across all sessions."* So the modular files genuinely cannot sync, somebody already solved that on 2026-08-30, **a fresh container receives the complete skill, and §69 is not best-effort.** The "a half-install is worse than an absence" analysis rested on nothing. **The mistake:** a `find` listing showed one `SKILL.md` per synced skill and was treated as an inventory of *content*; the 77 KB size sat in the same output the whole time (`lessons-learned.md` — *"A file listing is not a file reading"*). **The real gap, which is narrower and did need fixing:** the synced bundles are a **2026-08-30 snapshot**, and the knowledge-capture close-out step the owner asked for on **2026-09-01** was written only into this container's modular copy — `grep -c` returns **0** for `Gate 6` / `Knowledge capture` / `capture what the work taught` in the synced copy. Containers are ephemeral (§64) and no session here holds a `save_skill`-style capability, so that addition reached **zero** future sessions. **DECIDED, on the owner's instruction — *"make whatever update we can without changing their copyright work. We are adding to it. Nothing more"*:** ship the close-out as **our own** `.claude/skills/knowledge-closeout/SKILL.md` *[renamed `second-brain/` 2026-09-01 when the READ-first half was added at the owner's request — the path in this entry no longer exists]*, in git, loading on every fresh container, adding to flow-by-flow without modifying or redistributing one line of it. Repo-local discovery is **verified, not assumed** — the skill appeared in the session's available-skills list the moment the file was written. It is also the better home: a third-party generic skill cannot know this repo's knowledge lives in `docs/brain/`, nor that §0 (master reference), §BRAIN.3 (brain) and §66 (tier matrix) each bind a **different** file. **UNCHANGED:** the licence blocker and the four ways to unblock it — the bundles ship no `LICENSE`/`NOTICE` and no upstream URL, and an `author` frontmatter field does not establish who holds copyright, so a reconstructed notice invents an ownership statement (a first attempt did exactly that and was correctly rejected). Leaving it unvendored now costs almost nothing, because the synced install is complete and our addition is versioned. **UNVERIFIED:** whether a *fresh* container also materialises the modular `~/.claude/skills/flow-by-flow/references/` tree — this one has it, and that cannot be distinguished from inside it; immaterial either way, and stated rather than assumed.
 - **[PREMISE CORRECTED 2026-09-01 — see the entry above. The vendoring decision below STANDS; the "half-install" it rests on was never real.]** ~~`flow-by-flow` NOT vendored — §69 stays best-effort on a fresh container~~, and the licence blocker is now on record (#708, 2026-09-01)** — §69 makes the skill MANDATORY on every software task and says a session that cannot find it must say so plainly rather than improvise. **A half-install is a worse starting position than an absent one**, because of what the state affords rather than what any session will do: the account-synced install delivers **`SKILL.md` only** — no `references/`, no `templates/` — so on a fresh container the index's own first instruction (*read `references/orchestration.md`*) points at a missing file, and because a skill WAS found nothing presents this as the not-found case. A session following §69 will hit the absence and CAN report it; nothing forces it to, and nothing stops it carrying on either — no loader, no check, no failing branch. **No session has been observed doing so; this is the available failure mode, recorded so it is expected rather than rediscovered.** Also §64 — these are ephemeral remote containers, so a container-local install (and the local Gate 6 close-out step added the same night) dies with the container. **The attempted fix, which did NOT ship:** vendor both bundles as a matched pair at 2.0.1 (the skill's own Gate 5 fails if they drift), behind a `!.claude/skills/` negation in `.gitignore` beside the existing `!.claude/commands/`, whose own comment gives the reason — *"so every session (and every teammate) gets them."* **The negation DID ship; the bundles did not. OUTCOME: the vendoring was ABANDONED, and that is the decision.** The bundles ship no `LICENSE`/`NOTICE` and no upstream URL (the Anthropic-authored siblings beside them DO ship `LICENSE.txt`), so the MIT notice could not be fetched. A first attempt reconstructed one from the `license: MIT` + `author` frontmatter; the peer-gate correctly rejected it, because an `author` field does not establish whether the individual, the company, or both hold copyright — reconstructing it **invents an ownership statement**, and a false notice on redistributed copies is worse than none, which no explanatory caveat cures. So the skills are NOT in the repo. What ships instead is `.claude/skills/README.md`: the blocker, the four ways an owner could unblock it (obtain the notice · obtain written permission · accept the risk explicitly · leave it unvendored), and the local close-out step reproduced in full so it survives. §69 therefore remains best-effort on a fresh container, stated rather than papered over. Caught by the §39 peer-gate, which also caught that this PR — about knowledge capture — had itself skipped the §BRAIN.3 same-commit brain update.
@@ -608,6 +616,82 @@ every function importing it).
 **Also recorded:** Supabase preview pushes only NEW migration files, so a migration edited in place
 leaves the preview branch holding the pre-fix version while its badge stays green. Measured directly,
 not inferred. The from-nothing local replay is the authoritative migration proof.
+
+---
+
+## MET1 — Paige's spend becomes billable usage (2026-09-01, branch `codex/paige-knowledge-active-tenant-isolation-v2`)
+
+**Measured on production before writing anything.** `paige_llm_trace` held 663 rows, 13 tenants,
+newest that day. `platform_usage_events` held 91 rows carrying only `tenant_provisioned` and
+`tts_char`. **Zero LLM usage records had ever been written.** 15,578,931 tokens had been spent on
+tenants' behalf and nothing downstream could see any of it — observable spend, no meter, which is
+the exact state §67 names as the cost half of autonomy: at `confirm` the human is the throttle, at
+`auto` there is none.
+
+**`meter_llm_usage(p_limit)`** — a service-role-only SECURITY DEFINER drain, not a trigger. A
+trigger would run inside the trace insert, so a metering failure would fail the TRACE: breaking
+observability to protect billing, which is backwards. A drain is non-blocking, picks up the backlog
+without a separate backfill, and is idempotent through a partial unique index on
+`(metadata->>'trace_id') WHERE event_type='llm_tokens'` — an index the table had never had, and
+without which a re-run double-counts.
+
+**`platform_usage_events`, not `platform_metered_events`.** The wrong table said so itself: its
+CHECK admits `layer IN ('L1_platform','L3_tenant_passthrough')`, and Paige's own inference is
+neither a platform subscription nor a third-party pass-through. `platform_usage_events` already
+carried `tts_char` in the same shape.
+
+### The finding underneath the finding
+
+A proof case asserted every metered row carries a cost, and **failed**. It was right to. Of 228
+meterable traces, **197 (86%) carried no cost at all — 15,475,175 of 15,578,931 tokens, 99.3%.**
+The 31 priced rows had all come through `_shared/model-router`, which prices every call; the 197
+unpriced had all come through the DIRECT `_shared/claude.ts` path, which has the provider's own
+`usage` object in hand at its trace site and never priced it. The `$1.38` the platform believed it
+had spent was the cost of 0.7% of its tokens.
+
+Fixed at the **writer** rather than at the call sites: `traceLLMCall` now fills the estimate when
+the caller supplied none, so every path — including the seventh nobody has found yet — is priced by
+construction. Token pricing moved into `_shared/token-pricing.ts`, a dependency-free module, because
+`claude.ts` is imported BY the router and cannot import back without a cycle. That cycle is why the
+platform had grown **three** copies of the price table; `eval/scorers.ts` carried one whose own
+comment apologised for it.
+
+**Priced per MODEL for anthropic, not per provider.** The single "anthropic" rate was the reasoning
+tier applied to every Claude call, so 8,535,448 haiku tokens were being valued at roughly 3× list.
+An estimate at the wrong model's list price is not coarse, it is wrong — and wrong in the direction
+that overstates what a tenant owes. Every pre-existing pairing keeps its exact rate, so the §33
+visual-critique cost cap (frontier on `claude-sonnet-5`) computes byte-identically.
+
+**The historical 197 are NOT back-priced.** Deriving a cost for a call whose model pricing at the
+time was never recorded would be inventing a figure and stamping it as measured. They meter their
+TOKENS — the measured quantity — and carry an explicit null cost.
+
+**Recording usage is not charging for it.** Nothing reads a price book, touches an invoice, or sets
+`reconciled_invoice_id`. The cost travels in metadata as a labelled estimate.
+
+### Three lessons this slice paid for
+
+1. **A failing assertion is evidence before it is a defect.** P6 failed, and the reflex was to
+   loosen it. Diagnosing it instead surfaced that 99.3% of the platform's token spend had never been
+   priced. The proof was more correct than the code.
+2. **`->>'key' IS NULL` cannot tell an absent key from an explicit JSON null.** P6b was written to
+   catch exactly the `jsonb_strip_nulls` defect and **passed under it** — vacuous against its own
+   target. It now compares against `'null'::jsonb`. The distinction is the whole point of the fix:
+   a consumer must read "no cost recorded", never infer it from a missing field, and never meet a
+   downstream `COALESCE(cost, 0)` that books unpriced spend as free.
+3. **A test fixture that omits a method makes a dead code path look healthy.** `traceLLMCall` ends
+   `.insert(record).abortSignal(sig)`; the fake had no `abortSignal`, so the chain threw into the
+   writer's own swallowing catch — while the row, recorded one link earlier at `.insert()`, still
+   satisfied every assertion. Added to the fake, plus a check that the chain reached the end.
+
+**Evidence.** Production rollback proof `scripts/sql/meter-llm-usage-proof.sql`, 12/12 including two
+controls measuring the defect first; mutation-tested — the strip mutation drives P6 red (and drove
+the P6b correction). `test:token-pricing` 20/20 and `test:trace-wiring` 12/12, both wired into CI,
+both mutation-tested at 8 and 6 mutations with every one caught. **Not merged, not deployed, and
+the authenticated live drive remains UNVERIFIED** — no browser capability in this session (§32.c).
+
+---
+
 ## 2026-08-31 — Solo Settings Team Gate 1 approved; production branch in flight, not live
 
 The owner approved the roster-first Team design and authorized production implementation. Growth uses
@@ -639,3 +723,216 @@ The owner explicitly rejected the proposed cross-domain Hidden/View/Manage works
 PAIGE receives the server-resolved active-tenant roster plus Team invitation lifecycle under the existing Team owner/admin visibility boundary. She may identify, draft, recommend, and prepare; she may not silently invite, mutate roles, grant elevated access, or bypass Team authorization. Invitation tokens never enter the context.
 
 The narrow draft requires a new exact-head Gate 2 packet before merge or deployment. Authenticated browser interaction and migration application remain UNVERIFIED until directly exercised.
+---
+
+## M3 — a new conversation remembers the last one (2026-09-01)
+
+**Measured on production first.** Within a thread, continuity already worked: 35 threads, 14 long
+enough to fold, 6 compacted, the longest 105 messages, and the rolling summary preserves decisions,
+queued actions, open approvals and open loops by design. **Across threads it did not exist.** One
+tenant holds 18 threads and 277 turns, 8 of them carrying folded summaries, and every new
+conversation opened blank. The charter's wording is "a future session must recover authorized
+context, current plan, next promised action" — and a person starting a new chat is a future session.
+
+**It EXTENDS `paige_operating_memory` rather than adding a read (§18).** That function already
+derives scope the only safe way, already narrows on the focused client, is already called once per
+turn on the caller's own client, and its result already renders into both prompt paths. A second
+function would duplicate four things and be the one that drifts. The three memory layers the charter
+names stay distinct in MEANING without becoming three separate reads.
+
+**The cross-client rule is the load-bearing part.** A thread summary is prose about a conversation,
+so carrying the wrong one is a disclosure, not a nuisance. The predicate is the SAME one every other
+section uses — client in focus narrows to that client, no client in focus means the operator's own
+general workspace — so there is one rule to reason about rather than a special case that can drift
+from its neighbours. Isolation beyond that stays RLS's (SECURITY INVOKER retained).
+
+### Two things worth keeping from how it was proven
+
+1. **The proof could not run on production, and the reason is the finding.** `paige_operating_memory`
+   and `paige_automations` do not exist on prod — both are created by this branch's unmerged
+   migrations. Two attempts failed on exactly that before it was obvious. The proof runs against the
+   PREVIEW branch database, which is the only Postgres where the "before" state exists, with the
+   identity chain (auth user → tenant → tenant_members) seeded because the preview is data-free.
+   **Stated rather than smoothed over: this is a preview proof, not a prod proof.** Prod gets the
+   same state after merge, and the §32.a persisted-apply confirmation is where that is checked.
+2. **Production has ZERO client-scoped summarised threads**, so the cross-client rule could not be
+   exercised on real rows at all and had to be seeded. A rule that cannot be tested against existing
+   data is exactly the one that rots quietly; it now has a seeded case and a negative control
+   (client Y's own thread MUST appear) so it cannot pass by filtering everything.
+
+**Evidence.** 14/14 on the preview including the seeded cross-client and cross-tenant cases;
+authz harness 183/183 with three new checks, each mutation-tested — reverting the render, dropping
+the recollection label, dropping the record-wins tiebreak and un-threading the exclusion each drive
+exactly the check built for it red. Deno diagnostics on the handler unchanged at 14.
+
+**Not merged, not deployed.** The authenticated live drive remains UNVERIFIED.
+
+## 2026-09-02 — Two branches built the same approval gate. One survives (merge of `origin/main` into `codex/paige-knowledge-active-tenant-isolation-v2`)
+
+**The clash.** The Campaigns/Pipelines branch and the Chat branch independently built "a mutating
+call runs only if the operator approved THAT call." Merging them naively would have left both
+running, and the weaker one would have been a way round the stronger one.
+
+- **Chat branch (kept):** the server hashes the exact tool call into a **fingerprint**, streams it
+  on the confirm card, and requires the browser to echo it back in the request BODY. The gate runs
+  the call whose fingerprint arrived, or none. A model cannot produce the body.
+- **Pipelines branch (retired):** for one action out of forty-eight, a `confirmedActions` array
+  carrying a token, plus a comparison of the operator's last message against the exact string
+  `"Approved — run it."`
+
+The prose comparison is the specific thing the fingerprint exists to remove: anything that can
+write a message can write that sentence, so a model could approve its own call by quoting the
+operator. Retired with it: `supabase/functions/_shared/pipelineArchiveApproval.ts` and
+`hasExactPipelineArchiveApproval`, whose only remaining caller was its own test.
+
+**What the Pipelines branch got right, and is kept.** A pipeline archive is bound to a
+**server-issued preview of itself** — `pipeline_archive_preview` mints a row in
+`pipeline_archive_confirmations` that is single-use, expiring, and scoped to this tenant and this
+requester, and the archive refuses unless that row exists AND predates the turn. Minting a preview
+and acting on it in one breath is the turn approving itself. The fingerprint does not do this, so
+it survives as a **precondition** that runs before the gate — not as a second approval.
+
+**Where the duplicate-name property went.** The retired helper compared a client-supplied token and
+a `PPL-` reference, so an approval for one pipeline could not archive its same-named duplicate.
+That is now structural instead of compared: the archive reads its target from
+`archiveBinding.pipeline_id`, so a name was never the thing being trusted.
+
+**`pipeline_archive_preview` arrived unclassified**, and `lint:action-risk` refused it — correctly:
+it persists a row, so the verb backstop read it as a write. Exempted in
+`_shared/action-risk.ts` `NON_MUTATING_EXEMPT` with the reason recorded: gating it would demand an
+approval to be shown the consequences of a decision not yet made, which is a second approval in
+front of one act. Catalogue now: 31 ordinary · 24 high · 2 owner-only · 4 exempt · 0 unclassified.
+
+**The standing order this sets (owner, 2026-09-01/02).** Other agents are building platform
+departments that each point at Paige. Where their work and the Chat build disagree about how Paige
+is governed, **the Chat build rules and the clashing code is rewritten onto it** — not carried
+alongside it. Two correct implementations of one gate are worse than one, because the weaker is a
+bypass of the stronger. Call the clash out, rewrite, and record it here.
+
+**Evidence.** tsc 0 · vitest 1673/1673 · 22 CI guards green · vite build clean. Merge commit
+`ed3de6f1a`. Not deployed; the authenticated live drive remains UNVERIFIED.
+
+---
+
+## 2026-09-02 — Paige can act on the team, not only describe it (Solo Team seam in Chat)
+
+**What changed.** Five tools — `team_set_work_profile`, `team_set_permission`, `team_invite_member`,
+`team_invite_resend`, `team_invite_revoke` — give PAIGE the Team capability inside the canonical Chat
+workspace. Owner approved the Team-only Chat interaction direction. Nothing new was built on the
+server: they call the same seam the Team screen calls, so the database's authority checks apply to a
+sentence exactly as they apply to a form.
+
+**The read had been a description of a locked door.** `get_paige_team_context` has been injecting the
+roster, permissions, work details and every invitation for a while, and the Team surface said out
+loud that she "cannot send or change access." That sentence was the feature request, and it is now
+rewritten rather than left standing (§58 — flagged, not silent).
+
+**The defect a pre-build seam audit caught, before it shipped.** The Team seam resolves its workspace
+with `current_user_tenant_id()`; the conversation resolves its own with `get_paige_persona_context`,
+which prefers a linked `clients` row. For a speaker who is a member of one workspace and a client
+record in another those are DIFFERENT tenants. The read already failed closed on it —
+`buildTenantTeamContextBlock` returns null and Paige is shown no roster. The write would not have,
+and member ids for the other tenant are still obtainable from `crm_list_team`, which resolves the
+same way the seam does. The result would have been an action landing in a workspace whose roster the
+conversation was deliberately not shown: **the read failing closed and the write failing open over
+the same disagreement.** `teamSeamTenantMismatch` now asks the read's question before all five acts.
+The lesson is the one worth keeping: when a read is given a safety check, ask what the matching write
+does with the same answer.
+
+**Classification.** Permission change and all three invitation acts are `high` — they move authority
+and, for invitations, put an email in a real stranger's inbox, which is the one effect no undo inside
+the product reaches. Work details are `ordinary`, because describing a job cannot grant one, and that
+is structural: the RPC writes two text columns and cannot reach `permission`. Catalogue now: 32
+ordinary · 28 high · 2 owner-only · 5 exempt · 0 unclassified.
+
+**The tool-registry ratchet fired on this work, correctly, and the baseline grew by five.** The Spine
+registry the ruling points at does not exist yet, and the ruling's own words put the final bounded
+adapter with the Chat workstream — which is what this is. The reason is written into
+`scripts/ci/chat-tool-baseline.txt` rather than a commit message, because "the guard fired and I
+raised the number" is how a ratchet stops being one. It shrinks by five when the registry lands.
+
+**Honest gap.** `crm_list_team` (`list_team_members`) and the Solo Team functions read the same
+`tenant_members` table but disagree in four ways: authorization (global `user_roles` vs tenant
+membership), owner labelling, suspended members, and truncation. Two homes for "who is on the team"
+is a §18 seam worth closing; it is not closed here and is not made worse here.
+
+**Evidence.** tsc 0 · deno check 14 errors at head and 14 at base (no new) · eslint clean on changed
+`src/**` · 6 team test files, 28 tests, 5 assertions mutation-proved · 6 CI guards green · vite build
+clean. **Not deployed. The authenticated live drive is UNVERIFIED** — this session holds no browser
+that can reach the surface, so §32.c is owed to the next capable session or to the owner.
+
+**The peer-gate found two blockers the author's own tests structurally could not (§39).** Both are
+recorded because the shape of the miss matters more than the fix.
+
+1. **The approval card could name a person from another workspace.** The tenant guard was written
+   beside the three WRITE branches. The card is built a turn earlier, on the refusal path, and read
+   the same roster with no check — so for the mismatched speaker it could render a name and email
+   from workspace B inside a conversation scoped to workspace A, and persist that string into
+   `paige_pending_confirmations` under A's tenant id. The read had been failed closed for exactly
+   that speaker; the card re-opened it one turn before the guard ran. The check now lives inside the
+   roster reader, so both paths close from one place. **The test that missed it counted the string
+   `await teamSeamTenantMismatch()` and asserted it equalled three — which is exactly the number of
+   write branches. A source count cannot notice a fourth reader that has no check at all.**
+2. **The card said "Member" while the code granted "Admin".** `describeConfirm` branched on strict
+   `permission === "admin"`; both SQL functions `lower()` the value. A model emitting `"Admin"` — the
+   capitalisation used in the card text, the Team screen's labels and the tool descriptions
+   themselves — produced "Change Riley to Member … they will LOSE the ability to invite people" and
+   executed a promotion. The stored-arguments protocol was no defence and the reason is worth
+   keeping: the executed call WAS the fingerprinted call. The card and the write agreed on the
+   argument and disagreed on its MEANING. Fixed by settling one canonical value above everything
+   that reads it, and refusing an unrecognised one rather than coercing it.
+
+Four more, all real: the invitation seam's honest refusal was being discarded (`functions.invoke`
+resolves a non-2xx to `{data:null,error}`, so `inv?.error` was always undefined and what surfaced was
+the constant "Edge Function returned a non-2xx status code" — while `readInvokeBody`, written in this
+same file for precisely that trap, sat in scope uncalled); a `high` card whose subject fell outside
+the 100-row roster page was still approvable as "Change that teammate to Admin"; the work-details
+card showed a character count for text that is re-injected into Paige's own context every turn; and
+an omitted work-details field erased the stored value rather than keeping it.
+
+**And a defect older than this slice, found while adding to it.** The entire risk gate lives inside
+`if (autoMode === "confirm")`, and `set_tool_autonomy` accepts auto|confirm|off for any tool key with
+no reference to its class. So a tenant admin could put `automation_set_grant` — classified
+`owner_only` precisely because it changes how much Paige may do alone — on auto, and Paige could then
+raise her own autonomy from a conversation. Every `high` tool had the same shape. The handler now
+clamps `auto` to `confirm` for any `high` or `owner_only` action, above the branch, keyed on the
+class so it covers all 30 rather than the five added with it. `off` deliberately survives: a brake is
+the operator's to pull at any class. **Not fixed, and reported rather than done quietly:**
+`set_tool_autonomy` still persists the now-inert `auto`, and the capabilities surface still offers
+the choice. The setter is a shipped RPC with its own callers and the surface's wording belongs to
+whoever owns it.
+
+**§58 CAPABILITY CHANGE, FLAGGED FOR AN OWNER RULING — `auto` no longer runs a `high` or
+`owner_only` action.** The clamp above is not only a bug fix; it removes something a workspace
+could previously do. A tenant admin could set any tool to `auto` and Paige would run it unattended,
+including the twenty-eight `high` actions and the two `owner_only` ones. After the clamp, `auto` on
+those thirty means `confirm` — the operator is still asked. `off` is untouched, and `ordinary`
+tools on auto still run on auto.
+
+**The shipped test that had to change, and why that is the whole argument.** `check.mjs` 15.6/15.7
+drove `automation_set_grant` at `auto` and asserted it EXECUTED, reporting its resolved posture.
+They passed on main. So the platform's own suite was pinning the behaviour in which Paige raises her
+own autonomy from a conversation, because the fixture set the mode to auto for convenience and the
+gate is inside `if (autoMode === "confirm")`. They are rewritten to assert the refusal. **Coverage
+honestly lost:** the §13 property they protected — that a grant the ceiling holds down is reported
+as what will actually happen — is no longer reachable through chat for that tool, because the tool
+is no longer reachable through chat at all. Its resolved-posture reporting is now dead code on that
+path.
+
+The owner may reasonably rule the other way for `high` specifically: an operator's standing "don't
+ask me" is a human decision, not the model's word, so `auto` on `crm_delete_contact` is arguable in
+a way that `auto` on `automation_set_grant` is not. Both halves are in one place and either can be
+narrowed. The `owner_only` half should not be: "Paige may never grant or raise her own autonomy
+through Chat regardless of action class or owner wording" is explicit, and a settings toggle is
+owner wording.
+
+**The last peer-gate finding, closed: the invite seam told a real owner they were not one.** The
+three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()` — used by the
+roster and the other two RPCs — COALESCEs it to the caller's earliest active membership. So a sole
+OWNER whose `active_tenant_id` happens to be null reads their own roster, passes the tenant guard,
+and is then told *"only an owner or admin may invite team members."* They are the owner. Paige would
+have relayed that in her own voice, which is the §13 failure — a true statement about a resolver
+rendered as a false statement about a person. The refusal now names the real cause before any email
+is attempted. **The RPCs are deliberately unchanged:** they are shared with the Team screen, which
+has the identical defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with
+its own producer inventory (§37). Logged as open.

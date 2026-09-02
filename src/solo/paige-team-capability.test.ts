@@ -1,0 +1,277 @@
+/**
+ * PAIGE's Solo Team capability — the properties that have to hold for her to touch the team.
+ *
+ * Two kinds of assertion live here and they are deliberately not mixed up. The first block runs
+ * REAL CODE: `action-risk.ts` is imported and called, so what it says is what production says. The
+ * second block reads the handler's SOURCE, because the chat handler is a Deno edge function with a
+ * network-shaped entry point and no seam this suite can drive. That is a weaker class of proof and
+ * it is labelled as such — it catches a call site wired to the wrong client, which is the mistake
+ * that would actually be made here, and it cannot tell you the function runs.
+ */
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { classifyAction, unclassifiedWriteReason } from "../../supabase/functions/_shared/action-risk";
+
+const HANDLER = readFileSync("supabase/functions/paige-ai-chat/index.ts", "utf8");
+
+const TEAM_TOOLS = [
+  "team_set_work_profile",
+  "team_set_permission",
+  "team_invite_member",
+  "team_invite_resend",
+  "team_invite_revoke",
+] as const;
+
+describe("the Team actions are classified, and classified correctly", () => {
+  it("puts every act that moves authority or leaves the platform behind the rendered card", () => {
+    // `high` is not "a stronger word for important". It is the class whose approval fingerprint
+    // travels in the request BODY, which is the one place the model cannot write — so a model
+    // reporting "they said yes" cannot open any of these four.
+    expect(classifyAction("team_set_permission")).toBe("high");
+    expect(classifyAction("team_invite_member")).toBe("high");
+    expect(classifyAction("team_invite_resend")).toBe("high");
+    expect(classifyAction("team_invite_revoke")).toBe("high");
+  });
+
+  it("leaves work details ordinary, because describing a job cannot grant one", () => {
+    expect(classifyAction("team_set_work_profile")).toBe("ordinary");
+  });
+
+  it("refuses a sixth Team tool nobody classified", () => {
+    // The whole point of the fail-closed default. Someone adding `team_remove_member` next month
+    // gets an inert tool and a red build, not an ungoverned write.
+    expect(classifyAction("team_remove_member")).toBe("unclassified");
+    expect(unclassifiedWriteReason("team_remove_member")).toMatch(/no risk classification/);
+  });
+
+  it("does not let any Team tool slip past the runtime write backstop", () => {
+    for (const tool of TEAM_TOOLS) expect(unclassifiedWriteReason(tool)).toBeNull();
+  });
+});
+
+describe("the handler's Team call sites (source-level proof, not runtime proof)", () => {
+  it("declares each Team tool exactly once", () => {
+    for (const tool of TEAM_TOOLS) {
+      const declarations = HANDLER.split(`name: "${tool}"`).length - 1;
+      expect(declarations, `${tool} declaration count`).toBe(1);
+    }
+  });
+
+  it("calls the Team seam through the caller's own client, never the service role", () => {
+    // THE MISTAKE THIS CATCHES. Every guard on this seam — owner-only for a permission change,
+    // owner-or-admin for the rest, the refusal to make anyone an owner — lives inside the SQL
+    // function and derives the actor from auth.uid(). Reaching it with `admin` (the service-role
+    // client) would satisfy every one of those checks vacuously and hand Paige authority no human
+    // in the conversation has. So the client is asserted at the call site, by name.
+    expect(HANDLER).toContain('await supabaseClient.rpc("set_solo_team_member_work_profile"');
+    expect(HANDLER).toContain('await supabaseClient.rpc("set_solo_team_member_permission"');
+    expect(HANDLER).toContain('await supabaseClient.functions.invoke(\n                "solo-team-invitations"');
+    expect(HANDLER).not.toContain('admin.rpc("set_solo_team_member_permission"');
+    expect(HANDLER).not.toContain('admin.rpc("set_solo_team_member_work_profile"');
+    expect(HANDLER).not.toContain('admin.functions.invoke("solo-team-invitations"');
+  });
+
+  it("never lets the work-details write reach a permission", () => {
+    // The separation the Team screen puts on the editor, asserted in code: the arguments this tool
+    // accepts are two text fields and an id. If a `permission` ever appears in this call, the
+    // product's central promise about titles has quietly stopped being true.
+    const call = HANDLER.slice(
+      HANDLER.indexOf('await supabaseClient.rpc("set_solo_team_member_work_profile"'),
+    ).slice(0, 400);
+    expect(call).toContain("_member_user_id");
+    expect(call).toContain("_job_title");
+    expect(call).toContain("_responsibilities");
+    expect(call).not.toContain("permission");
+  });
+
+  it("cannot offer 'owner' as a permission from chat", () => {
+    // The database refuses it too. This asserts the tool never even proposes it, so the operator is
+    // not read a card describing something that will then fail.
+    const decl = HANDLER.slice(HANDLER.indexOf('name: "team_set_permission"')).slice(0, 1200);
+    expect(decl).toContain('enum: ["admin", "member"]');
+    expect(decl).not.toContain('"owner"');
+  });
+
+  it("does not let a stored autonomy preference retire the approval a class requires", () => {
+    // FOUND WHILE ADDING FOUR `high` TEAM TOOLS, and older than them. The entire risk gate sits
+    // inside `if (autoMode === "confirm")`, and `set_tool_autonomy` accepts auto|confirm|off for
+    // any tool key with no reference to its class. So a workspace that had put a tool on `auto`
+    // skipped not only the confirmation but the `high` refusal and the `owner_only` refusal too —
+    // meaning `automation_set_grant`, which is owner_only precisely because it changes how much
+    // Paige may do alone, could have been switched to auto and then raised from a conversation.
+    //
+    // The clamp is one-directional and sits ABOVE the branch so every path reaches it. `off` must
+    // survive it: a brake is the operator's to pull at any class, and a clamp that quietly
+    // re-enabled a disabled tool would be a worse bug than the one it fixed.
+    // Sliced to the clamp STATEMENT, not a fixed character window: the first window overran into
+    // the adjacent `if (autoMode === "off")` branch and failed the "off survives" assertion on
+    // neighbouring code rather than on the clamp. A test that reads past its subject is measuring
+    // whatever happens to sit next to it.
+    const clampStart = HANDLER.indexOf("const classForClamp = classifyAction(");
+    const clamp = HANDLER.slice(clampStart, HANDLER.indexOf('if (autoMode === "off")', clampStart));
+    expect(clamp).toContain('autoMode === "auto"');
+    expect(clamp).toContain('classForClamp === "high"');
+    expect(clamp).toContain('classForClamp === "owner_only"');
+    expect(clamp).toContain('autoMode = "confirm"');
+    expect(clamp).not.toContain('"off"');
+    // It has to precede the branch it protects, or it protects nothing.
+    expect(HANDLER.indexOf("const classForClamp = classifyAction("))
+      .toBeLessThan(HANDLER.indexOf('if (autoMode === "confirm") {'));
+    // And it must not be reachable only from the Solo path or only for team tools — it is keyed on
+    // the class, which is what makes it cover every high action, not just the five added with it.
+    expect(clamp).not.toContain("team_");
+  });
+
+  it("refuses to act when the seam's workspace is not the one this conversation is about", () => {
+    // The defect this closes, found by the seam audit before it shipped: the Team functions resolve
+    // their workspace with current_user_tenant_id(), while the conversation resolves its own with
+    // get_paige_persona_context — which prefers a linked `clients` row. For a speaker who is a
+    // member of one workspace and a client of another they are different tenants, and the READ
+    // already fails closed on exactly that (buildTenantTeamContextBlock returns null). The WRITE
+    // did not, and member ids for the other workspace are obtainable from crm_list_team, so an
+    // action could have landed in a team whose roster this conversation was never shown.
+    //
+    // The check is asserted at EVERY branch, not once: a fifth Team tool added later without it
+    // reopens the hole silently, and this count is what notices.
+    expect(HANDLER).toContain("const teamSeamTenantMismatch = async ()");
+    // DERIVED, NOT HARDCODED. An earlier revision asserted `toBe(3)`, which is a trap in the other
+    // direction: a sixth Team tool added WITH the guard fails, and the cheapest green is to bump
+    // the number — which is how a ratchet stops being one. Count the executor branches instead, so
+    // the assertion is "every branch is guarded" rather than "there are three of them".
+    const executorBranches = HANDLER.split('} else if (tc.function.name === "team_').length - 1
+      + HANDLER.split('tc.function.name === "team_invite_resend" ? "resend"').length - 1;
+    const guarded = HANDLER.split("const wrongTenant = await teamSeamTenantMismatch();").length - 1;
+    expect(guarded, "every Team executor branch consults the tenant guard").toBe(executorBranches);
+    expect(guarded).toBeGreaterThan(0);
+    // Null persona tenant is a refusal too, not a pass — "no expected tenant" is the state in which
+    // a mismatch is undetectable, which is the worst moment to proceed.
+    const body = HANDLER.slice(HANDLER.indexOf("const teamSeamTenantMismatch = async ()")).slice(0, 1600);
+    expect(body).toContain("if (!expected)");
+    expect(body).toContain("actual !== expected");
+  });
+
+  it("settles one canonical permission value before anything reads it", () => {
+    // THE WORST DEFECT IN THE SLICE, caught by adversarial review. The card branched on
+    // `permission === "admin"` with strict equality while both SQL functions lower() the value, so
+    // a model emitting "Admin" — the capitalisation used in the card text, the Team screen's own
+    // labels, and these very tool descriptions — rendered "Change Riley to Member … they will LOSE
+    // the ability to invite people" and then executed a PROMOTION. The operator reads a demotion
+    // and hands over administrative control.
+    //
+    // The stored-arguments protocol did not help and it is worth being precise about why: the
+    // executed call WAS the fingerprinted call. The card and the write agreed on the argument and
+    // disagreed on its meaning, so the fix is settling the value, not binding it harder.
+    const gate = HANDLER.slice(HANDLER.indexOf('if (tc.function.name === "team_set_permission" || tc.function.name === "team_invite_member") {')).slice(0, 1400);
+    expect(gate).toContain(".trim().toLowerCase()");
+    // An unrecognised value is REFUSED, never coerced: guessing which permission somebody meant is
+    // the same mistake in a quieter voice.
+    expect(gate).toContain('raw !== "admin" && raw !== "member"');
+    expect(gate).toContain("success: false");
+    // And the canonical value is written back, so the executed arguments carry it too.
+    expect(gate).toContain("gateArgs.permission = raw");
+    // It must be settled BEFORE the fingerprint and the card are taken from those arguments.
+    expect(HANDLER.indexOf("gateArgs.permission = raw"))
+      .toBeLessThan(HANDLER.indexOf("const fp = await confirmFingerprint("));
+  });
+
+  it("checks the tenant inside the roster read, so the CARD cannot name across workspaces", () => {
+    // The first version guarded only the write. The approval card is built a turn EARLIER on the
+    // refusal path and read the same roster with no check, so a mismatched speaker could be shown
+    // — and have persisted into paige_pending_confirmations — a name and email from a workspace
+    // this conversation was deliberately never shown a roster for.
+    const reader = HANDLER.slice(HANDLER.indexOf("const teamCardRoster = ()")).slice(0, 1800);
+    expect(reader).toContain("rosterTenant !== expected");
+    expect(reader).toContain("return null");
+    // The check must be in the READER, not only beside the write — that is the whole finding.
+    expect(HANDLER.indexOf("const rosterTenant = "))
+      .toBeLessThan(HANDLER.indexOf("const teamSeamTenantMismatch = async ()"));
+  });
+
+  it("refuses a high-risk card whose subject it cannot name", () => {
+    // "Change that teammate to Admin — they will be able to invite people, manage invitations, and
+    // edit everyone's work details" is approvable prose about nobody. Degrading to less information
+    // is acceptable on an ordinary action; on one that moves authority it is a yes to an unnamed
+    // person's access.
+    const guard = HANDLER.slice(HANDLER.indexOf("A HIGH-RISK CARD THAT CANNOT NAME ITS SUBJECT")).slice(0, 2000);
+    expect(guard).toContain("await describeTeamMember(gateArgs?.member_user_id)");
+    expect(guard).toContain("await describeTeamInvite(gateArgs?.invitation_id)");
+    expect(guard).toContain("if (!named)");
+    expect(guard).toContain("haven't asked you to approve anything");
+    // The resolvers must be able to SAY they failed; a string fallback inside them would make the
+    // guard unreachable.
+    expect(HANDLER).toContain("const describeTeamMember = async (userId: unknown): Promise<string | null>");
+    expect(HANDLER).toContain("const describeTeamInvite = async (inviteId: unknown): Promise<string | null>");
+  });
+
+  it("shows the free text on the card, because it lands in Paige's own context", () => {
+    // These strings are re-injected into the model's prompt on every later turn, up to 2,000
+    // characters per member. An operator shown "742 characters" has approved something nobody read.
+    const card = HANDLER.slice(HANDLER.indexOf('case "team_set_work_profile": {')).slice(0, 1800);
+    expect(card).toContain("responsibilities → ");
+    expect(card).toContain("resp.slice(0, 200)");
+    expect(card).not.toContain("responsibilities rewritten (");
+  });
+
+  it("treats an omitted work-detail field as keep, not delete", () => {
+    // The RPC writes both columns unconditionally, so a model changing only a title and emitting
+    // an empty responsibilities string erased someone's two thousand words — on an `ordinary`
+    // action it can self-approve. The RPC is shared with the Team screen and is not changed; the
+    // omitted side is carried forward from what is stored. An EXPLICIT empty string still clears,
+    // because "take that off her profile" is a real request.
+    const carry = HANDLER.slice(HANDLER.indexOf('AN OMITTED FIELD MEANS "LEAVE IT"')).slice(0, 1600);
+    expect(carry).toContain('typeof gateArgs.job_title !== "string"');
+    expect(carry).toContain('typeof gateArgs.responsibilities !== "string"');
+    expect(carry).toContain("current.responsibilities ?? \"\"");
+    // And the schema must permit omission, or the carry-forward is unreachable.
+    const decl = HANDLER.slice(HANDLER.indexOf('name: "team_set_work_profile"')).slice(0, 1800);
+    expect(decl).toContain('required: ["member_user_id"]');
+  });
+
+  it("reads the invitation seam's real refusal instead of the transport's generic one", () => {
+    // `solo-team-invitations` returns every refusal as a non-2xx, and supabase-js resolves that to
+    // { data: null, error } — so the previous `inv?.error` was always undefined and what surfaced
+    // was the constant "Edge Function returned a non-2xx status code". The honest sentences live on
+    // error.context, and readInvokeBody exists in this file for exactly that trap.
+    // Sliced to the END of the branch rather than a character window — twice now a fixed window
+    // has measured whatever happened to sit next to the subject instead of the subject.
+    const branchStart = HANDLER.indexOf('const invokeBody = tc.function.name === "team_invite_member"');
+    const branch = HANDLER.slice(branchStart, HANDLER.indexOf('} else if (tc.function.name === "member_grant_role")', branchStart));
+    expect(branch).toContain("await readInvokeBody(invErr, inv)");
+    expect(branch).toContain("invBody.ok === false");
+    expect(branch).toContain("invBody.emailed === true");
+    expect(branch).not.toContain("(inv as any)?.error");
+    // And the caller's JWT is passed explicitly rather than inherited from an undocumented internal.
+    expect(branch).toContain("headers: { Authorization: authHeader }");
+  });
+
+  it("does not let the invite seam tell a real owner they are not one", () => {
+    // The three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()`,
+    // which the roster and the other two RPCs use, COALESCEs it to the earliest active membership.
+    // So a sole OWNER with a null active_tenant_id reads their own roster, passes the tenant guard,
+    // and is then told "only an owner or admin may invite team members" — which is false, and which
+    // Paige would relay in her own voice. That is the §13 failure: not a poor error string, but a
+    // true statement about the resolver rendered as a false statement about the person.
+    //
+    // The RPCs are deliberately not changed (they are shared with the Team screen and have the same
+    // defect); what is asserted is that the refusal names the real cause, ahead of the write.
+    const guard = HANDLER.slice(HANDLER.indexOf("const inviteSeamBlocked = async ()")).slice(0, 2200);
+    expect(guard).toContain('.select("active_tenant_id")');
+    expect(guard).toContain("This isn't about your permissions; you may well be its owner.");
+    // A failed read must not manufacture a refusal — it proves nothing, and the RPC's own check is
+    // still ahead of any write.
+    expect(guard).toContain("if (error) return null;");
+    // It guards the invitation acts only: the two RPCs resolve the same way the roster does, so
+    // applying it to them would refuse work that would have succeeded.
+    const applied = HANDLER.split("const inviteBlocked = await inviteSeamBlocked();").length - 1;
+    expect(applied, "the invite resolver check guards exactly the invitation branch").toBe(1);
+  });
+
+  it("carries the email-delivery outcome into the result instead of assuming it", () => {
+    // Creating an invitation and delivering its email are two acts and the second fails alone.
+    // `emailed` is what stops "invited them" being said about somebody who was never contacted.
+    const start = HANDLER.indexOf('const invokeBody = tc.function.name === "team_invite_member"');
+    const branch = HANDLER.slice(start, HANDLER.indexOf('} else if (tc.function.name === "member_grant_role")', start));
+    expect(branch).toContain("emailed");
+    expect(branch).toContain("did NOT go out");
+  });
+});

@@ -1,0 +1,22 @@
+MET2 — the meter is scheduled. Proof output, production (xygzykjyynhzqytbqnzu), 2026-09-01.
+Run inside BEGIN … ROLLBACK. 5/5 ok.
+
+ok  B1 TODAY nothing schedules the meter - it is built, proven and inert
+ok  A1 the job exists, is ACTIVE, and runs hourly at :35 (35 * * * *, active=true)
+ok  A2 applying it twice leaves exactly ONE job, not two (1)
+ok  A3 a cron-shaped caller (no JWT) IS admitted and meters
+      ({"metered": 233, "zero_token_traces": 210, "unattributable_traces": 230})
+ok  A4 ...and a JWT-bearing caller is still refused (42501)
+
+GROUNDING BEHIND THE CADENCE (measured, not chosen):
+  673 traces total, first 2026-07-20, last 2026-09-01
+  33 in the last 7 days · 11 in the last 24 hours — roughly 5/day at current volume
+  233 meterable and never metered (tenant present, tokens > 0), oldest from 20 July
+  default p_limit = 500, so hourly clears the backlog in one pass with two orders of
+  magnitude of headroom over the arrival rate
+
+WHAT B1 ESTABLISHES, and why it is the assertion that matters. `meter_llm_usage` was
+built, proven and merged into this branch by MET1, and grepping the whole repository on
+2026-09-01 found no caller: no pg_cron job, no edge function, no workflow, no frontend.
+Eleven cron jobs run on this instance and none of them is the meter. A1 without B1 would
+prove only that scheduling a job schedules a job.

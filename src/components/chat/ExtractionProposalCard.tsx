@@ -85,12 +85,22 @@ export function ExtractionProposalCard({
       <div className="flex items-start gap-2">
         <SourceIcon className="h-4 w-4 text-accent mt-0.5 flex-shrink-0" />
         <div className="min-w-0">
-          <p className="text-[13px] font-medium text-foreground leading-tight">
-            {proposal.intro ||
-              (isSingleField
-                ? "I caught something I can save for you."
-                : "I found the following information:")}
-          </p>
+          {/*
+            THE INTRO IS AN "IT HASN'T HAPPENED YET" SENTENCE, so it stops being true the moment it
+            has. The credit proposal's intro is literally "Nothing has been saved to the profile yet
+            — tell me which of these to record", and it was rendering above the settled line, so a
+            card that had just saved read: "Nothing has been saved to the profile yet… Done — I've
+            updated your business profile." Both at once, on screen, to the person who just clicked.
+            Hiding a sentence that has become false is not a design change; leaving it is a §13 one.
+          */}
+          {status === "idle" && (
+            <p className="text-[13px] font-medium text-foreground leading-tight">
+              {proposal.intro ||
+                (isSingleField
+                  ? "I caught something I can save for you."
+                  : "I found the following information:")}
+            </p>
+          )}
           {proposal.documentType && (
             <p className="text-[11px] text-muted-foreground mt-0.5">
               From: {proposal.documentType}
@@ -133,10 +143,29 @@ export function ExtractionProposalCard({
       {status === "saved" && (
         <div className="flex items-center gap-1.5 text-[12px] text-accent">
           <CheckCircle2 className="h-3.5 w-3.5" />
+          {/*
+            IT ONLY NAMES A PROFILE WHEN IT KNOWS WHICH ONE. The branch was a two-way guess on a
+            `profile.` key prefix, with "business" as the fallback — so a credit report, whose keys
+            are `credit_score_equifax` and friends, reported a write to three FICO columns and five
+            credit tables as "I've updated your business profile". Wrong noun, stated confidently,
+            about the one thing the person is being asked to trust the card on.
+            The prefixes are the REAL ones `conversationalExtractor` emits — `foundation.`,
+            `public_presence.` and `intake.` are all the business profile, `profile.` is the
+            personal one. Naming them explicitly rather than falling back to "business" is what
+            keeps this from regressing the cases that were already right: a first attempt at this
+            fix used a `business.` prefix that nothing emits, which would have turned every correct
+            "business profile" into a vaguer sentence while fixing only the credit one (§58).
+            OWED TO CLAUDE DESIGN: the last case says only that it saved. What a credit-report
+            confirmation should actually READ is CD's call; what is ours is that it must not name
+            the wrong thing.
+          */}
           <span>
-            Done — I&apos;ve updated your{" "}
-            {proposal.fields.some((f) => f.key.startsWith("profile.")) ? "personal" : "business"}{" "}
-            profile.
+            {proposal.fields.some((f) => f.key.startsWith("profile."))
+              ? "Done — I've updated your personal profile."
+              : proposal.fields.some((f) =>
+                  ["foundation.", "public_presence.", "intake."].some((p) => f.key.startsWith(p)))
+                ? "Done — I've updated your business profile."
+                : "Done — I've saved that."}
           </span>
         </div>
       )}
