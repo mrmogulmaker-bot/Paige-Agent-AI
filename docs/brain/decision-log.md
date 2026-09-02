@@ -1372,6 +1372,9 @@ by four sites and read by none, plus two listeners with no dispatcher ·
 of 14 surface cards exist, two `main` docs assert a card that is not on `main`, and the tier-matrix
 Solo ledger covers 1 of ~18 surfaces.
 
-**The PAIGE Attention Register Project still does not exist**, so these are linked from the durable
-record and their Register addition remains pending — the convention already set by
-`paige-spine-and-rail-state.md:182-183` and `paige-spine-tool-migration-map.md:353-354`.
+**The PAIGE Attention Register standard landed the same day** (`docs/doctrine/paige-attention-register.md`,
+#768) and is now the canonical home for this process. Its §7 states the GitHub Project itself has
+**not** been created and the register is `UNAVAILABLE` rather than empty; this session holds no
+Projects v2 capability either. All four issues were written to the standard's §2 intake schema, so
+they enter the seed set unchanged once the board exists. No Markdown substitute was built — §7
+forbids it as a competing backlog.

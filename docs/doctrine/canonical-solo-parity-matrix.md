@@ -293,11 +293,16 @@ Existing open issues that remain untouched by this program:
 [#745](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/745),
 [#750](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/750).
 
-**The PAIGE Attention Register Project does not exist.** Two records state so explicitly
-(`paige-spine-and-rail-state.md:182-183`, `paige-spine-tool-migration-map.md:353-354,736-737`), and
-their established convention is to link issues from the durable record and note the Register
-addition as pending. This file follows that convention rather than claiming an addition that cannot
-be made.
+**The PAIGE Attention Register: the standard exists, the board does not.**
+`docs/doctrine/paige-attention-register.md` merged to `main` on 2026-09-02 (#768) and is now the
+canonical home for this process, superseding the ad-hoc convention previously carried by
+`paige-spine-and-rail-state.md:182-183` and `paige-spine-tool-migration-map.md:353-354`. Its §7 is
+explicit that the GitHub Project itself **has not been created** and that the register is
+`UNAVAILABLE` — not empty — until a session with a Projects v2 capability performs its steps 1–4.
+This session has no such capability either, and its §1 one-copy rule is satisfied regardless: the
+register is a *view* over issues, and all four findings below are already issues. Each was written
+to the standard's §2 intake schema, so they can be added to the seed set unchanged the moment the
+board exists. Building a Markdown substitute is explicitly forbidden by §7 and is not attempted.
 
 ---
 
