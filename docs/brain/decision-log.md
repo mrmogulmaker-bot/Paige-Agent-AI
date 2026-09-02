@@ -901,3 +901,27 @@ the operator's to pull at any class. **Not fixed, and reported rather than done 
 `set_tool_autonomy` still persists the now-inert `auto`, and the capabilities surface still offers
 the choice. The setter is a shipped RPC with its own callers and the surface's wording belongs to
 whoever owns it.
+
+**§58 CAPABILITY CHANGE, FLAGGED FOR AN OWNER RULING — `auto` no longer runs a `high` or
+`owner_only` action.** The clamp above is not only a bug fix; it removes something a workspace
+could previously do. A tenant admin could set any tool to `auto` and Paige would run it unattended,
+including the twenty-eight `high` actions and the two `owner_only` ones. After the clamp, `auto` on
+those thirty means `confirm` — the operator is still asked. `off` is untouched, and `ordinary`
+tools on auto still run on auto.
+
+**The shipped test that had to change, and why that is the whole argument.** `check.mjs` 15.6/15.7
+drove `automation_set_grant` at `auto` and asserted it EXECUTED, reporting its resolved posture.
+They passed on main. So the platform's own suite was pinning the behaviour in which Paige raises her
+own autonomy from a conversation, because the fixture set the mode to auto for convenience and the
+gate is inside `if (autoMode === "confirm")`. They are rewritten to assert the refusal. **Coverage
+honestly lost:** the §13 property they protected — that a grant the ceiling holds down is reported
+as what will actually happen — is no longer reachable through chat for that tool, because the tool
+is no longer reachable through chat at all. Its resolved-posture reporting is now dead code on that
+path.
+
+The owner may reasonably rule the other way for `high` specifically: an operator's standing "don't
+ask me" is a human decision, not the model's word, so `auto` on `crm_delete_contact` is arguable in
+a way that `auto` on `automation_set_grant` is not. Both halves are in one place and either can be
+narrowed. The `owner_only` half should not be: "Paige may never grant or raise her own autonomy
+through Chat regardless of action class or owner wording" is explicit, and a settings toggle is
+owner wording.

@@ -1435,10 +1435,29 @@ const mirrorConfirms = (st) => (t, row) => {
     !stepless.rec.inserts.some((i) => i.table === "paige_automations"),
     JSON.stringify(stepless.rec.inserts.map((i) => i.table)));
 
-  // §13 — THE ANSWER CAN BE LESS THAN WHAT WAS ASKED FOR, AND SHE MUST BE TOLD SO. Storing `auto`
-  // while the ceiling holds it at `confirm` is not itself a lie; reporting back "it now runs on its
-  // own" would be. Kills: dropping the resolved posture from the tool result, which would leave the
-  // model writing that sentence from the value it just sent.
+  // ── 15.6/15.7 REWRITTEN 2026-09-02, AND WHAT THEY USED TO ASSERT IS THE REASON ──────────────
+  //
+  // These two drove `automation_set_grant` — classified `owner_only` — through this block's `AUTO`
+  // fixture, which pins `resolve_tool_autonomy` to "auto". They passed because the entire risk gate
+  // lives inside `if (autoMode === "confirm")`, so an `auto` mode skipped not just the confirmation
+  // but the `owner_only` refusal with it. `set_tool_autonomy` accepts any mode for any tool key
+  // without consulting its class, so that was reachable in production by one row: a tenant admin
+  // could put the grant tool on auto and Paige could then RAISE HER OWN AUTONOMY from a
+  // conversation. The standing rule is that she may never do that "regardless of action class or
+  // owner wording", and a settings toggle is owner wording.
+  //
+  // So the old assertions were describing the hole rather than the contract, and the handler now
+  // clamps `auto` down to `confirm` for any `high` or `owner_only` action before the branch. What
+  // is asserted here now is the refusal — including that it names where the decision actually
+  // lives, because "you cannot do that" without "here is where it happens" is a dead end.
+  //
+  // COVERAGE HONESTLY LOST, recorded rather than quietly dropped: the property the old pair
+  // protected — §13, that a grant the ceiling holds down is reported as what will ACTUALLY happen
+  // rather than as what was asked for — is no longer reachable through chat for this tool, because
+  // the tool is no longer reachable through chat at all. The resolved-posture reporting in its
+  // result is now dead code on this path. That is a consequence of closing the hole, not an
+  // argument against closing it, but the next person to touch `automation_set_grant` should know
+  // the posture code is unexercised here.
   const capped = processStore({ resolved: { effective: "confirm", capped_by: "ceiling", would_run: true, dark: [] } });
   const granted = await drive({
     stream: true,
@@ -1447,12 +1466,13 @@ const mirrorConfirms = (st) => (t, row) => {
     tablesExtra: capped,
   });
   const wire = granted.modelEgress.map((b) => (typeof b === "string" ? b : JSON.stringify(b))).join("\n").replace(/\\"/g, '"');
-  assert("15.6 a grant the ceiling holds down is reported as what will ACTUALLY happen",
-    wire.includes('"what_actually_happens":"confirm"') && wire.includes('"held_back_by":"ceiling"'),
-    wire.includes("what_actually_happens") ? "posture present but wrong" : "no posture in the tool result");
-  assert("15.7 …and the model is told in words not to let them believe it runs unattended",
-    /will NOT run as 'auto'/.test(wire),
-    "the corrective note is missing");
+  assert("15.6 an owner-only grant is refused even when the workspace set it to auto",
+    /"success":false/.test(wire) && /operator's decision to make in their settings/.test(wire),
+    wire.includes("what_actually_happens") ? "IT RAN — the auto mode still bypasses the owner_only refusal" : "refused, but not for the stated reason");
+  assert("15.7 …and nothing was written, so she cannot report a grant that did not happen",
+    !granted.rec.inserts.some((i) => i.table === "paige_automations") &&
+      !/"what_actually_happens"/.test(wire),
+    JSON.stringify(granted.rec.inserts.map((i) => i.table)));
 }
 
 // ── 16. NO DURABLE WRITE IN THIS FILE IGNORES ITS OWN ERROR ──────────────────────────────────

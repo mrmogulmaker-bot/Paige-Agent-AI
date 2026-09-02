@@ -11030,6 +11030,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         pipeline_create: "pipelines", pipeline_add_stage: "pipelines",
         deal_create: "deals", deal_move_stage: "deals",
         member_grant_role: "user_roles", member_revoke_role: "user_roles",
+        // The Solo Team seam. Work details and permission both land on the membership row; the
+        // three invitation acts land on the invite token, which is a different record with a
+        // different lifetime — an attribution row that called them all "tenant_members" would say
+        // a person changed when what changed was an unaccepted invitation.
+        team_set_work_profile: "tenant_members", team_set_permission: "tenant_members",
+        team_invite_member: "tenant_invite_tokens", team_invite_resend: "tenant_invite_tokens",
+        team_invite_revoke: "tenant_invite_tokens",
         calendar_book_meeting: "internal_bookings",
         draft_marketing_content: "marketing_content", generate_image: "marketing_content", content_save: "studio_artifact_versions",
         document_generate: "marketing_content",
