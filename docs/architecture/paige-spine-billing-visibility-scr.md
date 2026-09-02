@@ -67,7 +67,7 @@ a value declared in the capability's `factValues` (`resolveEvidence.ts:25`).
 | A notice's category and delivery state, from fixed sets | **Yes** |
 | An unresolved-failure count as a **bounded band** | **Yes** — enumerate the bands |
 | An **exact** count | No — every value would have to be enumerated |
-| A plan **name** or an owner-visible topic **label**, read from a row | No — arbitrary strings |
+| A plan **name**, or any label read as free text from a row | No — arbitrary strings. §3.2's topic label is therefore derived from a fixed category set, not from the row |
 
 **So the health capability is largely expressible today and the other two are partly so.** The
 correction matters practically, not just for the record: the original claim would have sent the Spine
@@ -128,7 +128,7 @@ Run before writing any of the contract below.
 | Solo Settings → Billing | `src/solo/settings.tsx:1457` | Reads `useSoloComms().billing`. Platform subscription `PARTIAL`; invoices, payment method, usage all `UNAVAILABLE`. |
 | Solo Settings → Notifications | `src/solo/settings.tsx:1451` | Two cards, `PARTIAL` and `UNAVAILABLE`. The empty destination the UI handoff in §8 names. |
 | `PAIGE_SPINE_CAPABILITIES` | `_shared/paige-spine/registry.ts:4` | Exactly one registered capability (`pipeline.deal_stage_evidence`). No billing domain exists. |
-| Chat tool surface | `paige-ai-chat/index.ts` | **105** inline tools — the figure the repo's own `lint:chat-tool-registry` guard reports, and the one the migration map uses. An earlier draft said 111, from an unanchored `grep` that counted `name:` occurrences rather than tool declarations. **Zero billing tools**. Adding one is out of scope here and in every later phase until §7's conditions are met. |
+| Chat tool surface | `paige-ai-chat/index.ts` | **105** inline tools — the figure the repo's own `lint:chat-tool-registry` guard reports, and the one the migration map uses. An earlier draft said 111, from an unanchored `grep` that counted `name:` occurrences rather than tool declarations. **Zero billing tools**. Adding one is out of scope in THIS phase; when it is in scope it depends on SCR-2026-09-02-B and the Billing contracts in §4, and on nothing in §6 or §7. An earlier draft pointed this at §7's conditions, which would have kept the Rail/Mind sequencing as a hidden blocker on the reads — the same defect the §7 correction removed, left standing one section away. |
 
 ### 2b. What does NOT exist — measured, not assumed
 
@@ -188,7 +188,8 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Caller identity** | The **current authenticated recipient only**, from `auth.uid()`. There is no parameter naming a recipient, so there is no parameter to abuse. |
 | **Workspace derivation** | Server-side. The read is additionally scoped to the caller's own recipient identity **within** that workspace — being the Owner does not widen it to other people's notices. |
 | **Allowed roles** | Any authenticated member, **for their own notices only**. Role does not widen this read; it is the one capability here where the Owner has no privileged view. |
-| **Safe projection** | category · owner-visible topic **label** · occurrence time · delivery state · a safe next-action state. Bounded list, bounded window. |
+| **Safe projection** | category · a topic label **derived from that category, from a fixed set declared at registration** · occurrence time · delivery state · a safe next-action state. Bounded list, bounded window. |
+| **Why the label is category-derived, not row-derived** | Withdrawing SCR-2026-09-02-C removed the only route to an arbitrary row-supplied label, and this projection still promised one — a contradiction this document introduced and did not catch. It is narrowed rather than re-opened, because a **row-derived label is also the wrong contract on privacy grounds**: the nearest thing a notice row holds to a "topic" is its subject line, and projecting that would put message content into the read this capability exists to keep content out of. A fixed category-derived label carries the same meaning for a person and cannot carry the content. |
 | **Never projected** | another recipient's address, identity, or notices · raw message body or subject · provider payload · payment information · internal metadata · any address or phone number, including the caller's own. |
 | **Refusal** | An attempt to read another recipient's history is refused as an authority failure, and is never answered with an empty list — an empty list is a fact about the caller, not a way to hide a refusal. |
 | **`UNAVAILABLE` behaviour** | **This is the capability's state today and it is total.** No billing notice ledger exists (§2b). It reports `UNAVAILABLE` with that reason. It must **never** fall back to `public.notifications`, which is untenanted and carries raw bodies. |
@@ -234,7 +235,7 @@ requirements on Billing, not as designs for Billing.
 | **B-1** | A **role-scoped** workspace billing status read. `get_tenant_platform_subscription()` is granted to `authenticated` with no role gate, so today any member — `coach`, `member` — can read the workspace's plan, status and renewal. That may be a deliberate product decision; it is **wider than this request's Owner-only requirement**, and the seam cannot narrow what the source hands out to every member. Billing decides: gate the existing function, or supply a gated variant. | capability 1 | **exists but ungated by role** |
 | **B-2** | A **billing authority model** — who is the workspace's billing contact, who are its delegates, and what a delegate may see. Without it, "Billing delegate" has no referent and the capabilities fall back to Owner only. | capabilities 1 and 3 | **does not exist** |
 | **B-3** | A **stated position on revenue classification visibility.** See §9 — this is the one true shared-contract decision in this request. | capability 1 | **decision owed** |
-| **B-4** | A **billing notice ledger**: tenant-scoped, per-recipient, carrying category, an owner-visible topic label, occurrence time, and delivery state — and **not** carrying message bodies, addresses, or provider payloads. | capabilities 2 and 3 | **does not exist** |
+| **B-4** | A **billing notice ledger**: tenant-scoped, per-recipient, carrying category, occurrence time, and delivery state (the owner-visible topic label is **derived from the category** by the capability, so the ledger must not store a free-text label) — and **not** carrying message bodies, addresses, or provider payloads. | capabilities 2 and 3 | **does not exist** |
 | **B-5** | A **delivery-path availability signal** — whether billing notices can be delivered at all — distinct from whether any individual notice succeeded. | capability 3 | **does not exist** |
 
 **Sub-accounts are part of B-1, not a footnote to it.** `useSoloComms` skips the billing read
