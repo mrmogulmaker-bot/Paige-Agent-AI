@@ -871,6 +871,44 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+### PAIGE Mind — first Pipeline evidence slice (Gate 1 approved 2026-09-02; branch, NOT LIVE, NOT APPLIED)
+
+- **Mind binding moves `UNAVAILABLE` → `PARTIAL`** for `pipeline.deal_stage_evidence`. PAIGE can state what a
+  recorded Pipeline stage outcome proves for the active tenant and a selected client, cite its safe reference,
+  and say plainly when she does not know. Read-only throughout.
+- `_shared/paige-spine/mindEvidence.ts` is the Pipeline domain's Mind projection — citation, freshness word,
+  read-only boundary — over the merged safe adapter `public.get_pipeline_spine_evidence`. It is deliberately NOT
+  a platform-wide Mind primitive; generalising it needs its own Spine Change Request. `chatEvidence.ts` renders
+  that projection, so Chat and Mind cannot describe one record differently. `paige-ai-chat/index.ts` was NOT edited.
+- **Owner-approved Spine Change Request (2026-09-02):** the opaque `rail:<uuid>` reference may cross into model
+  context as the citation. It is the one identifier permitted to, it names a record rather than a person or a
+  deal, and it is asserted to appear only inside the citation. Title, summary, payload, stage name, deal id,
+  contact/client/user/tenant ids, provider bodies, secrets and reasoning traces all stay forbidden.
+- **Two reachability findings, both from current main:** `paige:open` had three dispatchers and NO listener, so
+  every "Ask PAIGE" on Pipeline dispatched into nothing; and a Pipeline deal carried `clientName` but no
+  identifier, so a deal card had no client scope to hand over. Migration `20261041000000` adds `client_id` to the
+  innermost deal projection, read off the already-filtered clients join so it is null exactly where the name is.
+- **Pipeline mutation through the Spine stays `UNAVAILABLE`.** No Chat tool, no approval channel, no write path;
+  approval authority remains `none`.
+- Truth status: 1859/1859 vitest, tsc ratchet unchanged at 13, production build green, 11 CI guards green, and a
+  local-Postgres runtime proof that is **mutation-tested** (flipping the identifier's source makes it fail with a
+  named LEAK). **UNVERIFIED:** authenticated runtime, rendered proof, Supabase pgTAP/full-history replay. The
+  migration is **not applied to prod**; a §32.a persisted-apply confirmation is owed after merge. Do not merge or
+  deploy without separate authority. Detail: `docs/delivery/paige-spine-mind-handoff.md`.
+
+### NEXT REQUIRED LANE — Pipeline Chat Write Bridge (owner direction 2026-09-02; NOT STARTED, NOT IN THE MIND BRANCH)
+
+PAIGE Chat is intended to become Pipeline **write-capable**. The read-only Mind evidence slice above is the first
+foundation, not the endpoint. The initial write slice focuses on real deal work: create or link a deal to an
+existing client, update permitted deal details, and move a deal through existing tenant-owned stages. Every write
+must use the canonical Chat risk/approval gate (`_shared/action-risk.ts` + the confirmation gate — never a second
+channel, `docs/doctrine/one-approval-gate.md`), server-resolved tenant and client scope, idempotency, a durable
+outcome, an owner-visible result, failure/retry handling, and no cross-tenant leakage.
+
+**It requires its own Gate 1, its own collision check, and a coordinated Chat-owner workstream, after the active
+PR #729 hotfix is clear.** It was deliberately NOT implemented in the Mind branch, and that branch must not be
+expanded into it.
+
 
 ### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
 

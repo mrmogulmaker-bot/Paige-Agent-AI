@@ -13,6 +13,7 @@ import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
 import { SoloPaigeWorkspace } from "./SoloPaigeWorkspace";
+import { clearPaigeClientScope, readPaigeOpenScope, setPaigeClientScope } from "./paigeClientScope";
 import { TrustCompass } from "./compass";
 import { TenantRelationshipsClientsWorkspace } from "@/components/tenant-relationships/TenantRelationshipsClientsWorkspace";
 import { isLegacyRelationshipOwner } from "@/components/tenant-relationships/workspaceModel";
@@ -217,6 +218,23 @@ const theme=resolvedTheme==='light'?'light':'dark';
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
 // and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>expandRail();
+// `paige:open` had three dispatchers in this app and NO listener, so every "Ask PAIGE"
+// on Pipeline dispatched into nothing. This is that listener. It does two separable
+// things and neither depends on the other: it opens the fold, and — when the event
+// names one — it records which client the surface pointed PAIGE at. The scope is UI
+// context only; the server re-resolves tenant, authorization and client scope on every
+// request that carries it. An event that names no client clears nothing and simply
+// opens the fold, which is what the two existing prompt-only dispatches expect.
+React.useEffect(()=>{const h=(event:Event)=>{
+  const detail=(event as CustomEvent)?.detail;
+  const scope=readPaigeOpenScope(detail,activeTenantId);
+  if(scope)setPaigeClientScope(scope);
+  expandRail();
+};window.addEventListener('paige:open',h);return()=>window.removeEventListener('paige:open',h)},[activeTenantId,expandRail]);
+// An account switch invalidates a client scope outright: the client belonged to the
+// account being left. `getPaigeClientScope` already refuses to hand out a scope stamped
+// with another account, so this is the durable half of the same rule, not the guard.
+React.useEffect(()=>{clearPaigeClientScope()},[activeTenantId]);
 // Surfaces that manage their own internal scroll regions and must fill the
 // frame exactly. Their host is `overflow:hidden` at `height:100%`, so anything
 // they render past the fold is CLIPPED and the shell's own scroll owner never
