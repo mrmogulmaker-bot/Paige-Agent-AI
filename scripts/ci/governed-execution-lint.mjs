@@ -81,16 +81,26 @@ const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
  * A comment cannot overlap a token — that is what makes it trivia. So the parser's own token spans
  * are the ground truth for validating a candidate comment range, whatever produced it.
  */
+/**
+ * Every leaf token, punctuation included — `getChildren`, not `forEachChild`.
+ *
+ * A trailing comment often hangs off punctuation: `inputSchema: …, // exempt` anchors to the COMMA,
+ * which forEachChild never visits. Found on the sibling guard while proving this same test there;
+ * the fixtures here happened to anchor to a semicolon that forEachChild does reach, so this guard
+ * passed for the wrong reason.
+ */
+function eachLeaf(node, sf, fn) {
+  const kids = node.getChildren(sf);
+  if (kids.length === 0) { fn(node); return; }
+  for (const k of kids) eachLeaf(k, sf, fn);
+}
+
 const leafSpansCache = new WeakMap();
 function leafSpans(sf) {
   let spans = leafSpansCache.get(sf);
   if (spans) return spans;
   spans = [];
-  const visit = (n) => {
-    if (n.getChildCount(sf) === 0) { spans.push([n.getStart(sf), n.end]); return; }
-    n.forEachChild(visit);
-  };
-  visit(sf);
+  eachLeaf(sf, sf, (n) => spans.push([n.getStart(sf), n.end]));
   spans.sort((a, b) => a[0] - b[0]);
   leafSpansCache.set(sf, spans);
   return spans;
@@ -130,12 +140,10 @@ function exemptComments(src, fileName = "in-memory.ts") {
       lines.add(sf.getLineAndCharacterOfPosition(r.pos).line + 1);
     }
   };
-  const visit = (n) => {
+  eachLeaf(sf, sf, (n) => {
     add(ts.getLeadingCommentRanges(full, n.pos));
     add(ts.getTrailingCommentRanges(full, n.end));
-    n.forEachChild(visit);
-  };
-  visit(sf);
+  });
   return { lines, any };
 }
 
