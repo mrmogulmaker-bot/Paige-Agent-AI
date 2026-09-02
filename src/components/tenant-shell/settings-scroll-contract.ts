@@ -35,3 +35,50 @@ export const SETTINGS_SCROLL_OWNER_CLASS = "tcs-main--settings-scrollbar-shown";
 export function holdsSettingsScrollFocus(element: Element | null): boolean {
   return !!element?.closest?.(`.${SETTINGS_SCROLL_OWNER_CLASS}`);
 }
+
+/**
+ * WHICH SETTINGS DESTINATIONS DRAW A VISIBLE SCROLLBAR — the policy, as a value.
+ *
+ * Owner ruling, 2026-09-02: *a Settings surface may use a clearly visible,
+ * accessible main-content scrollbar when real configuration content materially
+ * exceeds the available viewport.* Setup is explicitly authorized; Connections
+ * (with Calendars) and Integrations were already. Everything else in Settings —
+ * and every surface outside it — keeps the Solo form-fit policy.
+ *
+ * This is a shared VALUE rather than an expression inside `SoloSettings` because
+ * of how the defect it repairs stayed invisible. The policy used to be
+ * `const visibleScroll = tab === "connections" || tab === "integrations"`, and the
+ * only test of it asserted that exact source line. So Setup — which resolves
+ * `overflow-y: auto` from the same shared exception and merely never received the
+ * class that DRAWS the bar — overflowed its host by 3,282px at 1366x768 with no
+ * affordance at all, and every guard stayed green, because a boolean expression
+ * cannot be read as a policy by anything except the eye that wrote it.
+ *
+ * Two consumers now read this one declaration: `SoloSettings`, which toggles the
+ * class, and `settings-scroll-drive.mjs`, which decides whether to assert a
+ * scrollbar and a reachable end or to assert that nothing is clipped. When those
+ * two disagreed the drive would fail a correct surface for the opposite reason.
+ *
+ * ADDING A DESTINATION HERE IS A PRODUCT DECISION, NOT A REPAIR. It widens an
+ * exception the Solo shell contract deliberately keeps narrow
+ * (`docs/doctrine/solo-shell-contract.md`), and it requires an owner ruling.
+ * Nothing outside Settings may consult this: the surfaces held form-fitting by
+ * `.paige-solo main{overflow:hidden!important}` are design-locked separately.
+ */
+export const SETTINGS_VISIBLE_SCROLL_DESTINATIONS: ReadonlySet<string> = new Set([
+  "setup",
+  "connections",
+  "integrations",
+]);
+
+/**
+ * True when this Settings destination is authorized to draw its scrollbar.
+ *
+ * Fails CLOSED for anything unrecognised: a destination nobody has ruled on stays
+ * form-fitting, which is the safe direction — a surface that should scroll and
+ * does not is a visible defect, while one that scrolls and should not silently
+ * changes a design-locked interaction policy.
+ */
+export function settingsDestinationShowsScrollbar(destination: string): boolean {
+  return SETTINGS_VISIBLE_SCROLL_DESTINATIONS.has(destination);
+}

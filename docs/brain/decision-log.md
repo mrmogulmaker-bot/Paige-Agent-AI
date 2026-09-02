@@ -1169,3 +1169,90 @@ reporting gate now fails if it reports only the brain.
 
 **Nothing added here is a secret, a raw provider payload, private tenant data, or a capability claim
 the code does not support.** Team stays `PARTIAL`; no authenticated proof is claimed.
+
+---
+
+## 2026-09-02 — Solo Settings → Setup joins the authorized visible-scroll surfaces (owner ruling)
+
+**The ruling.** *A Settings surface may use a clearly visible, accessible main-content scrollbar
+when real configuration content materially exceeds the available viewport.* **Settings → Setup is
+explicitly authorized.** Connections (with Calendars) and Integrations remain authorized. Short
+Settings surfaces that genuinely fit stay form-fitting. **Command Center, Clients, Campaigns and
+Analytics remain form-fitting** unless the owner separately authorizes an exception. Marketplace may
+use a visible main-region scrollbar when its content requires it — out of scope here, and its code
+was not touched. **This is not a global scrolling rule for the platform.**
+
+**A naming note, recorded so the next reader is not misled.** The ruling was given as *"Shape C:
+visible scrolling"*. In the review prototype that shipped the four options, "visible scroll" was
+shape **B** and shape **C** was a section rail beside a scrolling region. The ruling's own written
+policy is unambiguous — one visible scrollbar on the main Setup content region, and *"do not
+redesign the business brief, change its information architecture"* — so the **described behaviour**
+is what was implemented and what binds. The letter is recorded only to stop a later reader
+implementing the rail on the strength of the letter alone.
+
+### What was wrong, measured before the ruling
+
+Setup rendered 3,973–4,174px of business brief into a 702–934px host at the four supported Solo
+viewports — **78–82% below the fold on arrival, with no scrollbar drawn in either lane.** It was the
+only one of the eight Settings destinations that overflowed its host; the other seven fit exactly.
+
+**The mechanism, and why every guard stayed green.** `SoloSettings` applies
+`.tcs-main--settings-scrollbar-hidden` to the resolved owner for *every* destination, which trips the
+`solo-tokens.css:106` exception and gives the host `overflow-y: auto`. It applied the second class —
+the one that *draws* the bar — only for `connections` and `integrations`. So Setup could scroll and
+could not show that it scrolled. The policy lived in
+`const visibleScroll = tab === "connections" || tab === "integrations"`, and the only test of it
+asserted that exact source line. **A boolean expression cannot be read as a policy by anything except
+the eye that wrote it**, which is why a surface hiding four-fifths of itself passed every check.
+
+### The repair
+
+The destination policy moved out of that expression into
+`src/components/tenant-shell/settings-scroll-contract.ts` as
+`SETTINGS_VISIBLE_SCROLL_DESTINATIONS` + `settingsDestinationShowsScrollbar()` — a value with its own
+tests, in the module that already owns the class name and the focus predicate. `SoloSettings` and
+`settings-scroll-drive.mjs` both read it, and a test asserts the two lists match: a drive still
+classifying Setup as form-fitting would have asserted *"nothing is clipped"* on a surface the product
+now deliberately scrolls, and failed it for the opposite reason. The predicate **fails closed** — an
+unrecognised destination stays form-fitting.
+
+**No CSS changed.** The visible-scrollbar rules already existed and were already correct
+(`settings.css:221`, `:222`, `:279`); Setup simply never received the class that activates them. That
+kept the repair out of `src/solo/settings.css`, which an active PR owns.
+
+**Canonical, not a patch.** One shared shell, one policy value, no tenant/account/URL/fixture branch.
+Structurally identical across two synthetic Solo tenant contexts.
+
+### The harness defect this exposed, and its repair
+
+`scripts/live-drive/harness/settings-mount/main.tsx` passed the theme with `forcedTheme`, which
+stamps the document attribute but leaves next-themes' `resolvedTheme` alone — and
+`TenantCommandCenterShell` stamps its **own** `data-pg` from `resolvedTheme` onto wrappers inside the
+document one. So the shell rendered `data-pg="light"` under `<html data-pg="dark">` and
+`--pg-canvas` computed `#fbf9f5` in both runs. **Every "both themes" result this harness ever
+produced was one palette measured twice.** Now `defaultTheme` + `enableSystem={false}` + a per-theme
+`storageKey`, and the drive **scores** the rendered token per environment rather than trusting the
+loop. Verified: `--pg-canvas` `#100e14` vs `#fbf9f5`, `.solo-settings` background `rgb(16,14,20)` vs
+`rgb(251,249,245)`, shell `data-pg` `["dark","dark"]` vs `["light","light"]`.
+
+Geometry is theme-independent and was byte-identical across the two runs, so the pre-ruling overflow
+measurement stands as a geometry fact. Colour was never exercised before this change.
+
+### Evidence status
+
+Rendered structural, at 1536×770 · 1366×768 · 1024×768 · 900×1000 in both palettes: Setup passes the
+full visible-scroll battery — bar visible with a stable 10px gutter, wheel · End · PageDown · Space ·
+scrollbar drag (3,284/3,284, 100%) all reach the last control, travel reaches the end, focus reaches
+the spatially deepest control with a visible ring, keyboard visits every control, focus exits forward
+and backward, one scroll owner, no horizontal overflow. Locked surfaces stay `overflow-y: hidden`.
+
+**Authenticated browser runtime on the live platform: `UNVERIFIED`.** No leg has been driven signed
+in. This session has no authenticated browser lane; the drive is a reproduced shell with a synthetic
+transport, which is structural evidence and never authenticated proof.
+
+### Parked, not fixed here
+
+`docs/doctrine/tier-matrix.md:1082` and the header of `src/solo/settings.scroll-policy.test.tsx` both
+claim the Settings/Calendar drives run inside the *"REAL merged `SoloApp`"*. The settings harness
+demonstrably reconstructs the chain instead. Parked as **issue #738** for the drive's owner; not
+corrected here because it is a claim about drives this repair does not touch.

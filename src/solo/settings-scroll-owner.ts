@@ -42,3 +42,10 @@ export function settingsScrollOwner(root: HTMLElement | null): HTMLElement | nul
  * that could not detect the ways they actually break.
  */
 export { SETTINGS_SCROLL_OWNER_CLASS as SETTINGS_SCROLLBAR_SHOWN } from "@/components/tenant-shell/settings-scroll-contract";
+
+/**
+ * Re-exported for the same reason as the class above: the destination policy is
+ * owned by the shared shell contract, and `SoloSettings` reads it through this
+ * module so a tier surface never re-derives which destinations may scroll.
+ */
+export { settingsDestinationShowsScrollbar } from "@/components/tenant-shell/settings-scroll-contract";
