@@ -149,6 +149,20 @@ function literalText(node) {
 }
 
 /**
+ * The method a call invokes, whether written `x.m(…)` or `x["m"](…)`.
+ *
+ * `findToolCalls` already normalised these two spellings for the REGISTRATION; the classifiers
+ * below did not, so `admin.from("clients")["delete"]()` was a delete the guard did not see while
+ * the dotted form was rejected. One file disagreeing with itself about what a method call is, is
+ * a hole — so the normalisation has one home and every classifier uses it.
+ */
+function calleeMethod(callee) {
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  if (ts.isElementAccessExpression(callee)) return literalText(callee.argumentExpression);
+  return null;
+}
+
+/**
  * Every `<something>.tool(<name>, <object>)` call in the file, via the AST.
  *
  * Matching on the METHOD rather than on `mcp.tool` specifically means a renamed or destructured
@@ -164,10 +178,7 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
     const callee = node.expression;
     // `mcp.tool(...)` and `mcp["tool"](...)` are the same call with different syntax. Matching only
     // the first made the second invisible — not flagged, not counted, simply absent.
-    const method = ts.isPropertyAccessExpression(callee) ? callee.name.text
-      : ts.isElementAccessExpression(callee) ? literalText(callee.argumentExpression)
-      : null;
-    if (method !== "tool") return;
+    if (calleeMethod(callee) !== "tool") return;
     const [nameArg, configArg] = node.arguments;
     // A configuration this guard cannot READ is a tool it cannot inspect. Recording it as
     // unanalysable rather than skipping it is the whole difference between a guard and a guard
@@ -421,8 +432,7 @@ function callsRpc(node) {
   let found = false;
   walk(node, (n) => {
     if (found) return;
-    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) &&
-        n.expression.name.text === "rpc") found = true;
+    if (ts.isCallExpression(n) && calleeMethod(n.expression) === "rpc") found = true;
   });
   return found;
 }
@@ -432,8 +442,8 @@ function destructiveCall(node) {
   let found = null;
   walk(node, (n) => {
     if (found) return;
-    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
-      const m = n.expression.name.text;
+    if (ts.isCallExpression(n)) {
+      const m = calleeMethod(n.expression);
       if (m === "delete") { found = ".delete()"; return; }
       if (m === "rpc") {
         const a = literalText(n.arguments[0]);
@@ -444,6 +454,25 @@ function destructiveCall(node) {
     if (lit && /\bDELETE\s+FROM\b/i.test(lit)) found = "DELETE FROM";
   });
   return found;
+}
+
+/**
+ * Is this builder call the type of a FIELD, rather than a type argument inside a container?
+ *
+ * Walking out to the owning property is not enough on its own: `z.record(z.string(), z.any())`
+ * and `z.any()` both belong to a property, but only the second says the FIELD is unconstrained.
+ * The difference is structural and needs no vocabulary of container names — if the walk out ever
+ * passes through an ARGUMENT position, the call describes something inside another builder.
+ * A chain like `z.any().optional()` never does, so it is still the field's own type.
+ */
+function unconstrainedField(call) {
+  let n = call;
+  while (n.parent) {
+    if (ts.isCallExpression(n.parent) && n.parent.arguments.includes(n)) return false;
+    if (ts.isPropertyAssignment(n.parent)) return n.parent.initializer === n;
+    n = n.parent;
+  }
+  return false;
 }
 
 /**
@@ -465,7 +494,15 @@ function modelSettableBooleans(schemaNode) {
     const isBooleanLiteral = method === "literal" && n.arguments.length === 1 &&
       (n.arguments[0].kind === ts.SyntaxKind.TrueKeyword ||
        n.arguments[0].kind === ts.SyntaxKind.FalseKeyword);
-    if (method !== "boolean" && !isBooleanLiteral) return;
+    // `z.any()` / `z.unknown()` in a FIELD's own position is the schema declining to say what that
+    // field is, and an unconstrained field admits `true` without the token `boolean` appearing
+    // anywhere. Reading spellings could never catch it. `unconstrainedField` is the structural
+    // test for "the field's own type", so a value type nested inside a container — the real
+    // `corrections: z.record(z.string(), z.any())` on `handle_data_subject_request` — is a data
+    // payload rather than a branch flag, and is not reported. That distinction is measured
+    // against the live surface, not assumed: the coarse version failed it.
+    const isUnconstrained = (method === "any" || method === "unknown") && unconstrainedField(n);
+    if (method !== "boolean" && !isBooleanLiteral && !isUnconstrained) return;
     // Walk out to the property this z.boolean() chain is assigned to.
     let cur = n;
     while (cur.parent && !ts.isPropertyAssignment(cur.parent)) cur = cur.parent;
@@ -685,6 +722,20 @@ mcp.tool("t", { inputSchema: z.object({ confirm: someSchema }), ${DESTRUCTIVE} }
 mcp.tool("t", { inputSchema: z.object({ id: z.string() }).merge(other), ${DESTRUCTIVE} });`), 1);
   check("a z.union with a referenced member, beside a destructive handler", v(`
 mcp.tool("t", { inputSchema: z.union([z.object({ id: z.string() }), other]), ${DESTRUCTIVE} });`), 1);
+  // Codex, on 841b1333: a schema can admit `true` without spelling `boolean`, and a delete can be
+  // written without spelling `.delete`. Both reproduced against the shipped guard before the fix.
+  check("a FIELD typed z.any(), beside a destructive handler", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.any() }), ${DESTRUCTIVE} });`), 1);
+  check("a FIELD typed z.unknown().optional(), beside a destructive handler", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.unknown().optional() }), ${DESTRUCTIVE} });`), 1);
+  // The live `handle_data_subject_request` shape. An unconstrained VALUE TYPE inside a container is
+  // a data payload, not a branch flag — the coarse version of this rule failed the real surface.
+  check("z.record(z.string(), z.any()) is a payload, not a settable flag", v(`
+mcp.tool("t", { inputSchema: z.object({ id: z.string(), corrections: z.record(z.string(), z.any()).optional() }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
+  check("an ELEMENT-ACCESS delete is still a delete", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
+  check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin["rpc"]("purge_everything"); } });`), 1);
   check("the SAME unreadable schemas pass on a harmless handler", v(`
 mcp.tool("t1", { inputSchema: schemas.purge, handler: async () => ({ ok: true }) });
 mcp.tool("t2", { inputSchema: z.object({ ...fields }), handler: async () => ({ ok: true }) });`), 0);
