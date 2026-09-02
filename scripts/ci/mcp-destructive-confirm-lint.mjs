@@ -49,6 +49,40 @@
  * pattern is absent. Routing mutating MCP tools through the shared governed Spine execution seam is
  * a separate, sequenced workstream (#784).
  *
+ * THE EXACT PROMISE, AND WHERE IT STOPS
+ * -------------------------------------
+ * Five review rounds all landed here rather than on the containment, and the pattern is worth
+ * naming: a rule that tries to prove a NEGATIVE over arbitrary TypeScript ("nowhere in this file
+ * does a destructive tool take a boolean") has a receding edge, because aliasing, indirection and
+ * dataflow have no closed form. A guard that quietly overpromises is its own false green. So the
+ * promise is stated positively and narrowly, and the gap is stated rather than papered over.
+ *
+ * IT DOES PROMISE, and each of these is bounded and complete rather than a list of known evasions:
+ *   · Every call to a method named `tool` — `x.tool(…)` or `x["tool"](…)` — is found by the parser.
+ *   · Such a registration is inspected ONLY when both `handler` and `inputSchema` are plain
+ *     property assignments written in place. Every other configuration shape (a variable, a spread,
+ *     a factory, a missing member) is reported as UNANALYSABLE and FAILS the run. This is an
+ *     allowlist of what can be read, not an enumeration of what to catch, which is why it cannot
+ *     be outrun by a new spelling.
+ *   · An inspected destructive handler may not declare ANY model-settable boolean, by shape.
+ *   · A tool name this guard cannot resolve is never CLEARED by the scope map — unknown counts as
+ *     possibly delete-scoped.
+ *
+ * IT DOES NOT PROMISE:
+ *   · Resolving a constant, an import, or any other indirection to a value. A computed name is
+ *     analysed and failed closed on, never resolved. General dataflow is out of scope by choice.
+ *   · Detecting a registration whose METHOD name is itself computed (`mcp[k](…)` where `k` is a
+ *     variable). Measured: zero such calls exist across the three surfaces.
+ *   · `destructiveCall` remains partly an enumeration (`.delete()`, a delete-shaped `.rpc()`,
+ *     literal `DELETE FROM`). It is backstopped — not replaced — by the file's own `*.delete` scope
+ *     classification, which is why an opaque RPC like `handle_data_subject_request` is caught
+ *     despite carrying no delete-ish substring. A genuinely novel destruction primitive calling
+ *     none of these, on a tool the file does not scope `*.delete`, would pass.
+ *
+ * That last bullet is the real residual risk, and it is deliberately left rather than papered over
+ * with another pattern: the durable fix is not a longer list here, it is routing mutating MCP tools
+ * through the governed seam (#784), where the classification is the authority instead of the shape.
+ *
  * ESCAPE HATCH: `// mcp-confirm-exempt: <reason>` inside the block — deliberate and explained.
  *
  *   node scripts/ci/mcp-destructive-confirm-lint.mjs
@@ -96,7 +130,12 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
   walk(sf, (node) => {
     if (!ts.isCallExpression(node)) return;
     const callee = node.expression;
-    if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== "tool") return;
+    // `mcp.tool(...)` and `mcp["tool"](...)` are the same call with different syntax. Matching only
+    // the first made the second invisible — not flagged, not counted, simply absent.
+    const method = ts.isPropertyAccessExpression(callee) ? callee.name.text
+      : ts.isElementAccessExpression(callee) ? literalText(callee.argumentExpression)
+      : null;
+    if (method !== "tool") return;
     const [nameArg, configArg] = node.arguments;
     // A configuration this guard cannot READ is a tool it cannot inspect. Recording it as
     // unanalysable rather than skipping it is the whole difference between a guard and a guard
@@ -104,13 +143,37 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
     // are both valid registrations, and both were silently discarded before.
     out.push({
       name: literalText(nameArg) ?? "<computed name>",
-      config: configArg && ts.isObjectLiteralExpression(configArg) ? configArg : null,
+      // READABLE, not merely present. An object literal is not enough: `mcp.tool("x", { ...cfg })`
+      // is an object literal whose handler and schema live somewhere this guard cannot follow, so
+      // it was inspected, found to declare nothing, and passed — a fail-OPEN inside the very check
+      // written to fail closed. The rule is therefore an allowlist of the ONE shape that can
+      // actually be read, which is complete by construction rather than by enumerating evasions.
+      config: configArg && ts.isObjectLiteralExpression(configArg) && readableConfig(configArg)
+        ? configArg : null,
       text: node.getFullText(sf),
       line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
     });
   });
   return out;
 }
+
+/**
+ * Can this guard actually READ the two members it needs?
+ *
+ * Both `handler` and `inputSchema` must be plain property assignments written in place. A spread,
+ * a shorthand referring to a binding, a computed key, or a simply-absent member all mean the real
+ * configuration lives somewhere this guard does not follow — and an unreadable configuration is
+ * reported as unanalysable, never quietly treated as declaring nothing.
+ *
+ * Measured against the real surfaces: all 117 registrations are inline object literals whose members
+ * are exclusively PropertyAssignment, and every one declares both. So this costs zero exemptions
+ * today, and any future registration that trips it is genuinely one this guard cannot vouch for.
+ */
+function readableConfig(objectLiteral) {
+  return REQUIRED_MEMBERS.every((want) => objectLiteral.properties.some((p) =>
+    ts.isPropertyAssignment(p) && p.name && ts.isIdentifier(p.name) && p.name.text === want));
+}
+const REQUIRED_MEMBERS = ["handler", "inputSchema"];
 
 function prop(objectLiteral, name) {
   for (const p of objectLiteral.properties) {
@@ -230,8 +293,15 @@ export function findViolations(src, file = "<memory>") {
     // The scope alone is not enough either: the contained `bulk_delete_contacts` still carries
     // `crm.delete` while its handler now only reads and returns a refusal. So the scope counts only
     // when the handler ALSO makes a call this guard cannot see into.
+    // A name this guard could not resolve cannot be looked up in the scope map, and a failed lookup
+    // must not read as "not delete-scoped". `const N = "handle_data_subject_request"` moves the key
+    // one hop away and the join silently returns false — clearing a destructive tool by accident.
+    // Unknown name therefore counts as possibly-scoped. Resolving the constant is NOT attempted:
+    // that is general dataflow with no closed form, and guessing at it would restore the same
+    // false confidence in a longer function.
+    const maybeDeleteScoped = tool.name === "<computed name>" || scopes.has(tool.name);
     const destructive = (handler ? destructiveCall(handler) : null)
-      ?? ((scopes.has(tool.name) && callsRpc(handler)) ? "scope *.delete + an opaque rpc" : null);
+      ?? ((maybeDeleteScoped && callsRpc(handler)) ? "scope *.delete + an opaque rpc" : null);
     if (!destructive) continue;
     const booleans = modelSettableBooleans(schema);
     if (booleans.length === 0) continue;
@@ -329,6 +399,22 @@ mcp.tool("x", { inputSchema: z.object({ confirm: z.literal(true) }),
   // Codex P1 (8c051c15): a configuration this guard cannot read must not pass silently.
   check("a non-literal configuration is recorded as unanalysable",
     findToolCalls('mcp.tool("x", config);').filter((t) => !t.config).length, 1);
+  // Round 5 (Codex). Each was reproduced against the shipped guard before being fixed.
+  check("a SPREAD configuration is unanalysable, not silently empty (Codex)",
+    findToolCalls(`mcp.tool("x", { ...cfg });`).map((t) => t.config !== null), [false]);
+  check("ELEMENT-ACCESS registration is seen (Codex)",
+    findToolCalls(`mcp["tool"]("x", { inputSchema: a, handler: b });`).length, 1);
+  check("a config missing handler is unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: a });`).map((t) => t.config !== null), [false]);
+  check("a readable config still parses",
+    findToolCalls(`mcp.tool("x", { inputSchema: a, handler: b });`).map((t) => t.config !== null), [true]);
+  check("a COMPUTED name cannot be cleared by the scope map (Codex)", v(`
+const TOOL_SCOPE = { handle_data_subject_request: "admin.delete" };
+mcp.tool(NAME, {
+  inputSchema: z.object({ approved: z.boolean() }),
+  handler: async () => { await admin.rpc("handle_data_subject_request", {}); },
+});`), 1);
+
   check("a wrapper registration is recorded as unanalysable",
     findToolCalls("list.forEach((t) => mcp.tool(t.name, t.config));").filter((t) => !t.config).length, 1);
 
