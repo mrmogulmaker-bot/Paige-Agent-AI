@@ -1456,6 +1456,46 @@ reported, not silently changed, because that RPC has its own callers.
 **§61 default: no exception.** God/Solo/Sub-account per the standing distribution, Agency inside a
 workspace it has switched into, Enterprise both. No owner ruling was sought, and none was needed.
 
+### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
+
+**§66, same commit as the ship.** The first Mind binding: PAIGE states what a recorded Pipeline
+stage outcome proves for a selected client, cites its opaque `rail:` reference, and refuses to
+infer past it. Read-only. Branch `claude/paige-mind-pipeline-evidence-hb1jg8` — **DRAFT, not
+merged, migration not applied.** Do not read this row as shipped before Gate 2.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Point PAIGE at a deal's client (`paige:open`) | — (no Solo book) | — | ✓ | ✓ | ✓ | — | — |
+| Read the Mind evidence (`get_pipeline_spine_evidence`) | ✓ | — | ✓ | ✓ | ✓ | ✗ 0 rows | ✗ EXECUTE revoked |
+| Move/create/archive a deal from Mind or Chat | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+**Agency is excluded, following the locked Pipeline row** (§61 exception, same reason: an Agency
+manages sub-accounts, not its own client book). God holds no Solo client book either, so the deal
+card is not its surface; the adapter still admits an operator caller, which is the dogfooding path
+(§35) and not a second book.
+
+**Client and Anonymous are denied at three independent layers**, not one: `EXECUTE` on the adapter
+is revoked from `anon` and `service_role`; the adapter requires a live `auth.uid()` and a canonical
+staff role; and direct `SELECT` on `paige_client_events` has been revoked from `authenticated`
+since `20260712200000`. An ordinary tenant member who is not staff receives zero rows — proven by
+`supabase/tests/paige_spine_foundation.sql`.
+
+**The mutation row is a hard `✗` for every tier including God, and it is structural rather than a
+policy.** No Chat tool is registered for a Pipeline write, so there is no approval channel to
+argue with; the capability declares `classification: read`, `riskPolicyKey: read_only`,
+`approvalAuthority: none`. The separately-scoped Pipeline Chat Write Bridge lane will need its own
+Gate 1 before any of that changes.
+
+**The client scope is an address, never a grant.** A deal card hands PAIGE a `client_id` only when
+that client is already visible to the caller — the identifier is read off the visibility-filtered
+clients join, so it is null exactly where the name is (`20261041000000`, mutation-tested in
+`scripts/proof/pipeline-deal-client-ref-local-proof.sql`). The server then re-resolves tenant by
+`current_user_tenant_id()` and re-authorizes the client by tenant equality before any read.
+
+**UNVERIFIED at this ledger entry:** authenticated runtime on any tier, rendered proof at the four
+viewports, and the post-merge persisted-apply confirmation. The Mind binding is `PARTIAL`, not
+`LIVE`, and must not be represented otherwise.
+
 ### Platform metering — LLM usage, `meter_llm_usage` (no surface, operator-only seam)
 
 **§66, same commit as the ship.** Paige's model spend is now carried from `paige_llm_trace` into

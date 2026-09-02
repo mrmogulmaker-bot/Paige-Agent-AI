@@ -7,6 +7,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
       - "src/__tests__/paige-spine-*.test.ts"
+      - "src/solo/paigeClientScope.ts"
+      - "src/solo/paigeClientScope.test.ts"
       - "scripts/ci/paige-spine-registry-lint.mjs"
       - "scripts/ci/chat-tool-registry-lint.mjs"
       - "scripts/proof/paige-spine-local-proof.sql"
@@ -18,6 +20,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
       - "src/__tests__/paige-spine-*.test.ts"
+      - "src/solo/paigeClientScope.ts"
+      - "src/solo/paigeClientScope.test.ts"
       - "scripts/ci/paige-spine-registry-lint.mjs"
       - "scripts/ci/chat-tool-registry-lint.mjs"
       - "scripts/proof/paige-spine-local-proof.sql"
@@ -38,7 +42,7 @@ jobs:
       - run: npm ci
       - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs --self-test
       - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs
-      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts
+      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts src/__tests__/paige-spine-chat-binding.test.ts src/__tests__/paige-spine-mind-binding.test.ts src/solo/paigeClientScope.test.ts
 
   database-contract:
     runs-on: ubuntu-latest
