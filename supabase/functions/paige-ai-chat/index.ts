@@ -4655,7 +4655,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         if (scopedClientId) {
           // The RPC carries its own correct in-body guard, so this is defence in depth: a
           // refused client does no rail read either, keeping one rule for the whole handler.
-          const { data: railRows } = await supabaseClient.rpc("get_client_rail", { p_contact_id: scopedClientId, p_limit: 20, p_lens: "coach" });
+          // #804: reads the minimum-evidence projection — label, title, time — never a producer
+          // payload or an internal id. It RAISES 42501 on refusal rather than returning an empty
+          // set, so the error is bound and logged instead of being silently folded into "no
+          // activity". Hydration is additive context, so a refusal still never blocks the turn.
+          const { data: railRows, error: railHydrationErr } = await supabaseClient.rpc("get_client_rail_for_chat", { p_contact_id: scopedClientId, p_limit: 20 });
+          if (railHydrationErr) {
+            console.warn("[paige-ai-chat] rail hydration refused or failed — no activity context added:", railHydrationErr.message);
+          }
           const rows = Array.isArray(railRows) ? railRows : [];
           if (rows.length) {
             const relTime = (iso: string): string => {
@@ -8373,10 +8380,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             });
           }
         } else if (tc.function.name === "get_client_rail") {
-          // Read-only: pull a client's recent Paige activity through the JWT-scoped
-          // client so RLS + the coach lens apply to the caller (§9/§13). Defaults to
-          // the client currently in focus. Slugs are mapped to human labels — no raw
-          // backend kind ever reaches the model (§3/§11).
+          // Read-only: pull a client's recent Paige activity through the JWT-scoped client, so the
+          // resolver decides authority from the caller's membership OF THE CLIENT'S OWN WORKSPACE
+          // (#804 — a staff role earned in another tenant no longer counts). Defaults to the client
+          // currently in focus. Slugs are mapped to human labels — no raw backend kind ever reaches
+          // the model (§3/§11) — and the projection carries no payload, actor id or record pointer.
+          // A refusal arrives as an error, never as an empty list the model would read as "nothing
+          // has happened".
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
             const targetId = (typeof args.contact_id === "string" && args.contact_id.trim())
@@ -8388,7 +8398,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               let lim = Number(args.limit);
               if (!Number.isFinite(lim)) lim = 25;
               lim = Math.max(1, Math.min(200, Math.round(lim)));
-              const { data: railRows, error: railErr } = await supabaseClient.rpc("get_client_rail", { p_contact_id: targetId, p_limit: lim, p_lens: "coach" });
+              const { data: railRows, error: railErr } = await supabaseClient.rpc("get_client_rail_for_chat", { p_contact_id: targetId, p_limit: lim });
               if (railErr) {
                 toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't pull this client's activity right now. Tell the operator you hit a snag and offer to try again." }) });
               } else {
