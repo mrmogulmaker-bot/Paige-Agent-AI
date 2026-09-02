@@ -58,3 +58,4 @@ scripts/live-drive/zz-*
 # committed by accident in ec96762ea and only noticed when a local ratchet run
 # reported them as deletions).
 deno-ratchet-evidence/
+scripts/live-drive/harness/spine-hotfix/artifacts/
