@@ -151,7 +151,26 @@ export function importsGate(src, fileName = "in-memory.ts") {
  * one line, or any type spelling are all handled by the parser rather than by this rule. Fails
  * closed when the declaration cannot be found.
  */
-const APPROVAL_FIELDS_ALLOWED = new Set(["autonomyLane", "claimedArgs"]);
+/**
+ * Members `GovernedApproval` may declare.
+ *
+ * An allowlist, so every addition is a deliberate act rather than a drift. The test an entry has to
+ * pass is not "is it a boolean" — it is: CAN THIS MEMBER GRANT? A member that can only ever narrow
+ * what runs is safe here; one that can express "yes, approved" is the thing this rule exists to
+ * keep out, whatever its type says.
+ *
+ *   autonomyLane  the workspace's resolved lane. Selects how much approval is REQUIRED; every
+ *                 unrecognised value refuses.
+ *   claimedArgs   the RESULT of an atomic claim. Its presence is the approval, and it carries the
+ *                 stored call — there is no separate "it worked" flag to drift from it.
+ *   claimedFor    the capability id the claim was redeemed against. A string that names WHAT was
+ *                 approved and cannot express THAT something was. It only ever REFUSES: absent or
+ *                 mismatched means the stored claim is rejected. Added after measuring that an
+ *                 approval granted for an ordinary create otherwise executed a high-risk delete —
+ *                 the live mechanism binds tool identity in the fingerprint, and that binding is
+ *                 lost at this boundary unless it is restated.
+ */
+const APPROVAL_FIELDS_ALLOWED = new Set(["autonomyLane", "claimedArgs", "claimedFor"]);
 
 export function booleanApprovalFields(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
@@ -329,7 +348,7 @@ if (!approval.parsed) {
 } else if (approval.fields.length) {
   failed = true;
   console.error(`\n✗ R3 approval-input allowlist: GovernedApproval declares ${approval.fields.map((f) => `\`${f}\``).join(", ")}.`);
-  console.error("  Only `autonomyLane` and `claimedArgs` are permitted. Any other member is a new");
+  console.error(`  Only ${[...APPROVAL_FIELDS_ALLOWED].map((f) => "`" + f + "`").join(", ")} are permitted. Any other member is a new`);
   console.error("  approval input whatever its type says — and an approval a caller can express is");
   console.error("  one a MODEL can express (#784).");
 }

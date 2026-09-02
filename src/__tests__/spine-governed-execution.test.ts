@@ -133,6 +133,29 @@ describe("a non-Chat caller cannot bypass high-risk approval", () => {
     expect(d.kind).toBe("propose");
   });
 
+  it("REFUSES a claim that was granted for a DIFFERENT capability", () => {
+    // Measured before the binding existed: stored args a human approved for an ordinary
+    // `crm_create_contact` executed a `high` `crm_delete_contact`. The seam sees only the claim's
+    // RESULT, and the live mechanism binds tool identity in the fingerprint the caller consumed —
+    // so that binding is lost here unless the caller restates it.
+    const d = decide({
+      caller: caller({ door: "mcp" }), capability: HIGH,
+      approval: { autonomyLane: "confirm", claimedArgs: { first_name: "for a CREATE" },
+                  claimedFor: ORDINARY.id },
+      requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe("approval_claim_capability_mismatch");
+  });
+
+  it("REFUSES a stored claim that names no capability at all", () => {
+    // Absent is not a weaker form of matching. "I do not know what this approved" fails closed.
+    const d = decide({
+      caller: caller(), capability: HIGH,
+      approval: { autonomyLane: "confirm", claimedArgs: { contact_id: "c1" } }, requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe("approval_claim_capability_mismatch");
+  });
+
   // ── round 5 (Codex), both reproduced against the shipped seam before being fixed ────────────
   it("REFUSES a malformed claim rather than executing it — `true` is not an approval", () => {
     for (const bad of [true, false, "approved", 42, []]) {
@@ -161,7 +184,7 @@ describe("a non-Chat caller cannot bypass high-risk approval", () => {
     // fix the auto tail ignored the claim entirely and executed `requestArgs`.
     const d = decide({
       caller: caller({ door: "skill" }), capability: ORDINARY,
-      approval: { autonomyLane: "auto", claimedArgs: { first_name: "STORED" } },
+      approval: { autonomyLane: "auto", claimedArgs: { first_name: "STORED" }, claimedFor: ORDINARY.id },
       requestArgs: { first_name: "CALLER" },
     });
     expect(d.kind).toBe("execute");
@@ -181,7 +204,7 @@ describe("a non-Chat caller cannot bypass high-risk approval", () => {
     const d = decide({
       caller: caller({ door: "automation" }),
       capability: HIGH,
-      approval: { autonomyLane: "confirm", claimedArgs: { contact_id: "APPROVED" } },
+      approval: { autonomyLane: "confirm", claimedArgs: { contact_id: "APPROVED" }, claimedFor: HIGH.id },
       requestArgs: { contact_id: "SWAPPED" },
     });
     expect(d.kind).toBe("execute");
@@ -421,6 +444,16 @@ const SWEEP_CLAIMS = [
 ];
 const isStoredClaim = (c: unknown): c is Record<string, unknown> =>
   typeof c === "object" && c !== null && !Array.isArray(c);
+
+/**
+ * What the claim says it approved: the right capability, the wrong one, or nothing.
+ *
+ * Added with the binding itself, because introducing `claimedFor` WITHOUT this axis quietly cost
+ * the sweep every approved-execute it had — 1908 executes fell to 1734 and it still reported zero
+ * violations, since an oracle that only inspects executes says nothing about a case that stopped
+ * executing. A tightening that silently empties a test is indistinguishable from one that works.
+ */
+const SWEEP_CLAIMED_FOR = ["MATCH", "another_capability", undefined] as const;
 const SWEEP_CALLER_ARGS = { contact_id: "CALLER_SUPPLIED" };
 
 /**
@@ -441,19 +474,21 @@ describe("exhaustive sweep of the whole decision space", () => {
     let checked = 0, execs = 0; const bad: string[] = [];
     for (const door of DOORS) for (const authed of [true,false]) for (const lane of SWEEP_LANES)
     for (const cap of SWEEP_CAPS) for (const oc of SWEEP_OUTCOMES) for (const claimedArgs of SWEEP_CLAIMS)
+    for (const claimedForRaw of SWEEP_CLAIMED_FOR)
     for (const access of [undefined,{allowed:false},{allowed:true}])
     for (const tenantSource of ["server","request","unknown"] as const)
     for (const tenantId of ["t", null]) {
+      const claimedFor = claimedForRaw === "MATCH" ? cap.id : claimedForRaw;
       const d = decideGovernedExecution({
         caller:{ authenticated: authed, userId: authed?"u":null, tenantId, tenantSource, door, access },
         capability:{ ...cap, outcomeChannel: oc },
-        approval:{ autonomyLane: lane, claimedArgs: claimedArgs as never },
+        approval:{ autonomyLane: lane, claimedArgs: claimedArgs as never, claimedFor },
         requestArgs: SWEEP_CALLER_ARGS,
       });
       checked++;
       if (d.kind !== "execute") continue;
       execs++;
-      const ctx = JSON.stringify({door,authed,lane,cap,oc,claimedArgs,access,tenantSource,tenantId});
+      const ctx = JSON.stringify({door,authed,lane,cap,oc,claimedArgs,claimedFor,access,tenantSource,tenantId});
 
       // Gate preconditions that must hold for ANY execute.
       if (tenantSource !== "server" || !authed || !tenantId || access?.allowed !== true)
@@ -483,6 +518,9 @@ describe("exhaustive sweep of the whole decision space", () => {
       // approval and then ran the caller's own arguments satisfied the old confirm-only version of
       // this check by never being examined.
       if (isStoredClaim(claimedArgs)) {
+        // An approval is for ONE capability. Executing on a claim that named a different one — or
+        // named none — turns a human's yes to a create into a yes to a delete.
+        if (claimedFor !== cap.id) { bad.push("EXECUTED ON A CLAIM FOR ANOTHER CAPABILITY: "+ctx); continue; }
         if (JSON.stringify(d.args) !== JSON.stringify(claimedArgs))
           bad.push("STORED CLAIM NOT HONOURED: "+ctx);
         if (JSON.stringify(d.args) === JSON.stringify(SWEEP_CALLER_ARGS) && JSON.stringify(claimedArgs) !== JSON.stringify(SWEEP_CALLER_ARGS))

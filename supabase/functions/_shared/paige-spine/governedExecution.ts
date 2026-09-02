@@ -143,6 +143,23 @@ export type GovernedApproval = {
   autonomyLane: "auto" | "confirm" | "off" | string;
   /** The result of the caller's atomic claim against the canonical proposal store. */
   claimedArgs?: Record<string, unknown> | null;
+  /**
+   * The capability id the claim was redeemed AGAINST, as the caller resolved it.
+   *
+   * Required whenever `claimedArgs` carries stored arguments, and NOT optional in effect: a stored
+   * claim that does not say what it approved is refused. "I do not know which capability this
+   * approval was for" is not a weaker form of "it was for this one".
+   *
+   * Without it the seam honours an approval across capabilities — measured before this existed, an
+   * approval a human granted for an ordinary `crm_create_contact` executed a `high`
+   * `crm_delete_contact`, because the seam sees only the claim's RESULT and the live mechanism
+   * binds tool identity in the fingerprint the caller consumed. That binding has to be restated
+   * here or it is lost at exactly the boundary this module exists to be.
+   *
+   * A string, deliberately, and never a boolean: it names WHAT was approved. It cannot express
+   * THAT something was approved, so it is not a second approval channel.
+   */
+  claimedFor?: string;
 };
 
 /**
@@ -185,14 +202,15 @@ export type GovernedRefusalCode =
   | "outcome_channel_undeclared"
   | "autonomy_off"
   | "autonomy_lane_unrecognized"
-  | "approval_claim_malformed";
+  | "approval_claim_malformed"
+  | "approval_claim_capability_mismatch";
 
 /** Every refusal this seam can produce. Exported so a test can prove the list is covered. */
 export const GOVERNED_REFUSAL_CODES: readonly GovernedRefusalCode[] = Object.freeze([
   "tenant_not_server_derived", "unauthenticated", "tenant_unresolved", "capability_unidentified",
   "access_denied", "unclassified_mutation", "effect_mismatch", "owner_only",
   "outcome_channel_undeclared", "autonomy_off", "autonomy_lane_unrecognized",
-  "approval_claim_malformed",
+  "approval_claim_malformed", "approval_claim_capability_mismatch",
 ] as const);
 
 /**
@@ -383,6 +401,13 @@ export function decideGovernedExecution(input: {
   // Stored arguments are therefore authoritative wherever they exist, and the lane decides only
   // whether an approval was REQUIRED — never whether a granted one is honoured.
   if (claim.state === "stored") {
+    // The claim must say WHAT it approved, and it must be this. An approval is for one capability;
+    // honouring it for another turns a human's yes to a create into a yes to a delete.
+    if (approval.claimedFor !== capability.id) {
+      return refuse("approval_claim_capability_mismatch",
+        "That approval was not granted for this action, so it was not run.",
+        laneEffective, clamped);
+    }
     return { kind: "execute", args: claim.args, risk,
              audit: { ...base, laneEffective, clamped, decision: "execute" } };
   }
