@@ -77,7 +77,7 @@ retyped. No new grant, table, policy or authority.
 | Runtime (local Postgres 16) | **PASS** — `scripts/proof/paige-spine-local-proof.sql` still passes unchanged, and the new `scripts/proof/pipeline-deal-client-ref-local-proof.sql` applies the real migration and drives real caller roles. **Mutation-tested:** flipping `c.id` to `d.contact_client_id` makes it fail with `LEAK: coach received a client_id for a client they cannot see`, so its green is not a false green. |
 | Rendered | **UNVERIFIED** — no browser in this environment. The Gate 1 prototype is a mocked behaviour model and is not rendered proof of the shipped surface. |
 | Authenticated runtime | **UNVERIFIED** — no authenticated session and no browser. Owed before either binding is called `LIVE`. |
-| Production | **NOT CLAIMED** — nothing merged, applied or deployed. The migration is **not** applied to prod; a §32.a persisted-apply confirmation is owed after merge. |
+| Production | **CONFIRMED 2026-09-02** — merged as `dcddf6761e` (PR #747), Vercel production deployment `dpl_AypwRwqAWfAEyB74tbNT7XcLy8nq` `READY` at that commit, `edge-live` and `db-live` both moved to it with zero drift, and migration `20261041000000` **persisted** on prod ref `xygzykjyynhzqytbqnzu` — the `schema_migrations` row, the re-created function, and `client_id` sourced from the filtered join were each queried, not assumed (§32.a). This is deployment and schema proof; it is **not** authenticated runtime proof, which stays owed above. |
 | Supabase pgTAP / full-history replay | **UNVERIFIED** — the Supabase CLI and Docker daemon are both absent here. `supabase/tests/paige_spine_foundation.sql` is unchanged and still runs in the `database-contract` CI job. |
 
 ## Truthful status
@@ -98,8 +98,9 @@ Two Second Brain files have a **direct active-owner collision** with PR #729
   is where a newest-first entry has to go. Writing there would conflict on the same lines.
 - `docs/brain/lessons-learned.md` — #729 appends at the end of the file, likewise.
 
-`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating and **was** updated in this PR (§5),
-so no handoff is owed there. The two brain files are the only ones that could not be, and the
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating and **was** updated — §5 in PR #747
+itself, and §4 in the post-release closeout once the capability was actually live — so no handoff
+is owed there. The two brain files are the only ones that could not be, and the
 four-part collision-safe handoff for them is below.
 
 - **Exact sections to change.** `docs/brain/decision-log.md` — the newest bullet, immediately
@@ -110,7 +111,10 @@ four-part collision-safe handoff for them is below.
   (`claude/paige-spine-pr728-hotfix-p8mhmr`). If #729 lands first, this branch's author does it
   before Gate 2; if this branch lands first, #729's author does it on rebase. Naming a rule
   rather than a person is deliberate — either branch may land first, and an owner who depends on
-  that order is not an owner.
+  that order is not an owner. **RESOLVED 2026-09-02: this branch landed first** (PR #747,
+  `dcddf6761e`); PR #729 was still open and unmerged at that moment, so the two blocks below are
+  owed by **#729's author, on rebase**. They are not written into `main` by anyone else in the
+  meantime — writing them now would put back the exact line conflict this handoff exists to avoid.
 - **Reason it could not be done in the same PR.** #729 is unmerged and edits both files at the
   exact lines a new entry needs: it prepends a bullet directly under the decision-log header,
   which is where a newest-first entry has to go, and appends at the end of lessons-learned.
@@ -122,7 +126,7 @@ The blocks are additive and order-independent.
 ### For `docs/brain/decision-log.md` — insert as the newest bullet
 
 > - **The Mind can read a Pipeline outcome and cite it, and the flow it needed did not exist
->   (branch `claude/paige-mind-pipeline-evidence-hb1jg8`, NOT MERGED, 2026-09-02)** — the
+>   (PR #747, merged as `dcddf6761e`, production-deployed and applied, 2026-09-02)** — the
 >   first Mind binding moves `UNAVAILABLE` → `PARTIAL`. Chat now renders the Pipeline
 >   domain's Mind projection rather than the raw signals, so the two cannot describe the same
 >   record differently, and `paige-ai-chat/index.ts` was not edited at all. **Owner-approved
@@ -137,7 +141,8 @@ The blocks are additive and order-independent.
 >   exactly where the name is. **PROVEN:** 1859 vitest, tsc ratchet unchanged at 13, build
 >   green, 11 CI guards, and a local-Postgres proof that is mutation-tested — flipping the
 >   identifier's source to `d.contact_client_id` makes it fail with a named LEAK.
->   **UNVERIFIED:** authenticated and rendered proof; the migration is not applied to prod.
+>   **UNVERIFIED and still owed:** authenticated and rendered proof. The migration IS applied on
+>   prod (§32.a confirmed post-merge); the binding is `PARTIAL`, not `LIVE`.
 
 ### For `docs/brain/lessons-learned.md` — append
 
@@ -167,6 +172,30 @@ never defined), **#750** (a `paige:open` dispatch that may still have no listene
 long-form record in `docs/delivery/parked-follow-ups-2026-09-02-mind-slice.md`. Only the owner
 may convert one into an assignment.
 
+## The defect found after this merged, and what it says about the proof
+
+**Issue #765 — the client focus is released the instant it is set, on any Solo account that has a
+saved conversation.** Raised by the post-merge Codex review and then verified by reading `main` at
+`dcddf6761e`. Setting a scope resets history hydration; the initial-history effect then auto-resumes
+the newest saved thread; `selectThread` releases the focused client because opening a saved
+conversation is supposed to. The scope is gone before the person types, so the binding never receives
+a `clientId`. On an account with **no** saved thread it works — which is the only case the tests and
+my own reasoning covered. Fail-closed: no evidence reaches PAIGE, nothing leaks. A second, milder
+defect in the same flow leaves the deal drawer's keyboard focus trap in place (#766). **Neither was
+fixed in that slice. #765 was repaired afterwards in PR #773 (`f7fe9718`), together with the two
+defects below and a fourth the repair itself made necessary; #766 remains parked and untouched.**
+
+The lesson is not that a check was skipped. Every layer was proven: the adapter, the projection, the
+citation, the refusals, the migration under real caller roles, mutation-tested. What was never done
+is the one thing that would have caught it — an authenticated drive of the whole path on an account
+that looks like a real one. It was listed as owed and treated as a formality. §70 says a wired code
+path is not a usable capability; this is that, in the same sentence as a table full of passes.
+
+The composition is also worth recording on its own: **two individually correct guards produced a
+broken flow.** The scope reset exists so a stale transcript cannot survive a scope change. The
+release in `selectThread` exists so client A's transcript cannot be replayed under client B's scope.
+Neither is wrong. Reading either in isolation — which is how each was reviewed — shows nothing.
+
 ## Known gaps, stated rather than smoothed over
 
 - **The control opens PAIGE; it does not ask the question.** The deal card's button is labelled
@@ -184,8 +213,13 @@ may convert one into an assignment.
 
 ## Owed before `LIVE`
 
-1. Authenticated owner drive of `/solo/{account}/growth` → deal → **Ask PAIGE about this
-   client** → PAIGE cites a recorded outcome, on two Solo tenants.
+0. ~~**Fix #765 first.**~~ **DONE 2026-09-02 — PR #773 (`f7fe9718`).** The drive below could not have
+   passed on any account with a saved conversation, because the scope was released before a turn was
+   sent. It can now be attempted; it has still not been run.
+1. Authenticated owner drive of `/solo/{account}/growth` → deal → **Open PAIGE for this client** →
+   PAIGE cites a recorded outcome, on two Solo tenants — at least one of which **already has saved
+   conversations**, since an empty account is the one case that passes today.
 2. Rendered proof at 1536×770, 1366×768, 1024×768 and 900×1000 with PAIGE open and closed.
 3. `supabase test db` against the Supabase stack, and a full-history replay.
-4. Post-merge §32.a persisted-apply confirmation for `20261041000000` on prod.
+4. ~~Post-merge §32.a persisted-apply confirmation for `20261041000000` on prod.~~ **DONE
+   2026-09-02** — queried on prod ref `xygzykjyynhzqytbqnzu` after merge; see the Production row above.

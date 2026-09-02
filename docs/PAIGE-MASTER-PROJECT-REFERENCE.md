@@ -202,6 +202,65 @@ Records: `docs/brain/decision-log.md` (2026-09-02) · `docs/doctrine/surface-car
 department card, carried by PR #731) · `docs/brain/solo-settings-scroll-and-release-playbook.md`
 (the Settings-scoped playbook — update owed, see that PR).
 
+### PAIGE Mind — a recorded Pipeline outcome, read and cited (LIVE on production, capability `PARTIAL`) — 2026-09-02
+
+**Evidence, on current `main`.** Merged in **PR #747** as `dcddf6761e84cc298588b6fbe1c39c61a5ec5fc8`,
+after owner Gate 2 at exact head `b43b15395ca300b8d2746ee36ac70828f6fd82da`. Vercel production
+deployment `dpl_AypwRwqAWfAEyB74tbNT7XcLy8nq` is `READY` at that commit; `deploy-edge-functions` and
+`deploy-migrations` both succeeded and moved `edge-live` and `db-live` to it, with zero drift on
+either. Applied on prod ref `xygzykjyynhzqytbqnzu` (§32.a, queried rather than assumed):
+`supabase_migrations.schema_migrations` carries `20261041000000`, the re-created projection exists,
+and it emits `client_id` from the visibility-filtered clients join rather than from the deal row.
+All five post-merge workflow runs on that commit are green.
+
+**Owner job.** Ask PAIGE what a client's recorded Pipeline stage outcomes actually prove, and get an
+answer that names its source rather than inferring past it.
+
+**Human surface.** Solo Growth → Pipeline (`/solo/{account}/growth`) → a deal card → **Open PAIGE for
+this client**, which scopes the Solo PAIGE fold to that deal's client. Scope is UI context only: the
+server re-resolves tenant by `current_user_tenant_id()` and re-authorizes the client before any read,
+and the scope clears on a client or account switch.
+
+> **THE ENTRY PATH WAS BROKEN AND IS NOW REPAIRED IN CODE — issue #765, PR #773 (`f7fe9718`).**
+> Found post-merge on `dcddf6761e`: setting a client scope reset history hydration, which
+> auto-resumed the newest saved thread, which released the focus just set. The scope was dropped
+> before the person could type, so the binding never received a `clientId` on any account holding a
+> saved conversation — i.e. every real account. It failed closed: no evidence reached PAIGE, nothing
+> leaked, no client's transcript reached another. **Repaired 2026-09-02** in the shared Chat
+> component, so both client-focusing surfaces are covered, together with three connected defects the
+> same auto-resume caused: a refusal explanation destroyed, a saved conversation opening the wrong
+> thread, and a stale cross-account focus. Every guard is mutation-proven.
+>
+> **The repair does NOT lift this capability to `LIVE`.** It is code-proven only. An authenticated
+> owner drive on two Solo tenants and rendered PAIGE drawer proof are both still `UNVERIFIED` and
+> owed — and that drive is the check that would have caught #765 in the first place. Until it runs,
+> the rows below are proven by contract tests and grants, not by a person completing the flow.
+> Separately parked and untouched: #766 (keyboard-focus trap), #769–#772.
+
+**PAIGE capability, stated exactly.** She can read safe, tenant-scoped and client-scoped recorded
+Pipeline outcome evidence through the merged safe lens `public.get_pipeline_spine_evidence`, state
+what it proves, cite the opaque `rail:<uuid>` record reference, mark a stale record as old rather
+than current, and say plainly when nothing is recorded — an empty read is never reported as proof
+that no activity occurred. **She cannot move, create, archive, delete, route or approve a Pipeline
+deal through this capability.** No Pipeline Chat write tool and no approval path exists here:
+`classification: read`, `riskPolicyKey: read_only`, `approvalAuthority: none`.
+
+**The citation is the one identifier permitted to cross** (owner-approved Spine Change Request,
+2026-09-02). It names a record, not a person or a deal, and is asserted to appear only inside the
+citation. Title, summary, payload, stage name, deal id, contact/client/user/tenant ids, provider
+bodies, secrets and reasoning traces all stay forbidden.
+
+**Truth label: `PARTIAL`, not `LIVE`, and neither this release nor the #765 repair lifts it.** Still
+owed and still `UNVERIFIED`: an authenticated owner drive on two Solo tenants, rendered proof at
+1536×770, 1366×768, 1024×768 and 900×1000, and `supabase test db` with a full-history replay. **The
+owed authenticated drive is exactly what would have caught #765** — every layer below the entry path
+was proven, and the one thing not driven is the one thing that failed (§70: a wired code path is not
+a usable capability). That lesson stands after the repair, because the repair is also code-proven
+only. Detail:
+`docs/delivery/paige-spine-mind-handoff.md`; per-tier rows: `docs/doctrine/tier-matrix.md` (§66
+ledger). Parked, not started: issues #748, #749, #750, #766, #769, #770, #771, #772. (#765 is REPAIRED — PR #773, `f7fe9718`.)
+
+**Next required lane, not started:** the Pipeline Chat Write Bridge (§5) needs its own Gate 1.
 
 ### Solo Team — PAIGE can act on the team (LIVE on production, capability `PARTIAL`) — 2026-09-02
 
@@ -991,7 +1050,13 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
-### PAIGE Mind — first Pipeline evidence slice (Gate 1 approved 2026-09-02; branch, NOT LIVE, NOT APPLIED)
+### PAIGE Mind — first Pipeline evidence slice (SUPERSEDED 2026-09-02 — merged, deployed and applied; see §4)
+
+> **Corrected in place, not deleted (§58).** This entry was written while the work was an
+> unmerged branch. It merged as PR #747 (`dcddf6761e`), production-deployed, and migration
+> `20261041000000` is persisted on prod. The live record is §4 → *PAIGE Mind — a recorded
+> Pipeline outcome, read and cited*. What remains genuinely unverified is listed there and
+> corrected in the final bullet below.
 
 - **Mind binding moves `UNAVAILABLE` → `PARTIAL`** for `pipeline.deal_stage_evidence`. PAIGE can state what a
   recorded Pipeline stage outcome proves for the active tenant and a selected client, cite its safe reference,
@@ -1012,9 +1077,9 @@ Grouped:
   approval authority remains `none`.
 - Truth status: 1859/1859 vitest, tsc ratchet unchanged at 13, production build green, 11 CI guards green, and a
   local-Postgres runtime proof that is **mutation-tested** (flipping the identifier's source makes it fail with a
-  named LEAK). **UNVERIFIED:** authenticated runtime, rendered proof, Supabase pgTAP/full-history replay. The
-  migration is **not applied to prod**; a §32.a persisted-apply confirmation is owed after merge. Do not merge or
-  deploy without separate authority. Detail: `docs/delivery/paige-spine-mind-handoff.md`.
+  named LEAK). **UNVERIFIED, and still owed:** authenticated runtime, rendered proof, Supabase pgTAP/full-history
+  replay. **CORRECTED 2026-09-02:** the migration **is** applied to prod — the §32.a persisted-apply confirmation
+  was taken after merge and is recorded in §4. Detail: `docs/delivery/paige-spine-mind-handoff.md`.
 
 ### NEXT REQUIRED LANE — Pipeline Chat Write Bridge (owner direction 2026-09-02; NOT STARTED, NOT IN THE MIND BRANCH)
 
