@@ -353,6 +353,12 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
       /"sync_results_shape":"string"/.test(auditRow(r)), auditRow(r));
   }
   {
+    // …and a body that is not an object at all is itself the evidence for `sync_reported_failure`.
+    const r = await drive({ approved_keys: ["negative_items"], body: [1, 2] });
+    assert("10.17a a non-object sync body records ITS shape, not just the missing results",
+      /"sync_body_shape":"array"/.test(auditRow(r)), auditRow(r));
+  }
+  {
     const S = "TOP_LEVEL_ERROR_SENTINEL";
     const r = await drive({ approved_keys: ["negative_items"],
       body: { success: false, error: `sync refused: ${S}`, results: {} } });

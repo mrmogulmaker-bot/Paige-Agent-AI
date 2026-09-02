@@ -1466,6 +1466,12 @@ wrong. Measuring it took one worktree and forty seconds.
 credit for humility.** Re-run every figure you are about to overturn, including the ones you are
 overturning only for symmetry. Announcing a standard is not evidence of having met it.
 
+The next review round proved the point again, in the same paragraph: rewriting it, I wrote *"15 of
+15 lint gates PASS"*. Fifteen was the number I had happened to run. `ci.yml` invokes **23**. The
+numerator was measured and the DENOMINATOR was invented — which reads as complete coverage while
+silently omitting eight gates. **A ratio is two claims. Count the denominator from the source of
+truth, not from your own transcript.**
+
 ## Privacy narrowing is a whitelist of what the decision READ, not of what looks small
 
 A failure audit row recorded the sync's whole response, which on that branch can carry derived

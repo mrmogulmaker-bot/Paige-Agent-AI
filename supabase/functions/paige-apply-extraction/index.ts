@@ -429,8 +429,9 @@ serve(async (req) => {
     // A FIRST ATTEMPT AT THIS NARROWING KEPT TWO FIELDS AND BLINDED FOUR VERDICTS. `syncGroupFailures`
     // reads five — and can also return `sync_reported_failure` or `sync_reported_no_results`, which
     // are verdicts about the BODY rather than about a group. Keeping only `scores_error` and
-    // `negative_items` left those four cases writing an audit row of two nulls, so the malformed
-    // body that caused the verdict — the only evidence of what broke — went unrecorded. Privacy was
+    // `negative_items` left those four cases writing an audit row that was usually two nulls (not
+    // always — a body carrying `results.negative_items` still recorded one), so the evidence for
+    // the verdict was gone exactly when it was least reconstructable. Privacy was
     // the right instinct and a two-field whitelist was the wrong instrument; the fix is to record
     // everything the verdict was derived FROM and exclude the one field it was never derived from.
     const syncTop = (syncBody ?? {}) as Record<string, unknown>;
@@ -438,11 +439,16 @@ serve(async (req) => {
     const syncResults = (!!rawResults && typeof rawResults === "object" && !Array.isArray(rawResults))
       ? rawResults as Record<string, unknown>
       : null;
-    // `sync_reported_no_results` is a verdict about a shape, so the shape is the evidence for it.
-    const resultsShape = rawResults === undefined
+    // `sync_reported_no_results` is a verdict about a shape, so the shape is the evidence for it —
+    // and `sync_reported_failure` fires on `success !== true`, which a body that is not an object at
+    // all also satisfies. Without the body's own shape, an HTML gateway page, an array and a bare
+    // `{}` all wrote the identical row of nulls: the same blind spot, one level up (second review).
+    const shapeOf = (v: unknown) => v === undefined
       ? "absent"
-      : rawResults === null ? "null" : Array.isArray(rawResults) ? "array" : typeof rawResults;
+      : v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+    const resultsShape = shapeOf(rawResults);
     const syncDetail = {
+      sync_body_shape: shapeOf(syncBody),
       sync_success: syncTop.success ?? null,
       sync_error: syncTop.error ?? null,
       sync_results_shape: resultsShape,
