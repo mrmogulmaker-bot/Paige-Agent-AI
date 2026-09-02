@@ -1169,3 +1169,40 @@ reporting gate now fails if it reports only the brain.
 
 **Nothing added here is a secret, a raw provider payload, private tenant data, or a capability claim
 the code does not support.** Team stays `PARTIAL`; no authenticated proof is claimed.
+
+### Landed — Gate 2, merge, and verification on `main`
+
+The owner approved Gate 2 at exact head `7e470f69c8f47dd0fe7112fbe68ab7a0d0813c28`. PR #730 merged to
+`main` as **`ed22066e71294099e48f0b52c742e3f379faf23c`** (squash; 7 files, +198/−15 — byte-identical to
+the approved diff, since the branch carried a single commit).
+
+Verified on `origin/main` after the merge, by reading it rather than trusting the merge response: the
+new §4 entry is present; the §4 PAIGE Chat header and the §5 Team entry both carry their §58
+strike-through correction beside the original wording; the both-records closeout rule is in the
+repo-local skill. The other `local branch, NOT LIVE` line in §5 belongs to the **multi-membership login
+account picker**, a different workstream, and was correctly left untouched.
+
+CI on that exact head, read directly rather than counted: `verify` success, `audit` success, combined
+commit status success (both Vercel contexts), `mergeable_state: clean`. `Supabase Preview` skipped and
+`migration-lint` absent — both path-filter on `supabase/**`, which this PR does not touch, so their
+absence corroborates the documentation-only scope instead of indicating missing coverage.
+
+**Unchanged by the merge, still owed:** authenticated owner browser proof of the Team flow; the
+workspace-level outcome projection (an unstarted Spine Change Request); PR #728's P1/P2 hotfix, which
+remains a separate active workstream this did not repair. Team remains `PARTIAL`.
+
+### §13 — a stale claim this closeout's sweep found, which the merge did NOT cause
+
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 carried MET1 (§34-L1 metering) as a ✅ **SHIPPED** entry
+while simultaneously asserting *"branch `codex/paige-knowledge-active-tenant-isolation-v2`, **NOT
+MERGED — draft PR, Gate 2 not requested**"* — internally contradictory on its face. It is stale:
+`supabase/functions/_shared/token-pricing.ts` and `supabase/migrations/20261038000000_the_meter_actually_runs.sql`
+are both on `main`, added by **`76bb3bbca` (PR #728)** — established with `git log --diff-filter=A`, and
+present at base `05735f26b` too, so this predates PR #730 and was not caused by it. Corrected in place
+per §58, **merge status only.** No behavioural claim in that entry was touched or re-verified: whether
+the meter actually drains on prod is MET2's evidence, not this closeout's, and nothing here re-grounds it.
+
+Three further status claims were read and deliberately **left alone**, because they sit in §5 (gaps),
+where in-flight work belongs, and because their workstreams' merge state was not grounded here: the
+multi-membership login account picker, Solo Campaigns → Pipeline board, and Setup-owned A2P legal
+identity. They are reported as unverified-by-this-closeout rather than silently edited.
