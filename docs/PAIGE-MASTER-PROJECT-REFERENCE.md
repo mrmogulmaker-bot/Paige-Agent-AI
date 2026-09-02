@@ -131,6 +131,68 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo Team — PAIGE can act on the team (LIVE on production, capability `PARTIAL`) — 2026-09-02
+
+**Evidence, on current `main`.** Merged in **PR #728** (`76bb3bbca`, *PAIGE Spine foundation registry
+and safe Pipeline evidence*), not through #675. Applied on prod ref `xygzykjyynhzqytbqnzu`:
+`supabase_migrations.schema_migrations` carries `20261039000000` and `20261040000000`, and
+`list_tool_autonomy()` returns all five `team_*` rows under the `Team` category. Documentation record:
+**PR #675** (`05735f26b`), which is documentation only and shipped no code.
+
+**Owner job.** Manage the people in a workspace: team members, invitations, work details, roles and
+access.
+
+**Human surface.** Solo Settings → Team (`/solo/{account}/settings/team`, `SoloTeamWorkspace`).
+
+**PAIGE capability.** She may propose and execute the governed Team actions **only through the
+canonical approval route**. She reads a server-resolved, active-tenant roster block; she may lift a
+`member_user_id` or `invitation_id` out of it, never a name she resolved herself. Every act runs
+through the same seam the Team screen uses — the two RPCs under the caller's own JWT, the three
+invitation acts through the `solo-team-invitations` edge function — so the database's in-body
+authority checks apply to a sentence exactly as to a form. A tenant-agreement precondition refuses
+when the seam's workspace is not the one the conversation is about.
+
+| Tool | Risk | Approval |
+|---|---|---|
+| `team_invite_member` | `high` | the real owner approval card |
+| `team_invite_resend` | `high` | the real owner approval card |
+| `team_invite_revoke` | `high` | the real owner approval card |
+| `team_set_permission` | `high` | the real owner approval card |
+| `member_grant_role` | `high` | the real owner approval card |
+| `member_revoke_role` | `high` | the real owner approval card |
+| `team_set_work_profile` | `ordinary` | normal compact confirmation |
+
+`high` means the gate accepts only a fingerprint of the exact rendered card, carried in the request
+**body** — a channel the model cannot write. The model asserting consent is refused.
+**`team_set_work_profile` is `ordinary` and is NEVER a permission change**: the RPC writes a job
+title and responsibilities and cannot reach `permission`. Any copy implying otherwise is false.
+
+**Truth label: `PARTIAL`, not `LIVE`** — see `docs/doctrine/surface-cards/team.md`.
+
+**The live limitation.** **Owner-visible workspace-level outcome history is still missing.** A Team
+action emits no Rail event: `emitRailForTool` returns early on `if (!contactId) return`, because the
+Rail is per-client and a Team action has no contact. That early return is correct — emitting one
+anyway would invent a client involvement. An attribution row IS written to `paige_audit_log`,
+tenant-stamped and complete, but **no Solo surface reads `paige_audit_log`**. So a permission change
+PAIGE makes on a team does not appear in that team's own activity feed.
+
+**Owed, and not claimed:** authenticated owner browser proof of the Team flow **remains owed**. No
+leg of it has been driven on the live authenticated platform, and the capability is already serving
+production.
+
+**Unstarted:** the workspace-level outcome projection — safe actor, action, target member or
+invitation, approval binding, result, owner-visible evidence — is an **unstarted Spine Change
+Request** in its own coordinated workstream. Owner ruling 2026-09-02: a Team event is not a client
+event, and no client Rail event may carry a null `contact_id`.
+
+**Separate and still active:** **PR #728's post-merge P1/P2 hotfix is a live workstream, and nothing
+in this documentation repairs it or makes it irrelevant.** Two of its P1s land on surfaces named
+above — `useRailEvents` can merge the previous scope's events into the feed after a tenant or contact
+switch, and `useSoloPendingActions` keeps the previous tenant's pending actions on the Trust Compass.
+The other two P1s are in `paige-apply-extraction`; the P2 is a failed Skip leaving a proposal
+unretryable.
+
+
 ### Paige's tool confirmation is bound to SERVER-HELD state (2026-09-01, `20261021000000`)
 
 `confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
@@ -186,10 +248,14 @@ and requires the operator's Approve click — the two things #711 recorded as NO
 `paige_tool_confirmations` table and `_shared/toolConfirmation.ts` remain in place but are no
 longer on the execution path. See `docs/brain/decision-log.md`, 2026-09-02.
 
-### PAIGE Chat — the governed working interface (2026-08-31, branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT YET MERGED)
+### PAIGE Chat — the governed working interface (2026-08-31; **MERGED and LIVE via PR #728 `76bb3bbca`**, 2026-09-02)
 
-**Status: on a branch, verified, awaiting Gate 2. Nothing below is live on production yet.** Recorded
-here per §0 so the next session does not re-diagnose any of it.
+**Status CORRECTED 2026-09-02 — the original text is preserved below it, not deleted (§58).**
+~~*On a branch, verified, awaiting Gate 2. Nothing below is live on production yet.*~~ **This work is
+MERGED and LIVE on production.** It reached `main` through **PR #728** (`76bb3bbca`), not through
+#675; #675 was rebuilt on `main` and merged as documentation only (`05735f26b`). Verified rather than
+inferred: `main` carries every migration named below and its `paige-ai-chat` handler is a superset of
+the branch's. Recorded here per §0 so the next session does not re-diagnose any of it.
 
 Six vertical slices, each independently reviewed by an adversarial agent, repaired, and re-verified.
 
@@ -811,13 +877,18 @@ Grouped:
 - The chooser displays only the caller's RLS-filtered tenant records intersected with their own active membership rows. It never treats an account number, URL, email text or client-supplied tenant id as authorization. Platform operators, client/invite continuations and single-membership users retain their existing direct routing.
 - Choosing a workspace persists `profiles.active_tenant_id` through the existing guarded `switchTenant` seam before the browser scope changes. A failed write leaves the current workspace unchanged. The Solo header exposes the same independent-membership switcher; the existing server-gated agency parent/sub-account switcher remains separate and unchanged.
 - Truth status: 7 focused policy/OAuth/render tests pass, the TypeScript ratchet adds no errors, focused lint is green and the production build succeeds. Live authenticated Google return, both-account selection, retry, session expiry, account-switch persistence and preview runtime remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
-### Solo Settings → Team management (Gate 1 approved 2026-08-31; local branch, NOT LIVE)
+### Solo Settings → Team management — ~~local branch, NOT LIVE~~ **SUPERSEDED 2026-09-02: LIVE, capability `PARTIAL`**
+
+> **This entry is kept for its dated detail and is no longer the status.** The work shipped via PR
+> #728 (`76bb3bbca`) and is live on production. See §4 → *Solo Team — PAIGE can act on the team* for
+> the current record, and `docs/doctrine/surface-cards/team.md` for the department card. Two bullets
+> below are now FALSE and are marked where they appear.
 
 - The sparse Team destination is replaced by a roster-first workspace with server-side search/filter, 25-person pages and an explicit Load more path. Settings remains the one vertical scroll owner; the people list never creates a nested scrollbar.
 - Enforced tenant permissions remain Owner, Admin, Member, plus truthful read-only presentation of existing specialized permissions. Editable job title and responsibilities describe work only and never participate in authorization.
 - Team invitations have review-before-send, pending/resend/revoke/accepted/expired states, email-bound single-use acceptance, and service-role-only token handling. Permission changes have their own owner confirmation.
-- Paige chat receives a server-resolved, active-tenant confirmed roster block for the authenticated speaker. Tenant-authored titles/responsibilities are explicitly untrusted reference data; the block cannot send invitations or mutate access and routes confirmation back to Settings → Team.
-- Truth status: 25/25 structural-harness checks pass at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build are green. Migration persistence, authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch, preview runtime and exact-head Gate 2 remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
+- ~~Paige chat receives a server-resolved, active-tenant confirmed roster block for the authenticated speaker. Tenant-authored titles/responsibilities are explicitly untrusted reference data; the block cannot send invitations or mutate access and routes confirmation back to Settings → Team.~~ **FALSE as of 2026-09-02.** The roster block and the untrusted-reference-data property still hold, but PAIGE **can** now send invitations and change access — through the canonical approval route, each `high` act behind the real owner approval card. See §4.
+- Truth status, CORRECTED 2026-09-02: the structural-harness and static results below still stand, and **migration persistence is now CONFIRMED on prod** (`20261039000000`, `20261040000000` in `schema_migrations`; five `team_*` rows returned by `list_tool_autonomy()`). ~~*Do not merge or deploy without the separate final go-live approval.*~~ — it merged via #728. **Still UNVERIFIED:** authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch and preview runtime. No leg has been driven on the live authenticated platform. ~~25/25 structural-harness checks~~ remain as recorded: 25/25 at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build green.
 
 ### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
 

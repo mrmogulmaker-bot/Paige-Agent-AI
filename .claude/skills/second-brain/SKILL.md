@@ -62,7 +62,7 @@ not an act of recall — and a capture deferred to "later" is a capture that doe
 
 ---
 
-## STEP 3 — Before you call it done: RECORD
+## STEP 3 — Before you call it done: RECORD **BOTH** records
 
 The last step of the work, **in the same change**. Not a follow-up.
 
@@ -80,6 +80,37 @@ What binds which: **§0** the master reference · **§BRAIN.3** `docs/brain/` ·
 **§13** record what is real, never what a commit intends · **§58** never delete a dated entry to fix
 it — mark it corrected and add the new one. These bind **different** files; satisfying one is not
 satisfying another.
+
+### The closeout rule — BOTH records, or a named handoff (owner-ruled 2026-09-02)
+
+**A workstream is not complete until BOTH of these are updated:**
+
+1. **the relevant Second Brain record** — the table above; and
+2. **`docs/PAIGE-MASTER-PROJECT-REFERENCE.md`**, whenever the work changes **product capability ·
+   current platform truth · release status · architecture · owner flow · or a material known
+   limitation.**
+
+The two are not interchangeable. The brain is how a session avoids re-diagnosing; the Master Project
+File is what anyone is answered from when they ask *what does this platform actually do today*. A
+capability can be live on production for hours while the file still calls it a local branch — that
+is the exact failure this rule closes, and it is what happened to Solo Team.
+
+**The escape, when the update genuinely cannot happen in the same PR** — a collision with an open PR
+on the same section, a scope boundary the owner set, an answer that is not yours to write. It is a
+*collision-safe handoff*, not a deferral, and it must name all four of:
+
+- the **exact Master Project section** to change;
+- the **proposed text**;
+- the **owner** of that follow-up;
+- the **reason** it could not be updated in the same PR.
+
+"I'll do it later" is not a handoff. A handoff missing any of the four is an omission wearing a
+plan's clothes.
+
+**Do not modify the installed `flow-by-flow` skill to carry this.** That skill is installed per
+account and cannot see this repository; editing it would put a repo-specific rule somewhere this
+repo does not control and cannot review. This file is the repo-native home — the same reason it
+exists at all.
 
 Record a secret value nowhere. Names and locations only.
 
@@ -123,6 +154,8 @@ step, and only one of those is honest.
   not having looked.
 - How the sweep was narrowed, if at all — and what reading the omissions showed.
 - That no secret value was written.
+- **Whether `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating, and if so that it was** — or
+  the four-part collision-safe handoff, in full. A gate that reports only the brain is incomplete.
 
 A record added **without** the sweep is a `FAIL`: the brain now asserts both states. A sweep whose
 omissions were never read is also a `FAIL`, however many spellings it searched — that exact

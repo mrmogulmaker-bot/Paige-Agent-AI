@@ -44,7 +44,7 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
 ## Not yet built
 
 - No custom-roles table, no permissions table (`user_roles` is the only role table).
-- On `main`, `tenant_members` has **no work-title/responsibilities columns**. ⚠ **In-flight, not live (2026-08-31):** the Solo Team branch adds `job_title` and `responsibilities` as descriptive tenant data while keeping `role`/`is_owner` as the only enforced permission inputs. Do not report this available until its migration is applied and authenticated behavior is proven.
+- ~~On `main`, `tenant_members` has **no work-title/responsibilities columns**.~~ **CORRECTED 2026-09-02 — it does.** `job_title` and `responsibilities` are live `text` columns on prod (`information_schema.columns`, ref `xygzykjyynhzqytbqnzu`), shipped via PR #728. They are **descriptive tenant data only**: `role`/`is_owner` remain the only enforced permission inputs, and the RPC that writes them cannot reach `permission`. The half of the original caution that still stands: **authenticated behaviour is still UNPROVEN** — no leg of the Team flow has been driven on the live authenticated platform, so do not report the end-to-end flow as verified.
 - `app_role` has **no** `sales_lead` / `closer` / `appointment_setter` / `sdr` / `sales_ops`
   (only `sales_rep`). The owner-ruled sales catalog is entirely net-new.
 
