@@ -1018,3 +1018,43 @@ carries all 909 of the branch's migrations, all five tool declarations and the c
 `paige-ai-chat` handler is a strict superset. PR #675's branch was therefore rebuilt on `main`,
 leaving only these documents — the alternative was a 110-commit branch whose only real content was
 already merged.
+
+---
+
+## 2026-09-02 — Owner decisions on the Solo Team capability, recorded exactly
+
+Ruled alongside Gate 2 on the surface-card documentation. **None of these is implemented by the
+documentation that records them**; two describe work that has not happened.
+
+**1. Every PAIGE Team mutation is `owner_only`** — invite, resend, revoke, role/access grant,
+role/access revocation, permission change. **No `high` path is to be introduced for Team actions.**
+
+*The live code does not match this ruling.* All six are `high` on prod today in
+`_shared/action-risk.ts` (`team_invite_member`, `team_invite_resend`, `team_invite_revoke`,
+`team_set_permission`, `member_grant_role`, `member_revoke_role`). `owner_only` is not a stronger
+gate — it removes an action from Chat entirely, at any approval strength. So this ruling does not
+tighten the Team tools, it **withdraws them from PAIGE**, and the confirm-card machinery built for
+them becomes unreachable on those six. Closing the gap is product code in its own change.
+
+*Not settled by the ruling:* `team_set_work_profile` is a Team mutation, is not among the six
+enumerated, and is `ordinary` today. It writes two text columns and cannot reach `permission`. Left
+`ordinary` pending an explicit owner answer rather than swept in by inference.
+
+**2. A Team event is not a client event.** Do not emit a client Rail event with a null
+`contact_id`. The repair is a distinct tenant/workspace-level outcome projection carrying safe
+actor, action, target member or invitation, approval binding, result, and owner-visible evidence —
+proposed as its own Spine Change Request, implemented in its own coordinated workstream. **Not
+started.** This settles the open half of the question the Team card raised.
+
+**3. `PARTIAL` is not lifted by documentation.** Team stays `PARTIAL` until the owner can see a
+truthful tenant-scoped outcome after PAIGE acts AND the live authenticated flow is proven.
+
+**Also on the record: PR #728's post-merge follow-up is a separate ACTIVE hotfix.** Four P1 and one
+P2, not repaired and not made irrelevant by the surface-card work. Two land on surfaces the Team
+card describes: `useRailEvents` can merge the previous scope's events into the feed after a
+tenant/contact switch, and `useSoloPendingActions` keeps the previous tenant's pending actions on
+the Trust Compass after an account switch. The other two P1s are in `paige-apply-extraction` (a
+partial sync counted as success; an extraction claim not released when the transport rejects), and
+the P2 is a failed Skip leaving a proposal unretryable in `PaigeAIChat`.
+
+Issue #198 (prod migration deploy FAILED) stays **open**, untouched.

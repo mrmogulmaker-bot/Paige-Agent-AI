@@ -22,6 +22,67 @@ declares exactly one capability today (`PIPELINE_DEAL_STAGE_EVIDENCE`). Team sho
 and the reason it cannot be declared *complete* is the same reason this card is `PARTIAL`: the
 registry requires `outcome.railVisibility`, and Team has none.
 
+## Owner decisions of record — 2026-09-02
+
+Recorded exactly as ruled. **None of them is implemented by this document**; two of them describe
+work that has not happened yet, and saying otherwise is the failure this card exists to prevent.
+
+### 1. Every PAIGE Team mutation is `owner_only`
+
+Invite · resend · revoke · role/access grant · role/access revocation · permission change. **No
+`high` path is to be introduced for Team actions.**
+
+**The live code does not match this ruling.** On prod today all six are classified `high`, in
+`supabase/functions/_shared/action-risk.ts`:
+
+| Tool | Classified today | Ruled |
+|---|---|---|
+| `team_invite_member` | `high` | `owner_only` |
+| `team_invite_resend` | `high` | `owner_only` |
+| `team_invite_revoke` | `high` | `owner_only` |
+| `team_set_permission` | `high` | `owner_only` |
+| `member_grant_role` | `high` | `owner_only` |
+| `member_revoke_role` | `high` | `owner_only` |
+
+Closing that gap is product code and a separate change; it is deliberately absent from the PR that
+introduced this card. Until it lands, the *Required confirmation* section below describes what the
+platform actually does, not what has been ruled — and the two differ.
+
+**One question this ruling does not settle:** `team_set_work_profile` is a Team mutation but is not
+among the six enumerated, and it is `ordinary` today. It writes two text columns and cannot reach
+`permission`. It is left as `ordinary` pending an explicit owner answer rather than swept into the
+ruling by inference.
+
+### 2. A Team event is not a client event
+
+**Do not emit a client Rail event with a null `contact_id`.** The future repair is a *distinct
+tenant/workspace-level outcome projection* carrying: safe actor · action · target member or
+invitation · approval binding · result · owner-visible evidence. It must be proposed as its own
+**Spine Change Request** and implemented in its own coordinated workstream. Not started here.
+
+### 3. `PARTIAL` is not lifted by documentation
+
+Team stays `PARTIAL` until **both**: the owner can see a truthful, tenant-scoped outcome after PAIGE
+acts, **and** the live authenticated flow is proven. Writing a card does not move a truth label.
+
+### Related, and separately active: PR #728's post-merge follow-up
+
+#728 is the merge that put this capability on production. Its post-merge review raised **four P1
+findings and one P2**, and they are **an active hotfix in their own workstream — not repaired, and
+not made irrelevant by anything in this card.** Two of them land on surfaces this card describes:
+
+- **P1 · `src/hooks/useRailEvents.ts`** — when the tenant or contact changes mid-flight, an
+  in-flight history query can merge the *previous scope's* events into the new feed. The Rail
+  reading described below is therefore not simply "working"; it has an open cross-account staleness
+  defect against it.
+- **P1 · `src/solo/data/useSoloPendingActions.ts`** — pending action titles, summaries and drafts
+  from the previous tenant persist on the Trust Compass after an account switch.
+- P1 × 2 · `supabase/functions/paige-apply-extraction` — a partial sync counted as success, and an
+  extraction claim not released when the transport rejects.
+- P2 · `src/components/dashboard/PaigeAIChat.tsx` — a failed Skip leaves a proposal unretryable.
+
+Nothing in this card should be read as evidence about those findings either way.
+
 ## Owner job and user flow
 
 An owner or admin decides who is on their workspace and what each person may do: invite someone,
@@ -87,6 +148,10 @@ person and the consequence, not the enum, and a `high` card whose subject cannot
 refused rather than shown unnamed. A workspace `auto` setting does **not** lower this: as of
 2026-09-02 the handler clamps `auto` → `confirm` for any `high` or `owner_only` action.
 
+**This paragraph describes the platform as it runs today. It is not the ruled end state** — owner
+decision 1 above moves all six access-changing Team tools to `owner_only`, which removes them from
+Chat entirely rather than gating them harder.
+
 `team_set_work_profile` is `ordinary` — reversible, in-tenant, and structurally unable to reach
 `permission`.
 
@@ -116,10 +181,15 @@ workspace-level (non-client) rail event is exactly such a primitive. The Chat wo
 second activity substrate to close its own visibility gap is the duplication the one-approval-gate
 rule exists to prevent, in a different costume.
 
-**What the Change Request has to decide** is narrower than "add a rail": whether a Rail event may
-exist without a `contact_id`, or whether workspace-level outcomes get their own projection that
-`useSoloActivityFeed` unions in. Either answer makes Team declarable in the registry with real
-`outcome.railVisibility`; neither is the Chat workstream's to pick alone.
+**The owner has since answered the half of this that was open (decision 2 above).** A Rail event may
+NOT carry a null `contact_id` — a Team event is not a client event. The repair is a distinct
+tenant/workspace-level outcome projection carrying safe actor, action, target member or invitation,
+approval binding, result and owner-visible evidence. It is a separate Spine Change Request in its
+own coordinated workstream, and it has not been started.
+
+Note also that the feed named above is itself under an open P1 (`useRailEvents` cross-account
+staleness, from #728's follow-up), so "the owner sees it in the Rail" is not yet a safe destination
+even for the events that do carry a contact.
 
 ## Dependencies, collisions, and required browser proof
 

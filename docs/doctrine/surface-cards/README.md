@@ -65,3 +65,9 @@ owner can use the page → tenant-safe record exists → safe domain evidence en
 
 A department whose action runs correctly but whose outcome the owner cannot see is `PARTIAL`. It
 does not become `LIVE` because the code is finished.
+
+**And it is not lifted by documentation** (owner ruling, 2026-09-02). Writing a card, however
+thorough, changes nothing about what an owner can see or what has been proven. A label moves only
+when the owner can see a truthful, tenant-scoped outcome after PAIGE acts AND the live
+authenticated flow has been driven. A card that promotes its own subject is the exact self-serving
+evidence this schema exists to refuse.
