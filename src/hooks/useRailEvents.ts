@@ -88,7 +88,22 @@ function coerceRailEvent(raw: unknown): RailEvent | null {
 /**
  * Which column scopes the history read.
  *
- * §9 — THIS IS THE WHOLE ISOLATION DECISION FOR THE BACKFILL, so it is a named function rather
+ * ── RETIRED FROM THE READ PATH BY #746, AND SAYING SO IS THE POINT. ──
+ *
+ * This is no longer called by anything but its own test. The history read no longer filters a
+ * relation at all — it calls a per-scope SECURITY DEFINER resolver, and the isolation decision
+ * this function used to carry is now made SERVER-SIDE, where a browser cannot reach it:
+ * `get_client_rail` derives the tenant from the contact row, and `get_solo_rail_activity` takes
+ * no tenant argument whatsoever. That is strictly stronger than choosing a column correctly.
+ *
+ * It is kept rather than deleted for two reasons, both temporary: PR #729 is in flight against
+ * this exact file, and its test still documents the rule the resolvers now enforce. Deleting an
+ * exported, tested symbol under an in-flight PR buys a merge conflict and no safety. Its removal
+ * is filed as a parked follow-up rather than smuggled into a security repair.
+ *
+ * The original note, which explains WHY the rule exists, still stands:
+ *
+ * §9 — THIS WAS THE WHOLE ISOLATION DECISION FOR THE BACKFILL, so it is a named function rather
  * than a ternary buried in an effect. A client feed narrowed by `tenant_id` would show one portal
  * client every other client's events; a tenant feed narrowed by `contact_id` would show a staff
  * surface almost nothing. RLS would still refuse the first — `pce_client_read` requires the
@@ -164,10 +179,17 @@ export function useRailEvents(
     mountedRef.current = true;
 
     // No id → nothing to subscribe to. Ensure a clean, disconnected state.
+    //
+    // §13 — `historyLoaded` SETTLES TRUE here, and that is a fix, not a tidy-up. It used to stay
+    // false forever on this path, so a consumer asking "has the history finished loading?" was
+    // told "still loading" for the lifetime of the surface. There is genuinely nothing to load
+    // without a scope, and "no read was attempted" is a settled state, not a pending one. It was
+    // only latent because nothing read the field; #746 makes both consumers read it, which turns
+    // a dormant contract gap into a permanent spinner.
     if (!topic || !id) {
       setConnected(false);
       setEvents([]);
-      setHistoryLoaded(false);
+      setHistoryLoaded(true);
       setHistoryError(null);
       return () => {
         mountedRef.current = false;
@@ -186,22 +208,33 @@ export function useRailEvents(
     // read them. An operator who opened the page a minute after Paige acted saw nothing, which
     // reads as "she has done nothing" rather than "you were not watching".
     //
-    // §9 — the scoping is the TABLE's, not this query's. `pce_client_read` admits a row only when
-    // it is audience client/both, `visibility='client_visible'`, and the contact is linked to the
-    // caller; `pce_staff_read` requires the caller's active tenant plus a staff role. So the read
-    // reproduces exactly what the broadcast topics already enforce — owner-internal events cannot
-    // reach a portal client through this path any more than through the live one — and the filter
-    // below narrows WITHIN that, it does not widen it.
+    // §9 — THE SCOPING IS THE SERVER'S. Read through a resolver, never the relation.
+    //
+    // This used to be `supabase.from("paige_client_events")`, and it could not execute at all:
+    // `20260712190000:94` granted SELECT to `authenticated` and `20260712200000:25` revoked it,
+    // so every history read returned `42501` BEFORE row-level security was consulted. The policies
+    // this code reasoned about were never evaluated. Verified on production 2026-09-02:
+    // `has_table_privilege('authenticated','public.paige_client_events','SELECT')` → false.
+    //
+    // The repair routes to a SECURITY DEFINER resolver per scope rather than re-granting the
+    // table, because `useSoloActivityFeed` reads this same relation with NO filter at all — a
+    // grant would make an unfiltered browser read of a cross-tenant activity table live — and
+    // because PR #644 is revoking every remaining browser privilege here on its way to the same
+    // RPC-only boundary. Each resolver re-enforces the caller's scope in its own body (§59); the
+    // EXECUTE grant is not the guard.
     void (async () => {
       try {
-        let q = supabase
-          .from("paige_client_events")
-          .select("id,event_kind,surface,actor_type,audience,visibility,title,summary,occurred_at,contact_id")
-          .order("occurred_at", { ascending: false })
-          .limit(MAX_EVENTS);
-        const f = railHistoryFilter(opts, id);
-        q = q.eq(f.column, f.value);
-        const { data, error } = await q;
+        // `get_client_rail` already existed and is already granted — adopted, not rebuilt. It
+        // resolves the tenant from the contact row and lens-redacts payload / actor ids for a
+        // client caller. `get_solo_rail_activity` is the tenant-scoped sibling added by #746; it
+        // takes NO tenant argument, so a caller cannot name a workspace.
+        const { data, error } = opts.scope === "client"
+          ? await supabase.rpc("get_client_rail", {
+              p_contact_id: id,
+              p_limit: MAX_EVENTS,
+              p_lens: "client",
+            })
+          : await supabase.rpc("get_solo_rail_activity", { p_limit: MAX_EVENTS });
         if (!mountedRef.current) return;
         if (error) {
           // Never invent an empty history out of a failed read (§13).

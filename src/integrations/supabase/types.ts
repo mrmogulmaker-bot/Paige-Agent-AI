@@ -19732,6 +19732,22 @@ export type Database = {
           visibility: string
         }[]
       }
+      get_solo_rail_activity: {
+        Args: { p_limit?: number }
+        Returns: {
+          actor_type: string
+          audience: string
+          event_kind: string
+          from_department: string
+          id: string
+          occurred_at: string
+          summary: string
+          surface: string
+          title: string
+          to_department: string
+          visibility: string
+        }[]
+      }
       get_client_service_agreement: {
         Args: never
         Returns: {

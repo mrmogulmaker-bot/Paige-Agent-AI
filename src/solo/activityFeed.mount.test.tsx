@@ -30,7 +30,15 @@ vi.mock("@/integrations/supabase/client", () => {
       from: () => chain,
       channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
       removeChannel: () => {},
-      rpc: () => Promise.resolve({ data: null, error: null }),
+      // #746 — THE DOUBLE FOLLOWS THE SEAM (see soloActivityFeed.render.test.tsx for the long
+      // version). The feed reads `get_solo_rail_activity` now, not the relation. Left aimed at
+      // `.from`, this mock returned `{data:null,error:null}` for the RPC — so BOTH the recorded
+      // event and the failed read rendered as the empty timeline, and the two tests that exist
+      // precisely to keep those apart failed toward the same wrong state.
+      rpc: (fn: string) =>
+        fn === "get_solo_rail_activity"
+          ? Promise.resolve({ data: harness.rows, error: harness.error })
+          : Promise.resolve({ data: null, error: null }),
       auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
     },
   };

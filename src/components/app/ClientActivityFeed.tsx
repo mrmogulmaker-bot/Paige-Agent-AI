@@ -141,7 +141,9 @@ export function ClientActivityFeed({ contactId: contactIdProp, className }: Prop
   const contactId = selfResolve ? resolved : contactIdProp;
   const loading = selfResolve ? resolving : false;
 
-  const { events, connected } = useRailEvents({ scope: "client", contactId: contactId ?? null });
+  // §13 — see PaigeRailFeed. A refused history read rendered as "Nothing yet" here too, which
+  // told a client their coach had done nothing for them. #746 makes the refusal visible.
+  const { events, connected, historyLoaded, historyError } = useRailEvents({ scope: "client", contactId: contactId ?? null });
 
   // While self-resolving we can't yet tell a staff/impersonator apart from a
   // linked client, so we must NOT render a client-labeled "Your activity"
@@ -162,7 +164,28 @@ export function ClientActivityFeed({ contactId: contactIdProp, className }: Prop
         </h2>
       </div>
 
-      {events.length === 0 ? (
+      {events.length === 0 && historyError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+              <Activity className="h-4 w-4" />
+            </span>
+            <p role="alert" className="text-sm font-medium text-foreground">Couldn't load your activity</p>
+            <p className="max-w-[16rem] text-xs text-muted-foreground">
+              This isn't a record of nothing happening — the history didn't load. Try again shortly.
+            </p>
+          </CardContent>
+        </Card>
+      ) : events.length === 0 && !historyLoaded ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+              <Activity className="h-4 w-4" />
+            </span>
+            <p className="text-sm font-medium text-foreground">Loading your activity…</p>
+          </CardContent>
+        </Card>
+      ) : events.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
