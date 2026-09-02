@@ -204,7 +204,12 @@ matrix above says — no more:
 
 - **The two `useRailEvents` consumers still collapse a refusal into an empty feed.** `PaigeRailFeed.tsx`
   and `ClientActivityFeed.tsx` destructure only `{ events, connected }`, so a denied read still renders
-  as "nothing yet". **This is the remaining failure mode.**
+  as "nothing yet". **This is the remaining failure mode among the four Rail-feed consumers** — and it
+  is deliberately scoped to those four, because they are the ones this record audits. **Two Analytics
+  surfaces do the same thing to the same denied table** and are tracked separately as **#802**:
+  `useClientEngagement.ts:48` and `CohortRetentionTable.tsx:74` each destructure only `{ data }`,
+  discard the error, and fall through to `[]` — so a refusal is rendered as *"Insufficient data"* or
+  as retention that never accumulated. **They are out of Slice B's scope, not out of the problem.**
 - **The two `useSoloActivityFeed` consumers do NOT.** Both `compass.tsx:377` and `team.tsx:235` compute
   `activity.loading ? 'loading' : activity.error ? 'error' : …` and render an explicit `role="alert"`
   message — *"Recent activity could not be loaded, so this is not a record of nothing happening"* and
@@ -215,8 +220,14 @@ matrix above says — no more:
     `solo-tokens.css:173` — `@media(max-width:1020px){ .paige-solo .tc-rail{display:none};
     .paige-solo .tc-railbtn{display:flex} }` — hides the branch that holds Compass's retry at
     **≤1020px**, and the foldout branch that replaces it (`compass.tsx:440`) carries `role="alert"`
-    **with no retry control**. So at narrow widths a Compass user is told the read failed and given
-    **no way to re-attempt it**. The message is still honest; the recovery is missing.
+    **with no retry control**. So at narrow widths a Compass user is told the read failed and has no
+    **manual** way to re-attempt it.
+  - **Recovery is NOT absent, though — and this correction matters more than the gap.**
+    `useSoloActivityFeed.ts:193–198` re-reads on a `setInterval` of `POLL_INTERVAL_MS = 15_000` while
+    the tab is visible, **and** on every `window` `focus` event. So an error state clears itself
+    within ~15 seconds of the cause going away, in every layout, with no user action. The accurate
+    statement is **"no visible manual retry control at ≤1020px"**, not "no retry" and not "no
+    recovery" — those would be false.
   - **That gap is a Slice B input, not a documentation problem.** Slice B's state contract explicitly
     includes *failed with a truthful retry path*, so the compact Compass branch is inside its scope
     and must not be lost. §00: whether a recovery control **exists** is correctness and therefore

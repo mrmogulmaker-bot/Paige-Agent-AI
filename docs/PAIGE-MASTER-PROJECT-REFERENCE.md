@@ -1194,10 +1194,14 @@ unreachable, so the fix for a Rail screen is never a table grant.
 production after both migrations. The remaining *misreporting* is narrower than the read failure: the
 two `useRailEvents` consumers collapse a refusal into an empty feed, while `compass.tsx:377` and
 `team.tsx:235` both render an explicit `role="alert"` failure. **All four are denied; only two of them
-lie about it.** Failure *visibility* and *recovery* are separate questions: `team.tsx` offers a retry
-in every layout, `compass.tsx` only above 1020px — `solo-tokens.css:173` hides its retry-bearing
-branch below that, and the foldout replacement (`compass.tsx:440`) has none. That recovery gap is
-tracked as a Slice B scope item on #746, not as a second misreporting surface. The gap changed shape rather than closing: **before, no safe path
+lie about it.** Failure *visibility* and *manual recovery* are separate questions: `team.tsx` offers a
+*Try again* control in every layout, `compass.tsx` only above 1020px — `solo-tokens.css:173` hides its
+retry-bearing branch below that and the foldout replacement (`compass.tsx:440`) has none. **Automatic
+recovery is present regardless:** `useSoloActivityFeed.ts:193–198` re-reads every 15s while visible and
+on window focus, so the missing piece is the *visible manual control*, not recovery. Tracked as a Slice B
+scope item on #746, not as a second misreporting surface. The two Analytics readers of the same denied
+table (`useClientEngagement.ts:48`, `CohortRetentionTable.tsx:74`) discard the error entirely and render
+it as "Insufficient data" — a separate slice, tracked as **#802**. The gap changed shape rather than closing: **before, no safe path
 existed; now a safe path exists and nothing uses it.** Issue **#746 stays open**, and closing it also
 requires authenticated owner runtime proof, not a deployed function. Full record, including the #794
 cross-workspace defect this foundation shipped with and the three lessons from it:
