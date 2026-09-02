@@ -1250,6 +1250,13 @@ after the foundation depends on at least one.
 #762 · #763. The PAIGE Attention Register Project does not exist yet, so they are linked from the map
 rather than added to it; that addition remains pending.
 
+**Re-grounded after #747 merged (`dcddf676`), same day.** `main` was merged into the branch and every
+guard re-run on the merged head: 105 inline · 1 capability · 62 classified, all unchanged. Three claims
+were corrected rather than left to drift — the Pipeline capability's `mindBinding` is now `PARTIAL`
+(not `UNAVAILABLE`), one cited line number shifted, and #747 stopped being a collision. Also recorded:
+`SCR-2026-09-02` is the repo's first **approved** Spine Change Request and sets the `SCR-<date>` naming
+convention; the map's `SCR-1/2/3` are shorthand for three requests that have **not** been raised.
+
 **Collision-safe handoff owed.** Two lessons from this work belong in `lessons-learned.md` and are
 **not** written there: appending introduces a merge conflict with #754, #731 and #729, all three of
 which are clean against `main` today (measured with `git merge-tree --write-tree`). The full proposed

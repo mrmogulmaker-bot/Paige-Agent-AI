@@ -206,8 +206,9 @@ unretryable.
 | Classified actions | **62** — 32 `ordinary` · 28 `high` · 2 `owner_only` · 5 exempt · 0 unclassified writes | `npm run lint:action-risk` |
 
 **The Spine is PARTIAL and no department-wide connectivity is implied.** The one registered
-capability is `pipeline.deal_stage_evidence` — a read, `chatBinding: PARTIAL`, `mindBinding:
-UNAVAILABLE`, mapped to **no** Chat tool. PAIGE reaches every department today through the 105
+capability is `pipeline.deal_stage_evidence` — a read, `chatBinding: PARTIAL`, and **`mindBinding:
+PARTIAL` since #747 merged (`dcddf676`, 2026-09-02)**, mapped to **no** Chat tool. The guards were
+re-run on the merged head: 105 · 1 · 62, all unchanged. PAIGE reaches every department today through the 105
 hand-wired tools, not through the Spine.
 
 **Two of the 62 classified actions are not Chat tools at all** — `marketplace_install` and

@@ -6,6 +6,12 @@ added, and nothing was merged or deployed to produce it.**
 Grounded against `origin/main` `e35920898ec942e5e8abaf52a5daab9bb67e0820` on 2026-09-02, by running
 the repository's own guards rather than reading a prior report.
 
+**Re-grounded the same day.** PR #747 (*PAIGE Mind: read a recorded Pipeline outcome, and cite it*)
+merged as `dcddf676` while this map was open. `main` was merged into this branch and every guard
+re-run on the merged head: **105 inline tools · 1 registered capability · 62 classified actions —
+all unchanged.** Three claims were corrected rather than left to drift: the Mind binding, one line
+number, and the Wave 2 collision. Each correction is marked where it appears.
+
 This map answers one question for every legacy Chat tool PAIGE can call: **what has to become true
 before this capability is governed, owner-visible, and honestly callable `LIVE` — and if that
 cannot happen, what happens to it instead.** It is the plan; it is not permission to execute any
@@ -86,7 +92,7 @@ to be recorded.**
 capability's declared `safeSummary`; `safeFacts` rejects any fact value not present in the
 declared `factValues`.
 
-**C4 — Spine evidence loads only inside a client-scoped Chat turn** (`paige-ai-chat/index.ts:1113`,
+**C4 — Spine evidence loads only inside a client-scoped Chat turn** (`paige-ai-chat/index.ts:1115`,
 guarded by `scopedClientRef`). A general business question reaches no Spine evidence at all.
 
 **The consequence, and it is the single most important sentence in this document:**
@@ -137,6 +143,12 @@ is the right ordering and a domain boundary should not smuggle a `high` action i
 | **SCR-3 — a record/list evidence shape** | **not requested, not started** | C3. Without it no read tool can ever migrate |
 | **Ratchet hardening** (section 5) | partially shipped | the existing guard freezes the count; it does not yet prevent the four bypasses named in section 5 |
 
+**On the `SCR-n` labels.** The repository's real convention is `SCR-<date>`, and one request is
+already **approved**: `SCR-2026-09-02` (the Chat-facing block may carry the safe `rail:` citation),
+recorded in `docs/architecture/paige-spine-foundation.md`. `SCR-1`, `SCR-2` and `SCR-3` in this map
+are **shorthand for three requests that have not been raised** — they are not identifiers, not
+approved, and must not be cited as though they were. Whoever raises them gets a real dated name.
+
 **Nothing after Wave 0 may begin before SCR-1 and SCR-2 exist as approved requests.** Waves 1 and 2
 may be *specified* before then; they may not be built.
 
@@ -173,8 +185,9 @@ writes; **1c** six `high` client-subject writes.
   Rail event, so PAIGE cannot see her own move in her own evidence; `pipeline_move_approvals` is
   write-only, so a held request is unresolvable and permanently increments the archive dependency
   count. Also SCR-1, because a pipeline is workspace-level.
-- **Collisions** — PR **#747** edits `paige-spine/domains/pipeline.ts` and `chatEvidence.ts`;
-  PR **#706** builds Solo Pipeline creation.
+- **Collisions** — PR **#747 MERGED** into `main` as `dcddf676` while this map was open; it changed
+  `paige-spine/domains/pipeline.ts` and `chatEvidence.ts` and is no longer a collision, but its Mind
+  projection is now part of this wave's starting state. PR **#706** builds Solo Pipeline creation.
 - **Owner flow** — Solo → Growth → Pipeline.
 - **Chat role** — the Pipeline move-approval reconciliation the Spine foundation names as required
   before any Pipeline mutation joins the Spine.
@@ -359,9 +372,12 @@ Column notes, so the table is read correctly:
   therefore **proven at the seam** for the RPC-backed tools and **RLS-only** for the tools whose
   target column shows `table:` with no `rpc:`. Per-tool proof beyond this was not attempted and is
   `UNVERIFIED`.
-- **Mind status** — `UNAVAILABLE` for all 105. No `paige-mind` function exists on `main`;
-  `mindBinding` exists only as a registry field, and the one declared capability sets it
-  `UNAVAILABLE`. PR #747 is in flight against that.
+- **Mind status** — `UNAVAILABLE` for all 105 **tools**. **Corrected 2026-09-02 after PR #747 merged
+  (`dcddf676`):** the one declared capability's `mindBinding` is now `PARTIAL`, not `UNAVAILABLE` —
+  `_shared/paige-spine/mindEvidence.ts` projects the resolver result into a bounded, attributable
+  Mind record. That changes nothing for the 105, because the capability maps to **no Chat tool**;
+  but the earlier flat "`UNAVAILABLE` everywhere" reading is no longer true of the Spine. See
+  `docs/delivery/paige-spine-mind-handoff.md`.
 - **Spine status** — `UNREGISTERED` for all 105. The registry declares one capability,
   `pipeline.deal_stage_evidence`, which is an evidence read and maps to **no** Chat tool.
 
@@ -605,7 +621,7 @@ independently of this change and is not made worse by it, so its record is writt
 >   declared in the registry**, not producer text.
 > - `safeFacts` rejects any fact value not present in the capability's declared `factValues`. Every
 >   fact is an enumerated scalar.
-> - Spine evidence loads only inside a client-scoped Chat turn (`paige-ai-chat/index.ts:1113`).
+> - Spine evidence loads only inside a client-scoped Chat turn (`paige-ai-chat/index.ts:1115`).
 >
 > So the contract can express *"an event of an enumerated kind happened to this client, with these
 > enumerated scalar facts"* — and **nothing else**. Not a record, a list, a name, a title, a count, a
