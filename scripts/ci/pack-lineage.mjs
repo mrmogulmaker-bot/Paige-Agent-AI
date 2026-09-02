@@ -34,6 +34,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { repoPath } from "./path-portability.mjs";
 
 const SURFACES = "src/operator/surfaces";
 const ENTRIES = ["src/operator/OperatorEntry.tsx", "src/App.tsx"];
@@ -125,7 +126,7 @@ const live = reachable();
 const rows = walk(SURFACES)
   .sort()
   .map((p) => ({
-    f: path.relative(SURFACES, p),
+    f: repoPath(path.relative(SURFACES, p)),
     pack: citedPack(p),
     live: live.has(p),
     kb: Math.round(fs.statSync(p).size / 1024),

@@ -18,8 +18,9 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { repoPath } from "./path-portability.mjs";
 
-const ENTRY = "src/operator/OperatorEntry.tsx";
+const ENTRY = repoPath("src/operator/OperatorEntry.tsx");
 
 /** Modules that are legitimately reached by something other than the operator entry. */
 const EXEMPT = new Map([
@@ -32,7 +33,7 @@ const EXEMPT = new Map([
       "render em-dashes, so a read waiting for its wiring layer is correct. Deleting working " +
       "reads to satisfy a graph check would be the waste, not the fix.",
   ],
-]);
+].map(([file, reason]) => [repoPath(file), reason]));
 
 const EXTS = ["", ".tsx", ".ts", "/index.tsx", "/index.ts"];
 
@@ -41,7 +42,7 @@ function resolve(spec, from) {
   const base = spec.startsWith("@/") ? join("src", spec.slice(2)) : join(dirname(from), spec);
   for (const ext of EXTS) {
     const p = base + ext;
-    if (existsSync(p) && statSync(p).isFile()) return p;
+    if (existsSync(p) && statSync(p).isFile()) return repoPath(p);
   }
   return null;
 }
@@ -75,7 +76,7 @@ function listModules(dir) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) out.push(...listModules(p));
-    else if (/\.(tsx?|ts)$/.test(name) && !/\.test\.|\.d\.ts$/.test(name)) out.push(p);
+    else if (/\.(tsx?|ts)$/.test(name) && !/\.test\.|\.d\.ts$/.test(name)) out.push(repoPath(p));
   }
   return out;
 }
