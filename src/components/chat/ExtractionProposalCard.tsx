@@ -50,6 +50,10 @@ export function ExtractionProposalCard({
 
   const toggle = (key: string) => {
     if (status !== "idle") return;
+    // An error is about the attempt that produced it. Once the person changes what they are
+    // selecting, that attempt is no longer what is on screen, so the line goes rather than sitting
+    // over a different choice (raised by independent review of the pushed diff).
+    setErrorMsg(null);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -86,6 +90,21 @@ export function ExtractionProposalCard({
    * A failure returns to `idle` rather than to `error`: the proposal is still open server-side, so
    * the controls must come back. `error` is terminal here and would hide the only way to act.
    */
+  /*
+    OWED TO CLAUDE DESIGN (§00) — two frames this card can now be in that CD has not ruled on.
+
+    1. A SKIP IN FLIGHT. The card already has an owner-shipped pending treatment for Save: hide the
+       controls, show a spinner reading "Saving…". That word is not true of a skip, and inventing a
+       second sentence would be authoring copy, so the in-flight skip instead leaves the existing
+       controls mounted and disabled — the component's own affordance, no new element and no new
+       words. Which treatment a pending skip should get, and whether it needs an indicator at all,
+       is CD's call.
+    2. AN ERROR LINE BESIDE LIVE CONTROLS. A failed skip returns to `idle` and must still say why,
+       so the destructive line now co-renders with the button row. That combination is new.
+
+    What is NOT a design decision, and is why both changes were made: the card must not state an
+    outcome the server has not accepted, and a failure must not hide the only way to act on it.
+  */
   const handleSkip = async () => {
     if (status !== "idle") return;
     setStatus("skipping");

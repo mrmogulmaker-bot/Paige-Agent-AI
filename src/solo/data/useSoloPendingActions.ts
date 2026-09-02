@@ -23,9 +23,21 @@
  * (2026-09-01), against 37 done. A read that filtered on the status name a designer would guess
  * would have returned nothing and rendered an honest-looking empty state over a real backlog.
  *
- * §9 TENANT ISOLATION: no tenant_id is passed. The live policy on `paige_actions` gates SELECT on
- * `tenant_id = current_user_tenant_id()` plus a staff role, with an operator escape, so scope is
- * the session's. Do not add a tenant parameter.
+ * §9 TENANT ISOLATION — CORRECTED. This file used to say "no tenant_id is passed … so scope is the
+ * session's. Do not add a tenant parameter." That was WRONG for one tier, and independent review of
+ * the pushed diff caught it. The live policy is
+ *
+ *     (tenant_id = current_user_tenant_id() AND has_any_role(...)) OR is_platform_owner()
+ *
+ * and `is_platform_owner()` is super_admin. For that tier the predicate SHORT-CIRCUITS TO TRUE and
+ * the read returns EVERY tenant's filed actions — their titles, summaries, drafted artefacts and
+ * reasons for stopping — into a Trust Compass modal that names one account. The select did not even
+ * fetch `tenant_id`, so nothing downstream could have noticed.
+ *
+ * The read is therefore narrowed to the active account explicitly. That narrows WITHIN what the
+ * policy already allows and never widens it; for every non-operator tier it is a no-op, because the
+ * policy had already confined them. The sibling rail hook reached this conclusion first — see
+ * `railHistoryFilter` — and this one contradicted it in the same commit.
  *
  * §13 — WHAT THIS CANNOT PROVIDE, and therefore does not. `paige_actions` has no recipient, no
  * sender, no confidence score, and no list of options. The modals rendered all four. They are not
@@ -91,7 +103,15 @@ export function useSoloPendingActions(): SoloPendingActionsData {
   // The active account IS the scope of this read, so it is the epoch this hook keys on. It stays
   // out of the QUERY — the live policy on `paige_actions` derives the tenant from the session, and
   // passing one from the client would be a scope the caller chose rather than one they hold (§9).
-  const { activeTenantId } = useTenantContext();
+  const { activeTenantId, accountContextStatus } = useTenantContext();
+  // `activeTenantId` is null both while the account is still being resolved AND legitimately at
+  // platform tier, so the id alone cannot tell those apart. Reading during `resolving` fires a
+  // query at a scope nobody is on yet, then registers the resolution as a switch and fires a
+  // second — two `paige_actions` reads and a loading flip on every open of the modal, the first
+  // result thrown away. The status says which of the two a null id means.
+  const accountResolved = accountContextStatus !== "resolving";
+  /** The one account this read may be about. Null means no account is in scope at all. */
+  const scopedTenantId = activeTenantId;
 
   const [items, setItems] = useState<SoloPendingAction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -125,6 +145,25 @@ export function useSoloPendingActions(): SoloPendingActionsData {
   }
 
   useEffect(() => {
+    // Nothing is read until the account is known. `loading` stays true meanwhile, which is
+    // truthful: the answer is not "nothing is waiting", it is "not yet asked" (§13).
+    if (!accountResolved) return;
+
+    // ── §56, DECIDED RATHER THAN DEFAULTED: a resolved session with NO active account. ──
+    //
+    // That is the platform operator before acting-as. Because the policy's operator escape returns
+    // every tenant's rows, an unfiltered read here would put a cross-tenant union inside a modal
+    // that names one account — the leak, wearing the "God sees everything" excuse. And an empty
+    // list would itself be a claim: "nothing is waiting on you" is a different sentence from "no
+    // account is selected", and §13 does not permit rendering the second as the first. So it asks
+    // nothing, and says which of the two this is.
+    if (!scopedTenantId) {
+      setItems([]);
+      setError("no account is selected, so there is nothing to read this against");
+      setLoading(false);
+      return;
+    }
+
     // Effect-local, never a shared ref: this effect now re-runs on an account switch, and a
     // component-lifetime flag would be cleared by the old run's cleanup and set again by the new
     // run before the old read resolves — letting the previous account's answer through the guard.
@@ -134,7 +173,10 @@ export function useSoloPendingActions(): SoloPendingActionsData {
       try {
         const { data, error: readError } = await supabase
           .from("paige_actions")
-          .select("id,title,summary,draft_content,decision_rationale,from_department,created_at")
+          // `tenant_id` is selected as well as filtered, so a later reader can SEE a row's scope
+          // rather than having to trust that a filter is still above it.
+          .select("id,tenant_id,title,summary,draft_content,decision_rationale,from_department,created_at")
+          .eq("tenant_id", scopedTenantId)
           .eq("status", "filed")
           .eq("autonomy_lane", "confirm")
           .order("created_at", { ascending: false })
@@ -157,7 +199,7 @@ export function useSoloPendingActions(): SoloPendingActionsData {
 
     return () => { cancelled = true; };
     // The active account is a dependency, not an afterthought: it is what makes a switch re-ask.
-  }, [tick, activeTenantId]);
+  }, [tick, scopedTenantId, accountResolved]);
 
   return useMemo(() => ({ items, loading, error, refresh }), [items, loading, error, refresh]);
 }

@@ -1235,6 +1235,32 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+- **2026-09-02 — a hook's own comment asserted a tenant-isolation property the live policy does not
+  provide.** `useSoloPendingActions` documented that passing no `tenant_id` was safe because the
+  `paige_actions` policy derives scope from the session. That policy is
+  `(tenant_id = current_user_tenant_id() AND has_any_role(...)) OR is_platform_owner()`, and for
+  super_admin the second disjunct short-circuits, so the read returned every tenant's filed actions
+  — titles, summaries, drafted artefacts, stop-reasons — into a Trust Compass modal naming one
+  account. The sibling rail hook, in the same commit, had filtered explicitly for exactly this
+  reason and said so. Corrected in #729: the read is narrowed to the active account, `tenant_id` is
+  selected so a row's scope is visible, and a resolved session with no active account reads nothing
+  and states that, rather than rendering a cross-tenant union or an empty list. **The general
+  correction: a comment claiming an RLS policy confines a read is a claim about the policy text, and
+  must be checked against it — an operator escape clause makes "the policy scopes it" false for the
+  one tier that can see everything.**
+- **2026-09-02 — "Nothing was changed" was shipped on the branch where it is provably false.** The
+  extraction-apply failure path told the person nothing had been written on a PARTIAL failure, which
+  by definition fires when some approved groups succeeded. The transport and non-OK paths carried
+  the same claim and could not support it either (a rejected request does not prove nothing arrived;
+  the callee's 500 comes from a catch wrapping all five write steps). Corrected to state only what
+  is known. **The general correction: "nothing was changed" is a factual claim about a remote
+  system, not a reassuring turn of phrase.**
+- **2026-09-02 — a guard's docstring overstated what it detects.** The same PR claimed every
+  approved group's semantic result was checked; `sync-credit-report-data` discards the errors that
+  would be needed to report inquiry, positive-account and negative-item-update failures. The check
+  is real for the cases it names and the boundary is now stated in the docstring. **The general
+  correction: read the callee's error handling before claiming to verify its outcome — a key named
+  `failed` proves a counter exists, not that anything increments it.**
 - **2026-09-01 — multi-tenant email identity and workspace identity were previously collapsed into one redirect.** A Google identity can hold several independent Paige memberships, while the agency parent/sub-account switcher governs a different relationship. The approved correction keeps those authority domains distinct: Google selects the person, Paige intersects that person's active membership rows with RLS-visible tenants, and the existing guarded active-tenant write commits the chosen workspace. This is a Gate 1 implementation record only; live authenticated proof and Gate 2 remain outstanding.
 
 - **2026-09-01 — the Pipeline draft entry still claimed optional starter creation after the owner

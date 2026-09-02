@@ -153,10 +153,42 @@ export function useRailEvents(
   const [historyLoaded, setHistoryLoaded] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // Keep the latest callback without re-subscribing when only the callback
-  // identity changes (callers often pass an inline function).
+  // Which topic the events currently in state were read for.
+  const [renderedTopic, setRenderedTopic] = useState<string | null>(topic);
+
+  // ── THE PRIOR SCOPE IS DROPPED DURING RENDER, NOT AFTER PAINT. ──
+  //
+  // §9 — clearing in the effect was not enough, and independent review of the pushed diff caught
+  // it. `useEffect` is passive: on a scope change React re-renders with the PREVIOUS scope's
+  // events still in state, COMMITS that, and only then runs the effect that empties it. Neither
+  // rail caller is keyed by scope, so nothing remounts to save it — the operator gets one painted
+  // frame of another tenant's activity, and the portal client one of another client's.
+  //
+  // The effect-local `cancelled` flag below stops a superseded RESPONSE landing. This stops the
+  // superseded STATE being shown. They are two different halves of the same rule, and the sibling
+  // repair in `useSoloPendingActions` had already reasoned its way to this one.
+  if (renderedTopic !== topic) {
+    setRenderedTopic(topic);
+    setEvents([]);
+    setConnected(false);
+    setHistoryLoaded(false);
+    setHistoryError(null);
+  }
+
+  // Keep the latest callback without re-subscribing when only the callback identity changes
+  // (callers often pass an inline function).
+  //
+  // §9 — UPDATED AFTER COMMIT, NOT DURING RENDER, and independent review of the pushed diff is why.
+  // Assigning during render moved the ref forward BEFORE the old effect's cleanup ran, so in that
+  // window a frame still arriving on the PREVIOUS scope's channel would have been handed to the NEW
+  // render's callback — a prior-scope event delivered to a consumer that had already moved on. The
+  // `setEvents` half self-heals; a caller's side effect does not. Latent today (neither rail
+  // consumer passes `onEvent`) and closed anyway, because "no caller uses it yet" is a schedule,
+  // not a guarantee.
   const onEventRef = useRef<typeof onEvent>(onEvent);
-  onEventRef.current = onEvent;
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  });
 
   useEffect(() => {
     // ── THE GUARD IS EFFECT-LOCAL, AND THAT IS THE WHOLE POINT. ──
@@ -174,22 +206,13 @@ export function useRailEvents(
     // single effect run can know it — nothing that runs later can reach in and revive it.
     let cancelled = false;
 
-    // No id → nothing to subscribe to. Ensure a clean, disconnected state.
+    // No id → nothing to subscribe to. The render-time reset above has already emptied the
+    // state, so there is nothing to do but decline to subscribe.
     if (!topic || !id) {
-      setConnected(false);
-      setEvents([]);
-      setHistoryLoaded(false);
-      setHistoryError(null);
       return () => {
         cancelled = true;
       };
     }
-
-    // A fresh topic is a fresh stream — drop any events from the prior scope.
-    setEvents([]);
-    setConnected(false);
-    setHistoryLoaded(false);
-    setHistoryError(null);
 
     // ── HISTORY. This hook used to subscribe and nothing else, so every rail surface started
     // EMPTY on every mount and showed only what happened to arrive while it was open. The durable

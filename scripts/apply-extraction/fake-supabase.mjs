@@ -58,6 +58,10 @@ class Builder {
       if (this._row?.extraction_review_state === "awaiting_review" && sc.releaseError) {
         return { data: null, error: sc.releaseError };
       }
+      // The CLAIM itself can be told to fail, so the "nothing was ever attempted" answer is drivable.
+      if (this._row?.extraction_review_state === "applied" && sc.claimError) {
+        return { data: null, error: sc.claimError };
+      }
       // ── STATEFUL MODE (opt-in): the row REMEMBERS what the compare-and-set did to it. ──
       //
       // The stateless behaviour below is what every existing scenario asserts against, so it is
@@ -81,7 +85,19 @@ class Builder {
     }
     return { data: null, error: null };
   }
-  maybeSingle() { return Promise.resolve(this._settle(true)); }
+  /**
+   * postgrest returns an OBJECT or `null` here, never an array — and the difference is load-bearing.
+   * `paige-apply-extraction` computes `retryable: !relErr && !!released` off this call, so a double
+   * that answered `[]` made `!![]` true and the "the release matched no row, with no error" branch
+   * — the one that logs CLAIM NOT RELEASED and reports the proposal as NOT retryable — structurally
+   * unreachable. A green proof that cannot fail on the predicate under test is the false green §39
+   * exists to name; found by independent review of the pushed diff.
+   */
+  maybeSingle() {
+    const out = this._settle(true);
+    if (Array.isArray(out.data)) return Promise.resolve({ ...out, data: out.data[0] ?? null });
+    return Promise.resolve(out);
+  }
   single() { return this.maybeSingle(); }
   then(res, rej) { return Promise.resolve(this._settle(false)).then(res, rej); }
 }

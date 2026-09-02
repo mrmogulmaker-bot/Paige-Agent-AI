@@ -1276,3 +1276,99 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+---
+
+## A component-lifetime ref is not a scope guard
+
+**Cost:** two P1 tenant-isolation findings on one PR (#728), in two different hooks, from the same
+mistaken idea about React.
+
+`useRailEvents` guarded its in-flight history read with a `mountedRef` — cleared in the effect's
+cleanup, set in the effect's body. That cannot express *"the scope that asked for this is no longer
+the scope being looked at"*, because on a scope switch React runs the OLD effect's cleanup and then
+the NEW effect's body **before** the previous scope's request resolves. The stale response read a
+flag the superseding effect had just revived, passed the check, and merged one tenant's activity
+into another tenant's feed. Measured, not reasoned: the failing-first suite reported
+`[ 'B activity', 'A activity' ]`, and a real Chromium showed the same row on screen.
+
+*Rule:* **a guard for "is this answer still wanted" must be owned by ONE effect run** — a `let
+cancelled = false` in the effect body, set true in its cleanup. Nothing that runs later can reach in
+and revive it. A ref that lives as long as the component can only answer "is this component still
+mounted", which is a different question and almost never the one being asked.
+
+### And clearing the state in the effect is only half of it
+
+The same PR fixed the response half and left the STATE half in the effect — where it runs after
+commit. So React re-rendered the new scope with the previous scope's rows still in state, **painted
+that**, and only then emptied it. One frame of another tenant's activity. Neither rail caller is
+keyed by scope, so nothing remounted to save it. The sibling repair in the same commit
+(`useSoloPendingActions`) had already reasoned its way to the right pattern and the rail fix did not
+apply it; independent review caught the inconsistency.
+
+*Rule:* **reset scope-owned state DURING render** (adjust state when the scope prop differs from the
+scope the state was read for), not in an effect. And when asserting it, observe **commits** — a
+`useLayoutEffect` probe — not renders: a render React discards was never painted, so asserting on
+renders flags a frame nobody could see.
+
+## A 2xx from an internal function is not a write
+
+**Cost:** an owner-approved extraction could be stamped terminally `applied` with part of it never
+written, and no way back to the proposal.
+
+`paige-apply-extraction` called `sync-credit-report-data` and branched on `Response.ok`. But that
+function answers **HTTP 200 with `success: true`** and records what actually happened per group
+INSIDE its body — `results.scores_error`, `results.negative_items.failed`. The status line says the
+request was handled, not that the work succeeded.
+
+*Rule:* **when an internal callee reports per-item outcomes in its body, read the body.** Check the
+semantic result of every item the caller is answerable for — and only those, because a failure in a
+group nobody approved is not this caller's failure. Do not invent stricter checks than the callee's
+contract supports: a count of zero was not failure here (the sync legitimately filters incomplete
+rows and skips duplicate inquiries), and treating it as one would have failed legitimate applies.
+
+### Three corollaries the same review surfaced
+
+- **A rejected transport is not a completed rollback.** A `fetch` that rejects proves only that no
+  ANSWER came back — never that the request failed to arrive or failed to write. Any claim of
+  "nothing was changed" after a rejection is a fabrication in the safe-sounding direction.
+- **"Nothing was changed" is a factual claim and usually an unaffordable one.** The partial-failure
+  path said it on the exact branch where it is provably false (some groups HAD written), and the
+  non-OK path inherited it although the callee's 500 comes from a catch wrapping all five write
+  steps. State what is known — which groups reported failure, and that the proposal is open again.
+- **Payload keys are not copy.** The same sentence interpolated `failed_groups`, so a person read
+  *"— negative_items, hard_inquiries didn't go through."* The machine-readable list belongs in the
+  response body and the audit row; the sentence is Claude Design's (§00/§11).
+
+## A test double that cannot fail the predicate under test is a false green
+
+`scripts/apply-extraction/fake-supabase.mjs` answered `maybeSingle()` with an ARRAY, where postgrest
+returns an object or `null`. The function computes `retryable: !relErr && !!released` off that call,
+and `!![]` is `true` — so the branch where the release matched no row **without** an error (a
+concurrent decline landing between claim and release) was structurally unreachable. Every check
+passed; one of them could never have failed. Proven both ways: restoring the array-returning double
+turns the new assertions red.
+
+*Rule:* **a double's return SHAPE is part of the contract it stands in for.** When a fake returns a
+different shape from the real client, the assertions built on it are testing the fake.
+
+## "I check every group" is a claim about the CALLEE, and it has to be read there
+
+The semantic-result fix above shipped a docstring saying *"for scores and negative items the sync
+reports a real outcome, so those are checked properly"*, and a commit message saying **"Every
+approved group's semantic result is now checked."** Independent review drove
+`sync-credit-report-data` and proved both wrong. It discards the error on every inquiry insert and
+every positive-account write and increments the counter anyway; it does the same on the
+negative-items UPDATE branch; and `scores_updated: true` is set by an error-free update that matched
+no row at all. So the only failures actually detectable are a scores step that ERRORED, a negative
+item that failed to INSERT, and a group the callee never reported on.
+
+The check was still worth shipping — it closes the partial-failure case it was written for. What was
+wrong was the size of the claim made for it.
+
+*Rule:* **before claiming you verify a callee's outcome, read the callee's error handling, not its
+result keys.** A key named `failed` proves a counter exists, not that anything increments it. And
+when the real coverage is partial, name the boundary in the docstring — a comment that overstates
+what a guard detects is the same defect as a UI that overstates what a write did, and it lasts
+longer because the next reader trusts it.
+

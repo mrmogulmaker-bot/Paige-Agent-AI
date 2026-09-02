@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -82,9 +82,22 @@ function row(id: string, title: string) {
  * `pending` empty and the suite would "fail" on its own harness instead of on the hook.
  */
 async function mountHook(initial: Opts) {
-  const seen: Array<ReturnType<typeof useRailEvents>> = [];
+  const seen: Array<{ opts: Opts; result: ReturnType<typeof useRailEvents> }> = [];
+  /**
+   * COMMITTED frames only, which is the distinction the scope question turns on.
+   *
+   * A render that React discards — because state was adjusted during it — is never painted, so
+   * recording every render would flag a frame nobody could see. `useLayoutEffect` runs after a
+   * COMMIT and before paint, and never runs for a discarded render, so this records exactly the
+   * frames a person could have been shown.
+   */
+  const committed: Array<{ opts: Opts; events: string[] }> = [];
   function Probe({ opts }: { opts: Opts }) {
-    seen.push(useRailEvents(opts));
+    const result = useRailEvents(opts);
+    seen.push({ opts, result });
+    useLayoutEffect(() => {
+      committed.push({ opts, events: result.events.map((e) => e.title) });
+    });
     return null;
   }
   const container = document.createElement("div");
@@ -92,7 +105,11 @@ async function mountHook(initial: Opts) {
   const root = createRoot(container);
   await act(async () => { root.render(<Probe opts={initial} />); await flush(); });
   return {
-    latest: () => seen[seen.length - 1],
+    latest: () => seen[seen.length - 1].result,
+    /** Every render this hook performed, in order, with the scope each was for. */
+    renders: () => seen,
+    /** Every frame that was actually committed, with the scope each was for. */
+    commits: () => committed,
     switchTo: async (opts: Opts) => {
       await act(async () => { root.render(<Probe opts={opts} />); await flush(); });
     },
@@ -165,6 +182,25 @@ describe("useRailEvents — history may only land on the scope that asked for it
     expect(h.latest().events.map((e) => e.title)).toEqual(["A activity"]);
     expect(h.latest().historyLoaded).toBe(true);
     expect(h.latest().historyError).toBeNull();
+  });
+
+  it("never COMMITS a render carrying the previous scope's events", async () => {
+    // §9 — the effect-local guard stops a superseded RESPONSE landing; it cannot stop the
+    // superseded STATE being painted. `useEffect` is passive, so a reset that lives there runs
+    // AFTER the commit: React renders the new scope with the old scope's events still in state,
+    // shows that frame, and only then empties it. This asserts on the render itself rather than on
+    // the settled result, because the settled result was already correct while the frame was not.
+    const h = await mountHook({ scope: "tenant", tenantId: "tenant-A" });
+    await settle("tenant-A", [row("a-1", "A activity")]);
+    expect(h.latest().events).toHaveLength(1);
+
+    await h.switchTo({ scope: "tenant", tenantId: "tenant-B" });
+
+    const atB = h.commits().filter((c) => c.opts.scope === "tenant" && c.opts.tenantId === "tenant-B");
+    expect(atB.length).toBeGreaterThan(0);
+    for (const frame of atB) {
+      expect(frame.events).not.toContain("A activity");
+    }
   });
 
   it("tears down the prior channel on a scope switch", async () => {

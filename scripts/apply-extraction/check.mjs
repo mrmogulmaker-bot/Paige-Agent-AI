@@ -49,10 +49,13 @@ let syncBody = null;
 // stamped `applied` by the time this happens, so nothing but an explicit release makes it
 // retryable.
 let syncRejects = null;
+/** Applied to the live fixture row while the sync is in flight — i.e. between claim and release. */
+let mutateDuringSync = null;
 globalThis.fetch = async (url, init) => {
   const href = String(url);
   if (href.includes("sync-credit-report-data")) {
     syncCalls.push(JSON.parse(String(init?.body ?? "{}")));
+    if (mutateDuringSync) mutateDuringSync();
     if (syncRejects) throw syncRejects;
     const body = syncBody ?? (syncStatus === 200 ? { success: true, results: DEFAULT_SYNC_RESULTS } : { error: "boom" });
     return new Response(JSON.stringify(body),
@@ -70,13 +73,15 @@ const DEFAULT_SYNC_RESULTS = {
 };
 
 const fake = await import("./fake-supabase.mjs");
-await import("../../supabase/functions/paige-apply-extraction/index.ts");
+const fn = await import("../../supabase/functions/paige-apply-extraction/index.ts");
 const { capturedHandler } = await import("./stub-serve.mjs");
 const handler = capturedHandler();
 
 async function drive({ approved_keys, row = {}, claimReturns, releaseError = null, sync = 200,
-                       auth = true, body: syncResultBody = null, rejects = null }) {
+                       auth = true, body: syncResultBody = null, rejects = null, claimError = null,
+                       duringSync = null }) {
   syncCalls = []; syncStatus = sync; syncBody = syncResultBody; syncRejects = rejects;
+  mutateDuringSync = duringSync;
   const rec = fake.setScenario({
     authUser: auth ? { id: USER } : null,
     // `row: null` means the caller CANNOT SEE the upload — RLS returned nothing. Spreading null
@@ -87,7 +92,7 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
       analysis_status: "completed", extraction_review_state: "awaiting_review",
       analysis_result: STRUCTURED, ...row,
     },
-    claimReturns, releaseError,
+    claimReturns, releaseError, claimError,
   });
   const res = await handler(new Request("http://local/paige-apply-extraction", {
     method: "POST",
@@ -377,6 +382,186 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
                           releaseError: { message: "denied", code: "42501" } });
   assert("11.9 a release that itself fails on the transport path is logged, not swallowed",
     r.rec.errors.some((m) => /CLAIM NOT RELEASED/.test(m)), JSON.stringify(r.rec.errors));
+}
+
+// ── 12. THE SENTENCE MAY NOT CLAIM WHAT THIS FUNCTION CANNOT KNOW. ────────────────────────────
+//
+// Found by independent review of the pushed diff. The partial-failure answer read "Nothing was
+// changed — try again." on the ONE branch where that is provably false: it fires when some
+// approved groups succeeded and others did not, so scores and rows had in fact been written to
+// somebody's credit profile. That is the same fabrication this seam exists to prevent, pointed the
+// other way. The transport and non-OK sentences carried the same claim and could not support it
+// either — a rejected request does not prove the sync never wrote, and sync's 500 comes from a
+// catch wrapping all five write steps.
+//
+// It also may not name the groups in prose: those are payload keys, and snake-case backend
+// identifiers do not belong in copy a person reads (§11). The machine-readable list stays in the
+// body and the audit row.
+{
+  const partial = await drive({
+    approved_keys: ["credit_score_equifax", "negative_items"],
+    body: { success: true, results: { scores_updated: true,
+                                      negative_items: { inserted: 1, updated: 0, failed: 1 } } },
+  });
+  assert("12.1 a PARTIAL failure never claims nothing was changed",
+    !/nothing was changed/i.test(String(partial.body.error)), String(partial.body.error));
+  assert("12.2 …and does not put payload keys in front of a person",
+    !/negative_items|hard_inquiries|positive_accounts|sync_reported/.test(String(partial.body.error)),
+    String(partial.body.error));
+  assert("12.3 …while the machine-readable list is still in the body for a consumer",
+    Array.isArray(partial.body.failed_groups) && partial.body.failed_groups.includes("negative_items"),
+    JSON.stringify(partial.body.failed_groups));
+  assert("12.4 …and the sentence still tells the person the proposal is open again",
+    /try again/i.test(String(partial.body.error)), String(partial.body.error));
+}
+{
+  const rejected = await drive({ approved_keys: ["negative_items"], rejects: new TypeError("timeout") });
+  assert("12.5 a rejected transport does not claim nothing was changed either",
+    !/nothing was changed/i.test(String(rejected.body.error)), String(rejected.body.error));
+}
+{
+  const nonOk = await drive({ approved_keys: ["negative_items"], sync: 500 });
+  assert("12.6 nor does a non-OK sync, whose 500 can follow partial writes",
+    !/nothing was changed/i.test(String(nonOk.body.error)), String(nonOk.body.error));
+}
+{
+  // The one place the claim IS true is kept: the claim update itself failed, so nothing was ever
+  // attempted. Removing a true statement would be its own regression (§58).
+  const r = await drive({ approved_keys: ["negative_items"], claimError: { message: "deadlock", code: "40P01" } });
+  assert("12.7 a failed CLAIM may still say nothing was changed, because nothing was attempted",
+    r.status === 500 && /nothing was changed/i.test(String(r.body.error)) && r.syncCalls.length === 0,
+    `${r.status} ${JSON.stringify(r.body)}`);
+}
+
+// ── 13. A RELEASE THAT MATCHES NO ROW IS NOT A RELEASE. ───────────────────────────────────────
+//
+// Found by independent review of the pushed diff: this branch — the release runs, postgrest
+// returns NO error, and it matched nothing because a concurrent decline moved the row out of
+// `applied` — was structurally unreachable in this suite, because the double answered
+// `maybeSingle()` with an array and `!![]` is true. So `retryable` could never be observed false
+// and the CLAIM NOT RELEASED log could only ever be reached through an explicit error. The double
+// now answers the way postgrest does, and this is the scenario that proves the branch exists.
+{
+  const rec = fake.setScenario({
+    authUser: { id: USER },
+    stateful: true,
+    uploadRow: {
+      id: UPLOAD, user_id: USER, client_id: null, analysis_status: "completed",
+      extraction_review_state: "awaiting_review", analysis_result: STRUCTURED,
+    },
+  });
+  syncCalls = []; syncStatus = 200; syncBody = null; syncRejects = null;
+  // Somebody declines the proposal while the sync is in flight.
+  mutateDuringSync = () => { rec.scenarioRow().extraction_review_state = "declined"; };
+  syncRejects = new TypeError("error sending request for url");
+
+  const res = await handler(new Request("http://local/paige-apply-extraction", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
+    body: JSON.stringify({ upload_id: UPLOAD, approved_keys: ["negative_items"] }),
+  }));
+  const body = await res.json().catch(() => ({}));
+  mutateDuringSync = null; syncRejects = null;
+
+  assert("13.1 the concurrent decline is NOT stomped back to awaiting_review",
+    rec.scenarioRow().extraction_review_state === "declined", rec.scenarioRow().extraction_review_state);
+  assert("13.2 …the failed release is reported honestly as not retryable",
+    body.retryable === false, JSON.stringify(body));
+  assert("13.3 …and it is logged rather than passing silently",
+    rec.errors.some((m) => /CLAIM NOT RELEASED/.test(m)), JSON.stringify(rec.errors));
+}
+
+// ── 14. THE VALIDATOR'S OWN BRANCHES, driven directly. ────────────────────────────────────────
+//
+// The handler exercises `syncGroupFailures` through whichever combinations the scenarios above
+// happen to reach. These drive its four group branches and its two whole-body verdicts on their
+// own, so a branch is not left resting on a scenario that might later be reworded.
+{
+  const { syncGroupFailures } = fn;
+  const none = { scores: {}, negative_items: [], positive_accounts: [], hard_inquiries: [] };
+  const ok = { success: true, results: { scores_updated: true,
+    negative_items: { inserted: 1, updated: 0, failed: 0 },
+    hard_inquiries: { inserted: 1 }, positive_accounts: { inserted: 1, updated: 0 } } };
+
+  assert("14.0 the validator is exported and reachable", typeof syncGroupFailures === "function");
+  assert("14.1 an unparseable or unsuccessful body is a whole-apply failure",
+    syncGroupFailures([], none, { error: "Could not parse sync response" })[0] === "sync_reported_failure");
+  assert("14.2 success:true with no results object is a whole-apply failure",
+    syncGroupFailures([], none, { success: true })[0] === "sync_reported_no_results");
+  assert("14.3 a fully-successful sync fails nothing",
+    syncGroupFailures(["negative_items", "hard_inquiries", "positive_accounts"],
+      { scores: { equifax: 712 }, negative_items: [1], positive_accounts: [1], hard_inquiries: [1] },
+      ok).length === 0);
+  assert("14.4 scores are judged only when a value was actually sent",
+    syncGroupFailures(["credit_score_equifax"], none,
+      { success: true, results: { scores_error: "refused" } }).length === 0);
+  assert("14.5 …and are a failure when one was",
+    syncGroupFailures(["credit_score_equifax"], { ...none, scores: { equifax: 712 } },
+      { success: true, results: { scores_error: "refused" } }).includes("scores"));
+  assert("14.6 …including when the step simply never reported",
+    syncGroupFailures(["credit_score_equifax"], { ...none, scores: { equifax: 712 } },
+      { success: true, results: {} }).includes("scores"));
+  assert("14.7 a group nobody approved is never judged",
+    syncGroupFailures([], { ...none, negative_items: [1] },
+      { success: true, results: { negative_items: { failed: 3 } } }).length === 0);
+  assert("14.8 an approved-but-empty group is never judged",
+    syncGroupFailures(["negative_items"], none, { success: true, results: {} }).length === 0);
+  assert("14.9 a zero count is NOT a failure — the sync legitimately skips duplicates",
+    syncGroupFailures(["hard_inquiries"], { ...none, hard_inquiries: [1] },
+      { success: true, results: { hard_inquiries: { inserted: 0 } } }).length === 0);
+  assert("14.10 …but a missing report for an approved group is",
+    syncGroupFailures(["hard_inquiries", "positive_accounts"],
+      { ...none, hard_inquiries: [1], positive_accounts: [1] },
+      { success: true, results: {} }).sort().join(",") === "hard_inquiries,positive_accounts");
+  assert("14.11 every failed group is named, not just the first",
+    syncGroupFailures(["negative_items"], { ...none, scores: { equifax: 712 }, negative_items: [1] },
+      { success: true, results: { scores_error: "x", negative_items: { failed: 2 } } }).sort().join(",")
+      === "negative_items,scores");
+}
+
+// ── 15. AN IMPOSSIBLE RETRY IS NOT OFFERED, AND THE GUARDS GUARD. ─────────────────────────────
+{
+  // The release matched nothing, so the row is still `applied` and a retry would collect
+  // `already_applied` — which the card renders as a completed save. The answer must not invite it.
+  const rec = fake.setScenario({
+    authUser: { id: USER }, stateful: true,
+    uploadRow: { id: UPLOAD, user_id: USER, client_id: null, analysis_status: "completed",
+                 extraction_review_state: "awaiting_review", analysis_result: STRUCTURED },
+  });
+  syncCalls = []; syncStatus = 200; syncBody = null;
+  mutateDuringSync = () => { rec.scenarioRow().extraction_review_state = "declined"; };
+  syncRejects = new TypeError("timeout");
+  const res = await handler(new Request("http://local/paige-apply-extraction", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
+    body: JSON.stringify({ upload_id: UPLOAD, approved_keys: ["negative_items"] }),
+  }));
+  const body = await res.json().catch(() => ({}));
+  mutateDuringSync = null; syncRejects = null;
+  assert("15.1 a non-retryable failure does not tell the person to try again",
+    body.retryable === false && !/try again/i.test(String(body.error)), JSON.stringify(body));
+  assert("15.2 …and says the proposal needs a hand instead of going quiet",
+    /needs a hand/i.test(String(body.error)), String(body.error));
+}
+{
+  const retryable = await drive({ approved_keys: ["negative_items"], rejects: new TypeError("timeout") });
+  assert("15.3 a RETRYABLE failure still invites the retry",
+    retryable.body.retryable === true && /try again/i.test(String(retryable.body.error)),
+    JSON.stringify(retryable.body));
+}
+{
+  const { syncGroupFailures } = fn;
+  const none = { scores: {}, negative_items: [], positive_accounts: [], hard_inquiries: [] };
+  assert("15.4 an ARRAY is not a report object",
+    syncGroupFailures(["negative_items"], { ...none, negative_items: [1] },
+      { success: true, results: { negative_items: [] } }).includes("negative_items"));
+  assert("15.5 a non-numeric failure count is a failure, not a value to coerce",
+    syncGroupFailures(["negative_items"], { ...none, negative_items: [1] },
+      { success: true, results: { negative_items: { failed: "two" } } }).includes("negative_items"));
+  assert("15.6 …and NaN is not quietly treated as zero",
+    syncGroupFailures(["negative_items"], { ...none, negative_items: [1] },
+      { success: true, results: { negative_items: { failed: Number.NaN } } }).includes("negative_items"));
+  assert("15.7 a results value that is an array is not a results object",
+    syncGroupFailures([], none, { success: true, results: [] })[0] === "sync_reported_no_results");
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
