@@ -189,6 +189,44 @@ describe("Catalog Offers — truthfulness", () => {
     expect(cell.textContent).not.toContain("Fixed amount");
   });
 
+  // The residual half of the same defect, found by a second review of the pushed fix: the first
+  // pass keyed the per-period branch on `billingInterval` ALONE and ignored `kind`, so four shapes
+  // still misreported. `tenant-product-upsert` does no cross-field validation, so every one of
+  // these is writable through the callable seam even though StorefrontPanel cannot produce it.
+  const plan = (over) => ({ id: "px", nickname: "P", unitAmount: 9900, currency: "usd",
+    billingInterval: "month", kind: "recurring", installmentsTotal: null, active: true, ...over });
+  const priceTextFor = (over) => {
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [plan(over)] })] });
+    renderAt("/solo/4471/growth/catalog");
+    return (host.querySelector(".co-price") as HTMLElement).textContent ?? "";
+  };
+
+  it("never calls any recorded plan shape a fixed amount when it is not one", () => {
+    for (const over of [
+      { kind: "recurring", billingInterval: null },
+      { kind: "recurring", billingInterval: "one_time" },
+      { kind: "deposit", billingInterval: "month" },
+      { kind: "one_time", billingInterval: "month" },
+    ]) {
+      expect(priceTextFor(over), JSON.stringify(over)).not.toContain("Fixed amount");
+    }
+  });
+
+  it("says a recurring plan is recurring even when its period was never recorded", () => {
+    expect(priceTextFor({ kind: "recurring", billingInterval: null }))
+      .toContain("period not recorded");
+  });
+
+  it("names the recorded kind rather than the branch that rendered it", () => {
+    // A deposit that carries an interval is a contradictory row. Reporting both recorded facts is
+    // honest; calling it a "Recurring plan" swaps one false statement for another.
+    const deposit = priceTextFor({ kind: "deposit", billingInterval: "month", unitAmount: 50000 });
+    expect(deposit).toContain("$500 / month");
+    expect(deposit).toContain("Deposit");
+    expect(deposit).not.toContain("Recurring plan");
+  });
+
   it("keeps the period when a recurring plan is only the floor of several", () => {
     setCampaigns();
     setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [

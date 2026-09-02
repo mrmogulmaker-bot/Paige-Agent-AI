@@ -113,6 +113,18 @@ async function main() {
 
     browser = await chromium.launch(buildLaunchOptions());
 
+    // The readiness probe above returns as soon as vite serves index.html, but vite optimises
+    // dependencies on the first REAL page load and can drop in-flight requests while it does —
+    // which showed up as two failed requests to the harness origin, on the first frame only.
+    // Warm the transform pipeline once, unmeasured. This removes a cold-start artifact; it does
+    // not weaken the assertion, which still names every failed request and still turns red on a
+    // genuinely new one.
+    const warm = await browser.newContext();
+    const warmPage = await warm.newPage();
+    await warmPage.goto(URL, { waitUntil: "networkidle" });
+    await settle(warmPage);
+    await warm.close();
+
     for (const theme of ["light", "dark"]) {
       for (const frame of FRAMES) {
         const ctx = await browser.newContext({ viewport: { width: frame.width, height: frame.height } });
@@ -189,6 +201,16 @@ async function main() {
         check(empty.firstUse === 1, `${id}: first use renders`);
         check(/Nothing is listed yet/.test(empty.text), `${id}: first use explains the surface`);
         check(!empty.horizontal, `${id}: first use does not overflow`);
+
+        // 3b. Empty AND mid-deploy. This composition — the pending notice stacked above FirstUse —
+        // is what EVERY production tenant sees during the deploy window, and until now it was
+        // proven only by a jsdom textContent assertion, at no width and in neither palette.
+        await setMode(page, "empty-pending");
+        const emptyPending = await measure(page);
+        check(emptyPending.firstUse === 1, `${id}: first use still renders mid-deploy`);
+        check(emptyPending.notice === 1, `${id}: the pending notice reaches the empty state`,
+          `n=${emptyPending.notice}`);
+        check(!emptyPending.horizontal, `${id}: notice above first use does not overflow`);
 
         // 4. Read-only.
         await setMode(page, "readonly");

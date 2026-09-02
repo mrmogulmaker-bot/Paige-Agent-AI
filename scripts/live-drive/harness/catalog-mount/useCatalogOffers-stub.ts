@@ -4,7 +4,7 @@
 // test is the real one, so a regression in its states, copy, geometry or truth-telling is caught.
 // Every fixture below is a plausible tenant record — never one of the owner's real accounts (§63).
 type Mode = "populated" | "empty" | "readonly" | "error" | "resolving" | "unpriced"
-  | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring";
+  | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring" | "empty-pending";
 
 let mode: Mode = "populated";
 const listeners = new Set<() => void>();
@@ -84,6 +84,9 @@ export function useCatalogOffers() {
   if (mode === "resolving") return { ...base([]), tenantId: null, phase: "resolving" };
   if (mode === "error") return { ...base([]), phase: "error", retry: () => setCatalogHarnessMode("populated") };
   if (mode === "empty") return base([]);
+  // Empty AND mid-deploy: the state EVERY production tenant is in during the window between the
+  // frontend shipping and the migration applying. It is the composition the notice exists for.
+  if (mode === "empty-pending") return { ...base([]), fieldsUnavailable: true };
   if (mode === "readonly") return { ...base(OFFERS), canManage: false };
   if (mode === "unpriced") return base(UNPRICED);
   if (mode === "instalment") return base(INSTALMENT);

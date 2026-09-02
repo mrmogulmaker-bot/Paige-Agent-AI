@@ -1606,7 +1606,7 @@ words that they cannot change it. Slice 2A exposes no write, so `canManage` curr
 that notice; Slice 2B's command seam is what it will really gate.
 
 **Evidence, separated.**
-- *Automated:* 36 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
+- *Automated:* 39 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
   the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
   file exists because the first mocks the read entirely: an adversarial review of the pushed diff
   found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
@@ -1619,12 +1619,14 @@ that notice; Slice 2B's command seam is what it will really gate.
   derived-conflict sentence inaudible to a screen reader.
 - *Correction to this row (§13).* It previously read `251/251`. That figure came from a local run of
   a script version edited before it was pushed; the committed script yields 243, and the reviewer
-  could not reproduce 251. The count is now 259 because the same review's BLOCKER added a recurring
-  fixture and two rendered checks per frame. Cite what the committed script prints, not a local run.
+  could not reproduce 251. The count is now 283: the BLOCKER added a recurring fixture, and a second
+  review pass added the empty-AND-mid-deploy composition — the state every production tenant is in
+  during the deploy window, which until then was proven only in jsdom. Cite what the committed
+  script prints, not a local run.
 - *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
   `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
   `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
-- *Rendered:* 259/259 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
+- *Rendered:* 283/283 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
   with only the network read stubbed, across both palettes and all four Solo widths, asserting the
   six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
   canvas values in each theme.

@@ -38,6 +38,11 @@ const ACTIONS = {
   buy: "Buy", book: "Book", apply: "Apply", enquire: "Request information", learn: "Learn more",
 };
 
+/** What `tenant_prices.kind` records, said in words. The sub-label is read from HERE, not inferred. */
+const PLAN_KIND = {
+  one_time: "One-time plan", deposit: "Deposit", recurring: "Recurring plan", installment: "Instalment plan",
+};
+
 const PRESENTATION = {
   fixed: "Fixed amount", from: "Starting at", contact: "Contact for pricing", none: "No price shown",
 };
@@ -89,14 +94,30 @@ function qualifiedPrice(plan) {
   if (!plan || typeof plan.unitAmount !== "number") return null;
   const each = money(plan.unitAmount, plan.currency);
   if (!each) return null;
+  // The sub-label names the RECORDED kind, never the branch that fired. Deriving it from the
+  // branch labelled a deposit-with-an-interval a "Recurring plan" — trading one wrong statement
+  // about the record for another.
+  const kindNote = PLAN_KIND[plan.kind] ?? null;
+  const period = plan.billingInterval && plan.billingInterval !== "one_time" ? plan.billingInterval : null;
+
   if (plan.kind === "installment") {
     return {
       text: plan.installmentsTotal ? `${each} × ${plan.installmentsTotal}` : `${each} per instalment`,
-      note: "Instalment plan",
+      note: kindNote,
     };
   }
-  const period = plan.billingInterval && plan.billingInterval !== "one_time" ? plan.billingInterval : null;
-  return period ? { text: `${each} / ${period}`, note: "Recurring plan" } : null;
+  // A recurring plan is per-period WHETHER OR NOT the period was recorded. Keying only on the
+  // interval left `{kind:"recurring", billing_interval:null|"one_time"}` rendering the original
+  // flat "$99 · Fixed amount" — and `tenant-product-upsert` does no cross-field validation, so
+  // that row is writable through the callable seam (§10) even though this panel cannot make it.
+  if (plan.kind === "recurring") {
+    return period
+      ? { text: `${each} / ${period}`, note: kindNote }
+      : { text: each, note: "Recurring plan — period not recorded" };
+  }
+  // A non-recurring kind that nonetheless carries a period: report both recorded facts rather
+  // than picking one and asserting it.
+  return period ? { text: `${each} / ${period}`, note: kindNote } : null;
 }
 
 /**

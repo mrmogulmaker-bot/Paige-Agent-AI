@@ -10,7 +10,7 @@ import "@/solo/solo-tokens.css";
 // The stub reaches React through the global so it can subscribe without importing a second copy.
 (globalThis as { __React?: typeof React }).__React = React;
 
-const MODES = ["populated", "unpriced", "instalment", "recurring", "empty", "readonly",
+const MODES = ["populated", "unpriced", "instalment", "recurring", "empty", "empty-pending", "readonly",
   "authority-unknown", "fields-unavailable", "resolving", "error"] as const;
 
 function Harness() {
