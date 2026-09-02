@@ -416,7 +416,10 @@ describe("PAIGE chat — focusing a client survives an account that has saved co
   it("lets the owner send the turn they came to send, under the client they chose", async () => {
     harness.threads = [SAVED];
     harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
-    const fetchMock = vi.fn(async () =>
+    // Typed with its arguments so the assertion below can read the request body. An untyped
+    // `vi.fn(async () => …)` gives `mock.calls` an empty-tuple element type, which typechecks
+    // as "no argument at index 1" — caught by the tsc ratchet, not by the test run.
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
       sseResponse([`data: ${JSON.stringify({ choices: [{ delta: { content: "One recorded outcome." } }] })}\n\n`, "data: [DONE]\n\n"]),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -441,7 +444,9 @@ describe("PAIGE chat — focusing a client survives an account that has saved co
 
     expect(host.textContent).toContain("One recorded outcome.");
     // The turn went out under the chosen client, and carried none of the saved conversation.
-    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body));
+    const firstCall = fetchMock.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    const body = JSON.parse(String(firstCall![1].body));
     expect(body.clientId).toBe("client-b");
     expect(JSON.stringify(body.messages)).not.toContain(PRIOR);
 
