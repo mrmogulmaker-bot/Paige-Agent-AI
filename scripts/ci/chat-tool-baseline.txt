@@ -2,6 +2,18 @@
 # the day the registry rule was adopted. This list may SHRINK as tools migrate to the
 # registry. It must never GROW: a new tool is registered by its domain, not hand-wired
 # into the handler. See docs/doctrine/one-approval-gate.md and scripts/ci/chat-tool-registry-lint.mjs.
+#
+# GROWN ONCE, 2026-09-02, and the reason is recorded here rather than in a commit message
+# nobody will read again. The five `team_*` entries below are the Solo Team capability, and
+# they are declared inline because the Spine registry the ruling points at does not exist
+# yet — the adapter has to live somewhere, and the ruling's own words put the final bounded
+# adapter with the Chat workstream. This is that workstream doing that job, not a domain
+# team routing around the rule.
+#
+# It is written down because "the guard fired and I raised the number" is exactly how a
+# ratchet stops being one. When the registry lands, these five migrate to it and this list
+# shrinks by five — which is the direction it is allowed to move.
+#
 action_advance
 action_file
 action_get
@@ -96,6 +108,11 @@ save_to_knowledge_base
 search_funding_marketplace
 search_regional_lenders
 search_sba_lenders
+team_invite_member
+team_invite_resend
+team_invite_revoke
+team_set_permission
+team_set_work_profile
 update_business_profile
 update_client_data
 web_fetch

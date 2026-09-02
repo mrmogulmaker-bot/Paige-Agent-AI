@@ -5089,6 +5089,110 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
+          // ── THE SOLO TEAM SEAM ─────────────────────────────────────────────────────────────
+          // Added 2026-09-02. Paige has been able to READ the team for a while — the roster, each
+          // person's enforced permission, their job title and responsibilities, and every pending
+          // or spent invitation all arrive in her context each turn. She could do nothing with any
+          // of it, which made the read a description of a locked door.
+          //
+          // These five tools open it, and they do it by calling the SAME server seam the Team
+          // screen calls. Not a parallel path and not a service-role shortcut: the two RPCs run
+          // through the caller's own JWT and re-derive authority in their own bodies, and the three
+          // invitation actions go through the `solo-team-invitations` edge function exactly as the
+          // screen does. The database refuses an admin trying to change a permission whether the
+          // request arrived from a form or from a sentence. Paige is one more caller of a seam that
+          // was already there.
+          //
+          // The distinction running through all five is the one the Team screen makes visible: work
+          // details DESCRIBE a person, permission DECIDES what they may do, and nothing about the
+          // first can move the second. `team_set_work_profile` writes two text columns and cannot
+          // reach `permission` even if it is asked to.
+          //
+          // Nobody is resolved by name here. Every one of these takes an id that came out of the
+          // team context block, because "the Morgan on this roster" is a lookup the server already
+          // did, and re-deriving it from a name in the middle of a conversation is how the wrong
+          // person gets promoted.
+          {
+            type: "function",
+            function: {
+              name: "team_set_work_profile",
+              description: "Owner/admin only. Set a teammate's job title and/or responsibilities for THIS workspace — what they do, not what they may do. Takes the member_user_id from the team context block; never a name. This CANNOT change anyone's access, and saying it does would be untrue. Pass both fields: whatever you pass replaces what is stored, so carry forward the current value of anything the operator did not ask you to change. Read the change back and get their yes, then call again with confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  member_user_id: { type: "string", description: "The teammate's user_id, exactly as it appears in the team context block." },
+                  job_title: { type: "string", description: "Job title, 120 characters or fewer. Pass the existing title unchanged if only responsibilities are being edited; pass an empty string to clear it." },
+                  responsibilities: { type: "string", description: "What this person owns, decides and hands off. 2,000 characters or fewer. Pass the existing text unchanged if only the title is being edited; pass an empty string to clear it." },
+                  confirm: { type: "boolean", description: "true once the operator has approved the exact change you read back." }
+                },
+                required: ["member_user_id", "job_title", "responsibilities"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "team_set_permission",
+              description: "TENANT OWNER ONLY, and the server enforces that — an admin asking for this will be refused, so do not promise it. Changes what a teammate is ALLOWED TO DO in this workspace. Only 'admin' or 'member' can be set: the owner's own permission cannot be changed here, and nobody can be made an owner from chat. This is an access change, so state plainly what the person will be able to do afterwards, get an explicit yes, and only then call again with confirm:true. If the operator is really asking to describe someone's job differently, that is team_set_work_profile and it is not this.",
+              parameters: {
+                type: "object",
+                properties: {
+                  member_user_id: { type: "string", description: "The teammate's user_id, exactly as it appears in the team context block." },
+                  permission: { type: "string", enum: ["admin", "member"], description: "The access level to enforce from now on." },
+                  confirm: { type: "boolean", description: "true once the operator has approved this exact access change." }
+                },
+                required: ["member_user_id", "permission"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "team_invite_member",
+              description: "Owner/admin only. Invite someone who is NOT yet in this workspace, by email. This grants access AND sends a real email to a real person, which is not something the workspace can take back — so read back the address, the access level and any work details, get an explicit yes, then call with confirm:true. Permission may only be 'admin' or 'member'. If the address already belongs to someone in the workspace the server refuses; that person is already here and probably wants team_set_permission instead. The invitation is created first and emailed second: if the reply says the email did not send, say exactly that — the invitation exists and can be resent, but nobody has received anything yet.",
+              parameters: {
+                type: "object",
+                properties: {
+                  email: { type: "string", description: "The person's email address." },
+                  permission: { type: "string", enum: ["admin", "member"], description: "The access they get when they accept." },
+                  job_title: { type: "string", description: "Optional. What they will be called. Describes work; grants nothing." },
+                  responsibilities: { type: "string", description: "Optional. What they will own and where they hand work off." },
+                  confirm: { type: "boolean", description: "true once the operator has approved this exact invitation." }
+                },
+                required: ["email", "permission"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "team_invite_resend",
+              description: "Owner/admin only. Send a pending or expired invitation again. This is not a reminder: it REVOKES the existing link and issues a new one, so any link the person already has stops working. It also emails them again. Takes the invitation_id from the team context block. An invitation that has already been accepted cannot be resent — that person is a member now. Get an explicit yes, then call with confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  invitation_id: { type: "string", description: "The invitation's id, exactly as it appears in the team context block." },
+                  confirm: { type: "boolean", description: "true once the operator has approved resending this exact invitation." }
+                },
+                required: ["invitation_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "team_invite_revoke",
+              description: "Owner/admin only. Withdraw a PENDING invitation so its link stops working. The person is not told, and if they were about to accept they will simply find that they cannot — say so if it matters. Takes the invitation_id from the team context block. An accepted invitation cannot be revoked this way: that person is already a member, and removing a member is not something this does. Get an explicit yes, then call with confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  invitation_id: { type: "string", description: "The invitation's id, exactly as it appears in the team context block." },
+                  confirm: { type: "boolean", description: "true once the operator has approved revoking this exact invitation." }
+                },
+                required: ["invitation_id"]
+              }
+            }
+          },
           {
             type: "function",
             function: {
@@ -6741,6 +6845,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       automation_draft: "setting up a repeatable process",
       automation_set_grant: "changing how much of a process Paige handles alone",
       automation_set_state: "turning a process on or off",
+      team_set_work_profile: "updating a teammate's work details",
+      team_set_permission: "changing what a teammate can access",
+      team_invite_member: "inviting someone to the team",
+      team_invite_resend: "sending a fresh team invitation",
+      team_invite_revoke: "withdrawing a team invitation",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -6756,6 +6865,98 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // The names are read from the database, never taken from the model. A model-supplied label
     // would be strictly worse than no label: it can say "Dana Whitfield" while `contact_id` points
     // somewhere else, and the card is the artefact the approval is bound to.
+    // THE TEAM CARD'S NAME RESOLVER.
+    //
+    // One read, cached for the turn, through the same RPC the Team screen uses. It is `authenticated`
+    // -granted and re-derives the caller's tenant and roster access in its own body, so this cannot
+    // reach a roster the caller cannot already open — and if it raises, every card that depends on it
+    // degrades to an unnamed but still truthful sentence.
+    //
+    // Cached deliberately: a turn can carry several team calls (rename two people, then revoke an
+    // invitation), and each card asking the database again would be three round trips to answer one
+    // question. The cache lives for this request only.
+    let teamCardRosterPromise: Promise<any | null> | null = null;
+    const teamCardRoster = (): Promise<any | null> => {
+      if (!teamCardRosterPromise) {
+        teamCardRosterPromise = (async () => {
+          try {
+            const { data, error } = await supabaseClient.rpc("get_solo_team_workspace", {
+              _search: null, _permission: "all", _limit: 100, _offset: 0,
+            });
+            if (error) return null;
+            return data ?? null;
+          } catch { return null; }
+        })();
+      }
+      return teamCardRosterPromise;
+    };
+
+    /**
+     * THE TENANT-AGREEMENT PRECONDITION, and it exists because two resolvers disagree.
+     *
+     * Every function in the Team seam derives its workspace from `current_user_tenant_id()`. This
+     * conversation derives its workspace from `get_paige_persona_context`, which prefers a linked
+     * `clients` row and only falls back to `current_user_tenant_id()`. For a speaker who is a
+     * member of one workspace AND a client record in another, those two answers are different
+     * tenants.
+     *
+     * The READ already handles that: `buildTenantTeamContextBlock` compares the payload's tenant to
+     * the persona's and returns null on a mismatch, so Paige is shown no roster. The WRITE would
+     * not have. Nothing about the mismatch stops these tools from calling the seam, and Paige can
+     * still obtain real member ids for the other tenant from `crm_list_team`, which resolves the
+     * same way the seam does. The result would be an action landing in a workspace whose roster
+     * this conversation was deliberately not shown — the read failing closed and the write failing
+     * open, over the same disagreement.
+     *
+     * So the write asks the same question the read asks, and refuses on the same answer. It costs
+     * nothing extra: the roster read is already cached for this request because the approval card
+     * needed it.
+     */
+    const teamSeamTenantMismatch = async (): Promise<string | null> => {
+      const expected = personaCtx?.tenant_id ?? null;
+      if (!expected) {
+        return "I can't tell which workspace this would apply to, so I'm not going to touch anyone's team.";
+      }
+      const roster = await teamCardRoster();
+      const actual = typeof roster?.tenant_id === "string" ? roster.tenant_id : null;
+      if (!actual) {
+        // A raise from the RPC lands here too: no roster access means no team action, which is the
+        // same answer the database would give a moment later, given sooner and in words.
+        return "I couldn't confirm this workspace's team, so I haven't changed anything.";
+      }
+      if (actual !== expected) {
+        return "The team I can act on isn't the workspace this conversation is about, so I've stopped rather than change the wrong one. Open the workspace you mean and ask me again.";
+      }
+      return null;
+    };
+
+    /** The teammate, named if the caller can see them; an honest placeholder if not. */
+    const describeTeamMember = async (userId: unknown): Promise<string> => {
+      const id = typeof userId === "string" ? userId.trim() : "";
+      if (!UUIDISH.test(id)) return "that teammate";
+      const roster = await teamCardRoster();
+      const members = Array.isArray(roster?.members) ? roster.members : [];
+      const hit = members.find((m: any) => m?.user_id === id);
+      const name = typeof hit?.full_name === "string" ? hit.full_name.trim() : "";
+      const email = typeof hit?.email === "string" ? hit.email.trim() : "";
+      // Name first, email second, and the email alone is a perfectly good identifier when a person
+      // has never set a display name — it is what the Team screen shows them as too.
+      if (name) return email ? `${name.slice(0, 80)} (${email.slice(0, 120)})` : name.slice(0, 80);
+      if (email) return email.slice(0, 120);
+      return "that teammate";
+    };
+
+    /** The invitation, named by the address it was sent to. */
+    const describeTeamInvite = async (inviteId: unknown): Promise<string> => {
+      const id = typeof inviteId === "string" ? inviteId.trim() : "";
+      if (!UUIDISH.test(id)) return "that invitation";
+      const roster = await teamCardRoster();
+      const invites = Array.isArray(roster?.invitations) ? roster.invitations : [];
+      const hit = invites.find((i: any) => i?.id === id);
+      const email = typeof hit?.email === "string" ? hit.email.trim() : "";
+      return email ? email.slice(0, 120) : "that invitation";
+    };
+
     const describeConfirm = async (name: string, a: any): Promise<string> => {
       switch (name) {
         // The money one. The number and the fact that it charges have to be IN the
@@ -6886,6 +7087,56 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Create a task "${a?.title || ""}"${a?.due_date ? ` due ${a.due_date}` : ""}.`;
         case "crm_log_activity":
           return `Log an activity on this contact.`;
+        // ── SOLO TEAM CARDS ────────────────────────────────────────────────────────────────
+        // These four all arrive here holding a uuid, which is the failure mode the document card
+        // was rewritten to fix: "change the permission for 8f3c…" is not a sentence anybody can
+        // agree to. So each one resolves the id to the person BEFORE the card is written, and it
+        // resolves it through `get_solo_team_workspace` — the same seam the Team screen reads,
+        // under the caller's own JWT. A caller who cannot see the roster gets a raise there, the
+        // lookup returns nothing, and the card stays honestly unnamed rather than borrowing a name
+        // from a workspace this person cannot see.
+        //
+        // The names never come from the model. A model-supplied "Morgan Reyes" beside a member id
+        // pointing at somebody else would be worse than no name at all, because the card IS the
+        // thing the approval is bound to.
+        //
+        // KNOWN EDGE, stated rather than hidden: the lookup reads the first page the RPC returns,
+        // which is 100 members and 100 invitations. Past that the card falls back to the unnamed
+        // wording below. It degrades to less information, never to wrong information.
+        case "team_set_work_profile": {
+          const who = await describeTeamMember(a?.member_user_id);
+          const title = typeof a?.job_title === "string" ? a.job_title.trim() : "";
+          const resp = typeof a?.responsibilities === "string" ? a.responsibilities.trim() : "";
+          const parts: string[] = [];
+          parts.push(title ? `job title "${title.slice(0, 80)}"` : "no job title");
+          parts.push(resp ? `responsibilities rewritten (${resp.length} characters)` : "no responsibilities");
+          return `Save work details for ${who}: ${parts.join(", ")}. This describes what they do — it does NOT change what they can access.`;
+        }
+        case "team_set_permission": {
+          const who = await describeTeamMember(a?.member_user_id);
+          // The card names the CONSEQUENCE, not the enum. "permission: admin" is a field; "can
+          // invite people and manage the team" is the thing being agreed to.
+          return a?.permission === "admin"
+            ? `Change ${who} to Admin — they will be able to invite people, manage invitations, and edit everyone's work details. This is an access change.`
+            : `Change ${who} to Member — they will lose the ability to invite people, manage invitations, or edit work details. This is an access change.`;
+        }
+        case "team_invite_member": {
+          const email = typeof a?.email === "string" ? a.email.trim() : "";
+          const level = a?.permission === "admin" ? "Admin" : "Member";
+          const extra = a?.permission === "admin"
+            ? " — able to invite people and manage the team"
+            : "";
+          const title = typeof a?.job_title === "string" && a.job_title.trim() ? ` as ${a.job_title.trim().slice(0, 60)}` : "";
+          return `Email an invitation to ${email || "that address"}${title}, giving them ${level} access${extra} once they accept. This sends a real email and cannot be unsent.`;
+        }
+        case "team_invite_resend": {
+          const who = await describeTeamInvite(a?.invitation_id);
+          return `Send a fresh invitation to ${who}. Any link they already have STOPS WORKING, and this emails them again.`;
+        }
+        case "team_invite_revoke": {
+          const who = await describeTeamInvite(a?.invitation_id);
+          return `Withdraw the invitation to ${who} so their link stops working. They are not told; they will simply find they cannot accept.`;
+        }
         case "member_grant_role":
           return `Grant the "${a?.role || ""}" role to a team member.`;
         case "member_revoke_role":
@@ -8356,6 +8607,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "deal_create" ||
           tc.function.name === "deal_move_stage" ||
           tc.function.name === "member_grant_role" ||
+          tc.function.name === "team_set_work_profile" ||
+          tc.function.name === "team_set_permission" ||
+          tc.function.name === "team_invite_member" ||
+          tc.function.name === "team_invite_resend" ||
+          tc.function.name === "team_invite_revoke" ||
           tc.function.name === "member_revoke_role" ||
           tc.function.name === "calendar_book_meeting" ||
           tc.function.name === "generate_image" ||
@@ -9358,6 +9614,107 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                           : "Filed on their record where the team can see it. The client cannot — say so if it matters.",
                       };
                 }
+              }
+            } else if (tc.function.name === "team_set_work_profile") {
+              const wrongTenant = await teamSeamTenantMismatch();
+              if (wrongTenant) throw new Error(wrongTenant);
+              // Through the CALLER's client, not the admin one. `set_solo_team_member_work_profile`
+              // is `SECURITY DEFINER` and re-derives the actor and the tenant from `auth.uid()` in
+              // its own body, so the owner/admin check happens in the database whether the request
+              // came from the Team screen or from this sentence. Handing it the service role would
+              // have thrown that check away and replaced it with whatever this handler remembered
+              // to test.
+              const { data, error } = await supabaseClient.rpc("set_solo_team_member_work_profile", {
+                _member_user_id: args.member_user_id,
+                _job_title: typeof args.job_title === "string" ? args.job_title : "",
+                _responsibilities: typeof args.responsibilities === "string" ? args.responsibilities : "",
+              });
+              if (error) throw error;
+              // The STORED values are read back, not the ones that were sent: the function trims,
+              // and reporting what was asked for rather than what landed is how a summary starts
+              // drifting from the record.
+              result = {
+                success: true,
+                member_user_id: args.member_user_id,
+                job_title: (data as any)?.job_title ?? null,
+                responsibilities: (data as any)?.responsibilities ?? null,
+                note: "Work details only. This changed nothing about what they can access.",
+              };
+            } else if (tc.function.name === "team_set_permission") {
+              const wrongTenant = await teamSeamTenantMismatch();
+              if (wrongTenant) throw new Error(wrongTenant);
+              // Owner-only, enforced in the function body, and it will not accept `owner` as a
+              // target or touch the owner's own row. That is where the guarantee lives; this call
+              // site does not re-implement it, because a second copy of a rule is a second copy to
+              // get out of step.
+              const { error } = await supabaseClient.rpc("set_solo_team_member_permission", {
+                _member_user_id: args.member_user_id,
+                _new_permission: args.permission,
+              });
+              if (error) throw error;
+              result = {
+                success: true,
+                member_user_id: args.member_user_id,
+                permission: args.permission,
+                note: "Access changed. Their job title and responsibilities are untouched.",
+              };
+            } else if (
+              tc.function.name === "team_invite_member" ||
+              tc.function.name === "team_invite_resend" ||
+              tc.function.name === "team_invite_revoke"
+            ) {
+              const wrongTenant = await teamSeamTenantMismatch();
+              if (wrongTenant) throw new Error(wrongTenant);
+              // The three invitation acts go through `solo-team-invitations`, which is the ONLY
+              // caller of the invite RPCs — they are revoked from `authenticated` entirely and
+              // granted to `service_role` alone, so there is no path from here that bypasses it.
+              // The function authenticates the bearer and passes `_actor: user.id` down, which is
+              // why forwarding the caller's own JWT matters: `supabaseClient` carries the operator's
+              // Authorization header, so the invitation is attributed to the person who approved it
+              // rather than to Paige.
+              const invokeBody = tc.function.name === "team_invite_member"
+                ? {
+                    action: "create",
+                    email: args.email,
+                    permission: args.permission,
+                    jobTitle: typeof args.job_title === "string" ? args.job_title : "",
+                    responsibilities: typeof args.responsibilities === "string" ? args.responsibilities : "",
+                  }
+                : {
+                    action: tc.function.name === "team_invite_resend" ? "resend" : "revoke",
+                    inviteId: args.invitation_id,
+                  };
+              const { data: inv, error: invErr } = await supabaseClient.functions.invoke(
+                "solo-team-invitations", { body: invokeBody },
+              );
+              // `functions.invoke` puts nothing useful on `error.message` for a non-2xx, so the
+              // function's own `error` string is what a person actually needs to read — it carries
+              // "only an owner or admin may…", "this person already belongs to the workspace", and
+              // the rest of the real reasons.
+              if (invErr || (inv as any)?.ok === false) {
+                throw new Error((inv as any)?.error || invErr?.message || "The invitation could not be completed.");
+              }
+              if (tc.function.name === "team_invite_revoke") {
+                result = { success: true, invitation_id: args.invitation_id, state: "revoked" };
+              } else {
+                // THE HONESTY THAT MATTERS MOST IN THIS WHOLE SLICE. Creating the invitation and
+                // delivering the email are two acts, and the second one fails on its own — the
+                // function returns `emailed:false` and a live invitation. Reporting that as "sent"
+                // would leave the operator waiting on a person who was never contacted, which is
+                // precisely the "hoped-for outcome" this project refuses to report. So the flag
+                // travels into the result with the sentence Paige is expected to say.
+                const emailed = (inv as any)?.emailed === true;
+                result = {
+                  success: true,
+                  invitation_id: (inv as any)?.invitationId ?? null,
+                  expires_at: (inv as any)?.expiresAt ?? null,
+                  emailed,
+                  note: emailed
+                    ? (tc.function.name === "team_invite_resend"
+                        ? "A fresh invitation was emailed and the previous link was revoked."
+                        : "The invitation was emailed.")
+                    : "The invitation EXISTS but the email did NOT go out. Say so plainly — nobody has received anything, and it can be resent from Team or by asking again.",
+                };
               }
             } else if (tc.function.name === "member_grant_role") {
               const { error } = await supabaseClient.rpc("grant_tenant_member_role", {

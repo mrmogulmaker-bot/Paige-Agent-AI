@@ -811,3 +811,52 @@ bypass of the stronger. Call the clash out, rewrite, and record it here.
 
 **Evidence.** tsc 0 · vitest 1673/1673 · 22 CI guards green · vite build clean. Merge commit
 `ed3de6f1a`. Not deployed; the authenticated live drive remains UNVERIFIED.
+
+---
+
+## 2026-09-02 — Paige can act on the team, not only describe it (Solo Team seam in Chat)
+
+**What changed.** Five tools — `team_set_work_profile`, `team_set_permission`, `team_invite_member`,
+`team_invite_resend`, `team_invite_revoke` — give PAIGE the Team capability inside the canonical Chat
+workspace. Owner approved the Team-only Chat interaction direction. Nothing new was built on the
+server: they call the same seam the Team screen calls, so the database's authority checks apply to a
+sentence exactly as they apply to a form.
+
+**The read had been a description of a locked door.** `get_paige_team_context` has been injecting the
+roster, permissions, work details and every invitation for a while, and the Team surface said out
+loud that she "cannot send or change access." That sentence was the feature request, and it is now
+rewritten rather than left standing (§58 — flagged, not silent).
+
+**The defect a pre-build seam audit caught, before it shipped.** The Team seam resolves its workspace
+with `current_user_tenant_id()`; the conversation resolves its own with `get_paige_persona_context`,
+which prefers a linked `clients` row. For a speaker who is a member of one workspace and a client
+record in another those are DIFFERENT tenants. The read already failed closed on it —
+`buildTenantTeamContextBlock` returns null and Paige is shown no roster. The write would not have,
+and member ids for the other tenant are still obtainable from `crm_list_team`, which resolves the
+same way the seam does. The result would have been an action landing in a workspace whose roster the
+conversation was deliberately not shown: **the read failing closed and the write failing open over
+the same disagreement.** `teamSeamTenantMismatch` now asks the read's question before all five acts.
+The lesson is the one worth keeping: when a read is given a safety check, ask what the matching write
+does with the same answer.
+
+**Classification.** Permission change and all three invitation acts are `high` — they move authority
+and, for invitations, put an email in a real stranger's inbox, which is the one effect no undo inside
+the product reaches. Work details are `ordinary`, because describing a job cannot grant one, and that
+is structural: the RPC writes two text columns and cannot reach `permission`. Catalogue now: 32
+ordinary · 28 high · 2 owner-only · 5 exempt · 0 unclassified.
+
+**The tool-registry ratchet fired on this work, correctly, and the baseline grew by five.** The Spine
+registry the ruling points at does not exist yet, and the ruling's own words put the final bounded
+adapter with the Chat workstream — which is what this is. The reason is written into
+`scripts/ci/chat-tool-baseline.txt` rather than a commit message, because "the guard fired and I
+raised the number" is how a ratchet stops being one. It shrinks by five when the registry lands.
+
+**Honest gap.** `crm_list_team` (`list_team_members`) and the Solo Team functions read the same
+`tenant_members` table but disagree in four ways: authorization (global `user_roles` vs tenant
+membership), owner labelling, suspended members, and truncation. Two homes for "who is on the team"
+is a §18 seam worth closing; it is not closed here and is not made worse here.
+
+**Evidence.** tsc 0 · deno check 14 errors at head and 14 at base (no new) · eslint clean on changed
+`src/**` · 6 team test files, 28 tests, 5 assertions mutation-proved · 6 CI guards green · vite build
+clean. **Not deployed. The authenticated live drive is UNVERIFIED** — this session holds no browser
+that can reach the surface, so §32.c is owed to the next capable session or to the owner.

@@ -74,6 +74,19 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["member_revoke_role", "high", "removes a staff role"],
   ["crm_assign_coach", "high", "changes who can see a client"],
   ["crm_assign_contact", "high", "changes who owns and can see a client"],
+  // Solo Team, added 2026-09-02. A permission change is the definition of this section: it is the
+  // one act in the Team seam that moves authority rather than describing work. The database is
+  // stricter than this file — `set_solo_team_member_permission` admits only the tenant OWNER, will
+  // not accept `owner` as a target value, and refuses to touch the owner's own row — so a caller
+  // cannot raise themselves through it. That is the DATABASE's guarantee, and it is exactly why
+  // this entry does not lean on it: if the guard ever loosened, the class here would still be the
+  // thing standing between a conversation and someone's access.
+  ["team_set_permission", "high", "changes what a teammate is allowed to do"],
+  // Revoking is safety-directional, and it is still `high` for the reason `n8n_deactivate_workflow`
+  // is: the direction of a change is not its class. Pulling a pending invitation ends an access
+  // grant somebody may already be acting on, and the person on the other end of that email finds
+  // out by failing.
+  ["team_invite_revoke", "high", "withdraws an access grant that is already in flight"],
   // Runs as service role against the orchestrator, so whatever the specialist then does is outside
   // this gate. Until that path is itself governed, delegating IS the authority decision.
   ["delegate_to_subagent", "high", "dispatches work that executes outside this gate"],
@@ -90,6 +103,13 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   ["n8n_archive_workflow", "high", "acts on the operator's provider account"],
   ["zapier_run_action", "high", "runs an action in a third-party app"],
   ["calendar_book_meeting", "high", "books a real event with a real person"],
+  // Solo Team invitations, added 2026-09-02. These are `high` twice over, and either reason alone
+  // would be enough. They mint an access grant for a person who is not in the workspace yet, and
+  // they put an email in a real stranger's inbox — which is the one effect in this whole file that
+  // no undo inside the product can reach. Resending is not the smaller sibling of sending: it
+  // revokes the live token and issues a new one, so it is a fresh grant plus a fresh email.
+  ["team_invite_member", "high", "grants workspace access and emails a real person"],
+  ["team_invite_resend", "high", "issues a new access grant and emails a real person again"],
 
   // ── high: becomes visible to a client, or goes public ─────────────────────────────────────
   ["growth_page_publish", "high", "puts a page live at a public URL"],
@@ -172,6 +192,14 @@ const RISK: ReadonlyArray<readonly [string, ActionRisk, string]> = [
   // Born at `confirm` + `draft` by construction, so it creates something that cannot act. Turning
   // it on is `automation_set_state`, which is owner_only.
   ["automation_draft", "ordinary", "writes down a process that cannot yet run"],
+  // Solo Team work details, added 2026-09-02. A job title and a written set of responsibilities
+  // describe what somebody does; they are not a claim about what that person may do. The product
+  // makes that separation load-bearing in three places at once — the RPC writes only those two
+  // columns and cannot reach `permission`, the Team surface says so on the editor, and the context
+  // Paige reads marks tenant-authored work text as reference data that never confers authority.
+  // So this is reversible in-tenant record work, and it belongs here rather than beside the
+  // permission change it deliberately cannot become.
+  ["team_set_work_profile", "ordinary", "edits how a teammate's work is described, never their access"],
 ];
 
 /**
