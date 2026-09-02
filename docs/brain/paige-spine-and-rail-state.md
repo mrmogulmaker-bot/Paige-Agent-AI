@@ -176,9 +176,12 @@ than relayed:
 | `useRailEvents` (Context Rail) | `src/components/paige/PaigeRailFeed.tsx:108` · `src/components/app/ClientActivityFeed.tsx:144` — both destructure only `{ events, connected }` | **NO.** `grep` for `historyError\|historyLoaded` outside the hook and its tests returns **no matches**, so a refused read renders exactly like an empty feed |
 | `useSoloActivityFeed` (Solo Trust Compass **and** Team activity) | **Both** consumers distinguish. `src/solo/compass.tsx:377` and `src/solo/team.tsx:235` each compute `loading ? … : error ? 'error' : …` and render `role="alert"` with a retry — *"Recent activity could not be loaded, so this is not a record of nothing happening"* and *"This timeline could not be loaded, so it is not a record of nothing happening"* | **Yes** — these are the model treatment. **Corrected 2026-09-02:** an earlier version of this row named only `compass.tsx`; `team.tsx` gained the same treatment and was not credited here |
 
-So the platform-level statement is *not reliable enough*: two shipped consumers cannot distinguish,
-one can. **An operator who opens the Command Center a minute after PAIGE acts can be told she has done
-nothing** (#746). That is the failure mode — not a visible error.
+So the platform-level statement is *not reliable enough*: **two shipped consumers cannot distinguish
+and two can.** (**Corrected 2026-09-02** — this sentence read "two cannot distinguish, one can" while
+the row above it already named both `compass.tsx` and `team.tsx`; the count was left behind when Team
+gained the treatment.) **An operator who opens the Command Center a minute after PAIGE acts can be told
+she has done nothing** (#746) — through `PaigeRailFeed` or `ClientActivityFeed`, which are the two that
+collapse it. That is the failure mode — not a visible error.
 
 Two things follow:
 
@@ -204,10 +207,20 @@ matrix above says — no more:
   as "nothing yet". **This is the remaining failure mode.**
 - **The two `useSoloActivityFeed` consumers do NOT.** Both `compass.tsx:377` and `team.tsx:235` compute
   `activity.loading ? 'loading' : activity.error ? 'error' : …` and render an explicit `role="alert"`
-  message with a retry control — *"Recent activity could not be loaded, so this is not a record of
-  nothing happening"* and *"This timeline could not be loaded, so it is not a record of nothing
-  happening"*. **Do not describe these as showing "nothing yet".** They are the model treatment Slice B
-  extends rather than replaces.
+  message — *"Recent activity could not be loaded, so this is not a record of nothing happening"* and
+  *"This timeline could not be loaded, so it is not a record of nothing happening"*. **Do not describe
+  these as showing "nothing yet".** They are the model treatment Slice B extends rather than replaces.
+  - **Retry is NOT universal, and the exception is measured.** `team.tsx` offers *Try again* in every
+    layout, and `compass.tsx` offers it in the wide layout (`compass.tsx:421`). But
+    `solo-tokens.css:173` — `@media(max-width:1020px){ .paige-solo .tc-rail{display:none};
+    .paige-solo .tc-railbtn{display:flex} }` — hides the branch that holds Compass's retry at
+    **≤1020px**, and the foldout branch that replaces it (`compass.tsx:440`) carries `role="alert"`
+    **with no retry control**. So at narrow widths a Compass user is told the read failed and given
+    **no way to re-attempt it**. The message is still honest; the recovery is missing.
+  - **That gap is a Slice B input, not a documentation problem.** Slice B's state contract explicitly
+    includes *failed with a truthful retry path*, so the compact Compass branch is inside its scope
+    and must not be lost. §00: whether a recovery control **exists** is correctness and therefore
+    ours; what it should **look like** is Claude Design's.
 
 That split is why the platform status is *not reliable enough* rather than *never* — and why the
 verdict is about the platform, not about every consumer equally.
