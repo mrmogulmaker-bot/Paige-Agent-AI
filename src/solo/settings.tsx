@@ -43,7 +43,7 @@ import {
   type ManagedIdentityRecord,
   type SettingsTruth,
 } from "./settings-contract";
-import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
+import { settingsScrollOwner, SETTINGS_SCROLLBAR_SHOWN, settingsDestinationShowsScrollbar } from "./settings-scroll-owner";
 import { CalendarsView } from "./connections-calendars";
 import { SoloSetupView } from "./settings-setup";
 import "./settings.css";
@@ -1543,13 +1543,19 @@ export function SoloSettings({ openPaige }: { openPaige?: () => void } = {}) {
       }
     };
   }, [scrollOwnerOf]);
-  // Connections (including Calendars) and Integrations are the two
-  // owner-approved browse surfaces. The other Settings destinations retain
-  // their form-fitting shell policy while sharing the same physical host.
+  // WHICH destinations draw the bar is the shared shell policy, not a condition
+  // written here (owner ruling 2026-09-02). Setup, Connections (including
+  // Calendars) and Integrations are the authorized visible-scroll surfaces; the
+  // rest keep their form-fitting shell policy while sharing the same physical
+  // host. Setup is the reason this moved: it resolved `overflow-y: auto` from the
+  // same exception and simply never received the class that DRAWS the bar, so it
+  // overflowed its host by ~3,280px with no affordance and every guard stayed
+  // green — because the policy was an expression, and only its own source line
+  // was ever asserted.
   useEffect(() => {
     const scrollOwner = scrollOwnerOf(rootRef.current);
     if (!scrollOwner) return;
-    const visibleScroll = tab === "connections" || tab === "integrations";
+    const visibleScroll = settingsDestinationShowsScrollbar(tab);
     scrollOwner.classList.toggle(SETTINGS_SCROLLBAR_SHOWN, visibleScroll);
     return () => scrollOwner.classList.remove(SETTINGS_SCROLLBAR_SHOWN);
   }, [tab, scrollOwnerOf]);
