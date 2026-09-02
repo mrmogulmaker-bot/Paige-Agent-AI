@@ -1460,8 +1460,9 @@ workspace it has switched into, Enterprise both. No owner ruling was sought, and
 
 **§66, same commit as the ship.** The first Mind binding: PAIGE states what a recorded Pipeline
 stage outcome proves for a selected client, cites its opaque `rail:` reference, and refuses to
-infer past it. Read-only. Branch `claude/paige-mind-pipeline-evidence-hb1jg8` — **DRAFT, not
-merged, migration not applied.** Do not read this row as shipped before Gate 2.
+infer past it. Read-only. **SHIPPED 2026-09-02** — PR #747 merged as `dcddf6761e`, production-
+deployed, and migration `20261041000000` persisted on prod ref `xygzykjyynhzqytbqnzu`. Read these
+rows as live availability; read the truth label below as the capability's maturity, which is lower.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
@@ -1492,9 +1493,12 @@ clients join, so it is null exactly where the name is (`20261041000000`, mutatio
 `scripts/proof/pipeline-deal-client-ref-local-proof.sql`). The server then re-resolves tenant by
 `current_user_tenant_id()` and re-authorizes the client by tenant equality before any read.
 
-**UNVERIFIED at this ledger entry:** authenticated runtime on any tier, rendered proof at the four
-viewports, and the post-merge persisted-apply confirmation. The Mind binding is `PARTIAL`, not
-`LIVE`, and must not be represented otherwise.
+**UNVERIFIED at this ledger entry, after the release:** authenticated runtime on any tier, and
+rendered proof at the four viewports. Both remain owed. The post-merge persisted-apply confirmation
+is **no longer owed** — it was taken on prod on 2026-09-02 and is recorded in the Master Project File
+§4. **No tier row above has been driven by an authenticated session**; every ✓ and ✗ is proven by the
+adapter's own grants, in-body predicates and contract tests, which is a weaker class of evidence than
+a drive. The Mind binding is `PARTIAL`, not `LIVE`, and must not be represented otherwise.
 
 ### Platform metering — LLM usage, `meter_llm_usage` (no surface, operator-only seam)
 

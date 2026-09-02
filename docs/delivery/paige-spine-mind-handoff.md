@@ -77,7 +77,7 @@ retyped. No new grant, table, policy or authority.
 | Runtime (local Postgres 16) | **PASS** — `scripts/proof/paige-spine-local-proof.sql` still passes unchanged, and the new `scripts/proof/pipeline-deal-client-ref-local-proof.sql` applies the real migration and drives real caller roles. **Mutation-tested:** flipping `c.id` to `d.contact_client_id` makes it fail with `LEAK: coach received a client_id for a client they cannot see`, so its green is not a false green. |
 | Rendered | **UNVERIFIED** — no browser in this environment. The Gate 1 prototype is a mocked behaviour model and is not rendered proof of the shipped surface. |
 | Authenticated runtime | **UNVERIFIED** — no authenticated session and no browser. Owed before either binding is called `LIVE`. |
-| Production | **NOT CLAIMED** — nothing merged, applied or deployed. The migration is **not** applied to prod; a §32.a persisted-apply confirmation is owed after merge. |
+| Production | **CONFIRMED 2026-09-02** — merged as `dcddf6761e` (PR #747), Vercel production deployment `dpl_AypwRwqAWfAEyB74tbNT7XcLy8nq` `READY` at that commit, `edge-live` and `db-live` both moved to it with zero drift, and migration `20261041000000` **persisted** on prod ref `xygzykjyynhzqytbqnzu` — the `schema_migrations` row, the re-created function, and `client_id` sourced from the filtered join were each queried, not assumed (§32.a). This is deployment and schema proof; it is **not** authenticated runtime proof, which stays owed above. |
 | Supabase pgTAP / full-history replay | **UNVERIFIED** — the Supabase CLI and Docker daemon are both absent here. `supabase/tests/paige_spine_foundation.sql` is unchanged and still runs in the `database-contract` CI job. |
 
 ## Truthful status
@@ -98,8 +98,9 @@ Two Second Brain files have a **direct active-owner collision** with PR #729
   is where a newest-first entry has to go. Writing there would conflict on the same lines.
 - `docs/brain/lessons-learned.md` — #729 appends at the end of the file, likewise.
 
-`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating and **was** updated in this PR (§5),
-so no handoff is owed there. The two brain files are the only ones that could not be, and the
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating and **was** updated — §5 in PR #747
+itself, and §4 in the post-release closeout once the capability was actually live — so no handoff
+is owed there. The two brain files are the only ones that could not be, and the
 four-part collision-safe handoff for them is below.
 
 - **Exact sections to change.** `docs/brain/decision-log.md` — the newest bullet, immediately
@@ -110,7 +111,10 @@ four-part collision-safe handoff for them is below.
   (`claude/paige-spine-pr728-hotfix-p8mhmr`). If #729 lands first, this branch's author does it
   before Gate 2; if this branch lands first, #729's author does it on rebase. Naming a rule
   rather than a person is deliberate — either branch may land first, and an owner who depends on
-  that order is not an owner.
+  that order is not an owner. **RESOLVED 2026-09-02: this branch landed first** (PR #747,
+  `dcddf6761e`); PR #729 was still open and unmerged at that moment, so the two blocks below are
+  owed by **#729's author, on rebase**. They are not written into `main` by anyone else in the
+  meantime — writing them now would put back the exact line conflict this handoff exists to avoid.
 - **Reason it could not be done in the same PR.** #729 is unmerged and edits both files at the
   exact lines a new entry needs: it prepends a bullet directly under the decision-log header,
   which is where a newest-first entry has to go, and appends at the end of lessons-learned.
@@ -122,7 +126,7 @@ The blocks are additive and order-independent.
 ### For `docs/brain/decision-log.md` — insert as the newest bullet
 
 > - **The Mind can read a Pipeline outcome and cite it, and the flow it needed did not exist
->   (branch `claude/paige-mind-pipeline-evidence-hb1jg8`, NOT MERGED, 2026-09-02)** — the
+>   (PR #747, merged as `dcddf6761e`, production-deployed and applied, 2026-09-02)** — the
 >   first Mind binding moves `UNAVAILABLE` → `PARTIAL`. Chat now renders the Pipeline
 >   domain's Mind projection rather than the raw signals, so the two cannot describe the same
 >   record differently, and `paige-ai-chat/index.ts` was not edited at all. **Owner-approved
@@ -137,7 +141,8 @@ The blocks are additive and order-independent.
 >   exactly where the name is. **PROVEN:** 1859 vitest, tsc ratchet unchanged at 13, build
 >   green, 11 CI guards, and a local-Postgres proof that is mutation-tested — flipping the
 >   identifier's source to `d.contact_client_id` makes it fail with a named LEAK.
->   **UNVERIFIED:** authenticated and rendered proof; the migration is not applied to prod.
+>   **UNVERIFIED and still owed:** authenticated and rendered proof. The migration IS applied on
+>   prod (§32.a confirmed post-merge); the binding is `PARTIAL`, not `LIVE`.
 
 ### For `docs/brain/lessons-learned.md` — append
 
@@ -188,4 +193,5 @@ may convert one into an assignment.
    client** → PAIGE cites a recorded outcome, on two Solo tenants.
 2. Rendered proof at 1536×770, 1366×768, 1024×768 and 900×1000 with PAIGE open and closed.
 3. `supabase test db` against the Supabase stack, and a full-history replay.
-4. Post-merge §32.a persisted-apply confirmation for `20261041000000` on prod.
+4. ~~Post-merge §32.a persisted-apply confirmation for `20261041000000` on prod.~~ **DONE
+   2026-09-02** — queried on prod ref `xygzykjyynhzqytbqnzu` after merge; see the Production row above.
