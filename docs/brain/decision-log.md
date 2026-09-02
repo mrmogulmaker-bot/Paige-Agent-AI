@@ -1191,18 +1191,25 @@ absence corroborates the documentation-only scope instead of indicating missing 
 workspace-level outcome projection (an unstarted Spine Change Request); PR #728's P1/P2 hotfix, which
 remains a separate active workstream this did not repair. Team remains `PARTIAL`.
 
-### §13 — a stale claim this closeout's sweep found, which the merge did NOT cause
+### Parked, not fixed — a stale claim this closeout's sweep found
 
-`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 carried MET1 (§34-L1 metering) as a ✅ **SHIPPED** entry
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 carries MET1 (§34-L1 metering) as a ✅ **SHIPPED** entry
 while simultaneously asserting *"branch `codex/paige-knowledge-active-tenant-isolation-v2`, **NOT
-MERGED — draft PR, Gate 2 not requested**"* — internally contradictory on its face. It is stale:
+MERGED — draft PR, Gate 2 not requested**"* — contradictory on its face, and stale:
 `supabase/functions/_shared/token-pricing.ts` and `supabase/migrations/20261038000000_the_meter_actually_runs.sql`
-are both on `main`, added by **`76bb3bbca` (PR #728)** — established with `git log --diff-filter=A`, and
-present at base `05735f26b` too, so this predates PR #730 and was not caused by it. Corrected in place
-per §58, **merge status only.** No behavioural claim in that entry was touched or re-verified: whether
-the meter actually drains on prod is MET2's evidence, not this closeout's, and nothing here re-grounds it.
+are both on `main`, added by **`76bb3bbca` (PR #728)**, established with `git log --diff-filter=A`. Both
+were present at base `05735f26b` too, so this predates PR #730 and was not caused by it.
 
-Three further status claims were read and deliberately **left alone**, because they sit in §5 (gaps),
-where in-flight work belongs, and because their workstreams' merge state was not grounded here: the
-multi-membership login account picker, Solo Campaigns → Pipeline board, and Setup-owned A2P legal
-identity. They are reported as unverified-by-this-closeout rather than silently edited.
+**It is NOT fixed here.** Under the owner's standing scope-control rule (2026-09-02), a distinct issue
+found mid-assignment is parked rather than absorbed: it belongs to the §34 metering workstream, not to
+the Solo Team assignment, and the assigned flow works correctly without it. Parked as
+**issue #737**. Only the owner may convert that into an implementation assignment.
+
+Recorded honestly: the correction was briefly present in PR #732's diff before the scope-control rule
+was issued, and was reverted out of it. Nothing about the entry's behavioural claims was ever
+re-verified — whether the meter actually drains on prod is MET2's evidence, not this closeout's.
+
+Three further status claims were read and left alone for the same reason, and are carried in the same
+parked issue as **unverified rather than known-wrong**: the multi-membership login account picker,
+Solo Campaigns → Pipeline board, and Setup-owned A2P legal identity. All three sit in §5 (gaps), which
+is the correct home for in-flight work.
