@@ -39,7 +39,7 @@ Human → Read → Brain → Trust Compass → Write → Rail → Page
 | **Human** | The owner and team set goals, policies, approvals and exceptions, and retain ultimate accountability. | A rubber stamp inferred from silence. Accountability does not transfer by Paige being confident. |
 | **Read** | Paige receives only tenant-safe, proven, scoped evidence. | A raw provider feed, or a read that resolves its tenant from anything a caller supplied. |
 | **Brain** | Paige derives understanding, summaries, plans and recommendations **only from proven records**. | A place where an inference becomes a record. What the Brain concludes is a conclusion, not evidence. |
-| **Trust Compass** | Determines, **per tenant and per capability**, whether Paige may observe, prepare, request confirmation, or act. **It must be server-enforced before autonomous action is claimed.** | A label on a surface. A compass that is not enforced server-side authorizes nothing, however it renders. |
+| **Trust Compass** | **Target state:** a future server-persisted contract may further restrict a capability per tenant. **Current state:** the Compass UI is non-authoritative; the server action-risk policy plus confirmation/approval gate is the actual clamp. | A label, dial, or in-memory preference presented as current permission/action evaluation. A Compass that is not persisted and server-enforced authorizes nothing. |
 | **Write** | Every action is tenant/account/capability/source/scope authorized, durable, attributable, idempotent, recoverable, and fail-closed. | A direct provider call from a UI handler, or a retry that duplicates an external effect. |
 | **Rail** | Durable safe evidence, provenance, authority, decisions, outcomes, and recovery history. | A message log. See §2 for the never-list and §2a for where the shipped rail does not yet hold it. |
 | **Page** | The human-management surface where people understand, govern, and intervene. | The only place a capability can be driven from (§10), or a surface that shows a state no record proves. |
@@ -72,8 +72,10 @@ enabling calls.
 and outcome references, explain gaps, and prepare governed next steps. She may **not** silently call
 providers, buy or assign numbers, submit A2P, record or transcribe calls, send messages, alter
 billing, or make any external change **until each capability has its own proven server authorization
-and Trust Compass enforcement**. This taxonomy does not add live voice or any provider action; it
-describes the shape each must take when it is separately authorized.
+plus action-risk and confirmation/approval enforcement**. A future persisted Compass contract may
+further restrict that authority, never elevate it; C-2 records that it does not exist today. This
+taxonomy does not add live voice or any provider action; it describes the shape each must take when
+it is separately authorized.
 
 ## 1. Page — Settings → Connections
 
