@@ -86,6 +86,9 @@
  *     analysed and failed closed on, never resolved. General dataflow is out of scope by choice.
  *   · Detecting a registration whose METHOD name is itself computed (`mcp[k](…)` where `k` is a
  *     variable). Measured: zero such calls exist across the three surfaces.
+ *   · Resolving a value beyond a same-file top-level `const`. An imported schema, a parameter, or
+ *     a value built at runtime is not followed — it is refused. That is the deliberate stopping
+ *     point: same-file constants are bounded and enumerable, general dataflow is not.
  *   · `destructiveCall` remains partly an enumeration (`.delete()`, a delete-shaped `.rpc()`,
  *     literal `DELETE FROM`). It is backstopped — not replaced — by the file's own `*.delete` scope
  *     classification, which is why an opaque RPC like `handle_data_subject_request` is caught
@@ -227,12 +230,13 @@ function unwrap(node) {
  *
  *   handler      must be a FUNCTION LITERAL — an arrow, a function expression, or method syntax.
  *                A closed set, and what the surface actually contains: 117 of 117 are arrows.
- *   inputSchema  must be COMPLETELY inline: an object literal must be present, and no part of the
- *                shape may come from somewhere else. A spread (`z.object({ ...approvalFields })`),
- *                a shorthand, or a property whose value is a bare reference
- *                (`z.object({ confirm: someSchema })`) each hide a member the boolean walker would
- *                otherwise have read. `buildSchema()` and `schemas.purge` fail for want of any
- *                literal at all. Measured: 117 of 117 qualify.
+ *   inputSchema  every value in the shape must be one this guard has actually SEEN. Same-file
+ *                top-level constants are RESOLVED and walked, so `z.enum(CONFIDENCE)` is read
+ *                rather than feared — and a constant that hides `confirm: z.boolean()` is NAMED as
+ *                a violation rather than merely refused. Anything that does not resolve — an
+ *                import, a parameter, `buildSchema()`, `.merge(other)`, `z.union([…, other])` —
+ *                is unresolved, and unresolved fails closed. Type positions are skipped, since a
+ *                type hides nothing at runtime. Measured: 117 of 117 pass with zero exemptions.
  *
  * Both are stated as what CAN be read rather than as ways to hide, which is the only formulation
  * that does not lose to the next spelling.
@@ -243,31 +247,100 @@ function inspectableInitializer(node, member) {
   if (member === "handler") {
     return ts.isArrowFunction(n) || ts.isFunctionExpression(n);
   }
-  // The schema must be BOTH present and complete. "Contains an object literal" was the third
-  // half-answer in a row: `z.object({ ...approvalFields })` has one, so it read as inspectable,
-  // while `modelSettableBooleans` could not follow the spread and saw no boolean — a destructive
-  // handler beside it passed. `z.object({ confirm: someSchema })` hides one the same way, a level
-  // lower. So the test is now the general property rather than the case: every part of the shape
-  // must be written here.
-  let hasInlineShape = false;
-  let complete = true;
-  walk(n, (c) => {
-    if (!ts.isObjectLiteralExpression(c)) return;
-    hasInlineShape = true;
-    for (const member of c.properties) {
-      // A spread or a shorthand injects members from a binding this guard does not resolve.
-      if (ts.isSpreadAssignment(member) || ts.isShorthandPropertyAssignment(member)) {
-        complete = false;
-        continue;
-      }
-      if (!ts.isPropertyAssignment(member)) continue;
-      // A value that is a bare reference hides whatever it points at — including a boolean.
-      const v = unwrap(member.initializer);
-      if (v && (ts.isIdentifier(v) || ts.isPropertyAccessExpression(v) ||
-                ts.isElementAccessExpression(v))) complete = false;
+  return schemaIsComplete(n);
+}
+
+/** Top-level `const NAME = <init>` in this file, so a shared constant is resolved rather than feared. */
+const constCache = new WeakMap();
+function topLevelConsts(sf) {
+  let m = constCache.get(sf);
+  if (m) return m;
+  m = new Map();
+  for (const st of sf.statements) {
+    if (!ts.isVariableStatement(st)) continue;
+    for (const d of st.declarationList.declarations) {
+      if (ts.isIdentifier(d.name) && d.initializer) m.set(d.name.text, d.initializer);
     }
+  }
+  constCache.set(sf, m);
+  return m;
+}
+
+/** An identifier that merely NAMES a property, rather than standing for a value. */
+function isKeyPosition(id) {
+  const p = id.parent;
+  return !!p && "name" in p && p.name === id;
+}
+
+/** An identifier that only names the builder being called — the `z` and `object` of `z.object(…)`. */
+function isCalleeChain(id) {
+  let n = id;
+  while (n.parent && ts.isPropertyAccessExpression(n.parent)) n = n.parent;
+  return !!(n.parent && ts.isCallExpression(n.parent) && n.parent.expression === n);
+}
+
+/**
+ * Is every part of this schema shape actually present — following same-file constants?
+ *
+ * The closed form, arrived at after four narrower versions each fell to the next spelling. Rather
+ * than enumerate ways to hide a member (a spread, a shorthand, a referenced value, a `.merge(x)`,
+ * a `z.union([…, x])`), this asks the one question underneath all of them: does any identifier
+ * here stand for a VALUE this guard has not seen? Keys and builder names are not values;
+ * everything else is, and every one must resolve.
+ *
+ * Resolution rather than refusal, because refusal alone was not free: 7 of the 117 real schemas
+ * legitimately reference a shared constant (`z.enum(CONFIDENCE)`), and making those write an
+ * exemption is how a guard acquires the habit of being waved past. A same-file top-level `const`
+ * is bounded and resolvable, so it is resolved and walked. Anything else — an import, a parameter,
+ * a computed value — is unresolved, and unresolved fails closed.
+ */
+/**
+ * Like `walk`, but never descends into a TYPE.
+ *
+ * Types are not values, and treating them as such produced a real false positive: `as const` parses
+ * as a TypeReference whose type name is an identifier literally called `const`, which the value walk
+ * then tried and failed to resolve — failing 7 legitimate schemas. Anything in type position is
+ * erased before this code runs and can hide nothing at runtime.
+ */
+function walkValues(node, visit) {
+  visit(node);
+  node.forEachChild((c) => { if (!ts.isTypeNode(c)) walkValues(c, visit); });
+}
+
+/**
+ * Walk a schema expression, FOLLOWING same-file constants into their definitions.
+ *
+ * Completeness and boolean-detection must see the same expansion, or resolving a constant makes the
+ * config "readable" while the walker that matters still cannot see through it. That is a fail-open
+ * created BY the fix, and my own test caught it: `z.object(approvalFields)` resolved cleanly and
+ * then reported no boolean, because only the completeness check had been taught to follow the name.
+ */
+function walkSchema(node, sf, visit, seen = new Set()) {
+  walkValues(node, (n) => {
+    visit(n);
+    if (!ts.isIdentifier(n) || isKeyPosition(n) || isCalleeChain(n)) return;
+    if (seen.has(n.text)) return;
+    const decl = topLevelConsts(sf).get(n.text);
+    if (!decl) return;
+    seen.add(n.text);
+    walkSchema(decl, sf, visit, seen);
   });
-  return hasInlineShape && complete;
+}
+
+function schemaIsComplete(node, sf = node.getSourceFile()) {
+  let sawShape = false;
+  let complete = true;
+  const seen = new Set();
+  // ONE expanded walk, so "is the shape present", "is anything unresolved" and (elsewhere) "is
+  // there a boolean" all see exactly the same expansion. Computing them from separate traversals is
+  // what let a resolved constant read as complete-but-shapeless.
+  walkSchema(node, sf, (n) => {
+    if (ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n)) sawShape = true;
+    if (!ts.isIdentifier(n) || isKeyPosition(n) || isCalleeChain(n)) return;
+    if (topLevelConsts(sf).has(n.text)) return;   // resolvable: walkSchema followed it
+    complete = false;                             // a value this guard has not seen
+  }, seen);
+  return sawShape && complete;
 }
 
 function readableConfig(objectLiteral) {
@@ -366,7 +439,7 @@ function destructiveCall(node) {
 function modelSettableBooleans(schemaNode) {
   const names = [];
   if (!schemaNode) return names;
-  walk(schemaNode, (n) => {
+  walkSchema(schemaNode, schemaNode.getSourceFile(), (n) => {
     if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression)) return;
     const method = n.expression.name.text;
     // `.boolean()`, and also `z.literal(true)` / `z.literal(false)` — a boolean the model can set,
@@ -561,6 +634,25 @@ mcp.tool("method_purge", {
   check("a schema property whose VALUE is a reference is unanalysable",
     findToolCalls(`mcp.tool("x", { inputSchema: z.object({ confirm: someSchema }), handler: async () => {} });`)
       .map((t) => t.config !== null), [false]);
+  check("a .merge(ref) schema is unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({ id: z.string() }).merge(other), handler: async () => {} });`)
+      .map((t) => t.config !== null), [false]);
+  check("a z.union with a referenced member is unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.union([z.object({ id: z.string() }), other]), handler: async () => {} });`)
+      .map((t) => t.config !== null), [true === false ? true : false]);
+  check("a schema referencing a SAME-FILE const resolves rather than failing",
+    findToolCalls(`const LEVELS = ["a", "b"] as const;
+mcp.tool("x", { inputSchema: z.object({ level: z.enum(LEVELS) }), handler: async () => {} });`)
+      .map((t) => t.config !== null), [true]);
+  check("a const that itself hides a boolean is CAUGHT through resolution", v(`
+const approvalFields = { confirm: z.boolean() };
+mcp.tool("resolved_purge", {
+  inputSchema: z.object(approvalFields),
+  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
+});`), 1);
+  check("an `as const` schema is not mistaken for an unresolved reference",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({ a: z.enum(["p"] as const) }), handler: async () => {} });`)
+      .map((t) => t.config !== null), [true]);
   check("a NESTED object in the schema still parses",
     findToolCalls(`mcp.tool("x", { inputSchema: z.object({ a: z.object({ b: z.string() }) }), handler: async () => {} });`)
       .map((t) => t.config !== null), [true]);
