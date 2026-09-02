@@ -82,9 +82,24 @@ export function removalRefusal(raw: string | null | undefined, personName: strin
     [/active workspace changed/, { message: `Your active workspace changed before this could run, so nothing was removed. Open ${workspaceName} again to try.`, retryable: false, reconciled: false }],
     [/authentication required/, { message: "Your session ended before this could run. Sign in again and nothing will have changed.", retryable: false, reconciled: false }],
     [/not on this workspace/, { message: `${personName} is no longer on this team. Nothing further was changed.`, retryable: false, reconciled: true }],
+    [/cannot remove admin role from platform owner/, { message: `${personName} holds a platform role that can't be given up here, so nothing was changed.`, retryable: false, reconciled: false }],
   ];
   for (const [pattern, refusal] of known) if (pattern.test(text)) return refusal;
-  return { message: `Nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
+
+  // THE DEFAULT IS NOT RETRYABLE, and that is the opposite of what it was. An unrecognised message
+  // is, by definition, one we cannot promise will clear — and a real one proves it: removing a
+  // tenant Admin cascades into trg_sync_tenant_member_to_user_roles, which deletes their global
+  // `admin` grant, which fires protect_owner_admin. When the target is the platform owner that
+  // raises and the whole removal aborts, every time. Offering "Try again" there is an invitation to
+  // press a button that cannot work.
+  //
+  // Only a TRANSPORT failure earns a retry, because only a transport failure is plausibly
+  // transient. Everything else is the server having decided something, and deciding again will
+  // decide the same.
+  if (/failed to fetch|networkerror|network request|network error|timeout|timed out|aborted|econnreset|load failed/i.test(text)) {
+    return { message: `Nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
+  }
+  return { message: `Nothing changed — ${personName} is still on this team. Reopen Team to see the current roster.`, retryable: false, reconciled: false };
 }
 
 export function validateWorkProfile(title: string, responsibilities: string): { title?: string; responsibilities?: string } {

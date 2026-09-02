@@ -102,6 +102,35 @@ async function main() {
       : note("FAIL", `Escape: dialog count ${dialogStillOpen}, confirm gone ${confirmGone}`);
   });
 
+  await drive("mount-focus", "", async (page) => {
+    // A real browser check that jsdom's own version mirrors: opening a teammate must not land the
+    // caret on the destructive button. The stage-follows-focus effect used to fire its idle branch
+    // on mount and override the dialog's own initial focus.
+    await openEditorOnAMember(page);
+    const label = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
+    /^Remove /.test(label)
+      ? note("FAIL", `opening the editor focused the destructive button (${JSON.stringify(label)})`)
+      : note("OK", "opening the editor does not focus the destructive button");
+  });
+
+  await drive("refusal-keeps-focus-inside", "&remove=refuse-nonowner", async (page) => {
+    // THE CHECK jsdom STRUCTURALLY CANNOT MAKE. A non-retryable refusal disables the confirm button
+    // while it holds focus; a real browser blurs it to <body>, where the Tab trap's first/last
+    // comparison never fires and the next Tab walks out of the aria-modal dialog. jsdom does not
+    // blur on `disabled`, so it sees nothing wrong. This is why the finding needed a browser.
+    await openEditorOnAMember(page);
+    await removeTrigger(page).first().click();
+    await confirmButton(page).click();
+    await page.waitForSelector('[role="alert"]');
+    const inside = await page.evaluate(() => {
+      const active = document.activeElement;
+      return Boolean(active) && active !== document.body && Boolean(active.closest('[role="dialog"]'));
+    });
+    inside
+      ? note("OK", "a non-retryable refusal keeps focus inside the dialog")
+      : note("FAIL", "a non-retryable refusal dropped focus out of the dialog");
+  });
+
   await drive("refused-not-owner", "&remove=refuse-nonowner", async (page) => {
     const row = await openEditorOnAMember(page);
     await removeTrigger(page).first().click();

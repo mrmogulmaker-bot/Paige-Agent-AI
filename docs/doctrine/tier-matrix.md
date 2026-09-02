@@ -1396,24 +1396,38 @@ guards are proven against production inside a rolled-back transaction, and nothi
 becomes live only when the migration is applied and an authenticated drive confirms it. Until then
 the honest label is `PENDING`, not `SHIPPED`.
 
-An Owner can remove one active **Admin or Member** from the workspace they are currently in, from
-the existing member editor on the Team screen. `remove_solo_team_member(_member_user_id,
+An Owner can remove one **Admin or Member** from the workspace they are currently in, from the
+existing member editor on the Team screen. Not only an *active* one: the target lookup deliberately
+carries no status filter, because `UNIQUE (tenant_id, user_id)` means a filter could only hide a row
+— and a hidden row is both unremovable here and still counted as "already belongs to the workspace"
+by the invitation functions. A suspended membership is removable, and the roster already shows it. `remove_solo_team_member(_member_user_id,
 _expected_tenant_id)` derives the actor from `auth.uid()` and the workspace from
 `current_user_tenant_id()`; the tenant argument is a **refusal-only** confirmation token that can
 abort the call and can never select a workspace.
 
-| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
-|---|---|---|---|---|---|---|---|
-| Remove an Admin or Member (Owner only) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Remove an Owner or co-Owner | — | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
-| Remove yourself | — | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
-| Remove a legacy specialised permission (e.g. Coach) | — | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
-| Remove somebody by direct table write | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Capability | God | Agency (own roster) | Agency (switched into a sub-account) | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Remove an Admin or Member (Owner only) | — | ✓ | **✗** | ✓ | ✓ | ✓ | — | 403 |
+| Remove an Owner or co-Owner | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove yourself | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove a legacy specialised permission (e.g. Coach) | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove somebody by direct table write | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
-The ✓ rows are Owner-only *within* that tier: an Admin is refused by the same function that serves
-the Owner. The God row is `—` for the same honest reason the Chat seam's is — a tenant-less operator
-has no `current_user_tenant_id()`, so the function raises rather than reaching across tenants; an
-operator who has switched into a tenant resolves as that tenant.
+The ✓ cells are Owner-only *within* that tier: an Admin is refused by the same function that serves
+the Owner.
+
+**The switched-into-a-sub-account column is `✗`, and an earlier draft of this row got it wrong.**
+It said `✓` and glossed it as "acting inside a tenant workspace it has switched into". That is false,
+and the correction is recorded rather than quietly edited because this table is the source of truth
+other sessions answer from. `agency_enter_subaccount()` — both overloads, read on production — seats
+the manager as `role = 'admin'` and never sets `is_owner`, preserving `'owner'` only on a row that
+was already one. `remove_solo_team_member` gates on `is_tenant_owner(_actor, _tenant)`, which
+requires `is_owner = true`. So a switched-in agency manager is an Admin in that child workspace and
+is refused with *"only the workspace owner may remove someone from this workspace"*. An Agency's own
+Owner removing someone from the Agency tenant's own roster is the `✓`.
+
+The God row is `—` for the same honest reason the Chat seam's is: a tenant-less operator has no
+`current_user_tenant_id()`, so the function raises rather than reaching across tenants.
 
 **The last row is the part that makes the others true.** Before this change,
 `GRANT SELECT, INSERT, UPDATE, DELETE … TO authenticated` (`20260629175341:62`) plus the `FOR ALL`

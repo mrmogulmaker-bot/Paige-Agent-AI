@@ -37,9 +37,15 @@ const body = sql.slice(
  */
 const code = body.replace(/--[^\n]*/g, "");
 
+/**
+ * Indexes CODE, never prose. Every ordering assertion below is "this guard precedes the write", and
+ * a comment quoting the guard text placed above the DELETE would satisfy that against `body` while
+ * the real guard sat after it. No guard string is comment-shadowed today; the point is that it
+ * could be, and then the whole ordering suite would be measuring the wrong thing silently.
+ */
 const at = (needle: string) => {
-  const index = body.indexOf(needle);
-  expect(index, `expected the function body to contain ${JSON.stringify(needle)}`).toBeGreaterThan(-1);
+  const index = code.indexOf(needle);
+  expect(index, `expected the function's CODE to contain ${JSON.stringify(needle)}`).toBeGreaterThan(-1);
   return index;
 };
 
@@ -74,9 +80,12 @@ describe("remove_solo_team_member — the shape of the seam", () => {
     // whole reason it is safe, so it is asserted rather than trusted to a reader's good faith.
     expect(body).toContain("_actor uuid := auth.uid()");
     expect(body).toContain("_tenant uuid := public.current_user_tenant_id()");
-    expect(body).toContain("_expected_tenant_id IS DISTINCT FROM _tenant");
-    expect(code).not.toMatch(/tenant_id\s*=\s*_expected_tenant_id/);
-    expect(body).toContain("tm.tenant_id = _tenant");
+    expect(code).toContain("_expected_tenant_id IS DISTINCT FROM _tenant");
+    // The parameter may appear in EXACTLY ONE place in the code: the comparison that refuses. If it
+    // is read anywhere else it has stopped being a refusal token and started being a selector.
+    expect(code.split("_expected_tenant_id").length - 1, "_expected_tenant_id is read more than once").toBe(2);
+    expect(code).toContain("tm.tenant_id = _tenant");
+    // The word is in the prose for a human; the assertion above is what actually holds it true.
     expect(body).toContain("refusal-only");
   });
 
@@ -165,8 +174,11 @@ describe("remove_solo_team_member — what removal actually does", () => {
   });
 
   it("confirms the row actually went before it claims anything", () => {
-    expect(body).toContain("GET DIAGNOSTICS");
-    expect(body).toContain("ROW_COUNT");
+    expect(code).toContain("GET DIAGNOSTICS");
+    expect(code).toContain("ROW_COUNT");
+    // The assertion this test is NAMED for, and which it did not previously make: deleting the
+    // comparison while keeping the GET DIAGNOSTICS line used to leave this test green.
+    expect(code).toContain("_removed <> 1");
     expect(at("GET DIAGNOSTICS")).toBeLessThan(at("INSERT INTO public.audit_logs"));
   });
 
@@ -216,8 +228,11 @@ describe("the table underneath — a guarded function is not a boundary on its o
     // `authenticated` removed all 3. anon and authenticated both held TRUNCATE on the real table,
     // granted by project-level default privileges rather than by any migration here — so no amount
     // of policy work would have found or fixed it.
-    expect(sql).toMatch(/TRUNCATE/);
-    expect(sql).toMatch(/row-level security does not (apply to|gate) it|RLS does not gate TRUNCATE/i);
+    // Against the REVOKE statement, not against the paragraph explaining it: the previous version
+    // of this assertion passed on the comment block alone, so removing TRUNCATE from the grant list
+    // would not have failed it.
+    const revoke = sql.slice(sql.indexOf("REVOKE INSERT, UPDATE, DELETE, TRUNCATE"));
+    expect(revoke).toMatch(/^REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public\.tenant_members FROM anon, authenticated;/);
   });
 
   it("leaves reads alone, because roughly ten browser reads depend on them", () => {

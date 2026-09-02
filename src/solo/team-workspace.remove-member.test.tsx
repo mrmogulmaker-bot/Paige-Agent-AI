@@ -93,6 +93,28 @@ describe("who is offered the control at all", () => {
   });
 });
 
+describe("before anything is armed", () => {
+  it("does not put the caret on the destructive button when the editor opens", async () => {
+    // THE DEFECT THIS EXISTS FOR, found by an adversarial read of the pushed diff and not by this
+    // suite. The stage-follows-focus effect fired its `idle` branch on MOUNT, and a child's effects
+    // commit before its parent's — so it overrode the Modal's own initial focus and left the caret
+    // on "Remove from workspace". Opening a teammate and pressing Enter armed a removal. Every test
+    // here passed, because not one of them looked at focus before calling arm().
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    expect(host.querySelector('[role="dialog"]')).toBeTruthy();
+    expect(document.activeElement?.getAttribute("aria-label") ?? "").not.toMatch(/^Remove /);
+  });
+
+  it("still moves focus to Cancel once the confirmation is armed", async () => {
+    // The guard above must not have cost the behaviour it protects.
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    expect(document.activeElement?.textContent?.trim()).toBe("Cancel");
+  });
+});
+
 describe("arming the confirmation", () => {
   it("sends nothing, names the person and the workspace, and puts focus on Cancel", async () => {
     const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
@@ -183,8 +205,12 @@ describe("what happens when it fails", () => {
   });
 
   it("refuses to claim success when the server acted on a different workspace", async () => {
-    // Switching workspaces writes profiles.active_tenant_id before this screen's state changes, so
-    // the echoed tenant is the only thing that can tell us which roster was actually touched.
+    // HONEST LABEL: this exercises a branch the server cannot currently reach. The RPC refuses on
+    // `_expected_tenant_id IS DISTINCT FROM _tenant` before doing anything and, on success, always
+    // echoes the tenant it acted on — so a mismatched echo is a fabricated response, not a hazard
+    // this proves we survive. The guard stays as defence in depth against a future change to that
+    // contract, and this is a UI-state test of it, NOT workspace-safety evidence. The real
+    // workspace safety is the server's refusal, proven in docs/evidence/team-removal/.
     const onRemoved = vi.fn();
     mocks.rpc.mockResolvedValue({ data: { tenant_id: "tenant-OTHER", membership_id: "m", removed_user_id: "member-1" }, error: null });
     const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={onRemoved} />);
@@ -205,6 +231,20 @@ describe("what it sends", () => {
     await arm(host);
     await act(async () => confirmButton(host)!.click());
     expect(mocks.rpc).toHaveBeenCalledWith("remove_solo_team_member", { _member_user_id: "member-1", _expected_tenant_id: "tenant-1" });
+  });
+
+  it("issues exactly ONE request when the confirm is clicked twice inside one batch", async () => {
+    // `disabled` alone is not a guard. Two clicks dispatched before the disabling re-render commits
+    // both reach the handler, and the second removal answers "that person is not on this
+    // workspace's team" — which the screen then reports as a reconciliation instead of as the
+    // removal the owner actually performed. Right roster, wrong sentence.
+    mocks.rpc.mockResolvedValue({ data: { tenant_id: "tenant-1", membership_id: "membership-1", removed_user_id: "member-1" }, error: null });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    const confirm = confirmButton(host)!;
+    await act(async () => { confirm.click(); confirm.click(); });
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -250,6 +290,64 @@ describe("the roster after a removal", () => {
   });
 });
 
+describe("a selection that stops being live", () => {
+  it("is cleared, not merely hidden — so the editor cannot reappear on its own later", async () => {
+    // THE REGRESSION THIS EXISTS FOR, and it lands on the SHIPPED save flow, not on removal.
+    // `refresh()` is `load(0)`: it drops every page past the first. A member reached through
+    // "Load more" therefore falls out of the roster on any refresh — including the one that follows
+    // a successful work-details save. Hiding the editor without clearing `selected` left the dialog
+    // gone mid-save and never coming back, and a later "Load more" that returned that row RE-OPENED
+    // it by itself, showing the stale snapshot.
+    //
+    // Found by an adversarial read of the pushed diff. The first version of this suite could not
+    // see it: every test rendered MemberEditor directly, so nothing exercised the parent's own
+    // selection lifecycle across a refresh.
+    const owner = member({ membership_id: "m-owner", user_id: "owner-1", full_name: "Ada Owner", permission: "owner", is_owner: true });
+    const dana = member();
+    const page = (members: TeamMemberRecord[]) => ({
+      tenant_id: "tenant-1", tenant_name: "Example Team", viewer_permission: "owner",
+      can_manage_profiles: true, can_manage_invitations: true, can_change_permissions: true,
+      total_members: 2, members, invitations: [],
+    });
+
+    let rosterCall = 0;
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "get_solo_team_workspace") {
+        rosterCall += 1;
+        // 1 initial page · 2 "Load more" · 3 the refresh after saving · 4 "Load more" again
+        return { data: page(rosterCall === 2 || rosterCall === 4 ? [dana] : [owner]), error: null };
+      }
+      if (name === "set_solo_team_member_work_profile") return { data: { job_title: "Changed", responsibilities: "Owns client handoffs." }, error: null };
+      return { data: null, error: { message: `unexpected ${name}` } };
+    });
+
+    const { host, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    await act(async () => byText(host, "Load more (1 remaining)")!.click());
+    const row = Array.from(host.querySelectorAll("button.stw-row")).find((b) => b.textContent?.includes("Dana Reyes")) as HTMLButtonElement;
+    expect(row, "Dana's row after Load more").toBeTruthy();
+    await act(async () => row.click());
+    expect(host.querySelector('[role="dialog"]'), "editor open on the page-2 member").toBeTruthy();
+
+    // Save work details — the shipped flow, nothing to do with removal — which triggers the refresh.
+    const title = host.querySelector<HTMLInputElement>('input[placeholder="e.g. Client Success Manager"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(title, "Changed");
+      title.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => byText(host, "Save work details")!.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    // Now the load-more that used to resurrect the dialog.
+    const loadMore = byText(host, "Load more (1 remaining)");
+    if (loadMore) await act(async () => loadMore.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+    expect(host.querySelector('[role="dialog"]'), "a dialog must never re-open on its own").toBeFalsy();
+  });
+});
+
 describe("the refusal vocabulary itself", () => {
   it("recognises every reason this seam authors, and degrades honestly for anything else", () => {
     const cases: Array<[string, RegExp, boolean, boolean]> = [
@@ -269,20 +367,43 @@ describe("the refusal vocabulary itself", () => {
     }
   });
 
-  it("never prints a backend identifier it did not author", () => {
+  it("never prints a backend identifier it did not author, and does not promise a retry that cannot work", () => {
     // The neighbouring controls print error.message directly, which is fine until a trigger deeper
-    // down answers. This is the sentence a person gets instead of that.
+    // down answers. This is the sentence a person gets instead of that — and it does NOT offer a
+    // Try again, because an unrecognised server refusal is by definition one nobody can promise
+    // will clear. Deciding again decides the same.
     const refusal = removalRefusal("OWNER_GUARD: tenant ownership may only be changed via grant_co_owner()/revoke_co_owner()", "Dana Reyes", "Example Team");
     expect(refusal.message).not.toMatch(/OWNER_GUARD|grant_co_owner|::/);
     expect(refusal.message).toContain("Nothing changed");
-    expect(refusal.retryable).toBe(true);
+    expect(refusal.retryable).toBe(false);
   });
+
+  it("recognises the platform-owner role guard, which a removal can actually trigger", () => {
+    // Not hypothetical. Removing a tenant Admin cascades into
+    // trg_sync_tenant_member_to_user_roles, which deletes their global `admin` grant, which fires
+    // protect_owner_admin (verified live: BEFORE DELETE OR UPDATE ON public.user_roles). When the
+    // target is the platform owner it raises and the whole removal aborts — every time.
+    const refusal = removalRefusal("Cannot remove admin role from platform owner", "Dana Reyes", "Example Team");
+    expect(refusal.message).toMatch(/platform role/);
+    expect(refusal.retryable).toBe(false);
+    expect(refusal.reconciled).toBe(false);
+  });
+
+  it("still offers a retry for a transport failure, which is the one kind that is transient", () => {
+    for (const transient of ["TypeError: Failed to fetch", "NetworkError when attempting to fetch", "request timed out"]) {
+      const refusal = removalRefusal(transient, "Dana Reyes", "Example Team");
+      expect(refusal.retryable, transient).toBe(true);
+    }
+  });
+
 
   it("degrades honestly when there is no message at all", () => {
     for (const empty of [null, undefined, ""]) {
       const refusal = removalRefusal(empty, "Dana Reyes", "Example Team");
       expect(refusal.message).toContain("still on this team");
       expect(refusal.reconciled).toBe(false);
+      // No message at all is not a transport failure we can name, so it does not earn a retry.
+      expect(refusal.retryable).toBe(false);
     }
   });
 });

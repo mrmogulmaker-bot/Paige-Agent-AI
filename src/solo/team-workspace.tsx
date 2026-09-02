@@ -83,7 +83,9 @@ function Modal({ title, description, onClose, onEscape, children }: { title: str
   // parent state change re-ran it: re-capturing the return-focus target and yanking focus back to
   // the close button — including in the middle of a confirmation the user was reading.
   const latest = useRef({ onClose, onEscape });
-  latest.current = { onClose, onEscape };
+  // Assigned on COMMIT, not during render: a render that is discarded (StrictMode, concurrent
+  // rendering) would otherwise leave this ref holding callbacks from a pass that never took effect.
+  useEffect(() => { latest.current = { onClose, onEscape }; });
   useEffect(() => {
     const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     // `[data-initial-focus]` is tried on its own FIRST. A single querySelector with a comma-joined
@@ -170,17 +172,33 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
   const removeButtonRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const pendingRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const inFlight = useRef(false);
+  // Whether this dialog has been through a removal stage at all. Without it the effect below fires
+  // its `idle` branch on MOUNT — and a child's effects commit before its parent's, so it overrode
+  // the Modal's own initial focus and left the caret on "Remove from workspace" the moment anyone
+  // opened a teammate. Enter would then have armed a removal. Found by an adversarial read of the
+  // pushed diff and confirmed in a real browser; every jsdom test here passed straight through it,
+  // because none of them asserted anything about focus BEFORE the confirm was armed.
+  const removalTouched = useRef(false);
 
-  // Focus follows the state the user is actually in. When the confirm arms, `data-initial-focus`
-  // puts the caret on Cancel (never on the destructive button). When it goes pending both buttons
-  // disable, and the Tab trap's `:not(:disabled)` query would otherwise leave document.activeElement
-  // on <body>, where neither the first nor the last branch fires and the next Tab walks out of the
-  // dialog — so focus moves onto the live status line instead, which is inside it.
   // Focus follows the stage, in an effect rather than in the click handler: the node being focused
-  // is rendered BY the state change, so focusing synchronously reaches a ref that is still null.
+  // is rendered BY the state change, so focusing synchronously would reach a ref that is still null.
   useEffect(() => {
+    if (removal.stage !== "idle") removalTouched.current = true;
+    if (!removalTouched.current) return;
+    // Cancel, never the destructive button: an armed confirmation must not be one Enter away.
     if (removal.stage === "armed" && !removal.error) cancelRef.current?.focus();
+    // Both buttons disable while the request is in flight. The Tab trap queries
+    // `button:not(:disabled)` and only acts when activeElement is its first or last member, so a
+    // browser blurring the disabled button drops focus to <body> and the next Tab walks straight
+    // out of an aria-modal dialog. The live status line keeps it inside.
     if (removal.stage === "pending") pendingRef.current?.focus();
+    // Same trap, different stage, and it is the one the first version missed: a NON-retryable
+    // refusal disables the confirm button while it holds focus and leaves the stage `armed`, so
+    // neither branch above fires. jsdom does not blur on `disabled`, which is exactly why the tests
+    // could not see it. The alert is the right landing place anyway — it is what the user must read.
+    if (removal.stage === "armed" && removal.error) errorRef.current?.focus();
     if (removal.stage === "idle") removeButtonRef.current?.focus();
   }, [removal.stage, removal.error]);
 
@@ -194,6 +212,12 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
   const disarmRemoval = () => setRemoval({ stage: "idle", error: null, tenantAtArm: null });
 
   const confirmRemoval = async () => {
+    // `disabled` alone is not a guard: two clicks dispatched inside one React batch both run before
+    // the disabling re-render commits, and the second removal answers "that person is not on this
+    // workspace's team" — which the screen then reports as a reconciliation rather than as the
+    // removal the owner actually performed. Right roster, wrong sentence.
+    if (inFlight.current) return;
+    inFlight.current = true;
     const tenantAtArm = removal.tenantAtArm ?? workspace.tenant_id;
     setRemoval({ stage: "pending", error: null, tenantAtArm });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- migration RPC awaits generated types
@@ -202,6 +226,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
       _expected_tenant_id: tenantAtArm,
     });
 
+    inFlight.current = false;
     if (error) {
       const refusal = removalRefusal(error.message, identity.primary, workspace.tenant_name);
       if (refusal.reconciled) {
@@ -260,8 +285,8 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
         {removal.stage !== "idle" && <div className="stw-confirm">
           <p>Remove {identity.primary} from {workspace.tenant_name}? They lose access to this workspace right away. Their Paige account is not deleted and their {workspace.tenant_name} history stays. To bring them back you would send a new invitation.</p>
           {removal.stage === "pending" && <p ref={pendingRef} tabIndex={-1} role="status" aria-busy="true">Removing {identity.primary} from {workspace.tenant_name}\u2026</p>}
-          {removal.error && <p role="alert">{removal.error.message}</p>}
-          <button ref={cancelRef} data-initial-focus className="stw-btn secondary" disabled={removal.stage === "pending"} onClick={disarmRemoval}>Cancel</button>
+          {removal.error && <p ref={errorRef} tabIndex={-1} role="alert">{removal.error.message}</p>}
+          <button ref={cancelRef} className="stw-btn secondary" disabled={removal.stage === "pending"} onClick={disarmRemoval}>Cancel</button>
           <button className="stw-btn" disabled={removal.stage === "pending" || removal.error?.retryable === false} onClick={confirmRemoval} aria-label={`Confirm removing ${identity.primary} from ${workspace.tenant_name}`}>{removal.stage === "pending" ? "Removing\u2026" : removal.error ? "Try again" : "Confirm removal"}</button>
         </div>}
       </div>}
@@ -301,6 +326,13 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
   // rendering the editor would show a person who is gone — with a live Save button and a live
   // permission select, both of which would then fail against the server.
   const selectedLive = selected && workspace ? workspace.members.some((row) => row.membership_id === selected.membership_id) : false;
+  // ...and it must be CLEARED, not merely hidden. `refresh()` is `load(0)`, which drops every page
+  // past the first and re-applies the current search and permission filters — so a member reached
+  // via "Load more", or one the filter no longer matches after an edit, falls out of the returned
+  // page on any refresh. Hiding alone left `selected` set: the editor vanished mid-save and never
+  // came back, and a later "Load more" that happened to return that row re-opened it on its own,
+  // showing the stale snapshot. That is a regression to the SHIPPED save flow, not just to removal.
+  useEffect(() => { if (selected && workspace && !selectedLive) setSelected(null); }, [selected, workspace, selectedLive]);
   const pending = useMemo(() => workspace?.invitations.filter((item) => inviteLifecycle(item) === "pending") ?? [], [workspace]);
   const manageInvite = async (action: "resend" | "revoke", invite: TeamInviteRecord) => { const { data, error } = await supabase.functions.invoke("solo-team-invitations", { body: { action, inviteId: invite.id } }); if (error || data?.ok === false) { toast.error(data?.error || error?.message || "Invitation update failed"); return; } if (action === "resend") data?.emailed ? toast.success("Fresh invitation sent; the old link was revoked.") : toast.warning("Fresh invitation created, but email delivery did not complete."); else toast.success("Invitation revoked."); team.refresh(); };
   return <div className="stw-workspace"><div className="stw-tabs" role="tablist" aria-label="Team settings"><button role="tab" aria-selected={view === "team"} onClick={() => setView("team")}>Team</button><button role="tab" aria-selected={view === "roles"} onClick={() => setView("roles")}>Roles &amp; access</button></div>

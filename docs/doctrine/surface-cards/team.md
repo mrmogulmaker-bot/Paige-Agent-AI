@@ -170,7 +170,9 @@ the canonical server-verified approval card, and `team_set_work_profile` stays `
 **Truth label for this capability alone: `PENDING`.** The code and migration exist on the branch for
 PR (Team removal); nothing is applied to production and no authenticated drive has been performed.
 
-An Owner removes one **Admin or Member** from the workspace they are in. The act deletes exactly one
+An Owner removes one **Admin or Member** from the workspace they are in (a suspended membership
+included — see the tier matrix for why the lookup carries no status filter). A switched-in agency
+manager is seated as an Admin by `agency_enter_subaccount` and is therefore refused. The act deletes exactly one
 `tenant_members` row. It does not touch identity, profile, authored records or audit history, and it
 does not reach another workspace — proven on production inside a rolled-back transaction with a
 person who is a member of two workspaces (`docs/evidence/team-removal/`). Owners, co-owners, the
