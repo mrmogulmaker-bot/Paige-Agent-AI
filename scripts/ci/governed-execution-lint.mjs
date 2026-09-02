@@ -161,9 +161,17 @@ export function importsGate(src, fileName = "in-memory.ts") {
  *
  * The name alone does not carry that. Admitting `claimedFor` by NAME left `claimedFor?: boolean`
  * passing green — the same field, re-typed into exactly the success flag this rule forbids, with
- * the allowlist recording only the label and not the reason it was admitted. So an allowlisted
- * member is additionally rejected if its declared type admits a boolean, and the reason each entry
- * was admitted is now enforced rather than merely written down.
+ * the allowlist recording only the label and not the reason it was admitted.
+ *
+ * So the allowlist pins the exact TYPE each member was admitted with, and a member whose annotation
+ * differs by anything but whitespace is refused. My first fix instead scanned for boolean-ish
+ * spellings, which left `claimedFor?: ApprovalFlag` passing — an alias this guard cannot read, and
+ * reading it would mean resolving names, the machinery deleted from the sibling guard today for
+ * producing three fail-opens in one round. Pinning needs no resolution: an unreadable type is
+ * simply not the admitted one, so it is refused rather than guessed at.
+ *
+ * The cost is that a deliberate type change must edit this map — which is the point. That edit is
+ * where someone restates why the member still cannot grant.
  *
  *   autonomyLane  the workspace's resolved lane. Selects how much approval is REQUIRED; every
  *                 unrecognised value refuses.
@@ -176,7 +184,11 @@ export function importsGate(src, fileName = "in-memory.ts") {
  *                 the live mechanism binds tool identity in the fingerprint, and that binding is
  *                 lost at this boundary unless it is restated.
  */
-const APPROVAL_FIELDS_ALLOWED = new Set(["autonomyLane", "claimedArgs", "claimedFor"]);
+const APPROVAL_FIELDS_ALLOWED = new Map([
+  ["autonomyLane", `"auto" | "confirm" | "off" | string`],
+  ["claimedArgs", `Record<string, unknown> | null`],
+  ["claimedFor", `string`],
+]);
 
 export function booleanApprovalFields(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
@@ -205,27 +217,15 @@ export function booleanApprovalFields(src, fileName = "in-memory.ts") {
     // the name alone means a later `claimedFor?: boolean` keeps the guard green while turning the
     // field into the success flag this whole rule exists to forbid. The allowlist has to enforce
     // the REASON, not the label.
-    if (m.type && declaresBoolean(m.type)) declared.push(`${name} (declared boolean)`);
+    const want = APPROVAL_FIELDS_ALLOWED.get(name);
+    const got = m.type ? normaliseType(m.type.getText()) : "<none>";
+    if (got !== normaliseType(want)) declared.push(`${name} (declared \`${got}\`, admitted as \`${want}\`)`);
   }
   return { parsed: true, fields: declared };
 }
 
-/**
- * Does this type admit a boolean — as `boolean`, as `true`/`false`, or inside a union?
- *
- * Bounded and complete in a way general dataflow is not: this walks ONE type annotation on ONE
- * declaration, and the ways to spell a boolean in a type position are enumerable.
- */
-function declaresBoolean(typeNode) {
-  let found = false;
-  walk(typeNode, (n) => {
-    if (n.kind === ts.SyntaxKind.BooleanKeyword) found = true;
-    if (ts.isLiteralTypeNode(n) &&
-        (n.literal.kind === ts.SyntaxKind.TrueKeyword ||
-         n.literal.kind === ts.SyntaxKind.FalseKeyword)) found = true;
-  });
-  return found;
-}
+/** Whitespace is not meaning; everything else in a type annotation is. */
+function normaliseType(text) { return String(text).replace(/\s+/g, " ").trim(); }
 
 /**
  * R4 — the seam receives a claim result; it never performs one.
@@ -326,32 +326,35 @@ if (process.argv.includes("--self-test")) {
 
   // R3
   check("R3 plain boolean",
-    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; confirm?: boolean; };").fields, ["confirm"]);
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; confirm?: boolean; };`).fields, ["confirm"]);
   check("R3 boolean-equivalent (Codex)",
-    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; approved?: true | false; };").fields, ["approved"]);
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; approved?: true | false; };`).fields, ["approved"]);
   check("R3 aliased type (Codex)",
-    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; approved?: ApprovalFlag; };").fields, ["approved"]);
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; approved?: ApprovalFlag; };`).fields, ["approved"]);
   check("R3 READONLY modifier (Codex)",
-    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; readonly approved?: boolean; };").fields, ["approved"]);
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; readonly approved?: boolean; };`).fields, ["approved"]);
   check("R3 QUOTED property (Codex)",
-    booleanApprovalFields('type GovernedApproval = { autonomyLane: string; "approved"?: boolean; };').fields, ["approved"]);
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; "approved"?: boolean; };`).fields, ["approved"]);
   check("R3 two members on one line",
-    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; a?: boolean; b?: boolean; };").fields, ["a", "b"]);
-  // Round 6 (Codex). An allowlisted NAME whose type turns it into an assertion.
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; a?: boolean; b?: boolean; };`).fields, ["a", "b"]);
+  // Round 6 (Codex). An allowlisted NAME whose type turns it into an assertion — and then the
+  // alias hole I found in my own first fix for it.
+  const APPROVAL = (extra) =>
+    `type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; claimedArgs?: Record<string, unknown> | null; ${extra} };`;
   check("R3 rejects an allowlisted field redeclared as a boolean (Codex)",
-    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedFor?: boolean };`).fields,
-    ["claimedFor (declared boolean)"]);
+    booleanApprovalFields(APPROVAL(`claimedFor?: boolean`)).fields.length, 1);
   check("R3 rejects an allowlisted field narrowed to a boolean literal (Codex)",
-    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedFor?: true };`).fields,
-    ["claimedFor (declared boolean)"]);
+    booleanApprovalFields(APPROVAL(`claimedFor?: true`)).fields.length, 1);
   check("R3 rejects a boolean hidden in a union",
-    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedFor?: string | boolean };`).fields,
-    ["claimedFor (declared boolean)"]);
-  check("R3 still accepts the narrowing-only string",
-    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedArgs?: Record<string, unknown> | null; claimedFor?: string };`).fields,
-    []);
+    booleanApprovalFields(APPROVAL(`claimedFor?: string | boolean`)).fields.length, 1);
+  check("R3 rejects a type ALIAS it cannot read, rather than passing it",
+    booleanApprovalFields(APPROVAL(`claimedFor?: ApprovalFlag`)).fields.length, 1);
+  check("R3 accepts the exact admitted shape",
+    booleanApprovalFields(APPROVAL(`claimedFor?: string`)).fields, []);
+  check("R3 ignores whitespace, not meaning",
+    booleanApprovalFields(APPROVAL(`claimedFor?:\n    string`)).fields, []);
   check("R3 passes the real shape",
-    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; claimedArgs?: Record<string, unknown> | null; };").fields, []);
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; claimedArgs?: Record<string, unknown> | null; };`).fields, []);
   check("R3 fails closed when absent", booleanApprovalFields("type Other = { a: boolean };").parsed, false);
 
   // R4
