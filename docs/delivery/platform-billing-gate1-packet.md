@@ -30,7 +30,7 @@ cited to a file on `main` at `1fb7928` or marked `UNVERIFIED`.
 | Ownership / collisions | Metering (MET1/MET2, parked issue #737) — read, not touched. Marketplace entitlement floor (`src/solo/marketplace.tsx:79`) — handoff, not touched. Chat approval gate (`docs/doctrine/one-approval-gate.md`) — billing decisions will build TO it, never beside it. |
 | Regression impact map | Zero runtime change. No test, route, RPC, policy, or job is altered. The `verify` and `audit` jobs run on every PR and are expected green on a docs-only diff; the Supabase preview and deploy workflows are the path-filtered ones and will skip. |
 | Failing-first plan | N/A for a no-code phase. The prototype carries a structural self-check (every required state id present and reachable) run before commit; see §11. |
-| Gates | **Gate 1 is this phase's exit.** Gate 2 is not requested. Gate 5 (skill pairing) — both `flow-by-flow` and `flow-prototype` present at version 2.0.1: PASS. |
+| Gates | **Gate 1 — approved 2026-09-02 (§4.2).** Gate 2 / Gate B: merge authority for this docs + prototype record only (§12). Gate 5 (skill pairing) — both `flow-by-flow` and `flow-prototype` present at version 2.0.1: PASS. |
 
 ---
 
@@ -176,7 +176,7 @@ in this session); every row is static/code evidence unless marked otherwise.
 
 ---
 
-## 4. Beta commercial direction — modelled, not decided
+## 4. Beta commercial direction — modelled; ruled at Gate 1 (§4.2–§4.4; §4.1 kept for the record)
 
 **Approved product direction for the prototype only** (owner, 2026-09-02): reference plan
 $149/month; intended beta base $74.50/month; a defined included allowance for selected
@@ -184,7 +184,7 @@ AI/autonomy/chat/platform usage; real observed usage and cost evidence required 
 automatic overage. **This authorizes a prototype state. It does not authorize a Stripe Product,
 Price, Coupon, Customer, Subscription, or a plan-row change.**
 
-### 4.1 Decisions the owner must settle (do not invent — each carries a recommendation and its consequence)
+### 4.1 The decisions as put to the owner (superseded by the §4.2 rulings; kept for the record)
 
 | # | Decision | Options seen in the evidence | Recommendation (reversible `ASSUMED` until ruled) | If chosen differently |
 |---|---|---|---|---|
@@ -376,8 +376,8 @@ started.
 
 | # | Slice | What it delivers | Depends on | Owner decisions needed first |
 |---|---|---|---|---|
-| 1 | **Billing Foundation** | Workspace ↔ billing-account mapping (portal/subscription lookups keyed on `platform_subscriptions.stripe_customer_id`, tenant-admin gated — fixes A1); webhook arms discriminated on `platform_plan_slug` for invoice/refund events (A3); `platform_invoices` gets its sole writer (the webhook) or is declared not-a-source; entitlement projection = one read seam that says plan · status · renewal · included allowance · add-ons; operator configuration audit (A5) | nothing | none (A5 needs a prod read, not a decision) |
-| 2 | **Beta Base Plan + truthful Billing screen** | Plan/status/renewal from the projection; sub-account "billed by your agency" state (A4); Stripe-hosted portal entry via the fixed mapping; the $74.50 state rendered **only after** D1–D4 are ruled and the Price exists | 1 | D1–D4 |
+| 1 | **Billing Foundation** | Workspace ↔ billing-account mapping (portal/subscription lookups keyed on an explicit workspace ↔ billing-customer mapping, **Owner-only** (R2) — fixes A1); webhook arms discriminated on `platform_plan_slug` for invoice/refund events (A3); `platform_invoices` gets its sole writer (the webhook) or is declared not-a-source; entitlement projection = one read seam that says plan · status · renewal · included allowance · add-ons; operator configuration audit (A5) | nothing | none (A5 needs a prod read, not a decision) |
+| 2 | **Beta Base Plan + truthful Billing screen** | Plan/status/renewal from the projection; sub-account **NOT APPLICABLE** state (A4, R8); Stripe-hosted portal entry via the fixed mapping; the $74.50 state rendered **only after** D1–D4 are ruled and the Price exists | 1 | D1–D4 |
 | 3 | **Included-usage visibility** | One server-owned usage read (from `platform_usage_events`, tenant-scoped) with allowance and 75/90/100% warnings computed server-side — the browser never sums usage or counts active add-ons itself (§57); **no automatic overage**; MET2 evidence that the drain runs on prod is a precondition | 1, 2, MET2 | D5–D8 |
 | 4 | **Marketplace paid add-ons** | One explicit purchase → verified payment → entitlement flow, after the Marketplace contract and operator price configuration are approved; A2 closed structurally (a paid item cannot install without a verified payment event) | 1, Marketplace handoff accepted | Marketplace owner + operator price config |
 | 5 | **Additional meters, one at a time** | Phone number · telephony minutes/messages · active app usage · AI/autonomy/chat · seats · other — each independently verified against the meter contract in §6 | 3 | per-meter approval |
@@ -420,7 +420,7 @@ A paid Marketplace tool may create a platform billing line item only after, in o
 1. the platform operator defines the product, price, cadence, entitlement, and cancellation policy
    (`marketplace_upsert_item` exists; cadence/cancellation fields for a recurring item do not);
 2. the Solo workspace sees the price and the billing effect before enabling it;
-3. an authorized billing decision occurs (tenant admin, through the one approval gate);
+3. an authorized billing decision occurs (the workspace **Owner**, R2, through the one approval gate);
 4. verified Stripe/platform billing state confirms payment or the approved entitlement condition
    (webhook `checkout.session.completed` keyed on `marketplace_item_slug` — the only truthful
    signal today);
@@ -501,7 +501,7 @@ entitlement logic changes in Phase 1.**
 
 ## 12. Gate 1 — approved; Gate B request for this record
 
-Open `docs/prototypes/platform-billing-gate1.html`, walk the state controls, and rule on:
+Gate 1 approved 2026-09-02. The questions as originally put (kept for the record) were:
 
 1. the Platform ↔ Client boundary as drawn (§1);
 2. the Settings → Billing shape: subscription · portal entry · included usage · add-ons · boundary
