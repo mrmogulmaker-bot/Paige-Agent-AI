@@ -2438,6 +2438,10 @@ screen, bug, refactor, UI or backend improvement, security review, automation, p
 change — is executed through the installed **`flow-by-flow`** skill and its routed references. This is
 a delivery requirement, not process language.
 
+**Solo preflight (owner: Antonio, 2026-09-02):**
+
+Read docs/brain/README.md, the Solo Platform Taxonomy, the PAIGE Spine Standard, and the relevant surface card before design or implementation.
+
 - **Read before acting.** Open `flow-by-flow/SKILL.md` completely, then `references/orchestration.md`
   completely. For Standard/Deep/release/security/permissions/persistence/integration/migration or major
   UI work, also read `references/delivery.md` completely, plus every reference the skill routes to for

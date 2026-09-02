@@ -127,15 +127,28 @@ path from tenant/client domain event to structured Mind/PAIGE Chat evidence, a g
 separately authorized, and an attributable Rail outcome. Rail is part of the Spine, not the whole
 architecture. **Today the server action-risk policy plus canonical approval gate is authoritative;
 the Compass UI is non-authoritative/in-memory or derived and does not evaluate actions or
-permissions.** The required registry is code-enforced with CI rejecting direct/hard-wired Chat
-tools/actions and competing approval channels; current source is only a `PARTIAL` foundation (52
-runtime-gated / 29 catalogued / 23 governed-but-invisible at the 2026-09-01 audit). Normal domains
+permissions.** The canonical registry, resolver and CI foundation shipped on `main` in PR #728,
+including the first `pipeline.deal_stage_evidence` entry. Platform-wide/domain adoption is still
+`PARTIAL`; a registry entry is not authenticated capability proof. Normal domains
 self-register; only new shared primitives/schemas need a Spine Change Request. Adoption is
 incremental — all new capabilities comply now, while legacy direct couplings migrate one at a time
 without pausing unrelated work. Deployed persistence and authenticated behavior remain `UNVERIFIED`
 in this documentation pass. The approval segment is owned exclusively by the PAIGE Chat workstream's
-`docs/doctrine/one-approval-gate.md`; this Spine documentation must land only after its supplying
-PR #675 merges, followed by a fresh rebase and exact-head verification.
+`docs/doctrine/one-approval-gate.md`, present on current `main` through #728.
+
+### Solo Platform Taxonomy and UI Flow Standard (owner-approved 2026-09-02; canonical)
+
+**Canonical:** `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`. Every current and future
+Solo surface uses one shared shell/template. Tenant facts, permissions, entitlements, providers and
+data may vary; shell, routes, layout, navigation, base surfaces and the single PAIGE workspace may
+not fork by account. The standard maps the actual Solo homes into business foundation, client work,
+revenue/delivery, growth/communications, intelligence/governance and the capability ecosystem; it
+preserves Campaigns' exact six tabs: Overview, Catalog, Sales, Pipeline, Social, Performance. Each
+department/subtab has a required surface card covering human job, owner/data, shell location,
+input/edit/create flows, evidence, PAIGE knowledge/proposal/action, approval, Rail, truth/browser
+proof and collisions. Full owner flows precede isolated polish. Domains own UI/data/actions; Chat
+owns final binding; stable Spine registration is self-service and only a new shared primitive needs
+an SCR. This is a docs-only standard, not proof that the mapped capabilities are live.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 
@@ -212,10 +225,12 @@ and requires the operator's Approve click — the two things #711 recorded as NO
 `paige_tool_confirmations` table and `_shared/toolConfirmation.ts` remain in place but are no
 longer on the execution path. See `docs/brain/decision-log.md`, 2026-09-02.
 
-### PAIGE Chat — the governed working interface (2026-08-31, branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT YET MERGED)
+### PAIGE Chat — the governed working interface (originated in PR #675; integrated by PR #728)
 
-**Status: on a branch, verified, awaiting Gate 2. Nothing below is live on production yet.** Recorded
-here per §0 so the next session does not re-diagnose any of it.
+**Current source status:** the branch work summarized below was integrated into current `main` by
+PR #728. The table preserves its scoped implementation record; authenticated end-to-end behavior is
+still `UNVERIFIED` where the explicit limits below say so, and no line should be read as production
+acceptance merely because it merged.
 
 Six vertical slices, each independently reviewed by an adversarial agent, repaired, and re-verified.
 
@@ -1303,8 +1318,9 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   contract and also records the canonical one-shell rule for all Solo tenants so an account where a
   defect was observed can never become a separate shell implementation.
 - **2026-09-01 — I closed a gate by handing the key to the model. Two reviews, two holes, and the
-  second one was mine (branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT
-  MERGED).** Recorded in full because the shape of the mistake matters more than the fix.
+  second one was mine (historical branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR
+  #675; later integrated by #728).** Recorded in full because the shape of the mistake matters more
+  than the fix.
 
   **The property that was protecting every write was STRUCTURAL.** The confirm gate's re-entry test
   read `approvedConfirmations`, which arrives only in the validated REQUEST BODY — and a model

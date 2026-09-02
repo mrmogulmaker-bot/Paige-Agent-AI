@@ -10,41 +10,32 @@ manifest, Chat tool, Trust Compass clamp, shared executor, or Rail outcome contr
 render, migration, deployment record, or static tool registration is not authenticated capability
 proof.
 
-### Current grounding audit — `origin/main` `83ab5120e664512e1f14371764014a4535df1250`
+### Current grounding audit — `origin/main` `76bb3bbca74ff4214feba28995d5cd0b9196fb6b`
 
-**Approval-collision source:** PAIGE Chat PR
-[#675](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/675), exact inspected head
-`6cf2386622980df97c4d55061528094680f5a95b`. That workstream owns
-`docs/doctrine/one-approval-gate.md`, the canonical approval segment of the Spine. At this audit
-point #675 is branch evidence, not `main` truth; this documentation branch must not merge until
-#675 has merged and this branch has been rebased and reverified against that result.
+PR [#728](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/728) merged the PAIGE Chat work,
+canonical approval doctrine and Spine foundation into `main`. `docs/doctrine/one-approval-gate.md`
+remains the exclusive authority for the approval segment; this standard links it rather than
+restating its mechanism.
 
 This docs pass did not perform a fresh authenticated production query. The exact source establishes:
 
-- On current `main`, PAIGE Chat's centralized action-risk seam remains `MUTATING_TOOLS` plus
-  `resolve_tool_autonomy` in `supabase/functions/paige-ai-chat/index.ts`. The exact mechanics by
-  which operator approval is proven are deliberately not restated here; they belong exclusively to
-  `docs/doctrine/one-approval-gate.md`.
-- The existing CI guard `scripts/ci/tool-catalogue-lint.mjs` is a **ratchet, not the final Spine
-  registry wall**. On this exact source it reports 52 runtime-gated tools, 29 catalogue entries, and
-  23 governed-but-invisible baseline tools. It blocks widening that known mismatch; it does **not**
-  yet reject every direct/hard-wired Chat tool/action or competing approval channel.
-- `scripts/ci/action-authority-lint.mjs` currently proves authority precedes side effects for seven
-  covered action branches. It is useful evidence, not proof of a platform-wide registry.
-- At PR #675 head `6cf2386622980df97c4d55061528094680f5a95b`,
-  `scripts/ci/chat-tool-registry-lint.mjs` rejects newly added inline Chat tool declarations and
-  `scripts/ci/one-approval-gate-lint.mjs` rejects known competing approval-channel shapes. These
-  are meaningful incremental guards. They are still **PR-BRANCH / UNMERGED** here, and the Chat-tool
-  guard explicitly states that no full Spine registry exists yet.
+- `supabase/functions/_shared/paige-spine/registry.ts` is the canonical capability registry and
+  fails closed at import; `resolveEvidence.ts` is the shared safe evidence resolver.
+- `scripts/ci/paige-spine-registry-lint.mjs`, `chat-tool-registry-lint.mjs`,
+  `action-risk-lint.mjs`, and `one-approval-gate-lint.mjs` enforce the foundation in CI. The inline
+  Chat catalogue remains legacy debt behind a no-growth ratchet; new capabilities use the registry.
+- The first entry, `pipeline.deal_stage_evidence`, is a read-only safe Pipeline evidence slice. Its
+  registry/evidence leg is `PARTIAL`, Chat binding is `PARTIAL`, Mind binding is `UNAVAILABLE`, and
+  mutation is not registered. A declaration or structural/runtime test does not make it `LIVE`.
 - Solo Compass uses the module-local `TRUST` store in `src/solo/compass.tsx`; Agency's
   `useAgencyCompass.ts` labels autonomy tiers preview-only with no persisted tier store; the operator
   `useCompass.ts` derives display lanes from action-kind defaults. No server-persisted Compass
   evaluation contract was proven. **The Compass UI is non-authoritative/in-memory or derived display
   today and must not be described as evaluating permissions or actions.**
 
-Therefore the centralized Spine registry plus full CI rejection contract below is **REQUIRED but
-PARTIAL / not yet fully implemented**. Exact deployed persistence and authenticated behavior remain
-`UNVERIFIED` in this documentation pass.
+Therefore the centralized Spine **foundation is implemented**, while platform-wide domain adoption
+remains `PARTIAL`. Exact deployed persistence and authenticated behavior remain `UNVERIFIED` in
+this documentation pass.
 
 ---
 
@@ -162,9 +153,9 @@ The registry must be enforced at runtime and in CI. CI must fail when a change:
 - bypasses the registered tenant/client scope, domain server contract, or safe outcome path.
 
 Documentation, comments, a hand-maintained second list, or a ratchet that merely prevents an existing
-gap from growing does not satisfy this contract. The current `MUTATING_TOOLS` / catalogue arrangement
-and `lint:tool-catalogue` ratchet are **PARTIAL** foundations; the unified registry and hard-fail CI
-coverage remain owed and must be grounded in their own implementation workstream.
+gap from growing does not satisfy this contract. The canonical registry and Spine CI foundation
+shipped in #728. The legacy inline Chat catalogue remains migration debt behind its no-growth guard;
+that debt does not make a new hard-wired capability acceptable and does not make every domain live.
 
 ---
 
@@ -295,9 +286,10 @@ authenticated capability.
 
 - `docs/doctrine/one-approval-gate.md` is the **exclusive authority for the approval segment** of
   the Spine. It is owned by the PAIGE Chat workstream. This document governs the full pathway but
-  does not redefine how approval is proven. At this exact audit it is supplied by unmerged PR #675 head
-  `6cf2386622980df97c4d55061528094680f5a95b`; merge order is #675 first, then rebase/reverify this
-  branch so the canonical cross-reference exists on `main`.
+  does not redefine how approval is proven. It is present on current `main` through #728.
+- `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md` is the canonical Solo human-job,
+  department/subtab and surface-card map. It assigns where a capability lives; this standard owns
+  how that capability joins safe evidence, Chat/Mind, governed action and Rail.
 - `docs/brain/paige-brain-wiring-standard.md` is the runtime-brain coverage ledger and implementation
   checklist. This document governs the cross-workstream ownership split and the broader evidence ->
   Chat/Mind -> action -> outcome architecture.

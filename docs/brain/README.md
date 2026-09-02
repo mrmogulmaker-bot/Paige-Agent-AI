@@ -23,6 +23,9 @@ index what you have not checked.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 - **Starting or assigning a feature?** → `paige-spine-integration-standard.md` for the mandatory
   evidence/action/outcome declaration, ownership split, and Spine Change Request boundary.
+- **Starting Solo design or implementation?** Read the canonical
+  `solo-platform-taxonomy-and-ui-flow-standard.md` and its relevant surface card before touching a
+  route, layout, domain flow, PAIGE binding, or shared primitive.
 
 **How to keep it true (see proposed CLAUDE.md §BRAIN).** Any PR that ships a feature, changes
 config, or lands a ruling updates the relevant brain file **in the same commit**. A normal release
@@ -41,7 +44,8 @@ unsupported agent claims here. A stale brain is worse than none — it lies with
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
-| `paige-spine-integration-standard.md` | **The platform-wide safe integration architecture:** domain event → scoped evidence for Mind/PAIGE Chat → server action-risk + canonical approval gate → attributable Rail outcome. Defines domain/Chat/shared-Spine ownership, code-enforced registry + CI contract, self-service registration, new-primitive-only Spine Change Requests, and incremental adoption. Approval proof is delegated exclusively to PAIGE Chat's `docs/doctrine/one-approval-gate.md` (PR #675 dependency). Policy is owner-approved; implementation is `PARTIAL`, and Compass is non-authoritative today | **Every new feature assignment**; any Mind, Chat, Compass, Rail, Systems Check, registry/policy, or shared-executor integration |
+| `solo-platform-taxonomy-and-ui-flow-standard.md` | **Canonical Solo operating taxonomy and UI-flow standard:** one shared shell, actual departments/subtabs, locked Campaign six-tab boundary, required surface-card fields, domain/Chat/Spine ownership, full-flow build method, truth/proof rules and collision boundaries | **Before every Solo design or implementation**; read the relevant §4 surface card |
+| `paige-spine-integration-standard.md` | **The platform-wide safe integration architecture:** domain event → scoped evidence for Mind/PAIGE Chat → server action-risk + canonical approval gate → attributable Rail outcome. Defines domain/Chat/shared-Spine ownership, code-enforced registry + CI contract, self-service registration, new-primitive-only Spine Change Requests, and incremental adoption. Approval proof is delegated exclusively to PAIGE Chat's `docs/doctrine/one-approval-gate.md`. The foundation registry/CI and first Pipeline evidence entry shipped on `main` in #728; platform/domain coverage remains `PARTIAL`, and Compass is non-authoritative today | **Every new feature assignment**; any Mind, Chat, Compass, Rail, Systems Check, registry/policy, or shared-executor integration |
 | `paige-brain-wiring-standard.md` | **The two brains, and the 5-point checklist every capability must satisfy** — second-brain entry + callable seam + context feed + tool registration + tier availability. Includes the running coverage ledger (what Paige can/can't see). Names the four real layers of her runtime brain | **Shipping ANY capability** — owner-directed, 2026-08-19 |
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
@@ -66,13 +70,13 @@ unsupported agent claims here. A stale brain is worse than none — it lies with
   first-parent `main` records were inventoried: #701, #699, #700, #702, #703, #704, #705. Exact
   heads, check/deploy evidence, durable changes, and `UNVERIFIED` limits are in
   `decision-log.md` → “2026-09-01 — release reconciliation after #697.”
-- **Current branch base after rebase:** `83ab5120e664512e1f14371764014a4535df1250`.
-  The first-parent range after #705 contains exactly 20 inherited `main` records: #707, #708, #709,
+- **Current branch base after rebase:** `76bb3bbca74ff4214feba28995d5cd0b9196fb6b`.
+  The first-parent range after #705 contains exactly 22 inherited `main` records: #707, #708, #709,
   #683, #710, #712, #711, #714, #713, #715, #717, #716, #719, #720, #721, #722, #723, #718, #725,
-  and the final `83ab5120…` Team merge. Seventeen of those records changed `docs/brain/`. They are
+  the `83ab5120…` Team merge, #727, and the final #728 Spine merge. Those inherited records are
   current-base input, not records audited by the historical seven-release table. This section makes
-  no claim that the old pass reconciled them. After PR #675 merges, re-run both first-parent and
-  docs-path checks during the required final rebase.
+  no claim that the old pass reconciled them. Re-run both first-parent and docs-path checks before a
+  new exact-head release claim.
 - **Evidence boundary:** all seven are merged and have successful GitHub `Production` deployment
   records. That proves release metadata, not authenticated product behavior. #699 explicitly owes
   authenticated runtime. #701 and #702 had green PR-head CI but cancelled push CI after rapid later

@@ -106,7 +106,8 @@ has no Spine obligation. For any declared Spine leg, completion is coordinated a
       it does **not** wire or rewrite Chat core itself.
 - [ ] **3c. REGISTRY + CI — is the binding mechanically enforced?** A new capability uses the
       centralized registry/policy. CI rejects direct/hard-wired Chat tools/actions and competing
-      approval channels. Current `main` has only the catalogue ratchet; unmerged PR #675 adds
+      approval channels. Current `main` includes the canonical Spine registry and CI foundation from
+      #728; the legacy inline catalogue remains migration debt behind its no-growth ratchet. #728 adds
       no-new-inline and one-gate ratchets, but explicitly not the full registry. Do not call the
       contract complete until the unified hard-fail registry is implemented and proven.
 - [ ] **4. Tier availability declared** via `getTierFeatureSet()` / `hasFeature()` (§60), never an
