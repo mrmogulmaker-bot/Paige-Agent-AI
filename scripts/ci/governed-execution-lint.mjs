@@ -192,22 +192,25 @@ const APPROVAL_FIELDS_ALLOWED = new Map([
 
 export function booleanApprovalFields(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
-  let members = null;
+  // EVERY declaration, not the first one. TypeScript merges interfaces of the same name, so
+  // stopping at the first match let `interface GovernedApproval extends ApprovalFlag {}` sit
+  // unread after a clean declaration — the merged type inherits `approved?: boolean` while this
+  // rule reports nothing. Collect them all and refuse a merge rather than trying to combine them:
+  // combining is resolution by another name, and the shape this guard must read is ONE declaration.
+  const decls = [];
   walk(sf, (n) => {
-    if (members) return;
     if (ts.isTypeAliasDeclaration(n) && n.name.text === "GovernedApproval" &&
-        ts.isTypeLiteralNode(n.type)) members = n.type.members;
-    if (ts.isInterfaceDeclaration(n) && n.name.text === "GovernedApproval") {
-      // An interface can INHERIT members. Reading only `n.members` makes
-      // `interface GovernedApproval extends ApprovalFlag` look empty while `ApprovalFlag` supplies
-      // an `approved?: boolean` this rule exists to forbid. Following the heritage clause would
-      // mean resolving a name to its declaration — declined here for the same reason it was
-      // declined for the schema and for the type annotation: it is a symbol table, and the answer
-      // to "I cannot see it" is to refuse, not to guess.
-      if (n.heritageClauses?.length) { members = "heritage"; return; }
-      members = n.members;
-    }
+        ts.isTypeLiteralNode(n.type)) decls.push({ members: n.type.members, heritage: false });
+    if (ts.isInterfaceDeclaration(n) && n.name.text === "GovernedApproval")
+      decls.push({ members: n.members, heritage: !!n.heritageClauses?.length });
   });
+  if (decls.length > 1) {
+    return { parsed: true,
+             fields: [`<declared ${decls.length} times — a merged type cannot be read as one shape>`] };
+  }
+  const only = decls[0];
+  let members = !only ? null : only.heritage ? "heritage" : only.members;
+
   if (members === "heritage") {
     return { parsed: true, fields: ["<extends another type — inherited members cannot be read>"] };
   }
@@ -361,6 +364,12 @@ if (process.argv.includes("--self-test")) {
     booleanApprovalFields(APPROVAL(`claimedFor?: string | boolean`)).fields.length, 1);
   check("R3 rejects a type ALIAS it cannot read, rather than passing it",
     booleanApprovalFields(APPROVAL(`claimedFor?: ApprovalFlag`)).fields.length, 1);
+  check("R3 refuses a DECLARATION-MERGED type (Codex)",
+    booleanApprovalFields(`interface GovernedApproval { autonomyLane: "auto" | "confirm" | "off" | string; claimedArgs?: Record<string, unknown> | null; claimedFor?: string; }
+interface GovernedApproval extends ApprovalFlag {}`).fields.length, 1);
+  check("R3 refuses a merge even when the second declaration looks harmless",
+    booleanApprovalFields(`interface GovernedApproval { autonomyLane: "auto" | "confirm" | "off" | string; }
+interface GovernedApproval { approved?: boolean; }`).fields.length, 1);
   check("R3 refuses an interface that EXTENDS another type (Codex)",
     booleanApprovalFields(`interface GovernedApproval extends ApprovalFlag { autonomyLane: "auto" | "confirm" | "off" | string; }`).fields.length, 1);
   check("R3 still reads a plain interface",
