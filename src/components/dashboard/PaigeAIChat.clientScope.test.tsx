@@ -15,6 +15,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 
 const harness = vi.hoisted(() => ({
@@ -88,11 +89,12 @@ const sseResponse = (frames: string[], opts: { gateBefore?: number; gate?: Promi
  * MOUNTED THE WAY THE CLIENT-FOCUSING SURFACE ACTUALLY MOUNTS — `hideHeader fill enableHistory`,
  * and NO `soloTenantSafety`.
  *
- * That flag is passed by exactly one mount (`SoloPaigeWorkspace`), and Solo passes no `clientId`.
- * The surface that focuses clients (`PaigeWorkspace`) does not pass it. So a test that sets it is
- * testing a configuration in which the bug cannot occur — which is precisely why the first version
- * of these tests was green against broken code, and why re-introducing the defect left the entire
- * 507-test suite passing. The flag is deliberately absent here.
+ * CORRECTED (#765): this rationale used to read "Solo passes no `clientId`". That stopped being
+ * true when Solo gained the Pipeline client-scope seam — `SoloPaigeWorkspace.tsx:335-343` now
+ * passes `soloTenantSafety`, `clientId` AND `onFocusRelease` together. So BOTH client-focusing
+ * surfaces matter, and `selectThread` takes materially different branches under that flag. The
+ * default mount here stays flag-free (that is `PaigeWorkspace`); the Solo configuration is pinned
+ * explicitly in the #765 block below rather than left to inference.
  */
 const mount = async (props: Record<string, unknown>) => {
   const host = document.createElement("div");
@@ -466,6 +468,103 @@ describe("PAIGE chat — focusing a client survives an account that has saved co
     await act(async () => { rail!.onSelect(SAVED.id); await Promise.resolve(); await Promise.resolve(); });
     expect(onFocusRelease).toHaveBeenCalledWith("thread_resumed");
 
+    // The real parents (`PaigeWorkspace.clearFocus`, `SoloPaigeWorkspace.releaseScope`) actually
+    // drop the focus, so the epoch moves. Driven here rather than left to a no-op spy, because a
+    // spy that never changes the props tests a parent this app does not have.
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory clientId={null} onFocusRelease={onFocusRelease} renderRail={() => null} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onFocusRelease).toHaveBeenCalledTimes(1);
+
+    // WHICH transcript is showing after that release is deliberately NOT asserted here. The
+    // release invalidates the request fence mid-load, so the clicked thread can lose to the
+    // newest one — a separate, pre-existing defect filed as its own issue, not repaired by #765.
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("does not let the auto-resume erase the refusal the person needs to read", async () => {
+    // The refusal path RELEASES focus, which changes the epoch, which re-arms this same
+    // auto-resume — and the resumed thread overwrites the parked explanation. The existing
+    // refusal test passes only because it inherits `threads: []`. Populate the account and
+    // the whole `pendingScopeNoticeRef` mechanism is inert, which is every real account.
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+    const fetchMock = vi.fn(async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ client_scope: { status: "refused", kind: "permission", reason: "client belongs to a different workspace" } })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "I couldn't confirm that this client belongs to your workspace." } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const refused = vi.fn();
+    const { host, root } = await mount({ clientId: "client-foreign", onFocusRelease: refused, renderRail: () => null });
+
+    const textarea = host.querySelector("textarea")!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+      setter.call(textarea, "what's their balance");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const send = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((b) => /send/i.test(b.getAttribute("aria-label") ?? ""))!;
+    await act(async () => { send.click(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(refused).toHaveBeenCalledWith("refused");
+
+    // The surface drops the focus the server denied.
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory clientId={null} onFocusRelease={refused} renderRail={() => null} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain("couldn't confirm");   // the explanation survives
+    expect(host.textContent).not.toContain(PRIOR);            // nothing resumed over it
+
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("opens the conversation the person actually clicked, not merely the newest one", async () => {
+    // The release at the top of `selectThread` changes the epoch, which invalidates the very
+    // load that release was made for — so the clicked thread is discarded and the re-armed
+    // hydration resumes `threads[0]` instead. Before #765 this was nearly unreachable, because
+    // a focus never survived long enough to click a thread under it. The repair makes it the
+    // normal state, so it has to be repaired with it rather than after it.
+    const NEWEST = { id: "thread-newest", title: "Newest", updated_at: "2026-09-02T10:00:00.000Z" };
+    const OLDER = { id: "thread-older", title: "Q3 renewal notes", updated_at: "2026-08-01T10:00:00.000Z" };
+    harness.threads = [NEWEST, OLDER];
+    harness.loadTurns.mockImplementation(async (id: string) => [
+      { role: "assistant", content: id === OLDER.id ? "THE OLDER CONVERSATION" : "THE NEWEST CONVERSATION" },
+    ]);
+    const onFocusRelease = vi.fn();
+    let rail: { onSelect: (id: string) => void } | null = null;
+
+    const { host, root } = await mount({
+      clientId: "client-b",
+      onFocusRelease,
+      renderRail: (api: { onSelect: (id: string) => void }) => { rail = api; return null; },
+    });
+
+    await act(async () => { rail!.onSelect(OLDER.id); await Promise.resolve(); await Promise.resolve(); });
+    expect(onFocusRelease).toHaveBeenCalledWith("thread_resumed");
+
+    // The real parent drops the focus, which is what invalidates the in-flight load.
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory clientId={null} onFocusRelease={onFocusRelease} renderRail={() => null} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain("THE OLDER CONVERSATION");
+    expect(host.textContent).not.toContain("THE NEWEST CONVERSATION");
+
     await act(async () => root.unmount());
     host.remove();
   });
@@ -488,5 +587,54 @@ describe("PAIGE chat — focusing a client survives an account that has saved co
 
     await act(async () => root.unmount());
     host.remove();
+  });
+});
+
+/**
+ * The SOLO configuration, pinned rather than inferred. `SoloPaigeWorkspace` is the surface the
+ * Pipeline "Open PAIGE for this client" control actually reaches, and it mounts with
+ * `soloTenantSafety` set — under which `selectThread` takes different branches. #765 must hold
+ * here too, or the repair is proven on one of the two client-focusing surfaces only.
+ */
+describe("PAIGE chat — #765 holds on the Solo mount, with soloTenantSafety set", () => {
+  const SAVED = { id: "thread-owner-1", title: "Earlier work", updated_at: "2026-09-01T10:00:00.000Z" };
+  const PRIOR = "Notes recorded about a DIFFERENT client";
+
+  afterEach(() => {
+    harness.threads = [];
+    harness.loadTurns.mockReset();
+    harness.loadTurns.mockImplementation(async () => []);
+  });
+
+  it("keeps the focus and resumes nothing, exactly as on the unflagged mount", async () => {
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+    const onFocusRelease = vi.fn();
+
+    const { host, root } = await mount({ soloTenantSafety: true, clientId: "client-b", onFocusRelease, renderRail: () => null });
+
+    expect(onFocusRelease).not.toHaveBeenCalled();
+    expect(harness.loadTurns).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain(PRIOR);
+    // Not stranded: the composer is usable, so the owner can send the turn they came to send.
+    expect(host.querySelector("textarea")).not.toBeNull();
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+});
+
+/**
+ * STATIC assertion, and labelled as such (§13). `WorkspaceBody` is not exported and has no render
+ * harness in this repository, so this pins the rule at source level only — it proves the cleanup
+ * is present, not that it runs. A render test is owed if that surface ever gets a harness.
+ */
+describe("PaigeWorkspace — a focus belongs to an account (#765 regression guard)", () => {
+  it("clears the focused client when the account changes", () => {
+    const src = readFileSync("src/components/paige/PaigeWorkspace.tsx", "utf8");
+    // Before #765 this was cleared by accident, because the account switch re-armed the history
+    // resume and `selectThread` released the focus on its way past. Skipping that resume is the
+    // correct repair, so the cleanup must now be deliberate — and must not be quietly removed.
+    expect(src).toContain("useEffect(() => { setFocusedClient(null); }, [activeTenantId]);");
   });
 });
