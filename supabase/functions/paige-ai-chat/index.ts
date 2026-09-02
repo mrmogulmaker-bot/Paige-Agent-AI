@@ -5116,16 +5116,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "team_set_work_profile",
-              description: "Owner/admin only. Set a teammate's job title and/or responsibilities for THIS workspace — what they do, not what they may do. Takes the member_user_id from the team context block; never a name. This CANNOT change anyone's access, and saying it does would be untrue. Pass both fields: whatever you pass replaces what is stored, so carry forward the current value of anything the operator did not ask you to change. Read the change back and get their yes, then call again with confirm:true.",
+              description: "Owner/admin only. Set a teammate's job title and/or responsibilities for THIS workspace — what they do, not what they may do. Takes the member_user_id from the team context block; never a name. This CANNOT change anyone's access, and saying it does would be untrue. Pass ONLY the field the operator asked to change and omit the other — an omitted field keeps whatever is stored. An empty string CLEARS a field, so send one only when they asked for it gone. Read the change back and get their yes, then call again with confirm:true.",
               parameters: {
                 type: "object",
                 properties: {
                   member_user_id: { type: "string", description: "The teammate's user_id, exactly as it appears in the team context block." },
-                  job_title: { type: "string", description: "Job title, 120 characters or fewer. Pass the existing title unchanged if only responsibilities are being edited; pass an empty string to clear it." },
-                  responsibilities: { type: "string", description: "What this person owns, decides and hands off. 2,000 characters or fewer. Pass the existing text unchanged if only the title is being edited; pass an empty string to clear it." },
+                  job_title: { type: "string", description: "Job title, 120 characters or fewer. OMIT it entirely to leave the current title alone; pass an empty string ONLY if they asked you to clear it." },
+                  responsibilities: { type: "string", description: "What this person owns, decides and hands off. 2,000 characters or fewer. OMIT it entirely to leave the current text alone; pass an empty string ONLY if they asked you to clear it. Never retype what is already stored — omitting is how you keep it." },
                   confirm: { type: "boolean", description: "true once the operator has approved the exact change you read back." }
                 },
-                required: ["member_user_id", "job_title", "responsibilities"]
+                required: ["member_user_id"]
               }
             }
           },
@@ -6884,6 +6884,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               _search: null, _permission: "all", _limit: 100, _offset: 0,
             });
             if (error) return null;
+            // THE CHECK BELONGS HERE, NOT BESIDE THE WRITE — caught by adversarial review, 2026-09-02.
+            // The first version guarded only the three execute branches, and the approval CARD is
+            // built a turn EARLIER, on the refusal path. `describeConfirm` reads this same roster,
+            // so for the mismatched speaker the card could render "Change Riley Chen
+            // (riley@northwind.example) to Admin" inside a conversation scoped to a DIFFERENT
+            // workspace — and that summary is persisted to `paige_pending_confirmations` under the
+            // conversation's tenant id. The read had been deliberately failed closed for exactly
+            // that speaker; the card re-opened it one turn before the guard ran.
+            //
+            // Putting it in the reader closes both paths from one place: every card degrades to an
+            // unnamed subject, and `teamSeamTenantMismatch` refuses on its `!actual` branch.
+            const expected = personaCtx?.tenant_id ?? null;
+            const rosterTenant = typeof (data as any)?.tenant_id === "string" ? (data as any).tenant_id : null;
+            if (!expected || !rosterTenant || rosterTenant !== expected) return null;
             return data ?? null;
           } catch { return null; }
         })();
@@ -6931,9 +6945,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     };
 
     /** The teammate, named if the caller can see them; an honest placeholder if not. */
-    const describeTeamMember = async (userId: unknown): Promise<string> => {
+    const describeTeamMember = async (userId: unknown): Promise<string | null> => {
       const id = typeof userId === "string" ? userId.trim() : "";
-      if (!UUIDISH.test(id)) return "that teammate";
+      if (!UUIDISH.test(id)) return null;
       const roster = await teamCardRoster();
       const members = Array.isArray(roster?.members) ? roster.members : [];
       const hit = members.find((m: any) => m?.user_id === id);
@@ -6943,18 +6957,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // has never set a display name — it is what the Team screen shows them as too.
       if (name) return email ? `${name.slice(0, 80)} (${email.slice(0, 120)})` : name.slice(0, 80);
       if (email) return email.slice(0, 120);
-      return "that teammate";
+      return null;
     };
 
     /** The invitation, named by the address it was sent to. */
-    const describeTeamInvite = async (inviteId: unknown): Promise<string> => {
+    const describeTeamInvite = async (inviteId: unknown): Promise<string | null> => {
       const id = typeof inviteId === "string" ? inviteId.trim() : "";
-      if (!UUIDISH.test(id)) return "that invitation";
+      if (!UUIDISH.test(id)) return null;
       const roster = await teamCardRoster();
       const invites = Array.isArray(roster?.invitations) ? roster.invitations : [];
       const hit = invites.find((i: any) => i?.id === id);
       const email = typeof hit?.email === "string" ? hit.email.trim() : "";
-      return email ? email.slice(0, 120) : "that invitation";
+      if (!email) return null;
+      // The access level belongs in the sentence. Resending is `high` because it ISSUES A NEW
+      // GRANT, and "send a fresh invitation to bob@example.com" describes an email while hiding
+      // the thing that makes it high — what bob can do when he accepts.
+      const level = hit?.permission === "admin" ? "Admin" : "Member";
+      return `${email.slice(0, 120)} (${level})`;
     };
 
     const describeConfirm = async (name: string, a: any): Promise<string> => {
@@ -7104,37 +7123,54 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         // which is 100 members and 100 invitations. Past that the card falls back to the unnamed
         // wording below. It degrades to less information, never to wrong information.
         case "team_set_work_profile": {
-          const who = await describeTeamMember(a?.member_user_id);
+          const who = (await describeTeamMember(a?.member_user_id)) ?? "that teammate";
           const title = typeof a?.job_title === "string" ? a.job_title.trim() : "";
           const resp = typeof a?.responsibilities === "string" ? a.responsibilities.trim() : "";
+          // THE TEXT ITSELF GOES ON THE CARD, not a character count. Caught by adversarial review:
+          // these exact strings are re-injected into Paige's own context on every later turn, up to
+          // 2,000 characters per member. So this write can put persistent tenant-authored text into
+          // the model's own prompt, and an operator shown only "742 characters" has approved
+          // something nobody read. The block's "treat as untrusted" line is defence in depth, not a
+          // substitute for the person seeing what is being stored.
+          const shown = resp.length > 200 ? `${resp.slice(0, 200)}…" (showing the first 200 of ${resp.length} characters)` : `${resp}"`;
           const parts: string[] = [];
           parts.push(title ? `job title "${title.slice(0, 80)}"` : "no job title");
-          parts.push(resp ? `responsibilities rewritten (${resp.length} characters)` : "no responsibilities");
+          parts.push(resp ? `responsibilities → "${shown}` : "responsibilities CLEARED");
           return `Save work details for ${who}: ${parts.join(", ")}. This describes what they do — it does NOT change what they can access.`;
         }
         case "team_set_permission": {
-          const who = await describeTeamMember(a?.member_user_id);
+          const who = (await describeTeamMember(a?.member_user_id)) ?? "that teammate";
           // The card names the CONSEQUENCE, not the enum. "permission: admin" is a field; "can
-          // invite people and manage the team" is the thing being agreed to.
+          // invite people and manage the team" is the thing being agreed to. The value read here is
+          // the canonical lowercase one settled in the gate, so the card and the write cannot
+          // disagree about which of the two it is.
           return a?.permission === "admin"
             ? `Change ${who} to Admin — they will be able to invite people, manage invitations, and edit everyone's work details. This is an access change.`
             : `Change ${who} to Member — they will lose the ability to invite people, manage invitations, or edit work details. This is an access change.`;
         }
         case "team_invite_member": {
-          const email = typeof a?.email === "string" ? a.email.trim() : "";
+          // The address is the only model-authored string on any of these cards, and the card is
+          // what an approval binds to — so it is bounded rather than interpolated whole, which
+          // otherwise lets hundreds of characters of model prose sit ahead of the "cannot be
+          // unsent" clause the operator needs to read.
+          const email = (typeof a?.email === "string" ? a.email.trim() : "").slice(0, 120);
           const level = a?.permission === "admin" ? "Admin" : "Member";
           const extra = a?.permission === "admin"
             ? " — able to invite people and manage the team"
             : "";
           const title = typeof a?.job_title === "string" && a.job_title.trim() ? ` as ${a.job_title.trim().slice(0, 60)}` : "";
-          return `Email an invitation to ${email || "that address"}${title}, giving them ${level} access${extra} once they accept. This sends a real email and cannot be unsent.`;
+          const resp = typeof a?.responsibilities === "string" ? a.responsibilities.trim() : "";
+          // Same reason as the work-profile card: this text ends up in Paige's context, so it is
+          // shown rather than silently carried.
+          const respLine = resp ? ` Responsibilities recorded as "${resp.slice(0, 200)}${resp.length > 200 ? "…" : ""}".` : "";
+          return `Email an invitation to ${email || "that address"}${title}, giving them ${level} access${extra} once they accept.${respLine} This sends a real email and cannot be unsent.`;
         }
         case "team_invite_resend": {
-          const who = await describeTeamInvite(a?.invitation_id);
+          const who = (await describeTeamInvite(a?.invitation_id)) ?? "that invitation";
           return `Send a fresh invitation to ${who}. Any link they already have STOPS WORKING, and this emails them again.`;
         }
         case "team_invite_revoke": {
-          const who = await describeTeamInvite(a?.invitation_id);
+          const who = (await describeTeamInvite(a?.invitation_id)) ?? "that invitation";
           return `Withdraw the invitation to ${who} so their link stops working. They are not told; they will simply find they cannot accept.`;
         }
         case "member_grant_role":
@@ -7522,6 +7558,92 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         if (MUTATING_TOOLS.has(tc.function.name)) {
           let gateArgs: any = {};
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
+          // ── ONE CANONICAL PERMISSION VALUE, SETTLED BEFORE ANYTHING READS IT ────────────────
+          //
+          // Caught by adversarial review, 2026-09-02, and it was the worst defect in the slice.
+          // The card branched on `permission === "admin"` with strict equality, while both SQL
+          // functions `lower(trim(...))` the value. `"Admin"` — the capitalisation used in the card
+          // text itself, in the Team screen's own labels, and throughout these tool descriptions —
+          // therefore rendered the summary "Change Riley to Member — they will LOSE the ability to
+          // invite people" and then executed a PROMOTION to Admin. The operator reads a demotion,
+          // clicks Approve, and hands over administrative control of the workspace.
+          //
+          // The stored-arguments protocol is no defence here and it is worth being precise about
+          // why: it guarantees the executed call is the call that was fingerprinted, and it was.
+          // The card and the write agreed on the argument and disagreed on its MEANING. So the fix
+          // is not more binding — it is settling the value once, above everything that reads it.
+          //
+          // The tool schema's `enum` is advisory: tool calling is non-strict, so nothing but this
+          // enforces it. An unrecognised value is refused rather than coerced, because guessing
+          // which permission a person meant is the same class of mistake in a quieter voice.
+          if (tc.function.name === "team_set_permission" || tc.function.name === "team_invite_member") {
+            const raw = typeof gateArgs?.permission === "string" ? gateArgs.permission.trim().toLowerCase() : "";
+            if (raw !== "admin" && raw !== "member") {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: false,
+                error: "That access level is not one this workspace has. It is either Admin or Member — nobody can be made an owner from a conversation. Ask the operator which of the two they mean and call this again.",
+              }) });
+              continue;
+            }
+            gateArgs.permission = raw;
+            // The gate executes the STORED arguments, and they are serialised from `gateArgs` — but
+            // only after this point. Writing it back keeps the executed call and the card reading
+            // the same canonical value even if a later revision reorders them.
+            tc.function.arguments = JSON.stringify(gateArgs);
+          }
+
+          // ── A HIGH-RISK CARD THAT CANNOT NAME ITS SUBJECT IS NOT APPROVABLE ────────────────
+          //
+          // Caught by adversarial review. The resolvers degrade to "that teammate" / "that
+          // invitation" when the id is absent from the roster page, and the gate would then happily
+          // accept an approval for "Change that teammate to Admin — they will be able to invite
+          // people, manage invitations, and edit everyone's work details." That is a yes to an
+          // unnamed person's access, which is the exact shape of consent this file refuses
+          // everywhere else — its own comment says the card IS the thing the approval binds to.
+          //
+          // Degrading to less information is fine on an `ordinary` action. On one that moves
+          // authority it is not, so this refuses instead. The likely real causes are all worth
+          // saying out loud rather than papering over: a stale id, a roster the caller cannot see,
+          // or a workspace that is not the one this conversation is about.
+          if (
+            tc.function.name === "team_set_permission" ||
+            tc.function.name === "team_invite_resend" ||
+            tc.function.name === "team_invite_revoke"
+          ) {
+            const named = tc.function.name === "team_set_permission"
+              ? await describeTeamMember(gateArgs?.member_user_id)
+              : await describeTeamInvite(gateArgs?.invitation_id);
+            if (!named) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({
+                success: false,
+                error: "I can't confirm who that is on this workspace's team, so I haven't asked you to approve anything. Check the person or invitation is still listed here, and that this is the workspace you mean.",
+              }) });
+              continue;
+            }
+          }
+
+          // ── AN OMITTED FIELD MEANS "LEAVE IT", NOT "DELETE IT" ────────────────────────────
+          //
+          // Caught by adversarial review. `set_solo_team_member_work_profile` writes BOTH columns
+          // unconditionally, so a model asked only to change a job title and emitting
+          // `responsibilities: ""` erases someone's two thousand words — on an `ordinary`
+          // classification, which the model can self-approve. The RPC's shape is shared with the
+          // Team screen, which always sends both, so it is not changed here; instead the omitted
+          // side is carried forward from what is actually stored.
+          //
+          // An EXPLICIT empty string still clears, because "take the responsibilities off her
+          // profile" is a real request. The difference is between saying nothing and saying none.
+          if (tc.function.name === "team_set_work_profile") {
+            const roster = await teamCardRoster();
+            const members = Array.isArray(roster?.members) ? roster.members : [];
+            const current = members.find((m: any) => m?.user_id === gateArgs?.member_user_id);
+            if (current) {
+              if (typeof gateArgs.job_title !== "string") gateArgs.job_title = current.job_title ?? "";
+              if (typeof gateArgs.responsibilities !== "string") gateArgs.responsibilities = current.responsibilities ?? "";
+              tc.function.arguments = JSON.stringify(gateArgs);
+            }
+          }
+
           let autoMode = await resolveToolAutonomy(tc.function.name);
           const isPipelineArchive = tc.function.name === "pipeline_configure" && gateArgs?.command?.type === "archive-pipeline";
           const isPipelineFolderArchive = tc.function.name === "pipeline_configure" && gateArgs?.command?.type === "archive-folder";
@@ -7650,6 +7772,46 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           ) {
             autoMode = "auto";
           }
+          // ── THE CLASSIFICATION OUTRANKS THE SWITCH ──────────────────────────────────────────
+          //
+          // FOUND 2026-09-02, while adding four `high` Team tools, and it is older than this
+          // change. The whole risk gate below lives inside `if (autoMode === "confirm")`. So a
+          // tenant whose stored mode for a tool is `auto` skips it — not just the confirmation,
+          // but the `high` refusal and the `owner_only` refusal with it. And `set_tool_autonomy`
+          // accepts any of auto|confirm|off for any tool key, with no reference to the action's
+          // class at all.
+          //
+          // Composed, that means a tenant admin could put `automation_set_grant` — classified
+          // `owner_only` precisely because it "changes how much Paige may do alone" — on auto, and
+          // Paige could then raise her own autonomy from a conversation. The standing rule is that
+          // she may never do that "regardless of action class or owner wording", and a settings
+          // toggle is exactly the kind of wording it must not depend on. Every `high` tool had the
+          // same shape: a switch that silently retires the approval its class exists to require.
+          //
+          // The policy file's second rule is that nothing outside it may lower a classification.
+          // A stored preference is outside it. So the clamp is one-directional and lives here,
+          // above the branch, where every path reaches it — including the Studio bump above:
+          //
+          //   `off`     survives. A brake is always the operator's to pull, at any class.
+          //   `auto`    on a `high` or `owner_only` action becomes `confirm`. It does not error and
+          //             it does not silently run; it falls into the gate, which then applies the
+          //             class's real requirement — a body-borne fingerprint for `high`, and a flat
+          //             refusal for `owner_only`.
+          //   everything else is untouched, so an `ordinary` action on auto still runs on auto.
+          //
+          // NOT FIXED HERE, and reported rather than done quietly: `set_tool_autonomy` still
+          // PERSISTS `auto` for these tools, and the capabilities surface still offers the choice.
+          // After this clamp that stored value has no effect, which makes the surface's own display
+          // inaccurate — but the setter is a shipped RPC with its own callers, and how the choice
+          // should read belongs to whoever owns that surface. The hole is closed at the only place
+          // that decides whether an action runs; the tidying is somebody's deliberate call, not a
+          // side-effect of this merge.
+          const classForClamp = classifyAction(tc.function.name);
+          if (autoMode === "auto" && (classForClamp === "high" || classForClamp === "owner_only")) {
+            console.warn("[paige] autonomy clamped by action class", JSON.stringify({ tool: tc.function.name, from: "auto", to: "confirm", risk: classForClamp }));
+            autoMode = "confirm";
+          }
+
           if (autoMode === "off") {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, error: `${(TOOL_LABELS[tc.function.name] || "this action").replace(/^./, (c) => c.toUpperCase())} is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled (don't mention any internal names) and don't retry.` }) });
             continue;
@@ -9685,14 +9847,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     inviteId: args.invitation_id,
                   };
               const { data: inv, error: invErr } = await supabaseClient.functions.invoke(
-                "solo-team-invitations", { body: invokeBody },
+                "solo-team-invitations",
+                {
+                  // EXPLICIT, rather than relying on the client's global headers reaching the
+                  // functions sub-client. It does today, but that is an undocumented internal, and
+                  // if a future release stopped folding them in this call would quietly fall back
+                  // to the anon key — `getUser()` would fail and every invitation would 401. A
+                  // silent outage on the one path that emails real people is worth one line.
+                  headers: { Authorization: authHeader },
+                  body: invokeBody,
+                },
               );
-              // `functions.invoke` puts nothing useful on `error.message` for a non-2xx, so the
-              // function's own `error` string is what a person actually needs to read — it carries
-              // "only an owner or admin may…", "this person already belongs to the workspace", and
-              // the rest of the real reasons.
-              if (invErr || (inv as any)?.ok === false) {
-                throw new Error((inv as any)?.error || invErr?.message || "The invitation could not be completed.");
+              // READ THE BODY, DO NOT READ `error.message`. Caught by adversarial review: the
+              // previous version's comment described this correctly and its code did the opposite.
+              // `solo-team-invitations` returns every refusal as a non-2xx, and supabase-js resolves
+              // a non-2xx to `{ data: null, error }` — so `inv` is null, `inv?.ok === false` is dead
+              // code, and what was thrown was the literal constant "Edge Function returned a non-2xx
+              // status code". The honest sentences — "only an owner or admin may invite team
+              // members", "this person already belongs to the workspace", "an accepted invitation
+              // cannot be resent" — all live on `error.context`, and `readInvokeBody` exists in this
+              // file for precisely this trap and was not called.
+              const invBody = await readInvokeBody(invErr, inv);
+              if (invErr || invBody.ok === false) {
+                throw new Error(String(invBody.error || "The invitation could not be completed."));
               }
               if (tc.function.name === "team_invite_revoke") {
                 result = { success: true, invitation_id: args.invitation_id, state: "revoked" };
@@ -9703,11 +9880,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // would leave the operator waiting on a person who was never contacted, which is
                 // precisely the "hoped-for outcome" this project refuses to report. So the flag
                 // travels into the result with the sentence Paige is expected to say.
-                const emailed = (inv as any)?.emailed === true;
+                const emailed = invBody.emailed === true;
                 result = {
                   success: true,
-                  invitation_id: (inv as any)?.invitationId ?? null,
-                  expires_at: (inv as any)?.expiresAt ?? null,
+                  invitation_id: invBody.invitationId ?? null,
+                  expires_at: invBody.expiresAt ?? null,
                   emailed,
                   note: emailed
                     ? (tc.function.name === "team_invite_resend"

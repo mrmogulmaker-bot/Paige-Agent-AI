@@ -92,6 +92,36 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     expect(decl).not.toContain('"owner"');
   });
 
+  it("does not let a stored autonomy preference retire the approval a class requires", () => {
+    // FOUND WHILE ADDING FOUR `high` TEAM TOOLS, and older than them. The entire risk gate sits
+    // inside `if (autoMode === "confirm")`, and `set_tool_autonomy` accepts auto|confirm|off for
+    // any tool key with no reference to its class. So a workspace that had put a tool on `auto`
+    // skipped not only the confirmation but the `high` refusal and the `owner_only` refusal too —
+    // meaning `automation_set_grant`, which is owner_only precisely because it changes how much
+    // Paige may do alone, could have been switched to auto and then raised from a conversation.
+    //
+    // The clamp is one-directional and sits ABOVE the branch so every path reaches it. `off` must
+    // survive it: a brake is the operator's to pull at any class, and a clamp that quietly
+    // re-enabled a disabled tool would be a worse bug than the one it fixed.
+    // Sliced to the clamp STATEMENT, not a fixed character window: the first window overran into
+    // the adjacent `if (autoMode === "off")` branch and failed the "off survives" assertion on
+    // neighbouring code rather than on the clamp. A test that reads past its subject is measuring
+    // whatever happens to sit next to it.
+    const clampStart = HANDLER.indexOf("const classForClamp = classifyAction(");
+    const clamp = HANDLER.slice(clampStart, HANDLER.indexOf('if (autoMode === "off")', clampStart));
+    expect(clamp).toContain('autoMode === "auto"');
+    expect(clamp).toContain('classForClamp === "high"');
+    expect(clamp).toContain('classForClamp === "owner_only"');
+    expect(clamp).toContain('autoMode = "confirm"');
+    expect(clamp).not.toContain('"off"');
+    // It has to precede the branch it protects, or it protects nothing.
+    expect(HANDLER.indexOf("const classForClamp = classifyAction("))
+      .toBeLessThan(HANDLER.indexOf('if (autoMode === "confirm") {'));
+    // And it must not be reachable only from the Solo path or only for team tools — it is keyed on
+    // the class, which is what makes it cover every high action, not just the five added with it.
+    expect(clamp).not.toContain("team_");
+  });
+
   it("refuses to act when the seam's workspace is not the one this conversation is about", () => {
     // The defect this closes, found by the seam audit before it shipped: the Team functions resolve
     // their workspace with current_user_tenant_id(), while the conversation resolves its own with
@@ -104,8 +134,15 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     // The check is asserted at EVERY branch, not once: a fifth Team tool added later without it
     // reopens the hole silently, and this count is what notices.
     expect(HANDLER).toContain("const teamSeamTenantMismatch = async ()");
+    // DERIVED, NOT HARDCODED. An earlier revision asserted `toBe(3)`, which is a trap in the other
+    // direction: a sixth Team tool added WITH the guard fails, and the cheapest green is to bump
+    // the number — which is how a ratchet stops being one. Count the executor branches instead, so
+    // the assertion is "every branch is guarded" rather than "there are three of them".
+    const executorBranches = HANDLER.split('} else if (tc.function.name === "team_').length - 1
+      + HANDLER.split('tc.function.name === "team_invite_resend" ? "resend"').length - 1;
     const guarded = HANDLER.split("const wrongTenant = await teamSeamTenantMismatch();").length - 1;
-    expect(guarded, "every Team branch consults the tenant guard").toBe(3);
+    expect(guarded, "every Team executor branch consults the tenant guard").toBe(executorBranches);
+    expect(guarded).toBeGreaterThan(0);
     // Null persona tenant is a refusal too, not a pass — "no expected tenant" is the state in which
     // a mismatch is undetectable, which is the worst moment to proceed.
     const body = HANDLER.slice(HANDLER.indexOf("const teamSeamTenantMismatch = async ()")).slice(0, 1600);
@@ -113,10 +150,105 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     expect(body).toContain("actual !== expected");
   });
 
+  it("settles one canonical permission value before anything reads it", () => {
+    // THE WORST DEFECT IN THE SLICE, caught by adversarial review. The card branched on
+    // `permission === "admin"` with strict equality while both SQL functions lower() the value, so
+    // a model emitting "Admin" — the capitalisation used in the card text, the Team screen's own
+    // labels, and these very tool descriptions — rendered "Change Riley to Member … they will LOSE
+    // the ability to invite people" and then executed a PROMOTION. The operator reads a demotion
+    // and hands over administrative control.
+    //
+    // The stored-arguments protocol did not help and it is worth being precise about why: the
+    // executed call WAS the fingerprinted call. The card and the write agreed on the argument and
+    // disagreed on its meaning, so the fix is settling the value, not binding it harder.
+    const gate = HANDLER.slice(HANDLER.indexOf('if (tc.function.name === "team_set_permission" || tc.function.name === "team_invite_member") {')).slice(0, 1400);
+    expect(gate).toContain(".trim().toLowerCase()");
+    // An unrecognised value is REFUSED, never coerced: guessing which permission somebody meant is
+    // the same mistake in a quieter voice.
+    expect(gate).toContain('raw !== "admin" && raw !== "member"');
+    expect(gate).toContain("success: false");
+    // And the canonical value is written back, so the executed arguments carry it too.
+    expect(gate).toContain("gateArgs.permission = raw");
+    // It must be settled BEFORE the fingerprint and the card are taken from those arguments.
+    expect(HANDLER.indexOf("gateArgs.permission = raw"))
+      .toBeLessThan(HANDLER.indexOf("const fp = await confirmFingerprint("));
+  });
+
+  it("checks the tenant inside the roster read, so the CARD cannot name across workspaces", () => {
+    // The first version guarded only the write. The approval card is built a turn EARLIER on the
+    // refusal path and read the same roster with no check, so a mismatched speaker could be shown
+    // — and have persisted into paige_pending_confirmations — a name and email from a workspace
+    // this conversation was deliberately never shown a roster for.
+    const reader = HANDLER.slice(HANDLER.indexOf("const teamCardRoster = ()")).slice(0, 1800);
+    expect(reader).toContain("rosterTenant !== expected");
+    expect(reader).toContain("return null");
+    // The check must be in the READER, not only beside the write — that is the whole finding.
+    expect(HANDLER.indexOf("const rosterTenant = "))
+      .toBeLessThan(HANDLER.indexOf("const teamSeamTenantMismatch = async ()"));
+  });
+
+  it("refuses a high-risk card whose subject it cannot name", () => {
+    // "Change that teammate to Admin — they will be able to invite people, manage invitations, and
+    // edit everyone's work details" is approvable prose about nobody. Degrading to less information
+    // is acceptable on an ordinary action; on one that moves authority it is a yes to an unnamed
+    // person's access.
+    const guard = HANDLER.slice(HANDLER.indexOf("A HIGH-RISK CARD THAT CANNOT NAME ITS SUBJECT")).slice(0, 2000);
+    expect(guard).toContain("await describeTeamMember(gateArgs?.member_user_id)");
+    expect(guard).toContain("await describeTeamInvite(gateArgs?.invitation_id)");
+    expect(guard).toContain("if (!named)");
+    expect(guard).toContain("haven't asked you to approve anything");
+    // The resolvers must be able to SAY they failed; a string fallback inside them would make the
+    // guard unreachable.
+    expect(HANDLER).toContain("const describeTeamMember = async (userId: unknown): Promise<string | null>");
+    expect(HANDLER).toContain("const describeTeamInvite = async (inviteId: unknown): Promise<string | null>");
+  });
+
+  it("shows the free text on the card, because it lands in Paige's own context", () => {
+    // These strings are re-injected into the model's prompt on every later turn, up to 2,000
+    // characters per member. An operator shown "742 characters" has approved something nobody read.
+    const card = HANDLER.slice(HANDLER.indexOf('case "team_set_work_profile": {')).slice(0, 1800);
+    expect(card).toContain("responsibilities → ");
+    expect(card).toContain("resp.slice(0, 200)");
+    expect(card).not.toContain("responsibilities rewritten (");
+  });
+
+  it("treats an omitted work-detail field as keep, not delete", () => {
+    // The RPC writes both columns unconditionally, so a model changing only a title and emitting
+    // an empty responsibilities string erased someone's two thousand words — on an `ordinary`
+    // action it can self-approve. The RPC is shared with the Team screen and is not changed; the
+    // omitted side is carried forward from what is stored. An EXPLICIT empty string still clears,
+    // because "take that off her profile" is a real request.
+    const carry = HANDLER.slice(HANDLER.indexOf('AN OMITTED FIELD MEANS "LEAVE IT"')).slice(0, 1600);
+    expect(carry).toContain('typeof gateArgs.job_title !== "string"');
+    expect(carry).toContain('typeof gateArgs.responsibilities !== "string"');
+    expect(carry).toContain("current.responsibilities ?? \"\"");
+    // And the schema must permit omission, or the carry-forward is unreachable.
+    const decl = HANDLER.slice(HANDLER.indexOf('name: "team_set_work_profile"')).slice(0, 1800);
+    expect(decl).toContain('required: ["member_user_id"]');
+  });
+
+  it("reads the invitation seam's real refusal instead of the transport's generic one", () => {
+    // `solo-team-invitations` returns every refusal as a non-2xx, and supabase-js resolves that to
+    // { data: null, error } — so the previous `inv?.error` was always undefined and what surfaced
+    // was the constant "Edge Function returned a non-2xx status code". The honest sentences live on
+    // error.context, and readInvokeBody exists in this file for exactly that trap.
+    // Sliced to the END of the branch rather than a character window — twice now a fixed window
+    // has measured whatever happened to sit next to the subject instead of the subject.
+    const branchStart = HANDLER.indexOf('const invokeBody = tc.function.name === "team_invite_member"');
+    const branch = HANDLER.slice(branchStart, HANDLER.indexOf('} else if (tc.function.name === "member_grant_role")', branchStart));
+    expect(branch).toContain("await readInvokeBody(invErr, inv)");
+    expect(branch).toContain("invBody.ok === false");
+    expect(branch).toContain("invBody.emailed === true");
+    expect(branch).not.toContain("(inv as any)?.error");
+    // And the caller's JWT is passed explicitly rather than inherited from an undocumented internal.
+    expect(branch).toContain("headers: { Authorization: authHeader }");
+  });
+
   it("carries the email-delivery outcome into the result instead of assuming it", () => {
     // Creating an invitation and delivering its email are two acts and the second fails alone.
     // `emailed` is what stops "invited them" being said about somebody who was never contacted.
-    const branch = HANDLER.slice(HANDLER.indexOf('const invokeBody = tc.function.name === "team_invite_member"')).slice(0, 3000);
+    const start = HANDLER.indexOf('const invokeBody = tc.function.name === "team_invite_member"');
+    const branch = HANDLER.slice(start, HANDLER.indexOf('} else if (tc.function.name === "member_grant_role")', start));
     expect(branch).toContain("emailed");
     expect(branch).toContain("did NOT go out");
   });

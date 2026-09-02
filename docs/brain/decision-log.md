@@ -860,3 +860,44 @@ is a §18 seam worth closing; it is not closed here and is not made worse here.
 `src/**` · 6 team test files, 28 tests, 5 assertions mutation-proved · 6 CI guards green · vite build
 clean. **Not deployed. The authenticated live drive is UNVERIFIED** — this session holds no browser
 that can reach the surface, so §32.c is owed to the next capable session or to the owner.
+
+**The peer-gate found two blockers the author's own tests structurally could not (§39).** Both are
+recorded because the shape of the miss matters more than the fix.
+
+1. **The approval card could name a person from another workspace.** The tenant guard was written
+   beside the three WRITE branches. The card is built a turn earlier, on the refusal path, and read
+   the same roster with no check — so for the mismatched speaker it could render a name and email
+   from workspace B inside a conversation scoped to workspace A, and persist that string into
+   `paige_pending_confirmations` under A's tenant id. The read had been failed closed for exactly
+   that speaker; the card re-opened it one turn before the guard ran. The check now lives inside the
+   roster reader, so both paths close from one place. **The test that missed it counted the string
+   `await teamSeamTenantMismatch()` and asserted it equalled three — which is exactly the number of
+   write branches. A source count cannot notice a fourth reader that has no check at all.**
+2. **The card said "Member" while the code granted "Admin".** `describeConfirm` branched on strict
+   `permission === "admin"`; both SQL functions `lower()` the value. A model emitting `"Admin"` — the
+   capitalisation used in the card text, the Team screen's labels and the tool descriptions
+   themselves — produced "Change Riley to Member … they will LOSE the ability to invite people" and
+   executed a promotion. The stored-arguments protocol was no defence and the reason is worth
+   keeping: the executed call WAS the fingerprinted call. The card and the write agreed on the
+   argument and disagreed on its MEANING. Fixed by settling one canonical value above everything
+   that reads it, and refusing an unrecognised one rather than coercing it.
+
+Four more, all real: the invitation seam's honest refusal was being discarded (`functions.invoke`
+resolves a non-2xx to `{data:null,error}`, so `inv?.error` was always undefined and what surfaced was
+the constant "Edge Function returned a non-2xx status code" — while `readInvokeBody`, written in this
+same file for precisely that trap, sat in scope uncalled); a `high` card whose subject fell outside
+the 100-row roster page was still approvable as "Change that teammate to Admin"; the work-details
+card showed a character count for text that is re-injected into Paige's own context every turn; and
+an omitted work-details field erased the stored value rather than keeping it.
+
+**And a defect older than this slice, found while adding to it.** The entire risk gate lives inside
+`if (autoMode === "confirm")`, and `set_tool_autonomy` accepts auto|confirm|off for any tool key with
+no reference to its class. So a tenant admin could put `automation_set_grant` — classified
+`owner_only` precisely because it changes how much Paige may do alone — on auto, and Paige could then
+raise her own autonomy from a conversation. Every `high` tool had the same shape. The handler now
+clamps `auto` to `confirm` for any `high` or `owner_only` action, above the branch, keyed on the
+class so it covers all 30 rather than the five added with it. `off` deliberately survives: a brake is
+the operator's to pull at any class. **Not fixed, and reported rather than done quietly:**
+`set_tool_autonomy` still persists the now-inert `auto`, and the capabilities surface still offers
+the choice. The setter is a shipped RPC with its own callers and the surface's wording belongs to
+whoever owns it.

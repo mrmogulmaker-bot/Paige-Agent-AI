@@ -1443,6 +1443,16 @@ beside a live invitation. That flag travels into the tool result with the senten
 to say, because reporting a send that did not happen leaves the operator waiting on someone who was
 never contacted (§13).
 
+**The class outranks the autonomy switch, platform-wide.** Found while adding these five and older
+than them: the whole risk gate sits inside `if (autoMode === "confirm")`, and `set_tool_autonomy`
+accepts auto|confirm|off for any tool key without consulting its class — so a tenant admin could put
+`automation_set_grant` (owner_only, because it changes how much Paige may do alone) on auto and have
+Paige raise her own autonomy from a conversation. The handler now clamps `auto` down to `confirm` for
+any `high` or `owner_only` action, above the branch and keyed on the class, so it covers all thirty
+rather than the five added with it. `off` survives the clamp: a brake is the operator's to pull at any
+class. The setter still PERSISTS the now-inert `auto` and the capabilities surface still offers it —
+reported, not silently changed, because that RPC has its own callers.
+
 **§61 default: no exception.** God/Solo/Sub-account per the standing distribution, Agency inside a
 workspace it has switched into, Enterprise both. No owner ruling was sought, and none was needed.
 
