@@ -1026,8 +1026,12 @@ already merged.
 Ruled alongside Gate 2 on the surface-card documentation. **None of these is implemented by the
 documentation that records them**; two describe work that has not happened.
 
-**1. Every PAIGE Team mutation is `owner_only`** — invite, resend, revoke, role/access grant,
-role/access revocation, permission change. **No `high` path is to be introduced for Team actions.**
+**1. ~~Every PAIGE Team mutation is `owner_only`~~ — CORRECTED SAME DAY, see the entry below.**
+The original wording, preserved because §58 does not delete a dated ruling: *invite, resend, revoke,
+role/access grant, role/access revocation, permission change; no `high` path is to be introduced for
+Team actions.* The owner withdrew this wording once its effect was named — `owner_only` removes an
+action from Chat entirely rather than gating it harder. **The paragraphs below describe the
+SUPERSEDED ruling and its gap; neither is current.**
 
 *The live code does not match this ruling.* All six are `high` on prod today in
 `_shared/action-risk.ts` (`team_invite_member`, `team_invite_resend`, `team_invite_revoke`,
@@ -1058,3 +1062,43 @@ partial sync counted as success; an extraction claim not released when the trans
 the P2 is a failed Skip leaving a proposal unretryable in `PaigeAIChat`.
 
 Issue #198 (prod migration deploy FAILED) stays **open**, untouched.
+
+---
+
+## 2026-09-02 — CORRECTION: the six Team actions stay in PAIGE at `high`
+
+Supersedes decision 1 of the entry above, on the same day, before any code was written to it. The
+prior entry is left standing and marked, not deleted (§58).
+
+**The ruling now.** Invite · resend invitation · revoke invitation · change permission/access ·
+grant role · revoke role **remain in PAIGE Chat, classified `high`**. Each requires the canonical,
+server-verified owner approval card before execution. PAIGE may propose and explain the action, and
+may carry it out only after the owner explicitly approves that exact bounded action. She may never
+manufacture approval, raise autonomy, or bypass the domain authorization check.
+`team_set_work_profile` remains `ordinary` — it changes only job title and responsibilities, cannot
+alter access, still takes the normal compact confirmation, and must never be represented as a
+permission change.
+
+**This matches the live code**, so there is no longer a gap to close and no product change is
+required. The card's table now records classifications rather than a divergence.
+
+**Why the first wording was wrong, which is the part worth keeping.** `owner_only` is not a
+stronger gate. It means *never performed from Chat, at any approval strength, however the operator
+words it.* Applying it to the six would not have hardened them — it would have **withdrawn PAIGE's
+ability to help an owner run their team**, which is the opposite of the product intent. `high` is
+the setting that means "she can do it, and only after you approve this exact call": the approval
+fingerprint travels in the request body, which the model cannot author, so the model asserting
+consent is refused.
+
+**The lesson, and it generalises past this ruling.** A classification name that sounds like a
+severity is not one. `ordinary` → `high` → `owner_only` is not a dial from *softer* to *stricter*;
+the last step changes kind, from "gated" to "absent". A ruling phrased as tightening can therefore
+delete a capability by accident. When a class name is used in a ruling, state the **effect** —
+"stays in Chat behind your approval" or "leaves Chat entirely" — because the effect is what the
+reader is actually deciding.
+
+**Unchanged by this correction, and still true:** the workspace-level outcome projection remains a
+separate Spine Change Request and is not started; Team's truth label remains `PARTIAL`; the
+authenticated live-flow proof is still owed on a capability already serving production; and PR
+#728's post-merge P1/P2 findings remain a separate active hotfix, neither repaired nor made
+irrelevant.

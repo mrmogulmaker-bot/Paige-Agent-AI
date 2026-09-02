@@ -24,34 +24,43 @@ registry requires `outcome.railVisibility`, and Team has none.
 
 ## Owner decisions of record — 2026-09-02
 
-Recorded exactly as ruled. **None of them is implemented by this document**; two of them describe
-work that has not happened yet, and saying otherwise is the failure this card exists to prevent.
+Recorded exactly as ruled. **Decision 2 describes work that has not happened**; decisions 1 and 3
+describe the platform as it already behaves. Nothing here is implemented by being written down.
 
-### 1. Every PAIGE Team mutation is `owner_only`
+### 1. The six access-changing Team actions stay in PAIGE, classified `high`
 
-Invite · resend · revoke · role/access grant · role/access revocation · permission change. **No
-`high` path is to be introduced for Team actions.**
+Invite · resend invitation · revoke invitation · change permission/access · grant role · revoke
+role. Each requires the **canonical, server-verified owner approval card before execution**. PAIGE
+may propose the action and explain it, and may carry it out only after the owner explicitly
+approves that exact bounded action. She may never manufacture approval, raise autonomy, or bypass
+the domain authorization check.
 
-**The live code does not match this ruling.** On prod today all six are classified `high`, in
-`supabase/functions/_shared/action-risk.ts`:
+**This matches the live code.** All six are `high` in `_shared/action-risk.ts`; the gate accepts
+only a fingerprint of the exact rendered card, carried in the request **body**, which the model
+cannot write.
 
-| Tool | Classified today | Ruled |
-|---|---|---|
-| `team_invite_member` | `high` | `owner_only` |
-| `team_invite_resend` | `high` | `owner_only` |
-| `team_invite_revoke` | `high` | `owner_only` |
-| `team_set_permission` | `high` | `owner_only` |
-| `member_grant_role` | `high` | `owner_only` |
-| `member_revoke_role` | `high` | `owner_only` |
+| Tool | Classification |
+|---|---|
+| `team_invite_member` | `high` |
+| `team_invite_resend` | `high` |
+| `team_invite_revoke` | `high` |
+| `team_set_permission` | `high` |
+| `member_grant_role` | `high` |
+| `member_revoke_role` | `high` |
+| `team_set_work_profile` | `ordinary` |
 
-Closing that gap is product code and a separate change; it is deliberately absent from the PR that
-introduced this card. Until it lands, the *Required confirmation* section below describes what the
-platform actually does, not what has been ruled — and the two differ.
+**A correction is recorded here rather than smoothed over.** The first version of this ruling said
+every Team mutation was `owner_only`, and this card recorded it as a gap against the code. That
+wording was wrong for the product, and the owner corrected it. The distinction is the reason it
+mattered: **`owner_only` is not a stronger gate — it removes an action from Chat entirely, at any
+approval strength.** Applying it here would not have hardened the Team tools, it would have
+withdrawn PAIGE's ability to help an owner run their team, which is the opposite of the intent.
+`high` is the setting that means *she can do it, and only after you approve this exact call*.
 
-**One question this ruling does not settle:** `team_set_work_profile` is a Team mutation but is not
-among the six enumerated, and it is `ordinary` today. It writes two text columns and cannot reach
-`permission`. It is left as `ordinary` pending an explicit owner answer rather than swept into the
-ruling by inference.
+**`team_set_work_profile` stays `ordinary`**, because it changes only job title and
+responsibilities and cannot alter access. It still requires the normal compact confirmation and
+ordinary domain authorization. **It must never be represented as a permission change** — the RPC
+writes two text columns and cannot reach `permission`, and any copy suggesting otherwise is false.
 
 ### 2. A Team event is not a client event
 
@@ -148,9 +157,9 @@ person and the consequence, not the enum, and a `high` card whose subject cannot
 refused rather than shown unnamed. A workspace `auto` setting does **not** lower this: as of
 2026-09-02 the handler clamps `auto` → `confirm` for any `high` or `owner_only` action.
 
-**This paragraph describes the platform as it runs today. It is not the ruled end state** — owner
-decision 1 above moves all six access-changing Team tools to `owner_only`, which removes them from
-Chat entirely rather than gating them harder.
+**This paragraph describes the platform as it runs today, and it is also the ruled end state**
+(owner decision 1 above): the six access-changing Team tools stay in Chat at `high`, each behind
+the canonical server-verified approval card, and `team_set_work_profile` stays `ordinary`.
 
 `team_set_work_profile` is `ordinary` — reversible, in-tenant, and structurally unable to reach
 `permission`.
