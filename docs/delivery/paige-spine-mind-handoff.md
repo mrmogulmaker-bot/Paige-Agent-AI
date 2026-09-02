@@ -98,8 +98,26 @@ Two Second Brain files have a **direct active-owner collision** with PR #729
   is where a newest-first entry has to go. Writing there would conflict on the same lines.
 - `docs/brain/lessons-learned.md` — #729 appends at the end of the file, likewise.
 
-Rather than skip them, the exact blocks are below. **Whoever lands #729 first should paste
-them**; whoever lands second should paste them then. They are additive and order-independent.
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating and **was** updated in this PR (§5),
+so no handoff is owed there. The two brain files are the only ones that could not be, and the
+four-part collision-safe handoff for them is below.
+
+- **Exact sections to change.** `docs/brain/decision-log.md` — the newest bullet, immediately
+  under the `# Decision Log` header. `docs/brain/lessons-learned.md` — appended at the end.
+- **Proposed text.** Verbatim, in the two blocks below.
+- **Owner of the follow-up.** Whichever of these two branches merges **second** pastes both
+  blocks: this branch (`claude/paige-mind-pipeline-evidence-hb1jg8`) or PR #729
+  (`claude/paige-spine-pr728-hotfix-p8mhmr`). If #729 lands first, this branch's author does it
+  before Gate 2; if this branch lands first, #729's author does it on rebase. Naming a rule
+  rather than a person is deliberate — either branch may land first, and an owner who depends on
+  that order is not an owner.
+- **Reason it could not be done in the same PR.** #729 is unmerged and edits both files at the
+  exact lines a new entry needs: it prepends a bullet directly under the decision-log header,
+  which is where a newest-first entry has to go, and appends at the end of lessons-learned.
+  Writing either here would conflict on the same lines and force whoever lands second to resolve
+  a merge by hand in a file where a bad resolution silently loses a record.
+
+The blocks are additive and order-independent.
 
 ### For `docs/brain/decision-log.md` — insert as the newest bullet
 
