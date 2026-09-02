@@ -197,8 +197,20 @@ export function booleanApprovalFields(src, fileName = "in-memory.ts") {
     if (members) return;
     if (ts.isTypeAliasDeclaration(n) && n.name.text === "GovernedApproval" &&
         ts.isTypeLiteralNode(n.type)) members = n.type.members;
-    if (ts.isInterfaceDeclaration(n) && n.name.text === "GovernedApproval") members = n.members;
+    if (ts.isInterfaceDeclaration(n) && n.name.text === "GovernedApproval") {
+      // An interface can INHERIT members. Reading only `n.members` makes
+      // `interface GovernedApproval extends ApprovalFlag` look empty while `ApprovalFlag` supplies
+      // an `approved?: boolean` this rule exists to forbid. Following the heritage clause would
+      // mean resolving a name to its declaration — declined here for the same reason it was
+      // declined for the schema and for the type annotation: it is a symbol table, and the answer
+      // to "I cannot see it" is to refuse, not to guess.
+      if (n.heritageClauses?.length) { members = "heritage"; return; }
+      members = n.members;
+    }
   });
+  if (members === "heritage") {
+    return { parsed: true, fields: ["<extends another type — inherited members cannot be read>"] };
+  }
   if (!members) return { parsed: false, fields: [] };
   const declared = [];
   for (const m of members) {
@@ -349,6 +361,10 @@ if (process.argv.includes("--self-test")) {
     booleanApprovalFields(APPROVAL(`claimedFor?: string | boolean`)).fields.length, 1);
   check("R3 rejects a type ALIAS it cannot read, rather than passing it",
     booleanApprovalFields(APPROVAL(`claimedFor?: ApprovalFlag`)).fields.length, 1);
+  check("R3 refuses an interface that EXTENDS another type (Codex)",
+    booleanApprovalFields(`interface GovernedApproval extends ApprovalFlag { autonomyLane: "auto" | "confirm" | "off" | string; }`).fields.length, 1);
+  check("R3 still reads a plain interface",
+    booleanApprovalFields(`interface GovernedApproval { autonomyLane: "auto" | "confirm" | "off" | string; claimedArgs?: Record<string, unknown> | null; claimedFor?: string; }`).fields, []);
   check("R3 accepts the exact admitted shape",
     booleanApprovalFields(APPROVAL(`claimedFor?: string`)).fields, []);
   check("R3 ignores whitespace, not meaning",
