@@ -339,10 +339,22 @@ jobs:
           set -o pipefail
           python3 .github/scripts/edge-affected.py < changed_fns.txt > affected_fns.txt
           cat affected_fns.txt
-          # A change under supabase/functions/<fn>/ is affected by construction, so a non-empty
-          # input that resolves to zero functions is a resolver failure, not an empty answer.
-          if [ "$(grep -c . changed_fns.txt || true)" -gt 0 ] && [ "$(grep -c . affected_fns.txt || true)" -eq 0 ]; then
-            echo "::error::edge-affected resolved 0 functions from $(grep -c . changed_fns.txt) changed edge-function file(s) - treating as a resolver failure, not an empty result."
+          # A change under supabase/functions/<fn>/ is affected by construction, so if any changed
+          # file lives in a real function DIRECTORY and nothing resolved, the resolver failed.
+          #
+          # A change confined to _shared/ is a different case, and this guard used to get it wrong.
+          # `edge-affected.py`'s own contract says "Exit 0 always (an empty result is a valid
+          # 'nothing to deploy')" — and a NEW _shared module that no function imports YET resolves
+          # to zero legitimately. The old condition counted every changed edge file, so adding such
+          # a module failed the build for a correct change, with an error message blaming a resolver
+          # that had worked perfectly. First hit by the governed-execution seam, a shared module
+          # deliberately adopted by nothing in its first slice.
+          #
+          # The resolver-crash detector is unchanged in the case it was written for: a changed file
+          # inside a function directory that resolves to zero functions still fails, loudly.
+          changed_in_fn_dirs="$(grep -cE '^supabase/functions/[^_/][^/]*/' changed_fns.txt || true)"
+          if [ "$changed_in_fn_dirs" -gt 0 ] && [ "$(grep -c . affected_fns.txt || true)" -eq 0 ]; then
+            echo "::error::edge-affected resolved 0 functions from $changed_in_fn_dirs changed file(s) inside a function directory - treating as a resolver failure, not an empty result."
             exit 1
           fi
           echo "count=$(grep -c . affected_fns.txt || true)" >> "$GITHUB_OUTPUT"
