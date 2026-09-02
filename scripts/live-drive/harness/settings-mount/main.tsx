@@ -182,7 +182,27 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" forcedTheme={theme} enableSystem={false}>
+      {/*
+        `defaultTheme`, NOT `forcedTheme` — and this is a repair, not a preference.
+        `forcedTheme` stamps the document attribute but leaves next-themes'
+        `resolvedTheme` at the stored/system value, and `TenantCommandCenterShell`
+        reads `resolvedTheme` to stamp its OWN `data-pg` on the wrappers inside
+        this one. So the shell rendered `data-pg="light"` under
+        `<html data-pg="dark">`, its own attribute won for everything beneath it,
+        and `--pg-canvas` computed `#fbf9f5` in BOTH runs. Every "both themes"
+        result this harness has ever produced was one palette measured twice.
+        Geometry was unaffected (identical numbers), colour was never exercised.
+        The per-theme `storageKey` keeps a persisted choice from overriding the
+        default, so the two runs cannot contaminate each other.
+        The drive asserts the RENDERED palette, not this prop — see its
+        `theme actually reaches the rendered shell` check.
+      */}
+      <ThemeProvider
+        attribute="class"
+        defaultTheme={theme}
+        enableSystem={false}
+        storageKey={`paige-harness-theme-${theme}`}
+      >
         <AgentPresenceProvider launcherEnabled={false} hasChatBody>
           <BrowserRouter>
             <Routes><Route path="/solo/:account/*" element={<Shell />} /></Routes>

@@ -131,6 +131,72 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo Settings → Setup — the visible-scroll policy (Gate 1 approved 2026-09-02; draft PR, NOT LIVE)
+
+**Status: implemented on a branch, verified structurally, awaiting Gate 2. Not merged, not
+deployed.** Recorded here per §0 because it changes an owner-facing Solo capability **and the
+official Settings UI policy**, which is answered from this file.
+
+**The owner-facing change.** Solo Settings → Setup now draws a visible, draggable main-content
+scrollbar. Before this, it rendered 3,973–4,174px of business brief into a 702–934px host at every
+supported Solo viewport — **78–82% below the fold on arrival with no scrollbar in either lane** — so
+an owner could reasonably believe the first section was the whole page. It was the only one of the
+eight Settings destinations that overflowed its host. Nothing about the business brief, its
+information architecture, its fields, permissions or provider connections changed.
+
+**The policy, as ruled (2026-09-02).** A Settings surface may use a clearly visible, accessible
+main-content scrollbar when real configuration content materially exceeds the available viewport.
+
+| Surface | Policy |
+|---|---|
+| **Settings → Setup** | **Visible scrollbar — newly authorized** |
+| Settings → Connections (incl. Calendars), Settings → Integrations | Visible scrollbar — already authorized |
+| Short Settings destinations that genuinely fit (Team, Notifications, Security & data, Vault, Billing) | Form-fitting |
+| Command Center, Clients, Campaigns, Analytics | Form-fitting, design-locked — a separate owner ruling is required to change any of them |
+| Marketplace | May use a visible main-region scrollbar when its content requires it. **Out of scope of this change; its code was not touched** |
+
+**This is not a global scrolling rule for the platform.** The exception stays enumerated.
+
+**Where the policy lives.** `SETTINGS_VISIBLE_SCROLL_DESTINATIONS` and
+`settingsDestinationShowsScrollbar()` in
+`src/components/tenant-shell/settings-scroll-contract.ts` — one value, read by both `SoloSettings`
+and `settings-scroll-drive.mjs`, with a test asserting the two agree. It **fails closed**: an
+unrecognised destination stays form-fitting. Adding a destination to it is a product decision
+requiring an owner ruling, not a repair.
+
+**Why the defect survived every guard.** The policy used to be
+`const visibleScroll = tab === "connections" || tab === "integrations"`, and the only test of it
+asserted that exact source line. Setup resolved `overflow-y: auto` from the same shared exception and
+simply never received the class that *draws* the bar — so it could scroll and could not show that it
+scrolled, and nothing failed. **No CSS changed in the repair**: the visible-scrollbar rules already
+existed and were already correct.
+
+**Canonical across all Solo tenants.** One shared shell, one shared policy value, no tenant, account
+number, URL or fixture branch anywhere in the change. Verified structurally identical across two
+synthetic Solo tenant contexts.
+
+**A harness defect this exposed, and repaired.** The Settings drive had iterated `light` and `dark`
+for weeks while rendering one palette both times: the harness used `forcedTheme`, which leaves
+next-themes' `resolvedTheme` alone, and the shell stamps its own `data-pg` from `resolvedTheme`. So
+**every "both themes" claim from that harness was one palette measured twice.** Repaired, and the
+drive now scores the rendered token per environment instead of trusting the loop. Geometry is
+theme-independent, so prior geometry results stand; prior colour claims from that harness do not.
+
+**Evidence.** Rendered structural at 1536×770, 1366×768, 1024×768 and 900×1000 in both palettes:
+Setup passes the full visible-scroll battery — bar visible with a stable gutter, wheel, End, PageDown,
+Space and scrollbar drag all reach the last control, travel reaches the end, focus reaches the
+spatially deepest control with a visible ring, keyboard visits every control, focus exits both
+directions, one scroll owner, no horizontal overflow. Locked surfaces stay `overflow-y: hidden`.
+
+**`UNVERIFIED`, and not claimed: authenticated owner browser proof.** No leg has been driven signed
+in on the live platform. A reproduced-shell drive with a synthetic transport is structural evidence,
+never authenticated proof. **Do not merge or deploy without the separate exact-head Gate 2 approval.**
+
+Records: `docs/brain/decision-log.md` (2026-09-02) · `docs/doctrine/surface-cards/setup.md` (the
+department card, carried by PR #731) · `docs/brain/solo-settings-scroll-and-release-playbook.md`
+(the Settings-scoped playbook — update owed, see that PR).
+
+
 ### Solo Team — PAIGE can act on the team (LIVE on production, capability `PARTIAL`) — 2026-09-02
 
 **Evidence, on current `main`.** Merged in **PR #728** (`76bb3bbca`, *PAIGE Spine foundation registry
@@ -194,6 +260,52 @@ The other two P1s are in `paige-apply-extraction`; the P2 is a failed Skip leavi
 unretryable.
 
 
+
+### PAIGE Spine — tool migration state (planning record, 2026-09-02; NO capability changed)
+
+**Measured on `origin/main` `e3592089` by running the repository's own guards, not from memory.**
+
+| Measure | Value | Guard |
+|---|---|---|
+| Inline legacy Chat tools | **105** | `npm run lint:chat-tool-registry` |
+| Registered Spine capabilities | **1** | `scripts/ci/paige-spine-registry-lint.mjs` |
+| Classified actions | **62** — 32 `ordinary` · 28 `high` · 2 `owner_only` · 5 exempt · 0 unclassified writes | `npm run lint:action-risk` |
+
+**The Spine is PARTIAL and no department-wide connectivity is implied.** The one registered
+capability is `pipeline.deal_stage_evidence` — a read, `chatBinding: PARTIAL`, and **`mindBinding:
+PARTIAL` since #747 merged (`dcddf676`, 2026-09-02)**, mapped to **no** Chat tool. The guards were
+re-run on the merged head: 105 · 1 · 62, all unchanged. PAIGE reaches every department today through the 105
+hand-wired tools, not through the Spine.
+
+**Two of the 62 classified actions are not Chat tools at all** — `marketplace_install` and
+`marketplace_uninstall`, already on record above as containment tombstones. The migration map
+re-derived this independently and confirms it; it is not a new find. The real install path is the
+`marketplace-install` edge function, which the Chat gate never sees (#740).
+
+**Leg 7 — *owner can see the truthful result* — is closed for 100% of PAIGE's writes.** Of the 60
+classified actions that are Chat tools, **13** emit a per-client Rail event whose production read is
+denied (#746), and **47** emit only a `paige_audit_log` row, which has no Solo reader. This is why
+no mutating capability can be labelled `LIVE` today, regardless of how well it is built.
+
+**Migration is phased and governed.** The plan is
+`docs/architecture/paige-spine-tool-migration-map.md` — every one of the 105 tools carries exactly
+one disposition (**13 Migrate · 79 Spine Change Request · 3 Keep unavailable · 10 Retire**), nine
+sequenced waves, a CI-ratchet proposal, and the ten-condition `LIVE` standard. Wave issues:
+[#756](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/756) (foundation) ·
+[#757](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/757) ·
+[#755](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/755) ·
+[#758](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/758) ·
+[#759](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/759) ·
+[#760](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/760) ·
+[#761](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/761) ·
+[#762](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/762) ·
+[#763](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/763).
+
+**No legacy tool is considered live through this plan.** The map is a planning record. It migrated
+nothing, enabled nothing, and promoted no label. Three Spine Change Requests it identifies — a
+workspace-level outcome projection, non-client subject types, and a record/list evidence shape —
+are **unrequested and unstarted**, and every wave after the foundation depends on at least one.
+
 ### Paige's tool confirmation is bound to SERVER-HELD state (2026-09-01, `20261021000000`)
 
 `confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
@@ -225,9 +337,11 @@ silent way. Neither was reachable by the SQL proof or the unit tests as they sto
 `JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
 its first call executed immediately; and because the tool loop dedupes rounds on the exact argument
 string, it could even propose and self-approve **inside a single HTTP turn** with no operator
-message in between. `MUTATING_TOOLS` carries **52 entries**, two of which (`marketplace_install`,
+message in between. `MUTATING_TOOLS` carried **52 entries** when this was written, two of which (`marketplace_install`,
 `marketplace_uninstall`) are containment tombstones with no tool definition and no dispatch branch
-and can never reach it. The rest include `member_grant_role`,
+and can never reach it. **Re-measured 2026-09-02 on `e3592089`: 62** (`npm run lint:action-risk`) — the
+set is `mutatingTools()`, i.e. every entry in the risk policy, and Solo Team, Comms and Pipeline have
+added to it since. The two tombstones are unchanged and are still the only two with no tool definition. The rest include `member_grant_role`,
 `n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`.
 
 **What it does NOT claim (§13).** It proves the server proposed first, that a turn intervened, that

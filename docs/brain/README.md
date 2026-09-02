@@ -169,6 +169,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/architecture/ECOSYSTEM_FULL_STACK_BOUNDARIES.md` | Full-stack boundary map | Cross-boundary integration |
 | `docs/architecture/MARKETPLACE-DATA-MODEL.md` | Marketplace data model | Marketplace tables/RLS |
 | `docs/architecture/SPRINT_C1_TENANT_READINESS.md` | Sprint C.1 non-MMA tenant readiness gate | Tenant-readiness onboarding |
+| `docs/architecture/paige-spine-tool-migration-map.md` | **Every one of the 105 legacy Chat tools, with one disposition each** (13 Migrate · 79 Spine Change Request · 3 Keep unavailable · 10 Retire), nine sequenced waves, the verified baseline and its reconciliation, the CI-ratchet proposal, and the ten-condition `LIVE` standard. Records why the Spine's evidence contract carries enumerated events and not records | Before adding a Chat tool, migrating one to the Spine, or answering "is department X connected to PAIGE?" — read `paige-spine-and-rail-state.md` first for the *state*, this for the *plan* |
 
 ## Strategy · Audits · Assessments index
 
