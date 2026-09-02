@@ -32,10 +32,20 @@
  * approve/deny call was delegated to it — the exact opposite instruction to what the code does and
  * what the doctrine requires.
  *
- * What actually happens: an approval reaches this seam ALREADY REDEEMED, as the result of the
- * caller's atomic single-use claim, carried in `GovernedApproval` as the stored arguments plus the
- * capability those arguments were approved for. This module validates that result — the shape, the
- * capability binding, and that stored arguments are what execute — and classification is delegated
+ * What actually happens: an approval is REQUIRED to reach this seam already redeemed — the result of
+ * the adapter's atomic single-use claim, carried in `GovernedApproval` as the stored arguments plus
+ * the capability they were approved for.
+ *
+ * **"Already redeemed" is an adapter OBLIGATION, exactly like the tenancy assertion below, and for
+ * the same reason: the seam has no evidence the claim happened.** `readClaim` proves only that the
+ * value is a plain object, and the execute branch proves only that `claimedFor` matches. So
+ * `{ claimedArgs: request.args, claimedFor: capability.id }` built from request data is accepted and
+ * executed. An adapter that fabricates the claim result defeats this boundary, and no check here
+ * can catch it — writing "arrives already redeemed" as though the seam established it would invite
+ * precisely the trust this module exists to withhold.
+ *
+ * This module validates that result — the shape, the capability binding, and that stored arguments
+ * are what execute — and classification is delegated
  * to `classifyAction`, unchanged. It adds only the layers that were previously inline and therefore
  * unavailable: identity, the tenancy assertion, capability identity, access, the clamp, the
  * fail-closed refusals, and a structured audit record. Adding a second way to PROVE approval is the
@@ -89,12 +99,18 @@ import { classifyAction, riskReason, unclassifiedWriteReason, type ActionRisk } 
 export type GovernedDoor = "chat" | "automation" | "agent" | "skill" | "mcp" | "other";
 
 /**
- * Who is asking, as the SERVER established it.
+ * Who is asking. **Both `tenantId` and `tenantSource` are populated by the ADAPTER, and the seam
+ * cannot tell a server-derived tenant from a request-supplied one.**
  *
- * Note what is missing: there is no field for a caller-supplied tenant. A request cannot name the
- * tenant it wants to act in, because a type with no such field cannot carry one. `tenantSource`
- * exists so a caller that resolved the tenant some other way has to SAY so, and be refused, rather
- * than passing it off as server-derived by omission.
+ * An earlier version of this comment claimed the type has no field for a caller-supplied tenant and
+ * that a request therefore cannot name the tenant it wants to act in. That is false, and it is the
+ * dangerous direction to be wrong in — this passes every check:
+ *
+ *     { tenantId: request.workspaceId, tenantSource: "server" }
+ *
+ * What the seam enforces is that a caller must ASSERT server derivation and is refused without the
+ * assertion; making the assertion TRUE is the adapter's obligation and nothing here can verify it.
+ * Read this as a contract you are required to honour, not a guarantee you are receiving.
  */
 export type GovernedCaller = {
   /** Proven from a verified credential — a JWT subject or an equivalent server-side check. */

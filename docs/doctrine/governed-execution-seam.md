@@ -49,7 +49,7 @@ asserted two ways, because a property proven only by a test is one a later edit 
 | 4 | Role / access policy | `caller.access`, evaluated by the surface. **An absent verdict is a refusal**, never permission |
 | 5 | Action-risk classification | delegated to `classifyAction` — not re-implemented |
 | 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives |
-| 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** |
+| 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** — but, like point 2, the claim having actually happened is an **adapter obligation the seam cannot verify**. `readClaim` proves the value is a plain object and the execute branch proves `claimedFor` matches; a fabricated `{ claimedArgs, claimedFor }` built from request data passes both |
 | 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
 | 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`) |
 | 10 | Safe bounded outcome interface | a mutation must NAME an outcome channel or be refused. **The channel's shape is the Rail workstream's and is deliberately not defined here** |
