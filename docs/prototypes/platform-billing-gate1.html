@@ -245,6 +245,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
   <div class="rv-grp"><label>Plan</label><div class="rv-seg" role="group">
     <button type="button" data-plan="current" aria-pressed="true">$149 current</button>
     <button type="button" data-plan="beta" aria-pressed="false">$74.50 beta</button>
+    <button type="button" data-plan="trialing" aria-pressed="false">Trial</button>
     <button type="button" data-plan="none" aria-pressed="false">No plan</button>
     <button type="button" data-plan="loading" aria-pressed="false">Loading</button>
     <button type="button" data-plan="error" aria-pressed="false">Read failed</button>
@@ -338,7 +339,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 
               <!-- Client billing boundary -->
               <section class="ss-card span2" id="cardBoundary" data-state="client-billing-boundary">
-                <header><span class="ss-card-icon">→</span><h2>Looking for invoices you send to clients?</h2><span class="ss-truth" data-truth="LIVE">LIVE</span></header>
+                <header><span class="ss-card-icon">→</span><h2>Looking for invoices you send to clients?</h2><span class="ss-truth" data-truth="PROPOSED">PROPOSED</span></header>
                 <div class="ss-card-body">
                   <div class="ss-hand"><div><strong>Those live in Sales, not here.</strong><p>Quotes, invoices, payments and balances for your own customers are part of your Sales work and use your own payment processor. This page is only what your workspace pays the platform.</p></div><button class="ss-btn" type="button" data-nav="sales">Go to Sales</button></div>
                 </div>
@@ -351,7 +352,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
             <div class="ss-page-head"><div><h1>Two billing domains, kept apart</h1><p>Money that comes into the platform on the left. Money a workspace collects from its own customers on the right. No table, screen, or Stripe object crosses the line.</p></div></div>
             <div class="bd-cols">
               <div class="bd-col"><h2>Platform Billing</h2><small>Solo workspace → PAIGE · Settings → Billing · operator configuration</small>
-                <ul><li>Base Solo subscription</li><li>Included platform capabilities and allowances</li><li>Verified usage-based charges — only if later approved</li><li>Phone number / telephony platform charges — only if later approved</li><li>Paid Marketplace add-ons</li><li>Platform invoices, payment methods, subscription status, credits, entitlement</li></ul>
+                <ul><li>Base Solo subscription</li><li>Included platform capabilities and allowances</li><li>Verified usage-based charges — only if later approved</li><li>Phone number / telephony platform charges — only if later approved</li><li>Paid Marketplace add-ons</li><li>Platform invoices, payment methods, subscription status, account credits, entitlement</li></ul>
                 <small><b>Belongs to the workspace</b>, never to a staff member's personal account.</small>
                 <small>Tables (LAYER 1): platform_subscription_plans · platform_subscriptions · platform_invoices · platform_usage_events · marketplace_installs. Stripe: PAIGE's account.</small></div>
               <div class="bd-wall" aria-hidden="true"><i></i></div>
@@ -387,7 +388,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
                   <label class="op-f">Product<span>Voice minutes pack</span></label><label class="op-f">Price<span>$19.00</span></label>
                   <label class="op-f">Cadence<span>Monthly, recurring</span></label><label class="op-f">Entitlement<span>500 voice minutes per cycle</span></label>
                   <label class="op-f">Cancellation policy<span>Ends at period end</span></label><label class="op-f">Included in plans<span class="empty">none</span></label>
-                  <label class="op-f">Stripe Price verified<span class="empty">not yet — item stays "not yet billable"</span></label><label class="op-f">Visible to tiers<span>Solo · Sub-account · Enterprise</span></label>
+                  <label class="op-f">Stripe Price verified<span class="empty">not yet — item stays "not yet billable"</span></label><label class="op-f">Visible to tiers<span>Solo · Sub-account · Enterprise · Super Admin — Agency: resell (§61 default; illustrative)</span></label>
                 </div><p class="ss-note">Order of operations, fixed: operator defines → workspace sees price and effect → authorized decision → verified payment → entitlement granted from that verified state. A catalogue entry never implies price, entitlement, or availability on its own.</p>
                 <div class="ss-row"><span class="ss-status" data-tone="warn"><i></i>Not yet billable</span><button class="ss-btn" disabled>Mark billable</button></div></div></section>
             </div>
@@ -401,9 +402,9 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 </div>
 
 <div class="rv-drawer">
-  <details open><summary>State coverage — 27 required states, all reachable from the controls above</summary><div class="body">
+  <details open><summary>State coverage — 28 required states, all reachable from the controls above</summary><div class="body">
     <table><tr><th>Group</th><th>State ids</th><th>How to reach</th></tr>
-      <tr><td>Plan</td><td><code>plan-current</code> · <code>plan-beta</code> · <code>plan-none</code> · <code>plan-loading</code> · <code>plan-error</code> · <code>plan-subaccount</code></td><td>Plan control; sub-account via Viewer</td></tr>
+      <tr><td>Plan</td><td><code>plan-current</code> · <code>plan-beta</code> · <code>plan-trialing</code> · <code>plan-none</code> · <code>plan-loading</code> · <code>plan-error</code> · <code>plan-subaccount</code></td><td>Plan control; sub-account via Viewer</td></tr>
       <tr><td>Portal</td><td><code>portal-entry</code> · <code>portal-unavailable</code></td><td>Portal control</td></tr>
       <tr><td>Usage</td><td><code>usage-included</code> · <code>usage-warn-75</code> · <code>usage-warn-90</code> · <code>usage-exhausted</code> · <code>usage-no-meter</code></td><td>Usage control</td></tr>
       <tr><td>Add-ons</td><td><code>addon-available</code> · <code>addon-included</code> · <code>addon-not-billable</code> · <code>addon-selected</code> · <code>addon-pending</code> · <code>addon-active</code> · <code>addon-declined</code> · <code>addon-failed</code> · <code>addon-cancel-scheduled</code></td><td>Click Enable on a listed add-on; then Continue / Not now; then the mock outcome buttons; Cancel on an active add-on</td></tr>
@@ -414,7 +415,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     <p><b>Not applicable, with reason:</b> offline — a billing read that fails is the "Read failed" state; there is no offline-specific behaviour. Expiry — a beta window end is a plan-state change (D4), shown as the "after beta" copy inside <code>plan-beta</code>, not a separate expiry timer. Destructive confirmation — cancelling an add-on is scheduled, not destructive; cancelling the platform subscription is a Stripe-hosted portal action in this phase and is not modelled here.</p>
   </div></details>
   <details><summary>Known mocks and unverified behaviour</summary><div class="body">
-    <ul><li>Plan, status, price, renewal: today's real read returns plan/status/price/renewal for a solo workspace; the $74.50 beta row does not exist anywhere and is a prototype value.</li>
+    <ul><li>Plan, status, price, renewal: today's real read returns plan/status/price/renewal for a solo workspace, and <code>trialing</code> is a real status; the $74.50 beta row does not exist anywhere and is a prototype value.</li>
     <li>Portal entry: the shipped function keys the Stripe customer on the person's email, not the workspace (packet finding A1). The "Mapped" state shows the intended behaviour after Billing Foundation; "Unavailable" is what must show until then.</li>
     <li>Usage: the only measured meter is AI usage in tokens. Allowance, thresholds, warnings, and "used up" behaviour are proposals pending D5–D8. No estimate is ever shown as usage.</li>
     <li>Add-ons: every item is a fixture. No catalogue read, no checkout, no webhook. Outcomes are chosen by the reviewer with the mock buttons.</li>
@@ -503,6 +504,10 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
       case "loading": body.innerHTML='<div class="ss-state" role="status" data-state="plan-loading"><span><strong>Clearing and resolving this account…</strong></span></div>'; break;
       case "error": body.innerHTML='<div class="ss-state" role="alert" data-state="plan-error"><span><strong>Couldn’t load this account</strong>The plan could not be read just now. Nothing about your plan has changed.</span><button type="button">Retry</button></div>'; break;
       case "none": body.innerHTML='<div class="ss-state" data-state="plan-none"><span><strong>No plan yet</strong>This workspace is not on a platform plan. Choosing one is not available from this page in this phase.</span></div>'; break;
+      case "trialing":
+        body.innerHTML='<div class="ss-fields" data-state="plan-trialing">'+f("Plan","Solo")+f("Status","Trial")+f("Price","$0 during the trial, then $149.00 / month")+f("Trial ends","16 September 2026")+'</div><p class="ss-note">A real status today: the platform already supports a 14-day self-serve trial and a 30-day invited trial. Nothing is charged until the trial ends. <span class="ss-tag">D3 option iv — a trial is a free window, not a reduced price</span></p>';
+        acts.innerHTML=(S.viewer==="member")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
+        break;
       case "beta":
         body.innerHTML='<div class="ss-fields" data-state="plan-beta">'+f("Plan","Solo — beta")+f("Status","Active")+f("Price","$74.50 / month")+f("Renews","1 October 2026")+'</div>'+
           '<p class="ss-note"><span class="ss-tag">proposed · not in effect</span> The beta price and what happens when the beta ends are owner decisions D1–D4. Until they are ruled and the price exists on the platform, this state is never shown to a workspace.</p>'+
@@ -538,8 +543,8 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     var pct={included:38, warn75:76, warn90:91, exhausted:100}[S.usage], sid={included:"usage-included",warn75:"usage-warn-75",warn90:"usage-warn-90",exhausted:"usage-exhausted"}[S.usage];
     var tone=pct>=100?"bad":pct>=75?"warn":"ok";
     var msg={included:"You are well within what is included this cycle.", warn75:"You have used three quarters of what is included this cycle. Nothing changes yet; this is a heads-up.", warn90:"You have used 90% of what is included. If it runs out before 1 October, see below for what happens.", exhausted:"You have used everything included this cycle."}[S.usage];
-    var after={exhausted:'<div class="ss-hand" style="margin-top:8px"><div><strong>What happens now</strong><p><b>D7 — recommended during beta:</b> your workspace stays fully usable and nothing extra is charged. <b>D8:</b> automatic overage is unavailable during the beta; if a paid top-up is ever offered it will be opt-in and shown here first. <span class="ss-tag">proposed — not ruled</span></p></div></div>'}[S.usage]||"";
-    body.innerHTML='<div data-state="'+sid+'"><div class="ss-row"><strong>AI usage this cycle</strong><span class="ss-status" data-tone="'+tone+'"><i></i>'+pct+'% of included used</span></div>'+
+    var after={exhausted:'<div class="ss-hand" style="margin-top:8px"><div><strong>What happens now</strong><p><b>D7 — recommended during beta:</b> your workspace stays fully usable and nothing extra is charged. <b>D8:</b> automatic overage is unavailable during the beta; if a paid top-up were ever offered it would be opt-in and shown here first. <span class="ss-tag">proposed — not ruled</span></p></div></div>'}[S.usage]||"";
+    body.innerHTML='<div data-state="'+sid+'"><div class="ss-row"><strong>AI usage this cycle</strong><span class="ss-status" data-tone="'+tone+'"><i></i>'+pct+'% of included used</span><span class="ss-tag">illustrative — allowance undefined until D5</span></div>'+
       '<div class="ss-meter" data-tone="'+tone+'" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" aria-label="Included AI usage used"><i style="width:'+pct+'%"></i></div>'+
       '<p style="margin-top:6px">'+esc(msg)+'</p>'+
       '<div class="ss-fields" style="margin-top:8px"><div class="ss-field"><span>Measured as</span><strong>Tokens, from the platform’s own record</strong></div><div class="ss-field"><span>Included this cycle</span><strong>D5 — to be defined</strong></div><div class="ss-field"><span>Warnings</span><strong>D6 — recommended at 75% and 90%</strong></div><div class="ss-field"><span>Resets</span><strong>1 October 2026</strong></div></div>'+after+

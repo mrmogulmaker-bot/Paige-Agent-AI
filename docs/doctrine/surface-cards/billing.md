@@ -34,7 +34,7 @@ billing, §197 LAYER 2, tenant's own processor per §38).
 ## Solo shell placement
 
 Settings → Billing, eighth of eight Settings destinations (`src/solo/settings.tsx:1464`). Icon
-`CircleDollarSign`. Form-fitting (not on the visible-scroll list; `settings-scroll-contract.ts`).
+`CircleDollarSign`. Form-fitting (not on the visible-scroll list; `src/components/tenant-shell/settings-scroll-contract.ts`).
 Rendered by `BillingView` (`settings.tsx:1457-1459`), fed by `useSoloComms` (`:259-270, :333`).
 
 ## States
@@ -83,8 +83,8 @@ on (Team surface card, decision 2). Not a Billing slice to invent.
 - **Chat build** — approval gate.
 - **Known defects (not fixed in Phase 1):** A1 email-keyed `customer-portal` / `check-subscription`;
   A2 ungated paid install in `install_marketplace_item`; A3 undiscriminated `invoice.*` webhook
-  arms; A4 sub-account misreport; A5 `credit_pulls_per_month` in the platform default plan JSON.
-  Full table: packet §3.
+  arms; A4 sub-account misreport; A5 (corrected — the `credit_pulls_per_month` seed is already stripped on
+  `main` by `20260726140000`; prod state UNVERIFIED). Full table: packet §3.
 - **Required browser proof before any label moves:** an authenticated Solo owner on the real
   platform reads the correct plan for the correct workspace, switches workspace and sees it change,
   a non-admin member sees the refusal, a sub-account owner sees "billed by your agency". None of

@@ -25,10 +25,10 @@ cited to a file on `main` at `1fb7928` or marked `UNVERIFIED`.
 | Mode | Existing Project · Security/Audit · Flow Prototype (Phase 1, no code) |
 | Depth | Deep — R3 (payments, permissions), independent review |
 | Paradigm | `web` |
-| Head | local `1fb7928` = `origin/main` = `origin/claude/platform-billing-clarification-l6zqr5`; clean tree |
+| Head | audit base `origin/main` `1fb7928`; the packet's own commits sit on `claude/platform-billing-clarification-l6zqr5` above it; clean tree |
 | Changed-file boundary | docs only: this packet · the surface card · the prototype · the Marketplace handoff · `docs/brain/decision-log.md` · `docs/brain/README.md` · `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §5. **No `src/`, no `supabase/`.** |
 | Ownership / collisions | Metering (MET1/MET2, parked issue #737) — read, not touched. Marketplace entitlement floor (`src/solo/marketplace.tsx:79`) — handoff, not touched. Chat approval gate (`docs/doctrine/one-approval-gate.md`) — billing decisions will build TO it, never beside it. |
-| Regression impact map | Zero runtime change. No test, route, RPC, policy, or job is altered. CI path filters on `supabase/**` and `src/**` will not fire; the `verify` job runs on docs and is expected green. |
+| Regression impact map | Zero runtime change. No test, route, RPC, policy, or job is altered. The `verify` and `audit` jobs run on every PR and are expected green on a docs-only diff; the Supabase preview and deploy workflows are the path-filtered ones and will skip. |
 | Failing-first plan | N/A for a no-code phase. The prototype carries a structural self-check (every required state id present and reachable) run before commit; see §11. |
 | Gates | **Gate 1 is this phase's exit.** Gate 2 is not requested. Gate 5 (skill pairing) — both `flow-by-flow` and `flow-prototype` present at version 2.0.1: PASS. |
 
@@ -49,12 +49,14 @@ cited to a file on `main` at `1fb7928` or marked `UNVERIFIED`.
 │  telephony platform charges (if approved)  │   │  Money leg: tenant's OWN processor        │
 │  paid Marketplace add-ons                  │   │  (§38 — Paige is never merchant of record │
 │  invoices · payment methods · status ·     │   │   for a tenant→client transaction)        │
-│  credits · entitlement                     │   │                                           │
+│  account credits · entitlement                     │   │                                           │
 │                                            │   │  Tables (§197 LAYER 2): tenant_products,  │
 │  Tables (§197 LAYER 1): platform_          │   │  tenant_prices, tenant_orders,            │
 │  subscription_plans, platform_             │   │  tenant_service_subscriptions             │
 │  subscriptions, platform_invoices,         │   │                                           │
-│  platform_usage_events; Marketplace: marketplace_items / _installs / _install_ledger      │
+│  platform_usage_events; LAYER 3 pass-through: platform_metered_events; Marketplace:       │
+│  marketplace_items / _installs / _install_ledger (payer/recipient = LAYER 1 by rule;       │
+│  §197 does not yet enumerate marketplace_* — amendment owed)                                │
 │  Stripe account: PAIGE platform            │   │  Stripe account: tenant Connect / BYO     │
 └────────────────────────────────────────────┘   └──────────────────────────────────────────┘
           ▲ never a foreign key across this line (§197 rule 2) ▲
@@ -99,6 +101,7 @@ in this session); every row is static/code evidence unless marked otherwise.
 | Public price shown | $149 / $397 / Custom | `src/components/landing/PricingSection.tsx:37,54,72` |
 | CREATE leg | edge fn, JWT-gated, pre-charge parity gates | `platform-subscription-checkout` (510 lines): tenant admin required on grandfathered path, 409 on double-subscribe, never a $0 recurring session |
 | Sole WRITER of `platform_subscriptions` | Stripe webhook, service role, signed metadata discriminant | `stripe-webhook/index.ts:681-760` (checkout), `:1298-1345` (`customer.subscription.updated` syncs `status` + `cancel_at_period_end`), `:1408-1430` (deleted → canceled) |
+| Trial substrate | exists, wired | A 14-day self-serve trial (`trial_period_days` on the checkout session, `platform-subscription-checkout/index.ts:467`) and a super-admin 30-day invite lane (`paige_invite_tokens`, migration `20260726140000` part C, `:231`); `platform_subscriptions.status` takes `trialing` (webhook `:692-706`, hook `useSoloComms.ts:68`). A time-bounded trial is therefore an EXISTING mechanism the beta decision can reuse (D3 option iv) |
 | READ seam (Paige-callable §10) | exists | `get_tenant_platform_subscription()` — tenant derived server-side, `security definer` pinned to caller's tenant |
 | RLS | tenant reads own; only platform owner writes | migration `20260702005950:58-59, 85-86, 104-105` |
 | Live paid tenants | **0** (recorded 2026-08-09) | master doc: `promotional 8 / internal_test 1 / paid 0`; the 3 `active` rows are comped with NULL `stripe_subscription_id` |
@@ -119,10 +122,10 @@ in this session); every row is static/code evidence unless marked otherwise.
 | What is metered today | `llm_tokens` (from `paige_llm_trace`, hourly drain `meter-llm-usage-hourly`), `tts_char`, `tenant_provisioned` | `20261033000000`, `20261038000000` |
 | Cost on those rows | **estimate in metadata, never a billing column; null on most historical rows** | same migration header, §13 |
 | Whether the drain runs on prod | **UNVERIFIED** in this session | parked issue #737 (master doc contradiction), MET2 evidence owed |
-| Allowance model (included units, thresholds, warnings) | **does not exist** | `platform_subscription_plans.metered_addons` carries only `credit_pulls_per_month` / `sms_included` / `white_label` JSON; no column, RPC, or job knows an allowance, a threshold, or a warning |
+| Allowance model (included units, thresholds, warnings) | **does not exist** | `platform_subscription_plans.metered_addons` on `main` carries `sms_included` (solo) and `sms_included` / `white_label` / `reseller_economics` (agency) after migration `20260726140000` stripped `credit_pulls_per_month`; no column, RPC, or job knows an allowance, a threshold, or a warning |
 | Tenant-facing usage read | none | tier matrix §MET1 ledger: "No consumer surface exists yet, and none is claimed" |
 | Stripe metered subscription item | none | no `subscription_items` / `meter_events` call anywhere in `supabase/functions` |
-| Telephony (phone number) charge | Twilio buy is wired; **the CHARGE leg is not** | `comms-purchase-number/index.ts:25-29` — response carries `charge_wired: false`; `platform_number_pricing` holds wholesale + retail |
+| Telephony (phone number) charge | Twilio buy is wired; **the CHARGE leg is not** | `comms-purchase-number/index.ts:25-29` — response carries `charge_wired: false`; `platform_number_pricing` holds wholesale + retail. When billed it is §197 LAYER 3 pass-through (`platform_metered_events`, reconciled to a LAYER 1 invoice only through `platform_metering_reconciliation.invoice_id`) |
 
 ### 2.5 Marketplace paid add-ons
 
@@ -131,7 +134,7 @@ in this session); every row is static/code evidence unless marked otherwise.
 | Item pricing fields | exist | `marketplace_items.price_cents`, `pricing_model`, `billing_period`, `take_rate_bps`, `available_to_tiers` |
 | Paid purchase leg | one-time only (`mode: "payment"`), JWT-gated, pre-charge parity gates | `marketplace-checkout-session/index.ts:286` and header; webhook `checkout.session.completed` arm keyed on `marketplace_item_slug` then calls install |
 | Recurring add-on subscription | **none** | Money Spine B-v "scoped, not started" (`docs/doctrine/money-spine-architecture.md`) |
-| Entitlement record | `marketplace_installs` (status active/uninstalled) + append-only `marketplace_install_ledger` | migration `20260714280000` |
+| Entitlement record | `marketplace_installs` (status `active` / `disabled` / `uninstalled` / `update_available`, CHECK at `20260714270000:142`) + append-only `marketplace_install_ledger` | migrations `20260714270000`, `20260714330000` |
 | Solo Marketplace UI | entitlement actions **deliberately UNAVAILABLE** ("Installation, removal, updates, purchase, and activation wait for immutable release authority…") | `src/solo/marketplace.tsx:79` |
 | All current items | first-party, price 0 | `marketplace-checkout-session` header: "the only vendor today is first-party 'paige'" |
 
@@ -141,7 +144,19 @@ in this session); every row is static/code evidence unless marked otherwise.
 |---|---|---|
 | Operator Revenue → Plans / Metering / Invoices | **spec shells with null values**; tier names ship, prices/credits/rates deliberately do not | `src/operator/surfaces/specs/moneySpecs.ts:164-280` (`value: null` on every stat) |
 | Operator upsert seam for plans | none for `platform_subscription_plans` (rows exist only via migration) | grep `platform_subscription_plans` in `supabase/functions` — read-only in checkout |
-| Operator upsert seam for Marketplace items | exists | `upsert_marketplace_item` (`20260714192625`, `20260714340000`) with `price_cents >= 0` check |
+| Operator upsert seam for Marketplace items | exists | `marketplace_upsert_item` (`20260714192625:24`, redefined `20260714340000:171`) with the `price_cents >= 0` raise at `20260714192625:118` |
+
+### 2.7 Per-tier availability of Settings → Billing (§51 / §56 — decided on purpose)
+
+| Tier | Does a platform-billing surface exist for it today? | What it should show (proposed, §61 default unless ruled) | Evidence |
+|---|---|---|---|
+| God / Super Admin | No workspace plan of its own; operator Revenue → Plans / Metering / Invoices are spec shells with null figures. Reaches a tenant's billing by act-as, never by carrying the tenant flag. | The operator configuration flow (prototype `operator-plan-config`, `operator-addon-config`); never a "your plan" card | `src/operator/surfaces/specs/moneySpecs.ts:164-280` |
+| Agency | Yes — `src/agency/billing.tsx` (Claude Design pack port; three sub-tabs Sub-account billing · Revenue · Your plan) fed by `useAgencyBilling.ts`, **DISPLAY-ONLY** with an honesty banner: invoice states and revenue are stand-ins; the L1 plan read (`agency` $397) is real where matched. Not this workstream's surface; shares the LAYER 1 tables and the same A1/A3 findings. | Its own platform plan; the book it bills to its sub-accounts is the agency's business (§38), shown on its own shell at its own markup | `src/agency/data/useAgencyBilling.ts:1-24`, `src/agency/billing.tsx:1-30` |
+| Enterprise | Same shell as Agency (§65) plus customizations; `enterprise` plan row is custom-quote ($0, "contact sales"); no self-serve checkout (`platform-subscription-checkout` rejects a $0 recurring session) | Agency surface + negotiated terms; **UNVERIFIED** whether any Enterprise tenant exists live (tier matrix records the `enterprise` phantom) | checkout pre-charge gate; `docs/doctrine/tier-matrix.md` hazards |
+| Solo | **This surface** — `PARTIAL` read-only | Everything in §9 | `src/solo/settings.tsx:1457-1459` |
+| Sub-account | Same Solo shell; the plan read is skipped by design (§60: Solo ≡ Sub-account except billing — the parent agency is billed); today misreported as "no plan" (A4) | The "billed by your agency" state (prototype `plan-subaccount`); no card, no invoices, no add-on purchase of its own unless the agency's policy says otherwise (**owner decision, not assumed**) | `useSoloComms.ts:333` |
+| Client | Never. A client sees only their portal; a Solo's client billing is Sales-side (LAYER 2). | Nothing | RLS on every LAYER 1 table keys on `current_user_tenant_id()` or platform owner |
+| Anonymous | Never. Public pricing lives on the landing page only. | Nothing | `PricingSection.tsx` |
 
 ---
 
@@ -150,13 +165,14 @@ in this session); every row is static/code evidence unless marked otherwise.
 | # | Severity | Finding | Evidence | Phase it belongs to |
 |---|---|---|---|---|
 | **A1** | **HIGH (§9 / boundary)** | The Stripe-hosted portal and subscription check resolve the Stripe Customer by the **signed-in person's email**, not by the workspace's `platform_subscriptions.stripe_customer_id`. A person in two workspaces, or an owner who used a personal email for a legacy L2 purchase, lands in the wrong customer. There is also no tenant-admin gate on the portal. | `customer-portal/index.ts:43-47`, `check-subscription/index.ts:58-59` | Billing Foundation (mapping) — must be fixed before any Solo "Manage billing" button exists |
-| **A2** | **HIGH (§38 / entitlement)** | `install_marketplace_item` (4-arg overload, `GRANT EXECUTE … TO authenticated`) installs **any listed item regardless of `price_cents`** and writes a ledger row with `gross_cents = price_cents` that was never collected. The payment-first path exists only because the UI and checkout call it *that way*; nothing structural stops a tenant admin from calling `marketplace-install` (or the RPC from Chat, §10) on a paid item. Today all items are price 0, so no money is lost yet — but this is exactly "Install silently becomes Charge/entitlement". | `20260714280000_marketplace_install_seam.sql:148-155` ledger insert; header of `marketplace-checkout-session` ("install is payment-AGNOSTIC") | Marketplace add-ons — handed off, see `docs/handoff/platform-billing-marketplace-addon-handoff.md` |
-| **A3** | MEDIUM (§197 cross-layer) | The webhook's `invoice.paid`, `invoice.payment_failed`, `customer.subscription.created` and `charge.refunded` arms are **not discriminated on `platform_plan_slug`**: a paid platform invoice would upsert an L2 `tier_state` row for the owner's email with tier "standard", and a failed platform payment updates `user_subscriptions`, never `platform_subscriptions` (status still arrives via `customer.subscription.updated`). | `stripe-webhook/index.ts:1557-1650` | Billing Foundation (verified webhooks) |
+| **A2** | **HIGH (§38 / entitlement)** | `install_marketplace_item` (4-arg overload, `GRANT EXECUTE … TO authenticated`) installs **any listed item regardless of `price_cents`** and writes a ledger row with `gross_cents = price_cents` that was never collected. The payment-first path exists only because the UI and checkout call it *that way*; nothing structural stops a tenant admin from calling `marketplace-install` (or the RPC from Chat, §10) on a paid item. Today all items are price 0, so no money is lost yet — but this is exactly "Install silently becomes Charge/entitlement". | live 4-arg body `20260714330000_marketplace_bundle_refcount.sql:636-681` (wrapper; `GRANT … TO authenticated` at `:681`) → `_marketplace_install_node` ledger write `:558-577` (`_gross := COALESCE(_item.price_cents, 0)`, no payment or price gate); header of `marketplace-checkout-session` ("install is payment-AGNOSTIC") | Marketplace add-ons — handed off, see `docs/handoff/platform-billing-marketplace-addon-handoff.md` |
+| **A3** | MEDIUM (§197 cross-layer) | The webhook's `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, `customer.subscription.created` and `charge.refunded` arms are **not discriminated on `platform_plan_slug`**: a paid platform invoice would upsert an L2 `tier_state` row for the owner's email with tier "standard", and a failed platform payment updates `user_subscriptions`, never `platform_subscriptions` (status still arrives via `customer.subscription.updated`). | `stripe-webhook/index.ts:1488-1685` | Billing Foundation (verified webhooks) |
 | **A4** | MEDIUM (§13 truth) | Sub-account Billing states "no subscription record was returned" when the read was skipped on purpose. | `useSoloComms.ts:333`, `settings.tsx:1459` | Beta Base Plan + truthful screen (the "billed by your agency" state) |
-| **A5** | MEDIUM (§2) | The platform-default `solo` plan's `metered_addons` JSON carries `credit_pulls_per_month` — a finance-vertical unit seeded into a platform default. | `20260702035703:99-103` | Billing Foundation (operator configuration audit) — owner decision on whether the field is renamed, emptied, or made a Playbook opt-in |
-| **A6** | LOW | `platform_invoices` has no writer, so any "Invoices" list from our tables would be empty and misleading; only the Stripe-hosted portal can show invoices truthfully today. | grep | Beta Base Plan (portal entry) |
+| **A5** | LOW (§2 — corrected) | The 2026-07-02 seed put `credit_pulls_per_month` (a finance-vertical unit) into the platform-default `solo`/`agency` plan JSON. **Migration `20260726140000:57-66` already strips it on `main`.** What remains open is only proof: **UNVERIFIED** whether the prod rows reflect the strip (needs one live read of `platform_subscription_plans.metered_addons`). *An earlier draft of this packet reported A5 as an open MEDIUM defect; that was a §13 miss caught by the compliance pass and corrected here.* | `20260702035703:99-103` (seed), `20260726140000:57-66` (strip) | Billing Foundation (operator configuration audit) — confirm on prod, nothing to design |
+| **A6** | LOW | `platform_invoices` has no writer (referenced only by its creating migration and the generated types), so any "Invoices" list from our tables would be empty and misleading; only the Stripe-hosted portal can show invoices truthfully today. | grep | Beta Base Plan (portal entry) |
 | **A7** | LOW | No annual Stripe Price is registered; annual checkout uses inline `price_data`. Any beta Price decision must state monthly/annual explicitly. | checkout PRICE block | Beta policy decision |
 | **A8** | INFO | Telephony purchase records the retail price and explicitly reports `charge_wired: false`. Honest today; becomes a meter only under sequence step 5. | `comms-purchase-number/index.ts:25-29` | Additional meters |
+| **A9** | INFO (outside this workstream) | The LAYER 4 `consumer_subscription_plans` seed still carries `credit_pulls_per_month` and `funding_recommendations` (three rows each). Consumer-direct is a 2027 rail with empty tables; logged for the L4 owner, not a Platform Billing item. | `20260702035703:116-130` | none here |
 
 ---
 
@@ -174,7 +190,7 @@ Price, Coupon, Customer, Subscription, or a plan-row change.**
 |---|---|---|---|---|
 | D1 | **Beta eligibility** | (a) every new Solo workspace during the beta window · (b) invite/list only · (c) tier-gated (Solo only, never Agency/Enterprise) | (a)+(c): every Solo workspace that provisions inside the window; Agency/Enterprise excluded | (b) needs an allow-list seam that does not exist |
 | D2 | **Start / end / grandfathering** | fixed calendar window · N-workspace cap · lifetime lock at signup tier (the 2026-07-21 rollout doc's founding-wave pattern) | fixed window + lifetime lock for those who joined in it, matching the rollout doc's bounded-cohort principle | a rolling "until we say so" beta has no end state for the screen to show |
-| D3 | **Stripe mechanism** | (i) a separate Stripe Price on the same Product · (ii) a time-bounded Coupon/promotion on the $149 Price · (iii) a separate Product | (i) separate Price `solo-beta` on the existing Solo Product: the plan row can carry it, the webhook's `platform_plan_slug` discriminant still works, and the after-beta transition is a Price swap, not a coupon expiry the UI cannot see | (ii) makes "what plan am I on after beta" invisible to our tables (coupons are not on `platform_subscriptions`) |
+| D3 | **Stripe mechanism** | (i) a separate Stripe Price on the same Product · (ii) a time-bounded Coupon/promotion on the $149 Price · (iii) a separate Product · (iv) the EXISTING trial lane (`trial_period_days` / `paige_invite_tokens`, §2.2) — a $0 window, not a reduced price | (i) separate Price `solo-beta` on the existing Solo Product: the plan row can carry it, the webhook's `platform_plan_slug` discriminant still works, and the after-beta transition is a Price swap, not a coupon expiry the UI cannot see | (ii) makes "what plan am I on after beta" invisible to our tables (coupons are not on `platform_subscriptions`); (iv) gives a free period, not $74.50, and its end is a Stripe trial-end, not a price step |
 | D4 | **State after beta ends** | auto-move to $149 with notice · stay at $74.50 for life (grandfather) · pause and ask | grandfather for in-window joiners (per D2); new joiners after the window pay $149 | auto-move needs a scheduled Price swap + notice job — none exists |
 | D5 | **Exact included allowances** | units must come from what is measured: `llm_tokens` today; `tts_char`; nothing else is metered | define the beta allowance in **AI usage units the meter actually records** (tokens, or a credit that maps to tokens with a published ratio); publish the ratio | any "chat messages" or "actions" unit has no source event today and would be an estimate — never billable |
 | D6 | **Warning and limit behaviour** | warn at 75% / 90% / 100% · warn only · hard stop | warn at 75% and 90%; at 100% keep the workspace usable and show "included allowance used"; no stop during beta | a hard stop needs an enforcement point at the action bus (see §7) which is not built |
@@ -192,9 +208,9 @@ started.
 
 | # | Slice | What it delivers | Depends on | Owner decisions needed first |
 |---|---|---|---|---|
-| 1 | **Billing Foundation** | Workspace ↔ billing-account mapping (portal/subscription lookups keyed on `platform_subscriptions.stripe_customer_id`, tenant-admin gated — fixes A1); webhook arms discriminated on `platform_plan_slug` for invoice/refund events (A3); `platform_invoices` gets its sole writer (the webhook) or is declared not-a-source; entitlement projection = one read seam that says plan · status · renewal · included allowance · add-ons; operator configuration audit (A5) | nothing | A5 disposition |
+| 1 | **Billing Foundation** | Workspace ↔ billing-account mapping (portal/subscription lookups keyed on `platform_subscriptions.stripe_customer_id`, tenant-admin gated — fixes A1); webhook arms discriminated on `platform_plan_slug` for invoice/refund events (A3); `platform_invoices` gets its sole writer (the webhook) or is declared not-a-source; entitlement projection = one read seam that says plan · status · renewal · included allowance · add-ons; operator configuration audit (A5) | nothing | none (A5 needs a prod read, not a decision) |
 | 2 | **Beta Base Plan + truthful Billing screen** | Plan/status/renewal from the projection; sub-account "billed by your agency" state (A4); Stripe-hosted portal entry via the fixed mapping; the $74.50 state rendered **only after** D1–D4 are ruled and the Price exists | 1 | D1–D4 |
-| 3 | **Included-usage visibility** | One server-owned usage read (from `platform_usage_events`, tenant-scoped) with allowance and 75/90/100% warnings; **no automatic overage**; MET2 evidence that the drain runs on prod is a precondition | 1, 2, MET2 | D5–D8 |
+| 3 | **Included-usage visibility** | One server-owned usage read (from `platform_usage_events`, tenant-scoped) with allowance and 75/90/100% warnings computed server-side — the browser never sums usage or counts active add-ons itself (§57); **no automatic overage**; MET2 evidence that the drain runs on prod is a precondition | 1, 2, MET2 | D5–D8 |
 | 4 | **Marketplace paid add-ons** | One explicit purchase → verified payment → entitlement flow, after the Marketplace contract and operator price configuration are approved; A2 closed structurally (a paid item cannot install without a verified payment event) | 1, Marketplace handoff accepted | Marketplace owner + operator price config |
 | 5 | **Additional meters, one at a time** | Phone number · telephony minutes/messages · active app usage · AI/autonomy/chat · seats · other — each independently verified against the meter contract in §6 | 3 | per-meter approval |
 
@@ -210,7 +226,7 @@ A dimension is billable only when all eight fields are filled and verified. A bl
 | Exact unit | the measured quantity | tokens (input + output), integer |
 | Server-authoritative source event | the row that proves it happened | `paige_llm_trace` → `platform_usage_events` via `meter_llm_usage()` |
 | Idempotency rule | how a replay cannot double-bill | unique `(metadata->>'trace_id')` where `event_type='llm_tokens'` |
-| Reconciliation method | how our sum is checked against the provider and the invoice | **missing** — no Stripe meter, no `reconciled_invoice_id` writer |
+| Reconciliation method | how our sum is checked against the provider and the invoice | **missing** — no Stripe meter, no `reconciled_invoice_id` writer (LAYER 1 usage) and no `platform_metering_reconciliation` writer (LAYER 3 pass-through — the only sanctioned cross-layer bridge, §197 rule 2) |
 | Entitlement relationship | which allowance it draws down | **missing** — no allowance model |
 | Customer-facing explanation | the one sentence a Solo owner reads | **missing** |
 | Truthful unavailable state | what the screen says when any field above is blank | "Usage is recorded but not yet counted against a plan" |
@@ -234,7 +250,7 @@ autonomy lane** (`docs/design-references/cd-packs/super-admin-shell/billing-back
 A paid Marketplace tool may create a platform billing line item only after, in order:
 
 1. the platform operator defines the product, price, cadence, entitlement, and cancellation policy
-   (`upsert_marketplace_item` exists; cadence/cancellation fields for a recurring item do not);
+   (`marketplace_upsert_item` exists; cadence/cancellation fields for a recurring item do not);
 2. the Solo workspace sees the price and the billing effect before enabling it;
 3. an authorized billing decision occurs (tenant admin, through the one approval gate);
 4. verified Stripe/platform billing state confirms payment or the approved entitlement condition
@@ -254,7 +270,7 @@ entitlement logic changes in Phase 1.**
 
 | Flow | Actor | Goal | Today | Prototype state(s) |
 |---|---|---|---|---|
-| F1 | Solo owner/admin | See what my workspace pays the platform and when it renews | PARTIAL read | `plan-current`, `plan-beta`, `plan-none`, `plan-loading`, `plan-error` |
+| F1 | Solo owner/admin | See what my workspace pays the platform and when it renews | PARTIAL read (`trialing` is a real status today) | `plan-current`, `plan-beta`, `plan-trialing`, `plan-none`, `plan-loading`, `plan-error` |
 | F2 | Solo owner/admin | Update card / download invoices | UNAVAILABLE (A1, A6) | `portal-entry`, `portal-unavailable` |
 | F3 | Solo owner/admin | See included allowance and how much is used | UNAVAILABLE | `usage-included`, `usage-warn-75`, `usage-warn-90`, `usage-exhausted`, `usage-no-meter` |
 | F4 | Solo owner/admin | Enable a paid add-on and understand the charge | UNAVAILABLE by design | `addon-available`, `addon-selected`, `addon-pending`, `addon-active`, `addon-declined`, `addon-failed`, `addon-cancel-scheduled`, `addon-not-billable`, `addon-included` |
@@ -289,8 +305,8 @@ entitlement logic changes in Phase 1.**
 | Class | This packet |
 |---|---|
 | Automated tests | none run — no code changed |
-| Static / build | docs only; `verify` CI expected green; prototype validated as well-formed HTML with all 27 required state ids present (self-check run before commit, transcript in the PR body) |
-| Structural / harness render | the prototype is a browser simulation with deterministic local state and **no network, no mutation, no Stripe** |
+| Static / build | docs only; `verify` CI expected green |
+| Structural / harness render | `docs/prototypes/platform-billing-gate1.drive.mjs` (committed beside the prototype) drives it in headless Chromium through every control and asserts all 28 `data-state` ids are reached and member-viewer controls are disabled. Result on this head: `required 28 · seen 28 · missing [] · memberButtonsDisabled true`; the only console error is the sandbox refusing the Google Fonts fetch. The prototype is a browser simulation with deterministic local state and **no network beyond that stylesheet, no mutation, no Stripe** |
 | Authenticated runtime on the real platform | **not driven** — no browser/JWT capability in this session; the current Billing tab's rendered behaviour is inferred from source only |
 | UNVERIFIED | whether `meter-llm-usage-hourly` runs on prod (#737); whether `solo.stripe_price_id` still resolves live; the exact Stripe account (legacy vs V2) the platform subscription rail uses in production |
 
