@@ -143,10 +143,11 @@ them**; whoever lands second should paste them then. They are additive and order
 ## Parked follow-ups
 
 Three distinct defects were found while building this slice and **none was started, branched,
-or absorbed into this diff**. GitHub issue creation was refused for this session's integration
-(`403 Resource not accessible by integration` — no `issues: write`), so they are recorded in
-`docs/delivery/parked-follow-ups-2026-09-02-mind-slice.md` and should be promoted to real
-issues by someone who can create them. Only the owner may convert one into an assignment.
+or absorbed into this diff**. Each is filed as a GitHub issue — **#748** (Rail feed reads a
+table the browser cannot select from), **#749** (`runGeneralDocumentExtraction` called but
+never defined), **#750** (a `paige:open` dispatch that may still have no listener) — with the
+long-form record in `docs/delivery/parked-follow-ups-2026-09-02-mind-slice.md`. Only the owner
+may convert one into an assignment.
 
 ## Owed before `LIVE`
 

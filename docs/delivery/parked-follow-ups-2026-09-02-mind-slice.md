@@ -3,19 +3,20 @@
 Found while building `claude/paige-mind-pipeline-evidence-hb1jg8` (commit `140f6975`).
 **None of them was started, branched, or absorbed into that diff.**
 
-> **Why this file and not GitHub issues.** Issue creation was attempted first and was
-> refused: `POST /repos/mrmogulmaker-bot/Paige-Agent-AI/issues → 403 Resource not
-> accessible by integration`. This session's GitHub integration has no `issues: write`
-> permission. This committed record is the durable, repository-visible substitute; each
-> entry should be promoted to a real issue by someone who can create one, and only the
-> owner may convert any of them into an implementation assignment.
+> **Each entry is also a real GitHub issue** — P-1 → #748, P-2 → #749, P-3 → #750 — filed
+> from PR #747. This file is the long-form record; the issues are the tracking surface.
+> Only the owner may convert any of them into an implementation assignment.
+>
+> *(First attempt at issue creation was refused — `403 Resource not accessible by
+> integration` — on one of two configured GitHub integrations. The second had the
+> permission. Noted because the failure is a property of the tooling, not of the repo.)*
 
 Each entry states only what was actually observed. Where something was inferred from
 static reading rather than driven, it says so.
 
 ---
 
-## P-1 — Rail activity feed reads a table the browser has no `SELECT` on
+## P-1 (issue #748) — Rail activity feed reads a table the browser has no `SELECT` on
 
 **Affected owner flow.** A person opening a client's activity feed / Context Rail history.
 
@@ -55,7 +56,7 @@ contract's position is that it may not.
 
 ---
 
-## P-2 — `runGeneralDocumentExtraction` is called but never defined
+## P-2 (issue #749) — `runGeneralDocumentExtraction` is called but never defined
 
 **Affected owner flow.** A person attaching a non-credit document to PAIGE Chat and expecting
 an extraction proposal.
@@ -86,7 +87,7 @@ same file.
 
 ---
 
-## P-3 — One `paige:open` dispatch may still have no listener
+## P-3 (issue #750) — One `paige:open` dispatch may still have no listener
 
 **Affected owner flow.** A person on the Funding Matches page asking PAIGE about a lender query.
 
