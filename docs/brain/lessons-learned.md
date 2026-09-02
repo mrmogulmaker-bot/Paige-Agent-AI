@@ -1276,3 +1276,210 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+---
+
+## A component-lifetime ref is not a scope guard
+
+**Cost:** two P1 tenant-isolation findings on one PR (#728), in two different hooks, from the same
+mistaken idea about React.
+
+`useRailEvents` guarded its in-flight history read with a `mountedRef` — cleared in the effect's
+cleanup, set in the effect's body. That cannot express *"the scope that asked for this is no longer
+the scope being looked at"*, because on a scope switch React runs the OLD effect's cleanup and then
+the NEW effect's body **before** the previous scope's request resolves. The stale response read a
+flag the superseding effect had just revived, passed the check, and merged one tenant's activity
+into another tenant's feed. Measured, not reasoned: the failing-first suite reported
+`[ 'B activity', 'A activity' ]`, and a real Chromium showed the same row on screen.
+
+*Rule:* **a guard for "is this answer still wanted" must be owned by ONE effect run** — a `let
+cancelled = false` in the effect body, set true in its cleanup. Nothing that runs later can reach in
+and revive it. A ref that lives as long as the component can only answer "is this component still
+mounted", which is a different question and almost never the one being asked.
+
+### And clearing the state in the effect is only half of it
+
+The same PR fixed the response half and left the STATE half in the effect — where it runs after
+commit. So React re-rendered the new scope with the previous scope's rows still in state, **painted
+that**, and only then emptied it. One frame of another tenant's activity. Neither rail caller is
+keyed by scope, so nothing remounted to save it. The sibling repair in the same commit
+(`useSoloPendingActions`) had already reasoned its way to the right pattern and the rail fix did not
+apply it; independent review caught the inconsistency.
+
+*Rule:* **reset scope-owned state DURING render** (adjust state when the scope prop differs from the
+scope the state was read for), not in an effect. And when asserting it, observe **commits** — a
+`useLayoutEffect` probe — not renders: a render React discards was never painted, so asserting on
+renders flags a frame nobody could see.
+
+## A 2xx from an internal function is not a write
+
+**Cost:** an owner-approved extraction could be stamped terminally `applied` with part of it never
+written, and no way back to the proposal.
+
+`paige-apply-extraction` called `sync-credit-report-data` and branched on `Response.ok`. But that
+function answers **HTTP 200 with `success: true`** and records what actually happened per group
+INSIDE its body — `results.scores_error`, `results.negative_items.failed`. The status line says the
+request was handled, not that the work succeeded.
+
+*Rule:* **when an internal callee reports per-item outcomes in its body, read the body.** Check the
+semantic result of every item the caller is answerable for — and only those, because a failure in a
+group nobody approved is not this caller's failure. Do not invent stricter checks than the callee's
+contract supports: a count of zero was not failure here (the sync legitimately filters incomplete
+rows and skips duplicate inquiries), and treating it as one would have failed legitimate applies.
+
+### Three corollaries the same review surfaced
+
+- **A rejected transport is not a completed rollback.** A `fetch` that rejects proves only that no
+  ANSWER came back — never that the request failed to arrive or failed to write. Any claim of
+  "nothing was changed" after a rejection is a fabrication in the safe-sounding direction.
+- **"Nothing was changed" is a factual claim and usually an unaffordable one.** The partial-failure
+  path said it on the exact branch where it is provably false (some groups HAD written), and the
+  non-OK path inherited it although the callee's 500 comes from a catch wrapping all five write
+  steps. State what is known — which groups reported failure, and that the proposal is open again.
+- **Payload keys are not copy.** The same sentence interpolated `failed_groups`, so a person read
+  *"— negative_items, hard_inquiries didn't go through."* The machine-readable list belongs in the
+  response body and the audit row; the sentence is Claude Design's (§00/§11).
+
+## A test double that cannot fail the predicate under test is a false green
+
+`scripts/apply-extraction/fake-supabase.mjs` answered `maybeSingle()` with an ARRAY, where postgrest
+returns an object or `null`. The function computes `retryable: !relErr && !!released` off that call,
+and `!![]` is `true` — so the branch where the release matched no row **without** an error (a
+concurrent decline landing between claim and release) was structurally unreachable. Every check
+passed; one of them could never have failed. Proven both ways: restoring the array-returning double
+turns the new assertions red.
+
+*Rule:* **a double's return SHAPE is part of the contract it stands in for.** When a fake returns a
+different shape from the real client, the assertions built on it are testing the fake.
+
+## "I check every group" is a claim about the CALLEE, and it has to be read there
+
+The semantic-result fix above shipped a docstring saying *"for scores and negative items the sync
+reports a real outcome, so those are checked properly"*, and a commit message saying **"Every
+approved group's semantic result is now checked."** Independent review drove
+`sync-credit-report-data` and proved both wrong. It discards the error on every inquiry insert and
+every positive-account write and increments the counter anyway; it does the same on the
+negative-items UPDATE branch; and `scores_updated: true` is set by an error-free update that matched
+no row at all. So the only failures actually detectable are a scores step that ERRORED, a negative
+item that failed to INSERT, and a group the callee never reported on.
+
+The check was still worth shipping — it closes the partial-failure case it was written for. What was
+wrong was the size of the claim made for it.
+
+*Rule:* **before claiming you verify a callee's outcome, read the callee's error handling, not its
+result keys.** A key named `failed` proves a counter exists, not that anything increments it. And
+when the real coverage is partial, name the boundary in the docstring — a comment that overstates
+what a guard detects is the same defect as a UI that overstates what a write did, and it lasts
+longer because the next reader trusts it.
+
+## A code-level guard is not proof of production reachability
+
+**Cost:** a correct, well-tested, independently-verified repair that fixes a read production cannot
+execute. PR #729 repaired the Context Rail scope guard — effect-local cancellation, render-phase
+state reset, commit-observing tests, a real-Chromium drive, all genuinely biting under mutation
+review. Then an independent behavioural reviewer asked a question none of that could answer: *can
+this read run at all?*
+
+```
+has_table_privilege('authenticated','public.paige_client_events','SELECT')  ->  false
+has_table_privilege('authenticated','public.paige_actions','SELECT')        ->  true
+```
+
+Migration `20260712190000` granted the SELECT; `20260712200000` revoked it; nothing re-granted it.
+The hook reads the table directly over PostgREST as `authenticated`, so **every** history read is
+refused with `42501` — the privilege check fires *before* RLS, so the hook's careful reasoning about
+`pce_client_read` / `pce_staff_read` never gets evaluated. Tracked as issue #746.
+
+Two things made it invisible for a whole review cycle. The unit suites mock the Supabase client, so
+they assert on a client that always answers. And the rendered harness intercepts the request with
+Playwright `page.route(...).fulfill(...)` — it **manufactures its own 200**, so the missing grant
+cannot appear no matter how real the browser is. A harness that answers its own request proves the
+component, never the permission.
+
+*Rule:* **for any read added or repaired against a real table, check the caller role's privilege
+before claiming the flow works.** One query — `has_table_privilege('<role>','<table>','SELECT')` —
+and a grep for `GRANT`/`REVOKE` on that table across migrations. Neither a passing unit suite nor a
+passing browser drive can substitute, because both supply the answer the database would have
+refused.
+
+### The three states a repair can be in, and they are not interchangeable
+
+This PR forced the vocabulary, so it is written down:
+
+| State | What it means | What proves it |
+|---|---|---|
+| **Repaired in code** | The logic is correct and its tests fail when reverted | Mutation-tested unit suites; static/type checks |
+| **Preview-proven** | It runs somewhere non-production | A preview deploy, a rendered harness drive |
+| **Production-executable** | A real person on production can actually reach and complete the flow | Authenticated drive against production, with real privileges, RLS and data |
+
+A repair can be fully **repaired in code** and **preview-proven** while being **not
+production-executable** — which is precisely where #729's finding #1 sits. Reporting the first two
+as if they were the third is the §32 failure in a new costume: *"it compiled"* → *"it rendered"* →
+*"its tests pass and a browser drove it"*. None of those is *"a person can do this on production"*.
+
+*Rule:* **name which of the three states a claim is in, every time.** "Repaired" without a
+production qualifier will be read as the third one.
+
+## A test double's convenience is a blind spot with a shape
+
+Three separate false greens in one PR, all the same species — the instrument could not express the
+failure it was pointed at:
+
+- The Supabase double answered `maybeSingle()` with an array, so `!!released` was always truthy and
+  the "release matched no row" branch was **unreachable**.
+- The "clears IMMEDIATELY" assertion passed against an effect-phase clear, because `act` flushes
+  effects before the assertion — only a `useLayoutEffect` **commit** probe can tell the two apart.
+- Two assertions checked for the *absence* of a phrase in an error body; with the check removed
+  there was no error body at all, so both passed **vacuously**.
+
+*Rule:* **for every assertion, ask what it would look like if the thing under test were simply
+absent.** If "absent" and "correct" produce the same result, the assertion is decorative. Guard
+absence-assertions with a positive precondition (the response exists, and it failed).
+
+## A runner that dies on the defect hides the rest of the file
+
+Reverting the transport try/catch made the rejection escape the handler, take the driver with it,
+and kill the process — 38 later assertions never ran, and the strongest of five repairs reported
+itself as a stack trace rather than a named failure. CI still failed, so it was not a false green;
+but the output named no property, and a second regression hiding in the swallowed half would have
+been invisible.
+
+*Rule:* **a test runner must convert an escaped rejection into a named failure and keep going.**
+Route every invocation of the system under test through one guarded entry point, and return a
+synthetic answer that cannot be mistaken for a real one (an impossible status code) so later
+sections still run.
+
+
+## A correction is a claim, and it is held to the standard it is invoking
+
+Correcting a number I had reported from memory, I wrote that the test count *and* the driver count
+were both wrong — having re-run only the test count. Independent review re-ran the other one: it
+was **75**, exactly as first recorded. So a paragraph whose stated purpose was *"numbers reported
+from memory are the same class of error as the claims they were meant to substantiate"* substantiated
+nothing about half of what it corrected, and defamed an accurate figure in the process.
+
+Withdrawing it was not enough either. The withdrawal said the driver count "was not re-measured and
+is not being asserted" — which is honest, but leaves a reader believing the original might have been
+wrong. Measuring it took one worktree and forty seconds.
+
+*Rule:* **a correction carries the same burden of proof as the claim it corrects, and no rhetorical
+credit for humility.** Re-run every figure you are about to overturn, including the ones you are
+overturning only for symmetry. Announcing a standard is not evidence of having met it.
+
+The next review round proved the point again, in the same paragraph: rewriting it, I wrote *"15 of
+15 lint gates PASS"*. Fifteen was the number I had happened to run. `ci.yml` invokes **23**. The
+numerator was measured and the DENOMINATOR was invented — which reads as complete coverage while
+silently omitting eight gates. **A ratio is two claims. Count the denominator from the source of
+truth, not from your own transcript.**
+
+## Privacy narrowing is a whitelist of what the decision READ, not of what looks small
+
+A failure audit row recorded the sync's whole response, which on that branch can carry derived
+credit sub-scores about the subject. Narrowing it to two fields removed the leak and blinded four of
+the six verdicts the validator can return — including the two that are *about the body's shape*,
+whose only evidence is the malformed body that no longer got written. The regression assertion did
+not catch it: its sentinel happened to sit in both surviving fields.
+
+*Rule:* **narrow by excluding the field that caused the concern, and keep everything the verdict was
+derived from.** Then prove it per verdict, not once — an attribution test whose fixture lands in the
+fields you kept will pass no matter how much you threw away.

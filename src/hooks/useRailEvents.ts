@@ -153,32 +153,66 @@ export function useRailEvents(
   const [historyLoaded, setHistoryLoaded] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // Guards against setState after unmount / after the id changed.
-  const mountedRef = useRef<boolean>(false);
-  // Keep the latest callback without re-subscribing when only the callback
-  // identity changes (callers often pass an inline function).
-  const onEventRef = useRef<typeof onEvent>(onEvent);
-  onEventRef.current = onEvent;
+  // Which topic the events currently in state were read for.
+  const [renderedTopic, setRenderedTopic] = useState<string | null>(topic);
 
-  useEffect(() => {
-    mountedRef.current = true;
-
-    // No id → nothing to subscribe to. Ensure a clean, disconnected state.
-    if (!topic || !id) {
-      setConnected(false);
-      setEvents([]);
-      setHistoryLoaded(false);
-      setHistoryError(null);
-      return () => {
-        mountedRef.current = false;
-      };
-    }
-
-    // A fresh topic is a fresh stream — drop any events from the prior scope.
+  // ── THE PRIOR SCOPE IS DROPPED DURING RENDER, NOT AFTER PAINT. ──
+  //
+  // §9 — clearing in the effect was not enough, and independent review of the pushed diff caught
+  // it. `useEffect` is passive: on a scope change React re-renders with the PREVIOUS scope's
+  // events still in state, COMMITS that, and only then runs the effect that empties it. Neither
+  // rail caller is keyed by scope, so nothing remounts to save it — the operator gets one painted
+  // frame of another tenant's activity, and the portal client one of another client's.
+  //
+  // The effect-local `cancelled` flag below stops a superseded RESPONSE landing. This stops the
+  // superseded STATE being shown. They are two different halves of the same rule, and the sibling
+  // repair in `useSoloPendingActions` had already reasoned its way to this one.
+  if (renderedTopic !== topic) {
+    setRenderedTopic(topic);
     setEvents([]);
     setConnected(false);
     setHistoryLoaded(false);
     setHistoryError(null);
+  }
+
+  // Keep the latest callback without re-subscribing when only the callback identity changes
+  // (callers often pass an inline function).
+  //
+  // §9 — UPDATED AFTER COMMIT, NOT DURING RENDER, and independent review of the pushed diff is why.
+  // Assigning during render moved the ref forward BEFORE the old effect's cleanup ran, so in that
+  // window a frame still arriving on the PREVIOUS scope's channel would have been handed to the NEW
+  // render's callback — a prior-scope event delivered to a consumer that had already moved on. The
+  // `setEvents` half self-heals; a caller's side effect does not. Latent today (neither rail
+  // consumer passes `onEvent`) and closed anyway, because "no caller uses it yet" is a schedule,
+  // not a guarantee.
+  const onEventRef = useRef<typeof onEvent>(onEvent);
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  });
+
+  useEffect(() => {
+    // ── THE GUARD IS EFFECT-LOCAL, AND THAT IS THE WHOLE POINT. ──
+    //
+    // §9 — this used to be a component-lifetime ref, which CANNOT express "the scope that asked
+    // for this is no longer the scope being looked at". On a tenant or contact switch React runs
+    // the old effect's cleanup (which cleared the shared flag) and then the new effect's body
+    // (which set it again) — both BEFORE the previous scope's history read resolves. The stale
+    // response then read a flag that had been switched back on by the very effect that superseded
+    // it, passed the check, and merged the PREVIOUS scope's rows into the new feed: one account's
+    // activity rendered inside another's, one portal client's inside another's.
+    //
+    // RLS is not what failed here. It returned those rows legitimately, to the scope that asked
+    // for them. WHICH SCOPE IS STILL ON SCREEN is this hook's to know, and only a flag owned by a
+    // single effect run can know it — nothing that runs later can reach in and revive it.
+    let cancelled = false;
+
+    // No id → nothing to subscribe to. The render-time reset above has already emptied the
+    // state, so there is nothing to do but decline to subscribe.
+    if (!topic || !id) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     // ── HISTORY. This hook used to subscribe and nothing else, so every rail surface started
     // EMPTY on every mount and showed only what happened to arrive while it was open. The durable
@@ -202,7 +236,9 @@ export function useRailEvents(
         const f = railHistoryFilter(opts, id);
         q = q.eq(f.column, f.value);
         const { data, error } = await q;
-        if (!mountedRef.current) return;
+        // Superseded: this answer belongs to a scope nobody is looking at any more, so it is
+        // dropped rather than merged — including its error, which is not the new scope's news.
+        if (cancelled) return;
         if (error) {
           // Never invent an empty history out of a failed read (§13).
           setHistoryError(error.message || "could not load activity history");
@@ -215,7 +251,7 @@ export function useRailEvents(
         setEvents((live) => mergeRailHistory(live, history));
         setHistoryLoaded(true);
       } catch (err) {
-        if (!mountedRef.current) return;
+        if (cancelled) return;
         setHistoryError(err instanceof Error ? err.message : "could not load activity history");
         setHistoryLoaded(true);
       }
@@ -238,7 +274,7 @@ export function useRailEvents(
             if (msg?.payload) console.debug("[rail] unrecognized frame shape", msg?.payload);
             return;
           }
-          if (!mountedRef.current) return;
+          if (cancelled) return;
           // Dedupe by id: an event can reach this both live and through the history read, and the
           // two races either way round.
           setEvents((prev) => (prev.some((e) => e.id === event.id) ? prev : [event, ...prev].slice(0, MAX_EVENTS)));
@@ -249,12 +285,12 @@ export function useRailEvents(
         }
       })
       .subscribe((status: string) => {
-        if (!mountedRef.current) return;
+        if (cancelled) return;
         setConnected(status === "SUBSCRIBED");
       });
 
     return () => {
-      mountedRef.current = false;
+      cancelled = true;
       // Removing the channel also unsubscribes; guard against transport throws.
       try {
         void supabase.removeChannel(channel);

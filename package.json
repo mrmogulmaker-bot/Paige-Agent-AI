@@ -76,7 +76,9 @@
     "lint:approval-gate": "node scripts/ci/one-approval-gate-lint.mjs",
     "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test",
     "lint:chat-tool-registry": "node scripts/ci/chat-tool-registry-lint.mjs",
-    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test"
+    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test",
+    "harness:serve-hotfix": "vite --config scripts/live-drive/harness/spine-hotfix/vite.config.ts",
+    "harness:drive-hotfix": "node scripts/live-drive/harness/spine-hotfix/drive.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

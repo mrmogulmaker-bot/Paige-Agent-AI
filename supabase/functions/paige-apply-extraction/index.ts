@@ -38,6 +38,111 @@ const bodySchema = z.object({
   approved_keys: z.array(z.string().max(64)).max(32),
 });
 
+/**
+ * Which owner-approved groups the sync did NOT actually write.
+ *
+ * §13 — A 2xx IS NOT A WRITE, AND THIS IS THE FUNCTION THAT SAYS SO. `sync-credit-report-data`
+ * answers HTTP 200 with `success: true` and records what really happened per group INSIDE
+ * `results`: `scores_error` when the profile update was refused, `negative_items.failed` when rows
+ * could not be inserted. Reading only `Response.ok` therefore stamped the upload `applied` and told
+ * the person their ticked fields were saved when one or more of them never landed — and `applied`
+ * is terminal, so the proposal could not be retried. The card said "Done"; the profile disagreed.
+ *
+ * WHAT THIS CAN HONESTLY DETECT — WHICH IS LESS THAN AN EARLIER DRAFT OF THIS COMMENT CLAIMED.
+ * That draft said "for scores and negative items the sync reports a real outcome, so those are
+ * checked properly", and independent review drove the callee and proved it an overclaim (§13).
+ * Read against `sync-credit-report-data` as it actually is, this detects EXACTLY:
+ *
+ *   • a scores step that ERRORED — `results.scores_error` is set from the profiles update's own
+ *     error (sync:317). It does NOT detect an update that succeeded and matched NO ROW, because
+ *     the callee sets `scores_updated: true` on a clean error-free update either way.
+ *   • a negative item that failed to INSERT — `negative_items.failed` is incremented on an insert
+ *     error and on an unrecognised bureau (sync:376, :440). It does NOT detect a failed UPDATE of
+ *     an existing item: that branch increments `negativeItemsUpdated` without reading its error
+ *     (sync:412-425).
+ *   • a group the callee did not report on at all — a malformed or truncated 200.
+ *
+ * It CANNOT detect a failed inquiry or positive-account write, and independent review showed the
+ * loss is WIDER than an earlier draft of this comment said. Two mechanisms, not one:
+ *
+ *   1. The callee discards the error on every inquiry insert and every positive-account write and
+ *      increments its counter regardless, so a failed write is invisible to any caller.
+ *   2. WORSE, AND MISSED BY THE FIRST DRAFT: an inquiry can be dropped BEFORE the callee's loop
+ *      ever runs. `buildCreditSyncPayload` passes `creditor_name` / `inquiry_date` / `bureau`
+ *      through with NO fallback (unlike negatives and positives, which default to "Unknown"), and
+ *      the callee filters out any inquiry missing any of the three. `hard_inquiries: {inserted: 0}`
+ *      is then a well-formed report of a row that was never attempted — and the zero-is-legitimate
+ *      rule below reads it as a duplicate re-apply and passes it.
+ *
+ * A reviewer drove exactly that: a proposal offering one inquiry with no `inquiry_date` settled as
+ * `applied` with nothing written. So for these two groups the presence check is all there is, and
+ * on a well-formed body it always passes. Tracked as issue #734; NOT closed here.
+ *
+ * Only the groups the person ACTUALLY approved are judged — a `scores_error` on an apply that never
+ * asked for scores is not that person's failure.
+ *
+ * THE REMAINING GAP IS THE CALLEE'S, and it is named rather than papered over: closing it means
+ * `sync-credit-report-data` counting the errors it currently throws away, which changes a contract
+ * with five producers and is not in this repair's scope (§37). Until then, an approval of only
+ * inquiries or only positive accounts can still settle as `applied` with nothing written, and this
+ * function has no way to know.
+ *
+ * A count of zero is NOT treated as failure: sync filters incomplete rows out before its loops, and
+ * an inquiry that already exists is skipped by design, so `inserted: 0` is a perfectly legitimate
+ * re-apply. Only a reported failure, or a missing report for a group that was asked for, counts.
+ */
+export function syncGroupFailures(
+  approvedKeys: Iterable<string>,
+  scoped: {
+    scores: Record<string, unknown>;
+    negative_items: unknown[];
+    positive_accounts: unknown[];
+    hard_inquiries: unknown[];
+  },
+  syncBody: unknown,
+): string[] {
+  /** A postgrest-style report object: not null, not an array, not a primitive. */
+  const isReport = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === "object" && !Array.isArray(v);
+
+  const b = (syncBody ?? {}) as Record<string, unknown>;
+  // The sync's own top-level verdict. Anything other than an explicit success — including an
+  // unparseable body — is a failure, never an assumption in our favour.
+  if (b.success !== true) return ["sync_reported_failure"];
+  const results = b.results;
+  if (!isReport(results)) return ["sync_reported_no_results"];
+  const r = results as Record<string, any>;
+  const approved = new Set(approvedKeys);
+  const failed: string[] = [];
+
+  // Scores: only when a value was actually sent (an approved-but-absent score sends nothing).
+  if (Object.keys(scoped.scores).length > 0) {
+    if (r.scores_error != null || r.scores_updated !== true) failed.push("scores");
+  }
+  // Negative items: the one group with a real per-row failure counter.
+  if (approved.has("negative_items") && scoped.negative_items.length > 0) {
+    const n = r.negative_items;
+    if (!isReport(n)) failed.push("negative_items");
+    else {
+      // A count that is present but not a number means the contract moved under us. It is treated
+      // as a failure rather than coerced: `Number("two") > 0` is false, so the permissive reading
+      // would have waved through exactly the case it could not understand.
+      const failedCount = n.failed ?? 0;
+      if (typeof failedCount !== "number" || !Number.isFinite(failedCount) || failedCount > 0) {
+        failed.push("negative_items");
+      }
+    }
+  }
+  // Inquiries / positive accounts: presence of the report is all this contract can prove.
+  if (approved.has("hard_inquiries") && scoped.hard_inquiries.length > 0 && !isReport(r.hard_inquiries)) {
+    failed.push("hard_inquiries");
+  }
+  if (approved.has("positive_accounts") && scoped.positive_accounts.length > 0 && !isReport(r.positive_accounts)) {
+    failed.push("positive_accounts");
+  }
+  return failed;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -193,33 +298,50 @@ serve(async (req) => {
     return json({ ok: true, already_applied: true, applied_keys: [] });
   }
 
-  // ── Perform the write through the owning contract. ──
-  const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(scoped),
-  });
-  const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
-
-  if (!syncResponse.ok) {
-    console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
-    await admin.from("audit_logs").insert({
+  // ── ONE FAILURE PATH, THREE WAYS TO REACH IT. ──
+  //
+  // Audit what went wrong, RELEASE THE CLAIM so the person can try again rather than losing the
+  // proposal, and answer honestly. Without the release a failure leaves the row `applied` with
+  // nothing applied — the worst of both, terminal, and unrecoverable from the card.
+  //
+  // TWO THINGS THIS RELEASE HAS TO GET RIGHT, both found by review of the pushed diff.
+  // It reads its own error, because postgrest RESOLVES a rejection rather than throwing — a
+  // release that silently failed would leave exactly the unrecoverable state this exists to
+  // prevent, and say nothing. And it is CONDITIONAL on the row still being `applied`: without that
+  // predicate a concurrent decline would be stomped back to `awaiting_review`, resurrecting a
+  // proposal the person had just dismissed.
+  //
+  // It is one function rather than three copies because the transport-rejection path was added by
+  // review, and a fourth caller that forgets one of those two predicates is exactly how this
+  // regresses.
+  // TWO AUTHORED SENTENCES, NEVER ONE EDITED INTO THE OTHER. An earlier revision built the
+  // non-retryable answer by regex-stripping the trailing invitation off the retryable one, which
+  // left the false half standing: "The proposal is open again — I couldn't reopen it either, so it
+  // needs a hand." Independent review caught it. `retryable === false` means the release did NOT
+  // land, so the proposal is NOT open again, and a sentence must not assert the opposite of the
+  // flag beside it. Each caller now supplies both forms, and neither is derived from the other.
+  //
+  // THREE, NOT TWO — because `retryable === false` covers two different situations and one sentence
+  // could not be true of both. The release either ERRORED (genuinely stuck, someone has to look) or
+  // it MATCHED NOTHING, which means the row is no longer `applied` because the person declined or
+  // changed it while this ran. Telling them "it needs a hand" in that second case is an over-claim:
+  // nothing is stuck, they dismissed it on purpose. Independent review caught this in the driver's
+  // own §15, which exercises exactly the concurrent-decline path.
+  // OWED TO CLAUDE DESIGN: the words are theirs; what each may not ASSERT is ours.
+  const releaseAndFail = async (
+    auditData: Record<string, unknown>,
+    messages: { released: string; stuck: string; changed: string },
+    extra: Record<string, unknown> = {},
+  ) => {
+    const { error: failAuditErr } = await admin.from("audit_logs").insert({
       user_id: user.id,
       entity: "credit_report",
       action: "extraction_apply_failed",
       entity_id: body.upload_id,
-      data: { status: syncResponse.status, approved_keys: [...approved], error: syncBody?.error ?? null },
+      data: { ...auditData, approved_keys: [...approved], source: "paige_chat_extraction_proposal" },
     });
-    // RELEASE THE CLAIM so the person can try again rather than losing the proposal. Without this,
-    // a transient sync failure would leave the row `applied` with nothing applied — the worst of
-    // both, and unrecoverable from the card.
-    //
-    // TWO THINGS THIS RELEASE HAS TO GET RIGHT, both found by review of the pushed diff.
-    // It reads its own error, because postgrest RESOLVES a rejection rather than throwing — a
-    // release that silently failed would leave exactly the unrecoverable state this exists to
-    // prevent, and say nothing. And it is CONDITIONAL on the row still being `applied`: without
-    // that predicate a concurrent decline would be stomped back to `awaiting_review`, resurrecting
-    // a proposal the person had just dismissed.
+    if (failAuditErr) console.error("[apply-extraction] failure audit write failed:", failAuditErr.message);
+
     const { data: released, error: relErr } = await admin.from("credit_report_uploads")
       .update({ extraction_review_state: "awaiting_review" })
       .eq("id", body.upload_id)
@@ -232,7 +354,131 @@ serve(async (req) => {
         message: relErr?.message ?? (released ? null : "row was no longer claimed"),
       }));
     }
-    return json({ error: "I couldn't save those to the profile. Nothing was changed — try again." }, 502);
+    // `retryable` reports what the RELEASE actually achieved, not what it attempted (§13).
+    //
+    // HONEST LIMIT: nothing reads this yet. It is truthful data in the answer and in the audit
+    // trail, but it does NOT close the hole it describes — when a release fails, the row stays
+    // `applied`, and the next attempt takes the `already_applied` branch above and answers 200,
+    // which the card renders as "Done". Closing it means changing how the card treats an
+    // `already_applied` it did not itself cause — a change to the approval path, and outside the
+    // five findings this branch repairs. Tracked as issue #733 and deliberately NOT solved here;
+    // the reasoning stays in the code because a reader here cannot open a tracker.
+    const retryable = !relErr && !!released;
+    const answer = relErr ? messages.stuck : (released ? messages.released : messages.changed);
+    return json({ error: answer, retryable, ...extra }, 502);
+  };
+
+  // ── Perform the write through the owning contract. ──
+  //
+  // §13 — THE TRANSPORT IS WRAPPED, because the claim is already stamped by the time we get here.
+  // A `fetch` that REJECTS — a timeout, a DNS failure, a function that is briefly gone — never
+  // reaches the non-OK branch below, so the row stayed `applied` with nothing applied and every
+  // later attempt answered `already_applied`: the proposal was lost and the person was told the
+  // work was done. A rejection is the most likely failure of the three, and was the only one with
+  // no release.
+  let syncResponse: Response;
+  try {
+    syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(scoped),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[apply-extraction] sync transport failed:", detail);
+    return await releaseAndFail(
+      { transport_error: detail },
+      // §13 — IT MUST NOT SAY "NOTHING WAS CHANGED". A rejected request proves only that no ANSWER
+      // came back; it does not prove the sync never received it or never wrote. Claiming otherwise
+      // about somebody's credit profile is the same fabrication this whole seam exists to stop,
+      // pointed the other way. OWED TO CLAUDE DESIGN: the wording is theirs; what this may not
+      // ASSERT is ours.
+      {
+        released: "I couldn't confirm whether those saved. The proposal is open again — take a look and try again.",
+        stuck: "I couldn't confirm whether those saved, and I couldn't reopen the proposal either. It needs a hand.",
+        changed: "I couldn't confirm whether those saved. The proposal has changed since — it isn't waiting on this any more.",
+      },
+    );
+  }
+  const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
+
+  if (!syncResponse.ok) {
+    console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
+    return await releaseAndFail(
+      { status: syncResponse.status, error: syncBody?.error ?? null },
+      // The "Nothing was changed" this used to carry was not true either: `sync-credit-report-data`
+      // answers 500 from a catch that wraps all five write steps, so a failure at step four means
+      // steps one to three already landed. Corrected rather than inherited (§13/§58 — the removal
+      // of that claim is called out in the PR, not slipped in).
+      {
+        released: "I couldn't save those to the profile. The proposal is open again — take a look and try again.",
+        stuck: "I couldn't save those to the profile, and I couldn't reopen the proposal either. It needs a hand.",
+        changed: "I couldn't save those to the profile. The proposal has changed since — it isn't waiting on this any more.",
+      },
+    );
+  }
+
+  // ── A 2xx IS NOT A WRITE. Check what the sync SAID about every group the person approved. ──
+  const failedGroups = syncGroupFailures(approved, scoped, syncBody);
+  if (failedGroups.length > 0) {
+    // WHAT THE VALIDATOR READ, AND NOTHING IT DIDN'T. The whole `results` object was recorded here
+    // before, and on this branch the sync has run every step — so it can carry `factor_scores`,
+    // derived credit sub-scores about the SUBJECT, written under the CALLER's `user_id`. That one
+    // field is what does not belong in an audit row about which groups failed.
+    //
+    // A FIRST ATTEMPT AT THIS NARROWING KEPT TWO FIELDS AND BLINDED FOUR VERDICTS. `syncGroupFailures`
+    // reads five — and can also return `sync_reported_failure` or `sync_reported_no_results`, which
+    // are verdicts about the BODY rather than about a group. Keeping only `scores_error` and
+    // `negative_items` left those four cases writing an audit row that was usually two nulls (not
+    // always — a body carrying `results.negative_items` still recorded one), so the evidence for
+    // the verdict was gone exactly when it was least reconstructable. Privacy was
+    // the right instinct and a two-field whitelist was the wrong instrument; the fix is to record
+    // everything the verdict was derived FROM and exclude the one field it was never derived from.
+    const syncTop = (syncBody ?? {}) as Record<string, unknown>;
+    const rawResults = syncTop.results;
+    const syncResults = (!!rawResults && typeof rawResults === "object" && !Array.isArray(rawResults))
+      ? rawResults as Record<string, unknown>
+      : null;
+    // `sync_reported_no_results` is a verdict about a shape, so the shape is the evidence for it —
+    // and `sync_reported_failure` fires on `success !== true`, which a body that is not an object at
+    // all also satisfies. Without the body's own shape, an HTML gateway page, an array and a bare
+    // `{}` all wrote the identical row of nulls: the same blind spot, one level up (second review).
+    const shapeOf = (v: unknown) => v === undefined
+      ? "absent"
+      : v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+    const resultsShape = shapeOf(rawResults);
+    const syncDetail = {
+      sync_body_shape: shapeOf(syncBody),
+      sync_success: syncTop.success ?? null,
+      sync_error: syncTop.error ?? null,
+      sync_results_shape: resultsShape,
+      sync_scores_error: syncResults?.scores_error ?? null,
+      sync_scores_updated: syncResults?.scores_updated ?? null,
+      sync_negative_items: syncResults?.negative_items ?? null,
+      sync_hard_inquiries: syncResults?.hard_inquiries ?? null,
+      sync_positive_accounts: syncResults?.positive_accounts ?? null,
+    };
+    // The log gets the same subset, for the same reason. An earlier revision narrowed the audit row
+    // while this line still wrote the entire body to the function logs — the comment claimed a
+    // property the function did not have (independent review).
+    console.error("[apply-extraction] sync reported failed groups:", failedGroups, syncDetail);
+    return await releaseAndFail(
+      { failed_groups: failedGroups, ...syncDetail },
+      // §13/§11 — TWO THINGS THIS SENTENCE MAY NOT DO, both found by review of the pushed diff.
+      // It may not say "Nothing was changed": this branch fires precisely when SOME approved groups
+      // succeeded and others did not, so on a partial failure that claim is false about the one
+      // thing the person is being asked to trust the card on. And it may not name the groups by
+      // interpolating `failed_groups`, because those are payload keys — `negative_items`,
+      // `hard_inquiries` — and snake-case backend identifiers do not belong in copy a person reads.
+      // The machine-readable list stays in the body and the audit row, where a consumer can use it.
+      // OWED TO CLAUDE DESIGN: whether this should name what failed, and in what words, is theirs.
+      {
+        released: "Some of those didn't save. The proposal is open again — take a look and try again.",
+        stuck: "Some of those didn't save, and I couldn't reopen the proposal either. It needs a hand.",
+        changed: "Some of those didn't save. The proposal has changed since — it isn't waiting on this any more.",
+      },
+      { failed_groups: failedGroups },
+    );
   }
 
   // ATTRIBUTION (§13): what a person approved, when, and which of it was applied. Written with the

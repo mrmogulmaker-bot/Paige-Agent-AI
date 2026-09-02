@@ -18,6 +18,8 @@ export function setScenario(scenario) {
   ACTIVE = { scenario, rec };
   const origError = console.error;
   rec.restore = () => { console.error = origError; };
+  /** The live fixture row, so a stateful scenario can assert on what the handler left behind. */
+  rec.scenarioRow = () => scenario.uploadRow;
   console.error = (...a) => rec.errors.push(a.map(String).join(" "));
   return rec;
 }
@@ -56,6 +58,25 @@ class Builder {
       if (this._row?.extraction_review_state === "awaiting_review" && sc.releaseError) {
         return { data: null, error: sc.releaseError };
       }
+      // The CLAIM itself can be told to fail, so the "nothing was ever attempted" answer is drivable.
+      if (this._row?.extraction_review_state === "applied" && sc.claimError) {
+        return { data: null, error: sc.claimError };
+      }
+      // ── STATEFUL MODE (opt-in): the row REMEMBERS what the compare-and-set did to it. ──
+      //
+      // The stateless behaviour below is what every existing scenario asserts against, so it is
+      // left exactly as it was. But "a second attempt can proceed after a transport failure" is
+      // not provable against a row that forgets: it needs the release to genuinely put the row
+      // back in `awaiting_review`, and the NEXT request to find it there and claim it. Under
+      // `stateful: true` the update evaluates its own eq filters against the live row and applies
+      // the transition only if they all match — which is what the database does.
+      if (sc.stateful && this._table === "credit_report_uploads") {
+        const row = sc.uploadRow;
+        const matches = this._filters.every(([op, col, val]) => op === "eq" && row?.[col] === val);
+        if (!matches) return { data: [], error: null };
+        Object.assign(row, this._row);
+        return { data: [{ id: row.id }], error: null };
+      }
       // The claim returns the row only if IT made the transition; a scenario can say it lost.
       if (this._row?.extraction_review_state === "applied") {
         return { data: sc.claimReturns ?? [{ id: sc.uploadRow?.id }], error: null };
@@ -64,7 +85,19 @@ class Builder {
     }
     return { data: null, error: null };
   }
-  maybeSingle() { return Promise.resolve(this._settle(true)); }
+  /**
+   * postgrest returns an OBJECT or `null` here, never an array — and the difference is load-bearing.
+   * `paige-apply-extraction` computes `retryable: !relErr && !!released` off this call, so a double
+   * that answered `[]` made `!![]` true and the "the release matched no row, with no error" branch
+   * — the one that logs CLAIM NOT RELEASED and reports the proposal as NOT retryable — structurally
+   * unreachable. A green proof that cannot fail on the predicate under test is the false green §39
+   * exists to name; found by independent review of the pushed diff.
+   */
+  maybeSingle() {
+    const out = this._settle(true);
+    if (Array.isArray(out.data)) return Promise.resolve({ ...out, data: out.data[0] ?? null });
+    return Promise.resolve(out);
+  }
   single() { return this.maybeSingle(); }
   then(res, rej) { return Promise.resolve(this._settle(false)).then(res, rej); }
 }

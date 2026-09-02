@@ -1471,7 +1471,10 @@ const PaigeAIChatInner = ({
                             <ExtractionProposalCard
                               proposal={message.extractionProposal}
                               onConfirm={(selectedKeys) => applyExtraction(message.extractionProposal!, selectedKeys)}
-                              onSkip={() => void applyExtraction(message.extractionProposal!, [])}
+                              // RETURNED, not `void`-ed: the card awaits this and settles as
+                              // skipped only once the server has accepted the decision. Discarding
+                              // it left the row `awaiting_review` while the card said otherwise.
+                              onSkip={() => applyExtraction(message.extractionProposal!, [])}
                             />
                           </div>
                         )}
