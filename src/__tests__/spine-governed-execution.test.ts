@@ -133,6 +133,50 @@ describe("a non-Chat caller cannot bypass high-risk approval", () => {
     expect(d.kind).toBe("propose");
   });
 
+  // ── round 5 (Codex), both reproduced against the shipped seam before being fixed ────────────
+  it("REFUSES a malformed claim rather than executing it — `true` is not an approval", () => {
+    for (const bad of [true, false, "approved", 42, []]) {
+      const d = decide({
+        caller: caller({ door: "mcp" }), capability: HIGH,
+        approval: { autonomyLane: "confirm", claimedArgs: bad as never },
+        requestArgs: { contact_id: "c1" },
+      });
+      expect(d.kind === "refuse" && d.code).toBe("approval_claim_malformed");
+    }
+  });
+
+  it("refuses a bare `true` claim even on the auto lane of a HIGH capability", () => {
+    // The exact canonical rule: the shared path never accepts a bare boolean as approval. This was
+    // an EXECUTE before the fix — `high` clamps auto to confirm, then `true` fell past both nullish
+    // checks and became the arguments.
+    const d = decide({
+      caller: caller({ door: "automation" }), capability: HIGH,
+      approval: { autonomyLane: "auto", claimedArgs: true as never }, requestArgs: {},
+    });
+    expect(d.kind === "refuse" && d.code).toBe("approval_claim_malformed");
+  });
+
+  it("honours a stored claim on the AUTO lane instead of running the caller's arguments", () => {
+    // A single-use approval must not be burned and then have DIFFERENT arguments run. Before the
+    // fix the auto tail ignored the claim entirely and executed `requestArgs`.
+    const d = decide({
+      caller: caller({ door: "skill" }), capability: ORDINARY,
+      approval: { autonomyLane: "auto", claimedArgs: { first_name: "STORED" } },
+      requestArgs: { first_name: "CALLER" },
+    });
+    expect(d.kind).toBe("execute");
+    expect(d.kind === "execute" && d.args).toEqual({ first_name: "STORED" });
+  });
+
+  it("asks again rather than auto-executing after a claim that was attempted and failed", () => {
+    const d = decide({
+      caller: caller(), capability: ORDINARY,
+      approval: { autonomyLane: "auto", claimedArgs: null }, requestArgs: { first_name: "CALLER" },
+    });
+    expect(d.kind).toBe("propose");
+    expect(d.kind === "propose" && d.revalidate).toBe(true);
+  });
+
   it("executes the STORED arguments on a good claim, never the caller's re-emitted ones", () => {
     const d = decide({
       caller: caller({ door: "automation" }),
@@ -363,7 +407,20 @@ const SWEEP_CAPS = [
   { id: "crm_delete_contact", effect: "read" as const },        // mis-declared
 ];
 const SWEEP_OUTCOMES = [undefined, "", "   ", "rail"];
-const SWEEP_CLAIMS = [undefined, null, {}, { contact_id: "APPROVED" }];
+/**
+ * The three VALID claim states, plus the malformed shapes a real boundary can hand over.
+ *
+ * The first version of this list held only the valid three, and that omission is exactly why the
+ * sweep — which had already caught one fail-open — sailed past two more. `claimedArgs` arrives from
+ * a database row or parsed JSON, so its TypeScript annotation constrains nothing, and a sweep that
+ * only feeds well-typed values is testing the author's assumptions rather than the boundary.
+ */
+const SWEEP_CLAIMS = [
+  undefined, null, {}, { contact_id: "APPROVED" },
+  true, false, "approved", 42, [],
+];
+const isStoredClaim = (c: unknown): c is Record<string, unknown> =>
+  typeof c === "object" && c !== null && !Array.isArray(c);
 const SWEEP_CALLER_ARGS = { contact_id: "CALLER_SUPPLIED" };
 
 /**
@@ -414,15 +471,32 @@ describe("exhaustive sweep of the whole decision space", () => {
       if (typeof oc !== "string" || oc.trim() === "") { bad.push("NO OUTCOME CHANNEL: "+ctx); continue; }
       const laneEff = (lane === "auto" && risk === "high") ? "confirm" : lane;
       if (laneEff === "off") { bad.push("EXECUTED ON OFF: "+ctx); continue; }
-      if (laneEff === "confirm") {
-        if (!(claimedArgs && typeof claimedArgs === "object")) { bad.push("CONFIRM WITHOUT CLAIM: "+ctx); continue; }
-        // THE property: the approved path runs the STORED args, never the caller's.
+
+      // A claim that is neither absent, nor a failed lookup, nor a stored object is MALFORMED, and
+      // nothing malformed may reach a write on any lane. `true` is the case that matters: it is the
+      // bare boolean the canonical rule forbids as approval, and it must never buy an execute.
+      if (claimedArgs !== undefined && claimedArgs !== null && !isStoredClaim(claimedArgs))
+        { bad.push("EXECUTED ON A MALFORMED CLAIM: "+ctx); continue; }
+
+      // THE property, and it holds on EVERY lane rather than only under `confirm`: wherever a
+      // stored claim exists, the executed call is that stored call. An `auto` path that burned an
+      // approval and then ran the caller's own arguments satisfied the old confirm-only version of
+      // this check by never being examined.
+      if (isStoredClaim(claimedArgs)) {
         if (JSON.stringify(d.args) !== JSON.stringify(claimedArgs))
-          bad.push("APPROVED PATH DID NOT RUN STORED ARGS: "+ctx);
+          bad.push("STORED CLAIM NOT HONOURED: "+ctx);
         if (JSON.stringify(d.args) === JSON.stringify(SWEEP_CALLER_ARGS) && JSON.stringify(claimedArgs) !== JSON.stringify(SWEEP_CALLER_ARGS))
           bad.push("APPROVED PATH RAN CALLER ARGS: "+ctx);
+        continue;
+      }
+
+      if (laneEff === "confirm") {
+        bad.push("CONFIRM WITHOUT CLAIM: "+ctx); continue;
       } else if (laneEff === "auto") {
         if (risk !== "ordinary") bad.push("AUTO EXECUTED A NON-ORDINARY: "+ctx);
+        // Reaching auto with no stored claim is only legitimate when none was ATTEMPTED. A failed
+        // claim must never quietly become an unapproved auto-execute.
+        if (claimedArgs === null) bad.push("AUTO EXECUTED AFTER A FAILED CLAIM: "+ctx);
       } else {
         bad.push("EXECUTED ON AN UNKNOWN LANE: "+ctx);
       }

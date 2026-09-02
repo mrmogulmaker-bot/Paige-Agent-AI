@@ -131,6 +131,12 @@ export type GovernedCapability = {
  *   undefined  no approval was attempted
  *   null       an approval was attempted and nothing backed it   (fails closed)
  *   object     the STORED arguments, claimed once, ready to run
+ *   ANY OTHER  malformed — refused outright, never coerced (see `readClaim`)
+ *
+ * The annotation below is a promise the CALLER makes, not a constraint this module can rely on:
+ * the value arrives from a database row or parsed JSON, where TypeScript has no reach. So the
+ * shape is checked at runtime, and a `true` arriving here is the exact bare boolean the canonical
+ * rule forbids as approval — refused loudly rather than quietly treated as absent.
  */
 export type GovernedApproval = {
   /** The workspace autonomy lane, resolved server-side. */
@@ -138,6 +144,34 @@ export type GovernedApproval = {
   /** The result of the caller's atomic claim against the canonical proposal store. */
   claimedArgs?: Record<string, unknown> | null;
 };
+
+/**
+ * What the caller's claim actually IS, decided by shape rather than by trusting the annotation.
+ *
+ * `GovernedApproval.claimedArgs` is typed `Record<string, unknown> | null`, but this is a boundary:
+ * the value comes back from an atomic claim against the proposal store — a database row, or JSON
+ * parsed from one — and a type annotation constrains neither. The live claim helper in the Chat
+ * handler already accepts only a non-array object and maps everything else to null; a shared seam
+ * that assumed its callers had done the same would be trusting exactly the caller it exists to
+ * check.
+ *
+ * "absent" and "failed" both ask; "malformed" REFUSES rather than degrading to either. A `true`
+ * reaching this parameter is the bare boolean the canonical rule forbids as approval, and quietly
+ * reading it as "no approval offered" would answer a broken caller with a polite re-ask instead of
+ * telling it that it tried to approve with a flag.
+ */
+type Claim =
+  | { state: "absent" }
+  | { state: "failed" }
+  | { state: "malformed" }
+  | { state: "stored"; args: Record<string, unknown> };
+
+function readClaim(value: unknown): Claim {
+  if (value === undefined) return { state: "absent" };
+  if (value === null) return { state: "failed" };
+  if (typeof value !== "object" || Array.isArray(value)) return { state: "malformed" };
+  return { state: "stored", args: value as Record<string, unknown> };
+}
 
 export type GovernedRefusalCode =
   | "tenant_not_server_derived"
@@ -150,13 +184,15 @@ export type GovernedRefusalCode =
   | "owner_only"
   | "outcome_channel_undeclared"
   | "autonomy_off"
-  | "autonomy_lane_unrecognized";
+  | "autonomy_lane_unrecognized"
+  | "approval_claim_malformed";
 
 /** Every refusal this seam can produce. Exported so a test can prove the list is covered. */
 export const GOVERNED_REFUSAL_CODES: readonly GovernedRefusalCode[] = Object.freeze([
   "tenant_not_server_derived", "unauthenticated", "tenant_unresolved", "capability_unidentified",
   "access_denied", "unclassified_mutation", "effect_mismatch", "owner_only",
   "outcome_channel_undeclared", "autonomy_off", "autonomy_lane_unrecognized",
+  "approval_claim_malformed",
 ] as const);
 
 /**
@@ -325,28 +361,53 @@ export function decideGovernedExecution(input: {
     return refuse("autonomy_off", "This action is turned off for this workspace.", laneEffective, clamped);
   }
 
-  if (laneEffective === "confirm") {
-    // Nothing was claimed, so there is nothing to run: ask. `revalidate` distinguishes "no approval
-    // was offered" from "one was offered and nothing backed it", which is the difference between a
-    // first ask and asking again about an action that has moved on.
-    if (approval.claimedArgs === undefined) {
-      return { kind: "propose", revalidate: false, risk,
-               audit: { ...base, laneEffective, clamped, decision: "propose" } };
-    }
-    if (approval.claimedArgs === null) {
-      return { kind: "propose", revalidate: true, risk,
-               audit: { ...base, laneEffective, clamped, decision: "propose" } };
-    }
-    // 10 — ARGUMENTS. The executed call is the STORED call. The caller's own `requestArgs` are not
-    // consulted on this path at all, which is what stops a swapped recipient or a re-authored
-    // amount reaching the write: the model never restates the call, so it cannot drift it.
-    return { kind: "execute", args: approval.claimedArgs, risk,
+  // 9 — THE CLAIM, read by SHAPE. Done once, before any lane branches on it, so no path can reach
+  // a decision having skipped the check.
+  const claim = readClaim(approval.claimedArgs);
+  if (claim.state === "malformed") {
+    return refuse("approval_claim_malformed",
+      "The approval that came back was not a stored call, so nothing was run.",
+      laneEffective, clamped);
+  }
+
+  // 10 — ARGUMENTS. A claim that produced stored arguments IS the call, on EVERY lane. The caller's
+  // own `requestArgs` are not consulted when one exists, which is what stops a swapped recipient or
+  // a re-authored amount reaching the write: the model never restates the call, so it cannot drift
+  // it.
+  //
+  // "on every lane" is the part that was wrong. This used to be inside the `confirm` branch, so an
+  // ordinary capability whose lane read `auto` fell through to the tail and ran `requestArgs` while
+  // holding a real claim — burning a single-use approval and then executing DIFFERENT arguments
+  // than the ones approved. That needs no attacker: an adapter that claims before reading the lane,
+  // or a workspace that moved from `confirm` to `auto` between proposal and redemption, produces it.
+  // Stored arguments are therefore authoritative wherever they exist, and the lane decides only
+  // whether an approval was REQUIRED — never whether a granted one is honoured.
+  if (claim.state === "stored") {
+    return { kind: "execute", args: claim.args, risk,
              audit: { ...base, laneEffective, clamped, decision: "execute" } };
   }
 
-  // The ONLY remaining lane is `auto`, and the only risk that reaches it is `ordinary` — `high` was
-  // clamped to `confirm` above, `owner_only` and unclassified were refused, and every unrecognised
-  // value was refused. No approval was required, so the request's own arguments are the call.
+  if (laneEffective === "confirm") {
+    // Nothing runnable was claimed, so there is nothing to run: ask. `revalidate` distinguishes "no
+    // approval was offered" from "one was offered and nothing backed it", which is the difference
+    // between a first ask and asking again about an action that has moved on.
+    return { kind: "propose", revalidate: claim.state === "failed", risk,
+             audit: { ...base, laneEffective, clamped, decision: "propose" } };
+  }
+
+  // A claim that was ATTEMPTED and failed never becomes an unapproved auto-execute. Reaching here
+  // on `auto` means the caller tried to redeem an approval and nothing backed it; running the
+  // caller's own arguments at that point would silently convert a failed approval into a granted
+  // one. Ask again instead.
+  if (claim.state === "failed") {
+    return { kind: "propose", revalidate: true, risk,
+             audit: { ...base, laneEffective, clamped, decision: "propose" } };
+  }
+
+  // The ONLY remaining lane is `auto`, the only risk `ordinary`, and the only claim state `absent` —
+  // `high` was clamped to `confirm` above, `owner_only` and unclassified were refused, every
+  // unrecognised lane was refused, and a stored, malformed or failed claim each returned already.
+  // No approval was required and none was attempted, so the request's own arguments are the call.
   //
   // Asserted rather than assumed: this used to be a bare fallthrough, and a bare fallthrough is
   // what let an unrecognised lane execute a `high` action.
