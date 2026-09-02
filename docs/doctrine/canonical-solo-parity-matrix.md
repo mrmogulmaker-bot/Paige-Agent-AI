@@ -1,6 +1,7 @@
 # The canonical Solo parity matrix
 
 **Wave 0 baseline of the Canonical Solo Parity Program. Owner-assigned 2026-09-02.**
+**RELEASED** — Gate 2 approved on head `1b6b44e3`, merged to `main` as `a289d0bc` (PR #783).
 Grounded on `main` @ `8eda0e8d`. Every row was read from code on `main` — never from a tenant, a
 URL, a preview fixture, a legacy account, a branch, or a screenshot.
 
@@ -52,10 +53,25 @@ So **every parity repair this program ships reaches 4 of 7 Solo accounts** until
 This is not a shell fork and not a §9 defect — it is config-as-data doing exactly what it was built
 to do (`Admin.tsx:354-356` documents it as a deliberate Super-Admin-set rollout flag). But it is the
 gap between "the canonical template is correct" and "every Solo account receives it", which is the
-sentence this program exists to make true. **It needs an owner decision, not a repair:** finish the
-rollout, or state that those three are deliberately held back.
+sentence this program exists to make true.
 
-Status: **PARKED — owner decision required.** Recorded as the first entry in §9.
+**OWNER-RULED 2026-09-02 — the canonical Solo shell policy.** Every eligible standalone Solo tenant
+must receive the canonical Solo shell and product template represented by `main`.
+`solo_shell_enabled` is the **intended canonical end state** for eligible standalone Solo tenants.
+**There must be no tenant-brand, account-number, URL, fixture, or special-customer shell fork**, and
+**no exceptions are to be invented** — a tenant that is eligible Solo gets canonical parity. An
+exclusion is legitimate only when it follows from real platform eligibility (not standalone, has a
+parent, no `account_number`, tier does not resolve to `solo`), never from customer preference.
+
+**The ruling does NOT authorize a bulk production flag mutation** inside a parity baseline or a
+Settings UI repair. Enablement is routed to one controlled slice —
+[#790 Solo Shell Rollout Audit](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/790) —
+which must inventory every candidate and its current state, justify every exclusion structurally,
+publish the exact proposed enablement set, prove no Agency/parent/other-tier tenant is included,
+verify canonical route/shell behaviour before and after, and request its **own** exact-head Gate 2
+and **separate** production-data authority.
+
+Status: **RULED — enablement routed to #790.** Recorded as the first entry in §9.
 
 ---
 
@@ -280,7 +296,7 @@ Each needs a durable GitHub issue before the wave that would otherwise absorb it
 
 | # | Finding | Owner | Status |
 |---|---|---|---|
-| 1 | 3 of 7 Solo tenants lack `solo_shell_enabled` and never receive the canonical shell | **Owner decision** | Raised, §0 — no issue; it is a decision, not a repair |
+| 1 | 3 of 7 eligible Solo tenants lack `solo_shell_enabled` and never receive the canonical shell | Solo Shell Rollout Audit | **RULED 2026-09-02** — rollout is the canonical end state; enablement routed to [#790](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/790), which carries its own Gate 2 + production-data authority |
 | 2 | Clients › Delivery renders fabricated client records and an invented PAIGE narrative | Solo shell — this program, Wave 3 | [#779](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/779) |
 | 3 | Trust Compass headline numbers, sparkline and autonomy dial are fixtures with no server seam; primary modal buttons only close | Spine / autonomy contract | [#780](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/780) |
 | 4 | `paige:open` `detail.prompt` authored by 4 sites and read by none; `paige-open-chat` and `paige-factory-reset` have listeners and no dispatcher | Chat / Spine | [#781](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/781) — extends [#750](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/750) |

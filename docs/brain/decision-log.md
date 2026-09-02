@@ -1378,3 +1378,37 @@ Solo ledger covers 1 of ~18 surfaces.
 Projects v2 capability either. All four issues were written to the standard's §2 intake schema, so
 they enter the seed set unchanged once the board exists. No Markdown substitute was built — §7
 forbids it as a competing backlog.
+
+## 2026-09-02 — The canonical Solo shell policy is RULED; Wave 0 baseline released
+
+**Wave 0 released.** Gate 2 approved on head `1b6b44e3`; PR #783 merged to `main` as **`a289d0bc`**.
+Documentation only — verified after the merge that no Solo product behaviour, tenant data, feature
+flag, migration or deployment configuration changed: the flag split is still 4 true / 3 unset across
+7 top-level Solo tenants, 13 tenants total, and the migration ledger is unmoved at 911
+(`20261041000000`).
+
+**The ruling (owner, 2026-09-02).** Every **eligible standalone** Solo tenant must receive the
+canonical Solo shell and product template represented by `main`. `solo_shell_enabled` is the
+**intended canonical end state** for eligible standalone Solo tenants. **No tenant-brand,
+account-number, URL, fixture, or special-customer shell fork** is permitted, and **no exceptions are
+to be invented** — an exclusion is legitimate only when it follows from real platform eligibility
+(not standalone, has a parent, no `account_number`, tier does not resolve to `solo`), never from
+customer preference. This supersedes the Wave 0 record's framing of the flag gap as an open owner
+question: it is answered.
+
+**What the ruling explicitly does NOT authorize:** a bulk production flag or data mutation inside a
+parity baseline or a Settings UI repair. Enablement is routed to one controlled slice —
+[#790](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/790) — which must inventory every
+candidate and its current flag state, justify every exclusion structurally, publish the exact
+proposed enablement set, prove no Agency/parent/other-tier tenant is included (against the §51
+absolute invariant), verify canonical route/shell behaviour before and after, and request its **own**
+exact-head Gate 2 and **separate** production-data authority.
+
+**Wave 1 is Settings → Team**, authorized to begin on merge of #783. Canonical Solo parity only —
+route, shell ownership, layout, availability treatment, responsive behaviour, PAIGE entry, and the
+state matrix. **Tenant-owned Team data is never normalized**: members, roles, invitations, names,
+responsibilities and existing business records stay the tenant's. Rail, Spine, Mind, Chat, Team
+authorization and backend capability work are routed out, not absorbed.
+
+Sequential order after Wave 1 releases: Connections → Integrations → the remaining Settings
+destinations in canonical on-screen order. One active implementation wave at a time.

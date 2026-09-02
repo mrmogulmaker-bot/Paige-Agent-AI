@@ -133,15 +133,26 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ### The Canonical Solo Parity Program — Wave 0 baseline (2026-09-02)
 
-**Status: standing program, Wave 0 complete.** The objective is that every current and future Solo
+**Status: standing program. Wave 0 RELEASED** — merged to `main` as `a289d0bc` (PR #783); **Wave 1
+in flight: Settings → Team.** The objective is that every current and future Solo
 account receives the same canonical Solo product template as `main`. Wave 0 shipped the baseline and
 **no product change**. The inventory lives in `docs/doctrine/canonical-solo-parity-matrix.md` — every
 Solo route, branch, sub-tab, Settings destination and PAIGE entry point, each marked canonical /
 needs-authenticated-comparison / needs-UI-repair / backend-owned / Spine-owned /
 intentionally-unavailable / parked.
 
+**Canonical Solo shell policy — OWNER-RULED 2026-09-02.** Every **eligible standalone** Solo tenant
+must receive the canonical Solo shell and product template represented by `main`;
+`solo_shell_enabled` is the intended canonical end state. No tenant-brand, account-number, URL,
+fixture or special-customer shell fork is permitted, and no exceptions are to be invented — an
+exclusion is legitimate only from real platform eligibility, never customer preference. The ruling
+does **not** authorize a bulk production flag mutation inside a parity baseline or a Settings
+repair; enablement is routed to the controlled Solo Shell Rollout Audit
+([#790](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/790)), which carries its own
+exact-head Gate 2 and separate production-data authority.
+
 **The load-bearing answer this file must now give.** Asked *"does every Solo account get the same
-product?"*, the answer today is **no, and not because of a shell fork**. `src/pages/Admin.tsx:373-393`
+product?"*, the answer today is **not yet, and not because of a shell fork**. `src/pages/Admin.tsx:373-393`
 mounts the canonical Solo shell only when that tenant's own `features.solo_shell_enabled` is `true`
 (`src/hooks/useTenantContext.tsx:512`). Measured on production 2026-09-02: **4 of 7 top-level Solo
 tenants carry the flag; 3 do not** and render the legacy `/admin` shell. Every parity repair reaches
