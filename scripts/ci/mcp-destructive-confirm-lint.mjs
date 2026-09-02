@@ -332,14 +332,25 @@ const SCHEMA_NS = "z";
  *
  * There WAS one further exception — an identifier in `z.enum(…)` position — justified on the
  * grounds that `z.enum` yields a string-literal union and so no argument could produce a boolean.
- * That justification was false on the version this repository runs. Measured on zod 4.5.4:
  *
- *     z.enum([true, false]).safeParse(true)  ->  { success: true, data: true }
+ * THIS REPOSITORY CARRIES TWO ZODS, AND THEY DISAGREE. Measured, both:
  *
- * A type-theoretic claim that is merely untrue is worse than a name list, because it reads as
- * proof. The exception is gone, and removing it changed nothing on the real surfaces: still 117
- * tools, still zero violations — the free identifiers it covered sit beside handlers that destroy
- * nothing, where schema readability was never required. It was defended, not needed.
+ *     zod 3.25.76   z.enum([true, false]).safeParse(true)  ->  rejected
+ *     zod 4.5.4     z.enum([true, false]).safeParse(true)  ->  { success: true, data: true }
+ *
+ * `supabase/functions/paige-mcp/index.ts:21` imports 3.25.76 from esm.sh; 4.5.4 is the installed
+ * dependency. So the justification holds on the zod the MCP surface runs TODAY and fails on the
+ * one the repository is otherwise on — which is worse than being simply wrong, because it makes
+ * the guard's correctness depend on which zod a given surface happens to import, and a version
+ * bump would silently open it.
+ *
+ * (An earlier commit message and PR comment stated this as "false on the version this repository
+ * runs", citing only 4.5.4. That was imprecise about the surface that actually matters, and the
+ * correction is recorded here and on the PR rather than quietly amended.)
+ *
+ * The exception is gone either way, and removing it changed nothing: still 117 tools, still zero
+ * violations — the free identifiers it covered sit beside handlers that destroy nothing, where
+ * schema readability was never required. It was defended, not needed.
  *
  * The trade, stated plainly: an unreadable schema beside a destructive handler now fails, always,
  * and no exception exists to argue about. That is a visibility test with no escape, against a
@@ -459,23 +470,32 @@ function destructiveCall(node) {
  * passes through an ARGUMENT position, the call describes something inside another builder.
  * A chain like `z.any().optional()` never does, so it is still the field's own type.
  */
-const ELEMENT_TYPE_CONTAINERS = new Set(["record", "array", "map", "set", "tuple", "promise"]);
+// Containers whose ARGUMENT is an element or value type, so an unconstrained schema inside one
+// describes the elements rather than the field.
+//
+// `promise` was in this list and does not belong: a zod promise does not constrain the input to a
+// container. Measured on BOTH zods this repository carries —
+//
+//   z.object({ confirm: z.promise(z.any()) }).safeParseAsync({ confirm: true })  ->  accepted
+//
+// on 3.25.76 (what paige-mcp imports) and on 4.5.4 (the installed devDependency). So a destructive
+// tool could take `confirm: z.promise(z.any())` and the model could send `true`.
+const ELEMENT_TYPE_CONTAINERS = new Set(["record", "array", "map", "set", "tuple"]);
 
 function unconstrainedField(call) {
   let n = call;
   while (n.parent) {
-    if (ts.isCallExpression(n.parent) && n.parent.arguments.includes(n)) {
-      // Argument position alone was WRONG, and Codex proved it on the previous head:
-      // `z.union([z.string(), z.any()])` and `z.optional(z.any())` put the `any` in an
-      // argument while leaving the FIELD unconstrained. The question is not whether it is
-      // an argument but whose type it describes — a container's ELEMENT, or the field's own.
-      //
-      // Enumerating containers rather than combinators is deliberate: a zod method this
-      // guard has never heard of then falls to "the field's own type" and is FLAGGED. The
-      // other direction would let each new combinator through silently, which is how the
-      // boolean-spelling list kept losing.
-      return !ELEMENT_TYPE_CONTAINERS.has(calleeMethod(n.parent.expression) ?? "");
-    }
+    // STOPPING at the first argument boundary was wrong in the other direction, and Codex
+    // caught that too: `items: z.array(z.union([z.string(), z.any()]))` returned at the
+    // union and never reached the array, so a legitimate payload was flagged. The walk
+    // continues outward, and only an ELEMENT-TYPE CONTAINER anywhere on the path settles it.
+    //
+    // Enumerating containers rather than combinators stays deliberate: a zod method this
+    // guard has never heard of does not settle anything, so the walk carries on to the
+    // property and the field is FLAGGED. The other direction would let each new combinator
+    // through in silence, which is how the boolean-spelling list kept losing.
+    if (ts.isCallExpression(n.parent) && n.parent.arguments.includes(n) &&
+        ELEMENT_TYPE_CONTAINERS.has(calleeMethod(n.parent.expression) ?? "")) return false;
     if (ts.isPropertyAssignment(n.parent)) return n.parent.initializer === n;
     n = n.parent;
   }
@@ -751,6 +771,17 @@ mcp.tool("t", { inputSchema: z.object({ id: z.string(), items: z.array(z.any()) 
   // The exception that let an unread identifier through here rested on that being impossible.
   check("an unread z.enum argument no longer passes", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.enum(FLAGS) }), ${DESTRUCTIVE} });`), 1);
+  // Codex on 40462543, both about the container list this guard now leans on.
+  // z.promise does NOT constrain its input to a container — measured on zod 3.25.76 AND 4.5.4:
+  //   z.object({ confirm: z.promise(z.any()) }).safeParseAsync({ confirm: true })  ->  accepted
+  check("z.promise(z.any()) leaves the FIELD unconstrained", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.promise(z.any()) }), ${DESTRUCTIVE} });`), 1);
+  // And the walk must CONTINUE past a combinator to find the container outside it, or a
+  // legitimate payload is flagged. Verified: this schema rejects a bare `true`.
+  check("array(union([string, any])) is elements, not the field", v(`
+mcp.tool("t", { inputSchema: z.object({ id: z.string(), items: z.array(z.union([z.string(), z.any()])) }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
+  check("record(string, union([string, any])) is values, not the field", v(`
+mcp.tool("t", { inputSchema: z.object({ id: z.string(), m: z.record(z.string(), z.union([z.string(), z.any()])) }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
