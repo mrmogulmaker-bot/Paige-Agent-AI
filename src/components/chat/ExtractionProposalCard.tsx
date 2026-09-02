@@ -50,9 +50,15 @@ export function ExtractionProposalCard({
 
   const toggle = (key: string) => {
     if (status !== "idle") return;
-    // An error is about the attempt that produced it. Once the person changes what they are
-    // selecting, that attempt is no longer what is on screen, so the line goes rather than sitting
-    // over a different choice (raised by independent review of the pushed diff).
+    // An error is about the attempt that produced it, so once the person changes what they are
+    // selecting the line goes rather than sitting over a different choice.
+    //
+    // REACHABLE FROM ONE PATH ONLY, stated precisely because an earlier version of this comment
+    // read as a general rule: `toggle` returns above on any non-idle status, and a failed SAVE
+    // leaves `status = "error"`, which freezes the checkboxes. So this clears a stale error only
+    // after a failed SKIP, which is the path that returns to `idle`. Making a failed Save
+    // recoverable is issue #744 and is deliberately not done here; when it is, this line starts
+    // covering that path too.
     setErrorMsg(null);
     setSelected((prev) => {
       const next = new Set(prev);

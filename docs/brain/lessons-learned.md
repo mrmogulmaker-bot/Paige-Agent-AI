@@ -1372,3 +1372,80 @@ when the real coverage is partial, name the boundary in the docstring — a comm
 what a guard detects is the same defect as a UI that overstates what a write did, and it lasts
 longer because the next reader trusts it.
 
+## A code-level guard is not proof of production reachability
+
+**Cost:** a correct, well-tested, independently-verified repair that fixes a read production cannot
+execute. PR #729 repaired the Context Rail scope guard — effect-local cancellation, render-phase
+state reset, commit-observing tests, a real-Chromium drive, all genuinely biting under mutation
+review. Then an independent behavioural reviewer asked a question none of that could answer: *can
+this read run at all?*
+
+```
+has_table_privilege('authenticated','public.paige_client_events','SELECT')  ->  false
+has_table_privilege('authenticated','public.paige_actions','SELECT')        ->  true
+```
+
+Migration `20260712190000` granted the SELECT; `20260712200000` revoked it; nothing re-granted it.
+The hook reads the table directly over PostgREST as `authenticated`, so **every** history read is
+refused with `42501` — the privilege check fires *before* RLS, so the hook's careful reasoning about
+`pce_client_read` / `pce_staff_read` never gets evaluated. Tracked as issue #746.
+
+Two things made it invisible for a whole review cycle. The unit suites mock the Supabase client, so
+they assert on a client that always answers. And the rendered harness intercepts the request with
+Playwright `page.route(...).fulfill(...)` — it **manufactures its own 200**, so the missing grant
+cannot appear no matter how real the browser is. A harness that answers its own request proves the
+component, never the permission.
+
+*Rule:* **for any read added or repaired against a real table, check the caller role's privilege
+before claiming the flow works.** One query — `has_table_privilege('<role>','<table>','SELECT')` —
+and a grep for `GRANT`/`REVOKE` on that table across migrations. Neither a passing unit suite nor a
+passing browser drive can substitute, because both supply the answer the database would have
+refused.
+
+### The three states a repair can be in, and they are not interchangeable
+
+This PR forced the vocabulary, so it is written down:
+
+| State | What it means | What proves it |
+|---|---|---|
+| **Repaired in code** | The logic is correct and its tests fail when reverted | Mutation-tested unit suites; static/type checks |
+| **Preview-proven** | It runs somewhere non-production | A preview deploy, a rendered harness drive |
+| **Production-executable** | A real person on production can actually reach and complete the flow | Authenticated drive against production, with real privileges, RLS and data |
+
+A repair can be fully **repaired in code** and **preview-proven** while being **not
+production-executable** — which is precisely where #729's finding #1 sits. Reporting the first two
+as if they were the third is the §32 failure in a new costume: *"it compiled"* → *"it rendered"* →
+*"its tests pass and a browser drove it"*. None of those is *"a person can do this on production"*.
+
+*Rule:* **name which of the three states a claim is in, every time.** "Repaired" without a
+production qualifier will be read as the third one.
+
+## A test double's convenience is a blind spot with a shape
+
+Three separate false greens in one PR, all the same species — the instrument could not express the
+failure it was pointed at:
+
+- The Supabase double answered `maybeSingle()` with an array, so `!!released` was always truthy and
+  the "release matched no row" branch was **unreachable**.
+- The "clears IMMEDIATELY" assertion passed against an effect-phase clear, because `act` flushes
+  effects before the assertion — only a `useLayoutEffect` **commit** probe can tell the two apart.
+- Two assertions checked for the *absence* of a phrase in an error body; with the check removed
+  there was no error body at all, so both passed **vacuously**.
+
+*Rule:* **for every assertion, ask what it would look like if the thing under test were simply
+absent.** If "absent" and "correct" produce the same result, the assertion is decorative. Guard
+absence-assertions with a positive precondition (the response exists, and it failed).
+
+## A runner that dies on the defect hides the rest of the file
+
+Reverting the transport try/catch made the rejection escape the handler, take the driver with it,
+and kill the process — 38 later assertions never ran, and the strongest of five repairs reported
+itself as a stack trace rather than a named failure. CI still failed, so it was not a false green;
+but the output named no property, and a second regression hiding in the swallowed half would have
+been invisible.
+
+*Rule:* **a test runner must convert an escaped rejection into a named failure and keep going.**
+Route every invocation of the system under test through one guarded entry point, and return a
+synthetic answer that cannot be mistaken for a real one (an impossible status code) so later
+sections still run.
+

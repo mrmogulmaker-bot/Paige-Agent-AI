@@ -77,6 +77,33 @@ const fn = await import("../../supabase/functions/paige-apply-extraction/index.t
 const { capturedHandler } = await import("./stub-serve.mjs");
 const handler = capturedHandler();
 
+/**
+ * The ONLY way this file invokes the handler.
+ *
+ * An escaped rejection must be a NAMED failure, never a crash. Mutation review reverted the
+ * transport try/catch and the runner died on the spot — 38 later assertions never ran, and the
+ * strongest of the five repairs reported itself as a stack trace instead of a named failure. Exit
+ * code 1 meant CI still caught it, but a maintainer could not see WHICH property broke, and a
+ * second regression hiding in the swallowed half would have been invisible.
+ *
+ * On a rejection it records the failure and returns a synthetic 599 — a status this function never
+ * returns, so it can never be mistaken for a real answer — letting the rest of the file run.
+ */
+async function callHandler(approved_keys) {
+  try {
+    const res = await handler(new Request("http://local/paige-apply-extraction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
+      body: JSON.stringify({ upload_id: UPLOAD, approved_keys }),
+    }));
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  } catch (err) {
+    assert("HANDLER REJECTED — the request escaped without an answer", false,
+      `${err?.name ?? "Error"}: ${err?.message ?? String(err)}`);
+    return { status: 599, body: { error: String(err?.message ?? err), handler_rejected: true } };
+  }
+}
+
 async function drive({ approved_keys, row = {}, claimReturns, releaseError = null, sync = 200,
                        auth = true, body: syncResultBody = null, rejects = null, claimError = null,
                        duringSync = null }) {
@@ -94,13 +121,8 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
     },
     claimReturns, releaseError, claimError,
   });
-  const res = await handler(new Request("http://local/paige-apply-extraction", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-    body: JSON.stringify({ upload_id: UPLOAD, approved_keys }),
-  }));
-  const body = await res.json().catch(() => ({}));
-  return { rec, status: res.status, body, syncCalls: [...syncCalls] };
+  const { status, body } = await callHandler(approved_keys);
+  return { rec, status, body, syncCalls: [...syncCalls] };
 }
 
 // ── 1. THE VALUE COMES FROM THE SERVER, NEVER THE REQUEST — and only what was OFFERED.
@@ -353,12 +375,8 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
   });
   const attempt = async () => {
     syncCalls = [];
-    const res = await handler(new Request("http://local/paige-apply-extraction", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-      body: JSON.stringify({ upload_id: UPLOAD, approved_keys: ["negative_items"] }),
-    }));
-    return { status: res.status, body: await res.json().catch(() => ({})), calls: [...syncCalls] };
+    const { status, body } = await callHandler(["negative_items"]);
+    return { status, body, calls: [...syncCalls] };
   };
 
   syncRejects = new TypeError("error sending request for url"); syncStatus = 200; syncBody = null;
@@ -403,10 +421,17 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
     body: { success: true, results: { scores_updated: true,
                                       negative_items: { inserted: 1, updated: 0, failed: 1 } } },
   });
+  // 12.0 GUARDS 12.1 AND 12.2. Both assert the ABSENCE of a phrase in `body.error`; with the
+  // semantic check removed there is no error body at all, so both passed vacuously under mutation
+  // review. They now stand on a response that actually exists and actually failed.
+  assert("12.0 the partial failure produced a real failure answer (guards 12.1-12.2)",
+    partial.status === 502 && typeof partial.body.error === "string" && partial.body.error.length > 0,
+    `${partial.status} ${JSON.stringify(partial.body)}`);
   assert("12.1 a PARTIAL failure never claims nothing was changed",
-    !/nothing was changed/i.test(String(partial.body.error)), String(partial.body.error));
+    partial.status === 502 && !/nothing was changed/i.test(String(partial.body.error)), String(partial.body.error));
   assert("12.2 …and does not put payload keys in front of a person",
-    !/negative_items|hard_inquiries|positive_accounts|sync_reported/.test(String(partial.body.error)),
+    partial.status === 502
+      && !/negative_items|hard_inquiries|positive_accounts|sync_reported/.test(String(partial.body.error)),
     String(partial.body.error));
   assert("12.3 …while the machine-readable list is still in the body for a consumer",
     Array.isArray(partial.body.failed_groups) && partial.body.failed_groups.includes("negative_items"),
@@ -455,12 +480,7 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
   mutateDuringSync = () => { rec.scenarioRow().extraction_review_state = "declined"; };
   syncRejects = new TypeError("error sending request for url");
 
-  const res = await handler(new Request("http://local/paige-apply-extraction", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-    body: JSON.stringify({ upload_id: UPLOAD, approved_keys: ["negative_items"] }),
-  }));
-  const body = await res.json().catch(() => ({}));
+  const { body } = await callHandler(["negative_items"]);
   mutateDuringSync = null; syncRejects = null;
 
   assert("13.1 the concurrent decline is NOT stomped back to awaiting_review",
@@ -531,16 +551,20 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
   syncCalls = []; syncStatus = 200; syncBody = null;
   mutateDuringSync = () => { rec.scenarioRow().extraction_review_state = "declined"; };
   syncRejects = new TypeError("timeout");
-  const res = await handler(new Request("http://local/paige-apply-extraction", {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
-    body: JSON.stringify({ upload_id: UPLOAD, approved_keys: ["negative_items"] }),
-  }));
-  const body = await res.json().catch(() => ({}));
+  const { body } = await callHandler(["negative_items"]);
   mutateDuringSync = null; syncRejects = null;
   assert("15.1 a non-retryable failure does not tell the person to try again",
     body.retryable === false && !/try again/i.test(String(body.error)), JSON.stringify(body));
   assert("15.2 …and says the proposal needs a hand instead of going quiet",
     /needs a hand/i.test(String(body.error)), String(body.error));
+  // THE ASSERTION THE CONTRADICTION SLIPPED PAST. 15.1/15.2 check only for the absence of "try
+  // again" and the presence of "needs a hand" — both of which were TRUE of the self-contradicting
+  // sentence review found: "The proposal is open again — I couldn't reopen it either, so it needs
+  // a hand." `retryable === false` means the release did not land, so the row is NOT open again.
+  assert("15.2a …and does NOT also claim the proposal is open again, which would be the opposite",
+    !/proposal is open again/i.test(String(body.error)), String(body.error));
+  assert("15.2b …the two halves of the answer agree with each other",
+    body.retryable === false && !/open again/i.test(String(body.error)), JSON.stringify(body));
 }
 {
   const retryable = await drive({ approved_keys: ["negative_items"], rejects: new TypeError("timeout") });

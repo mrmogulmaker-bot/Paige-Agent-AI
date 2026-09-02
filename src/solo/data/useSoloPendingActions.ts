@@ -151,7 +151,14 @@ export function useSoloPendingActions(): SoloPendingActionsData {
 
     // ── §56, DECIDED RATHER THAN DEFAULTED: a resolved session with NO active account. ──
     //
-    // That is the platform operator before acting-as. Because the policy's operator escape returns
+    // DEFENSIVE, NOT A LIVE ROUTE — corrected after independent review, which found this comment
+    // claimed more than the code. `SoloEntry` refuses to mount `SoloApp` unless `activeTenant` is
+    // non-null, and `activeTenant` is looked up BY `activeTenantId`, so the compass cannot mount
+    // with a null id through any shipped route today. This branch is depth, not the operator's
+    // observed state. It is kept because the reason below is what makes it safe if a future route
+    // does reach here, and because the alternative — an unfiltered read — is the leak itself.
+    //
+    // The case it guards is the platform operator before acting-as. Because the policy's operator escape returns
     // every tenant's rows, an unfiltered read here would put a cross-tenant union inside a modal
     // that names one account — the leak, wearing the "God sees everything" excuse. And an empty
     // list would itself be a claim: "nothing is waiting on you" is a different sentence from "no

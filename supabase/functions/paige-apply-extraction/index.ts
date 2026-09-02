@@ -62,11 +62,24 @@ const bodySchema = z.object({
  *     (sync:412-425).
  *   • a group the callee did not report on at all — a malformed or truncated 200.
  *
- * It CANNOT detect a failed inquiry or positive-account write. The callee discards those errors and
- * increments unconditionally (sync:456-462, :541-549), so no caller of that contract can see them;
- * for those two groups the presence check is all there is, and on a well-formed body it always
- * passes. Only the groups the person ACTUALLY approved are judged — a `scores_error` on an apply
- * that never asked for scores is not that person's failure.
+ * It CANNOT detect a failed inquiry or positive-account write, and independent review showed the
+ * loss is WIDER than an earlier draft of this comment said. Two mechanisms, not one:
+ *
+ *   1. The callee discards the error on every inquiry insert and every positive-account write and
+ *      increments its counter regardless, so a failed write is invisible to any caller.
+ *   2. WORSE, AND MISSED BY THE FIRST DRAFT: an inquiry can be dropped BEFORE the callee's loop
+ *      ever runs. `buildCreditSyncPayload` passes `creditor_name` / `inquiry_date` / `bureau`
+ *      through with NO fallback (unlike negatives and positives, which default to "Unknown"), and
+ *      the callee filters out any inquiry missing any of the three. `hard_inquiries: {inserted: 0}`
+ *      is then a well-formed report of a row that was never attempted — and the zero-is-legitimate
+ *      rule below reads it as a duplicate re-apply and passes it.
+ *
+ * A reviewer drove exactly that: a proposal offering one inquiry with no `inquiry_date` settled as
+ * `applied` with nothing written. So for these two groups the presence check is all there is, and
+ * on a well-formed body it always passes. Tracked as issue #734; NOT closed here.
+ *
+ * Only the groups the person ACTUALLY approved are judged — a `scores_error` on an apply that never
+ * asked for scores is not that person's failure.
  *
  * THE REMAINING GAP IS THE CALLEE'S, and it is named rather than papered over: closing it means
  * `sync-credit-report-data` counting the errors it currently throws away, which changes a contract
@@ -301,9 +314,15 @@ serve(async (req) => {
   // It is one function rather than three copies because the transport-rejection path was added by
   // review, and a fourth caller that forgets one of those two predicates is exactly how this
   // regresses.
+  // TWO AUTHORED SENTENCES, NEVER ONE EDITED INTO THE OTHER. An earlier revision built the
+  // non-retryable answer by regex-stripping the trailing invitation off the retryable one, which
+  // left the false half standing: "The proposal is open again — I couldn't reopen it either, so it
+  // needs a hand." Independent review caught it. `retryable === false` means the release did NOT
+  // land, so the proposal is NOT open again, and a sentence must not assert the opposite of the
+  // flag beside it. Each caller now supplies both forms, and neither is derived from the other.
   const releaseAndFail = async (
     auditData: Record<string, unknown>,
-    message: string,
+    messages: { released: string; stuck: string },
     extra: Record<string, unknown> = {},
   ) => {
     const { error: failAuditErr } = await admin.from("audit_logs").insert({
@@ -332,17 +351,10 @@ serve(async (req) => {
     // HONEST LIMIT: nothing reads this yet. It is truthful data in the answer and in the audit
     // trail, but it does NOT close the hole it describes — when a release fails, the row stays
     // `applied`, and the next attempt takes the `already_applied` branch above and answers 200,
-    // which the card renders as "Done". Closing that means changing how the card treats an
-    // `already_applied` it did not itself cause, which is a change to the approval path and
-    // outside these five repairs. It is recorded as an open finding rather than implied fixed.
+    // which the card renders as "Done". That is tracked as its own follow-up (issue #733) and is
+    // deliberately NOT solved here; recorded as an open finding rather than implied fixed.
     const retryable = !relErr && !!released;
-    // §13 — DO NOT SAY "try again" WHEN THE RETRY CANNOT WORK. If the release did not land the row
-    // is still `applied`, so the next attempt takes the `already_applied` branch and answers 200 —
-    // which the card renders as a completed save. Independent review drove exactly that sequence.
-    // Suppressing the invitation does not close that hole (see the note below); it stops this
-    // answer actively walking a person into it.
-    const answer = retryable ? message : `${message.replace(/ Take a look and try again\.$/i, "")} I couldn't reopen it either, so it needs a hand.`;
-    return json({ error: answer, retryable, ...extra }, 502);
+    return json({ error: retryable ? messages.released : messages.stuck, retryable, ...extra }, 502);
   };
 
   // ── Perform the write through the owning contract. ──
@@ -370,7 +382,10 @@ serve(async (req) => {
       // about somebody's credit profile is the same fabrication this whole seam exists to stop,
       // pointed the other way. OWED TO CLAUDE DESIGN: the wording is theirs; what this may not
       // ASSERT is ours.
-      "I couldn't confirm whether those saved. The proposal is open again — take a look and try again.",
+      {
+        released: "I couldn't confirm whether those saved. The proposal is open again — take a look and try again.",
+        stuck: "I couldn't confirm whether those saved, and I couldn't reopen the proposal either. It needs a hand.",
+      },
     );
   }
   const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
@@ -383,16 +398,29 @@ serve(async (req) => {
       // answers 500 from a catch that wraps all five write steps, so a failure at step four means
       // steps one to three already landed. Corrected rather than inherited (§13/§58 — the removal
       // of that claim is called out in the PR, not slipped in).
-      "I couldn't save those to the profile. The proposal is open again — take a look and try again.",
+      {
+        released: "I couldn't save those to the profile. The proposal is open again — take a look and try again.",
+        stuck: "I couldn't save those to the profile, and I couldn't reopen the proposal either. It needs a hand.",
+      },
     );
   }
 
   // ── A 2xx IS NOT A WRITE. Check what the sync SAID about every group the person approved. ──
   const failedGroups = syncGroupFailures(approved, scoped, syncBody);
   if (failedGroups.length > 0) {
+    const syncResults = (syncBody as Record<string, unknown>)?.results ?? null;
     console.error("[apply-extraction] sync reported failed groups:", failedGroups, syncBody);
     return await releaseAndFail(
-      { failed_groups: failedGroups, sync_results: (syncBody as Record<string, unknown>)?.results ?? null },
+      // Only the two fields the validator actually read. The whole `results` object was recorded
+      // here before, and on this branch it has completed every sync step — so it can carry
+      // `factor_scores`, derived credit sub-scores about the SUBJECT, written under the CALLER's
+      // `user_id`. Neither the audit row nor this function needs that much of someone's credit
+      // data to say which groups failed (raised by independent review).
+      {
+        failed_groups: failedGroups,
+        sync_scores_error: (syncResults as Record<string, unknown> | null)?.scores_error ?? null,
+        sync_negative_items: (syncResults as Record<string, unknown> | null)?.negative_items ?? null,
+      },
       // §13/§11 — TWO THINGS THIS SENTENCE MAY NOT DO, both found by review of the pushed diff.
       // It may not say "Nothing was changed": this branch fires precisely when SOME approved groups
       // succeeded and others did not, so on a partial failure that claim is false about the one
@@ -401,7 +429,10 @@ serve(async (req) => {
       // `hard_inquiries` — and snake-case backend identifiers do not belong in copy a person reads.
       // The machine-readable list stays in the body and the audit row, where a consumer can use it.
       // OWED TO CLAUDE DESIGN: whether this should name what failed, and in what words, is theirs.
-      "Some of those didn't save. The proposal is open again — take a look and try again.",
+      {
+        released: "Some of those didn't save. The proposal is open again — take a look and try again.",
+        stuck: "Some of those didn't save, and I couldn't reopen the proposal either. It needs a hand.",
+      },
       { failed_groups: failedGroups },
     );
   }

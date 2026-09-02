@@ -31,6 +31,8 @@ type Resolver = (value: { data: unknown[] | null; error: { message: string } | n
 /** Every history read this test issued, keyed by the filter value it was scoped to. */
 let pending: Array<{ column: string; value: string; resolve: Resolver }>;
 let removed: string[];
+/** Every channel the hook opened, by topic, so a test can fire a live frame down one of them. */
+let channels: Map<string, { dispatch: (payload: unknown) => void }>;
 
 vi.mock("@/integrations/supabase/client", () => {
   class Builder {
@@ -50,10 +52,15 @@ vi.mock("@/integrations/supabase/client", () => {
   return {
     supabase: {
       from: () => new Builder(),
+      // The channel captures the hook's broadcast handler instead of discarding it, so a test can
+      // deliver a real frame — including down a channel whose scope has already been superseded.
       channel: (topic: string) => {
         const ch = {
           topic,
-          on: () => ch,
+          on: (_type: string, _filter: unknown, handler: (msg: unknown) => void) => {
+            channels.set(topic, { dispatch: (payload: unknown) => handler({ payload }) });
+            return ch;
+          },
           subscribe: (cb: (s: string) => void) => { cb("SUBSCRIBED"); return ch; },
         };
         return ch;
@@ -81,7 +88,7 @@ function row(id: string, title: string) {
  * synchronously, so a read is not parked until the queue drains. Skipping the flush would leave
  * `pending` empty and the suite would "fail" on its own harness instead of on the hook.
  */
-async function mountHook(initial: Opts) {
+async function mountHook(initial: Opts, onEvent?: (e: { id: string; title: string }) => void) {
   const seen: Array<{ opts: Opts; result: ReturnType<typeof useRailEvents> }> = [];
   /**
    * COMMITTED frames only, which is the distinction the scope question turns on.
@@ -92,8 +99,8 @@ async function mountHook(initial: Opts) {
    * frames a person could have been shown.
    */
   const committed: Array<{ opts: Opts; events: string[] }> = [];
-  function Probe({ opts }: { opts: Opts }) {
-    const result = useRailEvents(opts);
+  function Probe({ opts, cb }: { opts: Opts; cb?: (e: never) => void }) {
+    const result = useRailEvents(opts, cb as never);
     seen.push({ opts, result });
     useLayoutEffect(() => {
       committed.push({ opts, events: result.events.map((e) => e.title) });
@@ -103,7 +110,7 @@ async function mountHook(initial: Opts) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => { root.render(<Probe opts={initial} />); await flush(); });
+  await act(async () => { root.render(<Probe opts={initial} cb={onEvent as never} />); await flush(); });
   return {
     latest: () => seen[seen.length - 1].result,
     /** Every render this hook performed, in order, with the scope each was for. */
@@ -111,7 +118,7 @@ async function mountHook(initial: Opts) {
     /** Every frame that was actually committed, with the scope each was for. */
     commits: () => committed,
     switchTo: async (opts: Opts) => {
-      await act(async () => { root.render(<Probe opts={opts} />); await flush(); });
+      await act(async () => { root.render(<Probe opts={opts} cb={onEvent as never} />); await flush(); });
     },
   };
 }
@@ -127,7 +134,7 @@ async function settle(value: string, rows: unknown[]) {
   await act(async () => { hit.resolve({ data: rows, error: null }); await flush(); });
 }
 
-beforeEach(() => { pending = []; removed = []; });
+beforeEach(() => { pending = []; removed = []; channels = new Map(); });
 
 describe("useRailEvents — history may only land on the scope that asked for it", () => {
   it("does not merge the previous TENANT's history after a tenant switch", async () => {
@@ -201,6 +208,63 @@ describe("useRailEvents — history may only land on the scope that asked for it
     for (const frame of atB) {
       expect(frame.events).not.toContain("A activity");
     }
+  });
+
+  /**
+   * THE LIVE CALLBACK PATH — with an exact statement of what these prove and what they do not.
+   *
+   * `onEvent` is the hook's other half: history is a read, this is the stream. Before these cases
+   * NOTHING in the repository passed an `onEvent` callback at all, so the callback path had zero
+   * coverage — independent mutation review reverted the repair that moved
+   * `onEventRef.current = onEvent` out of render and into an effect, and every suite stayed green.
+   *
+   * WHAT THESE PROVE: a live frame reaches the current scope's callback, and a frame arriving on a
+   * SUPERSEDED channel reaches neither the callback nor the feed — the outcome the repair protects.
+   *
+   * WHAT THEY DO NOT PROVE, stated rather than implied: they cannot distinguish the render-phase
+   * assignment from the effect-phase one. That defect needs a frame to arrive INSIDE the window
+   * between a re-render and the old effect's cleanup, and `act` flushes both together, so the
+   * window is unreachable from jsdom. The repair stands on React's own rule — a ref written during
+   * render can retain a value from a render React discarded — and that timing property is
+   * honestly UNCOVERED here.
+   */
+  it("delivers a live frame to the CURRENT scope's callback", async () => {
+    const seen: string[] = [];
+    await mountHook({ scope: "tenant", tenantId: "tenant-A" }, (e) => seen.push(e.title));
+    await act(async () => {
+      channels.get("rail:tenant:tenant-A")!.dispatch(row("live-1", "A live event"));
+      await flush();
+    });
+    expect(seen).toEqual(["A live event"]);
+  });
+
+  it("does not deliver a frame from a SUPERSEDED channel to the new scope's callback", async () => {
+    const seen: string[] = [];
+    const h = await mountHook({ scope: "tenant", tenantId: "tenant-A" }, (e) => seen.push(e.title));
+    await h.switchTo({ scope: "tenant", tenantId: "tenant-B" });
+    seen.length = 0;
+
+    // The old channel is torn down but still holds its handler; a frame arriving late on it must
+    // reach neither the callback nor the feed.
+    await act(async () => {
+      channels.get("rail:tenant:tenant-A")!.dispatch(row("stale-1", "A stale live event"));
+      await flush();
+    });
+    expect(seen).toEqual([]);
+    expect(h.latest().events.map((e) => e.title)).not.toContain("A stale live event");
+  });
+
+  it("still delivers on the NEW channel after the switch", async () => {
+    const seen: string[] = [];
+    const h = await mountHook({ scope: "tenant", tenantId: "tenant-A" }, (e) => seen.push(e.title));
+    await h.switchTo({ scope: "tenant", tenantId: "tenant-B" });
+    seen.length = 0;
+    await act(async () => {
+      channels.get("rail:tenant:tenant-B")!.dispatch(row("live-2", "B live event"));
+      await flush();
+    });
+    expect(seen).toEqual(["B live event"]);
+    expect(h.latest().events.map((e) => e.title)).toContain("B live event");
   });
 
   it("tears down the prior channel on a scope switch", async () => {
