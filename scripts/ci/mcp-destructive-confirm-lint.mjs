@@ -531,7 +531,17 @@ function literalArgAdmitsBoolean(arg) {
   if (!a) return true;
   if (a.kind === ts.SyntaxKind.TrueKeyword || a.kind === ts.SyntaxKind.FalseKeyword) return true;
   if (ts.isArrayLiteralExpression(a)) return a.elements.some(literalArgAdmitsBoolean);
-  return !ts.isStringLiteralLike(a) && !ts.isNumericLiteral(a);
+  // Every VISIBLY non-boolean literal form, not just the two I happened to think of. Reading only
+  // string and numeric literals made `z.literal(null)`, `z.literal(1n)` and `z.literal(-1)` — a
+  // NullKeyword, a BigIntLiteral and a PrefixUnaryExpression — look unreadable, so a legitimate
+  // field on a destructive tool failed CI. Both zods reject `true` for all three.
+  if (ts.isStringLiteralLike(a) || ts.isNumericLiteral(a) || ts.isBigIntLiteral(a)) return false;
+  if (a.kind === ts.SyntaxKind.NullKeyword || a.kind === ts.SyntaxKind.UndefinedKeyword) return false;
+  if (ts.isPrefixUnaryExpression(a) &&
+      (a.operator === ts.SyntaxKind.MinusToken || a.operator === ts.SyntaxKind.PlusToken)) {
+    return literalArgAdmitsBoolean(a.operand);
+  }
+  return true;
 }
 
 /**
@@ -573,7 +583,14 @@ function fieldAdmitsBoolean(node) {
   if (method === null) return true;
   const receiver = (ts.isPropertyAccessExpression(e.expression) || ts.isElementAccessExpression(e.expression))
     ? e.expression.expression : null;
-  const isHead = receiver && ts.isIdentifier(receiver) && receiver.text === SCHEMA_NS;
+  // A head call is `z.x(...)` OR a namespace-qualified one such as zod 4's `z.iso.date()`, whose
+  // receiver is `z.iso` rather than the bare `z`. Requiring the bare identifier sent `z.iso.date()`
+  // down the chained branch, where it hit a non-call expression and was refused — a legitimate
+  // field failing CI on a construct that rejects booleans on both zods.
+  const isHead = receiver && (
+    (ts.isIdentifier(receiver) && receiver.text === SCHEMA_NS) ||
+    (ts.isPropertyAccessExpression(receiver) && chainRoot(receiver) === SCHEMA_NS &&
+     !ts.isCallExpression(receiver.expression)));
 
   if (!isHead) {
     // A chained call — `z.string().optional()`. The receiver decides, and a schema handed to a
@@ -607,6 +624,24 @@ function memberAdmitsBoolean(arg) {
   return fieldAdmitsBoolean(a);
 }
 
+/** The object literals that hold a schema's FIELDS, as opposed to a builder's options. */
+const SHAPE_BUILDERS = new Set(["object", "strictObject", "looseObject", "extend", "interface"]);
+
+/**
+ * Is this property a FIELD of a schema shape, rather than a key in a builder's options bag?
+ *
+ * Treating every property as a field made `id: z.string().regex(/x/, { message: "bad" })` report a
+ * model-settable field called `message` — validation metadata, not something the model can send.
+ * A field lives in the shape object a schema builder is GIVEN; an option lives anywhere else.
+ */
+function isSchemaShapeProperty(prop) {
+  const shape = prop.parent;
+  if (!shape || !ts.isObjectLiteralExpression(shape)) return false;
+  const call = shape.parent;
+  if (!call || !ts.isCallExpression(call) || call.arguments[0] !== shape) return false;
+  return SHAPE_BUILDERS.has(calleeMethod(call.expression) ?? "");
+}
+
 /**
  * Every FIELD in this schema the model could set to a boolean.
  *
@@ -618,7 +653,8 @@ function modelSettableBooleans(schemaNode) {
   const names = [];
   if (!schemaNode) return names;
   walkValues(schemaNode, (n) => {
-    if (!ts.isPropertyAssignment(n) || !fieldAdmitsBoolean(n.initializer)) return;
+    if (!ts.isPropertyAssignment(n) || !isSchemaShapeProperty(n)) return;
+    if (!fieldAdmitsBoolean(n.initializer)) return;
     const nm = n.name && ts.isIdentifier(n.name) ? n.name.text
       : n.name ? (literalText(n.name) ?? "<computed>") : "<unnamed>";
     if (!names.includes(nm)) names.push(nm);
@@ -892,6 +928,19 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
     ["number, date and a nested object", `z.object({ n: z.number().min(1), d: z.date(), o: z.object({ s: z.string() }) })`],
   ]) check(`ADMITS ${label}`, v(`
 mcp.tool("t", { inputSchema: ${schema}, ${SAFE_H} });`), 0);
+  // Codex on 6d554580, all three FALSE POSITIVES — the axis I asked to be attacked after the
+  // inversion. Each is a legitimate field on a destructive tool that this guard was blocking.
+  for (const [label, schema] of [
+    ["z.literal(null)", `z.object({ mode: z.literal(null), id: z.string() })`],
+    ["z.literal(1n)", `z.object({ mode: z.literal(1n), id: z.string() })`],
+    ["z.literal(-1)", `z.object({ mode: z.literal(-1), id: z.string() })`],
+    ["a builder's options object", `z.object({ id: z.string().regex(/x/, { message: "bad" }) })`],
+    ["z.iso.date() (namespace-qualified)", `z.object({ created_on: z.iso.date(), id: z.string() })`],
+  ]) check(`ADMITS ${label} beside a destructive handler`, v(`
+mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 0);
+  // …and the fail-closed direction still holds where it must.
+  check("an options object does NOT hide a real field", v(`
+mcp.tool("t", { inputSchema: z.object({ id: z.string().regex(/x/, { message: "bad" }), confirm: z.boolean() }), ${DESTRUCTIVE} });`), 1);
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
