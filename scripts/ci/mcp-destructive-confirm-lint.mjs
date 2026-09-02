@@ -137,17 +137,46 @@ const EXEMPT = /\/\/\s*mcp-confirm-exempt:\s*\S/;
  * simply not a comment and cannot exempt anything.
  */
 function commentTextWithin(node, sf) {
+  return collectComments(sf, node.pos, node.end).join("\n");
+}
+
+/** Literal parts whose CONTENT is token text, not trivia — never scan for comments from their pos. */
+const TEMPLATE_PARTS = new Set([
+  ts.SyntaxKind.TemplateHead, ts.SyntaxKind.TemplateMiddle, ts.SyntaxKind.TemplateTail,
+]);
+
+/**
+ * Comments between `from` and `to`, taken from the PARSER's own trivia — never from a fresh scan.
+ *
+ * A standalone `ts.createScanner` has no idea it is inside a template literal, so it lacks the
+ * parser's template-tail rescan: in `` `${value} // mcp-confirm-exempt: fake` `` it reads the text
+ * after `}` as a real single-line comment. My first fix for the string bypass therefore
+ * REINTRODUCED that bypass one level subtler — the marker moved from a plain string into an
+ * interpolated one and worked again.
+ *
+ * `getLeadingCommentRanges`/`getTrailingCommentRanges` at node boundaries cannot make that mistake,
+ * because the parser has already decided where tokens end and trivia begins. Template head/middle/
+ * tail nodes are skipped explicitly: their `pos` sits at a `}` with template TEXT after it, and
+ * scanning trivia from there is exactly the misreading being fixed.
+ */
+function collectComments(sf, from, to) {
   const full = sf.getFullText();
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* skipTrivia */ false, ts.LanguageVariant.Standard, full);
-  scanner.setTextPos(node.pos);
-  const out = [];
-  while (scanner.getTextPos() < node.end) {
-    const kind = scanner.scan();
-    if (kind === ts.SyntaxKind.EndOfFileToken) break;
-    if (kind === ts.SyntaxKind.SingleLineCommentTrivia ||
-        kind === ts.SyntaxKind.MultiLineCommentTrivia) out.push(scanner.getTokenText());
-  }
-  return out.join("\n");
+  const seen = new Map();
+  const add = (ranges) => {
+    for (const r of ranges || []) {
+      if (r.pos >= from && r.end <= to) seen.set(r.pos, full.slice(r.pos, r.end));
+    }
+  };
+  const visit = (n) => {
+    if (n.end < from || n.pos > to) return;
+    if (!TEMPLATE_PARTS.has(n.kind)) {
+      add(ts.getLeadingCommentRanges(full, n.pos));
+      add(ts.getTrailingCommentRanges(full, n.end));
+    }
+    n.forEachChild(visit);
+  };
+  visit(sf);
+  return [...seen.values()];
 }
 
 function walk(node, visit) {
@@ -729,6 +758,12 @@ mcp.tool("list_things", { inputSchema: z.object({ include_archived: z.boolean() 
   check("an exemption marker in a STRING does not exempt (Codex)", v(`
 mcp.tool("fake_exempt", {
   description: "// mcp-confirm-exempt: not a real comment",
+  inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
+});`), 1);
+  check("a marker after an INTERPOLATION does not exempt (Codex)", v(`
+mcp.tool("tmpl_exempt", {
+  description: \`\${v} // mcp-confirm-exempt: fake\`,
   inputSchema: z.object({ confirm: z.boolean() }),
   handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
 });`), 1);
