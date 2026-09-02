@@ -1299,3 +1299,27 @@ transport, which is structural evidence and never authenticated proof.
 claim the Settings/Calendar drives run inside the *"REAL merged `SoloApp`"*. The settings harness
 demonstrably reconstructs the chain instead. Parked as **issue #738** for the drive's owner; not
 corrected here because it is a claim about drives this repair does not touch.
+
+### Landed — Gate 2, merge, and deployment
+
+The owner approved Gate 2 on exact head `77d94c6643ac4ebdb26b8caef0613aad19469260`, authorizing two
+things only: the merge, and the normal frontend deployment that follows it. PR #751 merged to `main`
+as **`1d189155350b1769d7b1f4d031e7b144890616a0`**.
+
+Pre-merge, `main` had advanced one commit past the reported base (`f0fcd2dd`, #743) — **documentation
+only**, zero source or runtime files, so nothing touched the Setup repair files, the scroll policy,
+the Solo shell host or its tests. The single file changed on both sides,
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md`, auto-merged with 0 conflicts.
+
+**No migration, edge function, provider action or production-data mutation was in scope or occurred.**
+`Supabase Preview` was correctly **skipped** — there is no `supabase/` diff in this change.
+
+**Still `UNVERIFIED` after shipping: the authenticated owner browser proof.** Merging is not evidence
+that a signed-in owner can complete the flow, and this entry does not claim it is. The short steps to
+close it are recorded in the Master Project File entry for this surface.
+
+**Records corrected in this closeout**, because they described a state that shipping made false — the
+exact drift this log already recorded a lesson about (a doc reading *"local branch, NOT LIVE"* while
+serving production): the Master Project File entry's heading, status paragraph and closing gate line
+now read as merged and deployed, with the `UNVERIFIED` authenticated proof preserved and restated as
+the one thing still owed.
