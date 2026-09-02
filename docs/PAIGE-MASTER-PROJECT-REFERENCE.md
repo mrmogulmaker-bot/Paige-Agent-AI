@@ -1181,15 +1181,20 @@ reader either.
 (2026-09-02).** `public.get_solo_rail_activity(p_limit integer)` is live on production
 (`20261042000000`, then the #794 remediation `20261043000000`; both confirmed in
 `schema_migrations`). It is `SECURITY DEFINER`, takes **no tenant parameter**, returns 11 reviewed
-display fields with no `payload`/`tenant_id`/internal identifiers, and **raises `42501
-RAIL_FORBIDDEN` rather than returning an empty timeline** on refusal — so a denied caller can no
-longer be mistaken for an idle workspace. It deliberately does **not** re-grant browser SELECT on
+display fields, and **raises `42501 RAIL_FORBIDDEN` rather than returning an empty timeline** on
+refusal — so a denied caller can no longer be mistaken for an idle workspace. The projection omits
+`payload`, `tenant_id`, `contact_id`, `actor_user_id`, `ref_table` and `ref_id`; it **does** return
+the event row's own `id`, so the accurate claim is that it exposes **no tenant, client, actor or
+source-record identifier and no producer payload** — not that it carries no identifier at all. It deliberately does **not** re-grant browser SELECT on
 `paige_client_events`: that revoke is what keeps the same-shaped flaw in the `pce_staff_read` policy
 unreachable, so the fix for a Rail screen is never a table grant.
 
 **Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
 `useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
-production after both migrations. The gap changed shape rather than closing: **before, no safe path
+production after both migrations. The remaining *misreporting* is narrower than the read failure: the
+two `useRailEvents` consumers collapse a refusal into an empty feed, while `compass.tsx:377` and
+`team.tsx:235` both render an explicit `role="alert"` failure with retry. All four are denied; only
+two of them lie about it. The gap changed shape rather than closing: **before, no safe path
 existed; now a safe path exists and nothing uses it.** Issue **#746 stays open**, and closing it also
 requires authenticated owner runtime proof, not a deployed function. Full record, including the #794
 cross-workspace defect this foundation shipped with and the three lessons from it:

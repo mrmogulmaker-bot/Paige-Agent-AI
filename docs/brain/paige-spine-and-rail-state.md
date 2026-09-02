@@ -88,7 +88,7 @@ access to `paige_client_events`**. Production catalog class, read 2026-09-02 at 
 | Migrations applied | `20261042000000` (#785) and `20261043000000` (#795), both present in `supabase_migrations.schema_migrations` |
 | Overloads | exactly **1** — no stale signature left behind |
 | Signature | takes `p_limit` only; **no tenant parameter** — the workspace is server-resolved, never caller-supplied |
-| Projection | 11 reviewed display fields (`id, event_kind, surface, actor_type, audience, visibility, from_department, to_department, title, summary, occurred_at`). **No** `tenant_id`, `payload`, `ref_table`, `ref_id`, `actor_user_id`, `contact_id` |
+| Projection | 11 reviewed display fields (`id, event_kind, surface, actor_type, audience, visibility, from_department, to_department, title, summary, occurred_at`). **Omits** `tenant_id`, `payload`, `ref_table`, `ref_id`, `actor_user_id`, `contact_id`. It **does** return `e.id`, the event row's own UUID primary key — so "no internal identifiers" would be false; the accurate claim is that it exposes no tenant, client, actor or source-record identifier, and no producer payload |
 | On refusal | **raises `42501 RAIL_FORBIDDEN`** — it does not `RETURN;` an empty set |
 | EXECUTE | `authenticated` ✔ · `service_role` ✔ (inert — `auth.uid()` is NULL there, so it raises) · `anon` ✘ |
 | `paige_client_events` SELECT | still **denied** to `authenticated` and `anon` |
@@ -174,7 +174,7 @@ than relayed:
 | Path | Consumer | Distinguishes denied from empty? |
 |---|---|---|
 | `useRailEvents` (Context Rail) | `src/components/paige/PaigeRailFeed.tsx:108` · `src/components/app/ClientActivityFeed.tsx:144` — both destructure only `{ events, connected }` | **NO.** `grep` for `historyError\|historyLoaded` outside the hook and its tests returns **no matches**, so a refused read renders exactly like an empty feed |
-| `useSoloActivityFeed` (Solo Trust Compass) | `src/solo/compass.tsx:377` computes a distinct `'error'` state and renders *"Recent activity could not be loaded, so this is not a record of nothing happening"* with `role="alert"` and a retry | **Yes** — this one is the model treatment |
+| `useSoloActivityFeed` (Solo Trust Compass **and** Team activity) | **Both** consumers distinguish. `src/solo/compass.tsx:377` and `src/solo/team.tsx:235` each compute `loading ? … : error ? 'error' : …` and render `role="alert"` with a retry — *"Recent activity could not be loaded, so this is not a record of nothing happening"* and *"This timeline could not be loaded, so it is not a record of nothing happening"* | **Yes** — these are the model treatment. **Corrected 2026-09-02:** an earlier version of this row named only `compass.tsx`; `team.tsx` gained the same treatment and was not credited here |
 
 So the platform-level statement is *not reliable enough*: two shipped consumers cannot distinguish,
 one can. **An operator who opens the Command Center a minute after PAIGE acts can be told she has done
@@ -196,7 +196,21 @@ reader is now deployed — see the section above — but `useRailEvents.ts:198` 
 no SELECT on it. Re-measured on production at `1fb79288`, after both migrations:
 `has_table_privilege('authenticated','public.paige_client_events','SELECT')` is **still `false`** — by
 design, since that revoke is what keeps the defective `pce_staff_read` policy unreachable. So the
-owner-facing behaviour is **byte-for-byte what it was**: a refused read still renders as "nothing yet".
+owner-facing behaviour is **byte-for-byte what it was**, and that means exactly what the consumer
+matrix above says — no more:
+
+- **The two `useRailEvents` consumers still collapse a refusal into an empty feed.** `PaigeRailFeed.tsx`
+  and `ClientActivityFeed.tsx` destructure only `{ events, connected }`, so a denied read still renders
+  as "nothing yet". **This is the remaining failure mode.**
+- **The two `useSoloActivityFeed` consumers do NOT.** Both `compass.tsx:377` and `team.tsx:235` compute
+  `activity.loading ? 'loading' : activity.error ? 'error' : …` and render an explicit `role="alert"`
+  message with a retry control — *"Recent activity could not be loaded, so this is not a record of
+  nothing happening"* and *"This timeline could not be loaded, so it is not a record of nothing
+  happening"*. **Do not describe these as showing "nothing yet".** They are the model treatment Slice B
+  extends rather than replaces.
+
+That split is why the platform status is *not reliable enough* rather than *never* — and why the
+verdict is about the platform, not about every consumer equally.
 
 The status line is therefore unchanged, and the honest shape of the remaining gap has changed:
 
