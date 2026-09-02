@@ -247,6 +247,35 @@ function FirstUse({ canManage }) {
  * The Offers half of Catalog. `setDetail` is the campaigns drawer already mounted by `GrowthHub`,
  * so this surface adds no second drawer (§18) and inherits its focus trap and Escape handling.
  */
+/**
+ * Two notices about the RECORD itself, as opposed to its contents. They lived below the empty-state
+ * return, which made them dead code for every tenant on production: `tenant_products` holds zero
+ * rows, so every workspace renders FirstUse, and the deploy-order notice — the one that explains why
+ * a field the tenant filled in reads "Not stated" — could never appear for anybody. A truth device
+ * reachable only in a state nobody is in is not a truth device.
+ */
+function RecordNotices({ data }) {
+  return (
+    <>
+      {data.fieldsUnavailable ? (
+        <p className="co-notice">
+          <Ic.clock size={15} />
+          <span>Some offer details are not available on this deployment yet, so they read as “Not stated”
+            here even where you have filled them in. This resolves when the pending update is applied.</span>
+        </p>
+      ) : null}
+
+      {data.authorityUnknown ? (
+        <p className="co-notice">
+          <Ic.shield size={15} />
+          <span>Your permissions for this workspace could not be read just now, so nothing is assumed
+            about what you may change. Reload to try again.</span>
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function CatalogOffers({ setDetail }) {
   const data = useCatalogOffers();
   const [category, setCategory] = React.useState("all");
@@ -288,7 +317,14 @@ export function CatalogOffers({ setDetail }) {
     );
   }
 
-  if (data.offers.length === 0) return <FirstUse canManage={data.canManage || data.authorityUnknown} />;
+  if (data.offers.length === 0) {
+    return (
+      <>
+        <RecordNotices data={data} />
+        <FirstUse canManage={data.canManage || data.authorityUnknown} />
+      </>
+    );
+  }
 
   const categories = [...new Set(data.offers.map((offer) => offer.category).filter(Boolean))];
   const shown = category === "all"
@@ -356,21 +392,9 @@ export function CatalogOffers({ setDetail }) {
         ))}
       </div>
 
-      {data.fieldsUnavailable ? (
-        <p className="co-notice">
-          <Ic.clock size={15} />
-          <span>Some offer details are not available on this deployment yet, so they read as “Not stated”
-            here even where you have filled them in. This resolves when the pending update is applied.</span>
-        </p>
-      ) : null}
+      <RecordNotices data={data} />
 
-      {data.authorityUnknown ? (
-        <p className="co-notice">
-          <Ic.shield size={15} />
-          <span>Your permissions for this workspace could not be read just now, so nothing is assumed
-            about what you may change. Reload to try again.</span>
-        </p>
-      ) : !data.canManage ? (
+      {!data.authorityUnknown && !data.canManage ? (
         <p className="co-notice">
           <Ic.shield size={15} />
           <span>You can see this catalog but not change it. An owner or admin defines what this business sells.</span>

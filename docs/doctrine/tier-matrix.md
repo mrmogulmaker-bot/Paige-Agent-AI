@@ -1606,7 +1606,7 @@ words that they cannot change it. Slice 2A exposes no write, so `canManage` curr
 that notice; Slice 2B's command seam is what it will really gate.
 
 **Evidence, separated.**
-- *Automated:* 34 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
+- *Automated:* 36 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
   the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
   file exists because the first mocks the read entirely: an adversarial review of the pushed diff
   found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,

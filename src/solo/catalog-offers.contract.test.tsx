@@ -230,6 +230,24 @@ describe("Catalog Offers — truthfulness", () => {
     expect(row.textContent).toContain("Active");
   });
 
+  it("still explains a pending deployment when the workspace has no offers yet", () => {
+    // On production `tenant_products` holds zero rows, so EVERY tenant renders the empty state.
+    // Both record-notices sat below that return, which made the deploy-order explanation — the one
+    // that says why a field you filled in reads "Not stated" — unreachable for every single tenant.
+    setCampaigns();
+    setOffers({ offers: [], fieldsUnavailable: true });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("not available on this deployment yet");
+  });
+
+  it("still says an unread permission is unread when the workspace has no offers yet", () => {
+    setCampaigns();
+    setOffers({ offers: [], canManage: false, authorityUnknown: true });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("could not be read just now");
+    expect(host.textContent).not.toContain("cannot change it");
+  });
+
   it("says the kind is not stated rather than guessing one", () => {
     setCampaigns();
     setOffers({ offers: [offer({ kind: null })] });
