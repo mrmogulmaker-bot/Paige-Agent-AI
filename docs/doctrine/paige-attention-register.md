@@ -98,7 +98,7 @@ option, so each one is defined by the single condition that distinguishes it.
 | `Gate 2 Requested` | The exact final head is ready and awaits the owner's final release authorization. |
 | `Authenticated Runtime Proof Owed` | Code may be merged, released, or otherwise technically complete, but the real signed-in owner flow has not been proven. |
 | `Parked` | The work is intentionally deferred and not currently active. |
-| `Released` | The approved release is merged or deployed as applicable, with its exact evidence recorded. |
+| `Released` | The approved release is merged or deployed as applicable, **with its authenticated-runtime proof recorded**. |
 | `Not Reproduced` | A reported issue could not be confirmed with recorded evidence. |
 | `Superseded` | A later approved decision or implementation replaced this item. |
 | `Owner Declined` | The owner explicitly chose not to proceed. |
@@ -147,11 +147,15 @@ a `Status` option: two fields encoding the same *judgement* means two people set
 the views diverge. This is a rule about that judgement, not a blanket ban on two fields touching one
 subject — see the `Blocked` pairing directly below, which is governed instead by a tie-break.
 
-**A record is `Blocked` if and only if `Dependency / Blocker` is not `None`.** The status states
-*that* it is blocked; the field states *by what*. Neither is set without the other. Without this
-tie-break one person records the dependency and leaves the status `Active` while another sets
-`Blocked`, and blocked work hides inside "Active" — the exact harm §7's acceptance criteria exist to
-prevent.
+**A record set to `Blocked` MUST name what blocks it in `Dependency / Blocker`.** The status states
+*that* it is blocked; the field states *by what*. The implication runs one way only: a record can
+carry a dependency and still be `Active`, `Parked`, or `Released`, because a dependency is something
+the work relates to and a blocker is something currently stopping it. Making it a biconditional
+would force every §2 intake record — which must state what it depends on, and is parked by
+definition — to be `Blocked` and `Parked` at once, and would drag finished records back out of their
+terminal state because the field still names the pull request they once waited on. The judgement
+"is this stopping progress right now?" belongs to the accountable owner; the field records the
+answer's subject either way.
 
 **Why `Production State` is separate from `Status`.** They answer different questions, and the
 platform has already produced the combination that proves it: a capability can be **parked** in the
@@ -165,8 +169,8 @@ one for each of the four exits in §5. A record in any of them has left the regi
 ## 4. The register's views
 
 Eight views. **Layout is its own column** rather than a hint inside a name, because grouping means
-something different in each: in Board the grouping field becomes the columns, in Table it produces
-collapsible row groups. Two people who pick differently build visibly different boards from the same
+something different in each: in Board a field can key the **columns** *or* group **swimlanes** —
+two separate controls — while in Table it produces collapsible row groups. Two people who pick differently build visibly different boards from the same
 reading.
 
 Views 7 and 8 are a **pair sharing one filter** — the same records, once as a list and once as a
@@ -177,7 +181,7 @@ leg unmet, because no other Table view contains all six conditions at once.
 `Created at` and `Updated at` are Projects v2 **built-in** fields, available to sort on. They are not
 among the nine and are not added by hand.
 
-| # | View | Layout | Filter (verbatim) | Group by | Sort |
+| # | View | Layout | Filter (verbatim) | Group by / column field | Sort |
 |---|---|---|---|---|---|
 | 1 | **Owner Now** | Table | `status:"Owner Decision Needed","Gate 2 Requested"` | `Status` | `Severity` ascending |
 | 2 | **Release Blockers** | Table | `severity:"Release-blocking" -status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Production State` | `Updated at` descending |
@@ -186,7 +190,7 @@ among the nine and are not added by hand.
 | 5 | **Released Truth** | Table | `status:"Released"` | `Domain / Surface` | `Updated at` descending |
 | 6 | **By Domain** | Table | `-status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Domain / Surface` | `Severity` ascending |
 | 7 | **Delivery Control** | Table | `-status:"Not Reproduced","Superseded","Owner Declined"` | `Status` | `Severity` ascending |
-| 8 | **Delivery Board** | Board | `-status:"Not Reproduced","Superseded","Owner Declined"` | **Column field:** `Status`; no swimlane grouping | `Severity` ascending |
+| 8 | **Delivery Front** | Board | `-status:"Not Reproduced","Superseded","Owner Declined"` | **Column field:** `Status`; no swimlane grouping | `Severity` ascending |
 
 **Severity sorts ascending, not descending.** Ascending follows the option order in §3, which puts
 `Release-blocking` first. Sorting descending would bury the most severe record under `Low` — the
@@ -238,9 +242,11 @@ A record leaves the register in exactly one of four ways, and each states a reas
 Each maps to exactly one terminal `Status` option, so a record that has left is always readable as
 having left:
 
-- **`Released`** — the work shipped. The issue closes, and the **Second Brain and the Master Project
-  File are updated in the same change** per the closeout rule, or the four-part collision-safe
-  handoff is recorded. A release that updates neither record is not closed out.
+- **`Released`** — the work shipped **and its authenticated-runtime proof is recorded** (§3). Merged
+  with proof still owed is `Authenticated Runtime Proof Owed`, not this. The issue closes, and the
+  **Second Brain and the Master Project File are updated in the same change** per the closeout rule,
+  or the four-part collision-safe handoff is recorded. A release that updates neither record is not
+  closed out.
 - **`Not Reproduced`** — the finding was investigated and does not hold. The issue records *what was
   re-run and what it showed*, never "could not reproduce" alone.
 - **`Superseded`** — a different record now carries it. The issue names the successor by number.
@@ -259,9 +265,17 @@ The issues below are the owner-named seed set, verified open on 2026-09-02 again
 **They are listed as numbers only.** Their scope lives in the issues themselves; restating it here
 would create the second backlog this standard exists to prevent.
 
-#733 · #734 · #735 · #736 · #737 · #739 · #740 · #741 · #742 · #744 · #746 · #748 · #749 · #750 ·
-#755 — all fifteen verified `OPEN` on 2026-09-02 — plus **#729**, which is a **pull request, not an
+#733 · #734 · #735 · #736 · #737 · #739 · #740 · #741 · #742 · #744 · #748 · #749 · #750 · #755 —
+verified `OPEN` when this seed set was written — plus **#729**, which is a **pull request, not an
 issue**: it enters the register as the workstream it belongs to, not as a finding.
+
+**#746 was in this list and has since closed** (`completed`, 2026-09-02T18:21:05Z, by pull requests
+#785 and #801). It is retained here as a correction rather than deleted, because the closure is
+itself the kind of state the register exists to make visible: at the time of writing, the consumer
+half of what #746 documented — a refused read rendering as an empty feed — is still present on
+`main`, and the owner's standing instruction was that #746 remain open until owner-visible reader
+consumers are repaired and proven. **Whoever seeds the board re-verifies every number against the
+API rather than trusting this list**; that is the rule, and this is the case that proves it.
 
 Field values are set when the board is created, from each record's own text and evidence. This page
 deliberately assigns none of them. Two facts are recorded here because they are already stated in
@@ -272,12 +286,13 @@ merge-commit message and immediately reopened** — nothing about it was resolve
 Seeding does **not** alter these records: their scope is not edited, they are not closed, duplicates
 are not merged, they are not implemented, and no branch is started from them.
 
-**The seed set is not the whole inventory, and the residue is not all fresh.** At grounding time the
-repository had **37 open issues**; the seed list names 15 of them. The other 22 are a mix: some were
-opened the same day, and some have been open since **2026-07-22** — up to six weeks earlier. All 22
-are equally in scope. Reading them as recent noise would be wrong, and that misreading is exactly
-what a register exists to prevent. Whoever creates the board enumerates the live set from GitHub
-rather than from this page; a static list here would be stale the day it was written.
+**The seed set is not the whole inventory, and the residue is not all fresh.** The seed list names
+fifteen issues; the repository holds many more, some opened the same day and some open since
+**2026-07-22**. All of them are equally in scope, and reading the residue as recent noise would be
+wrong. **No count is recorded here on purpose.** An earlier version of this section carried one and
+it was stale within hours — the open-issue total moved substantially the same afternoon. Whoever
+creates the board enumerates the live set from GitHub; a number on this page is a claim that decays
+faster than anyone re-reads it.
 
 ---
 
@@ -316,8 +331,12 @@ begin drifting from GitHub immediately. The honest state is: the standard exists
 3. Create the eight views of §4, with those exact names, layouts, filters, groupings and sorts.
 4. Add the seed set of §6, plus the remaining open issues enumerated live from GitHub.
 5. Record the project's URL in this section, replacing this paragraph.
-6. **Verify the board against the acceptance criteria below**, using one real record from each
-   workstream in the verification scope. **The board is not built until this passes.**
+6. **Verify the board against the acceptance criteria below.** Two separate checks, and only the
+   first can block: **(a)** at least one real record sits in each of the six delivery conditions —
+   this is the acceptance criteria, and the board is not built until it passes; **(b)** each
+   workstream in the verification scope is either represented by a real record or **recorded as
+   having none yet**. Check (b) never blocks: a workstream with no record is a fact about the
+   workstream, not a defect in the board, and a young workstream must not hold the register hostage.
 
 ### Acceptance criteria — what "built" means
 
@@ -341,12 +360,14 @@ The three legs are satisfied concretely, not by assertion:
 | Leg | How it is met |
 |---|---|
 | **list** | View 7 `Delivery Control` (Table) contains all six conditions at once, grouped by `Status`. |
-| **board** | View 8 `Delivery Board` shows each condition as its own column. |
+| **board** | View 8 `Delivery Front` shows each condition as its own column. |
 | **filter** | Each condition isolates with one filter string: `status:"Active"` · `status:"Blocked"` · `status:"Parked"` · `status:"Gate 2 Requested"` · `status:"Released"` · `status:"Authenticated Runtime Proof Owed"`. |
 
-Verifying the acceptance criteria means filling all eighteen of those cells from §4 alone. If any
-cell needs a filter invented at build time, the specification — not the builder — is at fault, and
-the correction belongs in §4 in the same change.
+Verifying the acceptance criteria means filling all eighteen of those cells from §4 and the table
+directly above — three of the six filter strings (`Blocked`, `Gate 2 Requested` alone, and
+`Authenticated Runtime Proof Owed`) are written here rather than in §4, because no view needs them
+in isolation. If any cell needs a filter invented at build time, the specification — not the builder
+— is at fault, and the correction belongs in §4 in the same change.
 
 ### Delivery-control verification scope
 
