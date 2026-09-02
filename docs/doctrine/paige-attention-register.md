@@ -75,7 +75,7 @@ meaning, so the orders below are the sort orders. Do not reorder them for tidine
 
 | # | Field | Type | Options, in order / shape |
 |---|---|---|---|
-| 1 | **Status** (built-in, options replaced) | Single select | `Owner Decision Needed` · `Active` · `Awaiting Verification` · `Parked` · `Released` · `Not Reproduced` · `Superseded` · `Owner Declined` · `Unknown` |
+| 1 | **Status** (built-in, options replaced) | Single select | `Owner Decision Needed` · `Active` · `Blocked` · `Gate 2 Requested` · `Authenticated Runtime Proof Owed` · `Parked` · `Released` · `Not Reproduced` · `Superseded` · `Owner Declined` · `Unknown` |
 | 2 | **Domain / Surface** | Single select | `Spine` · `Rail` · `Chat` · `Mind` · `Pipeline` · `Clients & People` · `Calendar` · `Communications` · `Team & Access` · `Growth, Campaigns & Studio` · `Marketplace` · `Settings & Setup` · `Platform & CI` · `Docs & Doctrine` · `Unknown` |
 | 3 | **Work Layer** | Single select | `Database & RLS` · `Edge function` · `Chat tool` · `Frontend surface` · `CI & tooling` · `Documentation` · `Unknown` |
 | 4 | **Severity** | Single select | `Release-blocking` · `High` · `Medium` · `Low` · `Unknown` |
@@ -84,6 +84,42 @@ meaning, so the orders below are the sort orders. Do not reorder them for tidine
 | 7 | **Dependency / Blocker** | Text | Issue or pull-request references, or `None` |
 | 8 | **Source Evidence** | Text | The exact `file:line`, query, pull request, or CI run the record rests on |
 | 9 | **Next Action** | Text | One concrete next step, or the exact decision owed and by whom |
+
+### What each `Status` means
+
+A status is a workflow state, not a mood. Two people reading the same record must reach the same
+option, so each one is defined by the single condition that distinguishes it.
+
+| Status | Meaning |
+|---|---|
+| `Owner Decision Needed` | A material Gate 1 / design, policy, or owner decision is required before implementation can proceed. |
+| `Active` | An accountable owner is currently progressing an authorized slice. |
+| `Blocked` | Work cannot proceed because of an external dependency, an active collision, missing authority, or another owner's required delivery. |
+| `Gate 2 Requested` | The exact final head is ready and awaits the owner's final release authorization. |
+| `Authenticated Runtime Proof Owed` | Code may be merged, released, or otherwise technically complete, but the real signed-in owner flow has not been proven. |
+| `Parked` | The work is intentionally deferred and not currently active. |
+| `Released` | The approved release is merged or deployed as applicable, with its exact evidence recorded. |
+| `Not Reproduced` | A reported issue could not be confirmed with recorded evidence. |
+| `Superseded` | A later approved decision or implementation replaced this item. |
+| `Owner Declined` | The owner explicitly chose not to proceed. |
+| `Unknown` | The current state cannot yet be established honestly. |
+
+**`Gate 2 Requested` is this repository's canonical Gate 2** — exact-head final release authorization
+for ready-for-review, merge, deployment, production migration, provider action, or any other final
+release action, per `CLAUDE.md` §69. The owner's shorthand for this state is **"Gate B."** That
+shorthand is recorded here once so it resolves to the right state, and it is **not** the `Gate B` of
+`../doctrine/route-and-url-taxonomy.md`, which is the sub-account mount gate in `Admin.tsx` — an
+unrelated routing term. Two things share a nickname; they are not the same gate, and there is no
+third gate.
+
+**`Authenticated Runtime Proof Owed` replaced the earlier `Awaiting Verification`, deliberately.**
+"Awaiting verification" named no specific obligation, so anything unfinished drifted into it. The
+replacement names exactly one: §70.1 authenticated-runtime proof on the real signed-in owner flow.
+
+**General test, preview, lint, build, or static-evidence progress is NOT a status.** It belongs in
+the evidence fields. An item is `Active` while its tests run; it is `Authenticated Runtime Proof
+Owed` only when the specific remaining obligation is authenticated runtime proof. A status that
+absorbs "some work is still happening" tells the owner nothing they did not already assume.
 
 **Nothing is left blank — every field can express "not yet known."** Each single select carries
 `Unknown`; the text fields carry `Unassigned` or `None`. A blank cannot be distinguished from a
@@ -104,37 +140,53 @@ one for each of the four exits in §5. A record in any of them has left the regi
 
 ## 4. The register's views
 
-Six views, all **Table** layout. Layout is specified because grouping means something different in
-each: in Board the group-by field becomes the columns, in Table it produces collapsible row groups.
-Two people who pick differently build visibly different boards from the same reading.
+Seven views. Views 1–6 are **Table** layout; view 7 is **Board**. Layout is specified because
+grouping means something different in each: in Board the group-by field becomes the columns, in
+Table it produces collapsible row groups. Two people who pick differently build visibly different
+boards from the same reading — and the acceptance criteria in §7 require the six delivery conditions
+to be distinct in *board* form as well as list and filter, which is what view 7 exists to satisfy.
 
 `Created at` and `Updated at` are Projects v2 **built-in** fields, available to sort on. They are not
 among the nine and are not added by hand.
 
 | # | View | Filter (verbatim) | Group by | Sort |
 |---|---|---|---|---|
-| 1 | **Owner Now** | `status:"Owner Decision Needed"` | `Domain / Surface` | `Severity` ascending |
+| 1 | **Owner Now** | `status:"Owner Decision Needed","Gate 2 Requested"` | `Status` | `Severity` ascending |
 | 2 | **Release Blockers** | `severity:"Release-blocking" -status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Production State` | `Updated at` descending |
 | 3 | **Active Workstreams** | `status:"Active"` | `Owner / Workstream` | `Updated at` descending |
 | 4 | **Parked Not Lost** | `status:"Parked"` | `Domain / Surface` | `Created at` ascending |
 | 5 | **Released Truth** | `status:"Released"` | `Domain / Surface` | `Updated at` descending |
 | 6 | **By Domain** | `-status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Domain / Surface` | `Severity` ascending |
+| 7 | **Delivery Control** (Board) | `-status:"Not Reproduced","Superseded","Owner Declined"` | `Status` | `Severity` ascending |
 
 **Severity sorts ascending, not descending.** Ascending follows the option order in §3, which puts
 `Release-blocking` first. Sorting descending would bury the most severe record under `Low` — the
 opposite of what views 1 and 6 exist to do.
 
-**Views 1 and 2 are deliberately two views rather than one.** Projects v2 ORs values *within* a
-single qualifier and ANDs *across* qualifiers; there is no cross-field OR. "Everything needing the
-owner" therefore cannot be one filter, so it is two adjacent views read together, in that order.
-Anyone who tries to express it as a single filter will either lose half the records or invent a
-tenth field — which is why this says so rather than leaving it to be discovered.
+**Why view 1 combines two statuses but views 1 and 2 stay separate.** Projects v2 ORs values
+*within* a single qualifier and ANDs *across* qualifiers; there is no cross-field OR. `Owner
+Decision Needed` and `Gate 2 Requested` are two values of the SAME field, so one filter carries both
+— and it should, because both mean the owner is the next actor. `Severity: Release-blocking` is a
+different field, so it cannot join them; that is why "Release Blockers" remains its own view, read
+immediately after. Anyone who tries to fuse all three into one filter will either lose records
+silently or invent a tenth field.
 
 **Parked Not Lost sorts oldest first on purpose.** The record most likely to be forgotten is the one
 that has been sitting longest, so that is the one the view puts at the top.
 
 **View 6 is the widest, and that is its job** — everything still open, grouped by domain, for the
 sweep no narrower view would catch. The other five are deliberately narrow.
+
+**View 7 is the one Board, and `Status` is what it groups by.** A Board grouped by `Status` puts
+each delivery condition in its own column, which is the only layout where "blocked" and "waiting on
+the owner's gate" are visible as *places* rather than as rows someone has to read for. Views 1–6
+answer narrow questions; view 7 is where the shape of the whole delivery front is legible at once.
+
+**View 7 keeps `Released` and drops only the other three terminals.** The acceptance criteria in §7
+require merged/released work to be one of the six visibly distinct conditions, so excluding it would
+make the board fail its own test — and a delivery board with no completed lane reads as though
+nothing ever finishes. `Not Reproduced`, `Superseded` and `Owner Declined` are dropped because they
+record that an item was never real work, not that work completed.
 
 **`UNVERIFIED`, stated rather than glossed.** The filter strings, sort directions and layout above
 were written without access to a live Projects v2 board. The *intent* of each view is stated beside
@@ -222,12 +274,41 @@ begin drifting from GitHub immediately. The honest state is: the standard exists
 
 1. Create one user-owned Project named exactly **`PAIGE Attention Register`**, linked to
    `mrmogulmaker-bot/Paige-Agent-AI`.
-2. **Edit** the project's built-in `Status` field, replacing its default options with the nine in
-   §3 **in that order**; then **add** the remaining eight fields, with those exact names, option
+2. **Edit** the project's built-in `Status` field, replacing its default options with the eleven
+   in §3 **in that order**; then **add** the remaining eight fields, with those exact names, option
    sets and orders. Adding a second field named `Status` fails — Projects v2 pre-creates it.
-3. Create the six views of §4, with those exact names, filters, groupings and sorts.
+3. Create the seven views of §4, with those exact names, filters, layouts, groupings and sorts.
 4. Add the seed set of §6, plus the remaining open issues enumerated live from GitHub.
 5. Record the project's URL in this section, replacing this paragraph.
+
+### Acceptance criteria — what "built" means
+
+The board is complete only when these six delivery conditions are **visibly different** in a list
+view, in a board view, and under a filter:
+
+1. active slice
+2. blocked dependency
+3. parked follow-up
+4. `Gate 2 Requested`
+5. merged / released work
+6. authenticated runtime proof owed
+
+**A board that collapses any of these conditions is incomplete.** Each of the six has been the state
+someone needed to see and could not: a blocked item read as parked stops being chased, and an item
+waiting on the owner's gate read as active waits indefinitely while everyone assumes someone else is
+moving it.
+
+### Delivery-control verification scope
+
+Verify the board against real records drawn from each of these workstreams:
+
+**Rail · Spine · Mind · Solo Shell · Offer Catalog / Commerce · Platform Billing · Marketplace**
+
+**This list is delivery-control scope, not authority to implement those domains.** Each has its own
+accountable owner. The Register records their state, links their dependencies, and makes their work
+legible to the owner; it never takes their work over, reclassifies it without a routed handoff, or
+blocks their delivery. Verification here means confirming the board can *represent* a real record
+from each — not touching the record.
 
 A session that gains a Projects v2 capability may perform steps 1–4 directly. Until one of those
 happens, this page is a specification, and the register is `UNAVAILABLE` — not empty.
