@@ -104,17 +104,20 @@ tail assertion that the only lane reaching execution is `auto` on an `ordinary` 
 
 ## What CI holds
 
-`lint:governed-execution` (+ `--self-test`, 15 cases). Each rule was mutation-tested by introducing
+`lint:governed-execution` (+ `--self-test`, 41 cases). Each rule was mutation-tested by introducing
 the violation and confirming the guard fails.
 
 | Rule | Holds |
 |---|---|
 | R1 | The seam is door-blind |
 | R2 | Nothing adopts the superseded, unwired #711 gate |
-| R3 | `GovernedApproval` declares no boolean field — an approval a caller can express as `true` is one a MODEL can express as `true` (#784) |
+| R3 | `GovernedApproval` declares only the three allowlisted members, each pinned to the exact type it was admitted with. A member whose type cannot be read is refused rather than resolved, and a merged or heritage-bearing declaration is refused outright — an approval a caller can express as `true` is one a MODEL can express as `true` (#784) |
 | R4 | The seam receives a claim result and never performs one. Claiming has one home |
 
-Escape hatch: `// governed-execution-exempt: <reason>` — deliberate and explained, never silent.
+**There is no escape hatch, and that is deliberate.** A comment marker was tried and deleted:
+it was openable seven distinct ways across this guard and its MCP sibling, and a `grep` of the whole
+repository found it had never once been used. A genuine exception is made by editing the guard file —
+visible in a diff, reviewed, and impossible to write by accident.
 
 **Passing this lint does not mean anything is governed.** Nothing is required to use the seam yet.
 
@@ -135,7 +138,7 @@ either entry in place would introduce a conflict rather than inherit one.
 
 ### Handoff A — for `docs/brain/decision-log.md` (owner: whichever of #783 / #776 merges last)
 
-> - **Spine Wave 1A — shared governed execution seam** (2026-09-02) — `_shared/paige-spine/governedExecution.ts`: one pure, door-blind decision covering identity, server-derived tenancy, capability identity, access, action-risk, the autonomy clamp, approval-proof validation, stored-argument execution, typed fail-closed refusals, a declared outcome channel, and a secret-free audit record. Held by `lint:governed-execution` (R1 door-blind · R2 no adoption of the superseded #711 gate · R3 no boolean approval input · R4 one home for claiming), all four mutation-tested. 55 property tests, six mutations of the seam each caught. **Foundation only — nothing adopts it, no capability migrated, no customer-facing behaviour changed.** Deliberately does NOT import `_shared/toolConfirmation.ts`: it is unwired (`paige-ai-chat/index.ts:7922`) and its only importer anywhere is its own test.
+> - **Spine Wave 1A — shared governed execution seam** (2026-09-02) — `_shared/paige-spine/governedExecution.ts`: one pure, door-blind decision covering identity, server-derived tenancy, capability identity, access, action-risk, the autonomy clamp, approval-proof validation, stored-argument execution, typed fail-closed refusals, a declared outcome channel, and a secret-free audit record. Held by `lint:governed-execution` (R1 door-blind · R2 no adoption of the superseded #711 gate · R3 no boolean approval input · R4 one home for claiming), all four mutation-tested. 67 property tests — including an exhaustive 539,136-combination sweep of the decision space — and every mutation of the seam caught. **Foundation only — nothing adopts it, no capability migrated, no customer-facing behaviour changed.** Deliberately does NOT import `_shared/toolConfirmation.ts`: it is unwired (`paige-ai-chat/index.ts:7922`) and its only importer anywhere is its own test.
 
 ### Handoff B — for `docs/brain/lessons-learned.md` (owner: last of #754 / #731 / #729)
 
