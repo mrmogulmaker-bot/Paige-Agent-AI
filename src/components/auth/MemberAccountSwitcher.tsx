@@ -14,7 +14,7 @@ import { tenantAccountLabel } from "@/lib/auth/accountSelection";
 import { toast } from "sonner";
 
 export function MemberAccountSwitcher() {
-  const { activeTenant, activeTenantId, isPlatformStaff, switchTenant, tenants } = useTenantContext();
+  const { activeTenant, activeTenantId, isPlatformStaff, switchTenant, tenants = [] } = useTenantContext();
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
 
   useEffect(() => {
