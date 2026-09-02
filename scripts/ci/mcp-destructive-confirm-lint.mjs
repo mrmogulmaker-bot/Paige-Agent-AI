@@ -62,13 +62,16 @@
  *   · Such a registration is inspected ONLY when the guard can both SEE every member and LOOK
  *     INSIDE the two that matter. Every member must be a property assignment or method with a
  *     readable name — a spread, a shorthand, a computed key hides members it cannot enumerate — AND
- *     the `handler` / `inputSchema` initializers must be inline rather than references to a body
- *     defined elsewhere. Anything else is UNANALYSABLE and FAILS the run.
+ *     the `handler` / `inputSchema` initializers must carry their content INLINE — a handler must
+ *     be a function literal, a schema must contain an inline object literal. Anything else is
+ *     UNANALYSABLE and FAILS the run.
  *
- *     Visibility alone was not enough, and getting that wrong here is instructive: `{ handler }`
- *     was rejected while `{ handler: handler }` sailed through, because the key was visible and
- *     only the BODY was elsewhere. `prop()` returned an identifier, the walkers found no deletion
- *     and no boolean, and "declares nothing" read as safe. Same hole, longhand.
+ *     Visibility alone was not enough, and it took two passes to get right. First `{ handler }` was
+ *     rejected while `{ handler: handler }` sailed through — the key was visible and only the BODY
+ *     was elsewhere, so the walkers found no deletion and "declares nothing" read as safe. Then
+ *     `{ handler: makeHandler("purge") }` sailed through the fix for THAT, because a call is not a
+ *     reference. Each time the question had been half-answered, and a half-answered question reads
+ *     as a green check. The test is now what can actually be READ, per member.
  *
  *     This is an allowlist of what can be read, not an enumeration of what to catch, which is why
  *     it cannot be outrun by a new spelling. Once a member is both visible and inline, an ABSENT
@@ -202,26 +205,44 @@ function memberName(p) {
 /** The two members whose CONTENT this guard has to walk, not merely see the name of. */
 const CRITICAL_MEMBERS = new Set(["handler", "inputSchema"]);
 
-/**
- * Is this initializer something the walkers can actually look inside?
- *
- * A bare reference — `handler: destructiveHandler`, `inputSchema: schemas.purge` — is a visible key
- * pointing at a body defined elsewhere, so `prop()` hands back an identifier, the handler walker
- * finds no deletion and the schema walker finds no boolean. That reads as "declares nothing" and
- * passes, which is the same fail-open as a spread wearing longhand. Rejecting shorthand `{ handler }`
- * while accepting `{ handler: handler }` was an inconsistency in this guard, not a real distinction.
- *
- * Stated as a NEGATIVE over a closed set of reference forms rather than an allowlist of good ones:
- * anything that is not a reference — an arrow, a function, a call, an object literal — carries an
- * inline body the walkers can traverse. Measured across the real surfaces: 117 arrow-function
- * handlers, and schemas that are 112 call expressions plus 5 `as` expressions. Zero cost.
- */
-function inspectableInitializer(node) {
+/** `x as T`, `(x)`, `x satisfies T` — wrappers that say nothing about what is underneath. */
+function unwrap(node) {
   let n = node;
   while (n && (ts.isAsExpression(n) || ts.isParenthesizedExpression(n) ||
                (ts.isSatisfiesExpression && ts.isSatisfiesExpression(n)))) n = n.expression;
+  return n;
+}
+
+/**
+ * Is this initializer something the walkers can actually look INSIDE — asked per member, because
+ * the two members need different things and one shared answer was wrong for both.
+ *
+ * The first version asked only "is this a bare reference?", which is necessary and not sufficient.
+ * `handler: makeHandler("purge")` is a call, not a reference, so it passed as inspectable — and
+ * then `destructiveCall` walked a call expression whose body lives in another function, found no
+ * deletion, and the tool passed. Same for `inputSchema: buildSchema()`: no boolean visible, so a
+ * destructive handler beside it looked safe. I found both by attacking my own fix rather than
+ * waiting for a review to; they are the same mistake as the aliased form, one indirection further
+ * out, and they are why this is now member-specific.
+ *
+ *   handler      must be a FUNCTION LITERAL — an arrow, a function expression, or method syntax.
+ *                A closed set, and what the surface actually contains: 117 of 117 are arrows.
+ *   inputSchema  must CONTAIN an inline object literal somewhere — that is the thing the boolean
+ *                walker reads. `z.object({ … })` qualifies; `buildSchema()` and `schemas.purge`
+ *                do not. Measured: 117 of 117 qualify.
+ *
+ * Both are stated as what CAN be read rather than as ways to hide, which is the only formulation
+ * that does not lose to the next spelling.
+ */
+function inspectableInitializer(node, member) {
+  const n = unwrap(node);
   if (!n) return false;
-  return !(ts.isIdentifier(n) || ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n));
+  if (member === "handler") {
+    return ts.isArrowFunction(n) || ts.isFunctionExpression(n);
+  }
+  let hasInlineShape = false;
+  walk(n, (c) => { if (ts.isObjectLiteralExpression(c)) hasInlineShape = true; });
+  return hasInlineShape;
 }
 
 function readableConfig(objectLiteral) {
@@ -236,7 +257,7 @@ function readableConfig(objectLiteral) {
     if (!ts.isPropertyAssignment(p)) return false;      // spread, shorthand, accessor
     const nm = memberName(p);
     if (nm === null) return false;                      // computed key
-    if (CRITICAL_MEMBERS.has(nm) && !inspectableInitializer(p.initializer)) return false;
+    if (CRITICAL_MEMBERS.has(nm) && !inspectableInitializer(p.initializer, nm)) return false;
   }
   return true;
 }
@@ -501,6 +522,17 @@ mcp.tool("method_purge", {
   inputSchema: z.object({ confirm: z.boolean() }),
   async handler({ confirm }) { if (confirm) await admin.from("clients").delete(); },
 });`), 1);
+  // Found by attacking my own fix, not by review: a CALL is not a reference, so it passed the
+  // first version of the inspectability test while its body lived elsewhere.
+  check("a FACTORY-BUILT handler is unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), handler: makeHandler("purge") });`)
+      .map((t) => t.config !== null), [false]);
+  check("a FACTORY-BUILT schema is unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: buildSchema("p"), handler: async () => {} });`)
+      .map((t) => t.config !== null), [false]);
+  check("a function-EXPRESSION handler stays readable",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), handler: async function (a) { return a; } });`)
+      .map((t) => t.config !== null), [true]);
   check("an `as`-wrapped schema stays readable (matches the 5 real ones)",
     findToolCalls(`mcp.tool("x", { inputSchema: z.object({}) as Shape, handler: async () => {} });`)
       .map((t) => t.config !== null), [true]);
