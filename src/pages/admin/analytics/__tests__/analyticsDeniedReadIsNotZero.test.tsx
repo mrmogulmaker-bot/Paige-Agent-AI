@@ -20,13 +20,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 type Result = { data: unknown[] | null; error: { message: string } | null };
-const harness = vi.hoisted(() => ({ byTable: {} as Record<string, Result> }));
+const harness = vi.hoisted(() => ({
+  byTable: {} as Record<string, Result>,
+  /** Tables whose read never settles — lets a test observe the PENDING render. */
+  hang: new Set<string>(),
+}));
 
 vi.mock("@/integrations/supabase/client", () => {
   const builder = (table: string) => {
     const chain: Record<string, unknown> = {};
     for (const m of ["select", "gte", "lte", "eq", "not", "order"]) chain[m] = () => chain;
-    chain.limit = () => Promise.resolve(harness.byTable[table] ?? { data: [], error: null });
+    chain.limit = () =>
+      harness.hang.has(table)
+        ? new Promise(() => {})
+        : Promise.resolve(harness.byTable[table] ?? { data: [], error: null });
     return chain;
   };
   return { supabase: { from: (t: string) => builder(t) } };
@@ -42,6 +49,7 @@ let root: Root;
 
 beforeEach(() => {
   harness.byTable = {};
+  harness.hang = new Set();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -119,5 +127,44 @@ describe("#802 — cohort retention", () => {
 
     expect(text).toMatch(/accumulate 30 days/i);
     expect(text).not.toMatch(/could not be loaded/i);
+  });
+});
+
+describe("#802 — a mode switch must not paint the previous run's answer", () => {
+  it("re-enters loading and drops prior rows when mode changes on the same instance", async () => {
+    // A populated PLATFORM run first.
+    harness.byTable["profiles"] = [
+      { user_id: "u1", created_at: "2026-07-10T00:00:00Z" },
+      { user_id: "u2", created_at: "2026-07-10T00:00:00Z" },
+    ].length
+      ? {
+          data: [
+            { user_id: "u1", created_at: "2026-07-10T00:00:00Z" },
+            { user_id: "u2", created_at: "2026-07-10T00:00:00Z" },
+          ],
+          error: null,
+        }
+      : { data: [], error: null };
+    harness.byTable["analytics_events"] = {
+      data: [{ user_id: "u1", created_at: "2026-07-12T00:00:00Z" }],
+      error: null,
+    };
+
+    await render(<CohortRetentionTable mode="platform_signup" />);
+    const first = host.textContent ?? "";
+    expect(first).not.toMatch(/Loading cohorts/i);
+
+    // Now switch modes on the SAME instance, with the new mode's reads left PENDING.
+    harness.hang.add("clients");
+    harness.hang.add("paige_client_events");
+    await render(<CohortRetentionTable mode="client_lifecycle" />);
+    const during = host.textContent ?? "";
+
+    // The window this pins: between the switch and the new reads resolving, the component must
+    // NOT still be showing the previous run's answer under the new mode's title.
+    expect(during).toMatch(/Loading cohorts/i);
+    expect(during).not.toMatch(/\d+%/);
+    expect(during).not.toMatch(/accumulate 30 days/i);
+    expect(during).toMatch(/Client Retention/i);
   });
 });

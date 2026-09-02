@@ -62,7 +62,16 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
     let cancelled = false;
     (async () => {
       try {
+        // Re-enter LOADING and drop the previous run's result atomically. `loading` starts true
+        // only on first mount; without this, a `mode` change on the same instance leaves
+        // loading=false with the prior run's `rows`/`hasEnoughData` intact, so between the switch
+        // and the new reads resolving the component renders stale rows — or the insufficient-data
+        // copy — underneath the NEW mode's title. That is the same prior-scope paint the Rail
+        // consumers are being repaired for, in a different component.
+        setLoading(true);
         setUnavailable(false);
+        setRows([]);
+        setHasEnoughData(true);
         const sinceWeeks = 8;
         const earliest = startOfWeekUTC(new Date());
         earliest.setUTCDate(earliest.getUTCDate() - sinceWeeks * 7);
