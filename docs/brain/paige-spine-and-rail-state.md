@@ -32,7 +32,9 @@ repo's own guards on 2026-09-02:
 | Classified actions | **62** — 32 `ordinary`, 28 `high`, 2 `owner_only`, 5 exempt, 0 unclassified writes | `npm run lint:action-risk` |
 
 The one capability is `pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`,
-`mindBinding: UNAVAILABLE`. **PAIGE reaches departments today through the 105 hand-wired tools, not
+`mindBinding: PARTIAL` (raised from `UNAVAILABLE` by PR **#747** on 2026-09-02 — a `PARTIAL` binding,
+not a `LIVE` one; the capability count is unchanged at one). **PAIGE reaches departments today
+through the 105 hand-wired tools, not
 through the Spine.** The Spine is the governed path with one department crossed over.
 
 **No department other than Pipeline is declared in the registry.** The Team and Setup surface cards

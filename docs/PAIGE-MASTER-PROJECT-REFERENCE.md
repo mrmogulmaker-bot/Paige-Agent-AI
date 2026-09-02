@@ -918,7 +918,8 @@ platform-wide facts, not one department's, and because two of them are routinely
 **The Spine is `PARTIAL`. One registered capability, 105 inline Chat tools.** Measured by the repo's
 own guards on 2026-09-02: `paige-spine-registry-lint` → `PASS (1 capability)`;
 `chat-tool-registry-lint` → `105 tool(s) inline`. That one capability is
-`pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`, `mindBinding: UNAVAILABLE`.
+`pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`, `mindBinding: PARTIAL`
+(raised from `UNAVAILABLE` by PR #747, merged 2026-09-02; still `PARTIAL`, not `LIVE`).
 **Do not read the Spine's existence as departments being connected to PAIGE.** They are not; she
 reaches them through the 105 hand-wired tools. Team and Setup each record the same of themselves in
 their surface cards.
