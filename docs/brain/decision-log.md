@@ -941,14 +941,23 @@ rendered as a false statement about a person. The refusal now names the real cau
 is attempted. **The RPCs are deliberately unchanged:** they are shared with the Team screen, which
 has the identical defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with
 its own producer inventory (§37). Logged as open.
-## 2026-09-01 — release reconciliation after #697
+## 2026-09-01 — historical bounded release reconciliation after #697
 
-**Cutoff and method.** The last `main` commit that changed `docs/brain/` was
-`3fd9944cd90e02794db21fa2ae6d32703fe89ea4` (PR #697, merged 2026-09-01 02:28:06Z).
-The first-parent range through `797d6f08c53e89f8cf36bde24d6df90714922629` contains exactly
-seven later records. Git commit/file evidence was matched to GitHub PR state, exact PR head checks,
-reviews, merge SHA, push workflows, and deployment status. A GitHub `Production: success` record is
-release metadata; it is not authenticated-flow proof.
+**Historical cutoff and method.** The bounded pass started at
+`3fd9944cd90e02794db21fa2ae6d32703fe89ea4` (PR #697, merged 2026-09-01 02:28:06Z), which was the
+last `docs/brain/` change inside the range selected at that time. The first-parent range through
+`797d6f08c53e89f8cf36bde24d6df90714922629` contains exactly seven later records. Git commit/file
+evidence was matched to GitHub PR state, exact PR head checks, reviews, merge SHA, push workflows,
+and deployment status. A GitHub `Production: success` record is release metadata; it is not
+authenticated-flow proof. This is a historical checkpoint, not a current-`main` cutoff.
+
+**Current-base boundary after rebase.** This branch now starts from
+`83ab5120e664512e1f14371764014a4535df1250`. The first-parent range after the historical #705
+checkpoint contains exactly 20 inherited `main` records: #707, #708, #709, #683, #710, #712, #711,
+#714, #713, #715, #717, #716, #719, #720, #721, #722, #723, #718, #725, and the final
+`83ab5120…` Team merge. Seventeen changed `docs/brain/`. Their updates are inherited base truth;
+they were not audited by the seven-record evidence table below. After PR #675 merges, the required
+rebase must re-run both the first-parent and docs-path checks before a new exact-head claim.
 
 | PR | Durable truth that changed | Exact evidence | Review / release state | Limits |
 |---|---|---|---|---|

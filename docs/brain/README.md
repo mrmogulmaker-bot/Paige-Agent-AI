@@ -56,14 +56,23 @@ unsupported agent claims here. A stale brain is worse than none — it lies with
 
 ---
 
-## Release-truth cutoff (reconciled 2026-09-01)
+## Historical bounded release reconciliation checkpoint (PR #697 → PR #705)
 
-- **Prior evidence-backed Second Brain cutoff:** merge `3fd9944cd90e02794db21fa2ae6d32703fe89ea4`
-  (PR #697, 2026-09-01 02:28:06Z). It was the last `main` commit to update `docs/brain/`.
-- **Reconciled through:** `797d6f08c53e89f8cf36bde24d6df90714922629` (PR #705). Seven later
+- **Historical starting point for this bounded pass:** merge
+  `3fd9944cd90e02794db21fa2ae6d32703fe89ea4` (PR #697, 2026-09-01 02:28:06Z).
+  It was the last `docs/brain/` update inside the range selected at that time; it is not the current
+  `main` cutoff.
+- **Historical checkpoint:** `797d6f08c53e89f8cf36bde24d6df90714922629` (PR #705). Exactly seven
   first-parent `main` records were inventoried: #701, #699, #700, #702, #703, #704, #705. Exact
   heads, check/deploy evidence, durable changes, and `UNVERIFIED` limits are in
   `decision-log.md` → “2026-09-01 — release reconciliation after #697.”
+- **Current branch base after rebase:** `83ab5120e664512e1f14371764014a4535df1250`.
+  The first-parent range after #705 contains exactly 20 inherited `main` records: #707, #708, #709,
+  #683, #710, #712, #711, #714, #713, #715, #717, #716, #719, #720, #721, #722, #723, #718, #725,
+  and the final `83ab5120…` Team merge. Seventeen of those records changed `docs/brain/`. They are
+  current-base input, not records audited by the historical seven-release table. This section makes
+  no claim that the old pass reconciled them. After PR #675 merges, re-run both first-parent and
+  docs-path checks during the required final rebase.
 - **Evidence boundary:** all seven are merged and have successful GitHub `Production` deployment
   records. That proves release metadata, not authenticated product behavior. #699 explicitly owes
   authenticated runtime. #701 and #702 had green PR-head CI but cancelled push CI after rapid later
