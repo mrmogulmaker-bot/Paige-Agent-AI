@@ -208,6 +208,12 @@ request`. Separately, `list_issue_fields` for this repository returns `[]` — t
 issue fields at repository or organization level either, and the issue-write capability can only set
 values on fields that already exist, never define them.
 
+**Another workstream is already waiting on this board.** `docs/architecture/paige-spine-tool-migration-map.md`,
+merged to `main` on 2026-09-02, links its nine wave issues from the document itself and states the
+reason plainly: *"The PAIGE Attention Register Project does not exist yet."* That map reached the
+same conclusion independently. The board's absence is already shaping where other work files its
+records, which is the cost of leaving it uncreated.
+
 **No substitute was built.** A Markdown table of open work in this repository would be precisely the
 "competing backlog" and "second documentation taxonomy" that this standard forbids, and it would
 begin drifting from GitHub immediately. The honest state is: the standard exists, the board does not.
