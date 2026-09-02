@@ -484,7 +484,10 @@ type PlanDraft = {
   installments_total: string;
 };
 
-/** One row of `prices` as `tenant-product-upsert` reads it — a drafted plan, resolved to cents. */
+// One row of `prices` AS THIS PANEL SENDS IT — a drafted plan resolved to cents.
+// Deliberately narrower than what `tenant-product-upsert` will accept: the endpoint
+// lower-cases any `currency` and also honours a "day" interval, neither of which this
+// panel can produce. Read the function before widening a field here on its authority.
 type PricePayload = {
   kind: PlanDraft["kind"];
   nickname: string | null;
