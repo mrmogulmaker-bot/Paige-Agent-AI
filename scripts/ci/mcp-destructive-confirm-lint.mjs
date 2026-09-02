@@ -123,7 +123,17 @@ function mcpSources() {
     .filter((p) => fs.existsSync(p));
 }
 
-const EXEMPT = /\/\/\s*mcp-confirm-exempt:\s*\S/;
+/**
+ * An exemption is a LINE comment that STARTS with the marker — anchored, deliberately.
+ *
+ * Unanchored, a block comment EXPLAINING the marker exempted the registration:
+ * `/* syntax: // mcp-confirm-exempt: example *\/`. The token-overlap test cannot catch that and
+ * should not try — the text genuinely IS a comment. What it is not is an exemption. Anchoring at
+ * `^//` excludes block comments (their text starts `/*`) and requires the marker to be the
+ * comment's whole purpose rather than something mentioned inside it. Tested per comment, never
+ * against a joined blob, so one comment cannot lend its prefix to another.
+ */
+const EXEMPT = /^\/\/\s*mcp-confirm-exempt:\s*\S/;
 
 /**
  * Comment text inside a node — read from real COMMENT TRIVIA, never from the node's source text.
@@ -136,13 +146,13 @@ const EXEMPT = /\/\/\s*mcp-confirm-exempt:\s*\S/;
  * The scanner is asked for comments directly, so a marker in a string, a template or a regex is
  * simply not a comment and cannot exempt anything.
  */
-function commentTextWithin(node, sf) {
+function commentsWithin(node, sf) {
   // `getStart(sf)`, NOT `pos`. A node's `pos` is its FULL start, which includes the leading trivia
   // that belongs to whatever came before it — so `foo(); // mcp-confirm-exempt: unrelated` on the
   // line above a registration was read as that registration's own exemption, and a destructive
   // boolean-gated tool passed while its block contained no exemption at all. An exemption has to be
   // written INSIDE the thing it exempts; a comment about the previous statement is not consent.
-  return collectComments(sf, node.getStart(sf), node.end).join("\n");
+  return collectComments(sf, node.getStart(sf), node.end);
 }
 
 /**
@@ -262,7 +272,7 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
       config: configArg && ts.isObjectLiteralExpression(configArg) && readableConfig(configArg)
         ? configArg : null,
       text: node.getFullText(sf),
-      comments: commentTextWithin(node, sf),   // bounded to the call's own syntax, not its trivia
+      comments: commentsWithin(node, sf),      // bounded to the call's own syntax, not its trivia
       line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
     });
   });
@@ -561,7 +571,7 @@ export function findViolations(src, file = "<memory>") {
   const out = [];
   const scopes = destructiveScopes(src, file);
   for (const tool of findToolCalls(src, file)) {
-    if (EXEMPT.test(tool.comments)) continue;
+    if (tool.comments.some((c) => EXEMPT.test(c))) continue;
     if (!tool.config) continue;           // reported separately as unanalysable
     const handler = prop(tool.config, "handler");
     const schema = prop(tool.config, "inputSchema");
@@ -836,7 +846,9 @@ for (const file of sources) {
   const src = fs.readFileSync(file, "utf8");
   const calls = findToolCalls(src, file);
   tools += calls.length;
-  for (const c of calls) if (!c.config && !EXEMPT.test(c.comments)) unanalysable.push({ file, ...c });
+  for (const c of calls) {
+    if (!c.config && !c.comments.some((x) => EXEMPT.test(x))) unanalysable.push({ file, ...c });
+  }
   violations = violations.concat(findViolations(src, file));
 }
 
