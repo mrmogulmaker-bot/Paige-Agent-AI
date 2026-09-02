@@ -91,5 +91,4 @@ on (Team surface card, decision 2). Not a Billing slice to invent.
 - **Tier posture (R8):** sub-account, Agency and Enterprise show NOT APPLICABLE / NOT AVAILABLE, never "no subscription" and never an inherited plan.
 - **Required browser proof before any label moves:** an authenticated Solo owner on the real
   platform reads the correct plan for the correct workspace, switches workspace and sees it change,
-  a non-admin member sees the refusal, a sub-account owner sees "billed by your agency". None of
-  this has been driven.
+  an Admin and a Member each see the refusal (R2), a sub-account owner sees the NOT APPLICABLE state and never "billed by your agency" (R8). None of this has been driven.

@@ -330,7 +330,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 
               <!-- Included usage -->
               <section class="ss-card span2" id="cardUsage">
-                <header><span class="ss-card-icon">◔</span><h2>Included usage</h2><span class="ss-truth" id="usageTruth" data-truth="PROPOSED">PROPOSED</span><div class="ss-card-actions"><span class="ss-tag" id="usageTag">proposed allowance — D5–D8 unruled</span></div></header>
+                <header><span class="ss-card-icon">◔</span><h2>Included usage</h2><span class="ss-truth" id="usageTruth" data-truth="PROPOSED">PROPOSED</span><div class="ss-card-actions"><span class="ss-tag" id="usageTag">included-usage visibility only (D5–D8 ruled) · allowance value undefined</span></div></header>
                 <div class="ss-card-body" id="usageBody"></div>
               </section>
 
@@ -381,13 +381,13 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
             <div class="ss-page-head"><div><h1>Plans &amp; add-ons</h1><p>Platform operator control plane — configuration and audit only. <b>This screen is not the visual model for Solo Billing (R9)</b>; Solo is the canonical customer-facing experience. A plan or add-on becomes billable to any workspace only after every step below is complete and verified. Nothing here writes to Stripe in this prototype.</p></div></div>
             <div class="op-steps" id="opSteps"></div>
             <div class="ss-grid">
-              <section class="ss-card" data-state="operator-plan-config"><header><span class="ss-card-icon">$</span><h2>Plan — Solo (beta)</h2><span class="ss-tag">proposed · D1–D4 unruled</span></header>
+              <section class="ss-card" data-state="operator-plan-config"><header><span class="ss-card-icon">$</span><h2>Plan — Solo (beta)</h2><span class="ss-tag">ruled D3 · D5–D8 · D1/D2/D4 deferred to Beta activation</span></header>
                 <div class="ss-card-body"><div class="op-form">
                   <label class="op-f">Plan<span>Solo</span></label><label class="op-f">Reference price<span>$149.00 / month</span></label>
-                  <label class="op-f">Beta price<span>$74.50 / month — proposed</span></label><label class="op-f">Stripe mechanism<span class="empty">D3: separate Price / promotion / other — not decided</span></label>
-                  <label class="op-f">Eligibility<span class="empty">D1: not decided</span></label><label class="op-f">Start · end · grandfather<span class="empty">D2: not decided</span></label>
-                  <label class="op-f">After beta ends<span class="empty">D4: not decided</span></label><label class="op-f">Included allowance<span class="empty">D5: units must be a measured meter</span></label>
-                  <label class="op-f">Warnings · limit<span class="empty">D6 / D7: not decided</span></label><label class="op-f">Overage<span>D8 — ruled: none; no automatic overage</span></label>
+                  <label class="op-f">Beta price<span>$74.50 / month — proposed</span></label><label class="op-f">Stripe mechanism<span>D3 — ruled: a new explicit $74.50 Price; not a coupon; $149 untouched; created only in the provider-action release</span></label>
+                  <label class="op-f">Eligibility<span class="empty">D1 — deferred to the Beta activation packet</span></label><label class="op-f">Start · end · grandfather<span class="empty">D2 — deferred to the Beta activation packet</span></label>
+                  <label class="op-f">After beta ends<span class="empty">D4 — deferred to the Beta activation packet; never a silent change</span></label><label class="op-f">Included allowance<span>D5 — ruled: visibility only, from server events only</span></label>
+                  <label class="op-f">Warnings · limit<span>D6 / D7 — ruled: visibility only · workspace stays usable</span></label><label class="op-f">Overage<span>D8 — ruled: none; no automatic overage</span></label>
                   <label class="op-f">Promotional grant (operator-only)<span>workspace · reason code · tenant-visible label · granted by · start · end or explicit no-expiry · audit</span></label><label class="op-f">30-day beta trial<span>eligibility rule · $0 · trial end → “Choose a plan” · never a silent charge</span></label>
                 </div><p class="ss-note">Saving this form is not available in Phase 1. When it is, it writes plan rows only; the Stripe Price is created by a separate, owner-authorized step and verified before the plan is marked billable.</p>
                 <div class="ss-row"><span class="ss-status" data-tone="warn"><i></i>Not billable until every field is decided and the Stripe Price is verified</span><button class="ss-btn" disabled>Save plan</button></div></div></section>
@@ -538,7 +538,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
         break;
       case "beta":
         body.innerHTML='<div class="ss-fields" data-state="plan-beta">'+f("Plan","Solo — paid beta")+f("Status","Active")+f("Price","$74.50 / month")+f("Renews","1 October 2026")+'</div>'+
-          '<p class="ss-note"><span class="ss-tag">proposed · not in effect</span> The beta price and what happens when the beta ends are owner decisions D1–D4. Until they are ruled and the price exists on the platform, this state is never shown to a workspace.</p>'+
+          '<p class="ss-note"><span class="ss-tag">proposed · not in effect</span> D3 is ruled (a new explicit $74.50 price, created only in the provider-action release); D1, D2 and D4 are deferred to the Beta activation packet. Until the price exists on the platform, this state is never shown to a workspace.</p>'+
           '<p><b>After the beta:</b> <span id="afterBeta">D4 — recommended: workspaces that joined during the beta keep $74.50; new workspaces pay $149.</span></p>';
         acts.innerHTML=(S.viewer==="member"||S.viewer==="adminonly")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
         break;
@@ -571,7 +571,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     var pct={included:38, warn75:76, warn90:91, exhausted:100}[S.usage], sid={included:"usage-included",warn75:"usage-warn-75",warn90:"usage-warn-90",exhausted:"usage-exhausted"}[S.usage];
     var tone=pct>=100?"bad":pct>=75?"warn":"ok";
     var msg={included:"You are well within what is included this cycle.", warn75:"You have used three quarters of what is included this cycle. Nothing changes yet; this is a heads-up.", warn90:"You have used 90% of what is included. If it runs out before 1 October, see below for what happens.", exhausted:"You have used everything included this cycle."}[S.usage];
-    var after={exhausted:'<div class="ss-hand" style="margin-top:8px"><div><strong>What happens now</strong><p><b>D7 — recommended during beta:</b> your workspace stays fully usable and nothing extra is charged. <b>D8:</b> automatic overage is unavailable during the beta; if a paid top-up were ever offered it would be opt-in and shown here first. <span class="ss-tag">proposed — not ruled</span></p></div></div>'}[S.usage]||"";
+    var after={exhausted:'<div class="ss-hand" style="margin-top:8px"><div><strong>What happens now</strong><p><b>D7 — ruled:</b> your workspace stays fully usable and nothing extra is charged. <b>D8 — ruled:</b> there is no automatic overage; any future paid top-up would need its own ruling and would be opt-in and shown here first. <span class="ss-tag">ruled 2026-09-02</span></p></div></div>'}[S.usage]||"";
     body.innerHTML='<div data-state="'+sid+'"><div class="ss-row"><strong>AI usage this cycle</strong><span class="ss-status" data-tone="'+tone+'"><i></i>'+pct+'% of included used</span><span class="ss-tag">illustrative — allowance undefined until D5</span></div>'+
       '<div class="ss-meter" data-tone="'+tone+'" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" aria-label="Included AI usage used"><i style="width:'+pct+'%"></i></div>'+
       '<p style="margin-top:6px">'+esc(msg)+'</p>'+
@@ -579,7 +579,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
       '<p class="ss-note">Never counted here: anything estimated, anything from your browser, anything a model guessed. Only measured platform records.</p></div>';
   }
 
-  var OP_STEPS=[["Define","product · price · cadence · entitlement · cancellation"],["Verify price","Stripe Price exists and matches"],["Workspace sees it","price and billing effect before enabling"],["Authorized decision","owner/admin, through the one approval gate"],["Verified payment","provider event, not a click"],["Entitlement","granted or revoked from that verified state"]];
+  var OP_STEPS=[["Define","product · price · cadence · entitlement · cancellation"],["Verify price","Stripe Price exists and matches"],["Workspace sees it","price and billing effect before enabling"],["Authorized decision","workspace Owner (R2), through the one approval gate"],["Verified payment","provider event, not a click"],["Entitlement","granted or revoked from that verified state"]];
   function renderOperator(){ document.getElementById("opSteps").innerHTML=OP_STEPS.map(function(s,i){return '<div class="op-step"'+(i===0?' aria-current="step"':"")+'><b>'+(i+1)+'. '+esc(s[0])+'</b><small>'+esc(s[1])+'</small></div>';}).join(""); }
 
   function stateLabel(){

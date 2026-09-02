@@ -29,9 +29,10 @@ for (const v of ["current","beta","trialing","promo","trialended","cancelsched",
 for (const v of ["included","warn75","warn90","exhausted","nometer"]) { await page.click(`[data-usage="${v}"]`); await collect("usage:"+v); }
 for (const v of ["entry","unavailable"]) { await page.click(`[data-portal="${v}"]`); await collect("portal:"+v); }
 await page.click('[data-viewer="member"]'); await collect("member");
-const memberButtonsDisabled = await page.$$eval("#addonList button", bs => bs.every(b=>b.disabled));
+const noActs = async () => (await page.$$eval("#addonList button, #planActions button, #cardPortal button", bs => bs.every(b=>b.disabled))) && (await page.$eval("#roleRefusal", e=>!e.hidden));
+const memberButtonsDisabled = await noActs();
 await page.click('[data-viewer="adminonly"]'); await collect("admin");
-const adminButtonsDisabled = await page.$$eval("#addonList button", bs => bs.every(b=>b.disabled)) && await page.$eval("#roleRefusal", e=>!e.hidden);
+const adminButtonsDisabled = await noActs();
 await page.click('[data-viewer="sub"]'); await collect("sub");
 await page.click('[data-viewer="switch"]'); await collect("switch");
 await page.click('[data-viewer="admin"]'); await collect("admin");

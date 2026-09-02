@@ -66,7 +66,7 @@ change; Billing will not make it.
 |---|---|---|
 | `addon-available` | listed, priced, billable, not installed | catalogue read |
 | `addon-included` | listed, included in the workspace's plan, enable is free | `included_in_plans` ∋ plan slug |
-| `addon-selected` | tenant admin has opened the price/billing-effect confirmation; nothing charged | local UI state |
+| `addon-selected` | the workspace Owner (R2) has opened the price/billing-effect confirmation; nothing charged | local UI state |
 | `addon-pending` | checkout started, no verified payment yet; **no entitlement** | session created, webhook not received |
 | `addon-active` | verified payment → entitlement granted | `marketplace_installs.status='active'` + ledger `stripe_ref` |
 | `addon-declined` | tenant declined at the confirmation; nothing charged, nothing installed | local UI state |

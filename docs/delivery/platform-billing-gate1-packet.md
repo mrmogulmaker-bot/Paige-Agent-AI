@@ -440,7 +440,7 @@ entitlement logic changes in Phase 1.**
 |---|---|---|---|---|
 | F1 | Solo owner (Admin/Member read plan only) | See what my workspace pays the platform and when it renews | PARTIAL read (`trialing` is a real status today) | `plan-current`, `plan-beta`, `plan-trialing`, `plan-promo`, `plan-trial-ended`, `plan-cancel-scheduled`, `plan-canceled`, `plan-none`, `plan-loading`, `plan-error`, `billing-unavailable` |
 | F2 | Solo **Owner only** (R2) | Update card / download invoices via the hosted portal | UNAVAILABLE (A1, A6) | `portal-entry`, `portal-unavailable` |
-| F3 | Solo owner/admin | See included allowance and how much is used | UNAVAILABLE | `usage-included`, `usage-warn-75`, `usage-warn-90`, `usage-exhausted`, `usage-no-meter` |
+| F3 | Solo owner (Admin/Member read only) | See included allowance and how much is used | UNAVAILABLE | `usage-included`, `usage-warn-75`, `usage-warn-90`, `usage-exhausted`, `usage-no-meter` |
 | F4 | Solo **Owner only** (R2) | Enable a paid add-on and understand the charge | UNAVAILABLE by design | `addon-available`, `addon-selected`, `addon-pending`, `addon-active`, `addon-declined`, `addon-failed`, `addon-cancel-scheduled`, `addon-not-billable`, `addon-included` |
 | F5 | Solo Admin or Member | Understand why I cannot manage billing (fail closed, R2) | not handled | `role-refusal` |
 | F6 | Owner of several workspaces | Switch account and see the right billing | not handled (A1) | `account-switch` |
@@ -493,7 +493,7 @@ entitlement logic changes in Phase 1.**
 |---|---|
 | Automated tests | none run — no code changed |
 | Static / build | docs only; `verify` CI expected green |
-| Structural / harness render | `docs/prototypes/platform-billing-gate1.drive.mjs` (committed beside the prototype) drives it in headless Chromium through every control and asserts all 34 `data-state` ids are reached and member-viewer controls are disabled. Result on this head: `required 34 · seen 34 · missing [] · memberButtonsDisabled true`; the only console error is the sandbox refusing the Google Fonts fetch. The prototype is a browser simulation with deterministic local state and **no network beyond that stylesheet, no mutation, no Stripe** |
+| Structural / harness render | `docs/prototypes/platform-billing-gate1.drive.mjs` (committed beside the prototype) drives it in headless Chromium through every control and asserts all 34 `data-state` ids are reached and member-viewer controls are disabled. Result on this head: `required 34 · seen 34 · missing [] · memberButtonsDisabled true · adminButtonsDisabled true · pageErrors []` (the script filters the sandbox's blocked Google Fonts fetch, a network fact rather than a prototype defect). The prototype is a browser simulation with deterministic local state and **no network beyond that stylesheet, no mutation, no Stripe** |
 | Authenticated runtime on the real platform | **not driven** — no browser/JWT capability in this session; the current Billing tab's rendered behaviour is inferred from source only |
 | UNVERIFIED | whether `meter-llm-usage-hourly` runs on prod (#737); whether `solo.stripe_price_id` still resolves live; the exact Stripe account (legacy vs V2) the platform subscription rail uses in production |
 
