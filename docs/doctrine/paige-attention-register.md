@@ -76,7 +76,7 @@ meaning, so the orders below are the sort orders. Do not reorder them for tidine
 | # | Field | Type | Options, in order / shape |
 |---|---|---|---|
 | 1 | **Status** (built-in, options replaced) | Single select | `Owner Decision Needed` · `Active` · `Blocked` · `Gate 2 Requested` · `Authenticated Runtime Proof Owed` · `Parked` · `Released` · `Not Reproduced` · `Superseded` · `Owner Declined` · `Unknown` |
-| 2 | **Domain / Surface** | Single select | `Spine` · `Rail` · `Chat` · `Mind` · `Pipeline` · `Clients & People` · `Calendar` · `Communications` · `Team & Access` · `Growth, Campaigns & Studio` · `Marketplace` · `Settings & Setup` · `Platform & CI` · `Docs & Doctrine` · `Unknown` |
+| 2 | **Domain / Surface** | Single select | `Spine` · `Rail` · `Chat` · `Mind` · `Pipeline` · `Clients & People` · `Calendar` · `Communications` · `Team & Access` · `Growth, Campaigns & Studio` · `Marketplace` · `Settings & Setup` · `Platform & CI` · `Docs & Doctrine` · `Solo Shell` · `Offer Catalog & Commerce` · `Platform Billing` · `Unknown` |
 | 3 | **Work Layer** | Single select | `Database & RLS` · `Edge function` · `Chat tool` · `Frontend surface` · `CI & tooling` · `Documentation` · `Unknown` |
 | 4 | **Severity** | Single select | `Release-blocking` · `High` · `Medium` · `Low` · `Unknown` |
 | 5 | **Owner / Workstream** | Text | The named workstream, or `Unassigned` |
@@ -104,13 +104,24 @@ option, so each one is defined by the single condition that distinguishes it.
 | `Owner Declined` | The owner explicitly chose not to proceed. |
 | `Unknown` | The current state cannot yet be established honestly. |
 
-**`Gate 2 Requested` is this repository's canonical Gate 2** — exact-head final release authorization
-for ready-for-review, merge, deployment, production migration, provider action, or any other final
-release action, per `CLAUDE.md` §69. The owner's shorthand for this state is **"Gate B."** That
+**`Gate 2 Requested` is this repository's canonical Gate 2** — per `CLAUDE.md` §69, *"explicit
+authorization immediately before ready-state, merge, deployment, or any other irreversible production
+action."* The **exact-head** discipline that authorization is given against is this repository's
+established release practice rather than §69's own wording; see `../PAIGE-MASTER-PROJECT-REFERENCE.md`.
+The owner's shorthand for this state is **"Gate B."** That
 shorthand is recorded here once so it resolves to the right state, and it is **not** the `Gate B` of
-`../doctrine/route-and-url-taxonomy.md`, which is the sub-account mount gate in `Admin.tsx` — an
-unrelated routing term. Two things share a nickname; they are not the same gate, and there is no
-third gate.
+`./route-and-url-taxonomy.md`, which is the sub-account mount gate in `Admin.tsx` — an unrelated
+routing term. Two things share a nickname; they are not the same gate. Other numbered gates do exist
+in this repository — Gate 1 in `CLAUDE.md` §69, Gate A in the route taxonomy, and Gates 3, 5 and 6
+elsewhere — and none of them is this `Status` option. **No new gate is invented here.**
+
+**`Released` requires its authenticated-runtime proof to be recorded.** Merged or deployed work whose
+proof is still owed is `Authenticated Runtime Proof Owed`, **not** `Released` — it has not left the
+working set. The two definitions otherwise overlap on the same fact, and this sentence is the
+tie-break. It matters because merged-with-proof-owed is this platform's single most common real
+state, so without a rule the register would classify its commonest condition inconsistently from the
+first record. `Authenticated Runtime Proof Owed` is a **pre-terminal** state, not a fifth exit: a
+record leaves through one of §5's four exits, and this one is still on its way there.
 
 **`Authenticated Runtime Proof Owed` replaced the earlier `Awaiting Verification`, deliberately.**
 "Awaiting verification" named no specific obligation, so anything unfinished drifted into it. The
@@ -121,13 +132,26 @@ the evidence fields. An item is `Active` while its tests run; it is `Authenticat
 Owed` only when the specific remaining obligation is authenticated runtime proof. A status that
 absorbs "some work is still happening" tells the owner nothing they did not already assume.
 
+**`Solo Shell`, `Offer Catalog & Commerce` and `Platform Billing` are appended, not interleaved.**
+They complete the set so that every workstream in §7's verification scope resolves to a real option
+rather than to `Unknown`. They sit at the end because option order is load-bearing for sorting, and
+inserting them mid-list would silently re-sort every existing record.
+
 **Nothing is left blank — every field can express "not yet known."** Each single select carries
 `Unknown`; the text fields carry `Unassigned` or `None`. A blank cannot be distinguished from a
 question nobody asked, which is the whole failure this rule closes, so the fallback has to exist in
 every column rather than in most of them.
 
-**Severity is the only place release-blocking is recorded.** It is deliberately *not* also a Status
-option: two fields encoding the same fact means two people set it differently and the views diverge.
+**Release-blocking severity is recorded in `Severity` and nowhere else.** It is deliberately not also
+a `Status` option: two fields encoding the same *judgement* means two people set it differently and
+the views diverge. This is a rule about that judgement, not a blanket ban on two fields touching one
+subject — see the `Blocked` pairing directly below, which is governed instead by a tie-break.
+
+**A record is `Blocked` if and only if `Dependency / Blocker` is not `None`.** The status states
+*that* it is blocked; the field states *by what*. Neither is set without the other. Without this
+tie-break one person records the dependency and leaves the status `Active` while another sets
+`Blocked`, and blocked work hides inside "Active" — the exact harm §7's acceptance criteria exist to
+prevent.
 
 **Why `Production State` is separate from `Status`.** They answer different questions, and the
 platform has already produced the combination that proves it: a capability can be **parked** in the
@@ -140,28 +164,33 @@ one for each of the four exits in §5. A record in any of them has left the regi
 
 ## 4. The register's views
 
-Seven views. Views 1–6 are **Table** layout; view 7 is **Board**. Layout is specified because
-grouping means something different in each: in Board the group-by field becomes the columns, in
-Table it produces collapsible row groups. Two people who pick differently build visibly different
-boards from the same reading — and the acceptance criteria in §7 require the six delivery conditions
-to be distinct in *board* form as well as list and filter, which is what view 7 exists to satisfy.
+Eight views. **Layout is its own column** rather than a hint inside a name, because grouping means
+something different in each: in Board the grouping field becomes the columns, in Table it produces
+collapsible row groups. Two people who pick differently build visibly different boards from the same
+reading.
+
+Views 7 and 8 are a **pair sharing one filter** — the same records, once as a list and once as a
+board. That pairing is what satisfies §7's acceptance criteria, which require the six delivery
+conditions to be distinct in *list*, *board* and *filter* form. A single Board would leave the list
+leg unmet, because no other Table view contains all six conditions at once.
 
 `Created at` and `Updated at` are Projects v2 **built-in** fields, available to sort on. They are not
 among the nine and are not added by hand.
 
-| # | View | Filter (verbatim) | Group by | Sort |
-|---|---|---|---|---|
-| 1 | **Owner Now** | `status:"Owner Decision Needed","Gate 2 Requested"` | `Status` | `Severity` ascending |
-| 2 | **Release Blockers** | `severity:"Release-blocking" -status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Production State` | `Updated at` descending |
-| 3 | **Active Workstreams** | `status:"Active"` | `Owner / Workstream` | `Updated at` descending |
-| 4 | **Parked Not Lost** | `status:"Parked"` | `Domain / Surface` | `Created at` ascending |
-| 5 | **Released Truth** | `status:"Released"` | `Domain / Surface` | `Updated at` descending |
-| 6 | **By Domain** | `-status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Domain / Surface` | `Severity` ascending |
-| 7 | **Delivery Control** (Board) | `-status:"Not Reproduced","Superseded","Owner Declined"` | `Status` | `Severity` ascending |
+| # | View | Layout | Filter (verbatim) | Group by | Sort |
+|---|---|---|---|---|---|
+| 1 | **Owner Now** | Table | `status:"Owner Decision Needed","Gate 2 Requested"` | `Status` | `Severity` ascending |
+| 2 | **Release Blockers** | Table | `severity:"Release-blocking" -status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Production State` | `Updated at` descending |
+| 3 | **Active Workstreams** | Table | `status:"Active"` | `Owner / Workstream` | `Updated at` descending |
+| 4 | **Parked Not Lost** | Table | `status:"Parked"` | `Domain / Surface` | `Created at` ascending |
+| 5 | **Released Truth** | Table | `status:"Released"` | `Domain / Surface` | `Updated at` descending |
+| 6 | **By Domain** | Table | `-status:"Released","Not Reproduced","Superseded","Owner Declined"` | `Domain / Surface` | `Severity` ascending |
+| 7 | **Delivery Control** | Table | `-status:"Not Reproduced","Superseded","Owner Declined"` | `Status` | `Severity` ascending |
+| 8 | **Delivery Board** | Board | `-status:"Not Reproduced","Superseded","Owner Declined"` | **Column field:** `Status`; no swimlane grouping | `Severity` ascending |
 
 **Severity sorts ascending, not descending.** Ascending follows the option order in §3, which puts
 `Release-blocking` first. Sorting descending would bury the most severe record under `Low` — the
-opposite of what views 1 and 6 exist to do.
+opposite of what views 1, 6, 7 and 8 exist to do.
 
 **Why view 1 combines two statuses but views 1 and 2 stay separate.** Projects v2 ORs values
 *within* a single qualifier and ANDs *across* qualifiers; there is no cross-field OR. `Owner
@@ -169,24 +198,31 @@ Decision Needed` and `Gate 2 Requested` are two values of the SAME field, so one
 — and it should, because both mean the owner is the next actor. `Severity: Release-blocking` is a
 different field, so it cannot join them; that is why "Release Blockers" remains its own view, read
 immediately after. Anyone who tries to fuse all three into one filter will either lose records
-silently or invent a tenth field.
+silently or invent a tenth field. **View 1 groups by `Status`** rather than by domain — changed from
+the first version of this table — because it now carries two statuses, and the owner must see at a
+glance which of the two each record needs from them.
 
 **Parked Not Lost sorts oldest first on purpose.** The record most likely to be forgotten is the one
 that has been sitting longest, so that is the one the view puts at the top.
 
-**View 6 is the widest, and that is its job** — everything still open, grouped by domain, for the
-sweep no narrower view would catch. The other five are deliberately narrow.
+**Views 7 and 8 are the widest** — everything except the three terminals carrying no remaining
+delivery action. **View 6 is the widest view of still-OPEN work**, grouped by domain, for the domain
+sweep no narrower view catches. The other five are deliberately narrow.
 
-**View 7 is the one Board, and `Status` is what it groups by.** A Board grouped by `Status` puts
-each delivery condition in its own column, which is the only layout where "blocked" and "waiting on
-the owner's gate" are visible as *places* rather than as rows someone has to read for. Views 1–6
-answer narrow questions; view 7 is where the shape of the whole delivery front is legible at once.
+**View 8 is the one Board, and `Status` is its COLUMN field.** Columns keyed on status put each
+delivery condition in its own place — the only layout where "blocked" and "waiting on the owner's
+gate" are visible as *locations* rather than as rows someone has to read for. The setting is named
+as a column field rather than a generic grouping because Projects v2 Board layout exposes column
+keying and swimlane grouping as two separate controls, and setting the wrong one loses the entire
+point of the view.
 
-**View 7 keeps `Released` and drops only the other three terminals.** The acceptance criteria in §7
+**Views 7 and 8 keep `Released` and drop only the other three terminals.** The §7 acceptance criteria
 require merged/released work to be one of the six visibly distinct conditions, so excluding it would
-make the board fail its own test — and a delivery board with no completed lane reads as though
-nothing ever finishes. `Not Reproduced`, `Superseded` and `Owner Declined` are dropped because they
-record that an item was never real work, not that work completed.
+make the pair fail its own test — and a delivery board with no completed lane reads as though nothing
+ever finishes. `Not Reproduced`, `Superseded` and `Owner Declined` are dropped because **no delivery
+action remains on them for anyone.** That is the honest reason: a superseded slice was real work that
+something replaced, and a declined item was a real decision on real work. Neither was "never real
+work," and saying so would license quietly dropping them from a closeout or a retrospective.
 
 **`UNVERIFIED`, stated rather than glossed.** The filter strings, sort directions and layout above
 were written without access to a live Projects v2 board. The *intent* of each view is stated beside
@@ -277,9 +313,11 @@ begin drifting from GitHub immediately. The honest state is: the standard exists
 2. **Edit** the project's built-in `Status` field, replacing its default options with the eleven
    in §3 **in that order**; then **add** the remaining eight fields, with those exact names, option
    sets and orders. Adding a second field named `Status` fails — Projects v2 pre-creates it.
-3. Create the seven views of §4, with those exact names, filters, layouts, groupings and sorts.
+3. Create the eight views of §4, with those exact names, layouts, filters, groupings and sorts.
 4. Add the seed set of §6, plus the remaining open issues enumerated live from GitHub.
 5. Record the project's URL in this section, replacing this paragraph.
+6. **Verify the board against the acceptance criteria below**, using one real record from each
+   workstream in the verification scope. **The board is not built until this passes.**
 
 ### Acceptance criteria — what "built" means
 
@@ -298,11 +336,29 @@ someone needed to see and could not: a blocked item read as parked stops being c
 waiting on the owner's gate read as active waits indefinitely while everyone assumes someone else is
 moving it.
 
+The three legs are satisfied concretely, not by assertion:
+
+| Leg | How it is met |
+|---|---|
+| **list** | View 7 `Delivery Control` (Table) contains all six conditions at once, grouped by `Status`. |
+| **board** | View 8 `Delivery Board` shows each condition as its own column. |
+| **filter** | Each condition isolates with one filter string: `status:"Active"` · `status:"Blocked"` · `status:"Parked"` · `status:"Gate 2 Requested"` · `status:"Released"` · `status:"Authenticated Runtime Proof Owed"`. |
+
+Verifying the acceptance criteria means filling all eighteen of those cells from §4 alone. If any
+cell needs a filter invented at build time, the specification — not the builder — is at fault, and
+the correction belongs in §4 in the same change.
+
 ### Delivery-control verification scope
 
 Verify the board against real records drawn from each of these workstreams:
 
 **Rail · Spine · Mind · Solo Shell · Offer Catalog / Commerce · Platform Billing · Marketplace**
+
+Each resolves to a real `Domain / Surface` option, so none of the seven lands in `Unknown`:
+`Rail` → `Rail` · `Spine` → `Spine` · `Mind` → `Mind` · `Solo Shell` → `Solo Shell` ·
+`Offer Catalog / Commerce` → `Offer Catalog & Commerce` · `Platform Billing` → `Platform Billing` ·
+`Marketplace` → `Marketplace`. The last three options were added to §3 for exactly this reason; a
+verification target the schema cannot represent is not a verification.
 
 **This list is delivery-control scope, not authority to implement those domains.** Each has its own
 accountable owner. The Register records their state, links their dependencies, and makes their work
@@ -310,7 +366,7 @@ legible to the owner; it never takes their work over, reclassifies it without a 
 blocks their delivery. Verification here means confirming the board can *represent* a real record
 from each — not touching the record.
 
-A session that gains a Projects v2 capability may perform steps 1–4 directly. Until one of those
+A session that gains a Projects v2 capability may perform steps 1–6 directly. Until one of those
 happens, this page is a specification, and the register is `UNAVAILABLE` — not empty.
 
 ---
