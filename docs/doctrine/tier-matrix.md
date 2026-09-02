@@ -1392,25 +1392,29 @@ inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
 `get_paige_team_context` and the five inline Team tool branches exist in current source. Applied
 migrations and `list_tool_autonomy()` rows prove catalogue presence/persisted configuration. They do
-not prove the authenticated Chat → owner confirmation → executor → persisted outcome chain, invite
+not prove authenticated Chat refusal/handoff, owner action in the Team UI, persisted outcome, invite
 delivery, permission mutation, or owner-visible history.
 
 **Owner ruling, 2026-09-02:** every PAIGE Team mutation is `owner_only` for MVP and has no auto lane:
 work-profile edits, invite/send/resend/revoke, role/permission grant/revoke/change and every
-access-affecting act. Current source still classifies the five entries `ordinary`/`high`; it is not
-aligned to this policy and is not claimable as current PAIGE Team mutation capability. A separately
-authorized human Team UI remains governed by the Team domain and is outside this Chat matrix.
+access-affecting act. Under the existing canonical meaning of `owner_only`, PAIGE Chat may explain,
+prepare and hand off the proposed change but may never execute it, even after the owner says yes.
+The authenticated owner performs the write through the separately authorized Team UI, governed by
+the Team domain. Current source still classifies the five Chat entries `ordinary`/`high`; it is not
+aligned to this policy and is not claimable as current PAIGE Team mutation capability.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
 | Team context read | no active tenant | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | unavailable | denied |
 | Any PAIGE Team mutation | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | denied |
 
-The mutation row remains unavailable until separate implementation aligns all Team tools to
-`owner_only`, binds the authenticated owner confirmation, proves the domain executor and persisted
-result, and projects a safe workspace-scoped Team outcome. It may not use a contact/client Rail event
-with null/missing `contact_id`. Owner-visible PAIGE Team history is a required next surface and is
-currently `UNAVAILABLE`; see `docs/brain/paige-spine-integration-standard.md` §7 and
+The PAIGE mutation row remains unavailable. Separate implementation must align every Chat entry to
+canonical `owner_only` refusal/handoff semantics; it must not add a Chat executor or treat Chat
+confirmation as executable authority. A separately authorized implementation may prove the
+authenticated owner's Team-UI write, persisted result and safe workspace-scoped Team outcome. It may
+not use a contact/client Rail event with null/missing `contact_id`. Owner-visible PAIGE Team history
+is a required next surface and is currently `UNAVAILABLE`; see
+`docs/brain/paige-spine-integration-standard.md` §7 and
 `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md` → Settings/Team.
 
 The wider non-Team `high`/autonomy policy is unchanged by this Team ruling. A tenant admin may still

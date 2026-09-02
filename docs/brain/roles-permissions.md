@@ -48,10 +48,12 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
 - **PAIGE Team mutation policy (owner, 2026-09-02):** for MVP, every PAIGE-mediated Team write is
   `owner_only` with owner confirmation and no auto lane, including work-profile edits, invite/send/
   resend/revoke, role/permission grant/revoke/change and any access-affecting act. Catalogue rows and
-  applied migrations prove presence/configuration, not the authenticated Chat → approval → executor
-  → persisted outcome chain. Current #728 source classifications are not yet aligned; PAIGE Team
-  mutation capability and owner-visible Team history remain unproven/unavailable. Human Team UI
-  authority is separate and remains governed by its domain contract.
+  applied migrations prove presence/configuration, not authenticated Chat refusal/handoff, the
+  owner's Team-UI write, persisted outcome or owner-visible history. Canonical `owner_only` is never
+  executable through Chat at any confirmation strength: PAIGE may prepare and hand off; the
+  authenticated owner acts through the separately authorized Team UI. Current #728 source
+  classifications are not yet aligned; PAIGE Team mutation capability and owner-visible Team history
+  remain unproven/unavailable.
 
 ## Not yet built
 

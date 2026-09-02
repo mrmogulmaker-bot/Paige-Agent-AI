@@ -255,10 +255,12 @@ read/write behavior.
 
 ### Ruled future SCR: workspace-scoped Team outcomes
 
-PAIGE Team mutations may not be projected into a contact/client-keyed Rail event with a null or
-missing `contact_id`. Preserve the existing client Rail's client-keyed integrity. Team invite,
-resend, revoke, work-profile, role, permission and other access changes are workspace-level outcomes
-and require a distinct workspace-scoped outcome projection/record.
+PAIGE-proposed Team changes and the owner's resulting Team-UI writes may not be projected into a
+contact/client-keyed Rail event with a null or missing `contact_id`. Preserve the existing client
+Rail's client-keyed integrity. Team invite, resend, revoke, work-profile, role, permission and other
+access changes are workspace-level outcomes and require a distinct workspace-scoped outcome
+projection/record. For MVP these actions remain canonical `owner_only`: Chat may prepare and hand off
+but may not execute them at any confirmation strength.
 
 That new shared primitive must carry, at minimum: server-resolved tenant; authenticated actor;
 action kind; safe target member or invitation reference; the owner approval binding; requested,

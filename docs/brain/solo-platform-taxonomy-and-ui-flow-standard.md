@@ -307,7 +307,7 @@ come from `src/solo/settings-contract.ts`.
 | Subtab | Human flow and domain boundary | PAIGE/action/Rail, current truth |
 |---|---|---|
 | **Setup** | Confirm and edit owner/business truth through the Setup-owned contract. | `LIVE` surface; each field/save still requires authenticated proof. PAIGE may use confirmed safe facts, never invent missing ones. |
-| **Team** | Inspect roster, work details and enforced roles; an independently authorized human Team UI may invite/edit where its domain contract permits. | `PARTIAL`. Job description is not permission. For MVP, **every PAIGE Team mutation is `owner_only` and requires the owner**: work-profile edits, invite/send/resend/revoke, role/permission grant/revoke/change, and every access-affecting act. No auto lane. Catalogue/config rows do not prove Chat invocation, executor success or persisted outcome. Owner-visible PAIGE Team history is required but `UNAVAILABLE` and browser proof is `UNVERIFIED`. |
+| **Team** | Inspect roster, work details and enforced roles; an independently authorized human Team UI may invite/edit where its domain contract permits. | `PARTIAL`. Job description is not permission. For MVP, **every PAIGE Team mutation is `owner_only` and requires the owner**: work-profile edits, invite/send/resend/revoke, role/permission grant/revoke/change, and every access-affecting act. No auto lane. Canonical `owner_only` means Chat may prepare and hand off but never execute the change, even after confirmation; the authenticated owner acts in Team UI. Catalogue/config rows do not prove that handoff, UI write, persisted outcome or history. Owner-visible PAIGE Team history is required but `UNAVAILABLE` and browser proof is `UNVERIFIED`. |
 | **Connections** | Understand and manage communications/calendar readiness without exposing secrets. | `PARTIAL`; nested map below. Provider configuration is not successful send/sync. |
 | **Integrations** | Discover external tools and manage only supported safe handoffs. | `PARTIAL`; nested Integrations and Automations views below. |
 | **Notifications** | Understand customer/delivery preferences only where a unified contract exists. | `PARTIAL`; delivery-failure preferences are `UNAVAILABLE`. No fake toggles. |
@@ -347,8 +347,10 @@ landed, or that an outcome became owner-visible. Those are separate authenticate
 The current source at the #728 base still classifies Team tool entries as `ordinary`/`high`. That is
 not compliant with the owner-ruling for the current MVP and must not be represented as usable PAIGE
 Team mutation capability. A later separately scoped implementation must make every PAIGE Team
-mutation `owner_only`, remove any auto lane, preserve Team's domain authorization, and prove the full
-Chat → owner confirmation → executor → persisted outcome chain before a capability claim.
+mutation canonical `owner_only`, remove any auto lane and any Chat execution path, preserve Team's
+domain authorization, and prove the full Chat proposal/refusal/handoff → authenticated owner Team-UI
+write → persisted outcome chain before a capability claim. An owner confirmation in Chat does not
+make an `owner_only` action executable there.
 
 Owner-visible Team history is a real next Team surface requirement: a readable tenant-scoped history
 of PAIGE-proposed, owner-approved, executed and failed invitation/access changes. It is currently
