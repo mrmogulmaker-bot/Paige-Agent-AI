@@ -21,6 +21,15 @@ index what you have not checked.
 - **Need the meaning of a §-number, tier word, or VP name?** → `glossary.md`.
 - **Need "what happened / what did we decide recently?"** → `decision-log.md`.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
+- **Starting or assigning a feature?** → `paige-spine-integration-standard.md` for the mandatory
+  evidence/action/outcome declaration, ownership split, and Spine Change Request boundary.
+- **Starting Solo design or implementation?** Read the canonical
+  `solo-platform-taxonomy-and-ui-flow-standard.md` and its relevant surface card before touching a
+  route, layout, domain flow, PAIGE binding, or shared primitive.
+- **What is PAIGE?** She is the tenant-scoped AI COO—an operating partner that observes truthful
+  business evidence, understands, plans, acts within authority, records outcomes, and learns/follows
+  up. Chat is one governed human interface, not the product boundary. See the Solo taxonomy's
+  governing definition, the Spine standard, and `docs/doctrine/autonomy-architecture.md`.
 
 **Closeout is TWO records, not one (owner-ruled 2026-09-02).** A workstream is not complete until the
 relevant brain file **and** `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` are updated, whenever the work
@@ -29,8 +38,12 @@ known limitation — or a collision-safe handoff names the exact section, propos
 reason. The rule and its reporting gate live in `.claude/skills/second-brain/SKILL.md`.
 
 **How to keep it true (see proposed CLAUDE.md §BRAIN).** Any PR that ships a feature, changes
-config, or lands a ruling updates the relevant brain file **in the same commit**. A stale brain is
-worse than none — it lies with authority.
+config, or lands a ruling updates the relevant brain file **in the same commit**. A normal release
+is not fully closed until the master reference and affected brain files are reconciled. Its final
+packet says `SECOND BRAIN: UPDATED`, `SECOND BRAIN: NO UPDATE REQUIRED` with the checked scope, or
+`SECOND BRAIN: OWED — EMERGENCY FOLLOW-UP`; emergency documentation debt lands before unrelated
+feature work starts. Never store secrets, raw provider payloads, customer data, prompts, or
+unsupported agent claims here. A stale brain is worse than none — it lies with authority.
 
 **Brain-internal files**
 | File | What it holds | When to read |
@@ -41,11 +54,13 @@ worse than none — it lies with authority.
 | `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
+| [`docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`](solo-platform-taxonomy-and-ui-flow-standard.md) | **Canonical Solo platform definition and operating/UI-flow standard:** PAIGE is the tenant-scoped AI COO, Chat is one governed interface, one shared shell serves every Solo tenant, actual departments/subtabs retain their owners, Campaigns keeps its locked six tabs, and every surface card declares its AI COO/evidence/action/approval/Rail contribution plus truth, proof and collisions | **Before every Solo design or implementation**; read the governing definition and relevant §4 surface card |
+| [`docs/brain/paige-spine-integration-standard.md`](paige-spine-integration-standard.md) | **The platform-wide safe integration architecture:** domain event → scoped evidence for Mind/PAIGE Chat → server action-risk + canonical approval gate → attributable Rail outcome. Defines domain/Chat/shared-Spine ownership, code-enforced registry + CI contract, self-service registration, new-primitive-only Spine Change Requests, and incremental adoption. Approval proof is delegated exclusively to PAIGE Chat's `docs/doctrine/one-approval-gate.md`. The foundation registry/CI and first Pipeline evidence entry shipped on `main` in #728; platform/domain coverage remains `PARTIAL`, and Compass is non-authoritative today | **Every new feature assignment**; any Mind, Chat, Compass, Rail, Systems Check, registry/policy, or shared-executor integration |
 | `paige-brain-wiring-standard.md` | **The two brains, and the 5-point checklist every capability must satisfy** — second-brain entry + callable seam + context feed + tool registration + tier availability. Includes the running coverage ledger (what Paige can/can't see). Names the four real layers of her runtime brain | **Shipping ANY capability** — owner-directed, 2026-08-19 |
 | `cd-pack-port-playbook.md` | How to port a Claude Design pack surface to a live tier: the 7-step procedure + the 6 traps that have actually cost us. Written from the operator port so Agency/Sub-account/Solo/Enterprise don't re-learn them | Before porting any pack surface to any tier |
 | `design-system.md` | Palette · gold discipline · type · depth · motion · layout · taste — and where each source lives | ANY design work, or "what is our design system?" |
 | `../doctrine/one-approval-gate.md` | **How Paige proves the operator said yes — and the rule that no slice builds its own version.** How to add a gated action (classify it, stop), what is forbidden and why each shipped once, and how to rewrite a slice that built its own channel | **Before adding ANY action Paige performs on the operator's behalf**, or touching the confirm gate |
-| `../doctrine/surface-cards/` | **The Solo surface cards** — one per department, ten required fields, a truth label. `README.md` carries the schema and maps the Alignment Standard's named documents to what actually exists | Before changing ANY Solo department |
+| `../doctrine/surface-cards/` | **The canonical Solo surface cards** — one per department, ten required fields, a truth label. `README.md` carries the schema and current index; Team and Campaigns → Pipeline are the currently documented cards | Before changing ANY Solo department |
 | `../doctrine/solo-shell-contract.md` | **The canonical Solo shell contract** — one shell for every Solo tenant, address-vs-authority, the CSS-clip interaction policy, the four-viewport proof bar, and the map of what already enforces each rule | Before ANY Solo shell, routing, layout, page-host, responsive or PAIGE-workspace change |
 | `solo-settings-scroll-and-release-playbook.md` | Shipped Solo Settings scroll/reachability contract: one real owner, visible-scroll scope, reset/focus, reproduced-shell proof, actual-`SoloApp` gaps, harness cleanup and exact-head release labels | Any Solo Settings reachability, scrolling, contextual-rail, PAIGE-fold or release-proof work |
 | `solo-people-contact-upsert-playbook.md` | Solo Clients / People contact ownership, tenant-safe human + PAIGE upsert flow, form-fit guardrail, two-context viewport proof, and exact-head Gate 2 discipline | Any People contact create/edit, Clients form-fit, contact mutation, or PAIGE contact-update work |
@@ -56,7 +71,28 @@ worse than none — it lies with authority.
 
 ---
 
-## Verified platform snapshot (this session, 2026-08-09)
+## Historical bounded release reconciliation checkpoint (PR #697 → PR #705)
+
+- **Historical starting point for this bounded pass:** merge
+  `3fd9944cd90e02794db21fa2ae6d32703fe89ea4` (PR #697, 2026-09-01 02:28:06Z).
+  It was the last `docs/brain/` update inside the range selected at that time; it is not the current
+  `main` cutoff.
+- **Historical checkpoint:** `797d6f08c53e89f8cf36bde24d6df90714922629` (PR #705). Exactly seven
+  first-parent `main` records were inventoried: #701, #699, #700, #702, #703, #704, #705. Exact
+  heads, check/deploy evidence, durable changes, and `UNVERIFIED` limits are in
+  `decision-log.md` → “2026-09-01 — release reconciliation after #697.”
+- **Current release-close integration base:** `e35920898ec942e5e8abaf52a5daab9bb67e0820`
+  (#732). The first-parent range after #705 contains exactly 25 inherited `main` records: the prior
+  22 through #728, then #675's canonical surface-card home, #730's Team/Master reconciliation and #732's closeout. Those records are
+  current-base input, not records audited by the historical seven-release table. This section makes
+  no claim that the old pass reconciled them. Re-run both first-parent and docs-path checks before a
+  new exact-head release claim.
+- **Evidence boundary:** all seven are merged and have successful GitHub `Production` deployment
+  records. That proves release metadata, not authenticated product behavior. #699 explicitly owes
+  authenticated runtime. #701 and #702 had green PR-head CI but cancelled push CI after rapid later
+  merges. No claim below upgrades those limits.
+
+## Baseline platform snapshot (verified 2026-08-09; recheck drift-prone counts)
 
 All figures below were checked live this session; how each was verified is in `config-registry.md`.
 

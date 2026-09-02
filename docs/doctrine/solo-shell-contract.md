@@ -1,5 +1,10 @@
 # The canonical Solo shell contract
 
+This file owns shared routing, hosting, geometry, scrolling and responsive behavior. The canonical
+human-job taxonomy, actual department/subtab map, surface cards and full-flow build method live in
+[`docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`](../brain/solo-platform-taxonomy-and-ui-flow-standard.md).
+Neither document creates an account-specific Solo fork.
+
 **Owner-ruled 2026-09-02.** One canonical Solo shell serves every current and future Solo
 tenant. This file is the single door to that contract. It does **not** restate the rules that
 already have executable homes — it names them, so a future agent finds enforcement rather than

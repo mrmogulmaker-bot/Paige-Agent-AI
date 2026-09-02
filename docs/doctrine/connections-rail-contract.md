@@ -8,6 +8,12 @@
 > authorise live voice or any provider action — a taxonomy describes the shape an authorization must
 > take; it is not the authorization.
 
+This is the Solo Connections/A2P domain specialization under
+`docs/brain/paige-spine-integration-standard.md`. Feature owners keep the domain contract and safe
+evidence manifest and use the stable Spine registry for ordinary integration. Only a genuinely new
+shared primitive/schema becomes a Spine Change Request. The PAIGE Chat workstream completes the final
+binding; feature owners do not make direct shared-core edits.
+
 Paige Agent AI is building toward full governed autonomy across the Solo account. Everything
 below exists so that ambition is served by the foundation that already ships, rather than by a
 second one grown quietly beside it.
@@ -33,7 +39,7 @@ Human → Read → Brain → Trust Compass → Write → Rail → Page
 | **Human** | The owner and team set goals, policies, approvals and exceptions, and retain ultimate accountability. | A rubber stamp inferred from silence. Accountability does not transfer by Paige being confident. |
 | **Read** | Paige receives only tenant-safe, proven, scoped evidence. | A raw provider feed, or a read that resolves its tenant from anything a caller supplied. |
 | **Brain** | Paige derives understanding, summaries, plans and recommendations **only from proven records**. | A place where an inference becomes a record. What the Brain concludes is a conclusion, not evidence. |
-| **Trust Compass** | Determines, **per tenant and per capability**, whether Paige may observe, prepare, request confirmation, or act. **It must be server-enforced before autonomous action is claimed.** | A label on a surface. A compass that is not enforced server-side authorizes nothing, however it renders. |
+| **Trust Compass** | **Target state:** a future server-persisted contract may further restrict a capability per tenant. **Current state:** the Compass UI is non-authoritative; the server action-risk policy plus the canonical gate in `docs/doctrine/one-approval-gate.md` is the actual clamp. | A label, dial, or in-memory preference presented as current permission/action evaluation. A Compass that is not persisted and server-enforced authorizes nothing. |
 | **Write** | Every action is tenant/account/capability/source/scope authorized, durable, attributable, idempotent, recoverable, and fail-closed. | A direct provider call from a UI handler, or a retry that duplicates an external effect. |
 | **Rail** | Durable safe evidence, provenance, authority, decisions, outcomes, and recovery history. | A message log. See §2 for the never-list and §2a for where the shipped rail does not yet hold it. |
 | **Page** | The human-management surface where people understand, govern, and intervene. | The only place a capability can be driven from (§10), or a surface that shows a state no record proves. |
@@ -41,7 +47,7 @@ Human → Read → Brain → Trust Compass → Write → Rail → Page
 **Reading comes before action, at every stage.** A capability that cannot yet be read safely is not a
 capability that may be acted on quickly.
 
-## 0b. Voice and Connections capabilities are INDEPENDENT Trust Compass grants
+## 0b. Voice and Connections capabilities are independent; future Compass clamps stay separate
 
 These are six separate capabilities. A tenant may allow one without allowing any other, and the
 grant for one is never evidence of the grant for another:
@@ -65,9 +71,13 @@ enabling calls.
 **What is NOT authorized by this taxonomy.** Paige may eventually read safe communications readiness
 and outcome references, explain gaps, and prepare governed next steps. She may **not** silently call
 providers, buy or assign numbers, submit A2P, record or transcribe calls, send messages, alter
-billing, or make any external change **until each capability has its own proven server authorization
-and Trust Compass enforcement**. This taxonomy does not add live voice or any provider action; it
-describes the shape each must take when it is separately authorized.
+billing, or make any external change **until each capability has its own proven server authorization,
+action-risk classification, and canonical approval-gate enforcement where required**. Approval proof
+is owned by `docs/doctrine/one-approval-gate.md`, not redefined by this Connections specialization.
+A future persisted Compass contract may
+further restrict that authority, never elevate it; C-2 records that it does not exist today. This
+taxonomy does not add live voice or any provider action; it describes the shape each must take when
+it is separately authorized.
 
 ## 1. Page — Settings → Connections
 

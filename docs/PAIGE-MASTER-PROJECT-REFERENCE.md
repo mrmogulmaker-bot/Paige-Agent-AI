@@ -25,13 +25,22 @@ If the request touches a specific slice, load the canonical deep doc for it from
 1. **Update Section 4 checkboxes** — a capability just became SHIPPED
 2. **Update Section 5 status** — a gap closed, or a new one surfaced
 3. **Log §13 corrections in Section 10** if the work revealed the codebase disagreed with what someone claimed
-4. **Cross-post to the brain** (`docs/brain/` once PR #410 merges)
-5. **Commit** with message: `docs(master): update after <PR#/slice>`
+4. **Cross-post to the brain** (`docs/brain/`)
+5. **Close the release truth:** final packet says `SECOND BRAIN: UPDATED`, `SECOND BRAIN: NO UPDATE
+   REQUIRED` (checked scope + reason), or `SECOND BRAIN: OWED — EMERGENCY FOLLOW-UP`. Emergency
+   documentation debt lands before unrelated feature work starts.
+6. **Commit** with message: `docs(master): update after <PR#/slice>`
 
 ### Cowork paste-to-CC/Codex standard
 
 Every paste Cowork produces for CC or Codex includes the line:
 > Reference `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` Sections 4 + 5 before starting; update Section 4 on merge; log any §13 corrections in Section 10.
+
+Every new feature assignment also includes the `PAIGE SPINE DECLARATION` from
+`docs/brain/paige-spine-integration-standard.md`: evidence/action/outcome/no-obligation plus named
+domain, PAIGE Chat, and shared-Spine owners. Ordinary capabilities self-register within the stable
+schema; only a new shared primitive/schema is a Spine Change Request. Neither path authorizes a
+feature workstream to alter shared cores.
 
 ---
 
@@ -110,6 +119,57 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 ### Proposed in `docs/doctrine/claude-md-amendment-draft-2026-07-28.md` (owner sign-off pending, Task #93)
 
 §§40 Revenue-Stage Awareness · §41 Entity-Type Awareness · §42 Paige C-Suite · §43 Surface-is-a-Tool · §45 Sellability · §49 Unified Comms.
+
+### PAIGE Spine Integration Standard (owner-approved 2026-09-01; architecture policy)
+
+**Canonical:** `docs/brain/paige-spine-integration-standard.md`. The Spine is the platform-wide safe
+path from tenant/client domain event to structured Mind/PAIGE Chat evidence, a governed action when
+separately authorized, and an attributable Rail outcome. Rail is part of the Spine, not the whole
+architecture. **Today the server action-risk policy plus canonical approval gate is authoritative;
+the Compass UI is non-authoritative/in-memory or derived and does not evaluate actions or
+permissions.** The canonical registry, resolver and CI foundation shipped on `main` in PR #728,
+including the first `pipeline.deal_stage_evidence` entry. Platform-wide/domain adoption is still
+`PARTIAL`; a registry entry is not authenticated capability proof. Normal domains
+self-register; only new shared primitives/schemas need a Spine Change Request. Adoption is
+incremental — all new capabilities comply now, while legacy direct couplings migrate one at a time
+without pausing unrelated work. Deployed persistence and authenticated behavior remain `UNVERIFIED`
+in this documentation pass. The approval segment is owned exclusively by the PAIGE Chat workstream's
+`docs/doctrine/one-approval-gate.md`, present on current `main` through #728.
+
+### Solo Platform Taxonomy and UI Flow Standard (owner-approved 2026-09-02; canonical)
+
+**Canonical:** `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`. Every current and future
+Solo surface uses one shared shell/template. Tenant facts, permissions, entitlements, providers and
+data may vary; shell, routes, layout, navigation, base surfaces and the single PAIGE workspace may
+not fork by account. The standard maps the actual Solo homes into business foundation, client work,
+revenue/delivery, growth/communications, intelligence/governance and the capability ecosystem; it
+preserves Campaigns' exact six tabs: Overview, Catalog, Sales, Pipeline, Social, Performance. Each
+department/subtab has a required surface card covering its AI COO contribution, human job,
+owner/data, shell location, input/edit/create flows, evidence, PAIGE knowledge/proposal/action,
+approval, Rail, truth/browser proof and collisions. Full owner flows precede isolated polish. Domains own UI/data/actions; Chat
+owns final binding; stable Spine registration is self-service and only a new shared primitive needs
+an SCR. This is a docs-only standard, not proof that the mapped capabilities are live.
+
+Detailed cards use `docs/doctrine/surface-cards/README.md` as their canonical template/rules/index.
+The first required Pipeline card is `docs/doctrine/surface-cards/pipeline.md`; the canonical Team
+card is `docs/doctrine/surface-cards/team.md`. The tier matrix, PAIGE Brain Wiring Standard and
+Connections/Rail contract are supporting authorities only; they do not replace the taxonomy, Spine,
+surface-card index or relevant card preflight.
+
+**Governing product definition:** PAIGE is not a ChatGPT-style chat product or coding assistant. She
+is the tenant-scoped AI COO—the operating partner that observes truthful business evidence,
+understands, plans, acts within authority, records outcomes, and learns/follows up. Chat is one
+governed human interface, not the product boundary. The human selects the autonomy boundary; until
+Trust Compass is persisted and server-enforced, server action-risk plus the one approval gate is the
+authoritative clamp. See `docs/doctrine/autonomy-architecture.md` and the Spine standard.
+
+**Team/Spine MVP policy (owner correction, 2026-09-02):** the six access-changing Team actions stay
+in PAIGE as `high`, each behind the canonical server-verified owner approval card;
+`team_set_work_profile` remains `ordinary` because it cannot alter access. The earlier `owner_only`
+wording is preserved as superseded history in the decision log and Team card. Catalogue rows and
+applied migrations prove configuration, not authenticated execution or owner-visible outcome.
+Team remains `PARTIAL`: its workspace-level outcome projection requires a separate SCR, and the
+client/contact Rail must never be weakened with a null `contact_id`.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 
@@ -720,6 +780,16 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
     An operator acting as a tenant cannot reach the two new RPCs through Paige (the executor passes
     `_id` alone) — a refusal, not a leak.
 
+- **A2P public compliance + consent enforcement — MERGED and Production records successful (PRs
+  #700/#704, 2026-09-01).** Public app/static routes now include auth, privacy and SMS terms;
+  canonical outbound account URLs no longer send users to internal `/admin` paths, and CI guards
+  that boundary. Durable platform-user SMS consent evidence and the shared send clamp fail closed;
+  the A2P draft immutability predicate is pinned to `search_path=pg_catalog`. Exact merge SHAs:
+  `d5db4532b6dd2faa4bdce30e7b60277bcb57d8b3` and
+  `1013ec85b5c9f711ae1ae8b836ce3976af0376d2`. GitHub migration/edge/CI workflows and Production
+  deployment records succeeded. **HONEST LIMITS:** carrier/TrustHub filing remains unavailable;
+  authenticated consent/send proof and a fresh live security-advisor re-query remain **UNVERIFIED**.
+
 ### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
 
 The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitive family, live on the Fleet Console (owner screenshot 2026-08-09). This entry closes a Cowork completeness gap — the Agent UI Placement spec defined this surface but Section 4 hadn't marked it shipped. (Verified by CC against `origin/main`: all 7 files exist and every byte size matches; folded as its own docs PR since the miss #21 PR (#417) had already merged.)
@@ -891,7 +961,7 @@ Grouped:
 - ~~Paige chat receives a server-resolved, active-tenant confirmed roster block for the authenticated speaker. Tenant-authored titles/responsibilities are explicitly untrusted reference data; the block cannot send invitations or mutate access and routes confirmation back to Settings → Team.~~ **FALSE as of 2026-09-02.** The roster block and the untrusted-reference-data property still hold, but PAIGE **can** now send invitations and change access — through the canonical approval route, each `high` act behind the real owner approval card. See §4.
 - Truth status, CORRECTED 2026-09-02: the structural-harness and static results below still stand, and **migration persistence is now CONFIRMED on prod** (`20261039000000`, `20261040000000` in `schema_migrations`; five `team_*` rows returned by `list_tool_autonomy()`). ~~*Do not merge or deploy without the separate final go-live approval.*~~ — it merged via #728. **Still UNVERIFIED:** authenticated save/reload, real invitation delivery, permission refusal/retry, account-switch and preview runtime. No leg has been driven on the live authenticated platform. ~~25/25 structural-harness checks~~ remain as recorded: 25/25 at 1536×770, 1366×768, 1024×768 and 900×1000; focused tests, type ratchet, security linters and production build green.
 
-### Solo Campaigns -> Pipeline board (Gate 1 approved 2026-08-31; draft PR, NOT LIVE)
+### Solo Campaigns -> Pipeline board (MERGED + Production record; verification FAIL — PR #691)
 
 - **Canonical Solo ownership contract (owner-locked 2026-09-01).** There is exactly one Solo shell
   for every current and future Solo tenant. `src/solo/SoloEntry.tsx` dispatches the authenticated
@@ -908,9 +978,14 @@ Grouped:
 - Gate 1 locks the board-first Pipeline interaction inside the existing six-tab Campaigns shell. The only post-approval prototype refinement is the smaller page-title word "Pipeline"; lane, card, detail, and supporting-control geometry remain frozen.
 - The draft adds multiple tenant-owned pipelines, blank-first creation with only owner-authored custom stages, tenant-owned stage name/description/order/archive/restore controls, contextual deal detail, focused-stage compact behavior, subordinate routing/repair evidence, stable short references and one-level tenant-owned folders with a virtual Unfiled view. No preset pipeline or stage taxonomy is supplied. Campaign linkage is optional; it is not the only reason to create a pipeline.
 - The durable contract is tenant-scoped and callable. Read-only members can inspect but not mutate. Occupied stages fail closed on archive. No revenue, ROI, payment, client-health, or unsupported portal facts are inferred.
-- Truth status: local contract/render tests, production build and the draft checks are green on the recorded exact head. The deterministic browser proof covers both example Solo contexts at the four locked viewports with PAIGE closed/open; it is local rendered evidence, not authenticated tenant proof. Migration persistence, authenticated save/reload, permission, retry, abandonment, account-switch and production runtime remain UNVERIFIED. Do not merge or deploy without the separate exact-head Gate 2 request.
+- Release evidence: PR #691 head `85df219e…` merged as `2d94bc2e…`; migration and edge deploy jobs
+  succeeded and GitHub records a successful Production deployment at 2026-08-31 22:36:40Z.
+  **Not green/closed:** PR-head and merge-head `verify` failed (ESLint and Test steps), and the PR
+  Supabase Preview failed. Authenticated save/reload, permission, retry, abandonment, account switch,
+  migration runtime and owner production acceptance remain **UNVERIFIED**. Production deployment is
+  not evidence that these flows work.
 
-### Solo Clients → Conversations — implementation awaiting exact-head release verification (2026-08-28)
+### Solo Clients → Conversations — MERGED + Production record; authenticated acceptance UNVERIFIED (PR #621)
 
 The owner-approved Solo redesign is intentionally confined to the existing workspace directly below
 `People · Conversations · Calendar · Portal`. It adds no route-local Clients hero, title banner, or
@@ -921,6 +996,9 @@ account-epoch clearing, pane-owned scrolling, and constrained-center form-fit. P
 does not prove identity, send permission, A2P, inbound, webhook, mailbox, or operational readiness.
 Video and Apple Messages for Business remain unavailable unless separately proven. Ordinary consumer
 iMessage is never claimed. No backend, provider, schema, auth, or business-data mutation is in scope.
+PR #621 head `0cd8cda3…` merged as `7682d283…`; PR-head and merge-head CI/security checks passed and
+GitHub records a successful Production deployment at 2026-08-28 15:03:55Z. Authenticated provider,
+send, permission, retry, abandonment and account-switch proof remains **UNVERIFIED** in this record.
 
 ### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
 
@@ -1212,6 +1290,16 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 
 ## 9. Canonical deep docs (by topic)
 
+### Second Brain architecture standards (`docs/brain/`)
+
+- PAIGE Spine Integration Standard — `paige-spine-integration-standard.md` (owner-approved safe
+  integration architecture; assignment declaration; domain/Chat/shared ownership; code-enforced
+  registry/CI requirement; self-service registration; new-primitive-only Spine Change Requests;
+  incremental adoption; PAIGE Chat-owned `one-approval-gate.md` approval segment; platform
+  implementation `PARTIAL`)
+- Primary-brain wiring standard — `paige-brain-wiring-standard.md` (runtime context/tool coverage
+  ledger; subordinate to the Spine ownership boundary)
+
 ### Product specs (LOCKED 2026-08-08 — `docs/product/`)
 
 - BRD-MVP — `BRD-MVP-2026-08-08.md` (Business Requirements Doc — scope + requirements source of truth; peer to the Canonical System Architecture)
@@ -1307,6 +1395,15 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+- **2026-09-02 — the Second Brain documentation branch was blamed for four CI failures that were
+  inherited host-portability defects.** Fresh-main reproduction showed Windows path separators broke
+  the pack-lineage and operator-reachability repository keys; the Deno ratchet test harness could not
+  execute its controlled shim or normalize cross-worktree diagnostic origins on Windows; and two
+  source-contract tests depended on GNU `grep` or native path separators. The narrow repair changes
+  only CI guards/tests and adds direct portability regressions. It does not alter product behavior,
+  migrations, providers, production data, or PR #728's separate five-finding hotfix. This branch
+  remains Gate 2 pending until its resulting exact head is independently reviewed and CI-green.
+
 - **2026-09-01 — multi-tenant email identity and workspace identity were previously collapsed into one redirect.** A Google identity can hold several independent Paige memberships, while the agency parent/sub-account switcher governs a different relationship. The approved correction keeps those authority domains distinct: Google selects the person, Paige intersects that person's active membership rows with RLS-visible tenants, and the existing guarded active-tenant write commits the chosen workspace. This is a Gate 1 implementation record only; live authenticated proof and Gate 2 remain outstanding.
 
 - **2026-09-01 — the Pipeline draft entry still claimed optional starter creation after the owner
@@ -1316,8 +1413,9 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
   contract and also records the canonical one-shell rule for all Solo tenants so an account where a
   defect was observed can never become a separate shell implementation.
 - **2026-09-01 — I closed a gate by handing the key to the model. Two reviews, two holes, and the
-  second one was mine (branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR #675, NOT
-  MERGED).** Recorded in full because the shape of the mistake matters more than the fix.
+  second one was mine (historical branch `codex/paige-knowledge-active-tenant-isolation-v2`, PR
+  #675; later integrated by #728).** Recorded in full because the shape of the mistake matters more
+  than the fix.
 
   **The property that was protecting every write was STRUCTURAL.** The confirm gate's re-entry test
   read `approvedConfirmations`, which arrives only in the validated REQUEST BODY — and a model
@@ -1873,9 +1971,10 @@ The tenant prototype now implements Signal Field, Living Lineage, Creation Chamb
 
 The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.
 
-### Solo Command Center Mind — owner-approved build in draft review (2026-08-28)
+### Solo Command Center Mind — MERGED + Production record; authenticated acceptance UNVERIFIED (PRs #620, #701)
 
-- **Status: DRAFT PR ONLY; not shipped, merged, or deployed.** Owner-approved prototype:
+- **Release evidence:** PR #620 head `51f31dc9…` merged as `98562411…`; CI/security checks passed and
+  GitHub records successful Production deployment at 2026-08-28 14:48:10Z. Owner-approved prototype:
   `paige-command-center-mind-flow-prototype.html`, SHA-256
   `2CE38FC21DD1C6B6DD0C5816A63E2FA09F80245F09BB73F809DA52089F69`, 57,193 bytes.
 - Solo Command Center's proposed customer-facing information architecture is exactly
@@ -1886,19 +1985,23 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   LIVE; current pending decision references are LIVE SOURCE but non-actionable here; the latest Systems Check snapshot
   is PARTIAL history. Full historical series, resolved-decision history, helper provenance, and inferred
   semantic/causal relationships remain UNAVAILABLE.
-- The interactive 3D topology is a PROPOSED presentation, not a new data owner. It is still by default.
-  Direct mouse/keyboard manipulation is not business activity; finite motion may occur only after a
+- The interactive 3D topology is presentation, not a new data owner. PR #701 (`e9917918…` → merge
+  `a0a706c6…`) defaults orbit motion to running and persists an explicit pause per authenticated user
+  and tenant in local storage; GitHub records Production success. Its PR-head CI passed; push CI was
+  cancelled after rapid later merges. Direct mouse/keyboard manipulation is not business activity;
+  finite motion may occur only after a
   genuinely newly observed grounded record. One existing PAIGE workspace remains the only workspace,
   and opening it does not attach, prefill, send, prepare, or start work.
 - Tenant identity remains server-resolved. The Mind data child does not mount while `activeTenantId` is
   unresolved and remounts by tenant epoch so prior-account state and late responses cannot paint the
   next account.
 
-### Solo Systems Check Operating Signal — owner-approved build in draft review (2026-08-29)
+### Solo Systems Check Operating Signal — MERGED + Production record; authenticated acceptance UNVERIFIED (PR #641)
 
-- **Status: DRAFT PR ONLY; not shipped, merged, deployed, or production-accepted.** The owner approved
-  the Operating Signal prototype and authorized implementation through a green draft PR and preview;
-  the separate final go-live gate remains required.
+- **Release evidence:** PR #641 head `f37f54b9…` merged as `3af567e6…`; PR-head and merge-head
+  CI/security checks passed and GitHub records successful Production deployment at 2026-08-30
+  01:27:39Z. Authenticated tenant/runtime acceptance and owner production acceptance remain
+  **UNVERIFIED**; deployment metadata does not satisfy them.
 - The Solo Systems Check is a compact business-awareness surface over the existing tenant-scoped
   `systems_check_snapshot` rail. Persisted findings are grouped into confirmed, needs-attention, and
   unavailable reads; missing or partial evidence never becomes inferred health. Refresh motion is

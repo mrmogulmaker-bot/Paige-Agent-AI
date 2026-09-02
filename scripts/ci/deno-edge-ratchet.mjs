@@ -43,6 +43,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { relativeInsideRoot, repoPath } from "./path-portability.mjs";
 
 // -- pure comparator ---------------------------------------------------------
 
@@ -80,19 +81,22 @@ export function looksLikeResolutionFailure(raw) {
 
 /** Absolute runner paths differ between legs and machines; compare repo-relative. */
 export function repoRelative(file, root = null) {
-  const i = file.indexOf("supabase/functions/");
-  if (i >= 0) return file.slice(i);
+  const normalizedFile = repoPath(file);
+  const i = normalizedFile.indexOf("supabase/functions/");
+  if (i >= 0) return normalizedFile.slice(i);
   // Both legs now live under DIFFERENT temporary worktree roots, so an absolute path outside
   // supabase/functions/ could never match across legs and every such diagnostic would read as
   // NEW. Strip the leg's own root so a repo file keys identically on both sides.
   if (root) {
-    const abs = file.startsWith("/") ? file : `/${file}`;
-    const rel = path.relative(root, abs);
-    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) return rel;
+    const rootedFile = repoPath(root).startsWith("/") && !normalizedFile.startsWith("/")
+      ? `/${normalizedFile}`
+      : normalizedFile;
+    const rel = relativeInsideRoot(rootedFile, root);
+    if (rel) return rel;
   }
-  const j = file.indexOf("/scripts/");
-  if (j >= 0) return file.slice(j + 1);
-  return file;
+  const j = normalizedFile.indexOf("/scripts/");
+  if (j >= 0) return normalizedFile.slice(j + 1);
+  return normalizedFile;
 }
 
 /**

@@ -312,6 +312,15 @@ exist — do not follow references to them.)
 | `premerge-migration-proof.yml` | pull_request | Pre-merge `BEGIN..ROLLBACK` migration proof (§32.a) |
 | `security-audit.yml` ("Security Audit") | pull_request + push | Security audit gate |
 
+**2026-09-02 release-close portability correction (this branch; Gate 2 pending):** the inherited
+local failures in `lint:pack-lineage` and `lint:operator-reach` were Windows repository-key separator
+defects, not documentation regressions. Their guards now compare canonical `/` keys. The Deno
+ratchet normalizes diagnostic origins across Windows/POSIX worktrees while retaining fail-closed
+classification, and its contract suite includes real Deno v2 plus traversal/case/UNC coverage. Two
+test-only callers no longer require GNU `grep` or native-slash allowlist matching. No workflow YAML,
+product behavior, migration, provider, or production configuration changed. Hosted exact-head CI is
+not claimed here; it remains a Gate 2 requirement.
+
 **RLS anon/cross-tenant-reach drift guards (npm scripts wired into `ci.yml`):**
 
 | Script | Guards | Added |
@@ -414,6 +423,28 @@ Values intentionally omitted.
 
 *(This is the inventory of integration **existence**, not an endorsement that each is configured/live.
 A name here proves the edge code references it; it does not prove the secret is set on prod.)*
+
+### Communications/A2P release reconciliation (2026-09-01)
+
+- **Purchase quote boundary (#699):** Paige's `comms_buy_number` must supply numeric
+  `monthly_cents`; malformed/missing quotes fail before autonomy. `comms-purchase-number` re-reads
+  `platform_number_pricing.retail_monthly_cents` and refuses `price_changed` or
+  `price_unverifiable` before provider purchase. Human UI callers remain a separate legacy contract
+  that send `{ phone_number }` only. Authenticated deployed-app proof is **UNVERIFIED / owed**.
+- **Primary-number invariant (#699):** migration
+  `20261020000000_primary_number_is_always_active.sql` installs a BEFORE trigger so an inactive
+  number cannot retain `is_primary`, repairs existing inactive flags, and deterministically fills a
+  tenant with active numbers but no active primary. Successful migration workflow evidence exists;
+  this record does not claim a fresh production row-level re-query.
+- **Durable consent/send clamp (#700):** migrations
+  `20260901003955_a2p_platform_user_consent_evidence.sql` and
+  `20260901020000_harden_platform_sms_consent_evidence.sql` add and harden platform-user SMS consent
+  evidence. `_shared/paige-agent-ai-sms.ts` is the shared sending boundary. Carrier/TrustHub submit
+  remains **UNAVAILABLE**; no secret values or provider payloads are recorded here.
+- **A2P immutable predicate hardening (#704):** migration
+  `20261004070000_a2p_immutable_search_path.sql` pins
+  `a2p_registration_is_immutable(tenant_a2p_registrations)` to `search_path=pg_catalog`. Migration
+  deployment succeeded; a fresh live security-advisor result remains **UNVERIFIED**.
 
 ---
 

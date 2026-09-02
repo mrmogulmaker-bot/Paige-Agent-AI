@@ -145,13 +145,15 @@ no authority. Suppressed entirely when the block's tenant ≠ the conversation's
 | `team_invite_member` | `solo-team-invitations` create | `high` |
 | `team_invite_resend` | resend | `high` |
 | `team_invite_revoke` | revoke | `high` |
+| `member_grant_role` | governed member-role executor | `high` |
+| `member_revoke_role` | governed member-role executor | `high` |
 
 Ids come from the context block only — never a name PAIGE resolved herself. Nobody can be made an
 owner; the permission enum is `admin | member` and the database refuses `owner` besides.
 
 ## Required confirmation / approval
 
-The four `high` tools require the rendered card's fingerprint, carried in the request **body** — a
+The six `high` tools require the rendered card's fingerprint, carried in the request **body** — a
 channel the model cannot write. `confirm: true` from the model is refused for them. Cards name the
 person and the consequence, not the enum, and a `high` card whose subject cannot be named is
 refused rather than shown unnamed. A workspace `auto` setting does **not** lower this: as of

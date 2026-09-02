@@ -99,6 +99,13 @@ describe("operatorTarget", () => {
 // restating the constant, which no amount of testing the existing callers would catch.
 describe("the operator door has exactly one home", () => {
   const SRC = path.resolve(__dirname, "../..");
+  const repoPath = (value: string) => value.replace(/\\/g, "/");
+
+  it("normalizes Windows paths before comparing repository exceptions", () => {
+    expect(repoPath("pages\\admin\\OperatorCommandCenter.tsx")).toBe(
+      "pages/admin/OperatorCommandCenter.tsx",
+    );
+  });
 
   it("no module outside operatorTarget.ts declares its own operator landing constant", () => {
     const offenders: string[] = [];
@@ -112,7 +119,7 @@ describe("the operator door has exactly one home", () => {
         // A declaration, not a reference: `const NAME = "/operator/..."` or "/admin/platform/tenants".
         const decl = /const\s+\w*(?:GOD_CONSOLE|OPERATOR_HOME|FLEET_HREF)\w*\s*[:=][^=]*?["'](\/(?:operator|admin)\/[^"']+)["']/g;
         for (const m of text.matchAll(decl)) {
-          offenders.push(`${path.relative(SRC, full)} → ${m[1]}`);
+          offenders.push(`${repoPath(path.relative(SRC, full))} → ${m[1]}`);
         }
       }
     };

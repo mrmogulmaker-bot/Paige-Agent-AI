@@ -21,12 +21,13 @@ governs had landed on `main` in #728 fifteen minutes earlier, and the claim was 
 stale local tree instead of fetching `main` first. An unfalsifiable claim of absence is
 indistinguishable from not having looked — which is what happened. Fetch, then assert.
 
-Where the standard's named documents actually live:
+Where the standard's named documents now live (the Brain standards were added after the historical
+absence error above and are the required preflight authorities):
 
 | The standard names | What exists |
 |---|---|
-| PAIGE Spine Integration Standard | **`docs/architecture/paige-spine-foundation.md`** — the canonical contract, governing `supabase/functions/_shared/paige-spine/registry.ts`. Companion: `docs/delivery/paige-spine-chat-handoff.md`. The approval half is `docs/doctrine/one-approval-gate.md` |
-| Solo Platform Taxonomy and UI Flow Standard | No single document under that name. Nearest: `solo-shell-contract.md` (the shell), `route-and-url-taxonomy.md` (§65 addresses), `tier-matrix.md` (per-tier availability). **Verified against `origin/main` this time.** |
+| PAIGE Spine Integration Standard | **`docs/brain/paige-spine-integration-standard.md`** — the canonical integration and change-governance standard. Its implementation authority is `docs/architecture/paige-spine-foundation.md`, governing `supabase/functions/_shared/paige-spine/registry.ts`; companions include `docs/delivery/paige-spine-chat-handoff.md` and `docs/doctrine/one-approval-gate.md` |
+| Solo Platform Taxonomy and UI Flow Standard | **`docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`** — the canonical platform taxonomy and owner-flow standard; `solo-shell-contract.md`, `route-and-url-taxonomy.md` and `tier-matrix.md` remain supporting authorities |
 | Department/surface card | this directory |
 
 ## The registry is the authority a card must agree with
@@ -71,3 +72,10 @@ thorough, changes nothing about what an owner can see or what has been proven. A
 when the owner can see a truthful, tenant-scoped outcome after PAIGE acts AND the live
 authenticated flow has been driven. A card that promotes its own subject is the exact self-serving
 evidence this schema exists to refuse.
+
+## Current cards
+
+| Card | Surface | Truth |
+|---|---|---|
+| [`team.md`](team.md) | Settings → Team | `PARTIAL`; authenticated flow and owner-visible workspace outcome remain unverified/unavailable |
+| [`pipeline.md`](pipeline.md) | Campaigns → Pipeline | `PARTIAL`; the safe evidence capability exists, while Mind/action coverage and authenticated flow proof remain incomplete |

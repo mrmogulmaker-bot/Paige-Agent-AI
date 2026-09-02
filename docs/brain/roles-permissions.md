@@ -41,6 +41,18 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
   `check_feature_access()` reach `user_roles` one level down and match none of the
   `has_role|has_any_role|user_roles` tokens. Closing that is R2b.
 
+## Solo Team descriptive work data (2026-09-01 reconciliation)
+
+- `tenant_members.job_title` and `tenant_members.responsibilities` are now on `main` through PR #697 (`3fd9944cd90e02794db21fa2ae6d32703fe89ea4`). They are descriptive tenant data only; `role` and `is_owner` remain the only enforced permission inputs.
+- PR #702 (`81e350ca477b9334e62dc636c2a8b57f891917df`) added truthful stored-name/email fallback and work-detail editing. GitHub records show both PRs merged and successful Production deployment statuses; this reconciliation did **not** establish a fresh production row-level query. Authenticated save, invite, permission, account-switch, and email behavior remain **UNVERIFIED**.
+- **PAIGE Team mutation policy (owner correction, 2026-09-02):** the six access-changing actions
+  stay in PAIGE as `high` and require the canonical server-verified owner approval card;
+  `team_set_work_profile` stays `ordinary` because it cannot change access. `owner_only` would remove
+  an action from Chat entirely and was explicitly rejected as the wrong product behavior. Catalogue
+  rows and applied migrations prove presence/configuration, not authenticated execution or
+  owner-visible history. The current capability remains `PARTIAL`; see
+  `docs/doctrine/surface-cards/team.md` for the complete current contract and preserved correction.
+
 ## Not yet built
 
 - No custom-roles table, no permissions table (`user_roles` is the only role table).

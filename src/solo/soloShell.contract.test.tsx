@@ -1,6 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -44,7 +43,7 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
     // Any OTHER component rendering the host would be a second page host — the
     // thing the contract forbids. Selectors and assertions that merely REFERENCE
     // it are fine, so this looks for the JSX attribute form specifically.
-    const others = execFileSyncGrep().filter((f) => f !== "src/solo/SoloApp.tsx");
+    const others = findSoloScreenHosts().filter((f) => f !== "src/solo/SoloApp.tsx");
     expect(others, "only SoloApp renders [data-solo-screen-host]").toEqual([]);
   });
 
@@ -82,12 +81,20 @@ describe("the canonical Solo shell is one shell for every tenant", () => {
   });
 });
 
-/** Repo-wide search for the JSX attribute, kept out of the assertion for clarity. */
-function execFileSyncGrep(): string[] {
-  const out = execFileSync(
-    "grep",
-    ["-rl", "--include=*.tsx", "-e", "data-solo-screen-host [^=]", "-e", "data-solo-screen-host>", "-e", "data-solo-screen-host ", "src"],
-    { encoding: "utf8" },
-  ).trim();
-  return out ? out.split("\n").filter((f) => !f.endsWith(".test.tsx")) : [];
+/** Repo-wide search for the JSX attribute, without depending on a platform grep binary. */
+function findSoloScreenHosts(): string[] {
+  const root = resolve(process.cwd());
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!entry.name.endsWith(".tsx") || entry.name.endsWith(".test.tsx")) continue;
+      if (/data-solo-screen-host(?:\s+[^=]|>)/.test(readFileSync(full, "utf8"))) {
+        found.push(relative(root, full).replace(/\\/g, "/"));
+      }
+    }
+  };
+  walk(resolve(root, "src"));
+  return found;
 }

@@ -25,7 +25,10 @@ add without this wiring widens the blindness.
 | Failure if stale | A session re-diagnoses something already solved | **Paige cannot see or act on the platform** |
 | Governing rule | §BRAIN.1–.3 | §10 (callable seam) · §52 (already-briefed) · §35 |
 
-**Every shipped capability updates BOTH.** One without the other is half-done.
+**Every feature assignment declares BOTH its second-brain update and its PAIGE Spine obligation.**
+Runtime integration may be sequenced to the designated PAIGE Chat/shared-Spine owners, but an owed
+leg stays `PARTIAL`, `UNAVAILABLE`, or `UNVERIFIED`; it is never assumed complete. The ownership and
+change-request boundary is canonical in `paige-spine-integration-standard.md`.
 
 ---
 
@@ -76,24 +79,37 @@ construction — no second wiring path.
 
 ---
 
-## 3. The mandatory checklist — every capability, every tier
+## 3. The mandatory coordinated checklist — every capability, every tier
 
-When any surface, function, department or URL ships, it is not done until all five are true:
+Every assignment declares whether it publishes evidence, registers an action, emits an outcome, or
+has no Spine obligation. For any declared Spine leg, completion is coordinated across the owners in
+`paige-spine-integration-standard.md`; the feature/domain agent does not directly edit a shared core.
 
 - [ ] **1. Second-brain entry.** The relevant `docs/brain/` doc updated in the SAME commit
       (§BRAIN.3): `codebase-map.md` for new surface area, `config-registry.md` for integration
       wiring (NAMES/IDs only, never secret values), `decision-log.md` for the ruling,
       `lessons-learned.md` for a new class of mistake.
-- [ ] **2. A callable seam (§10).** The logic lives in an RPC / edge function / config-as-data — not
-      only inside a React handler. If a human clicking is the only way to drive it, it is a dead end.
-- [ ] **3a. CONTEXT (Layer A) — does she need to KNOW it unprompted?** If it is part of "the state of
-      the platform / this business", add a line to the tier's context composer (`owner-context.ts`
-      for the operator) as a **real query with an honest "not available" fallback**. This is what
-      makes her *already briefed* (§52) instead of merely answerable.
-- [ ] **3b. TOOL (Layer D) — does she need to QUERY or ACT on it?** Register in `paige-mcp` with the
-      correct `TOOL_SCOPE` **and** the correct tier (`MASTER_ONLY_TOOLS` / `AGENCY_TOOLS` /
-      default). **If the handler has no in-handler guard, god-lock it** — see the lesson in §2.
-      Most capabilities need BOTH 3a and 3b; a metric may need only 3a, a mutation only 3b.
+- [ ] **2. A domain callable seam (§10).** The feature/domain owner provides tenant-safe logic in a
+      server contract / RPC / edge function / config-as-data — not only inside a React handler. It
+      also defines the safe evidence/action/outcome manifest. This does not authorize editing a
+      central resolver, shared writer, or executor.
+- [ ] **3a. EVIDENCE / CONTEXT (Layer A) — does she need to KNOW it unprompted?** The domain owner
+      publishes the safe evidence contract and registers it within the stable Spine schema. The
+      Mind/shared-Spine owner maintains the central resolver; a Spine Change Request is needed only
+      if the domain requires a new shared primitive/schema, not for ordinary registration. Reads use
+      real scoped records with an honest "not available" fallback.
+- [ ] **3b. CHAT READ / WRITE (Layer D) — does she need to QUERY or ACT on it?** The designated PAIGE
+      Chat workstream completes the bounded adapter/tool, tenant/client scope, binding to the
+      canonical gate in `docs/doctrine/one-approval-gate.md` when required, governed invocation,
+      and final Chat behavior. It registers the correct `TOOL_SCOPE` and tier
+      (`MASTER_ONLY_TOOLS` / `AGENCY_TOOLS` / default). A feature agent supplies the domain contract;
+      it does **not** wire or rewrite Chat core itself.
+- [ ] **3c. REGISTRY + CI — is the binding mechanically enforced?** A new capability uses the
+      centralized registry/policy. CI rejects direct/hard-wired Chat tools/actions and competing
+      approval channels. Current `main` includes the canonical Spine registry and CI foundation from
+      #728; the legacy inline catalogue remains migration debt behind its no-growth ratchet. #728 adds
+      no-new-inline and one-gate ratchets, but explicitly not the full registry. Do not call the
+      contract complete until the unified hard-fail registry is implemented and proven.
 - [ ] **4. Tier availability declared** via `getTierFeatureSet()` / `hasFeature()` (§60), never an
       inline `account_type ===` compare. `lint:tier-features` enforces this.
 - [ ] **5. Honest when it cannot answer (§13).** A tool that has no substrate returns a stated gap —
@@ -168,6 +184,7 @@ RLS-scoped to `current_user_tenant_id()`. §37 producer inventory required befor
 §7 (Paige IS the portal) · §10 (Paige-governable, callable seam) · §13 (honest gaps) · §35 (OS north
 star — every seam is OS surface area) · §51/§53 (tier + operator role gating) · §52 (already-briefed
 operator context) · §60 (declared tier availability) · §BRAIN.1–.3 (second-brain discipline) ·
+`paige-spine-integration-standard.md` (platform-wide safe path + owner boundaries) ·
 `cd-pack-port-playbook.md` (how a tier surface gets ported in the first place).
 
 ## Solo Team context — narrow contract (SHIPPED via PR #728, 2026-09-02; ~~Gate 2 pending~~)

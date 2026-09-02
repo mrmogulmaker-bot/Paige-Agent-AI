@@ -302,7 +302,20 @@ an integration entry point updates this file in the same commit (§BRAIN.3). Ver
 - Identity rule: mount Mind only after server-resolved `activeTenantId`, key the child by that epoch,
   and never use the URL account number as read authority.
 
-
 ### Client identity contract (2026-09-01)
 
 `public.clients` owns one immutable internal UUID, one immutable tenant binding, and one immutable public-safe `client_ref` stored in `account_number`. `create_contact()` is the authenticated creation seam; trusted edge producers must supply their already server-resolved tenant. Paige Chat and MCP expose `client_ref` plus bounded CRM metadata and resolve the internal UUID only after tenant validation.
+
+### 2026-09-01 release deltas
+
+- **Mind presentation preference (#701):** `src/solo/mindOrbitPreference.ts` stores only the explicit
+  paused preference in browser local storage, keyed by authenticated `userId` + server-resolved
+  `tenantId`. Missing preference means orbit enabled. It is presentation state, not a knowledge,
+  decision, authorization, or activity record.
+- **Team work details (#702):** `src/solo/team-workspace.tsx` shows stored member name or real email
+  fallback and edits job title/responsibilities. `team-workspace-contract.ts` keeps descriptive work
+  data separate from Owner/Admin/Member authorization; no title grants permission.
+- **Public compliance/account paths (#700):** app routes include `/sms-terms`; root static fallbacks
+  `auth.html`, `privacy.html`, and `sms-terms.html` support public provider/compliance review. Shared
+  `canonical-app-url.ts` owns outbound account URLs; CI's
+  `user-facing-admin-producer-lint.mjs` blocks new user-facing `/admin` links.

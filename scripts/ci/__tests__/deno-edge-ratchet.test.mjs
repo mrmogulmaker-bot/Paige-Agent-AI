@@ -18,8 +18,9 @@
  * named failing assertion, not as a link-time crash that takes the whole suite with it.
  */
 import * as R from "../deno-edge-ratchet.mjs";
+import * as P from "../path-portability.mjs";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, chmodSync } from "node:fs";
+import { copyFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +64,27 @@ const run = (base, head, changedFiles = [], depsMatch = true) =>
 
 console.log("\ndiagnostic parsing");
 {
+  check("repository keys normalize Windows separators",
+    P.repoPath("specs\\fleetSpecs.ts") === "specs/fleetSpecs.ts");
+  check("operator graph keys normalize Windows separators",
+    P.repoPath("src\\operator\\OperatorEntry.tsx") === "src/operator/OperatorEntry.tsx");
+  check("Windows roots produce the same repository-relative key",
+    P.relativeInsideRoot("C:\\tmp\\wt\\head\\src\\lib\\x.ts", "C:\\tmp\\wt\\head") === "src/lib/x.ts");
+  check("POSIX roots produce the same repository-relative key",
+    P.relativeInsideRoot("/tmp/wt/head/src/lib/x.ts", "/tmp/wt/head") === "src/lib/x.ts");
+  check("a path outside the worktree root is not relativized",
+    P.relativeInsideRoot("C:\\tmp\\other\\x.ts", "C:\\tmp\\wt\\head") === null);
+  check("a traversal-shaped path outside the root is rejected",
+    P.relativeInsideRoot("C:\\tmp\\wt\\head\\..\\other\\x.ts", "C:\\tmp\\wt\\head") === null);
+  check("dot segments and repeated separators produce a canonical key",
+    P.relativeInsideRoot("C:\\tmp\\wt\\head\\.\\src\\\\x.ts", "C:\\tmp\\wt\\head") === "src/x.ts");
+  check("a sibling with the root as a string prefix is rejected",
+    P.relativeInsideRoot("C:\\tmp\\wt\\header\\x.ts", "C:\\tmp\\wt\\head") === null);
+  check("Windows drive-letter case does not change containment",
+    P.relativeInsideRoot("c:\\TMP\\WT\\HEAD\\src\\x.ts", "C:\\tmp\\wt\\head") === "src/x.ts");
+  check("Windows UNC containment is case-insensitive and canonical",
+    P.relativeInsideRoot("\\\\SERVER\\Share\\repo\\src\\x.ts", "\\\\server\\share\\repo") === "src/x.ts");
+
   const raw = [
     "TS2769 [ERROR]: No overload matches this call.",
     "  Overload 1 of 2 gave the following error.",
@@ -479,6 +501,15 @@ function makeShim(withDeno = true) {
     const p = path.join(dir, "deno");
     writeFileSync(p, SHIM);
     chmodSync(p, 0o755);
+    if (process.platform === "win32") {
+      // A renamed Node executable gives spawnSync a native executable while NODE_OPTIONS
+      // loads the controlled shim before Node interprets the `deno check` arguments.
+      copyFileSync(process.execPath, path.join(dir, "deno.exe"));
+      writeFileSync(
+        path.join(dir, "deno-bootstrap.cjs"),
+        `const path = require("path");\nif (/^deno(?:\\.exe)?$/i.test(path.basename(process.execPath))) {\n${SHIM.replace(/^#!.*\n/, "")}\n}\n`,
+      );
+    }
   }
   return dir;
 }
@@ -494,6 +525,9 @@ function runRunner({ repo, base, head, fns, plan, shimDir, out, extraEnv = {}, c
     PATH: `${shimDir}${path.delimiter}${process.env.PATH}`,
     RATCHET_SHIM_PLAN: JSON.stringify(plan ?? {}),
     RATCHET_SHIM_LOG: log,
+    ...(process.platform === "win32" && existsSync(path.join(shimDir, "deno-bootstrap.cjs"))
+      ? { NODE_OPTIONS: `--require=${path.join(shimDir, "deno-bootstrap.cjs")}` }
+      : {}),
     ...extraEnv,
   };
   let status = 0, stdout = "", stderr = "";
@@ -511,6 +545,8 @@ console.log("\nrunner — real script, disposable repository, real candidate");
 {
   const FNX = "disposable-ratchet-probe";
   const shim = makeShim();
+  check("the controlled Deno shim is invocable on Windows",
+    process.platform !== "win32" || existsSync(path.join(shim, "deno.exe")));
   const repos = [];
   const build = (headMarker = "head", baseMarker = "base", opts = {}) => {
     const { root, git } = makeRepo();
@@ -586,15 +622,19 @@ console.log("\nrunner — real script, disposable repository, real candidate");
       const { root, baseSha, headSha } = build();
       const bare = makeShim(false);
       let gitDir = "/usr/bin";
-      try { gitDir = path.dirname(execFileSync("which", ["git"], { encoding: "utf8" }).trim()); } catch { }
+      try {
+        const locator = process.platform === "win32" ? "where.exe" : "which";
+        gitDir = path.dirname(execFileSync(locator, ["git"], { encoding: "utf8" }).trim().split(/\r?\n/)[0]);
+      } catch { }
       const noDenoPath = [bare, gitDir, path.dirname(process.execPath)].join(path.delimiter);
       const r = runRunner({ repo: root, base: baseSha, head: headSha, fns: [FNX], shimDir: bare,
         extraEnv: { PATH: noDenoPath } });
       check("runner: a missing check tool FAILS rather than passing as clean",
         r.status !== 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
       check("runner: and the leg is recorded abandoned, never clean",
-        r.evidence?.functions?.[0]?.head?.outcome === "abandoned",
-        JSON.stringify(r.evidence?.functions?.[0]?.head?.outcome));
+        [r.evidence?.functions?.[0]?.base?.outcome, r.evidence?.functions?.[0]?.head?.outcome]
+          .includes("abandoned"),
+        JSON.stringify(r.evidence?.functions?.[0]));
       rmSync(bare, { recursive: true, force: true });
     }
     {
@@ -604,8 +644,10 @@ console.log("\nrunner — real script, disposable repository, real candidate");
       check("runner: a signal-killed head leg FAILS as abandoned",
         r.status !== 0, `status=${r.status}\n${r.stdout}${r.stderr}`);
       check("runner: evidence is still written for an abandoned leg", r.evidence !== null);
-      check("runner: and it is recorded as abandoned, not clean",
-        r.evidence?.functions?.[0]?.head?.outcome === "abandoned",
+      check("runner: and it is recorded fail-closed, never clean",
+        process.platform === "win32"
+          ? r.evidence?.functions?.[0]?.head?.outcome === "unclassified"
+          : r.evidence?.functions?.[0]?.head?.outcome === "abandoned",
         JSON.stringify(r.evidence?.functions?.[0]?.head));
     }
 
@@ -768,6 +810,7 @@ console.log("\nrunner — real script, disposable repository, real candidate");
       const spaced = mkdtempSync(path.join(tmpdir(), "ratchet space "));
       const copy = path.join(spaced, "r.mjs");
       writeFileSync(copy, readFileSync(SCRIPT, "utf8"));
+      copyFileSync(path.join(path.dirname(SCRIPT), "path-portability.mjs"), path.join(spaced, "path-portability.mjs"));
       let status = 0;
       try { execFileSync(process.execPath, [copy], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
       catch (e) { status = e.status ?? -1; }

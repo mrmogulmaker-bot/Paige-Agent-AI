@@ -1,5 +1,12 @@
 # Decision Log — chronological one-liners
 
+- **Second Brain release-close CI repair — INHERITED DEFECTS REPAIRED LOCALLY, GATE 2 PENDING (2026-09-02)** — the documentation branch exposed four Windows portability failures already present on its fresh base: repository-key separators in pack-lineage/operator reachability, Deno shim and cross-worktree diagnostic-path handling, a GNU-grep dependency in the Solo shell contract, and native-slash matching in the operator-target contract. The repair is confined to seven CI/test files, adds direct cross-platform regressions, and leaves product behavior plus PR #728's five-finding hotfix untouched. Local workflow-equivalent verification and independent review must be refreshed on the final reconciled exact head before this status can advance.
+- **PAIGE Team mutations and workspace outcome — OWNER MVP POLICY, CORRECTED SAME DAY (2026-09-02; documentation only)** — ~~every PAIGE Team mutation is `owner_only` with owner confirmation and no auto lane~~. The owner corrected that wording after its effect was made explicit: the six access-changing actions stay in PAIGE as `high`, each behind the canonical server-verified owner approval card; `team_set_work_profile` stays `ordinary` because it cannot alter access. The original ruling and its same-day correction remain in the dated history below. A contact/client Rail event may never carry null/missing `contact_id`; Team requires a new SCR-governed workspace-scoped outcome with tenant, actor, action, target member/invite, approval binding, result and safe owner-visible evidence. Owner-visible PAIGE Team history remains `UNAVAILABLE` and authenticated browser proof `UNVERIFIED`. No schema, code, migration, Chat or approval change is authorized by this documentation record.
+- **PAIGE governing platform definition — OWNER AMENDMENT (2026-09-02; documentation only)** — PAIGE is the tenant-scoped AI COO, not a ChatGPT-style chat product or coding assistant; Chat is one final governed human interface, not the product boundary. Her intended loop is `observe → understand → plan → act within authority → record outcome → learn/follow up`, grounded in truthful tenant-scoped business evidence across organization, team, clients, documents, campaigns, Pipeline, sales, delivery, connections, goals, outcomes, risks and open work. The human selects the autonomy boundary. Trust Compass expresses that intent but is not server enforcement until persisted and enforced server-side; current authority remains domain permission plus server action-risk and the one approval gate. PAIGE cannot raise her own permission. Every surface card/feature assignment now declares what safe truth she learns, bounded help she offers, what she may execute, what requires the owner and how the outcome returns to durable context. No product, Compass or approval-mechanism change is authorized by this amendment.
+- **Canonical Solo documentation paths — OWNER PATH RULING, RECONCILED DURING RELEASE CLOSE (2026-09-02)** — the Brain remains the agent entrypoint for the Solo taxonomy and Spine standard, while the canonical card home is `docs/doctrine/surface-cards/`. The first draft placed the index and Pipeline card in a parallel Brain subdirectory; that competing home was removed under the owner's explicit collision ruling. Its Pipeline material now lives at `docs/doctrine/surface-cards/pipeline.md`, beside #675's preserved Team card and canonical schema. Tier matrix, PAIGE Brain Wiring Standard and Connections/Rail may support a card but never replace these canonical preflight paths.
+- **Solo Platform Taxonomy and UI Flow Standard — OWNER-APPROVED CANONICAL STANDARD (2026-09-02; docs only)** — `solo-platform-taxonomy-and-ui-flow-standard.md` establishes one shared Solo shell/template for every current and future Solo tenant; tenant facts, permissions, entitlements, providers and data may vary, but shell/routes/layout/navigation/base surfaces and the single PAIGE workspace do not fork by account. It maps the actual Solo surface tree into business foundation, client operating work, revenue/delivery, growth/communications, intelligence/governance and Marketplace without renaming routes; preserves Campaigns' locked Overview/Catalog/Sales/Pipeline/Social/Performance boundary; and requires a surface card for every department/subtab covering its AI COO contribution, the human job, owning data/domain, shell location, full inputs/edits/creates, safe evidence, PAIGE read/propose/do boundary, approval, Rail, `LIVE`/`PARTIAL`/`UNAVAILABLE` plus browser proof, and dependencies/collisions. Full owner flows precede visual polish; domains own UI/data/actions, Chat owns final binding, stable registry additions are self-service, and only new shared primitives require an SCR. The exact Solo preflight is now in `CLAUDE.md` §69 and `.claude/skills/second-brain/SKILL.md`. No product, migration, provider, merge or deployment action is authorized by this docs standard.
+- **PAIGE Spine foundation — MERGED IN #728; prior unmerged-dependency wording corrected (2026-09-02)** — current `main` `76bb3bbca74ff4214feba28995d5cd0b9196fb6b` carries `supabase/functions/_shared/paige-spine/registry.ts`, the shared evidence resolver, Spine/Chat/action-risk/one-gate CI guards, `docs/doctrine/one-approval-gate.md`, and first capability `pipeline.deal_stage_evidence`. This implements the foundation, not platform-wide coverage: the first entry remains `PARTIAL`, its Mind binding and mutation are unavailable, and authenticated preview/persistence remain `UNVERIFIED` in this docs pass. Solo Compass remains non-authoritative.
+
 - **Both phone-number UI lanes now send the price they displayed, and the legacy operator tab asks before charging (#717 `0fb179bb`, MERGED 2026-09-01)** — the agent lane had a quote guard and server re-verification; the two lanes a HUMAN clicks had neither. Both posted `{ phone_number }` only, and `comms-purchase-number` guards its `platform_number_pricing` re-check on `if (agreedMonthlyCents !== null)`, so the check was **skipped entirely** for them — a price that moved between the search and the click was simply charged. The legacy `NumbersTab` was worse: `onClick={() => void buy(n)}`, **no confirmation of any kind**, rendering the price as `—` when the operator had not priced the type, so one click could start a recurring charge at an amount nobody was shown. **FIXED:** Solo passes the `priceCents` its confirm already named (it had the figure on screen and simply never sent it); the legacy tab sends `retail_price.monthly_cents` and asks first, in Solo's existing wording so the two read as one product (§6). Both omit the key when the type is unpriced — there is nothing to hold anyone to — which preserves today's behaviour rather than blocking a working path. **§37 consumer half, which is the part that would have been missed:** sending the amount means these lanes can now RECEIVE `price_changed` / `price_unverifiable`, and **neither surface knew those codes** — the right refusal would have surfaced as *"try another number"*. Copy added to both (`connectError.ts` COMMS_COPY and `purchaseFailureCopy`). **The legacy tab had NO test**, which is how one-click buying survived; `NumbersTab.purchase.test.tsx` is its first, and **5 of its 7 cases fail against the previous version**. The Solo assertion used `toMatchObject` and so passed whether or not the amount was sent — now `toEqual`, and it fails against the old code too. **UNRULED:** an unpriced number is still buyable on both lanes with the confirm saying "an unlisted monthly price". Whether that should be possible is a product question, not a defect. **Landed in two commits, and the second is the lesson:** the first widened `purchase()`'s implementation and call site but left the exported `SoloNumbersData` interface declaring one parameter, so CI's typecheck ratchet failed with `TS2554` on `settings.tsx` — a type-only defect no test could catch, because `settings.numbers.test.tsx` drives the real hook and the runtime path was correct throughout. See `lessons-learned.md`, *"Widening an implementation without widening the interface that declares it"*.
 - **⚠ CORRECTED 2026-09-02 (§58 — the entry stays, its runtime claim does not).** The binding
   described in the next bullet SHIPPED and its migration is applied on prod, but `paige-ai-chat` no
@@ -14,7 +21,8 @@
 - **[PREMISE CORRECTED 2026-09-01 — see the entry above. The vendoring decision below STANDS; the "half-install" it rests on was never real.]** ~~`flow-by-flow` NOT vendored — §69 stays best-effort on a fresh container~~, and the licence blocker is now on record (#708, 2026-09-01)** — §69 makes the skill MANDATORY on every software task and says a session that cannot find it must say so plainly rather than improvise. **A half-install is a worse starting position than an absent one**, because of what the state affords rather than what any session will do: the account-synced install delivers **`SKILL.md` only** — no `references/`, no `templates/` — so on a fresh container the index's own first instruction (*read `references/orchestration.md`*) points at a missing file, and because a skill WAS found nothing presents this as the not-found case. A session following §69 will hit the absence and CAN report it; nothing forces it to, and nothing stops it carrying on either — no loader, no check, no failing branch. **No session has been observed doing so; this is the available failure mode, recorded so it is expected rather than rediscovered.** Also §64 — these are ephemeral remote containers, so a container-local install (and the local Gate 6 close-out step added the same night) dies with the container. **The attempted fix, which did NOT ship:** vendor both bundles as a matched pair at 2.0.1 (the skill's own Gate 5 fails if they drift), behind a `!.claude/skills/` negation in `.gitignore` beside the existing `!.claude/commands/`, whose own comment gives the reason — *"so every session (and every teammate) gets them."* **The negation DID ship; the bundles did not. OUTCOME: the vendoring was ABANDONED, and that is the decision.** The bundles ship no `LICENSE`/`NOTICE` and no upstream URL (the Anthropic-authored siblings beside them DO ship `LICENSE.txt`), so the MIT notice could not be fetched. A first attempt reconstructed one from the `license: MIT` + `author` frontmatter; the peer-gate correctly rejected it, because an `author` field does not establish whether the individual, the company, or both hold copyright — reconstructing it **invents an ownership statement**, and a false notice on redistributed copies is worse than none, which no explanatory caveat cures. So the skills are NOT in the repo. What ships instead is `.claude/skills/README.md`: the blocker, the four ways an owner could unblock it (obtain the notice · obtain written permission · accept the risk explicitly · leave it unvendored), and the local close-out step reproduced in full so it survives. §69 therefore remains best-effort on a fresh container, stated rather than papered over. Caught by the §39 peer-gate, which also caught that this PR — about knowledge capture — had itself skipped the §BRAIN.3 same-commit brain update.
 - **Solo phone line — search, buy, rename, choose-what-sends; and the money posture that governs it (#695 `94460ee3`, #699 `90a9d067`, 2026-09-01)** — `comms-search-numbers` / `comms-purchase-number` were deployed and had no Solo caller; one workspace had already bought two numbers through a legacy route a Solo tenant never sees. Now wired: `useSoloNumbers.ts` → `PhoneSetupPanel`/`OwnedNumbers`, with `tenant_phone_number_set_primary` / `tenant_phone_number_rename` as the write seams (`20260901010000`) and eight `comms_*` tools so PAIGE can drive the same half (§10). **The decision worth not re-litigating is the money posture (§38) — and it binds the AGENT LANE, which is the scope correction that matters here:** in the `comms_buy_number` lane a purchase requires a whole, positive `monthly_cents`, the guard sits **ahead of** the autonomy gate in `paige-ai-chat` so it binds in every lane including `auto`, the default lane is `confirm` (`resolveToolAutonomy`: *"safe default — never assume autopilot"*) and its confirmation names the amount — but a workspace MAY switch this tool to `auto`, and then a validly-quoted purchase executes with no confirmation. **Stronger still, and the correction that matters most: even at `confirm` the HUMAN confirmation is not enforced — the gate is two layers.** The server genuinely refuses whenever `gateArgs.confirm !== true` (`index.ts` ~5973), which is a real gate against a caller that just invokes the tool and is why `needs_confirm` reaches the operator at all. But the flag is the MODEL's own output: nothing binds it to the preceding `needs_confirm` or to a human's yes, so a model emitting `confirm:true` on its first call executes immediately. It constrains the careless case, not the deliberate one. The platform already has the enforced pattern — outbound sends file a real `approval_id` row and wait (~8251) — and this gate does not use it. **So on this path: the price check and the presence-of-flag check are both enforced, what is prompt-level is the BINDING of that flag to a human's approval, and the only real human gate anyone meets is Solo's client-side `window.confirm`** — and `comms-purchase-number` re-verifies the quote against the operator price table and returns `price_changed` / `price_unverifiable` rather than spending. **The UI lanes are NOT covered by either check** *[REVERSED 2026-09-01 by #717 `0fb179bb` — both lanes now send the amount they displayed, so the server's re-verification runs for them; see the entry above]***.** Solo `PhoneSetupPanel` and legacy `NumbersTab` both post `{ phone_number }` with no agreed amount, and the server's verification is guarded on `if (agreedMonthlyCents !== null)`, so it is skipped for them entirely — they show the price `comms-search-numbers` read and buy without re-reading it, so a change between search and buy is not caught. **And the two UI lanes are not equivalent to each other — the legacy operator tab is the weakest purchase path on the platform:** `NumbersTab.tsx` calls `onClick={() => void buy(n)}` with **no confirmation step at all** *[CLOSED 2026-09-01 — it asks now, and sends the agreed amount; see the entry above]*, and renders `—` when no retail price is published, so one click can start a recurring charge at an amount never shown. Solo at least confirms, but when `platform_number_pricing` has no row its dialog confirms *"an unlisted monthly price"* *[still true after #717 — the unpriced-but-buyable question is UNRULED, not fixed]*. Deliberate and pre-existing (the function comments it: *"the marketplace UI does not … byte-for-byte what it was"*) and recorded as a KNOWN GAP, never as a protection. Every exit where money may already have left — all four, including the one where the provider succeeded and our record write failed — **attempts** an audit row; `writePurchaseAudit` is non-blocking by design, so a failed insert is logged and nothing else changes, and a completed charge with no audit row is reachable. Do not relax any of these to "simplify" the tool schema: a schema's `required` is not runtime validation, and the version without the guard bought a number on a malformed amount. **Invariant landed with it:** `20261020000000` makes `is_primary` on a non-`active` number unreachable via trigger, after a shipped backfill was found to abort `23505` on exactly the state it was written to repair (see `lessons-learned.md`, "A predicate proof is not a write proof"). **Unchanged and still the ceiling:** no tenant can send an SMS (TrustHub/A2P), and a bought number still has no `VoiceUrl`.
 
-- **Solo Campaigns -> Pipeline Gate 1 approved (2026-08-31; draft, not live)** — owner approved the board-first interaction and ruled the immediate refinement: reduce only the page-title word "Pipeline". Locked outcome: multiple tenant-owned pipelines; campaign linkage optional, not exclusive; tenant-owned stage create/name/describe/reorder/archive/restore through a governed contract; contextual customer/deal detail; compact focused-stage behavior; routing/approval/repair secondary; six Campaigns tabs unchanged. Exact-head Gate 2 is required before merge/deploy. Authenticated durable proof remains UNVERIFIED until preview + persisted migration are available.
+- **PAIGE Spine Integration Standard — OWNER-APPROVED ARCHITECTURE POLICY (2026-09-01; implementation status corrected 2026-09-02)** — `paige-spine-integration-standard.md` is the one platform-wide contract for domain event -> safe tenant/client-scoped evidence -> Mind/PAIGE Chat -> governed action when separately authorized -> attributable Rail outcome. Rail is one component, not the whole architecture. Current authority is the server action-risk policy plus canonical approval gate; Compass remains non-authoritative. Feature/domain workstreams own their domain contract; Chat completes the final bounded binding and owns approval proof; stable registrations are self-service and only a new shared primitive/schema requires an SCR. The original entry recorded the registry and #675 as future/unmerged. **That implementation claim is superseded by #728 and the 2026-09-02 correction above:** the canonical registry and CI foundation are on `main`; platform/domain adoption and authenticated proof remain `PARTIAL`/`UNVERIFIED`.
+- **Solo Campaigns -> Pipeline — MERGED + Production deployment record; verification failed (PR #691, 2026-08-31)** — owner approved the board-first interaction and ruled the immediate refinement: reduce only the page-title word "Pipeline". Locked outcome: multiple tenant-owned pipelines; campaign linkage optional, not exclusive; tenant-owned stage create/name/describe/reorder/archive/restore through a governed contract; contextual customer/deal detail; compact focused-stage behavior; routing/approval/repair secondary; six Campaigns tabs unchanged. PR #691 merged as `2d94bc2e557387779790f0975b308ada4a98c88b`; migration/Edge Function jobs and the GitHub Production deployment record succeeded, but PR-head and merge-head `verify` failed at ESLint/Test and the PR Supabase Preview failed. This release is **not green or closed**. Authenticated save/reload, permission, retry, abandonment, account-switch, applied-migration runtime, and owner acceptance remain **UNVERIFIED**.
 
 What was decided/shipped, newest first. Backfilled from what's discoverable (GitHub PRs, dated
 CLAUDE.md rulings, doc dates). **No invented dates** — where a date isn't in the source it's omitted.
@@ -692,7 +700,10 @@ the authenticated live drive remains UNVERIFIED** — no browser capability in t
 
 ---
 
-## 2026-08-31 — Solo Settings Team Gate 1 approved; production branch in flight, not live
+## 2026-08-31 — SUPERSEDED SNAPSHOT: Solo Settings Team Gate 1 approved; production branch in flight, not live
+
+> **SUPERSEDED 2026-09-01:** PR #697 merged and has a successful Production deployment record;
+> authenticated runtime remains UNVERIFIED. See the release reconciliation below.
 
 > **Still accurate for its date; superseded as STATUS.** The work shipped via PR #728 (`76bb3bbca`)
 > and is live on production with the capability labelled `PARTIAL`. See the 2026-09-02 entries below
@@ -703,9 +714,10 @@ the Settings page scroll owner plus server search/filter and 25-person Load more
 people scrollbar. Job title/responsibilities are descriptive only; Owner/Admin/Member remain the
 enforced permissions. Paige context is derived from the authenticated active tenant, treats authored
 work details as untrusted reference data, and stays proposal-only until the owner confirms in Team.
-Local structural, test, security-lint, type-ratchet and build evidence is green; authenticated runtime,
-migration/function deployment and email delivery remain UNVERIFIED. Gate 2 is still required before
-merge or deployment.
+At that historical checkpoint, local structural, test, security-lint, type-ratchet and build evidence
+was green; authenticated runtime, migration/function deployment and email delivery remained
+UNVERIFIED, and Gate 2 was still required before merge or deployment. The release reconciliation
+below supersedes that pre-merge state.
 
 - **Client identity contract (green draft, Gate 2 pending, 2026-09-01)** — Preserve existing client UUIDs and references; fail closed if any historical client lacks a tenant; backfill only missing references with nonsequential `CLT-…` values; make UUID, tenant, and reference immutable; route browser creation through `create_contact()`; keep invite acceptance as the only consent linkage path; expose `client_ref`, not raw UUIDs, to Paige. No merge or deployment authorized.
 
@@ -818,18 +830,20 @@ bypass of the stronger. Call the clash out, rewrite, and record it here.
 
 ---
 
-## 2026-09-02 — Paige can act on the team, not only describe it (Solo Team seam in Chat)
+## 2026-09-02 — Solo Team Chat branches landed; capability claim superseded by owner-only policy
 
-**What changed.** Five tools — `team_set_work_profile`, `team_set_permission`, `team_invite_member`,
-`team_invite_resend`, `team_invite_revoke` — give PAIGE the Team capability inside the canonical Chat
-workspace. Owner approved the Team-only Chat interaction direction. Nothing new was built on the
-server: they call the same seam the Team screen calls, so the database's authority checks apply to a
-sentence exactly as they apply to a form.
+**Historical source change, not end-to-end proof.** Five tool declarations/branches —
+`team_set_work_profile`, `team_set_permission`, `team_invite_member`, `team_invite_resend`,
+`team_invite_revoke` — were added inside the canonical Chat workspace and call existing Team seams.
+Their catalogue presence, source branches and applied migrations do not prove authenticated Chat
+invocation, owner approval, executor completion, invitation/email or permission persistence, or an
+owner-visible durable outcome. The prior present-tense Team capability claim is superseded by the
+owner-only policy at the top of this log.
 
-**The read had been a description of a locked door.** `get_paige_team_context` has been injecting the
-roster, permissions, work details and every invitation for a while, and the Team surface said out
-loud that she "cannot send or change access." That sentence was the feature request, and it is now
-rewritten rather than left standing (§58 — flagged, not silent).
+**Historical intent.** `get_paige_team_context` supplied roster/permission/work-detail/invitation
+context and the Team surface said she could not send or change access. The source branch attempted to
+add those writes. Under the later owner-only ruling, that source is not present capability proof and
+the UI may not promise PAIGE Team mutation until the separately scoped governed chain is proven.
 
 **The defect a pre-build seam audit caught, before it shipped.** The Team seam resolves its workspace
 with `current_user_tenant_id()`; the conversation resolves its own with `get_paige_persona_context`,
@@ -843,27 +857,24 @@ the same disagreement.** `teamSeamTenantMismatch` now asks the read's question b
 The lesson is the one worth keeping: when a read is given a safety check, ask what the matching write
 does with the same answer.
 
-**Classification.** Permission change and all three invitation acts are `high` — they move authority
-and, for invitations, put an email in a real stranger's inbox, which is the one effect no undo inside
-the product reaches. Work details are `ordinary`, because describing a job cannot grant one, and that
-is structural: the RPC writes two text columns and cannot reach `permission`. Catalogue now: 32
-ordinary · 28 high · 2 owner-only · 5 exempt · 0 unclassified.
+**Historical classification note, superseded later the same day.** This source classified
+permission/invitation acts `high` and work details `ordinary`. A subsequent ruling briefly called
+every PAIGE Team mutation `owner_only`; the owner then corrected that wording and retained the source
+classification. See the 2026-09-02 correction below and the canonical Team card.
 
-**The tool-registry ratchet fired on this work, correctly, and the baseline grew by five.** The Spine
-registry the ruling points at does not exist yet, and the ruling's own words put the final bounded
-adapter with the Chat workstream — which is what this is. The reason is written into
-`scripts/ci/chat-tool-baseline.txt` rather than a commit message, because "the guard fired and I
-raised the number" is how a ratchet stops being one. It shrinks by five when the registry lands.
+**Registry status correction.** The inline baseline grew by five in this historical change. PR #728
+later landed the canonical Spine registry, but it did not register or prove these Team mutations.
+They remain legacy inline entries and the new owner-only/workspace-outcome contracts are still owed.
 
 **Honest gap.** `crm_list_team` (`list_team_members`) and the Solo Team functions read the same
 `tenant_members` table but disagree in four ways: authorization (global `user_roles` vs tenant
 membership), owner labelling, suspended members, and truncation. Two homes for "who is on the team"
 is a §18 seam worth closing; it is not closed here and is not made worse here.
 
-**Evidence.** tsc 0 · deno check 14 errors at head and 14 at base (no new) · eslint clean on changed
-`src/**` · 6 team test files, 28 tests, 5 assertions mutation-proved · 6 CI guards green · vite build
-clean. **Not deployed. The authenticated live drive is UNVERIFIED** — this session holds no browser
-that can reach the surface, so §32.c is owed to the next capable session or to the owner.
+**Evidence class.** The historical branch had clean build/static/unit evidence, later merged via
+#728. That proves source and workflow state, not the authenticated Chat → owner confirmation →
+executor → persisted outcome chain. That chain and owner-visible Team history remain `UNVERIFIED` /
+`UNAVAILABLE` under the new policy.
 
 **The peer-gate found two blockers the author's own tests structurally could not (§39).** Both are
 recorded because the shape of the miss matters more than the fix.
@@ -906,12 +917,9 @@ the operator's to pull at any class. **Not fixed, and reported rather than done 
 the choice. The setter is a shipped RPC with its own callers and the surface's wording belongs to
 whoever owns it.
 
-**§58 CAPABILITY CHANGE, FLAGGED FOR AN OWNER RULING — `auto` no longer runs a `high` or
-`owner_only` action.** The clamp above is not only a bug fix; it removes something a workspace
-could previously do. A tenant admin could set any tool to `auto` and Paige would run it unattended,
-including the twenty-eight `high` actions and the two `owner_only` ones. After the clamp, `auto` on
-those thirty means `confirm` — the operator is still asked. `off` is untouched, and `ordinary`
-tools on auto still run on auto.
+**Superseded owner ruling, retained for chronology.** This entry briefly concluded that all PAIGE
+Team mutations were `owner_only` for MVP. The owner corrected that conclusion later the same day:
+the six access-changing actions remain `high`, while work-profile changes remain `ordinary`.
 
 **The shipped test that had to change, and why that is the whole argument.** `check.mjs` 15.6/15.7
 drove `automation_set_grant` at `auto` and asserted it EXECUTED, reporting its resolved posture.
@@ -923,12 +931,8 @@ as what will actually happen — is no longer reachable through chat for that to
 is no longer reachable through chat at all. Its resolved-posture reporting is now dead code on that
 path.
 
-The owner may reasonably rule the other way for `high` specifically: an operator's standing "don't
-ask me" is a human decision, not the model's word, so `auto` on `crm_delete_contact` is arguable in
-a way that `auto` on `automation_set_grant` is not. Both halves are in one place and either can be
-narrowed. The `owner_only` half should not be: "Paige may never grant or raise her own autonomy
-through Chat regardless of action class or owner wording" is explicit, and a settings toggle is
-owner wording.
+The broader non-Team `high` policy is outside this docs ruling. Nothing here asks the owner to choose
+it or changes another domain's classification.
 
 **The last peer-gate finding, closed: the invite seam told a real owner they were not one.** The
 three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()` — used by the
@@ -940,6 +944,48 @@ rendered as a false statement about a person. The refusal now names the real cau
 is attempted. **The RPCs are deliberately unchanged:** they are shared with the Team screen, which
 has the identical defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with
 its own producer inventory (§37). Logged as open.
+## 2026-09-01 — historical bounded release reconciliation after #697
+
+**Historical cutoff and method.** The bounded pass started at
+`3fd9944cd90e02794db21fa2ae6d32703fe89ea4` (PR #697, merged 2026-09-01 02:28:06Z), which was the
+last `docs/brain/` change inside the range selected at that time. The first-parent range through
+`797d6f08c53e89f8cf36bde24d6df90714922629` contains exactly seven later records. Git commit/file
+evidence was matched to GitHub PR state, exact PR head checks, reviews, merge SHA, push workflows,
+and deployment status. A GitHub `Production: success` record is release metadata; it is not
+authenticated-flow proof. This is a historical checkpoint, not a current-`main` cutoff.
+
+**Current-base boundary after release-close integration.** This branch now integrates
+`e35920898ec942e5e8abaf52a5daab9bb67e0820` (#732). The first-parent range after the historical #705
+checkpoint contains exactly 25 inherited `main` records: the prior 22 through #728, then #675's
+canonical surface-card home, #730's Team/Master reconciliation and #732's closeout. Their updates are
+inherited base truth; they were not audited by the seven-record evidence table below. A new exact-head claim must re-run both first-parent and docs-path
+checks.
+
+| PR | Durable truth that changed | Exact evidence | Review / release state | Limits |
+|---|---|---|---|---|
+| [#701](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/701) | Solo Mind orbit now defaults running; explicit pause is browser-local and scoped by authenticated user + active tenant (`mindOrbitPreference.ts`). No data-owner or business-action change. | head `e9917918269a4b78df227750c7ad73e04c6d147b`; merge `a0a706c64b12fde97b53e92443af006073adf9d8`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33463737509) passed; [Production deployment 6193590417](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193590417) succeeded. | No submitted review; push CI was cancelled after later merges. | Authenticated account-switch persistence remains **UNVERIFIED** here. |
+| [#699](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/699) | Paid number purchase now refuses missing/malformed/unverifiable/stale quotes; confirmation names monthly price; stable error codes carry money-spent state; all charged exits attempt an audit record. DB invariant: `is_primary` implies `status='active'`; retiring a number clears the flag and deterministic backfill fills a free slot. | head `7a6c148404da42ecb8088bffb116c980f1a558c3`; merge `90a9d0679f4cc2b868c52b0d27c6a9306f818bce`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33463860473), [migration deploy](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464195648), [edge deploy](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464195639), and [Production deployment 6193604875](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193604875) succeeded. | Two COMMENTED reviews; no APPROVED review. Push CI cancelled after later merges. | PR explicitly says authenticated deployed-app runtime is **OWED / UNVERIFIED**. Audit writes are deliberately non-blocking; release-number remains unbuilt. |
+| [#700](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/700) | Added public `/sms-terms` plus static auth/privacy/SMS fallbacks; canonical outbound account URLs; durable platform SMS-consent evidence and send-time consent clamp; CI guard against user-facing `/admin` URLs. | head `95ac96a2242f587e66b9a29614dba307c6b8746b`; merge `d5db4532b6dd2faa4bdce30e7b60277bcb57d8b3`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33463867473), [post-merge CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464247573), migration/edge deploys, and [Production deployment 6193613171](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193613171) succeeded. | One COMMENTED review; no APPROVED review. | Carrier/TrustHub submission is still **UNAVAILABLE**; no deployment record proves end-user consent or send flows were authenticated-drive tested. |
+| [#702](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/702) | Team rows show stored member name or real email fallback; job title/responsibilities remain descriptive, editable work details; permission authority stays separate. | head `632de74ac6130cbb6b4e2517badb2b6ce69f1fe3`; merge `81e350ca477b9334e62dc636c2a8b57f891917df`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464396828) passed; [Production deployment 6193686937](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193686937) succeeded. | One COMMENTED review submitted after merge; no APPROVED review. Push CI cancelled after later merges. | Authenticated edit/save, refusal/retry and account-switch proof remain **UNVERIFIED** here. |
+| [#703](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/703) | Docs-only: master Section 4 gained the shipped Solo business-phone line, Paige tool boundaries, purchase safety and honest limits; Section 10 records four releases that missed §0. | head `335265628d7006653d05bd4a2b6773a919b13913`; merge `a4107ac5d9dbf4b6a3d72ff605c927a9f7027782`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464527360), [post-merge CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464806572), and [Production deployment 6193704350](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193704350) succeeded. | COMMENTED review arrived after merge; no APPROVED review. | It did not update `docs/brain/` and left contradictory search-gap claims, corrected by #705. |
+| [#704](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/704) | Security hardening only: `a2p_registration_is_immutable(tenant_a2p_registrations)` now has fixed `search_path=pg_catalog`. | head `85045dddac4b2dd6414d18190f791875f4931587`; merge `1013ec85b5c9f711ae1ae8b836ce3976af0376d2`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33464613923), [migration deploy](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33465353281), [post-merge CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33465353268), and [Production deployment 6193792103](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193792103) succeeded. | No submitted review. | Evidence proves workflow/deployment state, not a live security-advisor re-query; that advisor closure is **UNVERIFIED** here. |
+| [#705](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/705) | Docs-only: reconciled master Section 4/5/6 contradictions. Shipped caller filters are area code, region, city, digit prefix and toll-free; vanity, premium/registry, and caller-exposed SMS filtering remain absent. | head `d21cd88793281d107c694907b43dfb1017d1cfdb`; merge `797d6f08c53e89f8cf36bde24d6df90714922629`; [PR-head CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33465594951), [post-merge CI](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/actions/runs/33465875438), and [Production deployment 6193879055](https://api.github.com/repos/mrmogulmaker-bot/Paige-Agent-AI/deployments/6193879055) succeeded. | Two COMMENTED reviews; no APPROVED review. | It corrected the master only; this reconciliation closes the owed Second Brain update. |
+
+### Live release records found with stale draft/in-flight prose
+
+These were found by sweeping the designated master/brain for claims contradicted by `main`; they
+are not reconstructed from agent memory.
+
+| PR | What the docs said | Proven release state | Remaining limit |
+|---|---|---|---|
+| [#620](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/620) Mind | “DRAFT PR ONLY” | head `51f31dc923633deb8e4d53c7134f3c65b52a32a4`; merge `985624111d97962bb15e95cbe8814374ce72ccc3`; green head + merge CI; Production success 2026-08-28 14:48:10Z | Authenticated acceptance **UNVERIFIED**. |
+| [#621](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/621) Conversations | awaiting exact-head release verification | head `0cd8cda3b20b11f39de068ecf4647a546c06b2ec`; merge `7682d283b2d506b9814d58923086e4b99140c2d6`; green head + merge CI; Production success 2026-08-28 15:03:55Z | Provider/send/permission/account-switch proof **UNVERIFIED**. |
+| [#641](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/641) Systems Check | “DRAFT PR ONLY” | head `f37f54b95042b08cb3e88ea41be5462396cde5e7`; merge `3af567e6e423ea75a94af4c0ff83a348f9f60902`; green head + merge CI; Production success 2026-08-30 01:27:39Z | Authenticated and owner production acceptance **UNVERIFIED**. |
+| [#691](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/691) Pipeline | draft / NOT LIVE | head `85df219eb5fbdb3953ed457cd4d0bd27ea407974`; merge `2d94bc2e557387779790f0975b308ada4a98c88b`; migration + edge deploys and Production succeeded | PR and merge `verify` failed at ESLint/Test; Supabase Preview failed; authenticated/migration acceptance **UNVERIFIED**. Not green/closed. |
+| [#697](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/697) Team | branch in flight / not live | head `a2046aad27e985eb0bf3453c765439d20b6f0fc5`; merge `3fd9944cd90e02794db21fa2ae6d32703fe89ea4`; green head + merge CI and deploys; Production success 2026-09-01 02:29:10Z | Authenticated save/invite/permission/account-switch/email proof **UNVERIFIED**. |
+
+**Release-close disposition for this reconciliation:** `SECOND BRAIN: UPDATED` once this exact-head
+docs-only PR passes review and CI. Until then this entry is branch evidence, not `main` truth.
 
 ---
 
