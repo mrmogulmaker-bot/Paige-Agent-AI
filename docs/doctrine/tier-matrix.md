@@ -1588,7 +1588,7 @@ nothing, changes nothing and charges nothing.
 
 | Tier | Sees Offers | Why |
 |---|---|---|
-| Platform operator (God) | ✓ via `growth` | Already carries `growth`/`studio` for §35 dogfooding. Operator scope has its own `CatalogSurface`; this row is the Solo shell's. |
+| Platform operator (God) | ✓ **only with a tenant selected** | `growth`/`studio` are carried for §35 dogfooding, but this surface reads the ACTIVE tenant: an operator with no tenant selected has `activeTenantId === null`, which `useCatalogOffers` maps to `phase: "unavailable"` and the surface renders "Campaigns needs a resolved workspace" — not offers. Operator scope has its own `CatalogSurface`; this row is the Solo shell's. |
 | Agency | ✗ | `growth` excludes Agency entirely (owner ruling 2026-08-11, §61 preserved exception). No new feature key is introduced, so the existing route gate decides — §61 default: no exception. |
 | Enterprise | ✓ via `growth` | Inherits the Solo baseline. |
 | Solo | ✓ via `growth` | The tier this slice is built for. |
@@ -1602,19 +1602,26 @@ words that they cannot change it. Slice 2A exposes no write, so `canManage` curr
 that notice; Slice 2B's command seam is what it will really gate.
 
 **Evidence, separated.**
-- *Automated:* 24 contract/render tests in `src/solo/catalog-offers.contract.test.tsx`; full suite
-  1912 passing, no regressions. The tenant-scope guard was perturbation-proven — removing one
-  `.eq("tenant_id", …)` turns it red.
+- *Automated:* 31 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
+  the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
+  file exists because the first mocks the read entirely: an adversarial review of the pushed diff
+  found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
+  which would have made `canManage` false for every owner — silently, past 24 green tests and a
+  clean `tsc`. Three perturbations are proven to turn the new suite red: the wrong column name, a
+  dropped caller scope, and re-deriving the commercial kind from billing cadence.
 - *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
   `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
   `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
-- *Rendered:* 203/203 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
+- *Rendered:* 251/251 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
   with only the network read stubbed, across both palettes and all four Solo widths, asserting the
   six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
   canvas values in each theme.
 - **UNVERIFIED:** authenticated runtime on any tier, and the deployed surface. §32.c is owed to a
-  session that can drive the deployed app. The harness renders our components with the read mocked
-  and must never be reported as having discharged it.
+  session that can drive the deployed app. The harness renders our components with the NETWORK READ
+  STUBBED, and the contract suite mocks the adapter outright — so neither of those evidence classes
+  touches the real query. The adapter suite closes that gap against a fake client, which proves the
+  query SHAPE and the resolved authority, not that PostgREST answers it as expected. No evidence in
+  this slice is a real round-trip to the database.
 - **NOT APPLIED:** the migration. Post-merge persisted-apply confirmation on prod is owed.
 
 **Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot

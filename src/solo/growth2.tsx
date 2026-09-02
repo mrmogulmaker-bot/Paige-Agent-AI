@@ -2,6 +2,7 @@
 import React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
+import { subtabPath } from "@/lib/routing/tierBranches";
 import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
 import { CatalogOffers } from "./catalog-offers";
@@ -273,9 +274,9 @@ function Performance({ data }) {
   return <section className="campaigns-surface"><SurfaceHead truthKey="performance" title="Performance coverage" description="A source-by-source view of what can—and cannot—be reported truthfully."/><StateFrame phase={data.phase} retry={data.retry} noun="performance sources"><div className="campaigns-coverage"><article><TruthTag state="UNAVAILABLE"/><h3>Campaign runs</h3><p>A tenant-authorized campaign rollup is not available.</p></article><article><TruthTag state="PARTIAL"/><h3>Published outputs</h3><p>{data.artifacts.length?"Published Vibe Studio outputs are available.":"No published outputs were returned."}</p></article><article><TruthTag state="PROPOSED"/><h3>Attribution and outcomes</h3><p>Captured submissions may carry traceable source and routing references; no ROI or revenue is calculated.</p></article><article><TruthTag state="UNAVAILABLE"/><h3>Social performance</h3><p>No supported provider source is connected to this customer-facing surface.</p></article></div></StateFrame></section>;
 }
 
-function CompatibilityLanding({ legacy, setTab }) {
+function CompatibilityLanding({ legacy, returnToAssets }) {
   const item = LEGACY[legacy];
-  return <section className="campaigns-compat" aria-labelledby="campaigns-compat-title"><span className="campaigns-type">Compatibility address</span><h2 id="campaigns-compat-title">This address moved</h2><p><strong>{item.label}</strong> is no longer a Campaigns subtab. {item.note}</p><div className="campaigns-compat-note"><Ic.shield size={16}/><span>Your workspace and account stay selected. Vibe Studio opens through the existing supported handoff and returns focus here when you leave.</span></div><div className="campaigns-compat-actions"><button className="btn btn-s btn-p" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button><button className="btn btn-s" onClick={()=>setTab("catalog")}>Return to Catalog</button></div></section>;
+  return <section className="campaigns-compat" aria-labelledby="campaigns-compat-title"><span className="campaigns-type">Compatibility address</span><h2 id="campaigns-compat-title">This address moved</h2><p><strong>{item.label}</strong> is no longer a Campaigns subtab. {item.note}</p><div className="campaigns-compat-note"><Ic.shield size={16}/><span>Your workspace and account stay selected. Vibe Studio opens through the existing supported handoff and returns focus here when you leave.</span></div><div className="campaigns-compat-actions"><button className="btn btn-s btn-p" data-solo-vibe-studio-launcher onClick={openStudio}><Ic.spark size={13}/>Vibe Studio</button><button className="btn btn-s" onClick={returnToAssets}>Return to Catalog</button></div></section>;
 }
 
 function CampaignTabs({ tabs, current, setCurrent }) {
@@ -314,14 +315,21 @@ export const GrowthHub=()=>{
   const segment=(params["*"]||"").split("/")[1]||"";
   const legacy=LEGACY[segment]?segment:null;
   const query=new URLSearchParams(location.search);
-  const requestedType=["page","funnel","form"].includes(query.get("type"))?query.get("type"):null;
+  const requestedType=["all","page","funnel","form"].includes(query.get("type"))?query.get("type"):null;
+  // The five retired addresses promise "Published pages appear in Catalog", so their one escape
+  // hatch must land on the VIBE-OWNED half. Since Slice 2A made Offers the default section, a bare
+  // setTab("catalog") would have dropped them on an empty offer list — a §58 regression on the exact
+  // recovery path this landing exists to provide. `?type=all` addresses that half explicitly.
+  const returnToAssets=React.useCallback(()=>{
+    navigate(`${subtabPath("solo",params.account,"growth","catalog")}?type=all`);
+  },[navigate,params.account]);
   const [detail,setDetail]=React.useState(null);
   const closeDetail=React.useCallback(()=>setDetail(null),[]);
   React.useEffect(()=>{setDetail(null);},[tab,segment]);
   React.useEffect(()=>{if(segment!=="active")return;const account=params.account;if(account)navigate(`/solo/${account}/growth/overview${location.search}`,{replace:true});},[segment,params.account,location.search,navigate]);
   const title=tabs.find((item)=>item[0]===tab)?.[1]||"Overview";
   let body=<Overview data={data} setDetail={setDetail}/>;
-  if(legacy) body=<CompatibilityLanding legacy={legacy} setTab={setTab}/>;
+  if(legacy) body=<CompatibilityLanding legacy={legacy} returnToAssets={returnToAssets}/>;
   else if(tab==="catalog") body=<Catalog data={data} setDetail={setDetail} initialType={requestedType}/>;
   else if(tab==="sales") body=<Sales data={data} setDetail={setDetail}/>;
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;

@@ -73,7 +73,9 @@ type Product = {
   id: string;
   name: string;
   description: string | null;
-  status: "draft" | "active" | "archived";
+  // `paused` became a legal state in migration 20261044000000 (Offer Catalog). This is a read-side
+  // type over `tenant_products.status`, so it must carry every value the CHECK now allows.
+  status: "draft" | "active" | "paused" | "archived";
   product_type: string;
   stripe_product_id: string | null;
 };

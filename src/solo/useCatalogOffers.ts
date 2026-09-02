@@ -21,7 +21,15 @@ import { supabase } from "@/integrations/supabase/client";
 /** Mirrors `tenant_products.status` after migration 20261044000000. */
 export type OfferAvailability = "draft" | "active" | "paused" | "archived";
 /** Mirrors `tenant_products.product_type`, which predates this slice. */
-export type OfferProductType = "one_time" | "recurring" | "service";
+/**
+ * `tenant_products.product_type` is BILLING CADENCE, not product-vs-service — its CHECK is
+ * ('one_time','recurring','service') but the only writer on production
+ * (`tenant-product-upsert`) sets it from whether a recurring plan exists and never writes
+ * 'service'. Deriving Product/Service from it would have labelled every coaching retainer a
+ * "Product". The commercial kind is its own column, added by 20261044000000.
+ */
+export type OfferBillingCadence = "one_time" | "recurring" | "service";
+export type OfferKind = "product" | "service";
 export type OfferDeliveryShape =
   | "digital" | "physical" | "appointment" | "program" | "membership" | "hybrid";
 export type OfferPricePresentation = "fixed" | "from" | "contact" | "none";
@@ -35,6 +43,8 @@ export type OfferPrice = {
   readonly currency: string | null;
   readonly billingInterval: string | null;
   readonly kind: string | null;
+  /** Number of instalments when `kind === "installment"`. `unitAmount` is then PER INSTALMENT. */
+  readonly installmentsTotal: number | null;
   readonly active: boolean;
 };
 
@@ -45,7 +55,9 @@ export type CatalogOffer = {
   readonly summary: string | null;
   readonly description: string | null;
   readonly availability: OfferAvailability;
-  readonly productType: OfferProductType;
+  readonly billingCadence: OfferBillingCadence;
+  /** Null until the tenant states it. Never guessed from billing cadence. */
+  readonly kind: OfferKind | null;
   readonly deliveryShape: OfferDeliveryShape | null;
   readonly pricePresentation: OfferPricePresentation | null;
   readonly customerAction: OfferCustomerAction | null;
@@ -62,10 +74,19 @@ export type CatalogOffersState = {
   readonly offers: readonly CatalogOffer[];
   /** True only for a tenant admin/owner. Slice 2A shows no acts; 2B gates its commands on this. */
   readonly canManage: boolean;
+  /** The authority read itself failed. Distinct from "the caller is not an admin". */
+  readonly authorityUnknown: boolean;
+  /** The offer columns are not on this deployment yet, so classified fields read as absent. */
+  readonly fieldsUnavailable: boolean;
   readonly retry: () => void;
 };
 
-const EMPTY = { offers: [] as readonly CatalogOffer[], canManage: false };
+const EMPTY = {
+  offers: [] as readonly CatalogOffer[],
+  canManage: false,
+  authorityUnknown: false,
+  fieldsUnavailable: false,
+};
 
 /**
  * A row is only as classified as the tenant made it. An unrecognised value from the database is
@@ -118,14 +139,16 @@ export function useCatalogOffers(): CatalogOffersState {
         // unmigrated fields as the honest "Not stated" they already render when a tenant has not
         // filled them in. The fallback becomes dead weight once the migration is live; it is
         // removed in Slice 2B, which writes these columns and therefore hard-requires them.
-        const EXTENDED = "id,name,summary,description,status,product_type,delivery_shape,price_presentation,customer_action,category,image_url,updated_at";
+        const EXTENDED = "id,name,summary,description,status,product_type,offer_kind,delivery_shape,price_presentation,customer_action,category,image_url,updated_at";
         const BASE = "id,name,description,status,product_type,image_url,updated_at";
         type ProductRead = {
           data: unknown[] | null;
           error: { code?: string; message?: string } | null;
         };
-        const isMissingColumn = (error: ProductRead["error"]) =>
-          !!error && (error.code === "42703" || /does not exist/i.test(error.message ?? ""));
+        // ONLY the undefined-column code. Matching "does not exist" in the message also caught
+        // 42P01 (undefined TABLE) and any other Postgres message using that phrase, which would
+        // spend a second round-trip before the real error ever surfaced.
+        const isMissingColumn = (error: ProductRead["error"]) => error?.code === "42703";
         // One helper for both attempts so the two selects cannot drift apart in scope or order,
         // and so the narrower BASE result stays assignable to the same variable.
         const readProducts = async (columns: string): Promise<ProductRead> =>
@@ -136,28 +159,53 @@ export function useCatalogOffers(): CatalogOffersState {
             .order("name", { ascending: true })) as unknown as ProductRead;
 
         let productResponse = await readProducts(EXTENDED);
+        let fieldsUnavailable = false;
         if (isMissingColumn(productResponse.error)) {
+          if (!current) return;
           console.warn("[catalog-offers] offer columns not migrated yet; reading the base record");
+          fieldsUnavailable = true;
           productResponse = await readProducts(BASE);
         }
+
+        // WHY THIS ASKS FOR THE CALLER'S OWN ROW, AND WHY THAT IS NOT OBVIOUS.
+        // `tenant_members`'s SELECT policy is `user_id = auth.uid() OR is_tenant_admin(tenant_id)
+        // OR is_platform_owner()`. So a plain member sees exactly one row and an ADMIN sees every
+        // member row in the workspace — meaning a tenant-scoped `.maybeSingle()` resolves for the
+        // member and fails with PGRST116 for the owner, which is precisely backwards. The row we
+        // want is the caller's, so the caller is who we ask about: user_id AND tenant_id AND an
+        // active membership. A `removed` or `suspended` row can still carry role='owner'.
+        const { data: authData } = await supabase.auth.getUser();
+        const callerId = authData.user?.id ?? null;
 
         const [priceResponse, roleResponse] = await Promise.all([
           supabase
             .from("tenant_prices")
-            .select("id,product_id,nickname,unit_amount,currency,billing_interval,kind,active,sort_order")
+            .select("id,product_id,nickname,unit_amount,currency,billing_interval,kind,installments_total,active,sort_order")
             .eq("tenant_id", activeTenantId)
             .order("sort_order", { ascending: true }),
           // Authority is asked about THIS workspace, never a global role (§59's global-role trap).
-          supabase
-            .from("tenant_members")
-            .select("tenant_role")
-            .eq("tenant_id", activeTenantId)
-            .maybeSingle(),
+          // The column is `role`; `tenant_role` is the ENUM TYPE's name, not the column's.
+          callerId
+            ? supabase
+                .from("tenant_members")
+                .select("role")
+                .eq("tenant_id", activeTenantId)
+                .eq("user_id", callerId)
+                .eq("status", "active")
+                .maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
         ]);
 
         const firstError = [productResponse.error, priceResponse.error].find(Boolean);
         if (firstError) throw firstError;
         if (!current) return;
+
+        // An authority read that FAILED is not the same as a caller with no authority. Silently
+        // treating the first as the second is how an owner gets told they may not edit their own
+        // catalog, so it is logged loudly and reported as unknown rather than as "no".
+        if (roleResponse.error) {
+          console.error("[catalog-offers] membership read failed; treating authority as unknown", roleResponse.error);
+        }
 
         const pricesByProduct = new Map<string, OfferPrice[]>();
         for (const row of (priceResponse.data ?? []) as Record<string, unknown>[]) {
@@ -171,6 +219,7 @@ export function useCatalogOffers(): CatalogOffersState {
             currency: typeof row.currency === "string" ? row.currency : null,
             billingInterval: typeof row.billing_interval === "string" ? row.billing_interval : null,
             kind: typeof row.kind === "string" ? row.kind : null,
+            installmentsTotal: typeof row.installments_total === "number" ? row.installments_total : null,
             active: row.active !== false,
           });
           pricesByProduct.set(productId, list);
@@ -189,7 +238,8 @@ export function useCatalogOffers(): CatalogOffersState {
             // An unreadable status is treated as a draft: the safest reading is the one that
             // shows the offer to nobody.
             availability: narrow(row.status, AVAILABILITIES) ?? "draft",
-            productType: narrow(row.product_type, ["one_time", "recurring", "service"] as const) ?? "one_time",
+            billingCadence: narrow(row.product_type, ["one_time", "recurring", "service"] as const) ?? "one_time",
+            kind: narrow(row.offer_kind, ["product", "service"] as const),
             deliveryShape: narrow(row.delivery_shape, SHAPES),
             pricePresentation: narrow(row.price_presentation, PRESENTATIONS),
             customerAction: narrow(row.customer_action, ACTIONS),
@@ -199,10 +249,22 @@ export function useCatalogOffers(): CatalogOffersState {
             prices: pricesByProduct.get(String(row.id ?? "")) ?? [],
           }));
 
-        const role = (roleResponse.data as { tenant_role?: unknown } | null)?.tenant_role;
+        const role = (roleResponse.data as { role?: unknown } | null)?.role;
         const canManage = role === "owner" || role === "admin";
 
-        setState({ tenantId: activeTenantId, phase: "ready", offers, canManage });
+        setState({
+          tenantId: activeTenantId,
+          phase: "ready",
+          offers,
+          canManage,
+          // True only when the authority question itself could not be answered. The surface must
+          // not assert "you cannot change this" on the back of a failed read.
+          authorityUnknown: Boolean(roleResponse.error) || !callerId,
+          // True when the offer columns are not on this deployment yet. Rendering every classified
+          // field as "Not stated" would otherwise be indistinguishable from a tenant who simply
+          // has not filled them in — the exact ambiguity this surface exists to avoid.
+          fieldsUnavailable,
+        });
       } catch (error) {
         console.error("[catalog-offers] tenant-scoped offer read failed", error);
         if (!current) return;

@@ -117,7 +117,7 @@ export function resolveExecutablePath() {
 /**
  * Build the launch options: headless, sandbox-safe args, resolved executablePath, and the
  * agent proxy wired ONLY when HTTPS_PROXY is set (the one net-new primitive vs existing sites).
- * @returns {{ headless: true, args: string[], executablePath?: string, proxy?: { server: string } }}
+ * @returns {{ headless: true, args: string[], executablePath?: string, proxy?: { server: string, bypass: string } }}
  */
 export function buildLaunchOptions() {
   const executablePath = resolveExecutablePath();
@@ -132,7 +132,7 @@ export function buildLaunchOptions() {
     // debug cycle to tell apart. Bypassing loopback cannot affect a remote drive, which never
     // resolves to these hosts.
     ...(proxyServer
-      ? { proxy: { server: proxyServer, bypass: "127.0.0.1,localhost,::1" } }
+      ? { proxy: { server: proxyServer, bypass: "127.0.0.1,localhost,[::1]" } }
       : {}),
   };
 }

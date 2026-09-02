@@ -38,14 +38,15 @@ const offer = (over: Record<string, unknown> = {}) => ({
   summary: "A twelve-week group program.",
   description: "Twelve weekly live sessions.",
   availability: "active",
-  productType: "service",
+  billingCadence: "service",
+  kind: "service",
   deliveryShape: "program",
   pricePresentation: "fixed",
   customerAction: "apply",
   category: "Programs",
   imageUrl: null,
   updatedAt: "2026-08-28T12:00:00Z",
-  prices: [{ id: "price-1", nickname: "Full", unitAmount: 240000, currency: "usd", billingInterval: "one_time", kind: "one_time", active: true }],
+  prices: [{ id: "price-1", nickname: "Full", unitAmount: 240000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true }],
   ...over,
 });
 
@@ -82,7 +83,8 @@ function setCampaigns(over: Record<string, unknown> = {}) {
 
 function setOffers(over: Record<string, unknown> = {}) {
   harness.offers = {
-    tenantId: "tenant-1", phase: "ready", offers: [offer()], canManage: true, retry: vi.fn(), ...over,
+    tenantId: "tenant-1", phase: "ready", offers: [offer()], canManage: true,
+    authorityUnknown: false, fieldsUnavailable: false, retry: vi.fn(), ...over,
   };
 }
 
@@ -120,7 +122,7 @@ describe("Catalog Offers — tenant-scoped read contract", () => {
 
   it("survives the migration not being applied yet, rather than erroring for every tenant", () => {
     expect(adapter).toContain("isMissingColumn");
-    expect(adapter).toContain('error.code === "42703"');
+    expect(adapter).toContain('error?.code === "42703"');
     expect(adapter).toContain("const BASE =");
   });
 
@@ -143,13 +145,83 @@ describe("Catalog Offers — truthfulness", () => {
   });
 
   it("never renders a zero for an unrecorded amount", () => {
-    // The em-dash branch exists and `$0` is never constructed.
-    expect(surface).toContain('return { text: "—", unstated: true }');
-    expect(surface).not.toContain("$0");
+    // Asserted on the RENDER, not the source. The previous version grepped the file for "$0",
+    // which proved nothing: `money(0)` built that string at runtime and the literal never
+    // appeared in the source. An adversarial review of the pushed diff caught it.
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).not.toMatch(/\$0\b/);
+    expect(cell.textContent).toContain("—");
+  });
+
+  it("renders a RECORDED zero as Free, because that is a real answer", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [{ id: "p0", nickname: null, unitAmount: 0, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true }] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("Free");
+    expect(cell.textContent).not.toMatch(/\$0\b/);
+  });
+
+  it("shows an instalment plan as its arithmetic, never as the per-instalment figure alone", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [{ id: "pi", nickname: "Plan", unitAmount: 50000, currency: "usd", billingInterval: "month", kind: "installment", installmentsTotal: 6, active: true }] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("$500 × 6");
+    expect(cell.textContent).toContain("Instalment plan");
+    expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
+  it("does not call several recorded plans one fixed amount", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
+      { id: "p1", nickname: "Deposit", unitAmount: 50000, currency: "usd", billingInterval: "one_time", kind: "deposit", installmentsTotal: null, active: true },
+      { id: "p2", nickname: "Full", unitAmount: 300000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("From $500");
+    expect(cell.textContent).toContain("Several plans recorded");
+    expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
+  it("says the kind is not stated rather than guessing one", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ kind: null })] });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.querySelector(".co-kind")?.getAttribute("data-kind")).toBe("unstated");
   });
 
   it("states the not-a-checkout boundary on the surface itself", () => {
     expect(surface).toContain("nothing on this surface charges anybody");
+  });
+
+  it("distinguishes an unreadable permission from a denied one", () => {
+    setCampaigns();
+    setOffers({ canManage: false, authorityUnknown: true });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("could not be read just now");
+    expect(host.textContent).not.toContain("You can see this catalog but not change it");
+  });
+
+  it("says so when the offer columns are not on this deployment yet", () => {
+    setCampaigns();
+    setOffers({ fieldsUnavailable: true });
+    renderAt("/solo/4471/growth/catalog");
+    expect(host.textContent).toContain("not available on this deployment yet");
+  });
+
+  it("returns a retired address to the Vibe-owned half, not to an empty offer list", () => {
+    setCampaigns(); setOffers({ offers: [] });
+    renderAt("/solo/4471/growth/pages");
+    expect(host.textContent).toContain("This address moved");
+    const back = [...host.querySelectorAll("button")].find((b) => b.textContent === "Return to Catalog");
+    act(() => { back?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(host.textContent).toContain("Read-only published outputs owned by Vibe Studio.");
+    expect(host.textContent).not.toContain("Nothing is listed yet");
   });
 
   it("only reports a derived conflict for an offer that claims to be sellable", () => {

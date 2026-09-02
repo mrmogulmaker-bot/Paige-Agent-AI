@@ -42,12 +42,20 @@ const PRESENTATION = {
   fixed: "Fixed amount", from: "Starting at", contact: "Contact for pricing", none: "No price shown",
 };
 
-/** A Product is shipped or delivered as a thing; everything else this tenant does is a Service. */
-const kindOf = (offer) => (offer.productType === "service" ? "service" : "product");
+// The commercial kind is a RECORDED fact, never derived. `product_type` is billing cadence, and
+// its only writer never sets 'service', so deriving from it labelled every retainer a "Product".
+// Null means the tenant has not said, and the surface says exactly that.
+const kindOf = (offer) => offer.kind;
 
-/** Whole units, grouped, from the minor units `tenant_prices` stores. */
+/**
+ * Whole units, grouped, from the minor units `tenant_prices` stores.
+ * A RECORDED zero is a fact, not an absence: `unit_amount` allows 0, and a tenant who recorded a
+ * free offer meant it. It reads "Free" — "$0" looks like a bug and "—" would erase a real answer.
+ * An UNRECORDED amount is null and renders as an em-dash elsewhere. The two are not the same.
+ */
 function money(minorUnits, currency) {
   if (minorUnits === null || minorUnits === undefined || Number.isNaN(minorUnits)) return null;
+  if (minorUnits === 0) return "Free";
   const major = minorUnits / 100;
   const symbol = !currency || currency.toLowerCase() === "usd" ? "$" : "";
   const suffix = symbol ? "" : ` ${String(currency).toUpperCase()}`;
@@ -59,6 +67,23 @@ function leadPrice(offer) {
   const usable = offer.prices.filter((price) => price.active && typeof price.unitAmount === "number");
   if (!usable.length) return null;
   return usable.reduce((low, price) => (price.unitAmount < low.unitAmount ? price : low), usable[0]);
+}
+
+/** How many distinct active priced plans the tenant recorded. More than one is not "fixed". */
+const activePlanCount = (offer) =>
+  offer.prices.filter((price) => price.active && typeof price.unitAmount === "number").length;
+
+/**
+ * `tenant_prices` is multi-plan by design (deposit, instalment, recurring). For an instalment plan
+ * `unit_amount` is the PER-INSTALMENT figure, so printing it as the headline turns a $3,000 program
+ * into "$500 · Fixed amount" — a false price on the record whose whole purpose is to be the one
+ * true price. An instalment is therefore shown as its arithmetic, never as a single number.
+ */
+function instalmentText(plan) {
+  if (plan?.kind !== "installment" || typeof plan.unitAmount !== "number") return null;
+  const each = money(plan.unitAmount, plan.currency);
+  if (!each) return null;
+  return plan.installmentsTotal ? `${each} × ${plan.installmentsTotal}` : `${each} per instalment`;
 }
 
 /**
@@ -73,6 +98,14 @@ function priceLine(offer) {
   const amount = lead ? money(lead.unitAmount, lead.currency) : null;
   if (!presentation && !amount) return { text: "No price stated", unstated: true };
   if (!amount) return { text: "—", unstated: true };
+  // An instalment carries its own arithmetic, so the presentation label beneath it would be
+  // wrong twice over: it is not one fixed amount, and the figure shown is already qualified.
+  const instalment = instalmentText(lead);
+  if (instalment) return { text: instalment, unstated: false, note: "Instalment plan" };
+  // Several priced plans cannot honestly be one "fixed amount"; the lowest is a floor, not the price.
+  if (presentation === "fixed" && activePlanCount(offer) > 1) {
+    return { text: `From ${amount}`, unstated: false, note: "Several plans recorded" };
+  }
   return { text: presentation === "from" ? `From ${amount}` : amount, unstated: false };
 }
 
@@ -98,6 +131,7 @@ function OfferRow({ offer, onOpen }) {
   const price = priceLine(offer);
   const conflict = conflictOf(offer);
   const kind = kindOf(offer);
+  const kindLabel = kind === "service" ? "Service" : kind === "product" ? "Product" : "Kind not stated";
   return (
     <button
       type="button"
@@ -106,10 +140,11 @@ function OfferRow({ offer, onOpen }) {
       aria-label={`${offer.name} — ${state.label}`}
     >
       <span className="co-head">
-        <span className="co-kind" title={kind === "service" ? "Service" : "Product"}>
+        <span className="co-kind" title={kindLabel} data-kind={kind ?? "unstated"}>
           <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
             strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d={KIND_GLYPH[kind]} />
+            {/* No recorded kind gets a neutral mark, not a guessed one. */}
+            <path d={kind ? KIND_GLYPH[kind] : "M8 3.4a4.6 4.6 0 1 0 0 9.2a4.6 4.6 0 1 0 0-9.2"} />
           </svg>
         </span>
         <span style={{ minWidth: 0 }}>
@@ -123,9 +158,13 @@ function OfferRow({ offer, onOpen }) {
           {/* The presentation label only earns its line when it adds something the value does not
               already say. "Contact for pricing" IS the value for that presentation, so printing
               the label underneath repeated it word for word — caught in the rendered frame. */}
-          {offer.pricePresentation && !price.unstated
-            ? <small>{PRESENTATION[offer.pricePresentation]}</small>
-            : null}
+          {/* One sub-label at most: the qualifier when the figure needed one, otherwise the
+              tenant's chosen presentation — and never when it would just repeat the value. */}
+          {price.note
+            ? <small>{price.note}</small>
+            : offer.pricePresentation && !price.unstated
+              ? <small>{PRESENTATION[offer.pricePresentation]}</small>
+              : null}
         </span>
         <span className="co-shape">
           {offer.deliveryShape ? SHAPES[offer.deliveryShape] : offer.category || ""}
@@ -220,7 +259,7 @@ export function CatalogOffers({ setDetail }) {
     );
   }
 
-  if (data.offers.length === 0) return <FirstUse canManage={data.canManage} />;
+  if (data.offers.length === 0) return <FirstUse canManage={data.canManage || data.authorityUnknown} />;
 
   const categories = [...new Set(data.offers.map((offer) => offer.category).filter(Boolean))];
   const shown = category === "all"
@@ -236,7 +275,7 @@ export function CatalogOffers({ setDetail }) {
     setDetail({
       title: offer.name || "Untitled offer",
       rows: [
-        ["Type", kindOf(offer) === "service" ? "Service" : "Product"],
+        ["Type", kindOf(offer) === "service" ? "Service" : kindOf(offer) === "product" ? "Product" : "Not stated"],
         ["Availability", AVAILABILITY[offer.availability].label],
         ["How the price is shown", offer.pricePresentation ? PRESENTATION[offer.pricePresentation] : "Not stated"],
         ["Price shown", price.text],
@@ -288,7 +327,21 @@ export function CatalogOffers({ setDetail }) {
         ))}
       </div>
 
-      {!data.canManage ? (
+      {data.fieldsUnavailable ? (
+        <p className="co-notice">
+          <Ic.clock size={15} />
+          <span>Some offer details are not available on this deployment yet, so they read as “Not stated”
+            here even where you have filled them in. This resolves when the pending update is applied.</span>
+        </p>
+      ) : null}
+
+      {data.authorityUnknown ? (
+        <p className="co-notice">
+          <Ic.shield size={15} />
+          <span>Your permissions for this workspace could not be read just now, so nothing is assumed
+            about what you may change. Reload to try again.</span>
+        </p>
+      ) : !data.canManage ? (
         <p className="co-notice">
           <Ic.shield size={15} />
           <span>You can see this catalog but not change it. An owner or admin defines what this business sells.</span>

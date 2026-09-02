@@ -46,6 +46,17 @@
 --                                 relocates this editor into Catalog and closes that gap.
 --   list_tenant_programs RPC      returns status verbatim -> passes 'paused' through untouched.
 --
+-- AND THE WRITER, which the first draft of this inventory missed and an adversarial review of the
+-- pushed diff caught. `supabase/functions/tenant-product-upsert/index.ts:103,120` persists
+-- `status: body.status ?? 'draft'` with NO allowlist, relying on this CHECK as its only validation.
+-- Before this migration a caller posting 'paused' was rejected; after it, a tenant-admin JWT can
+-- persist 'paused' through that function even though no UI offers it yet. That is legal and
+-- harmless — 'paused' is now a real state and every reader above handles it — but it made
+-- `StorefrontPanel`'s `status: "draft" | "active" | "archived"` union untrue, so that union is
+-- widened in the same change. The edge function itself is NOT touched here: it deploys on merge,
+-- and a read-only slice should not ship an edge deploy. Adding an explicit allowlist there is
+-- recorded as a follow-up in the Gate B packet rather than smuggled into this slice.
+--
 -- WHAT THIS MIGRATION DELIBERATELY DOES NOT DO. It adds no inventory, no stock, no variants, no
 -- cart, no line items, no tax, no shipping and no checkout. `price_presentation` records how a
 -- price is SHOWN; it is not a billing contract and nothing here charges anybody. Tenant checkout
@@ -55,12 +66,18 @@
 -- Product operations and orders are Commerce Slices 3A and 3B, each with its own approval.
 
 alter table public.tenant_products
+  add column if not exists offer_kind         text,
   add column if not exists summary            text,
   add column if not exists delivery_shape     text,
   add column if not exists price_presentation text,
   add column if not exists customer_action    text,
   add column if not exists category           text;
 
+comment on column public.tenant_products.offer_kind is
+  'Product or Service — the COMMERCIAL kind. Deliberately NOT derived from product_type, which is '
+  'billing cadence: its only writer (tenant-product-upsert) sets one_time/recurring from whether a '
+  'recurring plan exists and never writes ''service'', so deriving from it labels every coaching '
+  'retainer a Product. Nullable until the tenant states it.';
 comment on column public.tenant_products.summary is
   'One customer-facing sentence. The fuller prose stays in `description`.';
 comment on column public.tenant_products.delivery_shape is
@@ -82,6 +99,12 @@ alter table public.tenant_products
 
 -- The three new classified fields are constrained but nullable, so "not stated" stays expressible.
 -- `category` is deliberately unconstrained: it is the tenant's own vocabulary (§9 tenant-authored).
+alter table public.tenant_products
+  drop constraint if exists tenant_products_offer_kind_check;
+alter table public.tenant_products
+  add constraint tenant_products_offer_kind_check
+  check (offer_kind is null or offer_kind in ('product', 'service'));
+
 alter table public.tenant_products
   drop constraint if exists tenant_products_delivery_shape_check;
 alter table public.tenant_products

@@ -159,6 +159,23 @@ async function main() {
         check(unpriced.conflicts === 1, `${id}: the record's own contradiction is named`, `n=${unpriced.conflicts}`);
         check(/no amount is recorded against it/.test(unpriced.text), `${id}: conflict says which fact is missing`);
 
+        // 2b. An instalment plan must show its arithmetic, never the per-instalment figure alone.
+        await setMode(page, "instalment");
+        const inst = await measure(page);
+        check(/\$500 × 6/.test(inst.text), `${id}: instalment shows its arithmetic`);
+        check(!/Fixed amount/.test(inst.text), `${id}: instalment is not labelled a fixed amount`);
+
+        // 2c. An unreadable permission is not a denied one.
+        await setMode(page, "authority-unknown");
+        const unknown = await measure(page);
+        check(/could not be read just now/.test(unknown.text), `${id}: unknown authority says so`);
+        check(!/cannot change it/.test(unknown.text), `${id}: unknown authority is not reported as denial`);
+
+        // 2d. Unmigrated columns are named, not silently rendered as "the tenant left it blank".
+        await setMode(page, "fields-unavailable");
+        const pending = await measure(page);
+        check(/not available on this deployment yet/.test(pending.text), `${id}: pending columns are named`);
+
         // 3. First use — the state every tenant sees today, since the table is empty on prod.
         await setMode(page, "empty");
         const empty = await measure(page);
