@@ -516,36 +516,111 @@ function unconstrainedField(call) {
  * `really`, `yes_do_it` — the next one is always outside the list. A destructive tool has no
  * business taking a boolean from the model at all, so the rule is the shape, not the vocabulary.
  */
+/** Strip syntax that does not change a value: parens, `as const`, `satisfies`, `!`. */
+function unwrapValue(node) {
+  let n = node;
+  while (n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) ||
+               ts.isSatisfiesExpression?.(n) || ts.isNonNullExpression(n) ||
+               ts.isTypeAssertionExpression?.(n))) n = n.expression;
+  return n;
+}
+
+/** A `z.literal(...)` argument that is, or contains, a boolean keyword. */
+function literalArgAdmitsBoolean(arg) {
+  const a = unwrapValue(arg);
+  if (!a) return true;
+  if (a.kind === ts.SyntaxKind.TrueKeyword || a.kind === ts.SyntaxKind.FalseKeyword) return true;
+  if (ts.isArrayLiteralExpression(a)) return a.elements.some(literalArgAdmitsBoolean);
+  return !ts.isStringLiteralLike(a) && !ts.isNumericLiteral(a);
+}
+
+/**
+ * Builders whose value is provably not a bare boolean.
+ *
+ * THIS IS AN ALLOWLIST, AND THAT IS THE WHOLE POINT. The previous version enumerated the builders
+ * that ADMIT a boolean — `boolean`, then `literal`, then `any`/`unknown`, then the multi-value
+ * `literal` overload — and review found a way past it six times running: `z.promise`, `z.enum` with
+ * an unread argument, `z.literal([true,false])`, `z.literal((true))`, `z.literal(true as const)`,
+ * `z.nativeEnum({T:true})`, `z.json()`. Each fix was another name and the next name won.
+ *
+ * Inverted, an unrecognised builder is not proven safe, so it is REFUSED. A new zod construct — or
+ * one whose behaviour differs between the two zods this repository carries — fails closed instead
+ * of passing silently. The cost is that a legitimately safe new builder needs a line here, in a
+ * diff someone reads. That is the trade this guard has now made four times in other rules.
+ */
+const NON_BOOLEAN_HEADS = new Set([
+  "string", "number", "bigint", "date", "symbol", "object", "array", "record", "map", "set",
+  "tuple", "instanceof", "void", "never", "null", "undefined", "nan", "file", "email", "uuid",
+  "url", "emoji", "base64", "cuid", "cuid2", "ulid", "ipv4", "ipv6", "iso",
+]);
+
+/** Wrappers that carry another schema through without constraining it. */
+const SCHEMA_WRAPPERS = new Set([
+  "optional", "nullable", "nullish", "default", "catch", "readonly", "describe", "brand",
+  "transform", "refine", "superRefine", "pipe", "promise", "lazy", "meta", "register",
+  "union", "intersection", "discriminatedUnion", "or", "and",
+]);
+
+/**
+ * Can the model set this FIELD to a boolean, as far as this guard can prove?
+ *
+ * Fail-closed by construction: anything it cannot read, and any builder not named above, is `true`.
+ */
+function fieldAdmitsBoolean(node) {
+  const e = unwrapValue(node);
+  if (!e || !ts.isCallExpression(e)) return true;          // an identifier, a spread, anything unread
+  const method = calleeMethod(e.expression);
+  if (method === null) return true;
+  const receiver = (ts.isPropertyAccessExpression(e.expression) || ts.isElementAccessExpression(e.expression))
+    ? e.expression.expression : null;
+  const isHead = receiver && ts.isIdentifier(receiver) && receiver.text === SCHEMA_NS;
+
+  if (!isHead) {
+    // A chained call — `z.string().optional()`. The receiver decides, and a schema handed to a
+    // combining method (`.or(z.boolean())`) decides too.
+    if (SCHEMA_WRAPPERS.has(method) && e.arguments.some(memberAdmitsBoolean)) return true;
+    return receiver ? fieldAdmitsBoolean(receiver) : true;
+  }
+
+  if (method === "literal") return e.arguments.some(literalArgAdmitsBoolean);
+  if (method === "enum") {
+    const a = unwrapValue(e.arguments[0]);
+    // Only a visible array of string literals is provably boolean-free. An identifier is not.
+    return !(a && ts.isArrayLiteralExpression(a) &&
+             a.elements.every((el) => ts.isStringLiteralLike(unwrapValue(el))));
+  }
+  if (method === "nativeEnum") {
+    const a = unwrapValue(e.arguments[0]);
+    return !(a && ts.isObjectLiteralExpression(a) && a.properties.every((prop) =>
+      ts.isPropertyAssignment(prop) && !literalArgAdmitsBoolean(prop.initializer)));
+  }
+  if (SCHEMA_WRAPPERS.has(method)) return e.arguments.some(memberAdmitsBoolean);
+  return !NON_BOOLEAN_HEADS.has(method);
+}
+
+/** A union member or wrapper argument: an array literal spreads to its elements. */
+function memberAdmitsBoolean(arg) {
+  const a = unwrapValue(arg);
+  if (!a) return true;
+  if (ts.isArrayLiteralExpression(a)) return a.elements.some(memberAdmitsBoolean);
+  if (ts.isStringLiteralLike(a) || ts.isNumericLiteral(a)) return false;   // a discriminator key
+  return fieldAdmitsBoolean(a);
+}
+
+/**
+ * Every FIELD in this schema the model could set to a boolean.
+ *
+ * Deliberately NOT a list of approval-ish names. `confirm`, `approved`, `force`, `really` — the
+ * next one is always outside the list. A destructive tool has no business taking a boolean from the
+ * model at all, so the rule is the shape, not the vocabulary.
+ */
 function modelSettableBooleans(schemaNode) {
   const names = [];
   if (!schemaNode) return names;
   walkValues(schemaNode, (n) => {
-    if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression)) return;
-    const method = n.expression.name.text;
-    // `.boolean()`, and also `z.literal(true)` / `z.literal(false)` — a boolean the model can set,
-    // spelled as a literal. The pre-AST matcher recognised `z.literal(...)`, so omitting it here
-    // was a regression against this guard's own promise to reject ANY model-settable boolean.
-    // `z.literal(true)` and, on zod 4, `z.literal([true, false])` — the multi-value overload.
-    // Reading only a single scalar argument missed the second, and it is the same version-split
-    // as `z.enum`: zod 3.25.76 rejects a boolean there, 4.5.4 accepts it, so a bump of the MCP
-    // surface's import would have opened it silently. Any boolean keyword among the arguments —
-    // bare or inside an array literal — makes this a model-settable boolean.
-    const isBooleanLiteral = method === "literal" && n.arguments.some(literalAdmitsBoolean);
-    // `z.any()` / `z.unknown()` in a FIELD's own position is the schema declining to say what that
-    // field is, and an unconstrained field admits `true` without the token `boolean` appearing
-    // anywhere. Reading spellings could never catch it. `unconstrainedField` is the structural
-    // test for "the field's own type", so a value type nested inside a container — the real
-    // `corrections: z.record(z.string(), z.any())` on `handle_data_subject_request` — is a data
-    // payload rather than a branch flag, and is not reported. That distinction is measured
-    // against the live surface, not assumed: the coarse version failed it.
-    const isUnconstrained = (method === "any" || method === "unknown") && unconstrainedField(n);
-    if (method !== "boolean" && !isBooleanLiteral && !isUnconstrained) return;
-    // Walk out to the property this z.boolean() chain is assigned to.
-    let cur = n;
-    while (cur.parent && !ts.isPropertyAssignment(cur.parent)) cur = cur.parent;
-    const owner = cur.parent;
-    const nm = owner && ts.isPropertyAssignment(owner) && owner.name && ts.isIdentifier(owner.name)
-      ? owner.name.text : "<unnamed>";
+    if (!ts.isPropertyAssignment(n) || !fieldAdmitsBoolean(n.initializer)) return;
+    const nm = n.name && ts.isIdentifier(n.name) ? n.name.text
+      : n.name ? (literalText(n.name) ?? "<computed>") : "<unnamed>";
     if (!names.includes(nm)) names.push(nm);
   });
   return names;
@@ -798,6 +873,25 @@ mcp.tool("t", { inputSchema: z.object({ id: z.string(), m: z.record(z.string(), 
 mcp.tool("t", { inputSchema: z.object({ confirm: z.literal([true, false]) }), ${DESTRUCTIVE} });`), 1);
   check("z.literal([\"a\", \"b\"]) is not", v(`
 mcp.tool("t", { inputSchema: z.object({ mode: z.literal(["a", "b"]), id: z.string() }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
+  // The inversion's proof: every evasion review found against the enumerated version, plus the
+  // legitimate schemas that must stay clean. Six of these defeated the old rule one at a time.
+  const SAFE_H = `handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); }`;
+  for (const [label, schema] of [
+    ["z.literal((true))", `z.object({ confirm: z.literal((true)) })`],
+    ["z.literal(true as const)", `z.object({ confirm: z.literal(true as const) })`],
+    ["z.nativeEnum with boolean values", `z.object({ confirm: z.nativeEnum({ T: true, F: false } as any) })`],
+    ["z.json()", `z.object({ confirm: z.json() })`],
+    ["z.string().or(z.boolean())", `z.object({ confirm: z.string().or(z.boolean()) })`],
+    ["an unread identifier as a field type", `z.object({ confirm: someSchema })`],
+  ]) check(`REFUSES ${label}`, v(`
+mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
+  for (const [label, schema] of [
+    ["z.string().uuid()", `z.object({ id: z.string().uuid() })`],
+    ["z.enum of string literals", `z.object({ mode: z.enum(["a","b"]), id: z.string() })`],
+    ["z.nativeEnum of strings", `z.object({ m: z.nativeEnum({ A: "a", B: "b" } as any), id: z.string() })`],
+    ["number, date and a nested object", `z.object({ n: z.number().min(1), d: z.date(), o: z.object({ s: z.string() }) })`],
+  ]) check(`ADMITS ${label}`, v(`
+mcp.tool("t", { inputSchema: ${schema}, ${SAFE_H} });`), 0);
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
