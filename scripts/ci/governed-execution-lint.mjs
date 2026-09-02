@@ -68,24 +68,38 @@ const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
  * not an escape hatch. (The sibling MCP guard had the identical defect; found there by review,
  * found here by looking for the same shape rather than waiting for it to come back.)
  *
- * Comment trivia is read from the scanner, so a marker in a string, a template or a regex is not a
- * comment and cannot exempt anything.
+ * Comments come from the PARSER's own trivia (`getLeadingCommentRanges`/`getTrailingCommentRanges`
+ * at node boundaries), NOT from a fresh scan. A standalone scanner does not know it is inside a
+ * template literal and lacks the parser's template-tail rescan, so it reads
+ * `` `${v} // governed-execution-exempt: fake` `` as a real comment — which is how the first fix
+ * for this on the sibling guard reopened the very bypass it closed. Template head/middle/tail nodes
+ * are skipped: their `pos` sits at a `}` with template TEXT after it.
  */
+/** Literal parts whose CONTENT is token text, not trivia — never scan for comments from their pos. */
+const TEMPLATE_PARTS = new Set([
+  ts.SyntaxKind.TemplateHead, ts.SyntaxKind.TemplateMiddle, ts.SyntaxKind.TemplateTail,
+]);
+
 function exemptComments(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* skipTrivia */ false,
-                                   ts.LanguageVariant.Standard, src);
+  const full = sf.getFullText();
   const lines = new Set();
   let any = false;
-  while (true) {
-    const kind = scanner.scan();
-    if (kind === ts.SyntaxKind.EndOfFileToken) break;
-    if (kind !== ts.SyntaxKind.SingleLineCommentTrivia &&
-        kind !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
-    if (!EXEMPT.test(scanner.getTokenText())) continue;
-    any = true;
-    lines.add(sf.getLineAndCharacterOfPosition(scanner.getTokenPos()).line + 1);
-  }
+  const add = (ranges) => {
+    for (const r of ranges || []) {
+      if (!EXEMPT.test(full.slice(r.pos, r.end))) continue;
+      any = true;
+      lines.add(sf.getLineAndCharacterOfPosition(r.pos).line + 1);
+    }
+  };
+  const visit = (n) => {
+    if (!TEMPLATE_PARTS.has(n.kind)) {
+      add(ts.getLeadingCommentRanges(full, n.pos));
+      add(ts.getTrailingCommentRanges(full, n.end));
+    }
+    n.forEachChild(visit);
+  };
+  visit(sf);
   return { lines, any };
 }
 
@@ -372,6 +386,10 @@ if (process.argv.includes("--self-test")) {
   // guard rather than waiting for it to come back here.
   check("R1 a marker in a STRING does not exempt",
     doorBranches(`const m = "// governed-execution-exempt: fake"; if (caller.door === "mcp") return 1;`).length, 1);
+  check("R1 a marker after an INTERPOLATION does not exempt (Codex, via #789)",
+    doorBranches("const m = `${v} // governed-execution-exempt: fake`; if (caller.door === \"mcp\") return 1;").length, 1);
+  check("R4 a marker after an INTERPOLATION does not exempt",
+    claimTouches("const m = `${v} // governed-execution-exempt: fake`; await client.rpc(\"x\", a);").length, 1);
   check("R1 a marker in a REAL comment still exempts",
     doorBranches(`if (caller.door === "mcp") return 1; // governed-execution-exempt: deliberate`).length, 0);
   check("R4 a marker in a STRING does not exempt",
