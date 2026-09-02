@@ -125,7 +125,7 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 **Canonical:** `docs/brain/paige-spine-integration-standard.md`. The Spine is the platform-wide safe
 path from tenant/client domain event to structured Mind/PAIGE Chat evidence, a governed action when
 separately authorized, and an attributable Rail outcome. Rail is part of the Spine, not the whole
-architecture. **Today the server action-risk policy plus confirmation/approval gate is authoritative;
+architecture. **Today the server action-risk policy plus canonical approval gate is authoritative;
 the Compass UI is non-authoritative/in-memory or derived and does not evaluate actions or
 permissions.** The required registry is code-enforced with CI rejecting direct/hard-wired Chat
 tools/actions and competing approval channels; current source is only a `PARTIAL` foundation (52
@@ -133,7 +133,9 @@ runtime-gated / 29 catalogued / 23 governed-but-invisible at the 2026-09-01 audi
 self-register; only new shared primitives/schemas need a Spine Change Request. Adoption is
 incremental — all new capabilities comply now, while legacy direct couplings migrate one at a time
 without pausing unrelated work. Deployed persistence and authenticated behavior remain `UNVERIFIED`
-in this documentation pass.
+in this documentation pass. The approval segment is owned exclusively by the PAIGE Chat workstream's
+`docs/doctrine/one-approval-gate.md`; this Spine documentation must land only after its supplying
+PR #675 merges, followed by a fresh rebase and exact-head verification.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 
@@ -1192,7 +1194,8 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 - PAIGE Spine Integration Standard — `paige-spine-integration-standard.md` (owner-approved safe
   integration architecture; assignment declaration; domain/Chat/shared ownership; code-enforced
   registry/CI requirement; self-service registration; new-primitive-only Spine Change Requests;
-  incremental adoption; platform implementation `PARTIAL`)
+  incremental adoption; PAIGE Chat-owned `one-approval-gate.md` approval segment; platform
+  implementation `PARTIAL`)
 - Primary-brain wiring standard — `paige-brain-wiring-standard.md` (runtime context/tool coverage
   ledger; subordinate to the Spine ownership boundary)
 

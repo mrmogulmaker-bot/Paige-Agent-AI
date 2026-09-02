@@ -10,21 +10,32 @@ manifest, Chat tool, Trust Compass clamp, shared executor, or Rail outcome contr
 render, migration, deployment record, or static tool registration is not authenticated capability
 proof.
 
-### Current grounding audit — source truth at `origin/main` `797d6f08c53e89f8cf36bde24d6df90714922629`
+### Current grounding audit — `origin/main` `83ab5120e664512e1f14371764014a4535df1250`
+
+**Approval-collision source:** PAIGE Chat PR
+[#675](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/pull/675), exact inspected head
+`6cf2386622980df97c4d55061528094680f5a95b`. That workstream owns
+`docs/doctrine/one-approval-gate.md`, the canonical approval segment of the Spine. At this audit
+point #675 is branch evidence, not `main` truth; this documentation branch must not merge until
+#675 has merged and this branch has been rebased and reverified against that result.
 
 This docs pass did not perform a fresh authenticated production query. The exact source establishes:
 
-- PAIGE Chat's current mutating-tool choke point is `MUTATING_TOOLS` plus the server RPC
-  `resolve_tool_autonomy` in `supabase/functions/paige-ai-chat/index.ts`. Missing/failed policy reads
-  fail to `confirm`; the first unconfirmed call returns `needs_confirm`, and only `auto` or an explicit
-  second `confirm:true` call falls through to the action branch. The persisted source contract is
-  `tenant_tool_autonomy` in `supabase/migrations/20260711200000_paige_tool_autonomy.sql`.
+- On current `main`, PAIGE Chat's centralized action-risk seam remains `MUTATING_TOOLS` plus
+  `resolve_tool_autonomy` in `supabase/functions/paige-ai-chat/index.ts`. The exact mechanics by
+  which operator approval is proven are deliberately not restated here; they belong exclusively to
+  `docs/doctrine/one-approval-gate.md`.
 - The existing CI guard `scripts/ci/tool-catalogue-lint.mjs` is a **ratchet, not the final Spine
   registry wall**. On this exact source it reports 52 runtime-gated tools, 29 catalogue entries, and
   23 governed-but-invisible baseline tools. It blocks widening that known mismatch; it does **not**
   yet reject every direct/hard-wired Chat tool/action or competing approval channel.
 - `scripts/ci/action-authority-lint.mjs` currently proves authority precedes side effects for seven
   covered action branches. It is useful evidence, not proof of a platform-wide registry.
+- At PR #675 head `6cf2386622980df97c4d55061528094680f5a95b`,
+  `scripts/ci/chat-tool-registry-lint.mjs` rejects newly added inline Chat tool declarations and
+  `scripts/ci/one-approval-gate-lint.mjs` rejects known competing approval-channel shapes. These
+  are meaningful incremental guards. They are still **PR-BRANCH / UNMERGED** here, and the Chat-tool
+  guard explicitly states that no full Spine registry exists yet.
 - Solo Compass uses the module-local `TRUST` store in `src/solo/compass.tsx`; Agency's
   `useAgencyCompass.ts` labels autonomy tiers preview-only with no persisted tier store; the operator
   `useCompass.ts` derives display lanes from action-kind defaults. No server-persisted Compass
@@ -51,7 +62,7 @@ The conceptual path is:
 Tenant/client domain event
   -> safe domain evidence contract
   -> Mind and PAIGE Chat read adapter
-  -> server action-risk policy + confirmation/approval gate
+  -> server action-risk policy + canonical approval gate
   -> governed domain action, when separately available
   -> safe attributable outcome
   -> Rail history/outcome + owning page
@@ -64,8 +75,9 @@ Trust treatment, governed executor, or human-management page.
 This standard extends the established platform taxonomy
 `Human -> Read -> Brain -> Trust Compass -> Write -> Rail -> Page`. In that taxonomy, Trust Compass
 names the intended governance experience; it does **not** describe today's authoritative runtime.
-Until a server-persisted Compass contract exists, the server action-risk policy plus the
-confirmation/approval gate is the clamp. No runtime or document may claim “Compass evaluated” merely
+Until a server-persisted Compass contract exists, the server action-risk policy plus the canonical
+approval gate is the clamp. The approval segment is specified only by
+`docs/doctrine/one-approval-gate.md`. No runtime or document may claim “Compass evaluated” merely
 because a dial, lane, label, or in-memory preference rendered. Naming a stage creates no permission,
 provider access, action, or implementation authority.
 
@@ -112,7 +124,7 @@ error.
 | Owner | Owns | Does not own by default |
 |---|---|---|
 | **Feature/domain workstream** | Domain UI, domain data, tenant-safe server contract, safe event/evidence manifest, domain action implementation, and safe domain outcome shape. | Chat core, Mind central resolver, Trust Compass policy, Rail core writer/schema, Systems Check core logic, or the shared executor. |
-| **Designated PAIGE Chat workstream** | The bounded Chat read/write adapter or tool, tenant/client scope, approval treatment, governed invocation, and final user-visible Chat behavior. It closes the authenticated Chat capability end to end. | Rewriting the domain's source of truth or bypassing the domain server contract. |
+| **Designated PAIGE Chat workstream** | The bounded Chat read/write adapter or tool, tenant/client scope, binding to the canonical approval gate when required, governed invocation, and final user-visible Chat behavior. It closes the authenticated Chat capability end to end and exclusively owns changes to how approval is proven. | Rewriting the domain's source of truth, bypassing the domain server contract, or accepting a second approval channel from another slice. |
 | **Designated shared-Spine owner(s)** | Central interfaces and policy for Mind resolution, the future server-persisted Compass contract, Rail core, Systems Check core, the centralized registry/action-risk policy, and shared execution. They accept or reject precise Spine Change Requests and protect cross-domain invariants. | Quietly absorbing domain truth, provider payloads, or feature-specific business logic into a shared core. |
 
 Feature/domain agents must **not** directly wire, fork, or rewrite:
@@ -156,7 +168,7 @@ coverage remain owed and must be grounded in their own implementation workstream
 
 ---
 
-## 5. Read and action are separate capabilities; current authority is server-side
+## 5. Read and action are separate capabilities; approval has one canonical source
 
 Publishing safe evidence does not authorize an action. Registering an action does not make it
 autonomous. Recording an outcome does not prove the action was authorized or successful.
@@ -165,12 +177,21 @@ For every governed domain action:
 
 - the server re-resolves tenant/account/client scope and the active actor;
 - the domain authorization contract establishes the caller's maximum permission;
-- the centralized server action-risk policy determines whether the action is off, may run, or must
-  enter the confirmation/approval gate;
-- approval treatment is capability-specific, explicit, and enforced before the side effect;
+- the centralized server action-risk policy classifies the action and routes it to the canonical
+  approval gate when required;
+- the feature/domain workstream registers the capability but does not create or reinterpret approval
+  proof;
 - execution is bounded, attributable, idempotent where external effects are possible, recoverable,
   and fail-closed; and
 - the final outcome is normalized safely for Rail and the owning human surface.
+
+**Approval authority and mechanics are delegated to
+`docs/doctrine/one-approval-gate.md`.** That PAIGE Chat-owned file decides how operator intent is
+proven, how a gated action binds to the approved call, and which approval-channel shapes CI forbids.
+This standard owns the whole Spine architecture around that segment and intentionally does not
+duplicate those rules. Adding a normal gated capability is self-service within the stable
+classification/registry contract; changing how approval is proven belongs to the PAIGE Chat
+workstream.
 
 **Trust Compass does not currently evaluate or authorize the action.** Its UI is non-authoritative
 today. A future server-persisted Compass contract may further restrict the already-authorized domain
@@ -194,7 +215,7 @@ PAIGE Chat owner:
 Shared-Spine owner(s):
 
 Publishes client evidence: YES / NO — event kinds and safe contract, or reason
-Registers a governed action: YES / NO — capability and approval treatment, or reason
+Registers a governed action: YES / NO — capability and canonical approval-gate classification, or reason
 Emits an attributable outcome: YES / NO — safe outcome/reference, or reason
 No Spine obligation: YES / NO — evidence-backed reason; cannot be selected with a YES above
 
@@ -225,7 +246,7 @@ A precise Spine Change Request states:
 2. the missing shared interface and its designated owner;
 3. the safe evidence/action/outcome contract needed — normalized fields, never raw samples;
 4. tenant/account/client scope and active-user visibility rules;
-5. permission ceiling, server action-risk policy, and confirmation/approval treatment;
+5. permission ceiling, server action-risk policy, and dependency on the canonical approval source;
 6. expected Rail outcome/provenance and the human page that owns intervention;
 7. known producers, consumers, collisions, migration/backfill implications, and failure behavior;
 8. current implementation maturity and exact `UNVERIFIED` limits; and
@@ -246,7 +267,7 @@ A domain can claim **Spine-complete** only when every declared leg is proven at 
 - account/client switching cannot retain the prior scope;
 - missing, stale, partial, denied, retry, abandonment, and recovery states are truthful;
 - any action respects the domain permission ceiling, centralized server action-risk policy, and
-  confirmation/approval gate;
+  canonical approval gate;
 - the outcome is attributable and reaches the intended Rail/page consumer without raw content; and
 - authenticated end-to-end behavior is verified for each claimed capability.
 
@@ -272,6 +293,11 @@ authenticated capability.
 
 ## 10. Relationship to existing contracts
 
+- `docs/doctrine/one-approval-gate.md` is the **exclusive authority for the approval segment** of
+  the Spine. It is owned by the PAIGE Chat workstream. This document governs the full pathway but
+  does not redefine how approval is proven. At this exact audit it is supplied by unmerged PR #675 head
+  `6cf2386622980df97c4d55061528094680f5a95b`; merge order is #675 first, then rebase/reverify this
+  branch so the canonical cross-reference exists on `main`.
 - `docs/brain/paige-brain-wiring-standard.md` is the runtime-brain coverage ledger and implementation
   checklist. This document governs the cross-workstream ownership split and the broader evidence ->
   Chat/Mind -> action -> outcome architecture.
