@@ -5,203 +5,201 @@
  * WHAT THIS GUARDS. `_shared/paige-spine/governedExecution.ts` is the shared seam every caller —
  * Chat, an automation, an agent, a skill, a future MCP surface — runs a capability through. Its
  * load-bearing property is that it is BLIND to which door knocked: identical inputs must produce
- * identical decisions whether the caller is Chat or an MCP client, because the moment a decision
- * consults the door, "reach it a different way" becomes a way to gain permission.
+ * identical decisions, because the moment a decision consults the door, "reach it a different way"
+ * becomes a way to gain permission.
  *
- * A test already asserts that property across every door. This guard exists because a test asserts
- * the property for the inputs it enumerates, and a later edit can add a branch for a door the test
- * did not think of. The guard asserts the ABSENCE of the branch, which is the stronger claim, and
- * it is the same reason `action-risk.ts` is a file rather than a Set beside the gate.
+ * A test asserts that property across the inputs it enumerates. This guard asserts the ABSENCE of
+ * the branch, which is the stronger claim and survives inputs nobody thought of.
  *
- * THE THREE RULES
+ * WHY THIS USES THE TYPESCRIPT AST AND NOT REGEXES.
+ * ------------------------------------------------
+ * The first two versions matched patterns over lightly-stripped source. Codex review found SEVEN
+ * ways past them across two rounds, and every one was the same mistake — reading a SPELLING where
+ * the meaning is what matters:
  *
- *   R1  DOOR-BLIND. `governedExecution.ts` may record `door` on the audit line and may name it in
- *       types. It may not compare it, switch on it, or condition on it.
+ *   R1  `caller["door"] === "mcp"`                     computed access; stripping removed `door`
+ *   R2  `import * as c from "../toolConfirmation.ts"`  the binding never names the function
+ *   R2  `await import("../toolConfirmation.ts")`       not a static `import … from` at all
+ *   R3  `approved?: true | false`                      no `boolean` token
+ *   R3  `readonly approved?: boolean`                  a modifier before the property name
+ *   R4  `client["rpc"](…)`                             computed access again
+ *   R4  `const claim = client.rpc.bind(client)`        an alias, not a call — and the repository
+ *                                                      really does write this, at
+ *                                                      `src/components/admin/studio/studio.ts:200`
  *
- *   R2  NO SECOND ASSEMBLY. `decideToolConfirmation` is the canonical approval decision. Only the
- *       Chat handler (which owns the inline sequence this seam was extracted from) and the seam
- *       itself may call it directly. A new caller assembling the gate for itself is how a platform
- *       ends up with three locks on one door, which is what `one-approval-gate-lint` and
- *       `docs/doctrine/one-approval-gate.md` exist to stop — this extends that rule to the shared
- *       pathway rather than duplicating its guard.
+ * Each fix was another pattern, and the next spelling always won. A parser removes the class:
+ * `typescript` is already a devDependency, so the guard now reads the program instead of the text.
  *
- *   R3  NO BOOLEAN APPROVAL INPUT. `GovernedApproval` may not declare a boolean field. An approval
- *       that a caller can express as `true` is an approval a MODEL can express as `true` — the
- *       #784 shape. On this seam an approval is a successful atomic claim of a server-held
- *       proposal, or it is nothing, and that must remain structurally true rather than merely
- *       conventional.
+ * THE FOUR RULES
+ *   R1  The seam never READS the calling door except to record it on the audit line.
+ *   R2  Nothing imports the superseded, unwired #711 gate — statically, dynamically, or by require.
+ *   R3  `GovernedApproval` declares `autonomyLane` and `claimedArgs` and nothing else. An allowlist,
+ *       not a hunt for `boolean`: a forbidden-name list loses to the next name, and a type-shape
+ *       check loses to the next type alias.
+ *   R4  The seam never touches a claim or a data client — not `.rpc(`/`.from(`, and not a reference
+ *       to them either, since `.rpc.bind(client)` is a claim wearing a different hat.
  *
- * ESCAPE HATCH. `// governed-execution-exempt: <reason>` on the line — deliberate and explained.
+ * ESCAPE HATCH: `// governed-execution-exempt: <reason>` on the line — deliberate and explained.
  *
- * WHAT PASSING DOES NOT MEAN. It does not mean a capability is governed; nothing is required to USE
- * the seam yet. It means the seam has not acquired a door-dependent branch, a rival assembly, or a
- * boolean approval input.
+ * WHAT PASSING DOES NOT MEAN. Nothing is required to USE the seam yet, so this proves the seam has
+ * not acquired a door-dependent branch, a rival assembly, a boolean approval input, or its own
+ * claim. It does not prove any capability is governed.
  *
  *   node scripts/ci/governed-execution-lint.mjs
  *   node scripts/ci/governed-execution-lint.mjs --self-test
  */
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 const SEAM = "supabase/functions/_shared/paige-spine/governedExecution.ts";
-
-/**
- * `_shared/toolConfirmation.ts` (#711) is SUPERSEDED and, by the Chat handler's own merge note at
- * `paige-ai-chat/index.ts:7922`, "in the tree unwired". It was replaced on 2026-09-02 by the inline
- * sequence over `paige_pending_confirmations`, which executes the STORED arguments and proves the
- * proposal predates the turn by REQUEST identity rather than by a timestamp.
- *
- * Nothing in production imports it. Re-wiring it is an approval-SEMANTICS change and belongs to the
- * Chat build, so no file may adopt it quietly — including this seam, which nearly did, because it
- * is a pure decision function of exactly the right shape and its two decisions agree on the obvious
- * fixtures. Agreement on fixtures is not the same as being the mechanism production runs.
- */
-const GATE_ADOPTION_ALLOWLIST = new Set([]);
-
-/** The seam receives a claim result; it must never perform a claim. Claiming has one home. */
-const CLAIMING = /paige_pending_confirmations|claimConfirmation|confirmFingerprint|\.from\(|\.rpc\(/;
-
+const SUPERSEDED = /(^|\/)toolConfirmation(\.ts)?$/;
+const CLAIM_NAMES = /^(paige_pending_confirmations|claimConfirmation|confirmFingerprint)$/;
+const DATA_METHODS = new Set(["rpc", "from"]);
 const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
 
-/**
- * Rewrite computed member access to dot access BEFORE anything strips strings.
- *
- * `caller["door"]` and `client["rpc"](…)` are ordinary JavaScript and mean exactly what
- * `caller.door` and `client.rpc(…)` mean — but the property name lives inside a STRING, so any
- * check that strips strings first sees `caller[""]` and `client[""](…)` and matches nothing.
- * Codex raised this as two separate evasions (R1 and R4) on `55b578fc`; both were real, and both
- * are one bug: the guard was reading syntax that the stripper had already destroyed.
- *
- * Normalising first means the rules match the MEANING rather than one spelling of it.
- */
-export function normalizeComputedAccess(src) {
-  return src.replace(/\[\s*(["'`])([A-Za-z_$][A-Za-z0-9_$]*)\1\s*\]/g, ".$2");
+function parse(src, fileName = "in-memory.ts") {
+  return ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 }
+function walk(node, visit) { visit(node); node.forEachChild((c) => walk(c, visit)); }
+function lineOf(sf, node) { return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1; }
+function lineText(src, line) { return (src.split("\n")[line - 1] ?? "").trim(); }
+
+/** The string a node denotes, when it is a literal. */
+function lit(node) { return node && ts.isStringLiteralLike(node) ? node.text : null; }
 
 /**
- * Remove comments but KEEP string bodies.
+ * R1 — every READ of a `door` property, except the one that records it on the audit line.
  *
- * R2 matches on a module SPECIFIER, which lives inside a string — the full stripper blanks exactly
- * the thing it needs to read, which is how the namespace-import evasion survived a first fix.
+ * Structural rather than spelling-based: `caller.door` and `caller["door"]` are the same read to a
+ * parser, and so is any future spelling. Recording it (`door: caller.door` inside an object
+ * literal) is the single legitimate use, so that shape — and only that shape — is allowed.
  */
-export function stripComments(src) {
-  let out = "", i = 0;
-  while (i < src.length) {
-    const c = src[i], n = src[i + 1];
-    if (c === "/" && n === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
-    if (c === "/" && n === "*") { i += 2; while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++; i += 2; continue; }
-    if (c === '"' || c === "'" || c === "`") {
-      const q = c; out += c; i++;
-      while (i < src.length) { if (src[i] === "\\") { out += src.slice(i, i + 2); i += 2; continue; }
-                               out += src[i]; if (src[i] === q) { i++; break; } i++; }
-      continue;
-    }
-    out += c; i++;
-  }
-  return out;
-}
-
-/** Remove comments and string/template bodies so prose and messages cannot trip a rule. */
-export function stripCommentsAndStrings(src) {
-  let out = "", i = 0;
-  while (i < src.length) {
-    const c = src[i], n = src[i + 1];
-    if (c === "/" && n === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
-    if (c === "/" && n === "*") { i += 2; while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++; i += 2; continue; }
-    if (c === '"' || c === "'" || c === "`") {
-      const q = c; i++;
-      while (i < src.length) { if (src[i] === "\\") { i += 2; continue; } if (src[i] === q) { i++; break; } i++; }
-      out += '""'; continue;
-    }
-    out += c; i++;
-  }
-  return out;
-}
-
-/** R1 — any `door` used in a comparison or a condition. */
 export function doorBranches(src) {
-  const code = stripCommentsAndStrings(normalizeComputedAccess(src));
+  const sf = parse(src);
   const hits = [];
-  const patterns = [
-    /\bdoor\b\s*(===|!==|==|!=)/g,                    // door === "mcp"
-    /(===|!==|==|!=)\s*[A-Za-z0-9_.?]*\bdoor\b/g,     // "mcp" === caller.door
-    /\b(if|switch|while)\s*\([^)]*\bdoor\b/g,         // if (caller.door …)
-    /\bdoor\b[^;\n]*\?[^:\n]*:/g,                     // caller.door ? … : …
-  ];
-  for (const re of patterns) {
-    let m;
-    while ((m = re.exec(code))) {
-      const line = code.slice(0, m.index).split("\n").length;
-      const raw = src.split("\n")[line - 1] ?? "";
-      if (EXEMPT.test(raw)) continue;
-      hits.push({ line, text: raw.trim() });
-    }
-  }
-  // One violation is a LINE, not a regex match — several patterns describe the same branch
-  // (`if (caller.door === "mcp")` is both an equality and a condition), and counting it twice
-  // would make the self-test's expected numbers meaningless.
+  walk(sf, (n) => {
+    let isDoorRead = false;
+    if (ts.isPropertyAccessExpression(n) && n.name.text === "door") isDoorRead = true;
+    if (ts.isElementAccessExpression(n) && lit(n.argumentExpression) === "door") isDoorRead = true;
+    if (!isDoorRead) return;
+    // The one permitted use: `door: <this read>` as an object-literal property.
+    const p = n.parent;
+    if (p && ts.isPropertyAssignment(p) && p.initializer === n &&
+        p.name && ts.isIdentifier(p.name) && p.name.text === "door") return;
+    const line = lineOf(sf, n);
+    if (EXEMPT.test(lineText(src, line))) return;
+    hits.push({ line, text: lineText(src, line) });
+  });
   const byLine = new Map();
   for (const h of hits) if (!byLine.has(h.line)) byLine.set(h.line, h);
   return [...byLine.values()].sort((a, b) => a.line - b.line);
 }
 
 /**
- * R3 — `GovernedApproval` may declare these fields and NOTHING else.
+ * R2 — any load of the superseded module: static import, dynamic `import()`, or `require()`.
  *
- * The first version hunted for the literal token `boolean`, which Codex correctly showed is a
- * spelling check rather than a semantic one: `approved?: true | false`, `approved?: ApprovalFlag`,
- * or `approved?: 0 | 1` all declare a caller-expressible approval flag and none contains the word.
- * Chasing spellings is unwinnable without a type checker.
+ * Keyed on the MODULE, never on the binding: `import * as c from …` then `c.decideToolConfirmation`
+ * names the function nowhere in the import clause, and `await import(…)` is not an import
+ * declaration at all. The repository uses dynamic imports widely, so that form is not hypothetical.
+ */
+export function importsGate(src) {
+  const sf = parse(src);
+  let found = false;
+  walk(sf, (n) => {
+    if (found) return;
+    if (ts.isImportDeclaration(n)) {
+      const m = lit(n.moduleSpecifier);
+      if (m && SUPERSEDED.test(m)) { found = true; return; }
+      // A named import of the function through some other path still counts.
+      const clause = n.importClause?.namedBindings;
+      if (clause && ts.isNamedImports(clause) &&
+          clause.elements.some((e) => e.name.text === "decideToolConfirmation")) found = true;
+      return;
+    }
+    if (ts.isCallExpression(n)) {
+      const isDynamicImport = n.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isRequire = ts.isIdentifier(n.expression) && n.expression.text === "require";
+      if (!isDynamicImport && !isRequire) return;
+      const m = lit(n.arguments[0]);
+      if (m && SUPERSEDED.test(m)) found = true;
+    }
+  });
+  return found;
+}
+
+/**
+ * R3 — `GovernedApproval` may declare these members and nothing else.
  *
- * An ALLOWLIST inverts it. Two fields are legitimate — the lane, and the result of the atomic claim
- * — so anything else is a new approval input regardless of how its type is written, and the rule
- * needs no opinion about types at all. Fails closed when the declaration cannot be found.
+ * Reads real PropertySignature nodes, so a modifier (`readonly`), a quoted name, several members on
+ * one line, or any type spelling are all handled by the parser rather than by this rule. Fails
+ * closed when the declaration cannot be found.
  */
 const APPROVAL_FIELDS_ALLOWED = new Set(["autonomyLane", "claimedArgs"]);
 
 export function booleanApprovalFields(src) {
-  const code = stripCommentsAndStrings(src);
-  const m = code.match(/type\s+GovernedApproval\s*=\s*\{([\s\S]*?)\n\};/);
-  if (!m) return { parsed: false, fields: [] };
-  const declared = [...m[1].matchAll(/^\s*(\w+)\s*\??\s*:/gm)].map((x) => x[1]);
+  const sf = parse(src);
+  let members = null;
+  walk(sf, (n) => {
+    if (members) return;
+    if (ts.isTypeAliasDeclaration(n) && n.name.text === "GovernedApproval" &&
+        ts.isTypeLiteralNode(n.type)) members = n.type.members;
+    if (ts.isInterfaceDeclaration(n) && n.name.text === "GovernedApproval") members = n.members;
+  });
+  if (!members) return { parsed: false, fields: [] };
+  const declared = [];
+  for (const m of members) {
+    if (!ts.isPropertySignature(m) || !m.name) continue;
+    const nm = ts.isIdentifier(m.name) ? m.name.text : lit(m.name);
+    if (nm) declared.push(nm);
+  }
   return { parsed: true, fields: declared.filter((f) => !APPROVAL_FIELDS_ALLOWED.has(f)) };
 }
 
 /**
- * R2 — every file that IMPORTS the canonical gate.
+ * R4 — the seam receives a claim result; it never performs one.
  *
- * Keyed on the import rather than on the identifier, because the module that DEFINES
- * `decideToolConfirmation` necessarily names it and is not a caller of itself. A guard whose
- * first real run flags its own source of truth is a guard people learn to ignore.
+ * Flags a REFERENCE to a data method, not only a call, because `client.rpc.bind(client)` is a claim
+ * one alias away from being made — an idiom this repository already uses.
  */
-export function importsGate(src) {
-  const code = stripComments(src);
-  // Keyed on the MODULE, not on the binding. `import * as c from "../toolConfirmation.ts"` followed
-  // by `c.decideToolConfirmation(...)` names the function nowhere in the import clause, so a
-  // binding-name check let the exact adoption R2 exists to block straight through (Codex P2 on
-  // `55b578fc`). Any import of that module is the thing worth failing on.
-  if (/import[^;]*from\s*["'][^"']*\/toolConfirmation(\.ts)?["']/.test(code)) return true;
-  // Keep the named-import form too, for a re-export or a differently-rooted path.
-  return /import\s[^;]*\bdecideToolConfirmation\b[^;]*from/.test(code);
+export function claimTouches(src) {
+  const sf = parse(src);
+  const hits = [];
+  walk(sf, (n) => {
+    let why = null;
+    if (ts.isIdentifier(n) && CLAIM_NAMES.test(n.text)) why = n.text;
+    if (ts.isPropertyAccessExpression(n) && DATA_METHODS.has(n.name.text)) why = `.${n.name.text}`;
+    if (ts.isElementAccessExpression(n)) {
+      const k = lit(n.argumentExpression);
+      if (k && DATA_METHODS.has(k)) why = `["${k}"]`;
+    }
+    if (ts.isStringLiteralLike(n) && CLAIM_NAMES.test(n.text)) why = n.text;
+    if (!why) return;
+    const line = lineOf(sf, n);
+    if (EXEMPT.test(lineText(src, line))) return;
+    hits.push({ line, why });
+  });
+  const byLine = new Map();
+  for (const h of hits) if (!byLine.has(h.line)) byLine.set(h.line, h);
+  return [...byLine.values()].sort((a, b) => a.line - b.line);
 }
 
-/** Every file that calls the canonical gate directly. */
+/** Every file that loads the superseded gate. */
 export function gateCallers(roots) {
   const found = [];
-  const walk = (dir) => {
+  const walkDir = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
-      if (e.isDirectory()) { if (e.name !== "node_modules" && !e.name.startsWith(".")) walk(p); continue; }
+      if (e.isDirectory()) { if (e.name !== "node_modules" && !e.name.startsWith(".")) walkDir(p); continue; }
       if (!/\.(ts|tsx|mts)$/.test(e.name)) continue;
-      const src = fs.readFileSync(p, "utf8");
-      if (!importsGate(src)) continue;
       const rel = p.split(path.sep).join("/");
-      if (/\.(test|spec)\.(ts|tsx)$/.test(rel)) continue;   // tests exercise it on purpose
+      if (/\.(test|spec)\.(ts|tsx)$/.test(rel)) continue;
+      const src = fs.readFileSync(p, "utf8");
       if (EXEMPT.test(src)) continue;
-      found.push(rel);
+      if (importsGate(src)) found.push(rel);
     }
   };
-  for (const r of roots) if (fs.existsSync(r)) walk(r);
+  for (const r of roots) if (fs.existsSync(r)) walkDir(r);
   return found;
 }
 
@@ -209,60 +207,59 @@ export function gateCallers(roots) {
 if (process.argv.includes("--self-test")) {
   let bad = 0;
   const check = (label, got, want) => {
-    const okc = JSON.stringify(got) === JSON.stringify(want);
-    if (!okc) bad++;
-    console.log(`${okc ? "✓" : "✗"} ${label}${okc ? "" : ` — expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`}`);
+    const ok = JSON.stringify(got) === JSON.stringify(want);
+    if (!ok) bad++;
+    console.log(`${ok ? "✓" : "✗"} ${label}${ok ? "" : ` — expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`}`);
   };
 
-  check("R1 catches an equality branch on the door",
-    doorBranches(`if (caller.door === "mcp") return { kind: "execute" };`).length, 1);
-  check("R1 catches a reversed comparison",
-    doorBranches(`const x = "mcp" !== caller.door;`).length, 1);
-  check("R1 catches a switch on the door",
-    doorBranches(`switch (caller.door) { case "mcp": break; }`).length, 1);
-  check("R1 catches a ternary on the door",
-    doorBranches(`const lane = caller.door ? "auto" : "confirm";`).length, 1);
-  check("R1 allows recording the door on the audit line",
-    doorBranches(`const audit = { door: caller.door, decision };`).length, 0);
-  check("R1 allows the door in a type declaration",
-    doorBranches(`export type GovernedCaller = { door: GovernedDoor };`).length, 0);
-  check("R1 is not tripped by the word door in prose",
-    doorBranches(`// no caller gains permission through a different door === ever\nconst a = 1;`).length, 0);
-  check("R1 is not tripped by the word door in a string",
-    doorBranches(`const msg = "the door === here is prose";`).length, 0);
-  check("R1 respects an explained exemption",
-    doorBranches(`if (caller.door === "mcp") return x; // governed-execution-exempt: owner-ruled`).length, 0);
+  // R1
+  check("R1 equality branch", doorBranches('if (caller.door === "mcp") return x;').length, 1);
+  check("R1 reversed comparison", doorBranches('const a = "mcp" !== caller.door;').length, 1);
+  check("R1 switch", doorBranches("switch (caller.door) { case \"mcp\": break; }").length, 1);
+  check("R1 ternary", doorBranches('const l = caller.door ? "auto" : "confirm";').length, 1);
+  check("R1 COMPUTED access (Codex)", doorBranches('if (caller["door"] === "mcp") return x;').length, 1);
+  check("R1 computed, single quotes", doorBranches("if (caller['door']) return x;").length, 1);
+  check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
+  check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);
+  check("R1 ignores the word in prose", doorBranches('// a different door === ever\nconst a = 1;').length, 0);
+  check("R1 ignores the word in a string", doorBranches('const m = "the door === here";').length, 0);
+  check("R1 respects an exemption",
+    doorBranches('if (caller.door === "mcp") return x; // governed-execution-exempt: owner-ruled').length, 0);
 
-  check("R1 catches COMPUTED door access (Codex P2)",
-    doorBranches('if (caller["door"] === "mcp") return x;').length, 1);
-  check("R1 catches computed access with single quotes",
-    doorBranches("if (caller['door'] !== 'chat') return x;").length, 1);
-  check("R2 catches a NAMESPACE import of the superseded module (Codex P2)",
-    importsGate('import * as confirmation from "../toolConfirmation.ts";'), true);
-  check("R2 still catches the named import",
-    importsGate('import { decideToolConfirmation } from "../toolConfirmation.ts";'), true);
-  check("R3 catches a boolean-EQUIVALENT approval field (Codex P2)",
-    booleanApprovalFields('type GovernedApproval = {\n  autonomyLane: string;\n  approved?: true | false;\n};').fields,
-    ["approved"]);
-  check("R3 catches an aliased-type approval field",
-    booleanApprovalFields('type GovernedApproval = {\n  autonomyLane: string;\n  approved?: ApprovalFlag;\n};').fields,
-    ["approved"]);
+  // R2
+  check("R2 named import", importsGate('import { decideToolConfirmation } from "../toolConfirmation.ts";'), true);
+  check("R2 NAMESPACE import (Codex)", importsGate('import * as c from "../toolConfirmation.ts";'), true);
+  check("R2 DYNAMIC import (Codex)",
+    importsGate('const { decideToolConfirmation } = await import("../toolConfirmation.ts");'), true);
+  check("R2 require()", importsGate('const c = require("../toolConfirmation.ts");'), true);
+  check("R2 does not flag the defining module",
+    importsGate("export function decideToolConfirmation(i) { return i; }"), false);
+  check("R2 ignores the name in prose", importsGate("// decideToolConfirmation is canonical\nconst a=1;"), false);
 
-  check("R2 does not flag the module that DEFINES the gate",
-    importsGate(`export function decideToolConfirmation(input) { return { kind: "execute" }; }`), false);
-  check("R2 flags a file that imports the gate",
-    importsGate(`import { decideToolConfirmation } from "../toolConfirmation.ts";`), true);
-  check("R2 is not tripped by the name in prose",
-    importsGate(`// decideToolConfirmation is the canonical gate\nconst a = 1;`), false);
+  // R3
+  check("R3 plain boolean",
+    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; confirm?: boolean; };").fields, ["confirm"]);
+  check("R3 boolean-equivalent (Codex)",
+    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; approved?: true | false; };").fields, ["approved"]);
+  check("R3 aliased type (Codex)",
+    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; approved?: ApprovalFlag; };").fields, ["approved"]);
+  check("R3 READONLY modifier (Codex)",
+    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; readonly approved?: boolean; };").fields, ["approved"]);
+  check("R3 QUOTED property (Codex)",
+    booleanApprovalFields('type GovernedApproval = { autonomyLane: string; "approved"?: boolean; };').fields, ["approved"]);
+  check("R3 two members on one line",
+    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; a?: boolean; b?: boolean; };").fields, ["a", "b"]);
+  check("R3 passes the real shape",
+    booleanApprovalFields("type GovernedApproval = { autonomyLane: string; claimedArgs?: Record<string, unknown> | null; };").fields, []);
+  check("R3 fails closed when absent", booleanApprovalFields("type Other = { a: boolean };").parsed, false);
 
-  check("R3 catches a plain boolean approval field",
-    booleanApprovalFields(`type GovernedApproval = {\n  autonomyLane: string;\n  confirm?: boolean;\n};`).fields,
-    ["confirm"]);
-  check("R3 passes the real claim-only approval shape",
-    booleanApprovalFields(`type GovernedApproval = {\n  autonomyLane: string;\n  claimedArgs?: Record<string, unknown> | null;\n};`).fields,
-    []);
-  check("R3 reports when it could not parse the type",
-    booleanApprovalFields(`type Something = { a: boolean };`).parsed, false);
+  // R4
+  check("R4 direct rpc call", claimTouches('const r = await client.rpc("x", {});').length, 1);
+  check("R4 computed rpc call (Codex)", claimTouches('const r = await client["rpc"]("x", {});').length, 1);
+  check("R4 BOUND ALIAS (Codex)", claimTouches("const claim = client.rpc.bind(client);").length, 1);
+  check("R4 from()", claimTouches('const r = client.from("t");').length, 1);
+  check("R4 claim table name", claimTouches('const t = "paige_pending_confirmations";').length, 1);
+  check("R4 clean seam code", claimTouches("const risk = classifyAction(capability.id);").length, 0);
 
   console.log(bad ? `\n✗ governed-execution-lint self-test: ${bad} failure(s).`
                   : "\n✓ governed-execution-lint self-test passed.");
@@ -280,46 +277,42 @@ let failed = false;
 const branches = doorBranches(src);
 if (branches.length) {
   failed = true;
-  console.error(`✗ R1 door-blindness: ${branches.length} decision(s) branch on the calling door.\n`);
+  console.error(`✗ R1 door-blindness: ${branches.length} place(s) read the calling door outside the audit line.\n`);
   for (const b of branches) console.error(`  ${SEAM}:${b.line}  ${b.text}`);
   console.error("\n  A decision that consults the door makes 'reach it a different way' a way to gain");
-  console.error("  permission. Record the door on the audit line; never read it in a branch.");
+  console.error("  permission. Record the door on the audit line; never read it anywhere else.");
 }
 
 const approval = booleanApprovalFields(src);
 if (!approval.parsed) {
   failed = true;
-  console.error("\n✗ R3: could not parse the GovernedApproval declaration. Failing closed — a guard");
-  console.error("  that cannot find what it checks passes everything.");
+  console.error("\n✗ R3: could not find the GovernedApproval declaration. Failing closed.");
 } else if (approval.fields.length) {
   failed = true;
   console.error(`\n✗ R3 approval-input allowlist: GovernedApproval declares ${approval.fields.map((f) => `\`${f}\``).join(", ")}.`);
-  console.error("  Only `autonomyLane` and `claimedArgs` are permitted. Any other field is a new");
-  console.error("  approval input, whatever its type is spelled as — and an approval a caller can");
-  console.error("  express is one a MODEL can express (#784). An approval here is a successful");
-  console.error("  atomic claim, or it is nothing.");
+  console.error("  Only `autonomyLane` and `claimedArgs` are permitted. Any other member is a new");
+  console.error("  approval input whatever its type says — and an approval a caller can express is");
+  console.error("  one a MODEL can express (#784).");
 }
 
-const callers = gateCallers(["supabase/functions", "src"]);
-const rogue = callers.filter((f) => !GATE_ADOPTION_ALLOWLIST.has(f));
+const claims = claimTouches(src);
+if (claims.length) {
+  failed = true;
+  console.error(`\n✗ R4 one home for claiming: ${claims.length} reference(s) to a claim or data client.\n`);
+  for (const c of claims) console.error(`  ${SEAM}:${c.line}  ${c.why}`);
+  console.error("\n  The seam RECEIVES the result of the canonical atomic claim; it never runs one.");
+}
+
+const rogue = gateCallers(["supabase/functions", "src"]);
 if (rogue.length) {
   failed = true;
-  console.error(`\n✗ R2 no quiet adoption: ${rogue.length} file(s) import the SUPERSEDED #711 gate.\n`);
+  console.error(`\n✗ R2 no quiet adoption: ${rogue.length} file(s) load the SUPERSEDED #711 gate.\n`);
   for (const f of rogue) console.error(`  ${f}`);
-  console.error("\n  `_shared/toolConfirmation.ts` is unwired and superseded by the inline sequence over");
-  console.error("  `paige_pending_confirmations`. Adopting it would make a superseded design the shared");
-  console.error("  contract — an approval-semantics change, which belongs to the Chat build.");
-}
-
-// R4 — the seam receives a claim; it does not perform one.
-const seamCode = stripCommentsAndStrings(normalizeComputedAccess(src));
-if (CLAIMING.test(seamCode)) {
-  failed = true;
-  console.error("\n✗ R4 one home for claiming: the seam performs its own claim or data access.");
-  console.error("  It must RECEIVE the result of the canonical atomic claim, never run one. Two claim");
-  console.error("  protocols in series deadlock the first time their notions of \"the same action\" differ.");
+  console.error("\n  That module is unwired and superseded by the inline sequence over");
+  console.error("  `paige_pending_confirmations`. Adopting it is an approval-semantics change,");
+  console.error("  which belongs to the Chat build.");
 }
 
 if (failed) process.exit(1);
-console.log("✓ governed-execution-lint: seam is door-blind, declares no boolean approval input, "
-  + "performs no claim of its own, and nothing adopts the superseded #711 gate.");
+console.log("✓ governed-execution-lint: seam parsed via the TypeScript AST — door-blind, approval "
+  + "inputs allowlisted, no claim of its own, and nothing loads the superseded #711 gate.");
