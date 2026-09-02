@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { canonicalSoloSurfaces, SOLO_BRANCHES } from "@/lib/routing/tierBranches";
-import { SOLO_DELIVERY_CLASSES } from "@/lib/routing/soloSurfaceContract";
+import {
+  SOLO_BASELINE_EVIDENCE_FLOWS,
+  SOLO_DELIVERY_CLASSES,
+} from "@/lib/routing/soloSurfaceContract";
 import { SOLO_SETTINGS_DESTINATIONS } from "@/solo/settings-contract";
 import {
   isCanonicalSoloTenant,
@@ -74,5 +77,27 @@ describe("canonical Solo tenant alignment", () => {
       expect(surface.template).toBe("canonical_solo");
       expect(SOLO_DELIVERY_CLASSES).toContain(surface.delivery);
     }
+  });
+
+  it("names Campaigns Pipeline as shared template exposure with tenant-truth records", () => {
+    const pipelineFlow = SOLO_BASELINE_EVIDENCE_FLOWS.find(
+      (flow) => flow.id === "campaigns_pipeline",
+    );
+    const pipelineRoute = canonicalSoloSurfaces().find(
+      (surface) => surface.id === "growth/pipeline",
+    );
+
+    expect(pipelineFlow).toEqual({
+      id: "campaigns_pipeline",
+      branch: "growth",
+      subtab: "pipeline",
+      template: "canonical_solo",
+      delivery: "global_template",
+      stateDelivery: "tenant_truth",
+    });
+    expect(pipelineRoute).toMatchObject({
+      template: pipelineFlow?.template,
+      delivery: pipelineFlow?.delivery,
+    });
   });
 });

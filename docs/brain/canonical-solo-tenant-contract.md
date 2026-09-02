@@ -1,7 +1,7 @@
 # Canonical Solo tenant contract
 
-Baseline source inventory was inspected 2026-09-01 against `origin/main` at
-`71af89f4791af51474187236666af0ed5e2901b5`. Production schema/configuration was
+Baseline source inventory was refreshed 2026-09-02 against `origin/main` at
+`76bb3bbca74ff4214feba28995d5cd0b9196fb6b`. Production schema/configuration was
 observed read-only the same day in Supabase project `xygzykjyynhzqytbqnzu`.
 The proposed repair is represented by its review head, not that baseline SHA.
 Customer-facing identifiers are intentionally omitted.
@@ -77,7 +77,42 @@ runtime registry still enforces the canonical template. A route is normally
 must use `tenant_bootstrap`; it may not become a customer-name, UUID, plan, demo,
 or one-off SQL exception.
 
-## Read-only tenant-configuration snapshot — 2026-09-01
+## Named baseline-evidence flow — Campaigns → Pipeline
+
+Owner-supplied authenticated screenshots establish one real-tenant visual
+baseline for three connected parts of Campaigns → Pipeline. They are attributed
+evidence, not fixtures, cross-tenant proof, or authority to copy that tenant's
+records into the product:
+
+1. Pipeline board: stable pipeline references, stage lanes, and deal counts.
+2. Pipeline configuration: name and purpose plus editable tenant-owned custom
+   stages and move policy.
+3. Folder organizer: same-name pipelines remain distinguishable by their stable
+   references.
+
+The runtime route `growth/pipeline` is `template='canonical_solo'` with
+`delivery='global_template'`; Pipeline records are `tenant_truth`. Every active
+top-level standalone tenant therefore receives the same Campaigns/Pipeline
+owner, controls, empty/loading/error states, and governed contracts. Pipeline
+names, purposes, stages, deals, folders, permissions, and lifecycle state may
+truthfully differ by tenant.
+
+Read-only production aggregation on 2026-09-02 found 4 active top-level
+standalone tenants and Pipeline records for all 4. All pipeline records had
+stable references. Across the cohort there were 6 pipelines, 33 stages with a
+declared move policy, 1 deal linked to a pipeline, and 0 folder records. One
+tenant had same-name pipelines, validating the stable-reference requirement.
+The shared `get_pipeline_workspace`, `get_pipeline_catalogue`,
+`configure_tenant_pipeline`, and `configure_tenant_pipeline_as_paige` contracts
+were present. No tenant name, account address, tenant identifier, pipeline name,
+reference, stage label, deal, screenshot, or per-row result is retained here.
+
+This proves shared code/schema exposure and aggregate substrate coverage. The
+owner-supplied screenshots prove the named flow for one authenticated tenant.
+Authenticated UI proof across every active standalone tenant remains
+`UNVERIFIED`.
+
+## Read-only tenant-configuration snapshot — 2026-09-02
 
 Privacy-safe read-only SQL returned:
 
@@ -101,8 +136,8 @@ Observed tenant feature-key differences were playbook/configuration, enabled
 skills, finance scope, portal configuration, and ownership metadata. Those are
 truthful per-tenant state. None is a valid shell/template selector.
 
-The database migration ledger and repository both contained 886 migrations;
-production maximum was `20261021000000`. The permanent account-address trigger
+The database migration ledger and repository both contained 910 migrations;
+production maximum was `20261040000000`. The permanent account-address trigger
 and the current Setup/A2P substrate migrations were applied. Main's governed
 Pipeline-folders migration `20260901144648` was also applied and introduces no
 tenant-specific seed. This is schema-ledger
@@ -152,9 +187,9 @@ and regression proof remains required for every capability claimed LIVE.
 
 ## Release boundary
 
-This contract authorizes code, tests, documentation, draft review, and a preview.
-It does not authorize production data changes, merge, promotion, or deployment.
-Any code-repair release requires a separate exact-head final go-live approval.
-Gate 2 and go-live are blocked by the confirmed Setup visual defect until either
-Setup is repaired under the existing form-fit law or the owner explicitly
-approves a different design contract.
+The owner supplied final go-live authorization on 2026-09-01. That authorization
+cannot be exercised over a known acceptance defect: Gate 2, merge, promotion,
+deployment, and production data changes remain blocked by the confirmed Setup
+visual defect. Release may proceed only after Setup is repaired under the
+existing form-fit law, or the owner explicitly approves a different design
+contract, and fresh exact-head verification clears the resulting implementation.

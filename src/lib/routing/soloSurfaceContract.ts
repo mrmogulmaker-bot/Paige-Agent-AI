@@ -10,3 +10,22 @@ export interface SoloSurfaceDeclaration {
   template: typeof CANONICAL_SOLO_TEMPLATE;
   delivery: SoloDeliveryClass;
 }
+
+export interface SoloBaselineEvidenceFlow extends SoloSurfaceDeclaration {
+  id: string;
+  branch: string;
+  subtab: string;
+  stateDelivery: "tenant_truth";
+}
+
+/** Named owner-evidence flows that must stay on the shared Solo template. */
+export const SOLO_BASELINE_EVIDENCE_FLOWS: readonly SoloBaselineEvidenceFlow[] = [
+  {
+    id: "campaigns_pipeline",
+    branch: "growth",
+    subtab: "pipeline",
+    template: CANONICAL_SOLO_TEMPLATE,
+    delivery: "global_template",
+    stateDelivery: "tenant_truth",
+  },
+];
