@@ -38,7 +38,10 @@ export const PIPELINE_DEAL_STAGE_EVIDENCE = {
     railVisibility: "owner_internal",
   },
   chatBinding: "PARTIAL",
-  mindBinding: "UNAVAILABLE",
+  // PARTIAL, not LIVE: the Mind projection, its citation and its read-only framing are
+  // implemented and covered by focused tests, but no authenticated end-to-end proof
+  // exists yet. LIVE requires that drive, not this declaration.
+  mindBinding: "PARTIAL",
   sharedPrimitiveChange: "NONE",
   maturity: "PARTIAL",
 } as const satisfies SpineCapability;

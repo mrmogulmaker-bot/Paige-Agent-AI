@@ -1,48 +1,29 @@
 import type { SpineEvidenceRpcClient, SpineEvidenceResult, SpineRequestScope } from "./resolveEvidence.ts";
-import { resolveSpineEvidence } from "./resolveEvidence.ts";
-
-const CAPABILITY_KEY = "pipeline.deal_stage_evidence";
-const HEADER = "=== PAIGE SPINE — VERIFIED PIPELINE EVIDENCE ===";
-const FOOTER = "=== END PAIGE SPINE EVIDENCE ===";
-const UNAVAILABLE = [
-  HEADER,
-  "Status: UNAVAILABLE",
-  "No verified Pipeline evidence is available for this turn. Do not infer activity, absence, or outcomes.",
-  FOOTER,
-].join("\n");
+import { loadPipelineMindEvidence, projectPipelineMindEvidence, renderPipelineMindEvidence } from "./mindEvidence.ts";
 
 /**
- * Render only the fixed fields that the registry and resolver already validated.
- * Tenant ids, signal ids, subject references, raw Rail references, and source payloads
- * are intentionally excluded from model context.
+ * Chat's adapter onto the Pipeline domain's Mind projection.
+ *
+ * This file used to render the resolver's signals directly. It now renders the Mind
+ * result instead, so Chat and Mind cannot drift into two accounts of the same record —
+ * there is one projection and one wording, and Chat is a caller of it (§18).
+ *
+ * The exported names and signatures are unchanged, so `paige-ai-chat/index.ts` needs no
+ * edit: the handler's call site, its caller-scoped client, its abort-backed scope check
+ * and its buffered final-scope gate all behave exactly as before.
+ *
+ * WHAT CHANGED, and why it needed an owner ruling: the rendered block now names the
+ * opaque `rail:` source reference, which the previous contract deliberately withheld
+ * from model context. Owner-approved Spine Change Request, 2026-09-02 — a citation the
+ * person can see is what separates "PAIGE says so" from "the record says so". The
+ * forbidden fields are unchanged and still never cross: raw title, summary, payload,
+ * stage name, deal id, tenant, client, contact or user identifier, provider body,
+ * secret, or reasoning trace.
  */
+
+/** Render only the fields the registry, the resolver and the Mind projection have all validated. */
 export function renderSpineEvidenceForChat(result: SpineEvidenceResult): string {
-  if (result.status !== "available") return UNAVAILABLE;
-  if (!result.signals.length) {
-    return [
-      HEADER,
-      "Status: NO VERIFIED EVIDENCE",
-      "The safe projection returned no matching Pipeline outcomes. Do not treat that as proof that no activity occurred.",
-      FOOTER,
-    ].join("\n");
-  }
-
-  const lines = result.signals.map((signal) => {
-    const facts = Object.entries(signal.facts)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => `${key}=${String(value)}`)
-      .join("; ");
-    return `- ${signal.occurred_at} | ${signal.availability} | ${signal.safe_summary} | ${facts}`;
-  });
-
-  return [
-    HEADER,
-    `Capability: ${CAPABILITY_KEY}`,
-    "Status: AVAILABLE",
-    ...lines,
-    "Use only these listed facts. Do not infer the deal, stage, value, reason, person, or any unlisted outcome.",
-    FOOTER,
-  ].join("\n");
+  return renderPipelineMindEvidence(projectPipelineMindEvidence(result));
 }
 
 export async function loadSpineEvidenceForChat(
@@ -50,10 +31,5 @@ export async function loadSpineEvidenceForChat(
   clientRef: string,
   scope: SpineRequestScope,
 ): Promise<string> {
-  const result = await resolveSpineEvidence(client, CAPABILITY_KEY, {
-    clientRef,
-    limit: 20,
-    scope,
-  });
-  return renderSpineEvidenceForChat(result);
+  return renderPipelineMindEvidence(await loadPipelineMindEvidence(client, clientRef, scope, 20));
 }

@@ -29,16 +29,24 @@ const signal: SpineSignal = {
 };
 
 describe("PAIGE Spine Chat binding", () => {
-  it("renders only bounded model-safe evidence and drops internal provenance", () => {
+  it("renders bounded model-safe evidence, the approved citation, and the read-only boundary", () => {
     const block = renderSpineEvidenceForChat({ status: "available", signals: [signal] });
     expect(block).toContain("PAIGE SPINE — VERIFIED PIPELINE EVIDENCE");
     expect(block).toContain("A pipeline stage changed.");
     expect(block).toContain("change_type=stage_changed");
     expect(block).toContain("outcome=succeeded");
+    // Owner-approved Spine Change Request, 2026-09-02: the opaque record handle is the
+    // citation. It is the ONE identifier permitted to cross, and it must be present —
+    // an uncited claim is the thing this slice exists to stop.
+    expect(block).toContain(`source: ${signal.source_record_ref}`);
+    expect(block).toContain("read-only");
+    // Everything else still stops at the boundary. The Rail record's own UUID appears
+    // ONLY inside that citation, never loose: `rail:<uuid>` names the record, and a bare
+    // UUID beside it would read as a deal or client id to anything parsing this block.
     expect(block).not.toContain(signal.tenant_id);
-    expect(block).not.toContain(signal.signal_id);
-    expect(block).not.toContain(signal.source_record_ref);
     expect(block).not.toContain(signal.subject_ref);
+    expect(block.split(signal.signal_id).length - 1).toBe(1);
+    expect(block).not.toContain(` ${signal.signal_id}`);
   });
 
   it("uses the registered resolver through the supplied caller-scoped client", async () => {

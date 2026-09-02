@@ -246,6 +246,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/DONE.md` | Completed-task archive (§24 hygiene) | History of shipped tasks |
 | `docs/doc-render-decision.md` | HTML→PDF rendering microservice decision (Lane C) | PDF/rendering pipeline |
 | `docs/handoffs/money-spine-lane-b-handoff-2026-07-25.md` | Money Spine Lane B handoff | Money-spine continuation |
+| `docs/delivery/paige-spine-mind-handoff.md` | First PAIGE Mind slice: the Pipeline evidence projection, the approved citation SCR, the client-scope seam, proof by class, and the collision-safe Second Brain blocks owed while PR #729 holds `decision-log.md` and `lessons-learned.md` | Any Mind, Spine, Pipeline-evidence or PAIGE-client-scope work |
 | `docs/tenants/mma/tenant-kb-marketing-copy.md` | MMA tenant marketing/positioning KB (tenant-scoped) | MMA-tenant copy (never a platform default, §9) |
 | `docs/PULL_REQUEST_TEMPLATE.md` / `docs/PULL_REQUEST_TEMPLATE.md` | PR template | Opening a PR |
 
