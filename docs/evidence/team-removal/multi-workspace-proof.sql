@@ -9,7 +9,7 @@
 -- so it was replaced with this.
 --
 -- The migration body below is inlined from
--- supabase/migrations/20261043000000_an_owner_can_remove_someone_from_their_workspace.sql with its
+-- supabase/migrations/20261044000000_an_owner_can_remove_someone_from_their_workspace.sql with its
 -- comments stripped. Applying it inside the transaction is what makes this a genuine execution proof
 -- rather than a reading of the SQL: if the function did not compile or a guard did not fire, the
 -- scenarios below would say so.
