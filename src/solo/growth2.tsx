@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, PageHead } from "./_shared";
 import { useSoloCampaigns } from "./useSoloCampaigns";
+import { CatalogOffers } from "./catalog-offers";
 import "./solo-campaigns.css";
 
 // Vibe Studio still imports this project-only fixture. Campaigns never renders it;
@@ -19,6 +20,7 @@ export const GR={projects:[
 const TRUTH = {
   overview: ["UNAVAILABLE", "A tenant-authorized all-state campaign rollup is not yet available."],
   catalog: ["PARTIAL", "Published pages, funnels, forms, and captured submissions come from tenant-scoped records."],
+  offers: ["PARTIAL", "Offers are read from this workspace’s own product records. Defining and editing them arrives on this screen next; nothing here is a checkout."],
   sales: ["PROPOSED", "Captured activity can be traced, but a consolidated campaign-sales owner is not available."],
   pipeline: ["PROPOSED", "Only explicit form routing configuration and recorded outcomes are shown."],
   social: ["UNAVAILABLE", "A customer-facing social provider connection is not ready."],
@@ -102,11 +104,27 @@ function Overview({ data, setDetail }) {
   </section>;
 }
 
+// Catalog holds TWO durable concepts under one tab (owner ruling, Gate 1 2026-09-02):
+//   Offers          — what this business sells. Catalog owns the definition.
+//   Published assets — the Vibe-owned pages, funnels and forms that present it. Unchanged, and
+//                      deliberately NOT deleted or reframed as offers.
+// A legacy address (/growth/pages and its four siblings, or ?type=) still means the Vibe-owned
+// half, so an incoming `initialType` opens Published assets rather than Offers.
 function Catalog({ data, setDetail, initialType }) {
+  const [section, setSection] = React.useState(initialType ? "assets" : "offers");
   const [type, setType] = React.useState(initialType || "all");
-  React.useEffect(()=>{ if(initialType) setType(initialType); },[initialType]);
+  React.useEffect(()=>{ if(initialType){ setType(initialType); setSection("assets"); } },[initialType]);
   const shown = type === "all" ? data.artifacts : data.artifacts.filter((artifact)=>artifact.type===type);
-  return <section className="campaigns-surface"><SurfaceHead truthKey="catalog" title="Published catalog" description="Read-only published outputs owned by Vibe Studio." action={<div className="campaigns-segmented" aria-label="Filter published outputs">{["all","page","funnel","form"].map((item)=><button key={item} aria-pressed={type===item} onClick={()=>setType(item)}>{item === "all" ? "All" : `${item[0].toUpperCase()}${item.slice(1)}s`}</button>)}</div>}/>
+  const offers = section === "offers";
+  const sectionSwitch = <div className="campaigns-segmented" aria-label="What this tab shows">
+    <button aria-pressed={offers} onClick={()=>setSection("offers")}>Offers</button>
+    <button aria-pressed={!offers} onClick={()=>setSection("assets")}>Published assets</button>
+  </div>;
+  if (offers) return <section className="campaigns-surface"><SurfaceHead truthKey="offers" title="Offers" description="What this business sells — products, services, programs, packages and consultations." action={sectionSwitch}/>
+    <CatalogOffers setDetail={setDetail}/>
+  </section>;
+  return <section className="campaigns-surface"><SurfaceHead truthKey="catalog" title="Published assets" description="Read-only published outputs owned by Vibe Studio." action={sectionSwitch}/>
+    <div className="campaigns-segmented" aria-label="Filter published outputs" style={{margin:"12px 19px 0"}}>{["all","page","funnel","form"].map((item)=><button key={item} aria-pressed={type===item} onClick={()=>setType(item)}>{item === "all" ? "All" : `${item[0].toUpperCase()}${item.slice(1)}s`}</button>)}</div>
     <StateFrame phase={data.phase} retry={data.retry} noun="published outputs">{shown.length===0?<Empty title="No published outputs in this view" detail="Create and publish creative work in Vibe Studio. Campaigns will list only grounded published outputs here."/>:<div className="campaigns-catalog-grid">{shown.map((artifact)=><article className="campaigns-artifact" key={`${artifact.type}-${artifact.id}`}><div><span className="campaigns-type">{artifact.type}</span><h3>{artifact.name}</h3><p>Updated {formatDate(artifact.updatedAt)}</p></div><div className="campaigns-artifact-actions"><button className="btn btn-s" onClick={()=>setDetail({title:artifact.name,rows:[["Type",artifact.type],["Published state",artifact.status],["Recent captures",artifact.type==="form"?`${artifact.recentSubmissions} in the latest 200 workspace submissions`:"Not available"],["Routing contract",artifact.type==="form"?(artifact.routingConfigured?"Configured":"Not configured"):"Not applicable"]],note:"Creative changes remain in Vibe Studio. Recent capture counts are a bounded window, not lifetime totals."})}>Details</button>{artifact.publicHref&&<a className="btn btn-s" href={artifact.publicHref} target="_blank" rel="noreferrer">Open published <Ic.arrow size={12}/></a>}</div></article>)}</div>}</StateFrame>
   </section>;
 }

@@ -1569,3 +1569,56 @@ and exposes only masked registration-number state on reload. This does **not** m
 from Agency, sub-account, Enterprise, pure-client, or platform-operator surfaces. Those tiers may
 later consume or administer the same canonical record only through a separately approved flow.
 The platform operator's master-account Primary Customer Profile is distinct from every tenant's subaccount Secondary Customer Profile.
+
+### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
+
+**§66, same commit as the change — and this row is NOT a ship.** Slice 2A is a DRAFT pull request.
+Nothing here is merged, nothing is deployed, and migration `20261044000000` is **not applied to
+production**: it has a `BEGIN..ROLLBACK` proof against prod ref `xygzykjyynhzqytbqnzu` and the
+rollback was confirmed clean (0 rows, original `tenant_products_status_check` intact, 0 new columns).
+The row exists so the matrix records what is in flight rather than going quiet until merge; read
+every cell as "what this change would make true", never as live availability.
+
+**What the change is.** Campaigns → Catalog now holds two durable concepts under one tab, per the
+owner's Gate 1 ruling of 2026-09-02: **Offers** (the tenant's commercial definition — what the
+business sells) as the default section, and **Published assets** (the Vibe-owned pages, funnels and
+forms) preserved unchanged beside it, keeping its ownership sentence, its truth label and the
+retired-address behaviour that five legacy slugs depend on. Slice 2A is READ ONLY. It creates
+nothing, changes nothing and charges nothing.
+
+| Tier | Sees Offers | Why |
+|---|---|---|
+| Platform operator (God) | ✓ via `growth` | Already carries `growth`/`studio` for §35 dogfooding. Operator scope has its own `CatalogSurface`; this row is the Solo shell's. |
+| Agency | ✗ | `growth` excludes Agency entirely (owner ruling 2026-08-11, §61 preserved exception). No new feature key is introduced, so the existing route gate decides — §61 default: no exception. |
+| Enterprise | ✓ via `growth` | Inherits the Solo baseline. |
+| Solo | ✓ via `growth` | The tier this slice is built for. |
+| Sub-account | ✓ via `growth` | Identical to Solo (§60). |
+| Client / Anonymous | ✗ | No client or anonymous route reaches `/solo/*`. A *paused* or *draft* offer additionally stops being readable by `anon`, because `tp_public_active_read` is `status = 'active'`. |
+
+**Authority inside the tenant.** The read asks `tenant_members.tenant_role` for the SAME workspace
+the rows come from, never a global role — §59's global-role trap, and the exact defect repaired in
+`20261043000000`. `canManage` is `owner`/`admin`; a plain member sees the catalog and is told in
+words that they cannot change it. Slice 2A exposes no write, so `canManage` currently gates only
+that notice; Slice 2B's command seam is what it will really gate.
+
+**Evidence, separated.**
+- *Automated:* 24 contract/render tests in `src/solo/catalog-offers.contract.test.tsx`; full suite
+  1912 passing, no regressions. The tenant-scope guard was perturbation-proven — removing one
+  `.eq("tenant_id", …)` turns it red.
+- *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
+  `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
+  `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
+- *Rendered:* 203/203 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
+  with only the network read stubbed, across both palettes and all four Solo widths, asserting the
+  six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
+  canvas values in each theme.
+- **UNVERIFIED:** authenticated runtime on any tier, and the deployed surface. §32.c is owed to a
+  session that can drive the deployed app. The harness renders our components with the read mocked
+  and must never be reported as having discharged it.
+- **NOT APPLIED:** the migration. Post-merge persisted-apply confirmation on prod is owed.
+
+**Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
+yet define an offer on this screen — `tenant_products` is empty on production (0 rows, 0 tenants
+with a storefront enabled), so first-use is the state every tenant sees. The surface says that in
+words rather than showing a control that does nothing. A listed price is a PRESENTED price and not
+a checkout; tenant checkout remains unreachable in production independently of this change.

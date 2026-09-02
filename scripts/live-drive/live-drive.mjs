@@ -126,7 +126,14 @@ export function buildLaunchOptions() {
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
     ...(executablePath ? { executablePath } : {}),
-    ...(proxyServer ? { proxy: { server: proxyServer } } : {}),
+    // Loopback must never go through the agent relay. The relay accepts only HTTPS CONNECT
+    // tunnels, so a plain-HTTP localhost harness served by Vite comes back as a 405 page and the
+    // app never mounts — which reads exactly like "the surface renders nothing" and cost a full
+    // debug cycle to tell apart. Bypassing loopback cannot affect a remote drive, which never
+    // resolves to these hosts.
+    ...(proxyServer
+      ? { proxy: { server: proxyServer, bypass: "127.0.0.1,localhost,::1" } }
+      : {}),
   };
 }
 
