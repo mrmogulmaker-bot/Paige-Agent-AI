@@ -2,6 +2,7 @@ export const SPINE_ACTION_CLASSIFICATIONS = ["read", "mutate", "external_effect"
 export type SpineActionClassification = (typeof SPINE_ACTION_CLASSIFICATIONS)[number];
 export type SpineApprovalAuthority = "chat-canonical" | "none";
 export type SpineRiskPolicy = "read_only" | "ordinary" | "high";
+export type SpineFact = boolean | number | string | null;
 
 export type SpineCapability = {
   readonly key: string;
@@ -16,7 +17,13 @@ export type SpineCapability = {
     /** Visibility window for the safe projection; source retention stays domain-owned. */
     readonly staleAfterDays: number;
     readonly projectionWindowDays: number;
-    readonly factKeys: readonly string[];
+    readonly sourceSystem: string;
+    readonly sourceActorTypes: readonly string[];
+    readonly classification: string;
+    readonly lifecycle: string;
+    readonly safeSummary: string;
+    readonly referencePrefix: string;
+    readonly factValues: Readonly<Record<string, readonly SpineFact[]>>;
   };
   readonly action?: {
     readonly classification: SpineActionClassification;
@@ -53,7 +60,7 @@ export type SpineSignal = {
   readonly classification: string;
   readonly lifecycle: string;
   readonly safe_summary: string;
-  readonly facts: Readonly<Record<string, boolean | number | string | null>>;
+  readonly facts: Readonly<Record<string, SpineFact>>;
   readonly audience: string;
   readonly schema_version: number;
   readonly expires_at: string;

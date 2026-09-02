@@ -9,7 +9,7 @@ This foundation is a governed seam across the existing Solo product. It does not
 - one stable capability key and domain owner;
 - the existing human surface;
 - exact server-side evidence, action, and outcome symbols;
-- evidence audience, freshness, safe fact keys, and projection visibility window;
+- evidence audience, freshness, exact safe field/fact values, and projection visibility window;
 - action classification, exact Chat tool, idempotency, canonical risk policy, and approval authority;
 - Chat and Mind binding maturity;
 - either `NONE` or an approved Spine Change Request identifier for shared primitives.
@@ -30,7 +30,7 @@ A domain owner may add its own declaration and safe adapter in a later immutable
 
 1. the human surface and durable source already exist;
 2. tenant context is server-resolved and any privileged safe lens recreates the source authorization boundary explicitly;
-3. only reviewed fixed fields and declared scalar fact keys cross the boundary;
+3. only reviewed fixed fields and exact declared scalar fact values cross the boundary;
 4. no shared registry schema, resolver semantics, approval authority, or Chat routing rule changes;
 5. the domain adds focused registry, SQL contract, real-role isolation, and regression tests;
 6. maturity stays truthful until authenticated end-to-end proof exists.
