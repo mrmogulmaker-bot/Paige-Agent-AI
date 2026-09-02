@@ -118,8 +118,16 @@ row, at **any** role — a plain `member` qualifies. `has_any_role()` reads `pub
 columns are `(id, user_id, role, created_at)`: **no `tenant_id`.** It is a global question — §59's
 global-role trap. So a global `coach`/`admin`/`super_admin` role earned in tenant A, held by someone
 who is merely a member of tenant B, satisfied the gate **on the role from A** and returned all of
-tenant B's Rail, including the `audience='owner'` / `visibility='owner_internal'` rows that
-`record_rail_event` narrows away from everyone but the owner.
+tenant B's Rail, including the `audience='owner'` / `visibility='owner_internal'` rows.
+
+**Be precise about who those rows are actually for — an earlier draft of this section stated the
+boundary wrongly, in a security postmortem, which is the worst place to state one wrongly.**
+`owner_internal` does **not** mean "the tenant owner alone". The resolver filters on
+`where e.tenant_id = v_tenant` and applies **no `audience` or `visibility` predicate**
+(`20261043000000:79–98`), and `pce_staff_read` likewise admits admins and coaches. So these rows are
+**withheld from clients and from plain members, and visible to authorized tenant staff** — `owner`,
+`admin`, `coach`. That is the real boundary, and it is exactly why #794 mattered: the defect handed a
+**plain member's seat** the staff view, not merely a non-owner's.
 
 Remediated by `20261043000000` (#795): the role is read from an active `tenant_members` row for the
 **same** `v_tenant` the rows come from, so the two clauses now agree about which workspace they mean.
