@@ -150,6 +150,17 @@ this client**, which scopes the Solo PAIGE fold to that deal's client. Scope is 
 server re-resolves tenant by `current_user_tenant_id()` and re-authorizes the client before any read,
 and the scope clears on a client or account switch.
 
+> **⚠ THIS ENTRY PATH IS BROKEN ON ANY ACCOUNT THAT HAS A SAVED CONVERSATION — issue #765.**
+> Found post-merge and verified on `main` at `dcddf6761e`. Setting a client scope resets history
+> hydration, which auto-resumes the newest saved thread, which releases the focus that was just set.
+> The scope is dropped before the person can type, so **the evidence binding never receives a
+> `clientId` and never runs** for a real account. It fails closed — no evidence reaches PAIGE, nothing
+> leaks, no client's transcript reaches another. The capability underneath (safe lens, projection,
+> citation, refusals) is unaffected and still covered by its tests; what does not work today is the
+> path that hands it a client. A second, milder defect in the same flow traps keyboard focus in the
+> deal drawer (#766). **Neither is fixed, branched, or started** — they are durable follow-ups
+> awaiting the owner. Until #765 is fixed, do not read the rows below as a flow an owner can complete.
+
 **PAIGE capability, stated exactly.** She can read safe, tenant-scoped and client-scoped recorded
 Pipeline outcome evidence through the merged safe lens `public.get_pipeline_spine_evidence`, state
 what it proves, cite the opaque `rail:<uuid>` record reference, mark a stale record as old rather
@@ -165,9 +176,11 @@ bodies, secrets and reasoning traces all stay forbidden.
 
 **Truth label: `PARTIAL`, not `LIVE`, and it is not lifted by this release.** Still owed and still
 `UNVERIFIED`: an authenticated owner drive on two Solo tenants, rendered proof at 1536×770, 1366×768,
-1024×768 and 900×1000, and `supabase test db` with a full-history replay. Detail:
+1024×768 and 900×1000, and `supabase test db` with a full-history replay. **The owed authenticated
+drive is exactly what would have caught #765** — every layer below the entry path was proven, and the
+one thing not driven is the one thing that fails (§70: a wired code path is not a usable capability). Detail:
 `docs/delivery/paige-spine-mind-handoff.md`; per-tier rows: `docs/doctrine/tier-matrix.md` (§66
-ledger). Parked, not started: issues #748, #749, #750.
+ledger). Parked, not started: issues #748, #749, #750, **#765 (breaks this entry path)** and #766.
 
 **Next required lane, not started:** the Pipeline Chat Write Bridge (§5) needs its own Gate 1.
 

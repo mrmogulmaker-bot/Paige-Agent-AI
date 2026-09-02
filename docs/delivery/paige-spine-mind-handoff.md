@@ -172,6 +172,29 @@ never defined), **#750** (a `paige:open` dispatch that may still have no listene
 long-form record in `docs/delivery/parked-follow-ups-2026-09-02-mind-slice.md`. Only the owner
 may convert one into an assignment.
 
+## The defect found after this merged, and what it says about the proof
+
+**Issue #765 — the client focus is released the instant it is set, on any Solo account that has a
+saved conversation.** Raised by the post-merge Codex review and then verified by reading `main` at
+`dcddf6761e`. Setting a scope resets history hydration; the initial-history effect then auto-resumes
+the newest saved thread; `selectThread` releases the focused client because opening a saved
+conversation is supposed to. The scope is gone before the person types, so the binding never receives
+a `clientId`. On an account with **no** saved thread it works — which is the only case the tests and
+my own reasoning covered. Fail-closed: no evidence reaches PAIGE, nothing leaks. A second, milder
+defect in the same flow leaves the deal drawer's keyboard focus trap in place (#766). **Neither is
+fixed or started here.**
+
+The lesson is not that a check was skipped. Every layer was proven: the adapter, the projection, the
+citation, the refusals, the migration under real caller roles, mutation-tested. What was never done
+is the one thing that would have caught it — an authenticated drive of the whole path on an account
+that looks like a real one. It was listed as owed and treated as a formality. §70 says a wired code
+path is not a usable capability; this is that, in the same sentence as a table full of passes.
+
+The composition is also worth recording on its own: **two individually correct guards produced a
+broken flow.** The scope reset exists so a stale transcript cannot survive a scope change. The
+release in `selectThread` exists so client A's transcript cannot be replayed under client B's scope.
+Neither is wrong. Reading either in isolation — which is how each was reviewed — shows nothing.
+
 ## Known gaps, stated rather than smoothed over
 
 - **The control opens PAIGE; it does not ask the question.** The deal card's button is labelled
@@ -189,8 +212,11 @@ may convert one into an assignment.
 
 ## Owed before `LIVE`
 
-1. Authenticated owner drive of `/solo/{account}/growth` → deal → **Ask PAIGE about this
-   client** → PAIGE cites a recorded outcome, on two Solo tenants.
+0. **Fix #765 first.** Until it is fixed the drive below cannot pass on any account that has a saved
+   conversation, because the scope is released before a turn is sent.
+1. Authenticated owner drive of `/solo/{account}/growth` → deal → **Open PAIGE for this client** →
+   PAIGE cites a recorded outcome, on two Solo tenants — at least one of which **already has saved
+   conversations**, since an empty account is the one case that passes today.
 2. Rendered proof at 1536×770, 1366×768, 1024×768 and 900×1000 with PAIGE open and closed.
 3. `supabase test db` against the Supabase stack, and a full-history replay.
 4. ~~Post-merge §32.a persisted-apply confirmation for `20261041000000` on prod.~~ **DONE
