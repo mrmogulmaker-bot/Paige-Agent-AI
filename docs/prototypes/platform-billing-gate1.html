@@ -230,14 +230,15 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 <body data-motion="full">
 
 <header class="rv-bar" role="region" aria-label="Review controls">
-  <div class="rv-brand"><strong>Platform Billing — Gate 1</strong><span>flow prototype · throwaway · read-only · nothing charged</span></div>
+  <div class="rv-brand"><strong>Platform Billing — Gate 1</strong><span>flow prototype · throwaway · NON-PRODUCTION · NON-BILLABLE · nothing charged</span></div>
   <div class="rv-grp"><label>Screen</label><div class="rv-seg" role="group">
     <button type="button" data-screen="billing" aria-pressed="true">Settings → Billing</button>
     <button type="button" data-screen="boundary" aria-pressed="false">Boundary</button>
     <button type="button" data-screen="operator" aria-pressed="false">Operator config</button>
   </div></div>
   <div class="rv-grp"><label>Viewer</label><div class="rv-seg" role="group">
-    <button type="button" data-viewer="admin" aria-pressed="true">Owner / admin</button>
+    <button type="button" data-viewer="admin" aria-pressed="true">Owner</button>
+    <button type="button" data-viewer="adminonly" aria-pressed="false">Admin</button>
     <button type="button" data-viewer="member" aria-pressed="false">Member</button>
     <button type="button" data-viewer="sub" aria-pressed="false">Sub-account owner</button>
     <button type="button" data-viewer="switch" aria-pressed="false">Switching account</button>
@@ -246,7 +247,13 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     <button type="button" data-plan="current" aria-pressed="true">$149 current</button>
     <button type="button" data-plan="beta" aria-pressed="false">$74.50 beta</button>
     <button type="button" data-plan="trialing" aria-pressed="false">Trial</button>
-    <button type="button" data-plan="none" aria-pressed="false">No plan</button>
+    <button type="button" data-plan="promo" aria-pressed="false">Promo</button>
+    <button type="button" data-plan="trialended" aria-pressed="false">Trial ended</button>
+    <button type="button" data-plan="cancelsched" aria-pressed="false">Cancel scheduled</button>
+    <button type="button" data-plan="canceled" aria-pressed="false">Canceled</button>
+    <button type="button" data-plan="unsupported" aria-pressed="false">Unsupported tier</button>
+    <button type="button" data-plan="unavailable" aria-pressed="false">Unavailable</button>
+    <button type="button" data-plan="none" aria-pressed="false">Choose a plan</button>
     <button type="button" data-plan="loading" aria-pressed="false">Loading</button>
     <button type="button" data-plan="error" aria-pressed="false">Read failed</button>
   </div></div>
@@ -299,7 +306,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 
             <div id="roleRefusal" hidden class="ss-hand" data-state="role-refusal">
               <span class="ss-card-icon">!</span>
-              <div><strong>Billing is managed by the workspace owner or an admin.</strong><p>You can see the plan this workspace is on. Changing the plan, updating the card, or enabling a paid add-on needs owner or admin access. Ask <b>the workspace owner</b> — or ask PAIGE to send them the request.</p></div>
+              <div><strong id="refusalTitle">Billing is managed by the workspace owner.</strong><p>You can see the plan this workspace is on. Opening the billing portal, changing the card, changing or cancelling the subscription, seeing invoices, or enabling a paid add-on is reserved for the <b>Owner</b> for now — that includes Admins. Ask the workspace owner, or ask PAIGE to send them the request. A separate Billing Manager permission is planned later.</p></div>
             </div>
 
             <div id="accountSwitch" hidden class="ss-hand" data-state="account-switch">
@@ -371,7 +378,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 
           <!-- ═══ SCREEN: Operator configuration ═══ -->
           <section id="screen-operator" class="op" hidden aria-label="Operator plan and add-on configuration">
-            <div class="ss-page-head"><div><h1>Plans &amp; add-ons</h1><p>Platform operator only. A plan or add-on becomes billable to any workspace only after every step below is complete and verified. Nothing here writes to Stripe in this prototype.</p></div></div>
+            <div class="ss-page-head"><div><h1>Plans &amp; add-ons</h1><p>Platform operator control plane — configuration and audit only. <b>This screen is not the visual model for Solo Billing (R9)</b>; Solo is the canonical customer-facing experience. A plan or add-on becomes billable to any workspace only after every step below is complete and verified. Nothing here writes to Stripe in this prototype.</p></div></div>
             <div class="op-steps" id="opSteps"></div>
             <div class="ss-grid">
               <section class="ss-card" data-state="operator-plan-config"><header><span class="ss-card-icon">$</span><h2>Plan — Solo (beta)</h2><span class="ss-tag">proposed · D1–D4 unruled</span></header>
@@ -380,7 +387,8 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
                   <label class="op-f">Beta price<span>$74.50 / month — proposed</span></label><label class="op-f">Stripe mechanism<span class="empty">D3: separate Price / promotion / other — not decided</span></label>
                   <label class="op-f">Eligibility<span class="empty">D1: not decided</span></label><label class="op-f">Start · end · grandfather<span class="empty">D2: not decided</span></label>
                   <label class="op-f">After beta ends<span class="empty">D4: not decided</span></label><label class="op-f">Included allowance<span class="empty">D5: units must be a measured meter</span></label>
-                  <label class="op-f">Warnings · limit<span class="empty">D6 / D7: not decided</span></label><label class="op-f">Overage<span>D8 — recommended: unavailable during beta</span></label>
+                  <label class="op-f">Warnings · limit<span class="empty">D6 / D7: not decided</span></label><label class="op-f">Overage<span>D8 — ruled: none; no automatic overage</span></label>
+                  <label class="op-f">Promotional grant (operator-only)<span>workspace · reason code · tenant-visible label · granted by · start · end or explicit no-expiry · audit</span></label><label class="op-f">30-day beta trial<span>eligibility rule · $0 · trial end → “Choose a plan” · never a silent charge</span></label>
                 </div><p class="ss-note">Saving this form is not available in Phase 1. When it is, it writes plan rows only; the Stripe Price is created by a separate, owner-authorized step and verified before the plan is marked billable.</p>
                 <div class="ss-row"><span class="ss-status" data-tone="warn"><i></i>Not billable until every field is decided and the Stripe Price is verified</span><button class="ss-btn" disabled>Save plan</button></div></div></section>
               <section class="ss-card" data-state="operator-addon-config"><header><span class="ss-card-icon">+</span><h2>Add-on — Voice minutes pack</h2><span class="ss-tag">example item · no real listing</span></header>
@@ -402,9 +410,9 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
 </div>
 
 <div class="rv-drawer">
-  <details open><summary>State coverage — 28 required states, all reachable from the controls above</summary><div class="body">
+  <details open><summary>State coverage — 34 required states, all reachable from the controls above</summary><div class="body">
     <table><tr><th>Group</th><th>State ids</th><th>How to reach</th></tr>
-      <tr><td>Plan</td><td><code>plan-current</code> · <code>plan-beta</code> · <code>plan-trialing</code> · <code>plan-none</code> · <code>plan-loading</code> · <code>plan-error</code> · <code>plan-subaccount</code></td><td>Plan control; sub-account via Viewer</td></tr>
+      <tr><td>Plan</td><td><code>plan-current</code> · <code>plan-beta</code> · <code>plan-trialing</code> · <code>plan-promo</code> · <code>plan-trial-ended</code> · <code>plan-cancel-scheduled</code> · <code>plan-canceled</code> · <code>plan-unsupported</code> · <code>billing-unavailable</code> · <code>plan-none</code> · <code>plan-loading</code> · <code>plan-error</code> · <code>plan-subaccount</code></td><td>Plan control; sub-account via Viewer. These carry the twelve required Solo states (packet §9.1)</td></tr>
       <tr><td>Portal</td><td><code>portal-entry</code> · <code>portal-unavailable</code></td><td>Portal control</td></tr>
       <tr><td>Usage</td><td><code>usage-included</code> · <code>usage-warn-75</code> · <code>usage-warn-90</code> · <code>usage-exhausted</code> · <code>usage-no-meter</code></td><td>Usage control</td></tr>
       <tr><td>Add-ons</td><td><code>addon-available</code> · <code>addon-included</code> · <code>addon-not-billable</code> · <code>addon-selected</code> · <code>addon-pending</code> · <code>addon-active</code> · <code>addon-declined</code> · <code>addon-failed</code> · <code>addon-cancel-scheduled</code></td><td>Click Enable on a listed add-on; then Continue / Not now; then the mock outcome buttons; Cancel on an active add-on</td></tr>
@@ -415,11 +423,11 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     <p><b>Not applicable, with reason:</b> offline — a billing read that fails is the "Read failed" state; there is no offline-specific behaviour. Expiry — a beta window end is a plan-state change (D4), shown as the "after beta" copy inside <code>plan-beta</code>, not a separate expiry timer. Destructive confirmation — cancelling an add-on is scheduled, not destructive; cancelling the platform subscription is a Stripe-hosted portal action in this phase and is not modelled here.</p>
   </div></details>
   <details><summary>Known mocks and unverified behaviour</summary><div class="body">
-    <ul><li>Plan, status, price, renewal: today's real read returns plan/status/price/renewal for a solo workspace, and <code>trialing</code> is a real status; the $74.50 beta row does not exist anywhere and is a prototype value.</li>
+    <ul><li>Plan, status, price, renewal: today's real read returns plan/status/price/renewal for a solo workspace, and <code>trialing</code> is a real status; the $74.50 paid beta plan, the 30-day beta trial offer, and promotional grants do not exist as backend contracts — all three are prototype/design truth until Foundation B builds the entitlement model.</li>
     <li>Portal entry: the shipped function keys the Stripe customer on the person's email, not the workspace (packet finding A1). The "Mapped" state shows the intended behaviour after Billing Foundation; "Unavailable" is what must show until then.</li>
     <li>Usage: the only measured meter is AI usage in tokens. Allowance, thresholds, warnings, and "used up" behaviour are proposals pending D5–D8. No estimate is ever shown as usage.</li>
     <li>Add-ons: every item is a fixture. No catalogue read, no checkout, no webhook. Outcomes are chosen by the reviewer with the mock buttons.</li>
-    <li>Role refusal and account switch: the refusal reads the real admin gate's meaning; the switch is a simulated workspace change.</li>
+    <li>Role refusal and account switch: Owner-only is the ruled MVP authority (R2); Admin and Member both see the refusal. The switch is a simulated workspace change.</li>
     <li>Motion: light fades on state change only; the Reduced control removes them. No haptics are claimed — this is a browser simulation.</li></ul>
   </div></details>
   <details open><summary>Decision surface — Gate 1</summary><div class="body rv-decide">
@@ -473,9 +481,9 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     return '<div class="ss-addon" data-state="'+sid+'"><div><h3>'+esc(a.name)+'</h3><small>'+esc(a.price)+' · '+esc(a.ent)+'</small><small><span class="ss-status" data-tone="'+tone+'"><i></i>'+esc(label)+'</span></small></div><div class="r">'+right+'</div></div>';
   }
   function renderAddons(){
-    var canAct = S.viewer==="admin" || S.viewer==="switch";
+    var canAct = S.viewer==="admin" || S.viewer==="switch"; // Owner only (R2): "admin" is the Owner viewer here; "adminonly" and "member" are refused
     document.getElementById("addonList").innerHTML=ADDONS.map(addonRow).join("");
-    if(!canAct){ document.querySelectorAll("#addonList button").forEach(function(b){ b.disabled=true; b.title="Owner or admin access needed"; }); }
+    if(!canAct){ document.querySelectorAll("#addonList button").forEach(function(b){ b.disabled=true; b.title="Owner access needed"; }); }
     var active=ADDONS.filter(function(a){return addonState(a)==="active"||addonState(a)==="cancel-scheduled";}).length;
     document.getElementById("addonSummary").textContent=active+" active · "+ADDONS.length+" available";
     var c=document.getElementById("addonConfirm");
@@ -496,39 +504,59 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     var isSub=S.viewer==="sub";
     acts.innerHTML="";
     if(isSub){
-      body.innerHTML='<div class="ss-hand" data-state="plan-subaccount"><div><strong>Your plan is billed through your agency.</strong><p>This workspace is a sub-account of <b>Northlake Advisory</b>. The platform bills the agency for its whole book; there is no separate plan or card here. Anything about price or invoices goes to your agency.</p></div></div>';
+      body.innerHTML='<div class="ss-hand" data-state="plan-subaccount"><div><strong>Platform billing is not applicable to this workspace yet.</strong><p>This workspace is a sub-account of <b>Northlake Advisory</b>. Platform billing is not inherited from the agency, and there is no supported sub-account billing contract yet, so nothing is shown here — not because there is no plan, but because this page cannot truthfully report one.</p></div></div>';
       return;
     }
     var f=function(l,v){return '<div class="ss-field"><span>'+esc(l)+'</span><strong>'+esc(v)+'</strong></div>';};
     switch(S.plan){
       case "loading": body.innerHTML='<div class="ss-state" role="status" data-state="plan-loading"><span><strong>Clearing and resolving this account…</strong></span></div>'; break;
       case "error": body.innerHTML='<div class="ss-state" role="alert" data-state="plan-error"><span><strong>Couldn’t load this account</strong>The plan could not be read just now. Nothing about your plan has changed.</span><button type="button">Retry</button></div>'; break;
-      case "none": body.innerHTML='<div class="ss-state" data-state="plan-none"><span><strong>No plan yet</strong>This workspace is not on a platform plan. Choosing one is not available from this page in this phase.</span></div>'; break;
+      case "none": body.innerHTML='<div class="ss-hand" data-state="plan-none"><div><strong>Choose a plan</strong><p>This workspace has no active plan, trial, or promotional access (the platform checked and found none). Your workspace and its data are preserved. The owner can choose a plan once plan selection is available.</p></div><button class="ss-btn ss-btn--act" type="button" disabled title="Plan selection is not available in this phase">Choose a plan</button></div>'; break;
       case "trialing":
-        body.innerHTML='<div class="ss-fields" data-state="plan-trialing">'+f("Plan","Solo")+f("Status","Trial")+f("Price","$0 during the trial, then $149.00 / month")+f("Trial ends","16 September 2026")+'</div><p class="ss-note">A real status today: the platform already supports a 14-day self-serve trial and a 30-day invited trial. Nothing is charged until the trial ends. <span class="ss-tag">D3 option iv — a trial is a free window, not a reduced price</span></p>';
-        acts.innerHTML=(S.viewer==="member")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
+        body.innerHTML='<div class="ss-fields" data-state="plan-trialing">'+f("Access","30-day beta trial")+f("Days remaining","19 of 30")+f("Cost","$0 during the trial")+f("Trial ends","21 September 2026")+'</div><p class="ss-note"><b>What happens next:</b> nothing is charged when the trial ends. On 21 September this workspace moves to “Choose a plan” unless a paid plan or promotional access is already active. Your workspace and everything in it stay exactly as they are. <span class="ss-tag">R10 — trial offer modelled; not a public offer until ruled</span></p>';
+        acts.innerHTML=(S.viewer==="member"||S.viewer==="adminonly")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
+        break;
+      case "promo":
+        body.innerHTML='<div class="ss-hand" data-state="plan-promo"><div><strong>Promotional beta access</strong><p>You have full platform access during beta. No payment is due.</p></div></div><div class="ss-fields" style="margin-top:8px">'+f("Cost","$0 — no payment method needed")+f("In force","Until the platform changes it — no end date set")+f("Invoices","None — this is not a paid subscription")+f("Converts automatically?","No")+'</div><p class="ss-note">Granted by the platform. When this changes, or if a paid plan replaces it, this page will say so plainly before anything else happens. <span class="ss-tag">R12 — an explicit grant record; never inferred from a missing subscription</span></p>';
+        acts.innerHTML="";
+        break;
+      case "trialended":
+        body.innerHTML='<div class="ss-hand" data-state="plan-trial-ended"><div><strong>Your 30-day beta trial has ended.</strong><p>Nothing was charged. Your workspace and everything in it are exactly as you left them. To keep using the platform, choose a plan — the owner can do that from here once plan selection is available.</p></div><button class="ss-btn ss-btn--act" type="button" disabled title="Plan selection is not available in this phase">Choose a plan</button></div>';
+        break;
+      case "cancelsched":
+        body.innerHTML='<div class="ss-fields" data-state="plan-cancel-scheduled">'+f("Plan","Solo")+f("Status","Ends 1 October 2026")+f("Price","$149.00 / month")+f("Renews","Will not renew")+'</div><p class="ss-note">This subscription is set to end at the close of the current period. Access continues until then; nothing further is charged. The owner can reverse this from the billing portal before 1 October.</p>';
+        acts.innerHTML=(S.viewer==="member"||S.viewer==="adminonly")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
+        break;
+      case "canceled":
+        body.innerHTML='<div class="ss-hand" data-state="plan-canceled"><div><strong>This workspace’s platform subscription ended on 1 October 2026.</strong><p>Nothing is being charged. Your workspace and its data are preserved. To resume, choose a plan.</p></div><button class="ss-btn ss-btn--act" type="button" disabled title="Plan selection is not available in this phase">Choose a plan</button></div>';
+        break;
+      case "unsupported":
+        body.innerHTML='<div class="ss-hand" data-state="plan-unsupported"><div><strong>Platform billing is not available for this account type yet.</strong><p>Agency and Enterprise workspaces do not inherit a Solo plan, and no supported billing contract exists for them yet. This page cannot truthfully report a plan, so it does not.</p></div></div>';
+        break;
+      case "unavailable":
+        body.innerHTML='<div class="ss-state" data-state="billing-unavailable"><span><strong>Billing is unavailable for this workspace right now</strong>The platform could not find a billing account linked to this workspace. That is different from having no plan: nothing about your access has changed. The platform has been notified; you do not need to do anything.</span></div>';
         break;
       case "beta":
-        body.innerHTML='<div class="ss-fields" data-state="plan-beta">'+f("Plan","Solo — beta")+f("Status","Active")+f("Price","$74.50 / month")+f("Renews","1 October 2026")+'</div>'+
+        body.innerHTML='<div class="ss-fields" data-state="plan-beta">'+f("Plan","Solo — paid beta")+f("Status","Active")+f("Price","$74.50 / month")+f("Renews","1 October 2026")+'</div>'+
           '<p class="ss-note"><span class="ss-tag">proposed · not in effect</span> The beta price and what happens when the beta ends are owner decisions D1–D4. Until they are ruled and the price exists on the platform, this state is never shown to a workspace.</p>'+
           '<p><b>After the beta:</b> <span id="afterBeta">D4 — recommended: workspaces that joined during the beta keep $74.50; new workspaces pay $149.</span></p>';
-        acts.innerHTML=(S.viewer==="member")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
+        acts.innerHTML=(S.viewer==="member"||S.viewer==="adminonly")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
         break;
       default:
         body.innerHTML='<div class="ss-fields" data-state="plan-current">'+f("Plan","Solo")+f("Status","Active")+f("Price","$149.00 / month")+f("Renews","1 October 2026")+'</div><p class="ss-note">This is the reference plan. Seats and contacts included are part of the plan, not a meter.</p>';
-        acts.innerHTML=(S.viewer==="member")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
+        acts.innerHTML=(S.viewer==="member"||S.viewer==="adminonly")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
     }
   }
   function renderPortal(){
     var body=document.getElementById("portalBody"), t=document.getElementById("portalTruth");
-    if(S.viewer==="sub"){ body.innerHTML='<p>Invoices and the card on file belong to your agency.</p>'; t.dataset.truth="PARTIAL"; t.textContent="PARTIAL"; return; }
+    if(S.viewer==="sub"){ body.innerHTML='<p>Not applicable for a sub-account until a supported billing contract exists.</p>'; t.dataset.truth="PARTIAL"; t.textContent="NOT APPLICABLE"; return; }
     if(S.portal==="unavailable"){
       t.dataset.truth="PARTIAL"; t.textContent="UNAVAILABLE";
       body.innerHTML='<div class="ss-state" data-state="portal-unavailable"><span><strong>Not available yet</strong>Invoices and the payment method are held by the platform’s payment provider. The link that opens them for <em>this workspace</em> is not wired yet — the current link would look up the card by your personal email, which is the wrong key.</span></div>';
     } else {
       t.dataset.truth="PROPOSED"; t.textContent="PROPOSED";
       body.innerHTML='<div data-state="portal-entry"><p>Invoices, receipts and the card on file are held by the platform’s payment provider. Opening them takes you to a secure page for <b>this workspace’s</b> billing account and brings you back here.</p>'+
-        '<div class="ss-row" style="margin-top:8px"><span class="ss-status" data-tone="ok"><i></i>Billing account linked to this workspace</span>'+(S.viewer==="member"?'<button class="ss-btn" type="button" disabled title="Owner or admin access needed">Open billing portal</button>':'<button class="ss-btn" type="button" data-portal-open>Open billing portal</button>')+'</div>'+
+        '<div class="ss-row" style="margin-top:8px"><span class="ss-status" data-tone="ok"><i></i>Billing account linked to this workspace</span>'+((S.viewer==="member"||S.viewer==="adminonly")?'<button class="ss-btn" type="button" disabled title="Owner access needed">Open billing portal</button>':'<button class="ss-btn" type="button" data-portal-open>Open billing portal</button>')+'</div>'+
         '<p class="ss-note"><span class="t-chip" data-t="mock">mock</span> In the product this opens the provider’s hosted page; nothing is fetched here.</p></div>';
     }
   }
@@ -570,8 +598,8 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     var switching=S.viewer==="switch", sub=S.viewer==="sub";
     document.getElementById("acctName").textContent=switching?"Northlake Advisory":sub?"Harbor & Vine (sub-account)":"Harbor & Vine";
     document.getElementById("sealName").textContent=switching?"Northlake Advisory":"Harbor & Vine";
-    document.getElementById("sealRole").textContent=S.viewer==="member"?"Member":"Owner";
-    document.getElementById("roleRefusal").hidden=S.viewer!=="member";
+    document.getElementById("sealRole").textContent=S.viewer==="member"?"Member":S.viewer==="adminonly"?"Admin":"Owner";
+    document.getElementById("roleRefusal").hidden=!(S.viewer==="member"||S.viewer==="adminonly");
     document.getElementById("accountSwitch").hidden=!switching;
     renderRail(); renderPlan(); renderPortal(); renderUsage(); renderAddons(); renderOperator(); stateLabel(); applyViewport();
     document.getElementById("mainScroll").scrollTop=0;

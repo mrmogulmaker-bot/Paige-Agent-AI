@@ -85,6 +85,10 @@ on (Team surface card, decision 2). Not a Billing slice to invent.
   A2 ungated paid install in `install_marketplace_item`; A3 undiscriminated `invoice.*` webhook
   arms; A4 sub-account misreport; A5 (corrected — the `credit_pulls_per_month` seed is already stripped on
   `main` by `20260726140000`; prod state UNVERIFIED). Full table: packet §3.
+- **Authority (owner-ruled 2026-09-02, R2):** MVP billing acts are **Owner-only**; Admin and Member fail closed with an explanation. `is_current_user_tenant_admin()` (owner OR admin) is therefore NOT the gate for portal/payment/subscription acts — Foundation A introduces an owner-only check.
+- **Beta access offers (owner, 2026-09-02, R10/R11):** paid beta plan · 30-day $0 trial · operator-granted promotional access, behind ONE server-owned entitlement projection that names its source and resolves overlaps by the documented precedence rule (packet §4.3). None of the three exists as a backend contract today; all are prototype/design truth. Solo is the canonical billing experience (R9); the Operator billing screens are control-plane only.
+- **Current-account policy (owner, 2026-09-02, R12–R15):** eligible top-level workspaces go onto Promotional Beta Access via an explicit, attributable entitlement record in a dedicated, reversible, separately Gate-B'd rollout after Foundation C — never as a fallback for a missing subscription, never counted as revenue. Not part of #803.
+- **Tier posture (R8):** sub-account, Agency and Enterprise show NOT APPLICABLE / NOT AVAILABLE, never "no subscription" and never an inherited plan.
 - **Required browser proof before any label moves:** an authenticated Solo owner on the real
   platform reads the correct plan for the correct workspace, switches workspace and sees it change,
   a non-admin member sees the refusal, a sub-account owner sees "billed by your agency". None of

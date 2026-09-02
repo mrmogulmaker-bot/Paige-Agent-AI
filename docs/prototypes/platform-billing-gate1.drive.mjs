@@ -11,7 +11,7 @@ async function loadChromium() {
 const chromium = await loadChromium();
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-const REQUIRED = ["plan-current","plan-beta","plan-trialing","plan-none","plan-loading","plan-error","plan-subaccount","portal-entry","portal-unavailable","usage-included","usage-warn-75","usage-warn-90","usage-exhausted","usage-no-meter","addon-available","addon-included","addon-not-billable","addon-selected","addon-pending","addon-active","addon-declined","addon-failed","addon-cancel-scheduled","role-refusal","account-switch","client-billing-boundary","operator-plan-config","operator-addon-config"];
+const REQUIRED = ["plan-current","plan-beta","plan-trialing","plan-promo","plan-trial-ended","plan-cancel-scheduled","plan-canceled","plan-unsupported","billing-unavailable","plan-none","plan-loading","plan-error","plan-subaccount","portal-entry","portal-unavailable","usage-included","usage-warn-75","usage-warn-90","usage-exhausted","usage-no-meter","addon-available","addon-included","addon-not-billable","addon-selected","addon-pending","addon-active","addon-declined","addon-failed","addon-cancel-scheduled","role-refusal","account-switch","client-billing-boundary","operator-plan-config","operator-addon-config"];
 function findChromium(){ const root="/opt/pw-browsers"; for (const d of readdirSync(root)) { for (const c of ["chrome-linux/chrome","chrome-linux/headless_shell","chrome"]) { const p=join(root,d,c); try{ if(statSync(p).isFile()) return p; }catch{} } } return undefined; }
 const exe = process.env.PW_EXECUTABLE_PATH || findChromium();
 const browser = await chromium.launch({ executablePath: exe });
@@ -25,11 +25,13 @@ const seen = new Set();
 const collect = async (label) => { const ids = await page.$$eval("[data-state]", els => els.filter(e=>!e.closest("[hidden]") && !e.hidden).map(e=>e.getAttribute("data-state"))); ids.forEach(i=>seen.add(i)); };
 const visible = async (sel) => page.$eval(sel, e => !e.closest("[hidden]") && e.offsetParent !== null);
 await collect("initial");
-for (const v of ["current","beta","trialing","none","loading","error"]) { await page.click(`[data-plan="${v}"]`); await collect("plan:"+v); }
+for (const v of ["current","beta","trialing","promo","trialended","cancelsched","canceled","unsupported","unavailable","none","loading","error"]) { await page.click(`[data-plan="${v}"]`); await collect("plan:"+v); }
 for (const v of ["included","warn75","warn90","exhausted","nometer"]) { await page.click(`[data-usage="${v}"]`); await collect("usage:"+v); }
 for (const v of ["entry","unavailable"]) { await page.click(`[data-portal="${v}"]`); await collect("portal:"+v); }
 await page.click('[data-viewer="member"]'); await collect("member");
 const memberButtonsDisabled = await page.$$eval("#addonList button", bs => bs.every(b=>b.disabled));
+await page.click('[data-viewer="adminonly"]'); await collect("admin");
+const adminButtonsDisabled = await page.$$eval("#addonList button", bs => bs.every(b=>b.disabled)) && await page.$eval("#roleRefusal", e=>!e.hidden);
 await page.click('[data-viewer="sub"]'); await collect("sub");
 await page.click('[data-viewer="switch"]'); await collect("switch");
 await page.click('[data-viewer="admin"]'); await collect("admin");
@@ -44,6 +46,6 @@ await page.click('[data-screen="boundary"]'); await collect("boundary");
 await page.click('[data-screen="operator"]'); await collect("operator");
 await page.click('[data-pgtheme="dark"]'); await page.click('[data-vp="900x1000"]'); await collect("dark-narrow");
 const missing = REQUIRED.filter(r=>!seen.has(r));
-console.log(JSON.stringify({ required: REQUIRED.length, seen: [...seen].filter(s=>REQUIRED.includes(s)).length, missing, memberButtonsDisabled, pageErrors: errors }, null, 2));
+console.log(JSON.stringify({ required: REQUIRED.length, seen: [...seen].filter(s=>REQUIRED.includes(s)).length, missing, memberButtonsDisabled, adminButtonsDisabled, pageErrors: errors }, null, 2));
 await browser.close();
-process.exit(missing.length||errors.length?1:0);
+process.exit(missing.length||errors.length||!memberButtonsDisabled||!adminButtonsDisabled?1:0);
