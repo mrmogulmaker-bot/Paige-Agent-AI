@@ -21,7 +21,7 @@
 // `opened` → return { url, tenant_id }. The URL is never stored anywhere.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { canonicalAppUrl } from "../_shared/canonical-app-url.ts";
 import { decidePortalAccess, stripeKeyNameFor, type WorkspaceBillingAuthority } from "./decide.ts";
 
@@ -42,7 +42,10 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[PLATFORM-BILLING-PORTAL] ${step}${details ? " " + JSON.stringify(details) : ""}`);
 };
 
-type AuditClient = ReturnType<typeof createClient>;
+// The client type by name, from the SAME pinned module as createClient. `ReturnType<typeof
+// createClient>` resolved the generics to `never` under `deno check`, so every insert and every
+// call site failed the CI Deno ratchet (8 diagnostics) while the runtime shape was correct.
+type AuditClient = SupabaseClient;
 
 async function audit(
   admin: AuditClient,
