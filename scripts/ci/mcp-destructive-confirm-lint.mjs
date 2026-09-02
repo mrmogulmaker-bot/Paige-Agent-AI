@@ -98,10 +98,13 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
     const callee = node.expression;
     if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== "tool") return;
     const [nameArg, configArg] = node.arguments;
-    if (!configArg || !ts.isObjectLiteralExpression(configArg)) return;
+    // A configuration this guard cannot READ is a tool it cannot inspect. Recording it as
+    // unanalysable rather than skipping it is the whole difference between a guard and a guard
+    // that reports success — `mcp.tool("x", config)` and `.forEach(t => mcp.tool(t.name, t.config))`
+    // are both valid registrations, and both were silently discarded before.
     out.push({
       name: literalText(nameArg) ?? "<computed name>",
-      config: configArg,
+      config: configArg && ts.isObjectLiteralExpression(configArg) ? configArg : null,
       text: node.getFullText(sf),
       line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
     });
@@ -117,6 +120,43 @@ function prop(objectLiteral, name) {
     }
   }
   return null;
+}
+
+/**
+ * Scope keys the file itself classifies as destructive (`*.delete`).
+ *
+ * Read from the source rather than hard-coded, so the guard and the surface cannot disagree.
+ */
+export function destructiveScopes(src, fileName = "in-memory.ts") {
+  const sf = ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const out = new Set();
+  walk(sf, (n) => {
+    if (!ts.isPropertyAssignment(n) || !n.name) return;
+    const v = literalText(n.initializer);
+    if (!v || !/\.delete$/.test(v)) return;
+    const k = ts.isIdentifier(n.name) ? n.name.text : literalText(n.name);
+    if (k) out.add(k);
+  });
+  return out;
+}
+
+/**
+ * Does the handler make an OPAQUE call — an RPC whose destination this guard cannot see into?
+ *
+ * Pairs with the `*.delete` scope below. A destructive act reached through an RPC named nothing
+ * like a delete is invisible to `destructiveCall`, and `handle_data_subject_request` is exactly
+ * that: it calls `admin.rpc("handle_data_subject_request", …)`, which destroys, while carrying no
+ * delete-ish substring anywhere.
+ */
+function callsRpc(node) {
+  if (!node) return false;
+  let found = false;
+  walk(node, (n) => {
+    if (found) return;
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) &&
+        n.expression.name.text === "rpc") found = true;
+  });
+  return found;
 }
 
 /** A call that destroys rows: `.delete()`, a delete/purge-shaped RPC, or literal `DELETE FROM`. */
@@ -150,7 +190,14 @@ function modelSettableBooleans(schemaNode) {
   if (!schemaNode) return names;
   walk(schemaNode, (n) => {
     if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression)) return;
-    if (n.expression.name.text !== "boolean") return;
+    const method = n.expression.name.text;
+    // `.boolean()`, and also `z.literal(true)` / `z.literal(false)` — a boolean the model can set,
+    // spelled as a literal. The pre-AST matcher recognised `z.literal(...)`, so omitting it here
+    // was a regression against this guard's own promise to reject ANY model-settable boolean.
+    const isBooleanLiteral = method === "literal" && n.arguments.length === 1 &&
+      (n.arguments[0].kind === ts.SyntaxKind.TrueKeyword ||
+       n.arguments[0].kind === ts.SyntaxKind.FalseKeyword);
+    if (method !== "boolean" && !isBooleanLiteral) return;
     // Walk out to the property this z.boolean() chain is assigned to.
     let cur = n;
     while (cur.parent && !ts.isPropertyAssignment(cur.parent)) cur = cur.parent;
@@ -164,11 +211,27 @@ function modelSettableBooleans(schemaNode) {
 
 export function findViolations(src, file = "<memory>") {
   const out = [];
+  const scopes = destructiveScopes(src, file);
   for (const tool of findToolCalls(src, file)) {
     if (EXEMPT.test(tool.text)) continue;
+    if (!tool.config) continue;           // reported separately as unanalysable
     const handler = prop(tool.config, "handler");
     const schema = prop(tool.config, "inputSchema");
-    const destructive = handler ? destructiveCall(handler) : null;
+    // Three independent signals, two of them the FILE'S OWN classification rather than this
+    // guard's inference. `handle_data_subject_request` is the worked example: its RPC name carries
+    // no delete-ish substring, but it declares `destructiveHint: true` and is scoped `admin.delete`.
+    // Two signals, and the second is the FILE'S OWN classification rather than this guard's guess.
+    //
+    // NOT `annotations.destructiveHint`, though it was the obvious candidate and this guard tried
+    // it: in the MCP spec that hint covers non-additive UPDATES, not deletion, so it over-fires —
+    // measured, it flagged `upsert_email_template` (scope `admin.write`, an `.upsert()`, and an
+    // ordinary `active` data field). The `*.delete` scope is the narrower and truer signal.
+    //
+    // The scope alone is not enough either: the contained `bulk_delete_contacts` still carries
+    // `crm.delete` while its handler now only reads and returns a refusal. So the scope counts only
+    // when the handler ALSO makes a call this guard cannot see into.
+    const destructive = (handler ? destructiveCall(handler) : null)
+      ?? ((scopes.has(tool.name) && callsRpc(handler)) ? "scope *.delete + an opaque rpc" : null);
     if (!destructive) continue;
     const booleans = modelSettableBooleans(schema);
     if (booleans.length === 0) continue;
@@ -240,6 +303,35 @@ mcp.tool("bulk_delete_contacts", { inputSchema: z.object({ confirm: z.boolean().
   check("passes a delete with no boolean input", v(`
 mcp.tool("remove_row", { inputSchema: z.object({ id: z.string() }),
   handler: async ({ id }) => { await admin.from("t").delete().eq("id", id); return ok({}); } });`), 0);
+  // Codex P1 (8c051c15): a destructive RPC whose NAME carries no delete-ish substring, caught by
+  // the file's own `*.delete` scope. This is `handle_data_subject_request`'s exact shape.
+  check("catches a scope-classified destructive RPC with an approval boolean", v(`
+mcp.tool("handle_data_subject_request", {
+  inputSchema: z.object({ contact_id: z.string(), confirm: z.boolean() }),
+  handler: async (a) => { if (a.confirm) await admin.rpc("handle_data_subject_request", {}); return ok({}); },
+});
+const TOOL_SCOPE = { handle_data_subject_request: "admin.delete" };`), 1);
+
+  check("does NOT flag a *.delete-scoped tool whose handler only reads", v(`
+mcp.tool("bulk_delete_contacts", {
+  inputSchema: z.object({ confirm: z.boolean().optional() }),
+  handler: async ({ confirm }) => { await admin.from("clients").select("id");
+    if (confirm !== true) return ok({ preview_only: true }); return err("Nothing was deleted."); },
+});
+const TOOL_SCOPE = { bulk_delete_contacts: "crm.delete" };`), 0);
+
+  // z.literal(true) is a model-settable boolean spelled as a literal — the pre-AST matcher caught
+  // this and the first AST version regressed on it.
+  check("catches z.literal(true) as a boolean (Codex)", v(`
+mcp.tool("x", { inputSchema: z.object({ confirm: z.literal(true) }),
+  handler: async (a) => { if (a.confirm) await admin.from("clients").delete(); return ok({}); } });`), 1);
+
+  // Codex P1 (8c051c15): a configuration this guard cannot read must not pass silently.
+  check("a non-literal configuration is recorded as unanalysable",
+    findToolCalls('mcp.tool("x", config);').filter((t) => !t.config).length, 1);
+  check("a wrapper registration is recorded as unanalysable",
+    findToolCalls("list.forEach((t) => mcp.tool(t.name, t.config));").filter((t) => !t.config).length, 1);
+
   check("passes a boolean on a NON-destructive tool", v(`
 mcp.tool("list_things", { inputSchema: z.object({ include_archived: z.boolean() }),
   handler: async () => ok({ rows: [] }) });`), 0);
@@ -265,10 +357,22 @@ if (sources.length === 0) {
 
 let violations = [];
 let tools = 0;
+const unanalysable = [];
 for (const file of sources) {
   const src = fs.readFileSync(file, "utf8");
-  tools += findToolCalls(src, file).length;
+  const calls = findToolCalls(src, file);
+  tools += calls.length;
+  for (const c of calls) if (!c.config && !EXEMPT.test(c.text)) unanalysable.push({ file, ...c });
   violations = violations.concat(findViolations(src, file));
+}
+
+if (unanalysable.length) {
+  console.error(`✗ mcp-destructive-confirm-lint: ${unanalysable.length} tool registration(s) pass a configuration this guard cannot read.\n`);
+  for (const u of unanalysable) console.error(`  ${u.file}:${u.line} → ${u.name}`);
+  console.error("\n  A configuration built elsewhere — a variable, a spread, a factory — cannot be");
+  console.error("  inspected, and a tool this guard cannot inspect must not pass silently. Inline the");
+  console.error("  configuration, or teach the guard to resolve it.");
+  process.exit(1);
 }
 
 if (tools === 0) {
