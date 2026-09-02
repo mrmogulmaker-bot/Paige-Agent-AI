@@ -56,7 +56,16 @@ const SEAM = "supabase/functions/_shared/paige-spine/governedExecution.ts";
 const SUPERSEDED = /(^|\/)toolConfirmation(\.ts)?$/;
 const CLAIM_NAMES = /^(paige_pending_confirmations|claimConfirmation|confirmFingerprint)$/;
 const DATA_METHODS = new Set(["rpc", "from"]);
-const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
+/**
+ * An exemption is a LINE comment that STARTS with the marker — anchored, deliberately.
+ *
+ * Unanchored, `/* syntax: // governed-execution-exempt: example *\/` matched: a block comment
+ * explaining the marker disabled the rule for the whole file. The token-overlap test cannot catch
+ * that, because it IS a comment; what it is not is an exemption. Anchoring at `^//` excludes block
+ * comments (their text starts `/*`) and requires the marker to be the comment's whole purpose
+ * rather than something mentioned inside it.
+ */
+const EXEMPT = /^\/\/\s*governed-execution-exempt:\s*\S/;
 
 /**
  * Which lines carry a REAL exemption comment, and whether the file carries one at all.
@@ -434,6 +443,8 @@ if (process.argv.includes("--self-test")) {
     doorBranches("const m = `${v} // governed-execution-exempt: fake`; if (caller.door === \"mcp\") return 1;").length, 1);
   check("R4 a marker after an INTERPOLATION does not exempt",
     claimTouches("const m = `${v} // governed-execution-exempt: fake`; await client.rpc(\"x\", a);").length, 1);
+  check("R1 a marker inside a BLOCK comment does not exempt (Codex)",
+    doorBranches(`/* syntax: // governed-execution-exempt: example */\nif (caller.door === "mcp") return 1;`).length, 1);
   check("R1 a marker in a REAL comment still exempts",
     doorBranches(`if (caller.door === "mcp") return 1; // governed-execution-exempt: deliberate`).length, 0);
   check("R4 a marker in a STRING does not exempt",
