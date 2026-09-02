@@ -484,6 +484,17 @@ type PlanDraft = {
   installments_total: string;
 };
 
+/** One row of `prices` as `tenant-product-upsert` reads it — a drafted plan, resolved to cents. */
+type PricePayload = {
+  kind: PlanDraft["kind"];
+  nickname: string | null;
+  unit_amount: number;
+  currency: "usd";
+  billing_interval: PlanDraft["billing_interval"] | "one_time";
+  interval_count: number;
+  installments_total?: number;
+};
+
 function makePlan(kind: PlanDraft["kind"] = "one_time"): PlanDraft {
   return {
     kind,
@@ -532,7 +543,7 @@ function CreateProductDialog({
       toast.error("Add at least one billing plan");
       return;
     }
-    const pricesPayload: any[] = [];
+    const pricesPayload: PricePayload[] = [];
     for (const p of plans) {
       const unit = Math.round(parseFloat(p.amount) * 100);
       if (isNaN(unit) || unit <= 0) {
@@ -577,7 +588,7 @@ function CreateProductDialog({
       },
     );
     setCreating(false);
-    const serverErr = (data as any)?.error;
+    const serverErr = (data as { error?: string } | null)?.error;
     if (error || serverErr) {
       console.error("tenant-product-upsert failed", { error, data });
       toast.error(serverErr || error?.message || "Failed to create product");
