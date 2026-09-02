@@ -38,6 +38,71 @@ const bodySchema = z.object({
   approved_keys: z.array(z.string().max(64)).max(32),
 });
 
+/**
+ * Which owner-approved groups the sync did NOT actually write.
+ *
+ * §13 — A 2xx IS NOT A WRITE, AND THIS IS THE FUNCTION THAT SAYS SO. `sync-credit-report-data`
+ * answers HTTP 200 with `success: true` and records what really happened per group INSIDE
+ * `results`: `scores_error` when the profile update was refused, `negative_items.failed` when rows
+ * could not be inserted. Reading only `Response.ok` therefore stamped the upload `applied` and told
+ * the person their ticked fields were saved when one or more of them never landed — and `applied`
+ * is terminal, so the proposal could not be retried. The card said "Done"; the profile disagreed.
+ *
+ * WHAT THIS CAN HONESTLY CHECK, and nothing beyond it. Only the groups the person ACTUALLY
+ * approved are judged: a `scores_error` on an apply that never asked for scores is not that
+ * person's failure. For scores and negative items the sync reports a real outcome, so those are
+ * checked properly. For inquiries and positive accounts it reports counts and NO failure counter,
+ * so the strongest true statement is "the step ran and reported" — a per-row insert error there is
+ * invisible to every caller of that contract, and inventing a stricter reading here would fail
+ * legitimate applies. That gap belongs to `sync-credit-report-data`'s contract and is left to it
+ * (§37: this slice changes no producer of that endpoint).
+ *
+ * A count of zero is NOT treated as failure: sync filters incomplete rows out before its loops, and
+ * an inquiry that already exists is skipped by design, so `inserted: 0` is a perfectly legitimate
+ * re-apply. Only a reported failure, or a missing report for a group that was asked for, counts.
+ */
+export function syncGroupFailures(
+  approvedKeys: Iterable<string>,
+  scoped: {
+    scores: Record<string, unknown>;
+    negative_items: unknown[];
+    positive_accounts: unknown[];
+    hard_inquiries: unknown[];
+  },
+  syncBody: unknown,
+): string[] {
+  const b = (syncBody ?? {}) as Record<string, unknown>;
+  // The sync's own top-level verdict. Anything other than an explicit success — including an
+  // unparseable body — is a failure, never an assumption in our favour.
+  if (b.success !== true) return ["sync_reported_failure"];
+  const results = b.results;
+  if (!results || typeof results !== "object" || Array.isArray(results)) return ["sync_reported_no_results"];
+  const r = results as Record<string, any>;
+  const approved = new Set(approvedKeys);
+  const failed: string[] = [];
+
+  // Scores: only when a value was actually sent (an approved-but-absent score sends nothing).
+  if (Object.keys(scoped.scores).length > 0) {
+    if (r.scores_error != null || r.scores_updated !== true) failed.push("scores");
+  }
+  // Negative items: the one group with a real per-row failure counter.
+  if (approved.has("negative_items") && scoped.negative_items.length > 0) {
+    const n = r.negative_items;
+    if (!n || typeof n !== "object") failed.push("negative_items");
+    else if (Number(n.failed ?? 0) > 0) failed.push("negative_items");
+  }
+  // Inquiries / positive accounts: presence of the report is all this contract can prove.
+  if (approved.has("hard_inquiries") && scoped.hard_inquiries.length > 0
+      && (r.hard_inquiries == null || typeof r.hard_inquiries !== "object")) {
+    failed.push("hard_inquiries");
+  }
+  if (approved.has("positive_accounts") && scoped.positive_accounts.length > 0
+      && (r.positive_accounts == null || typeof r.positive_accounts !== "object")) {
+    failed.push("positive_accounts");
+  }
+  return failed;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -193,33 +258,36 @@ serve(async (req) => {
     return json({ ok: true, already_applied: true, applied_keys: [] });
   }
 
-  // ── Perform the write through the owning contract. ──
-  const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(scoped),
-  });
-  const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
-
-  if (!syncResponse.ok) {
-    console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
-    await admin.from("audit_logs").insert({
+  // ── ONE FAILURE PATH, THREE WAYS TO REACH IT. ──
+  //
+  // Audit what went wrong, RELEASE THE CLAIM so the person can try again rather than losing the
+  // proposal, and answer honestly. Without the release a failure leaves the row `applied` with
+  // nothing applied — the worst of both, terminal, and unrecoverable from the card.
+  //
+  // TWO THINGS THIS RELEASE HAS TO GET RIGHT, both found by review of the pushed diff.
+  // It reads its own error, because postgrest RESOLVES a rejection rather than throwing — a
+  // release that silently failed would leave exactly the unrecoverable state this exists to
+  // prevent, and say nothing. And it is CONDITIONAL on the row still being `applied`: without that
+  // predicate a concurrent decline would be stomped back to `awaiting_review`, resurrecting a
+  // proposal the person had just dismissed.
+  //
+  // It is one function rather than three copies because the transport-rejection path was added by
+  // review, and a fourth caller that forgets one of those two predicates is exactly how this
+  // regresses.
+  const releaseAndFail = async (
+    auditData: Record<string, unknown>,
+    message: string,
+    extra: Record<string, unknown> = {},
+  ) => {
+    const { error: failAuditErr } = await admin.from("audit_logs").insert({
       user_id: user.id,
       entity: "credit_report",
       action: "extraction_apply_failed",
       entity_id: body.upload_id,
-      data: { status: syncResponse.status, approved_keys: [...approved], error: syncBody?.error ?? null },
+      data: { ...auditData, approved_keys: [...approved], source: "paige_chat_extraction_proposal" },
     });
-    // RELEASE THE CLAIM so the person can try again rather than losing the proposal. Without this,
-    // a transient sync failure would leave the row `applied` with nothing applied — the worst of
-    // both, and unrecoverable from the card.
-    //
-    // TWO THINGS THIS RELEASE HAS TO GET RIGHT, both found by review of the pushed diff.
-    // It reads its own error, because postgrest RESOLVES a rejection rather than throwing — a
-    // release that silently failed would leave exactly the unrecoverable state this exists to
-    // prevent, and say nothing. And it is CONDITIONAL on the row still being `applied`: without
-    // that predicate a concurrent decline would be stomped back to `awaiting_review`, resurrecting
-    // a proposal the person had just dismissed.
+    if (failAuditErr) console.error("[apply-extraction] failure audit write failed:", failAuditErr.message);
+
     const { data: released, error: relErr } = await admin.from("credit_report_uploads")
       .update({ extraction_review_state: "awaiting_review" })
       .eq("id", body.upload_id)
@@ -232,7 +300,56 @@ serve(async (req) => {
         message: relErr?.message ?? (released ? null : "row was no longer claimed"),
       }));
     }
-    return json({ error: "I couldn't save those to the profile. Nothing was changed — try again." }, 502);
+    // `retryable` reports what the RELEASE actually achieved, not what it attempted (§13). A card
+    // told to retry against a row still stuck in `applied` would just collect `already_applied`.
+    return json({ error: message, retryable: !relErr && !!released, ...extra }, 502);
+  };
+
+  // ── Perform the write through the owning contract. ──
+  //
+  // §13 — THE TRANSPORT IS WRAPPED, because the claim is already stamped by the time we get here.
+  // A `fetch` that REJECTS — a timeout, a DNS failure, a function that is briefly gone — never
+  // reaches the non-OK branch below, so the row stayed `applied` with nothing applied and every
+  // later attempt answered `already_applied`: the proposal was lost and the person was told the
+  // work was done. A rejection is the most likely failure of the three, and was the only one with
+  // no release.
+  let syncResponse: Response;
+  try {
+    syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(scoped),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[apply-extraction] sync transport failed:", detail);
+    return await releaseAndFail(
+      { transport_error: detail },
+      "I couldn't reach the service that saves those. Nothing was changed — try again.",
+    );
+  }
+  const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
+
+  if (!syncResponse.ok) {
+    console.error("[apply-extraction] sync failed:", syncResponse.status, syncBody);
+    return await releaseAndFail(
+      { status: syncResponse.status, error: syncBody?.error ?? null },
+      "I couldn't save those to the profile. Nothing was changed — try again.",
+    );
+  }
+
+  // ── A 2xx IS NOT A WRITE. Check what the sync SAID about every group the person approved. ──
+  const failedGroups = syncGroupFailures(approved, scoped, syncBody);
+  if (failedGroups.length > 0) {
+    console.error("[apply-extraction] sync reported failed groups:", failedGroups, syncBody);
+    return await releaseAndFail(
+      { failed_groups: failedGroups, sync_results: (syncBody as Record<string, unknown>)?.results ?? null },
+      // Named, because "something went wrong" gives the person nothing to act on and hides which
+      // half of their approval survived. Nothing is claimed as saved: the release put the whole
+      // proposal back, so a retry re-applies all of it.
+      `I couldn't save all of those — ${failedGroups.join(", ")} didn't go through. Nothing was changed — try again.`,
+      { failed_groups: failedGroups },
+    );
   }
 
   // ATTRIBUTION (§13): what a person approved, when, and which of it was applied. Written with the

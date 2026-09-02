@@ -32,8 +32,9 @@
  * "missing data to be filled in later" — they are claims with no source, so the fields go rather
  * than being defaulted to something plausible.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { departmentLabel } from "./useSoloActivityFeed";
 
 /** How many waiting items a modal needs. It shows one; a few are read so "next" is possible. */
@@ -87,16 +88,46 @@ export function toPendingAction(raw: unknown): SoloPendingAction | null {
 }
 
 export function useSoloPendingActions(): SoloPendingActionsData {
+  // The active account IS the scope of this read, so it is the epoch this hook keys on. It stays
+  // out of the QUERY — the live policy on `paige_actions` derives the tenant from the session, and
+  // passing one from the client would be a scope the caller chose rather than one they hold (§9).
+  const { activeTenantId } = useTenantContext();
+
   const [items, setItems] = useState<SoloPendingAction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const mounted = useRef(false);
+  // Which account the rows currently in state were read for.
+  const [itemsAccount, setItemsAccount] = useState<string | null>(activeTenantId);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
+  // ── THE PRIOR ACCOUNT'S WORK IS DROPPED DURING RENDER, NOT AFTER A ROUND TRIP. ──
+  //
+  // §9 — the Trust Compass survives an account switch that stays on the same route, and this hook
+  // used to depend on the manual refresh counter alone. So after a switch the operator kept
+  // reading the PREVIOUS tenant's filed titles, summaries, drafted artefacts and reasons-for-
+  // stopping, indefinitely, inside the new account's chrome. RLS had scoped every one of those
+  // rows correctly; what leaked is that nothing re-asked when the account changed.
+  //
+  // Clearing here rather than in an effect matters: an effect runs AFTER commit, so the modal would
+  // paint one frame of the old account's drafts first. Adjusting state during render means the
+  // stale rows are never shown at all — and it does not depend on the replacement read being fast,
+  // or arriving. A slow or failing read is not a licence to keep another account's drafts on screen.
+  //
+  // Only an ACCOUNT change clears. A manual `refresh()` deliberately does not: it re-reads the same
+  // account, and blanking a modal the operator is reading would be a regression, not a fix.
+  if (itemsAccount !== activeTenantId) {
+    setItemsAccount(activeTenantId);
+    setItems([]);
+    setError(null);
+    setLoading(true);
+  }
+
   useEffect(() => {
-    mounted.current = true;
+    // Effect-local, never a shared ref: this effect now re-runs on an account switch, and a
+    // component-lifetime flag would be cleared by the old run's cleanup and set again by the new
+    // run before the old read resolves — letting the previous account's answer through the guard.
     let cancelled = false;
 
     void (async () => {
@@ -108,7 +139,7 @@ export function useSoloPendingActions(): SoloPendingActionsData {
           .eq("autonomy_lane", "confirm")
           .order("created_at", { ascending: false })
           .limit(MAX_ITEMS);
-        if (cancelled || !mounted.current) return;
+        if (cancelled) return;
         if (readError) {
           setError(readError.message || "could not load what is waiting on you");
           setLoading(false);
@@ -118,14 +149,15 @@ export function useSoloPendingActions(): SoloPendingActionsData {
         setError(null);
         setLoading(false);
       } catch (err) {
-        if (cancelled || !mounted.current) return;
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : "could not load what is waiting on you");
         setLoading(false);
       }
     })();
 
-    return () => { cancelled = true; mounted.current = false; };
-  }, [tick]);
+    return () => { cancelled = true; };
+    // The active account is a dependency, not an afterthought: it is what makes a switch re-ask.
+  }, [tick, activeTenantId]);
 
   return useMemo(() => ({ items, loading, error, refresh }), [items, loading, error, refresh]);
 }

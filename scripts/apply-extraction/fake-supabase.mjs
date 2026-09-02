@@ -18,6 +18,8 @@ export function setScenario(scenario) {
   ACTIVE = { scenario, rec };
   const origError = console.error;
   rec.restore = () => { console.error = origError; };
+  /** The live fixture row, so a stateful scenario can assert on what the handler left behind. */
+  rec.scenarioRow = () => scenario.uploadRow;
   console.error = (...a) => rec.errors.push(a.map(String).join(" "));
   return rec;
 }
@@ -55,6 +57,21 @@ class Builder {
       // drivable — that is the half the review found unratcheted.
       if (this._row?.extraction_review_state === "awaiting_review" && sc.releaseError) {
         return { data: null, error: sc.releaseError };
+      }
+      // ── STATEFUL MODE (opt-in): the row REMEMBERS what the compare-and-set did to it. ──
+      //
+      // The stateless behaviour below is what every existing scenario asserts against, so it is
+      // left exactly as it was. But "a second attempt can proceed after a transport failure" is
+      // not provable against a row that forgets: it needs the release to genuinely put the row
+      // back in `awaiting_review`, and the NEXT request to find it there and claim it. Under
+      // `stateful: true` the update evaluates its own eq filters against the live row and applies
+      // the transition only if they all match — which is what the database does.
+      if (sc.stateful && this._table === "credit_report_uploads") {
+        const row = sc.uploadRow;
+        const matches = this._filters.every(([op, col, val]) => op === "eq" && row?.[col] === val);
+        if (!matches) return { data: [], error: null };
+        Object.assign(row, this._row);
+        return { data: [{ id: row.id }], error: null };
       }
       // The claim returns the row only if IT made the transition; a scenario can say it lost.
       if (this._row?.extraction_review_state === "applied") {

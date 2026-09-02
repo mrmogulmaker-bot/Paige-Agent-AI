@@ -28,12 +28,13 @@ export interface ExtractionProposal {
   fields: ExtractionField[];
 }
 
-type Status = "idle" | "saving" | "saved" | "skipped" | "error";
+type Status = "idle" | "saving" | "saved" | "skipping" | "skipped" | "error";
 
 interface ExtractionProposalCardProps {
   proposal: ExtractionProposal;
   onConfirm: (selectedKeys: string[]) => Promise<void> | void;
-  onSkip: () => void;
+  /** Awaited. The card settles as skipped only once this resolves — see `handleSkip`. */
+  onSkip: () => Promise<void> | void;
 }
 
 export function ExtractionProposalCard({
@@ -71,10 +72,32 @@ export function ExtractionProposalCard({
     }
   };
 
-  const handleSkip = () => {
+  /**
+   * SKIP IS A DECISION THE SERVER RECORDS, SO THE CARD WAITS TO HEAR THAT IT DID.
+   *
+   * §13 — this used to set `skipped` synchronously and drop the promise on the floor. When the
+   * request failed, or the session had expired (which throws before any request is made), the
+   * rejection was unhandled, the row stayed `awaiting_review` on the server, and the card had
+   * already replaced its own controls with "No problem — just let me know if you want to save it
+   * later." The person was told their decision was recorded while the proposal sat open with no
+   * way back to it. Same shape as Save, for the same reason: an outcome is not announced before
+   * it happens.
+   *
+   * A failure returns to `idle` rather than to `error`: the proposal is still open server-side, so
+   * the controls must come back. `error` is terminal here and would hide the only way to act.
+   */
+  const handleSkip = async () => {
     if (status !== "idle") return;
-    setStatus("skipped");
-    onSkip();
+    setStatus("skipping");
+    setErrorMsg(null);
+    try {
+      await onSkip();
+      setStatus("skipped");
+    } catch (err) {
+      console.error("Extraction skip failed:", err);
+      setErrorMsg(err instanceof Error ? err.message : "Failed to skip");
+      setStatus("idle");
+    }
   };
 
   const isSingleField = proposal.fields.length === 1;
@@ -93,7 +116,7 @@ export function ExtractionProposalCard({
             updated your business profile." Both at once, on screen, to the person who just clicked.
             Hiding a sentence that has become false is not a design change; leaving it is a §13 one.
           */}
-          {status === "idle" && (
+          {(status === "idle" || status === "skipping") && (
             <p className="text-[13px] font-medium text-foreground leading-tight">
               {proposal.intro ||
                 (isSingleField
@@ -174,16 +197,16 @@ export function ExtractionProposalCard({
           No problem — just let me know if you want to save it later.
         </p>
       )}
-      {status === "error" && (
+      {errorMsg && (
         <p className="text-[12px] text-destructive">{errorMsg}</p>
       )}
 
-      {status === "idle" && (
+      {(status === "idle" || status === "skipping") && (
         <div className="flex gap-2">
           <Button
             size="sm"
             onClick={handleConfirm}
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || status === "skipping"}
             className="bg-gradient-gold hover:opacity-90 h-8 text-xs"
           >
             {isSingleField ? "Yes, save it" : `Save selected (${selected.size})`}
@@ -192,6 +215,7 @@ export function ExtractionProposalCard({
             size="sm"
             variant="ghost"
             onClick={handleSkip}
+            disabled={status === "skipping"}
             className="h-8 text-xs"
           >
             {isSingleField ? "No thanks" : "Skip all"}

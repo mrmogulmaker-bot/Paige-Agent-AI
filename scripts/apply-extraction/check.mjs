@@ -41,14 +41,32 @@ const STRUCTURED = {
 
 let syncCalls = [];
 let syncStatus = 200;
+// A 2xx body the scenario chooses. `sync-credit-report-data` returns HTTP 200 + success:true and
+// records per-group outcomes INSIDE `results` (`scores_error`, `negative_items.failed`), so the
+// status line alone cannot say whether an approved group was written.
+let syncBody = null;
+// A rejected transport (timeout, DNS, a function that is momentarily gone). The claim is already
+// stamped `applied` by the time this happens, so nothing but an explicit release makes it
+// retryable.
+let syncRejects = null;
 globalThis.fetch = async (url, init) => {
   const href = String(url);
   if (href.includes("sync-credit-report-data")) {
     syncCalls.push(JSON.parse(String(init?.body ?? "{}")));
-    return new Response(JSON.stringify(syncStatus === 200 ? { success: true } : { error: "boom" }),
+    if (syncRejects) throw syncRejects;
+    const body = syncBody ?? (syncStatus === 200 ? { success: true, results: DEFAULT_SYNC_RESULTS } : { error: "boom" });
+    return new Response(JSON.stringify(body),
       { status: syncStatus, headers: { "Content-Type": "application/json" } });
   }
   throw new Error(`apply-extraction: unexpected fetch to ${href}`);
+};
+
+/** What a fully-successful sync reports for the groups this fixture ever approves. */
+const DEFAULT_SYNC_RESULTS = {
+  scores_updated: true,
+  negative_items: { inserted: 2, updated: 0, failed: 0 },
+  hard_inquiries: { inserted: 1 },
+  positive_accounts: { inserted: 1, updated: 0 },
 };
 
 const fake = await import("./fake-supabase.mjs");
@@ -56,8 +74,9 @@ await import("../../supabase/functions/paige-apply-extraction/index.ts");
 const { capturedHandler } = await import("./stub-serve.mjs");
 const handler = capturedHandler();
 
-async function drive({ approved_keys, row = {}, claimReturns, releaseError = null, sync = 200, auth = true }) {
-  syncCalls = []; syncStatus = sync;
+async function drive({ approved_keys, row = {}, claimReturns, releaseError = null, sync = 200,
+                       auth = true, body: syncResultBody = null, rejects = null }) {
+  syncCalls = []; syncStatus = sync; syncBody = syncResultBody; syncRejects = rejects;
   const rec = fake.setScenario({
     authUser: auth ? { id: USER } : null,
     // `row: null` means the caller CANNOT SEE the upload — RLS returned nothing. Spreading null
@@ -201,6 +220,163 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
     sel.trim().slice(0, 200));
   assert("9.2 …and rows predating the review column are still included, since they are what it repairs",
     /extraction_review_state\.is\.null/.test(sel), sel.trim().slice(0, 200));
+}
+
+// ── 10. A 2xx IS NOT A WRITE. Partial group failures must not settle as `applied`. ─────────────
+//
+// `sync-credit-report-data` returns HTTP 200 with `success: true` and records what actually
+// happened per group INSIDE `results`: `scores_error` when the profile update was refused,
+// `negative_items.failed` when rows could not be inserted. Checking `Response.ok` alone therefore
+// marked the upload `applied` and told the card it had saved, while one or more of the things the
+// person ticked were never written — and, because `applied` is terminal, there was no way back to
+// the proposal to try again. The state has to follow what the sync SAID, not what its status line
+// implied.
+{
+  const r = await drive({
+    approved_keys: ["credit_score_equifax", "negative_items"],
+    body: { success: true, results: { scores_error: "permission denied for table profiles",
+                                      negative_items: { inserted: 2, updated: 0, failed: 0 } } },
+  });
+  assert("10.1 a scores_error on an approved group is a failure, not a success",
+    r.status !== 200 && r.body.ok !== true, `${r.status} ${JSON.stringify(r.body)}`);
+  const release = r.rec.updates.filter((u) => u.table === "credit_report_uploads").at(-1);
+  assert("10.2 …and the proposal is restored to awaiting_review so it can be retried",
+    !!release && release.row.extraction_review_state === "awaiting_review", JSON.stringify(release?.row));
+  assert("10.3 …conditionally, so a concurrent decline is not stomped",
+    !!release && release.filters.some((f) => f[0] === "eq" && f[1] === "extraction_review_state" && f[2] === "applied"),
+    JSON.stringify(release?.filters));
+  assert("10.4 …and the answer NAMES what failed rather than saying 'something went wrong'",
+    Array.isArray(r.body.failed_groups) && r.body.failed_groups.includes("scores"), JSON.stringify(r.body));
+}
+{
+  const r = await drive({
+    approved_keys: ["negative_items"],
+    body: { success: true, results: { negative_items: { inserted: 1, updated: 0, failed: 1 } } },
+  });
+  assert("10.5 a failed negative item is a failure even though the others landed",
+    r.status !== 200 && r.body.ok !== true, `${r.status} ${JSON.stringify(r.body)}`);
+  assert("10.6 …and it is named",
+    Array.isArray(r.body.failed_groups) && r.body.failed_groups.includes("negative_items"), JSON.stringify(r.body));
+}
+{
+  // A group the person did NOT approve cannot make their approval fail.
+  const r = await drive({
+    approved_keys: ["negative_items"],
+    body: { success: true, results: { scores_error: "profiles refused",
+                                      negative_items: { inserted: 2, updated: 0, failed: 0 } } },
+  });
+  assert("10.7 a failure in a group nobody approved does not fail the apply",
+    r.status === 200 && r.body.ok === true, `${r.status} ${JSON.stringify(r.body)}`);
+}
+{
+  // The step is missing entirely: the sync never got to the group that was approved.
+  const r = await drive({ approved_keys: ["negative_items"], body: { success: true, results: {} } });
+  assert("10.8 an approved group the sync never reports on is not assumed written",
+    r.status !== 200 && r.body.ok !== true, `${r.status} ${JSON.stringify(r.body)}`);
+}
+{
+  const r = await drive({ approved_keys: ["negative_items"], body: { success: false, results: {} } });
+  assert("10.9 success:false is a failure whatever the status line says",
+    r.status !== 200 && r.body.ok !== true, `${r.status} ${JSON.stringify(r.body)}`);
+}
+{
+  // §9/§13 — THE FAILURE ANSWER MUST NOT BECOME A LEAK. Naming which groups failed is useful; the
+  // sync's raw payload is not the browser's, and a provider/postgres error string can carry column
+  // names, row content and internals. The detail belongs in `audit_logs`, the sentence in the card.
+  const SECRET = "RAW_PROVIDER_DETAIL_SENTINEL";
+  const r = await drive({
+    approved_keys: ["credit_score_equifax", "negative_items"],
+    body: { success: true, results: {
+      scores_error: `duplicate key value violates unique constraint ${SECRET}`,
+      negative_items: { inserted: 0, updated: 0, failed: 2, rows: [{ ssn: SECRET }] },
+    } },
+  });
+  const answer = JSON.stringify(r.body);
+  assert("10.12 the raw sync payload does not travel back to the browser",
+    !answer.includes(SECRET), answer);
+  assert("10.13 …but it IS recorded in the audit row, where it belongs",
+    r.rec.inserts.some((i) => i.table === "audit_logs" && JSON.stringify(i.row).includes(SECRET)),
+    JSON.stringify(r.rec.inserts.map((i) => i.row?.action)));
+  assert("10.14 …and the answer still says which groups failed, and that it can be retried",
+    Array.isArray(r.body.failed_groups) && r.body.failed_groups.includes("scores")
+      && r.body.failed_groups.includes("negative_items") && r.body.retryable === true,
+    answer);
+}
+{
+  // The green case must STAY green — this is the regression guard on the check above (§58).
+  const r = await drive({ approved_keys: ["credit_score_equifax", "negative_items", "hard_inquiries", "positive_accounts"] });
+  assert("10.10 a genuinely complete sync still settles as applied",
+    r.status === 200 && r.body.ok === true && Array.isArray(r.body.applied_keys) && r.body.applied_keys.length === 4,
+    `${r.status} ${JSON.stringify(r.body)}`);
+  const last = r.rec.updates.filter((u) => u.table === "credit_report_uploads").at(-1);
+  assert("10.11 …and is NOT released back to awaiting_review",
+    !!last && last.row.extraction_review_state === "applied", JSON.stringify(last?.row));
+}
+
+// ── 11. A REJECTED TRANSPORT MUST NOT LEAVE THE ROW `applied`. ─────────────────────────────────
+//
+// The claim is stamped BEFORE the sync is called, deliberately, so two approvals cannot both
+// write. But a `fetch` that REJECTS — a timeout, a DNS failure, a function that is briefly gone —
+// never reaches the non-OK branch that releases that claim, so the row stayed `applied` with
+// nothing applied. Every later attempt then answered `already_applied`: the proposal was lost, and
+// the person was told the work was done.
+{
+  const r = await drive({ approved_keys: ["negative_items"], rejects: new TypeError("error sending request for url") });
+  assert("11.1 a rejected sync is reported as a failure, not as success",
+    r.status !== 200 && r.body.ok !== true, `${r.status} ${JSON.stringify(r.body)}`);
+  const release = r.rec.updates.filter((u) => u.table === "credit_report_uploads").at(-1);
+  assert("11.2 …and the claim is RELEASED so the proposal survives",
+    !!release && release.row.extraction_review_state === "awaiting_review", JSON.stringify(release?.row));
+  assert("11.3 …conditionally, exactly like the non-OK path",
+    !!release && release.filters.some((f) => f[0] === "eq" && f[1] === "extraction_review_state" && f[2] === "applied"),
+    JSON.stringify(release?.filters));
+  assert("11.4 …and the failure is audited rather than vanishing",
+    r.rec.inserts.some((i) => i.table === "audit_logs" && i.row.action === "extraction_apply_failed"),
+    JSON.stringify(r.rec.inserts.map((i) => i.row?.action)));
+}
+{
+  // A SECOND attempt after the transport failure must be able to proceed — proved as a genuine
+  // CONTINUATION, against one row that remembers what the first attempt did to it. A fresh
+  // fixture would prove only that a clean row applies, which was never in doubt.
+  const rec = fake.setScenario({
+    authUser: { id: USER },
+    stateful: true,
+    uploadRow: {
+      id: UPLOAD, user_id: USER, client_id: null, analysis_status: "completed",
+      extraction_review_state: "awaiting_review", analysis_result: STRUCTURED,
+    },
+  });
+  const attempt = async () => {
+    syncCalls = [];
+    const res = await handler(new Request("http://local/paige-apply-extraction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-jwt" },
+      body: JSON.stringify({ upload_id: UPLOAD, approved_keys: ["negative_items"] }),
+    }));
+    return { status: res.status, body: await res.json().catch(() => ({})), calls: [...syncCalls] };
+  };
+
+  syncRejects = new TypeError("error sending request for url"); syncStatus = 200; syncBody = null;
+  const first = await attempt();
+  assert("11.5 the transport failure is reported honestly",
+    first.status === 502 && first.body.ok !== true, `${first.status} ${JSON.stringify(first.body)}`);
+  assert("11.6 …and the row it left behind is retryable, not `applied`",
+    rec.scenarioRow().extraction_review_state === "awaiting_review",
+    rec.scenarioRow().extraction_review_state);
+
+  syncRejects = null;
+  const second = await attempt();
+  assert("11.7 the SECOND attempt on that same row reaches the sync and applies",
+    second.calls.length === 1 && second.status === 200 && second.body.ok === true,
+    `${second.calls.length} call(s), ${second.status} ${JSON.stringify(second.body)}`);
+  assert("11.8 …leaving the row settled as applied",
+    rec.scenarioRow().extraction_review_state === "applied", rec.scenarioRow().extraction_review_state);
+}
+{
+  const r = await drive({ approved_keys: ["negative_items"], rejects: new TypeError("boom"),
+                          releaseError: { message: "denied", code: "42501" } });
+  assert("11.9 a release that itself fails on the transport path is logged, not swallowed",
+    r.rec.errors.some((m) => /CLAIM NOT RELEASED/.test(m)), JSON.stringify(r.rec.errors));
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

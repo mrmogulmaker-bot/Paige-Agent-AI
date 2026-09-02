@@ -184,6 +184,123 @@ describe("PAIGE chat — a document proposes, it does not write", () => {
   });
 });
 
+describe("PAIGE chat — Skip is a decision the SERVER accepts, not one the card announces", () => {
+  /**
+   * WHAT WAS WRONG. Skip set the card to `skipped` synchronously and threw the apply promise away.
+   * If the request failed — or the session had expired, which throws before the request is even
+   * made — the rejection was unhandled, the server row stayed `awaiting_review`, and the card had
+   * already hidden its own controls behind a line reading "No problem — just let me know if you
+   * want to save it later." The person was told their decision was recorded while the proposal sat
+   * open on the server with no way back to it.
+   *
+   * These drive the real chat: they render the card, click Skip, and read what is on screen.
+   */
+  const renderWithApply = async (
+    applyResponse: () => Promise<unknown> | unknown,
+  ) => {
+    toastSpy.mockClear();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).includes("paige-apply-extraction")) return await applyResponse();
+      return sse([
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "I read your report." } }] })}\n\n`,
+        `data: ${JSON.stringify({ extraction_proposal: PROPOSAL })}\n\n`,
+        "data: [DONE]\n\n",
+      ]);
+    }));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(<PaigeAIChat hideHeader fill soloTenantSafety />); await Promise.resolve(); });
+    await sendTurn(host);
+    return { host, root };
+  };
+
+  const buttons = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLButtonElement>("button"));
+  const skipButton = (host: HTMLElement) => buttons(host).find((b) => /skip all/i.test(b.textContent ?? ""));
+  const clickSkip = async (host: HTMLElement) => {
+    const skip = skipButton(host)!;
+    expect(skip).toBeTruthy();
+    await act(async () => {
+      skip.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+  };
+
+  it("does not claim the proposal was skipped when the server refuses", async () => {
+    const { host, root } = await renderWithApply(async () => ({
+      ok: false, status: 502,
+      json: async () => ({ error: "I couldn't record that just now. Nothing was changed — try again." }),
+    }));
+    await clickSkip(host);
+
+    // The settled "skipped" sentence must NOT be on screen: the server never accepted it.
+    expect(host.textContent).not.toContain("just let me know if you want to save it later");
+    // The person is told what actually happened, in the server's own words.
+    expect(host.textContent).toContain("Nothing was changed");
+
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves the proposal retryable after a refused skip", async () => {
+    let attempts = 0;
+    const { host, root } = await renderWithApply(async () => {
+      attempts += 1;
+      if (attempts === 1) return { ok: false, status: 502, json: async () => ({ error: "Try again." }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true, declined: true, applied_keys: [] }) };
+    });
+
+    await clickSkip(host);
+    // The controls are still there — a failure that hides the only way to act is not a retry state.
+    expect(skipButton(host)).toBeTruthy();
+
+    await clickSkip(host);
+    expect(attempts).toBe(2);
+    expect(host.textContent).toContain("just let me know if you want to save it later");
+
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not claim the proposal was skipped when the session has expired", async () => {
+    const { supabase } = await import("@/integrations/supabase/client");
+    const getSession = supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>;
+    const { host, root } = await renderWithApply(async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }));
+    try {
+      // The session is gone by the time Skip is pressed — `applyExtraction` throws before any
+      // request is made, which is the case the discarded promise swallowed most completely.
+      getSession.mockResolvedValue({ data: { session: null } });
+      await clickSkip(host);
+
+      expect(host.textContent).not.toContain("just let me know if you want to save it later");
+      expect(skipButton(host)).toBeTruthy();
+      expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ title: "Please sign in" }));
+    } finally {
+      // Restored in `finally`: this mock is shared by every test in the file, so leaking a
+      // signed-out session on a failed assertion would break unrelated tests that run after it.
+      getSession.mockResolvedValue({ data: { session: { access_token: "test-token" } } });
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("still settles as skipped when the server accepts it", async () => {
+    const { host, root } = await renderWithApply(async () => ({
+      ok: true, status: 200, json: async () => ({ ok: true, declined: true, applied_keys: [] }),
+    }));
+    await clickSkip(host);
+    expect(host.textContent).toContain("just let me know if you want to save it later");
+    expect(skipButton(host)).toBeUndefined();
+
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("PAIGE chat — unticking a field means it is not written", () => {
   /**
    * THE MUTATION THAT PASSED EVERY OTHER TEST. Making the card's `toggle()` a no-op — so a person
