@@ -461,6 +461,13 @@ function destructiveCall(node) {
   return found;
 }
 
+/** A `z.literal(...)` argument that is, or contains, a boolean keyword. */
+function literalAdmitsBoolean(arg) {
+  if (arg.kind === ts.SyntaxKind.TrueKeyword || arg.kind === ts.SyntaxKind.FalseKeyword) return true;
+  if (ts.isArrayLiteralExpression(arg)) return arg.elements.some(literalAdmitsBoolean);
+  return false;
+}
+
 /**
  * Is this builder call the type of a FIELD, rather than a type argument inside a container?
  *
@@ -518,9 +525,12 @@ function modelSettableBooleans(schemaNode) {
     // `.boolean()`, and also `z.literal(true)` / `z.literal(false)` — a boolean the model can set,
     // spelled as a literal. The pre-AST matcher recognised `z.literal(...)`, so omitting it here
     // was a regression against this guard's own promise to reject ANY model-settable boolean.
-    const isBooleanLiteral = method === "literal" && n.arguments.length === 1 &&
-      (n.arguments[0].kind === ts.SyntaxKind.TrueKeyword ||
-       n.arguments[0].kind === ts.SyntaxKind.FalseKeyword);
+    // `z.literal(true)` and, on zod 4, `z.literal([true, false])` — the multi-value overload.
+    // Reading only a single scalar argument missed the second, and it is the same version-split
+    // as `z.enum`: zod 3.25.76 rejects a boolean there, 4.5.4 accepts it, so a bump of the MCP
+    // surface's import would have opened it silently. Any boolean keyword among the arguments —
+    // bare or inside an array literal — makes this a model-settable boolean.
+    const isBooleanLiteral = method === "literal" && n.arguments.some(literalAdmitsBoolean);
     // `z.any()` / `z.unknown()` in a FIELD's own position is the schema declining to say what that
     // field is, and an unconstrained field admits `true` without the token `boolean` appearing
     // anywhere. Reading spellings could never catch it. `unconstrainedField` is the structural
@@ -782,6 +792,12 @@ mcp.tool("t", { inputSchema: z.object({ confirm: z.promise(z.any()) }), ${DESTRU
 mcp.tool("t", { inputSchema: z.object({ id: z.string(), items: z.array(z.union([z.string(), z.any()])) }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
   check("record(string, union([string, any])) is values, not the field", v(`
 mcp.tool("t", { inputSchema: z.object({ id: z.string(), m: z.record(z.string(), z.union([z.string(), z.any()])) }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
+  // Codex on 553a8c1e: zod 4's multi-value literal overload. Measured — zod 4.5.4 accepts a
+  // boolean here, zod 3.25.76 rejects it, so bumping paige-mcp's import would have opened this.
+  check("z.literal([true, false]) is a model-settable boolean", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.literal([true, false]) }), ${DESTRUCTIVE} });`), 1);
+  check("z.literal([\"a\", \"b\"]) is not", v(`
+mcp.tool("t", { inputSchema: z.object({ mode: z.literal(["a", "b"]), id: z.string() }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
