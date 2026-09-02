@@ -144,11 +144,18 @@ data may vary; shell, routes, layout, navigation, base surfaces and the single P
 not fork by account. The standard maps the actual Solo homes into business foundation, client work,
 revenue/delivery, growth/communications, intelligence/governance and the capability ecosystem; it
 preserves Campaigns' exact six tabs: Overview, Catalog, Sales, Pipeline, Social, Performance. Each
-department/subtab has a required surface card covering human job, owner/data, shell location,
-input/edit/create flows, evidence, PAIGE knowledge/proposal/action, approval, Rail, truth/browser
-proof and collisions. Full owner flows precede isolated polish. Domains own UI/data/actions; Chat
+department/subtab has a required surface card covering its AI COO contribution, human job,
+owner/data, shell location, input/edit/create flows, evidence, PAIGE knowledge/proposal/action,
+approval, Rail, truth/browser proof and collisions. Full owner flows precede isolated polish. Domains own UI/data/actions; Chat
 owns final binding; stable Spine registration is self-service and only a new shared primitive needs
 an SCR. This is a docs-only standard, not proof that the mapped capabilities are live.
+
+**Governing product definition:** PAIGE is not a ChatGPT-style chat product or coding assistant. She
+is the tenant-scoped AI COO—the operating partner that observes truthful business evidence,
+understands, plans, acts within authority, records outcomes, and learns/follows up. Chat is one
+governed human interface, not the product boundary. The human selects the autonomy boundary; until
+Trust Compass is persisted and server-enforced, server action-risk plus the one approval gate is the
+authoritative clamp. See `docs/doctrine/autonomy-architecture.md` and the Spine standard.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 

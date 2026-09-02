@@ -7,6 +7,38 @@ capability is live. Current facts below are grounded at `origin/main`
 `76bb3bbca74ff4214feba28995d5cd0b9196fb6b` (PR #728); authenticated production behavior was not
 re-tested in this docs-only pass and is `UNVERIFIED` unless a cited authority says otherwise.
 
+## Governing platform definition: PAIGE is the AI COO
+
+PAIGE is **not** a ChatGPT-style chat product or a coding assistant. PAIGE is a tenant-scoped
+**AI COO**: an operating partner built to help business owners run the business, not merely answer
+questions. Chat is one human interface to PAIGE and the final governed interaction surface; it is
+not the product boundary.
+
+Through truthful, tenant-scoped evidence, PAIGE must be able to safely understand the business's
+organization, team, clients, documents, campaigns, pipeline, sales activity, delivery, connections,
+goals, outcomes, risks, and open work. Within proven authority she may then reason, recommend,
+coordinate, execute bounded work, record outcomes, and follow up. A named domain, rendered surface,
+or desired capability is not proof that its evidence or action contract exists.
+
+The desired operating loop is:
+
+> **observe → understand → plan → act within authority → record outcome → learn/follow up**
+
+The human chooses the autonomy boundary; PAIGE provides compounding operational leverage inside it.
+Trust Compass is the owner's intended autonomy control: it expresses how much work the owner wants
+PAIGE to do independently. It must never be described as server enforcement until it is persisted
+and enforced server-side. Until then, the authoritative clamp is the server action-risk policy plus
+the one confirmation/approval gate. PAIGE can never raise her own permission, bypass tenant/domain
+permission, or act beyond the owner-selected and server-enforced allowance. The detailed process,
+ceiling, grant and capability-floor model remains owned by
+[`docs/doctrine/autonomy-architecture.md`](../doctrine/autonomy-architecture.md); approval proof
+remains owned by [`docs/doctrine/one-approval-gate.md`](../doctrine/one-approval-gate.md).
+
+Every surface card and feature assignment must therefore state its **AI COO contribution**: what safe
+business truth PAIGE learns, what bounded help she may offer, what she may execute, what requires the
+owner, and how the outcome returns to durable context. Keep Chat as the final governed interaction
+surface, never as the whole product.
+
 ## 1. Canonical Solo baseline: one product, one shell
 
 There is **one shared Solo shell/template**. Tenant facts, records, permissions, entitlements,
@@ -57,23 +89,25 @@ card—link its owner.
 
 Each card must state all of the following:
 
-1. **Human job** — the outcome the owner is trying to reach, including first use and return use.
-2. **Owning domain/data** — the source of truth and the server authority that may read/write it.
-3. **Solo-shell location** — destination, subtab, nested mode, and supported entry/return paths.
-4. **Input/edit/create flows** — the actual human actions, saves, refusals, retries, abandonment and
+1. **AI COO contribution** — what safe truth PAIGE learns, bounded help she may offer, work she may
+   execute, what requires the owner, and how the outcome returns to durable context.
+2. **Human job** — the outcome the owner is trying to reach, including first use and return use.
+3. **Owning domain/data** — the source of truth and the server authority that may read/write it.
+4. **Solo-shell location** — destination, subtab, nested mode, and supported entry/return paths.
+5. **Input/edit/create flows** — the actual human actions, saves, refusals, retries, abandonment and
    account-switch behavior; “none proven” is valid.
-5. **Evidence** — safe facts and provenance the domain can publish; never raw sensitive payloads.
-6. **What PAIGE may know** — only evidence registered and resolved within active authority.
-7. **What PAIGE may propose/do** — proposal and mutation are separate; unavailable actions stay
+6. **Evidence** — safe facts and provenance the domain can publish; never raw sensitive payloads.
+7. **What PAIGE may know** — only evidence registered and resolved within active authority.
+8. **What PAIGE may propose/do** — proposal and mutation are separate; unavailable actions stay
    unavailable.
-8. **Approval boundary** — risk classification and the one canonical Chat confirmation gate for
+9. **Approval boundary** — risk classification and the one canonical Chat confirmation gate for
    governed action; the domain does not build another gate.
-9. **Rail effect** — the safe attributable outcome, or `UNAVAILABLE`; an event name is not proof of
+10. **Rail effect** — the safe attributable outcome, or `UNAVAILABLE`; an event name is not proof of
    persistence.
-10. **Truth and browser proof** — `LIVE`, `PARTIAL`, or `UNAVAILABLE`, plus explicit `UNVERIFIED`
+11. **Truth and browser proof** — `LIVE`, `PARTIAL`, or `UNAVAILABLE`, plus explicit `UNVERIFIED`
     where authenticated behavior has not been driven. `NOT CONNECTED` is an account state under an
     unavailable capability, not a fourth implementation maturity.
-11. **Dependencies/collisions** — shared files, providers, migrations, other owners, active work,
+12. **Dependencies/collisions** — shared files, providers, migrations, other owners, active work,
     and the precise boundary that prevents parallel ownership.
 
 Truth labels apply to each capability leg, not decoratively to a whole page. `LIVE` requires a real
@@ -87,6 +121,9 @@ These cards establish ownership and known maturity. They are not a substitute fo
 check or exact-head verification when a surface is changed.
 
 ### 4.1 Command Center — Systems Check and Mind
+
+**AI COO contribution.** Gives PAIGE safe operating-readiness and governed knowledge evidence so she
+can identify risk, explain uncertainty, recommend a next step, and follow up without inventing health.
 
 **Human job and location.** Command Center is the operating overview. Its two canonical subtabs are
 **Systems Check** (inspect what was checked, passed, failed, or could not run) and **Mind** (inspect
@@ -112,6 +149,10 @@ PAIGE workspace and Spine registry.
 
 ### 4.2 The one PAIGE workspace — Chat, Knowledge, Helpers, Capabilities
 
+**AI COO contribution.** Provides the final governed human interface through which PAIGE explains
+what she knows, coordinates work, presents proposals, receives required owner confirmation, reports
+outcomes, and carries open work forward; it is an interface to the AI COO, not her boundary.
+
 **Human job and location.** PAIGE is the one shell workspace, never a second per-page chat. Its
 canonical views are **Chat**, **Knowledge**, **Helpers**, and **Capabilities**.
 
@@ -129,6 +170,10 @@ Authentication, permission, confirmation, abandonment, retry, account-switch and
 required per tool; they are not inherited from Chat rendering. This docs pass did not re-drive them.
 
 ### 4.3 Trust Compass, action-risk/confirmation, and Rail
+
+**AI COO contribution.** Expresses the human autonomy boundary, applies the current authoritative
+server clamp, and returns safe attributable outcomes to durable context so leverage can compound
+without PAIGE widening her own authority.
 
 **Human job and location.** Trust Compass is the visible governance experience. Action-risk and
 confirmation are shared server/Chat governance seams. Rail is safe durable history/outcome
@@ -148,6 +193,10 @@ surface may equate request, proposal, confirmation, provider acceptance and comp
 Collisions: shared action-risk, approval, registry, executor, Compass policy and Rail ownership.
 
 ### 4.4 Clients — People, Conversations, Calendar, Portal
+
+**AI COO contribution.** Supplies safe relationship, communication, scheduling and client-work truth
+so PAIGE can coordinate service, propose the next step, perform only bounded authorized work, and
+return the result to the client record and Rail where registered.
 
 **Human job and location.** Clients owns relationship operating work through exactly **People,
 Conversations, Calendar, Portal**. Pipeline belongs to Campaigns. “Delivery” is not a current visible
@@ -173,6 +222,10 @@ Calendar/Settings return path, Portal/client visibility and Spine bindings.
 
 ### 4.5 Campaigns — the locked six tabs
 
+**AI COO contribution.** Supplies proven offer, campaign, sales, Pipeline, social and performance
+evidence so PAIGE can coordinate growth work without inventing revenue, routing, attribution or
+provider capability.
+
 **Owner/data.** Campaigns owns offer/campaign/sales/pipeline/social/performance domain records and
 actions. It does not acquire authority over client records, billing truth, provider credentials,
 Chat core or Analytics provenance merely because it references them.
@@ -195,6 +248,10 @@ Pipeline identity/registry, Clients records, Analytics provenance and provider o
 
 ### 4.6 Analytics — Brief, Sales funnel, Revenue & profit, Retention, Acquisition, Decisions
 
+**AI COO contribution.** Turns sourced, dated business evidence into explanation and bounded
+recommendations while preserving unknowns; any resulting action returns to its owning domain and
+durable outcome path rather than Analytics becoming a shadow executor.
+
 **Human job and owner/data.** Analytics explains proven performance by source, provenance and date
 range. It owns analytical projections, not the source domain's records and not unsupported advice.
 
@@ -214,6 +271,9 @@ range, account switch and PAIGE use with real authenticated evidence before any 
 
 ### 4.7 Marketplace — Today, Browse, Installed, Updates
 
+**AI COO contribution.** Lets PAIGE explain proven capability availability and tenant installation
+state without treating catalogue presence as entitlement, purchase, installation or authority.
+
 **Human job and owner/data.** Marketplace is the first-class capability ecosystem: understand what is
 available, what this tenant has, and what changed. It is not a generic catalogue of invented prices,
 ratings, publishers, entitlements or actions.
@@ -231,6 +291,10 @@ grant entitlement from a listing. Rail effects and authenticated mutation proof 
 `UNAVAILABLE`. Collisions: Marketplace RPCs, entitlements, billing, Integrations and Spine registry.
 
 ### 4.8 Settings — foundation and configuration
+
+**AI COO contribution.** Supplies confirmed business, team, provider-readiness, integration, billing
+and security/data facts that bound what PAIGE can understand and do; configuration never substitutes
+for downstream action proof.
 
 **Human job and owner/data.** Settings owns tenant business configuration and provider readiness,
 not the downstream domain work that consumes it. Its canonical subtabs and current declared truth
@@ -314,6 +378,8 @@ artifact outside the repository; it is not installed or treated as current globa
   [`docs/brain/paige-spine-integration-standard.md`](paige-spine-integration-standard.md)
 - Approval proof and one confirmation channel:
   [`docs/doctrine/one-approval-gate.md`](../doctrine/one-approval-gate.md)
+- Owner autonomy ceiling, process grants and capability floors:
+  [`docs/doctrine/autonomy-architecture.md`](../doctrine/autonomy-architecture.md)
 - Pipeline identity and governed archive boundary:
   [`docs/brain/pipeline-identity-contract.md`](pipeline-identity-contract.md)
 - Connections/Rail communications contract:

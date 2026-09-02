@@ -1,5 +1,11 @@
 # Autonomy is granted to a PROCESS, not to a tool
 
+The canonical Solo platform definition is
+[`docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`](../brain/solo-platform-taxonomy-and-ui-flow-standard.md):
+PAIGE is the tenant-scoped AI COO, not a chat product. This doctrine owns how the human-selected
+autonomy boundary composes across account ceiling, process grant and capability floor; the Spine
+standard owns safe evidence/action/outcome integration, and Chat remains one governed interface.
+
 **Owner ruling, 2026-08-24.** Verbatim:
 
 > *"I think the Trust Compass should be something that Paige can call on and assign to workflows

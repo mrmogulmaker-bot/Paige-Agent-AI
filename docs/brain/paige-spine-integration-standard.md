@@ -41,6 +41,12 @@ this documentation pass.
 
 ## 1. What the Spine is
 
+The governing Solo platform definition is
+[`docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`](solo-platform-taxonomy-and-ui-flow-standard.md):
+PAIGE is the tenant-scoped AI COO, not a chat product. Chat is one governed human interface. The
+Spine is how safe business truth and bounded actions support her operating loop without becoming a
+second product, domain store, authority system or workspace.
+
 The **PAIGE Spine** is the platform-wide safe path by which a tenant/client domain event becomes:
 
 1. structured evidence that Mind and PAIGE Chat may consume within the active user's authority;
@@ -290,6 +296,9 @@ authenticated capability.
 - `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md` is the canonical Solo human-job,
   department/subtab and surface-card map. It assigns where a capability lives; this standard owns
   how that capability joins safe evidence, Chat/Mind, governed action and Rail.
+- `docs/doctrine/autonomy-architecture.md` owns the human-selected autonomy model: account ceiling,
+  process grant and capability floor. It does not supersede domain permission, action-risk or the
+  one approval gate, and no Compass UI is server authority until persisted and enforced there.
 - `docs/brain/paige-brain-wiring-standard.md` is the runtime-brain coverage ledger and implementation
   checklist. This document governs the cross-workstream ownership split and the broader evidence ->
   Chat/Mind -> action -> outcome architecture.
