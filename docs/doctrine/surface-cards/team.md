@@ -182,10 +182,18 @@ the canonical server-verified approval card, and `team_set_work_profile` stays `
   Those feeds do not merely lack a Team event: **they cannot read the Rail at all.**
   `useSoloActivityFeed` selects `paige_client_events` directly as `authenticated`, and production has
   **no SELECT grant for that role on that table** (revoked by `20260712200000`, never re-granted;
-  read-only catalog query, 2026-09-02). The hook honestly renders an error rather than an empty feed.
-  So the destination this bullet points at is unavailable for **every** department, not only for Team's
-  contact-less events. See `docs/brain/paige-spine-and-rail-state.md`. Nothing here is repaired by the
-  amendment; Team stays `PARTIAL`.
+  read-only catalog query, 2026-09-02). The read therefore fails before RLS.
+  **Status of record: `UNAVAILABLE` — production Rail history cannot be read, and the current
+  owner-facing consumer treatment is not reliable enough to distinguish denied history from empty
+  history** (issue **#746**). ~~*The hook honestly renders an error rather than an empty feed.*~~
+  **CORRECTED same day (§58):** the two shipped Context Rail consumers
+  (`PaigeRailFeed.tsx:108`, `ClientActivityFeed.tsx:144`) read only `{ events, connected }`, and
+  `historyError`/`historyLoaded` have no reader in `src/` — so a refused read renders as "nothing yet."
+  The Solo Trust Compass consumer (`compass.tsx:377`) does distinguish, which is why the status is
+  *not reliable enough* rather than *never*. So the destination this bullet points at is unavailable
+  for **every** department, not only for Team's contact-less events, and it can present as absence
+  rather than as failure. See `docs/brain/paige-spine-and-rail-state.md`. Nothing here is repaired by
+  the amendment; Team stays `PARTIAL`.
 - Because PAIGE is a rail *beside* the page, an owner sitting on Team with PAIGE open sees a stale
   roster after she acts: `useTeamWorkspace` refetches on mount and on its own mutations, and
   nothing signals it from the chat.

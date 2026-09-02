@@ -885,14 +885,19 @@ own guards on 2026-09-02: `paige-spine-registry-lint` → `PASS (1 capability)`;
 reaches them through the 105 hand-wired tools. Team and Setup each record the same of themselves in
 their surface cards.
 
-**Owner-visible Solo Rail activity is UNAVAILABLE — not empty, and not healthy.**
-`useSoloActivityFeed` reads `paige_client_events` directly as `authenticated`, and **production has no
-SELECT grant for that role on that table** (revoked by `20260712200000`, never re-granted; verified
-2026-09-02 by read-only catalog query). RLS is never consulted — the grant is checked first. The hook
-correctly renders an error rather than an empty feed, so this is a dead capability rather than a lying
-one. **Leg 7 of the build path — *owner can see the result* — is therefore broken for every department
-that emits to the Rail**, and `paige_audit_log` has no Solo reader either. If a session sees no
-activity in Solo, the first hypothesis is this grant.
+**Owner-visible Solo Rail activity is `UNAVAILABLE`.** Status, verbatim:
+*production Rail history cannot be read, and the current owner-facing consumer treatment is not
+reliable enough to distinguish denied history from empty history.* **Not healthy, not empty, not
+honest, not repaired, not production-executable.** `paige_client_events` has **no SELECT grant for
+`authenticated`** on production (revoked by `20260712200000`, never re-granted; read-only catalog
+query 2026-09-02), so the read fails before RLS. Per issue **#746** — re-verified here — the two
+shipped Context Rail consumers (`PaigeRailFeed.tsx:108`, `ClientActivityFeed.tsx:144`) destructure
+only `{ events, connected }`, and `historyError`/`historyLoaded` have no reader in `src/`, so **a
+refused read renders as "nothing yet"** and an operator can be told PAIGE has done nothing. (The Solo
+Trust Compass consumer, `compass.tsx:377`, does distinguish — which is why the platform statement is
+*not reliable enough* rather than *never*.) **Leg 7 of the build path — *owner can see the result* —
+is therefore broken for every department that emits to the Rail**, and `paige_audit_log` has no Solo
+reader either.
 
 **Pipeline governance — three findings, follow-up work and NOT capability:** the Spine's Pipeline
 evidence is a **silent subset** (`deal_move_stage` and `pipeline_attach` move deals with no Rail
@@ -902,9 +907,9 @@ a held request is unresolvable and permanently blocks archiving its stage or pip
 
 **Owner-ruled priority order (2026-09-02).** Later items do not start ahead of earlier ones:
 
-1. **PR #729** — the active cross-account Rail/Compass hotfix on #728 (P1 leaks on the read path the rest depends on).
-2. **Rail recovery + owner-visible outcome reading.** PR #644 may hold the right direction but is **NOT authorized as a release path**: it must be freshly grounded on current `main`, checked against the canonical Spine contract, reviewed for internal-identifier exposure, and proven mergeable first.
-3. **Pipeline governance repair — before any Pipeline Chat write bridge.**
+1. **PR #729** — the cross-account Rail/Compass hotfix on #728. **BLOCKED from Gate 2 by issue #746.**
+2. **Rail recovery + owner-visible outcome reading — issue #746 (RELEASE-BLOCKING).** This is the required *separate* Rail Recovery prerequisite for #729's first owner flow to become production-executable; it is **not** assigned to #729. PR #644 may hold the right direction but is **NOT authorized as a release path**: it must be freshly grounded on current `main`, checked against the canonical Spine contract, reviewed for internal-identifier exposure, and proven mergeable first — and #746 notes its resolver returns no `title`/`summary`, which the rail renders, so it is not a drop-in.
+3. **Pipeline governance repair — issue #755 — a parked prerequisite before any Pipeline Chat write bridge.**
 4. **Stale doctrine correction** (done for the Trust Compass claims; see §10).
 5. **Calendar as the next bounded read-only Spine capability.**
 
@@ -1994,7 +1999,16 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   §5 and in full in `docs/brain/paige-spine-and-rail-state.md` so no future session infers platform-wide
   Spine connectivity from the foundation's presence.
 
-- **2026-09-02 — an absent Solo activity feed was available to be misread as an idle workspace.** It is
-  neither empty nor healthy: `authenticated` holds no SELECT grant on `paige_client_events` in
-  production, so the direct read fails and the hook honestly renders an error. Recorded so the next
-  session's first hypothesis is the grant, not the tenant.
+- **2026-09-02 — an absent Solo activity feed was available to be misread as an idle workspace**, and
+  **my first record of it overstated how safely it fails.** `authenticated` holds no SELECT grant on
+  `paige_client_events` in production, so the read fails before RLS — that part stands. But the first
+  version said the hook "honestly renders an error rather than an empty feed" and called it "a dead
+  capability, not a lying one." ~~*That framing.*~~ **CORRECTED (§58):** it generalised from one
+  hook's internal branch to the platform's behaviour without checking any consumer. Issue **#746**
+  established, and this session re-verified, that the two shipped Context Rail consumers read only
+  `{ events, connected }` and that `historyError`/`historyLoaded` have no reader in `src/` — so a
+  refused read renders as "nothing yet". The Solo Trust Compass consumer *does* distinguish, which is
+  why the truthful status is **not reliable enough**, not *never*. Status of record: *production Rail
+  history cannot be read, and the current owner-facing consumer treatment is not reliable enough to
+  distinguish denied history from empty history.* **The lesson is the one this log exists for: a hook
+  returning an error is not a person seeing one, and only the consumer settles that.**

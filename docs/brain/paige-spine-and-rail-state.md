@@ -79,21 +79,41 @@ user id, deal id or stage text.
 never re-granted — four grant/revoke statements exist across 910 migrations and the revoke sorts last.
 **RLS never gets consulted; the table grant is checked first.**
 
-So the hook takes its `readError` branch and renders *"could not load recent activity."* Its consumers
-are the Trust Compass "Working now" panel and the Team hub feed (the latter in `src/solo/team.tsx`,
-which is itself unrouted in Solo).
+**Truthful status — use this wording, not a paraphrase:**
 
-Three things follow:
+> `UNAVAILABLE — production Rail history cannot be read, and the current owner-facing consumer
+> treatment is not reliable enough to distinguish denied history from empty history.`
 
-- The hook is **honest** — it refuses to render a failed read as "nothing happened." This is a **dead
-  capability, not a lying one**, and the distinction is why nobody noticed.
-- **Leg 7 of the platform goal chain — *owner can see the result* — is therefore broken for every
-  department that emits to the Rail**, not only for the ones that emit nothing.
+**Do not call this healthy, empty, honest, repaired, or production-executable.**
+
+**CORRECTED 2026-09-02 (§13 — this file's first version overstated the failure mode).** It said the
+hook "honestly renders an error rather than an empty feed" and called this "a dead capability, not a
+lying one." That generalised from ONE hook's internal branch to the platform's behaviour, and the
+consumers were never checked. Issue **#746** established the rest, and it was re-verified here rather
+than relayed:
+
+| Path | Consumer | Distinguishes denied from empty? |
+|---|---|---|
+| `useRailEvents` (Context Rail) | `src/components/paige/PaigeRailFeed.tsx:108` · `src/components/app/ClientActivityFeed.tsx:144` — both destructure only `{ events, connected }` | **NO.** `grep` for `historyError\|historyLoaded` outside the hook and its tests returns **no matches**, so a refused read renders exactly like an empty feed |
+| `useSoloActivityFeed` (Solo Trust Compass) | `src/solo/compass.tsx:377` computes a distinct `'error'` state and renders *"Recent activity could not be loaded, so this is not a record of nothing happening"* with `role="alert"` and a retry | **Yes** — this one is the model treatment |
+
+So the platform-level statement is *not reliable enough*: two shipped consumers cannot distinguish,
+one can. **An operator who opens the Command Center a minute after PAIGE acts can be told she has done
+nothing** (#746). That is the failure mode — not a visible error.
+
+Two things follow:
+
+- **Leg 7 of the platform goal chain — *owner can see the result* — is broken for every department
+  that emits to the Rail**, not only for the ones that emit nothing.
 - `paige_audit_log`, the other durable attribution store, **has no Solo reader at all**. Both paths to
   "what did PAIGE just do" are closed.
 
 **Never record this as an empty feed or a healthy one.** If a future session sees no activity in Solo,
 the first hypothesis is this grant, not an idle workspace.
+
+**Rail Recovery is tracked as issue #746 (RELEASE-BLOCKING), and #729 is BLOCKED from Gate 2 by it.**
+#746 is the required separate Rail Recovery prerequisite for #729's first owner flow to become
+production-executable. It is not assigned to #729, and not to this documentation record.
 
 **Existing work, not authorized as a release path:** PR **#644** (`codex/mind-safe-rail-contract`) adds
 `public.get_solo_mind_rail_events()`, a guarded `SECURITY DEFINER` resolver over the same table that
@@ -105,11 +125,15 @@ public-safe `account_number`), and proven mergeable **before** it becomes a reco
 Two review notes recorded so they are not re-derived: it resolves the workspace from
 `profiles.active_tenant_id` **raw** rather than coalescing through `current_user_tenant_id()` — the
 pattern behind the §51 #588 anchoring bug and the known Team invitation defect — though it does
-correctly key on `profiles.user_id`.
+correctly key on `profiles.user_id`. #746 adds a third: #644's resolver returns eight structural
+fields and **no `title`/`summary`**, which the rail renders — so it is not a drop-in, and the
+grant-versus-RPC seam decision must be made *with* #644 rather than around it.
 
 ## Pipeline governance — three findings, recorded as follow-up, NOT as capability
 
-These are governed follow-up work under the owner's priority order, not shipped behaviour:
+**Tracked as issue #755** (grouped, owner priority 3 — required before any Chat Pipeline write bridge).
+The issue carries the owner decision, dependencies and sequencing; this file records only the state.
+Governed follow-up work, not shipped behaviour:
 
 1. **The Spine's Pipeline evidence is a silent subset.** It reads only Rail rows written by
    `configure_tenant_pipeline` with `policy_result='allowed'`. `deal_move_stage` (PAIGE's own Chat
@@ -122,6 +146,39 @@ These are governed follow-up work under the owner's priority order, not shipped 
    that creates and inserts into it. Its `status` enum permits `approved|rejected|cancelled` and a
    `resolved_at` column exists; **no code path anywhere sets them.** A held request is unresolvable,
    and each one permanently increments the dependency count blocking archive of that stage or pipeline.
+
+## What decides whether PAIGE may act (Trust Compass precision)
+
+**The authoritative statement, and it does not change with the catalog finding above:**
+
+> The server action-risk policy plus the canonical confirmation/approval gate decide whether PAIGE
+> may act. The Solo Compass dial remains a non-authoritative UI control. Runtime reachability of the
+> deployed Trust functions remains `UNVERIFIED`.
+
+The production catalog proves only that `trust_effective_rung()` and `resolve_tool_autonomy(uuid,text)`
+**exist**. It does **not** prove — and nothing here should be read to imply — that the Solo browser
+Compass dial is authoritative, that the Compass currently governs action execution, that runtime calls
+into those functions occur, or that effective autonomy enforcement is proven. `20261019001000:41-48`
+separately records that the compass clamps **at render only**.
+
+## The owner-approved priority order (2026-09-02)
+
+Later items do not start ahead of earlier ones. Implementation is assigned by the owner, never
+inferred from this file.
+
+| # | Work | State |
+|---|---|---|
+| 1 | PR **#729** — cross-account Rail/Compass hotfix on #728 | **BLOCKED from Gate 2 by #746** |
+| 2 | **Rail recovery + owner-visible outcome reading** — issue **#746**, RELEASE-BLOCKING | the required prerequisite for #729's first owner flow to become production-executable |
+| 3 | **Pipeline governance repair** — issue **#755** — before any Pipeline Chat write bridge | parked, owner decision required |
+| 4 | Stale doctrine correction | done for the Trust Compass claims (PR #743) |
+| 5 | Calendar as the next bounded read-only Spine capability | not started, not authorized |
+
+**#746 is not assigned to #729, and not to this record.** It is a separate Rail Recovery workstream.
+
+**This file is a state record, not a backlog.** Every distinct finding lives as a linked GitHub issue
+— #739, #740, #741, #742, #746, #755 — and is added to the PAIGE Attention Register when that project
+becomes available. Do not grow a parallel list here.
 
 ## Where the truth for each question lives
 
