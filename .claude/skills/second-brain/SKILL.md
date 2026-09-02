@@ -29,6 +29,7 @@ Read docs/brain/README.md, the Solo Platform Taxonomy, the PAIGE Spine Standard,
 | `docs/brain/README.md` | **Always.** The index and the verified platform snapshot |
 | `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md` | Any Solo design or implementation — canonical operating taxonomy, shared-shell baseline, surface cards and flow proof |
 | `docs/brain/paige-spine-integration-standard.md` | Any Solo capability — safe evidence/action/outcome ownership and Spine registration/SCR boundary |
+| `docs/brain/surface-cards/README.md` + the relevant indexed card | Any Solo surface design or implementation — detailed card template, use rules and owning flow contract |
 | `docs/brain/config-registry.md` | Anything touching infra or a third-party seam — Supabase, Stripe, Twilio, ElevenLabs, CI, MCP |
 | The domain doc the README points at | Whatever area the task is in |
 | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 | Any "do we have this?" question — §4 is SHIPPED, §5 is gaps |

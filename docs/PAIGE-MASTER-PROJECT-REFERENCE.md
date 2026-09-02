@@ -150,12 +150,29 @@ approval, Rail, truth/browser proof and collisions. Full owner flows precede iso
 owns final binding; stable Spine registration is self-service and only a new shared primitive needs
 an SCR. This is a docs-only standard, not proof that the mapped capabilities are live.
 
+Detailed cards use `docs/brain/surface-cards/README.md` as their canonical template/rules/index.
+The first required card is `docs/brain/surface-cards/solo-campaigns-pipeline.md`. Neither path is
+claimed to predate the 2026-09-02 docs work. The tier matrix, PAIGE Brain Wiring Standard and
+Connections/Rail contract are supporting authorities only; they do not replace the taxonomy, Spine,
+surface-card index or relevant card preflight.
+
 **Governing product definition:** PAIGE is not a ChatGPT-style chat product or coding assistant. She
 is the tenant-scoped AI COO—the operating partner that observes truthful business evidence,
 understands, plans, acts within authority, records outcomes, and learns/follows up. Chat is one
 governed human interface, not the product boundary. The human selects the autonomy boundary; until
 Trust Compass is persisted and server-enforced, server action-risk plus the one approval gate is the
 authoritative clamp. See `docs/doctrine/autonomy-architecture.md` and the Spine standard.
+
+**Team/Spine MVP policy (owner, 2026-09-02; docs-only ruling):** all PAIGE Team mutations are
+`owner_only`, require the owner and have no auto lane—work-profile edits, invite/send/resend/revoke,
+role/permission grant/revoke/change and every access-affecting act. A separately authorized tenant
+admin may still use the human Team UI where the domain contract permits. `list_tool_autonomy()` rows
+and applied migrations prove catalogue/persisted configuration, not authenticated Chat invocation,
+approval, executor completion or persisted outcome. Current #728 source is not yet aligned to this
+policy, so no present-tense PAIGE Team mutation claim is permitted. Owner-visible Team history is a
+required but `UNAVAILABLE` surface. Workspace Team outcomes need the new SCR-defined workspace-level
+projection; client/contact Rail integrity may never be weakened with a null `contact_id`. No code,
+schema, migration, Chat or approval change is authorized here.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 

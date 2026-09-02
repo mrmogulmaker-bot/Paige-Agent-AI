@@ -45,6 +45,13 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
 
 - `tenant_members.job_title` and `tenant_members.responsibilities` are now on `main` through PR #697 (`3fd9944cd90e02794db21fa2ae6d32703fe89ea4`). They are descriptive tenant data only; `role` and `is_owner` remain the only enforced permission inputs.
 - PR #702 (`81e350ca477b9334e62dc636c2a8b57f891917df`) added truthful stored-name/email fallback and work-detail editing. GitHub records show both PRs merged and successful Production deployment statuses; this reconciliation did **not** establish a fresh production row-level query. Authenticated save, invite, permission, account-switch, and email behavior remain **UNVERIFIED**.
+- **PAIGE Team mutation policy (owner, 2026-09-02):** for MVP, every PAIGE-mediated Team write is
+  `owner_only` with owner confirmation and no auto lane, including work-profile edits, invite/send/
+  resend/revoke, role/permission grant/revoke/change and any access-affecting act. Catalogue rows and
+  applied migrations prove presence/configuration, not the authenticated Chat → approval → executor
+  → persisted outcome chain. Current #728 source classifications are not yet aligned; PAIGE Team
+  mutation capability and owner-visible Team history remain unproven/unavailable. Human Team UI
+  authority is separate and remains governed by its domain contract.
 
 ## Not yet built
 

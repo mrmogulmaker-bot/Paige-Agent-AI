@@ -1,6 +1,8 @@
 # Decision Log — chronological one-liners
 
+- **PAIGE Team mutations and workspace outcome — OWNER MVP POLICY (2026-09-02; documentation only)** — every PAIGE Team mutation is `owner_only` with owner confirmation and no auto lane: work-profile edit, invite/send/resend/revoke, role/permission grant/revoke/change, and any access-affecting act. A tenant admin may separately use the human Team UI where its domain authorization permits. `list_tool_autonomy()` plus applied migrations proves catalogue presence/persisted configuration only—not authenticated Chat invocation, approval, executor success, invitation/email or permission persistence, or durable outcome. Current #728 tool classifications are not aligned, so PAIGE Team mutation capability must not be claimed until a separate implementation and full authenticated chain prove it. A contact/client Rail event may never carry null/missing `contact_id`; Team requires a new SCR-governed workspace-scoped outcome with tenant, actor, action, target member/invite, approval binding, result and safe owner-visible evidence. Owner-visible PAIGE Team history is required but currently `UNAVAILABLE`/browser `UNVERIFIED`. No schema, code, migration, Chat or approval change is authorized by this ruling.
 - **PAIGE governing platform definition — OWNER AMENDMENT (2026-09-02; documentation only)** — PAIGE is the tenant-scoped AI COO, not a ChatGPT-style chat product or coding assistant; Chat is one final governed human interface, not the product boundary. Her intended loop is `observe → understand → plan → act within authority → record outcome → learn/follow up`, grounded in truthful tenant-scoped business evidence across organization, team, clients, documents, campaigns, Pipeline, sales, delivery, connections, goals, outcomes, risks and open work. The human selects the autonomy boundary. Trust Compass expresses that intent but is not server enforcement until persisted and enforced server-side; current authority remains domain permission plus server action-risk and the one approval gate. PAIGE cannot raise her own permission. Every surface card/feature assignment now declares what safe truth she learns, bounded help she offers, what she may execute, what requires the owner and how the outcome returns to durable context. No product, Compass or approval-mechanism change is authorized by this amendment.
+- **Canonical Solo documentation paths — OWNER PATH RULING (2026-09-02; created by this docs work)** — the mandatory paths are `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`, `docs/brain/paige-spine-integration-standard.md`, `docs/brain/surface-cards/README.md`, and the relevant indexed card; the first required card is `docs/brain/surface-cards/solo-campaigns-pipeline.md`. The surface-card index/template and first card are new in this work and are not claimed as earlier repository history. Tier matrix, PAIGE Brain Wiring Standard and Connections/Rail may support a card but never replace these canonical preflight paths.
 - **Solo Platform Taxonomy and UI Flow Standard — OWNER-APPROVED CANONICAL STANDARD (2026-09-02; docs only)** — `solo-platform-taxonomy-and-ui-flow-standard.md` establishes one shared Solo shell/template for every current and future Solo tenant; tenant facts, permissions, entitlements, providers and data may vary, but shell/routes/layout/navigation/base surfaces and the single PAIGE workspace do not fork by account. It maps the actual Solo surface tree into business foundation, client operating work, revenue/delivery, growth/communications, intelligence/governance and Marketplace without renaming routes; preserves Campaigns' locked Overview/Catalog/Sales/Pipeline/Social/Performance boundary; and requires a surface card for every department/subtab covering its AI COO contribution, the human job, owning data/domain, shell location, full inputs/edits/creates, safe evidence, PAIGE read/propose/do boundary, approval, Rail, `LIVE`/`PARTIAL`/`UNAVAILABLE` plus browser proof, and dependencies/collisions. Full owner flows precede visual polish; domains own UI/data/actions, Chat owns final binding, stable registry additions are self-service, and only new shared primitives require an SCR. The exact Solo preflight is now in `CLAUDE.md` §69 and `.claude/skills/second-brain/SKILL.md`. No product, migration, provider, merge or deployment action is authorized by this docs standard.
 - **PAIGE Spine foundation — MERGED IN #728; prior unmerged-dependency wording corrected (2026-09-02)** — current `main` `76bb3bbca74ff4214feba28995d5cd0b9196fb6b` carries `supabase/functions/_shared/paige-spine/registry.ts`, the shared evidence resolver, Spine/Chat/action-risk/one-gate CI guards, `docs/doctrine/one-approval-gate.md`, and first capability `pipeline.deal_stage_evidence`. This implements the foundation, not platform-wide coverage: the first entry remains `PARTIAL`, its Mind binding and mutation are unavailable, and authenticated preview/persistence remain `UNVERIFIED` in this docs pass. Solo Compass remains non-authoritative.
 
@@ -823,18 +825,20 @@ bypass of the stronger. Call the clash out, rewrite, and record it here.
 
 ---
 
-## 2026-09-02 — Paige can act on the team, not only describe it (Solo Team seam in Chat)
+## 2026-09-02 — Solo Team Chat branches landed; capability claim superseded by owner-only policy
 
-**What changed.** Five tools — `team_set_work_profile`, `team_set_permission`, `team_invite_member`,
-`team_invite_resend`, `team_invite_revoke` — give PAIGE the Team capability inside the canonical Chat
-workspace. Owner approved the Team-only Chat interaction direction. Nothing new was built on the
-server: they call the same seam the Team screen calls, so the database's authority checks apply to a
-sentence exactly as they apply to a form.
+**Historical source change, not end-to-end proof.** Five tool declarations/branches —
+`team_set_work_profile`, `team_set_permission`, `team_invite_member`, `team_invite_resend`,
+`team_invite_revoke` — were added inside the canonical Chat workspace and call existing Team seams.
+Their catalogue presence, source branches and applied migrations do not prove authenticated Chat
+invocation, owner approval, executor completion, invitation/email or permission persistence, or an
+owner-visible durable outcome. The prior present-tense Team capability claim is superseded by the
+owner-only policy at the top of this log.
 
-**The read had been a description of a locked door.** `get_paige_team_context` has been injecting the
-roster, permissions, work details and every invitation for a while, and the Team surface said out
-loud that she "cannot send or change access." That sentence was the feature request, and it is now
-rewritten rather than left standing (§58 — flagged, not silent).
+**Historical intent.** `get_paige_team_context` supplied roster/permission/work-detail/invitation
+context and the Team surface said she could not send or change access. The source branch attempted to
+add those writes. Under the later owner-only ruling, that source is not present capability proof and
+the UI may not promise PAIGE Team mutation until the separately scoped governed chain is proven.
 
 **The defect a pre-build seam audit caught, before it shipped.** The Team seam resolves its workspace
 with `current_user_tenant_id()`; the conversation resolves its own with `get_paige_persona_context`,
@@ -848,27 +852,25 @@ the same disagreement.** `teamSeamTenantMismatch` now asks the read's question b
 The lesson is the one worth keeping: when a read is given a safety check, ask what the matching write
 does with the same answer.
 
-**Classification.** Permission change and all three invitation acts are `high` — they move authority
-and, for invitations, put an email in a real stranger's inbox, which is the one effect no undo inside
-the product reaches. Work details are `ordinary`, because describing a job cannot grant one, and that
-is structural: the RPC writes two text columns and cannot reach `permission`. Catalogue now: 32
-ordinary · 28 high · 2 owner-only · 5 exempt · 0 unclassified.
+**Historical classification, now non-compliant.** This source classified permission/invitation acts
+`high` and work details `ordinary`. The owner has since ruled every PAIGE Team mutation `owner_only`
+for MVP, with owner confirmation and no auto lane. The current source must not be described as usable
+PAIGE Team mutation capability until a separately scoped implementation aligns it and proves the full
+governed chain.
 
-**The tool-registry ratchet fired on this work, correctly, and the baseline grew by five.** The Spine
-registry the ruling points at does not exist yet, and the ruling's own words put the final bounded
-adapter with the Chat workstream — which is what this is. The reason is written into
-`scripts/ci/chat-tool-baseline.txt` rather than a commit message, because "the guard fired and I
-raised the number" is how a ratchet stops being one. It shrinks by five when the registry lands.
+**Registry status correction.** The inline baseline grew by five in this historical change. PR #728
+later landed the canonical Spine registry, but it did not register or prove these Team mutations.
+They remain legacy inline entries and the new owner-only/workspace-outcome contracts are still owed.
 
 **Honest gap.** `crm_list_team` (`list_team_members`) and the Solo Team functions read the same
 `tenant_members` table but disagree in four ways: authorization (global `user_roles` vs tenant
 membership), owner labelling, suspended members, and truncation. Two homes for "who is on the team"
 is a §18 seam worth closing; it is not closed here and is not made worse here.
 
-**Evidence.** tsc 0 · deno check 14 errors at head and 14 at base (no new) · eslint clean on changed
-`src/**` · 6 team test files, 28 tests, 5 assertions mutation-proved · 6 CI guards green · vite build
-clean. **Not deployed. The authenticated live drive is UNVERIFIED** — this session holds no browser
-that can reach the surface, so §32.c is owed to the next capable session or to the owner.
+**Evidence class.** The historical branch had clean build/static/unit evidence, later merged via
+#728. That proves source and workflow state, not the authenticated Chat → owner confirmation →
+executor → persisted outcome chain. That chain and owner-visible Team history remain `UNVERIFIED` /
+`UNAVAILABLE` under the new policy.
 
 **The peer-gate found two blockers the author's own tests structurally could not (§39).** Both are
 recorded because the shape of the miss matters more than the fix.
@@ -911,12 +913,9 @@ the operator's to pull at any class. **Not fixed, and reported rather than done 
 the choice. The setter is a shipped RPC with its own callers and the surface's wording belongs to
 whoever owns it.
 
-**§58 CAPABILITY CHANGE, FLAGGED FOR AN OWNER RULING — `auto` no longer runs a `high` or
-`owner_only` action.** The clamp above is not only a bug fix; it removes something a workspace
-could previously do. A tenant admin could set any tool to `auto` and Paige would run it unattended,
-including the twenty-eight `high` actions and the two `owner_only` ones. After the clamp, `auto` on
-those thirty means `confirm` — the operator is still asked. `off` is untouched, and `ordinary`
-tools on auto still run on auto.
+**Owner ruling now closes the Team question.** Regardless of the broader historical `high` behavior,
+all PAIGE Team mutations are `owner_only` for MVP and have no auto lane. A tenant admin's separately
+authorized human Team UI remains a different domain path.
 
 **The shipped test that had to change, and why that is the whole argument.** `check.mjs` 15.6/15.7
 drove `automation_set_grant` at `auto` and asserted it EXECUTED, reporting its resolved posture.
@@ -928,12 +927,8 @@ as what will actually happen — is no longer reachable through chat for that to
 is no longer reachable through chat at all. Its resolved-posture reporting is now dead code on that
 path.
 
-The owner may reasonably rule the other way for `high` specifically: an operator's standing "don't
-ask me" is a human decision, not the model's word, so `auto` on `crm_delete_contact` is arguable in
-a way that `auto` on `automation_set_grant` is not. Both halves are in one place and either can be
-narrowed. The `owner_only` half should not be: "Paige may never grant or raise her own autonomy
-through Chat regardless of action class or owner wording" is explicit, and a settings toggle is
-owner wording.
+The broader non-Team `high` policy is outside this docs ruling. Nothing here asks the owner to choose
+it or changes another domain's classification.
 
 **The last peer-gate finding, closed: the invite seam told a real owner they were not one.** The
 three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()` — used by the

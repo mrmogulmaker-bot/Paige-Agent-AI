@@ -1388,73 +1388,34 @@ renders `granted_lane` alone would be reporting a request as an outcome.
 Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
 inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
-### PAIGE Chat — the Solo Team seam, `/solo/{account}/paige/chat` and every other chat surface
+### PAIGE Chat — Solo Team evidence and owner-only MVP policy
 
-**§66, same commit as the ship.** Paige could already READ a workspace's team — the roster, each
-person's enforced permission, their work details, and every invitation with its lifecycle, injected
-each turn by `get_paige_team_context`. She could do nothing with any of it. Five tools now let her
-act, and they call the SAME server seam the Team screen calls: `set_solo_team_member_work_profile`
-and `set_solo_team_member_permission` through the caller's own JWT, and the three invitation acts
-through `solo-team-invitations`, whose RPCs are revoked from `authenticated` entirely.
+`get_paige_team_context` and the five inline Team tool branches exist in current source. Applied
+migrations and `list_tool_autonomy()` rows prove catalogue presence/persisted configuration. They do
+not prove the authenticated Chat → owner confirmation → executor → persisted outcome chain, invite
+delivery, permission mutation, or owner-visible history.
+
+**Owner ruling, 2026-09-02:** every PAIGE Team mutation is `owner_only` for MVP and has no auto lane:
+work-profile edits, invite/send/resend/revoke, role/permission grant/revoke/change and every
+access-affecting act. Current source still classifies the five entries `ordinary`/`high`; it is not
+aligned to this policy and is not claimable as current PAIGE Team mutation capability. A separately
+authorized human Team UI remains governed by the Team domain and is outside this Chat matrix.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
-| Read the roster + invitations (already shipped) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Edit a teammate's work details (`team_set_work_profile`) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Change a teammate's permission (`team_set_permission`) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Invite someone (`team_invite_member`) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
-| Resend / withdraw an invitation | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Team context read | no active tenant | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | unavailable | denied |
+| Any PAIGE Team mutation | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | denied |
 
-**The God row is a `—`, and it is honest rather than a gate.** Every function in this seam derives
-its workspace from `current_user_tenant_id()`, which is null for a tenant-less platform operator, so
-the RPC raises `no active workspace`. The new tenant-agreement precondition refuses first, in words,
-for the same reason. An operator acting inside a tenant they have switched into resolves as that
-tenant and is the Agency ✓ case (§51) — not a cross-tenant reach.
+The mutation row remains unavailable until separate implementation aligns all Team tools to
+`owner_only`, binds the authenticated owner confirmation, proves the domain executor and persisted
+result, and projects a safe workspace-scoped Team outcome. It may not use a contact/client Rail event
+with null/missing `contact_id`. Owner-visible PAIGE Team history is a required next surface and is
+currently `UNAVAILABLE`; see `docs/brain/paige-spine-integration-standard.md` §7 and
+`docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md` → Settings/Team.
 
-**The Client row is a hard `—`, enforced before dispatch.** `clientSeatToolAllowed`
-(`_shared/actorTier.ts:64`) admits exactly one tool for a client-portal seat, `update_client_data`,
-so none of these five reach the executor at all.
-
-**Describing a job cannot grant one, and that is structural in three places at once.**
-`set_solo_team_member_work_profile` writes two text columns and cannot reach `permission`; the tool
-that calls it takes no permission argument (asserted in `paige-team-capability.test.ts`); and the
-context block marks tenant-authored titles and responsibilities as reference data that never confers
-authority. This is why the work-details tool is `ordinary` while everything else here is `high`.
-
-**Nobody can be made an owner from a conversation, and nobody can raise themselves.**
-`set_solo_team_member_permission` admits only the tenant owner, refuses `owner` as a target value,
-and refuses to touch any row that is already an owner — so the caller's own row is unreachable
-through it. Invitations may grant only Admin or Member, on creation and again on resend. The tool
-schemas offer `["admin","member"]` only, so the operator is never read a card describing something
-that will then fail.
-
-**The write now fails closed on the same disagreement the read already did.** The Team seam resolves
-its workspace with `current_user_tenant_id()`; the conversation resolves its own with
-`get_paige_persona_context`, which prefers a linked `clients` row. For a speaker who is a member of
-one workspace and a client of another these are different tenants — the read handles it
-(`buildTenantTeamContextBlock` returns null and Paige sees no roster) and the write did not, while
-member ids for the other tenant remain obtainable from `crm_list_team`. `teamSeamTenantMismatch`
-asks the read's question before every one of the five acts and refuses on mismatch, on an
-unresolvable persona tenant, and on a roster that will not load.
-
-**An invitation that was created but not emailed says so.** `solo-team-invitations` creates the
-invitation first and delivers second, and the delivery fails on its own — returning `emailed:false`
-beside a live invitation. That flag travels into the tool result with the sentence Paige is expected
-to say, because reporting a send that did not happen leaves the operator waiting on someone who was
-never contacted (§13).
-
-**The class outranks the autonomy switch, platform-wide.** Found while adding these five and older
-than them: the whole risk gate sits inside `if (autoMode === "confirm")`, and `set_tool_autonomy`
-accepts auto|confirm|off for any tool key without consulting its class — so a tenant admin could put
-`automation_set_grant` (owner_only, because it changes how much Paige may do alone) on auto and have
-Paige raise her own autonomy from a conversation. The handler now clamps `auto` down to `confirm` for
-any `high` or `owner_only` action, above the branch and keyed on the class, so it covers all thirty
-rather than the five added with it. `off` survives the clamp: a brake is the operator's to pull at any
-class. The setter still PERSISTS the now-inert `auto` and the capabilities surface still offers it —
-reported, not silently changed, because that RPC has its own callers.
-
-**§61 default: no exception.** God/Solo/Sub-account per the standing distribution, Agency inside a
-workspace it has switched into, Enterprise both. No owner ruling was sought, and none was needed.
+The wider non-Team `high`/autonomy policy is unchanged by this Team ruling. A tenant admin may still
+use the human Team UI where independently authorized; PAIGE may not silently invite, elevate access,
+or execute another Team write.
 
 ### Platform metering — LLM usage, `meter_llm_usage` (no surface, operator-only seam)
 

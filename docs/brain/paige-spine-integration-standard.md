@@ -253,6 +253,24 @@ The request grants no authority to change the shared component. The shared owner
 that interface in its own bounded workstream, then the designated PAIGE Chat workstream completes the
 read/write behavior.
 
+### Ruled future SCR: workspace-scoped Team outcomes
+
+PAIGE Team mutations may not be projected into a contact/client-keyed Rail event with a null or
+missing `contact_id`. Preserve the existing client Rail's client-keyed integrity. Team invite,
+resend, revoke, work-profile, role, permission and other access changes are workspace-level outcomes
+and require a distinct workspace-scoped outcome projection/record.
+
+That new shared primitive must carry, at minimum: server-resolved tenant; authenticated actor;
+action kind; safe target member or invitation reference; the owner approval binding; requested,
+refused, executed, failed and recovered result as applicable; occurrence time; and safe owner-visible
+evidence. It must not expose invitation tokens, raw email/provider payloads, credentials, internal
+errors or another tenant's identity. It must support the owner-visible Team history surface without
+turning client Rail into a nullable catch-all.
+
+This is an approved **SCR requirement**, not an implemented capability. Its schema, projection,
+writer, reader, Chat binding, migration and browser proof are separately scoped future work. No
+schema, code, migration, Chat or approval-mechanism change is authorized by this docs assignment.
+
 ---
 
 ## 8. Completion and evidence
