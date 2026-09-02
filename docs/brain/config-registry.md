@@ -85,11 +85,15 @@ multi-channel delivery). A fire is not a delivery.
 `SUPABASE_SERVICE_ROLE_KEY`. Deploy auth uses the `SUPABASE_ACCESS_TOKEN` **repo secret** (per
 `supabase/functions/CLAUDE.md`; ⚠ presence not re-verified this session — CLAUDE.md asserts it is set).
 
-**⚠ In-flight, not deployed (2026-08-31) — Solo Team management:** local branch adds the JWT-verified
-`solo-team-invitations` edge function, the `get_solo_team_workspace` / work-profile / permission /
-invite / acceptance RPC family, and `get_paige_team_context`. The browser receives no raw invite token;
-the invitation function invokes the existing `send-portal-invite` function server-side. Migration
-apply, function deployment, email delivery and authenticated tenant behavior are UNVERIFIED.
+**Solo Team management — DEPLOYED (corrected 2026-09-02; was recorded 2026-08-31 as in-flight).**
+Shipped via PR #728 (`76bb3bbca`). The JWT-verified `solo-team-invitations` edge function, the
+`get_solo_team_workspace` / work-profile / permission / invite / acceptance RPC family, and
+`get_paige_team_context` are on `main`. The browser receives no raw invite token; the invitation
+function invokes the existing `send-portal-invite` server-side. **Migration apply is CONFIRMED on
+prod** — `20261039000000` and `20261040000000` in `schema_migrations`; `job_title` /
+`responsibilities` present on `tenant_members`; five `team_*` rows from `list_tool_autonomy()`.
+**Still UNVERIFIED:** email delivery and authenticated tenant behaviour — no leg driven on the live
+authenticated platform.
 
 ---
 

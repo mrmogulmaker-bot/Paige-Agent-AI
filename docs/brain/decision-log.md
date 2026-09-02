@@ -694,6 +694,10 @@ the authenticated live drive remains UNVERIFIED** — no browser capability in t
 
 ## 2026-08-31 — Solo Settings Team Gate 1 approved; production branch in flight, not live
 
+> **Still accurate for its date; superseded as STATUS.** The work shipped via PR #728 (`76bb3bbca`)
+> and is live on production with the capability labelled `PARTIAL`. See the 2026-09-02 entries below
+> and `docs/doctrine/surface-cards/team.md`. The entry is kept intact rather than rewritten (§58).
+
 The owner approved the roster-first Team design and authorized production implementation. Growth uses
 the Settings page scroll owner plus server search/filter and 25-person Load more pages—never a nested
 people scrollbar. Job title/responsibilities are descriptive only; Owner/Admin/Member remain the
@@ -1102,3 +1106,110 @@ separate Spine Change Request and is not started; Team's truth label remains `PA
 authenticated live-flow proof is still owed on a capability already serving production; and PR
 #728's post-merge P1/P2 findings remain a separate active hotfix, neither repaired nor made
 irrelevant.
+
+---
+
+## 2026-09-02 — Master Project File reconciled to live Solo Team, and a closeout rule so it stops drifting
+
+Documentation-only, from fresh `main` `05735f26b`.
+
+### §13 CORRECTION — I reported a gap that was not the gap
+
+At the close of PR #675 I told the owner the Master Project File had **zero** mentions of the Solo
+Team capability, on the strength of `grep -ic "solo team"` → 0. **That was wrong.** The file has
+carried a Team entry since 2026-08-31, headed *"Solo Settings → Team management"* — a spelling the
+search never tried. The Second Brain skill's own sweep rule says it plainly: *vary the spelling; an
+absence proven with one spelling is only the absence of that spelling.* I cited that discipline in
+the same report I broke it in.
+
+The real defect was worse than a gap, not better: the file **did** describe Solo Team, and described
+it as *"local branch, NOT LIVE"* while it was serving production. A missing entry is silence; a
+present, confident, wrong entry is what a reader acts on.
+
+### What the Master Project File now says
+
+**§4 (SHIPPED) — new entry, *Solo Team — PAIGE can act on the team (LIVE on production, capability
+`PARTIAL`)*.** Owner job; human surface (Solo Settings → Team); PAIGE's capability limited to the
+canonical approval route; the risk table (six `high` behind the real owner approval card,
+`team_set_work_profile` `ordinary` and never a permission change); the `PARTIAL` label; the live
+limitation that owner-visible workspace-level outcome history is missing; authenticated owner
+browser proof still owed; the workspace-level outcome projection as an unstarted Spine Change
+Request; PR #728's P1/P2 hotfix as separately active; and exact PR/commit/prod evidence.
+
+**Two stale entries corrected in place, marked not deleted (§58):** the §4 PAIGE Chat header still
+said *"PR #675, NOT YET MERGED … nothing below is live"*, and the §5 gaps entry still said *"local
+branch, NOT LIVE"*. Both now carry their correction beside the original wording.
+
+### The standing closeout rule (owner-ruled 2026-09-02)
+
+Recorded in `.claude/skills/second-brain/SKILL.md` — repo-native by design, because the installed
+`flow-by-flow` skill is per-account, cannot see this repository, and must not be silently modified.
+
+A workstream is **not complete** until **both** the relevant Second Brain record **and**
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` are updated, whenever the work changes product capability,
+current platform truth, release status, architecture, owner flow, or a material known limitation.
+The only escape is a **collision-safe handoff** naming all four of: the exact Master Project section,
+the proposed text, the owner, and the reason it could not be updated in the same PR. The skill's
+reporting gate now fails if it reports only the brain.
+
+### Consistency sweep — three more stale claims, each read before judging
+
+- `docs/brain/roles-permissions.md` said `tenant_members` has **no** work-title/responsibilities
+  columns. It has both, as live `text` columns on prod. Corrected; the true half — descriptive only,
+  never an authorization input, authenticated behaviour still unproven — is kept.
+- `docs/brain/config-registry.md` said the Team edge function and RPC family were *in-flight, not
+  deployed*. They are deployed. Corrected, with migration apply confirmed and email delivery plus
+  authenticated behaviour still marked UNVERIFIED.
+- `docs/brain/paige-brain-wiring-standard.md` said *"Gate 2 pending"* and *"she may not send an
+  invitation, change a role, grant access"*. Corrected — and the load-bearing half of that sentence
+  survives, which is why the correction is safe: **not from context alone.** Every act goes through
+  the governed tools and the six access-changing ones require the real approval card.
+- `docs/brain/decision-log.md`'s dated 2026-08-31 entry was **true when written** and is preserved
+  intact with a forward pointer, not rewritten.
+
+**Nothing added here is a secret, a raw provider payload, private tenant data, or a capability claim
+the code does not support.** Team stays `PARTIAL`; no authenticated proof is claimed.
+
+### Landed — Gate 2, merge, and verification on `main`
+
+The owner approved Gate 2 at exact head `7e470f69c8f47dd0fe7112fbe68ab7a0d0813c28`. PR #730 merged to
+`main` as **`ed22066e71294099e48f0b52c742e3f379faf23c`** (squash; 7 files, +198/−15 — byte-identical to
+the approved diff, since the branch carried a single commit).
+
+Verified on `origin/main` after the merge, by reading it rather than trusting the merge response: the
+new §4 entry is present; the §4 PAIGE Chat header and the §5 Team entry both carry their §58
+strike-through correction beside the original wording; the both-records closeout rule is in the
+repo-local skill. The other `local branch, NOT LIVE` line in §5 belongs to the **multi-membership login
+account picker**, a different workstream, and was correctly left untouched.
+
+CI on that exact head, read directly rather than counted: `verify` success, `audit` success, combined
+commit status success (both Vercel contexts), `mergeable_state: clean`. `Supabase Preview` skipped and
+`migration-lint` absent — both path-filter on `supabase/**`, which this PR does not touch, so their
+absence corroborates the documentation-only scope instead of indicating missing coverage.
+
+**Unchanged by the merge, still owed:** authenticated owner browser proof of the Team flow; the
+workspace-level outcome projection (an unstarted Spine Change Request); PR #728's P1/P2 hotfix, which
+remains a separate active workstream this did not repair. Team remains `PARTIAL`.
+
+### Parked, not fixed — a stale claim this closeout's sweep found
+
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 carries MET1 (§34-L1 metering) as a ✅ **SHIPPED** entry
+while simultaneously asserting *"branch `codex/paige-knowledge-active-tenant-isolation-v2`, **NOT
+MERGED — draft PR, Gate 2 not requested**"* — contradictory on its face, and stale:
+`supabase/functions/_shared/token-pricing.ts` and `supabase/migrations/20261038000000_the_meter_actually_runs.sql`
+are both on `main`, added by **`76bb3bbca` (PR #728)**, established with `git log --diff-filter=A`. Both
+were present at base `05735f26b` too, so this predates PR #730 and was not caused by it.
+
+**It is NOT fixed here.** Under the owner's standing scope-control rule (2026-09-02), a distinct issue
+found mid-assignment is parked rather than absorbed: it belongs to the §34 metering workstream, not to
+the Solo Team assignment, and the assigned flow works correctly without it. Parked as
+**issue #737**. Only the owner may convert that into an implementation assignment.
+
+Recorded honestly: the correction was briefly present in PR #732's diff before the scope-control rule
+was issued, and was reverted out of it. Nothing about the entry's behavioural claims was ever
+re-verified — whether the meter actually drains on prod is MET2's evidence, not this closeout's.
+
+Three further status claims were read and left alone for the same reason, and are carried in the same
+parked issue as **unverified rather than known-wrong**: the multi-membership login account picker,
+Solo Campaigns → Pipeline board, and Setup-owned A2P legal identity. All three sit in §5 (gaps), which
+is the correct home for in-flight work.

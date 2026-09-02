@@ -22,6 +22,12 @@ index what you have not checked.
 - **Need "what happened / what did we decide recently?"** → `decision-log.md`.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
 
+**Closeout is TWO records, not one (owner-ruled 2026-09-02).** A workstream is not complete until the
+relevant brain file **and** `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` are updated, whenever the work
+changes product capability, platform truth, release status, architecture, owner flow, or a material
+known limitation — or a collision-safe handoff names the exact section, proposed text, owner and
+reason. The rule and its reporting gate live in `.claude/skills/second-brain/SKILL.md`.
+
 **How to keep it true (see proposed CLAUDE.md §BRAIN).** Any PR that ships a feature, changes
 config, or lands a ruling updates the relevant brain file **in the same commit**. A stale brain is
 worse than none — it lies with authority.
