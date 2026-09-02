@@ -84,8 +84,8 @@ move Pipeline into Clients, infer revenue/ROI, or authorize routing or activatio
 
 Every department and subtab must have a current detailed surface card before design or
 implementation. The canonical template, use rules and index live at
-[`docs/brain/surface-cards/README.md`](surface-cards/README.md). The first required card is
-[`docs/brain/surface-cards/solo-campaigns-pipeline.md`](surface-cards/solo-campaigns-pipeline.md).
+[`docs/doctrine/surface-cards/README.md`](../doctrine/surface-cards/README.md). The Pipeline card is
+[`docs/doctrine/surface-cards/pipeline.md`](../doctrine/surface-cards/pipeline.md).
 The §4 cards below are baseline orientation, not substitutes for that detailed file. No other
 detailed card is claimed to predate this docs work; create the relevant one before changing another
 surface. Never copy a canonical provider, permission, approval, or Spine contract into a card—link
@@ -307,7 +307,7 @@ come from `src/solo/settings-contract.ts`.
 | Subtab | Human flow and domain boundary | PAIGE/action/Rail, current truth |
 |---|---|---|
 | **Setup** | Confirm and edit owner/business truth through the Setup-owned contract. | `LIVE` surface; each field/save still requires authenticated proof. PAIGE may use confirmed safe facts, never invent missing ones. |
-| **Team** | Inspect roster, work details and enforced roles; an independently authorized human Team UI may invite/edit where its domain contract permits. | `PARTIAL`. Job description is not permission. For MVP, **every PAIGE Team mutation is `owner_only` and requires the owner**: work-profile edits, invite/send/resend/revoke, role/permission grant/revoke/change, and every access-affecting act. No auto lane. Canonical `owner_only` means Chat may prepare and hand off but never execute the change, even after confirmation; the authenticated owner acts in Team UI. Catalogue/config rows do not prove that handoff, UI write, persisted outcome or history. Owner-visible PAIGE Team history is required but `UNAVAILABLE` and browser proof is `UNVERIFIED`. |
+| **Team** | Inspect roster, work details and enforced roles; an independently authorized human Team UI may invite/edit where its domain contract permits. | `PARTIAL`. Job description is not permission. The six access-changing PAIGE actions stay `high`, each behind the canonical server-verified owner approval card; `team_set_work_profile` stays `ordinary` because it cannot alter access. Catalogue/config rows do not prove authenticated execution, persisted outcome or history. Owner-visible PAIGE Team history remains `UNAVAILABLE` and browser proof is `UNVERIFIED`. |
 | **Connections** | Understand and manage communications/calendar readiness without exposing secrets. | `PARTIAL`; nested map below. Provider configuration is not successful send/sync. |
 | **Integrations** | Discover external tools and manage only supported safe handoffs. | `PARTIAL`; nested Integrations and Automations views below. |
 | **Notifications** | Understand customer/delivery preferences only where a unified contract exists. | `PARTIAL`; delivery-failure preferences are `UNAVAILABLE`. No fake toggles. |
@@ -344,13 +344,10 @@ configuration only**. They do not prove that PAIGE Chat can invoke each Team too
 owner approved it, that its executor completed, that an invitation/email or permission mutation
 landed, or that an outcome became owner-visible. Those are separate authenticated evidence classes.
 
-The current source at the #728 base still classifies Team tool entries as `ordinary`/`high`. That is
-not compliant with the owner-ruling for the current MVP and must not be represented as usable PAIGE
-Team mutation capability. A later separately scoped implementation must make every PAIGE Team
-mutation canonical `owner_only`, remove any auto lane and any Chat execution path, preserve Team's
-domain authorization, and prove the full Chat proposal/refusal/handoff → authenticated owner Team-UI
-write → persisted outcome chain before a capability claim. An owner confirmation in Chat does not
-make an `owner_only` action executable there.
+The six access-changing Team actions remain `high`, not `owner_only`, so PAIGE can propose and execute
+them only after the canonical server-verified owner approval card. `team_set_work_profile` remains
+`ordinary` because the domain seam cannot alter access. This matches current source and the owner's
+same-day correction; it does not prove authenticated execution or a visible durable outcome.
 
 Owner-visible Team history is a real next Team surface requirement: a readable tenant-scoped history
 of PAIGE-proposed, owner-approved, executed and failed invitation/access changes. It is currently
@@ -408,9 +405,9 @@ artifact outside the repository; it is not installed or treated as current globa
 - Pipeline identity and governed archive boundary:
   [`docs/brain/pipeline-identity-contract.md`](pipeline-identity-contract.md)
 - Surface-card template, use rules and index:
-  [`docs/brain/surface-cards/README.md`](surface-cards/README.md)
+  [`docs/doctrine/surface-cards/README.md`](../doctrine/surface-cards/README.md)
 - First required detailed card, Campaigns → Pipeline:
-  [`docs/brain/surface-cards/solo-campaigns-pipeline.md`](surface-cards/solo-campaigns-pipeline.md)
+  [`docs/doctrine/surface-cards/pipeline.md`](../doctrine/surface-cards/pipeline.md)
 - Connections/Rail communications contract:
   [`docs/doctrine/connections-rail-contract.md`](../doctrine/connections-rail-contract.md)
 - Tier availability:

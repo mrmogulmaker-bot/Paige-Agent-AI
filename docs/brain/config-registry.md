@@ -85,11 +85,15 @@ multi-channel delivery). A fire is not a delivery.
 `SUPABASE_SERVICE_ROLE_KEY`. Deploy auth uses the `SUPABASE_ACCESS_TOKEN` **repo secret** (per
 `supabase/functions/CLAUDE.md`; ⚠ presence not re-verified this session — CLAUDE.md asserts it is set).
 
-**⚠ In-flight, not deployed (2026-08-31) — Solo Team management:** local branch adds the JWT-verified
-`solo-team-invitations` edge function, the `get_solo_team_workspace` / work-profile / permission /
-invite / acceptance RPC family, and `get_paige_team_context`. The browser receives no raw invite token;
-the invitation function invokes the existing `send-portal-invite` function server-side. Migration
-apply, function deployment, email delivery and authenticated tenant behavior are UNVERIFIED.
+**Solo Team management — DEPLOYED (corrected 2026-09-02; was recorded 2026-08-31 as in-flight).**
+Shipped via PR #728 (`76bb3bbca`). The JWT-verified `solo-team-invitations` edge function, the
+`get_solo_team_workspace` / work-profile / permission / invite / acceptance RPC family, and
+`get_paige_team_context` are on `main`. The browser receives no raw invite token; the invitation
+function invokes the existing `send-portal-invite` server-side. **Migration apply is CONFIRMED on
+prod** — `20261039000000` and `20261040000000` in `schema_migrations`; `job_title` /
+`responsibilities` present on `tenant_members`; five `team_*` rows from `list_tool_autonomy()`.
+**Still UNVERIFIED:** email delivery and authenticated tenant behaviour — no leg driven on the live
+authenticated platform.
 
 ---
 
@@ -307,6 +311,15 @@ exist — do not follow references to them.)
 | `migration-lint.yml` | pull_request | Migration shape lint (§208/§213) |
 | `premerge-migration-proof.yml` | pull_request | Pre-merge `BEGIN..ROLLBACK` migration proof (§32.a) |
 | `security-audit.yml` ("Security Audit") | pull_request + push | Security audit gate |
+
+**2026-09-02 release-close portability correction (this branch; Gate 2 pending):** the inherited
+local failures in `lint:pack-lineage` and `lint:operator-reach` were Windows repository-key separator
+defects, not documentation regressions. Their guards now compare canonical `/` keys. The Deno
+ratchet normalizes diagnostic origins across Windows/POSIX worktrees while retaining fail-closed
+classification, and its contract suite includes real Deno v2 plus traversal/case/UNC coverage. Two
+test-only callers no longer require GNU `grep` or native-slash allowlist matching. No workflow YAML,
+product behavior, migration, provider, or production configuration changed. Hosted exact-head CI is
+not claimed here; it remains a Gate 2 requirement.
 
 **RLS anon/cross-tenant-reach drift guards (npm scripts wired into `ci.yml`):**
 

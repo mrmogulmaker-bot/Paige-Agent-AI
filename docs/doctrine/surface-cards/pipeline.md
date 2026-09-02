@@ -36,7 +36,7 @@ pipeline/deal identity and current tenant truth.
 
 Campaigns/Pipeline owns pipeline definitions, stages, deals, their ordering, domain authorization and
 domain outcomes. The immutable identity and duplicate/archive rules are owned by
-[`docs/brain/pipeline-identity-contract.md`](../pipeline-identity-contract.md).
+[`docs/brain/pipeline-identity-contract.md`](../../brain/pipeline-identity-contract.md).
 
 Clients owns client/contact records. Analytics owns sourced projections. Billing owns money truth.
 Settings/Connections owns provider readiness. PAIGE Chat, Mind, Trust Compass, Rail and Systems Check
@@ -71,7 +71,7 @@ The #728 foundation registers `pipeline.deal_stage_evidence` over a narrow safe 
 allowed evidence is fixed, scoped and attributable: server-resolved tenant/authorized audience,
 stable signal kind/reference, source/provenance, occurrence/freshness and declared scalar fact
 values. The canonical schema and safe resolver are owned by
-[`docs/brain/paige-spine-integration-standard.md`](../paige-spine-integration-standard.md) and
+[`docs/brain/paige-spine-integration-standard.md`](../../brain/paige-spine-integration-standard.md) and
 `docs/architecture/paige-spine-foundation.md`.
 
 Never publish raw Rail title/summary/payload, provider payloads, credentials, hidden identifiers,

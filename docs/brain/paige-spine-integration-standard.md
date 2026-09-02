@@ -259,8 +259,9 @@ PAIGE-proposed Team changes and the owner's resulting Team-UI writes may not be 
 contact/client-keyed Rail event with a null or missing `contact_id`. Preserve the existing client
 Rail's client-keyed integrity. Team invite, resend, revoke, work-profile, role, permission and other
 access changes are workspace-level outcomes and require a distinct workspace-scoped outcome
-projection/record. For MVP these actions remain canonical `owner_only`: Chat may prepare and hand off
-but may not execute them at any confirmation strength.
+projection/record. This outcome gap does not change action classification: the six access-changing
+Team actions remain `high` behind the canonical owner approval card, while work-profile edits remain
+`ordinary`. The earlier `owner_only` wording is preserved as superseded history in the decision log.
 
 That new shared primitive must carry, at minimum: server-resolved tenant; authenticated actor;
 action kind; safe target member or invitation reference; the owner approval binding; requested,

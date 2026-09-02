@@ -45,19 +45,18 @@ operator."** Measured 2026-08-18: 9 `admin` holders across 10 of 13 tenants; 1 `
 
 - `tenant_members.job_title` and `tenant_members.responsibilities` are now on `main` through PR #697 (`3fd9944cd90e02794db21fa2ae6d32703fe89ea4`). They are descriptive tenant data only; `role` and `is_owner` remain the only enforced permission inputs.
 - PR #702 (`81e350ca477b9334e62dc636c2a8b57f891917df`) added truthful stored-name/email fallback and work-detail editing. GitHub records show both PRs merged and successful Production deployment statuses; this reconciliation did **not** establish a fresh production row-level query. Authenticated save, invite, permission, account-switch, and email behavior remain **UNVERIFIED**.
-- **PAIGE Team mutation policy (owner, 2026-09-02):** for MVP, every PAIGE-mediated Team write is
-  `owner_only` with owner confirmation and no auto lane, including work-profile edits, invite/send/
-  resend/revoke, role/permission grant/revoke/change and any access-affecting act. Catalogue rows and
-  applied migrations prove presence/configuration, not authenticated Chat refusal/handoff, the
-  owner's Team-UI write, persisted outcome or owner-visible history. Canonical `owner_only` is never
-  executable through Chat at any confirmation strength: PAIGE may prepare and hand off; the
-  authenticated owner acts through the separately authorized Team UI. Current #728 source
-  classifications are not yet aligned; PAIGE Team mutation capability and owner-visible Team history
-  remain unproven/unavailable.
+- **PAIGE Team mutation policy (owner correction, 2026-09-02):** the six access-changing actions
+  stay in PAIGE as `high` and require the canonical server-verified owner approval card;
+  `team_set_work_profile` stays `ordinary` because it cannot change access. `owner_only` would remove
+  an action from Chat entirely and was explicitly rejected as the wrong product behavior. Catalogue
+  rows and applied migrations prove presence/configuration, not authenticated execution or
+  owner-visible history. The current capability remains `PARTIAL`; see
+  `docs/doctrine/surface-cards/team.md` for the complete current contract and preserved correction.
 
 ## Not yet built
 
 - No custom-roles table, no permissions table (`user_roles` is the only role table).
+- ~~On `main`, `tenant_members` has **no work-title/responsibilities columns**.~~ **CORRECTED 2026-09-02 — it does.** `job_title` and `responsibilities` are live `text` columns on prod (`information_schema.columns`, ref `xygzykjyynhzqytbqnzu`), shipped via PR #728. They are **descriptive tenant data only**: `role`/`is_owner` remain the only enforced permission inputs, and the RPC that writes them cannot reach `permission`. The half of the original caution that still stands: **authenticated behaviour is still UNPROVEN** — no leg of the Team flow has been driven on the live authenticated platform, so do not report the end-to-end flow as verified.
 - `app_role` has **no** `sales_lead` / `closer` / `appointment_setter` / `sdr` / `sales_ops`
   (only `sales_rep`). The owner-ruled sales catalog is entirely net-new.
 

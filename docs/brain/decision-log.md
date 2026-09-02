@@ -1,8 +1,9 @@
 # Decision Log — chronological one-liners
 
-- **PAIGE Team mutations and workspace outcome — OWNER MVP POLICY (2026-09-02; documentation only)** — every PAIGE Team mutation is `owner_only` with owner confirmation and no auto lane: work-profile edit, invite/send/resend/revoke, role/permission grant/revoke/change, and any access-affecting act. A tenant admin may separately use the human Team UI where its domain authorization permits. `list_tool_autonomy()` plus applied migrations proves catalogue presence/persisted configuration only—not authenticated Chat invocation, approval, executor success, invitation/email or permission persistence, or durable outcome. Current #728 tool classifications are not aligned, so PAIGE Team mutation capability must not be claimed until a separate implementation and full authenticated chain prove it. A contact/client Rail event may never carry null/missing `contact_id`; Team requires a new SCR-governed workspace-scoped outcome with tenant, actor, action, target member/invite, approval binding, result and safe owner-visible evidence. Owner-visible PAIGE Team history is required but currently `UNAVAILABLE`/browser `UNVERIFIED`. No schema, code, migration, Chat or approval change is authorized by this ruling.
+- **Second Brain release-close CI repair — INHERITED DEFECTS REPAIRED LOCALLY, GATE 2 PENDING (2026-09-02)** — the documentation branch exposed four Windows portability failures already present on its fresh base: repository-key separators in pack-lineage/operator reachability, Deno shim and cross-worktree diagnostic-path handling, a GNU-grep dependency in the Solo shell contract, and native-slash matching in the operator-target contract. The repair is confined to seven CI/test files, adds direct cross-platform regressions, and leaves product behavior plus PR #728's five-finding hotfix untouched. Local workflow-equivalent verification and independent review must be refreshed on the final reconciled exact head before this status can advance.
+- **PAIGE Team mutations and workspace outcome — OWNER MVP POLICY, CORRECTED SAME DAY (2026-09-02; documentation only)** — ~~every PAIGE Team mutation is `owner_only` with owner confirmation and no auto lane~~. The owner corrected that wording after its effect was made explicit: the six access-changing actions stay in PAIGE as `high`, each behind the canonical server-verified owner approval card; `team_set_work_profile` stays `ordinary` because it cannot alter access. The original ruling and its same-day correction remain in the dated history below. A contact/client Rail event may never carry null/missing `contact_id`; Team requires a new SCR-governed workspace-scoped outcome with tenant, actor, action, target member/invite, approval binding, result and safe owner-visible evidence. Owner-visible PAIGE Team history remains `UNAVAILABLE` and authenticated browser proof `UNVERIFIED`. No schema, code, migration, Chat or approval change is authorized by this documentation record.
 - **PAIGE governing platform definition — OWNER AMENDMENT (2026-09-02; documentation only)** — PAIGE is the tenant-scoped AI COO, not a ChatGPT-style chat product or coding assistant; Chat is one final governed human interface, not the product boundary. Her intended loop is `observe → understand → plan → act within authority → record outcome → learn/follow up`, grounded in truthful tenant-scoped business evidence across organization, team, clients, documents, campaigns, Pipeline, sales, delivery, connections, goals, outcomes, risks and open work. The human selects the autonomy boundary. Trust Compass expresses that intent but is not server enforcement until persisted and enforced server-side; current authority remains domain permission plus server action-risk and the one approval gate. PAIGE cannot raise her own permission. Every surface card/feature assignment now declares what safe truth she learns, bounded help she offers, what she may execute, what requires the owner and how the outcome returns to durable context. No product, Compass or approval-mechanism change is authorized by this amendment.
-- **Canonical Solo documentation paths — OWNER PATH RULING (2026-09-02; created by this docs work)** — the mandatory paths are `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md`, `docs/brain/paige-spine-integration-standard.md`, `docs/brain/surface-cards/README.md`, and the relevant indexed card; the first required card is `docs/brain/surface-cards/solo-campaigns-pipeline.md`. The surface-card index/template and first card are new in this work and are not claimed as earlier repository history. Tier matrix, PAIGE Brain Wiring Standard and Connections/Rail may support a card but never replace these canonical preflight paths.
+- **Canonical Solo documentation paths — OWNER PATH RULING, RECONCILED DURING RELEASE CLOSE (2026-09-02)** — the Brain remains the agent entrypoint for the Solo taxonomy and Spine standard, while the canonical card home is `docs/doctrine/surface-cards/`. The first draft placed the index and Pipeline card in a parallel Brain subdirectory; that competing home was removed under the owner's explicit collision ruling. Its Pipeline material now lives at `docs/doctrine/surface-cards/pipeline.md`, beside #675's preserved Team card and canonical schema. Tier matrix, PAIGE Brain Wiring Standard and Connections/Rail may support a card but never replace these canonical preflight paths.
 - **Solo Platform Taxonomy and UI Flow Standard — OWNER-APPROVED CANONICAL STANDARD (2026-09-02; docs only)** — `solo-platform-taxonomy-and-ui-flow-standard.md` establishes one shared Solo shell/template for every current and future Solo tenant; tenant facts, permissions, entitlements, providers and data may vary, but shell/routes/layout/navigation/base surfaces and the single PAIGE workspace do not fork by account. It maps the actual Solo surface tree into business foundation, client operating work, revenue/delivery, growth/communications, intelligence/governance and Marketplace without renaming routes; preserves Campaigns' locked Overview/Catalog/Sales/Pipeline/Social/Performance boundary; and requires a surface card for every department/subtab covering its AI COO contribution, the human job, owning data/domain, shell location, full inputs/edits/creates, safe evidence, PAIGE read/propose/do boundary, approval, Rail, `LIVE`/`PARTIAL`/`UNAVAILABLE` plus browser proof, and dependencies/collisions. Full owner flows precede visual polish; domains own UI/data/actions, Chat owns final binding, stable registry additions are self-service, and only new shared primitives require an SCR. The exact Solo preflight is now in `CLAUDE.md` §69 and `.claude/skills/second-brain/SKILL.md`. No product, migration, provider, merge or deployment action is authorized by this docs standard.
 - **PAIGE Spine foundation — MERGED IN #728; prior unmerged-dependency wording corrected (2026-09-02)** — current `main` `76bb3bbca74ff4214feba28995d5cd0b9196fb6b` carries `supabase/functions/_shared/paige-spine/registry.ts`, the shared evidence resolver, Spine/Chat/action-risk/one-gate CI guards, `docs/doctrine/one-approval-gate.md`, and first capability `pipeline.deal_stage_evidence`. This implements the foundation, not platform-wide coverage: the first entry remains `PARTIAL`, its Mind binding and mutation are unavailable, and authenticated preview/persistence remain `UNVERIFIED` in this docs pass. Solo Compass remains non-authoritative.
 
@@ -704,6 +705,10 @@ the authenticated live drive remains UNVERIFIED** — no browser capability in t
 > **SUPERSEDED 2026-09-01:** PR #697 merged and has a successful Production deployment record;
 > authenticated runtime remains UNVERIFIED. See the release reconciliation below.
 
+> **Still accurate for its date; superseded as STATUS.** The work shipped via PR #728 (`76bb3bbca`)
+> and is live on production with the capability labelled `PARTIAL`. See the 2026-09-02 entries below
+> and `docs/doctrine/surface-cards/team.md`. The entry is kept intact rather than rewritten (§58).
+
 The owner approved the roster-first Team design and authorized production implementation. Growth uses
 the Settings page scroll owner plus server search/filter and 25-person Load more pages—never a nested
 people scrollbar. Job title/responsibilities are descriptive only; Owner/Admin/Member remain the
@@ -852,11 +857,10 @@ the same disagreement.** `teamSeamTenantMismatch` now asks the read's question b
 The lesson is the one worth keeping: when a read is given a safety check, ask what the matching write
 does with the same answer.
 
-**Historical classification, now non-compliant.** This source classified permission/invitation acts
-`high` and work details `ordinary`. The owner has since ruled every PAIGE Team mutation `owner_only`
-for MVP, with owner confirmation and no auto lane. The current source must not be described as usable
-PAIGE Team mutation capability until a separately scoped implementation aligns it and proves the full
-governed chain.
+**Historical classification note, superseded later the same day.** This source classified
+permission/invitation acts `high` and work details `ordinary`. A subsequent ruling briefly called
+every PAIGE Team mutation `owner_only`; the owner then corrected that wording and retained the source
+classification. See the 2026-09-02 correction below and the canonical Team card.
 
 **Registry status correction.** The inline baseline grew by five in this historical change. PR #728
 later landed the canonical Spine registry, but it did not register or prove these Team mutations.
@@ -913,9 +917,9 @@ the operator's to pull at any class. **Not fixed, and reported rather than done 
 the choice. The setter is a shipped RPC with its own callers and the surface's wording belongs to
 whoever owns it.
 
-**Owner ruling now closes the Team question.** Regardless of the broader historical `high` behavior,
-all PAIGE Team mutations are `owner_only` for MVP and have no auto lane. A tenant admin's separately
-authorized human Team UI remains a different domain path.
+**Superseded owner ruling, retained for chronology.** This entry briefly concluded that all PAIGE
+Team mutations were `owner_only` for MVP. The owner corrected that conclusion later the same day:
+the six access-changing actions remain `high`, while work-profile changes remain `ordinary`.
 
 **The shipped test that had to change, and why that is the whole argument.** `check.mjs` 15.6/15.7
 drove `automation_set_grant` at `auto` and asserted it EXECUTED, reporting its resolved posture.
@@ -950,11 +954,10 @@ evidence was matched to GitHub PR state, exact PR head checks, reviews, merge SH
 and deployment status. A GitHub `Production: success` record is release metadata; it is not
 authenticated-flow proof. This is a historical checkpoint, not a current-`main` cutoff.
 
-**Current-base boundary after rebase.** This branch now starts from
-`76bb3bbca74ff4214feba28995d5cd0b9196fb6b`. The first-parent range after the historical #705
-checkpoint contains exactly 22 inherited `main` records: #707, #708, #709, #683, #710, #712, #711,
-#714, #713, #715, #717, #716, #719, #720, #721, #722, #723, #718, #725, the `83ab5120…` Team
-merge, #727, and #728. Their updates are inherited base truth; they were not audited by the
+**Current-base boundary after release-close integration.** This branch now integrates
+`ed22066e71294099e48f0b52c742e3f379faf23c` (#730). The first-parent range after the historical #705
+checkpoint contains exactly 24 inherited `main` records: the prior 22 through #728, then #675's
+canonical surface-card home and #730's Team/Master closeout. Their updates are inherited base truth; they were not audited by the
 seven-record evidence table below. A new exact-head claim must re-run both first-parent and docs-path
 checks.
 
@@ -983,3 +986,232 @@ are not reconstructed from agent memory.
 
 **Release-close disposition for this reconciliation:** `SECOND BRAIN: UPDATED` once this exact-head
 docs-only PR passes review and CI. Until then this entry is branch evidence, not `main` truth.
+
+---
+
+## 2026-09-02 — The PAIGE Solo Platform Alignment Standard (owner, standing)
+
+**`main` is the reference template for the Solo tier.** Every active standalone Solo tenant gets the
+same shared shell, navigation, enabled surfaces and current-main behaviour. Records, plan,
+permissions, integrations, connections and truthful availability may differ; **the product template
+must not.** Never build for the tenant visible in a URL or fixture. An account number, fixture,
+preview or one observed tenant is not proof that a behaviour is canonical.
+
+**The required build path — the whole standard in one line:**
+
+```
+owner can use the page → tenant-safe record exists → safe domain evidence enters the Spine
+→ PAIGE/Mind understands the right scoped truth → governed action occurs only when authorized
+→ Rail records the outcome → owner can see the truthful result
+```
+
+A green unit test, static screen, mock or fixture is not completion. Evidence is reported in five
+separated classes: automated · static · rendered structural · authenticated browser runtime ·
+UNVERIFIED. A live owner capability is never claimed without authenticated browser proof.
+
+**Department ownership.** Each department owns its UI, tenant records, domain logic and domain
+actions, and must NOT invent or modify Chat's central handler, Mind's memory rules,
+approval/confirmation mechanisms, Trust Compass enforcement, Rail infrastructure or Systems Check
+conclusions. It publishes safe tenant-scoped evidence and action metadata through the Spine
+contract; the Chat workstream completes the bounded adapter, approval treatment and owner-visible
+capability. A **Spine Change Request** is only for a genuinely new shared primitive, shared schema,
+approval mechanism, resolver behaviour or cross-domain contract.
+
+**Surface cards are mandatory** before changing any department — ten fields and a truth label of
+LIVE · PARTIAL · UNAVAILABLE · NOT CONNECTED · PROPOSED. Home: `docs/doctrine/surface-cards/`.
+
+### §13 CORRECTION — an absence I asserted without looking
+
+An earlier version of this entry, and of the surface-cards README, stated that **neither** the
+"Solo Platform Taxonomy and UI Flow Standard" **nor** the "PAIGE Spine Integration Standard" existed
+in the repository. **The Spine half was false.** `docs/architecture/paige-spine-foundation.md`, the
+registry at `supabase/functions/_shared/paige-spine/registry.ts`, its CI contract workflow and its
+handoff doc had all landed on `main` in #728 at 12:57 UTC; the claim was written at 13:12 UTC — from
+a stale local tree, without fetching `main` first.
+
+The rule this breaks is one already written down here: answer from the record, not from memory or a
+stale checkout, and never assert an absence without a real search. An unfalsifiable claim of absence
+is indistinguishable from not having looked, which is precisely what happened. **Fetch, then
+assert.** The Taxonomy half stands — no single document under that name exists, verified against
+`origin/main` — and the nearest sources are mapped in the surface-cards README.
+
+### The first surface card: Team is PARTIAL, and the registry agrees
+
+`docs/doctrine/surface-cards/team.md`. Legs 1–5 of the build path pass; 6 and 7 do not.
+
+**A Team action emits no Rail event, and the owner has nowhere to see it happened.**
+`emitRailForTool` returns early on `if (!contactId) return` — the Rail is per-client by
+construction, and a Team action has no contact. That early return is CORRECT; emitting one anyway
+would invent a client involvement. An attribution row IS written to `paige_audit_log`,
+tenant-stamped and complete — but **no Solo surface reads `paige_audit_log`**. The Trust Compass
+panel and the Team hub's own *"What the team did"* both read `paige_client_events` via
+`useSoloActivityFeed`, so a permission change PAIGE makes on a team does not appear in that team's
+own activity feed. And because PAIGE is a rail *beside* the page, an owner on Team with her open
+sees a stale roster after she acts.
+
+**The Spine registry independently reaches the same verdict.** It declares exactly one capability
+today (`PIPELINE_DEAL_STAGE_EVIDENCE`); Team is not declared, and could not be declared complete,
+because the registry requires `outcome.railVisibility` and Team has none.
+
+**Filed as a Spine Change Request, deliberately not built.** The foundation doc states in its own
+opening that it "does not create a second Rail, event bus, memory store, approval store, or PAIGE
+workspace", and requires an approved Change Request identifier for any shared primitive. The
+question is narrow: may a Rail event exist without a `contact_id`, or do workspace-level outcomes
+get their own projection that `useSoloActivityFeed` unions in? Either answer makes Team declarable
+with real Rail visibility. Neither is the Chat workstream's to pick alone.
+
+### Branch note — the Team code was already on main
+
+The Team capability (tools, classifications, tenant-agreement guard, autonomy clamp, catalogue
+migration) merged to `main` in #728, not through PR #675. Verified rather than assumed: `main`
+carries all 909 of the branch's migrations, all five tool declarations and the clamp, and its
+`paige-ai-chat` handler is a strict superset. PR #675's branch was therefore rebuilt on `main`,
+leaving only these documents — the alternative was a 110-commit branch whose only real content was
+already merged.
+
+---
+
+## 2026-09-02 — Owner decisions on the Solo Team capability, recorded exactly
+
+Ruled alongside Gate 2 on the surface-card documentation. **None of these is implemented by the
+documentation that records them**; two describe work that has not happened.
+
+**1. ~~Every PAIGE Team mutation is `owner_only`~~ — CORRECTED SAME DAY, see the entry below.**
+The original wording, preserved because §58 does not delete a dated ruling: *invite, resend, revoke,
+role/access grant, role/access revocation, permission change; no `high` path is to be introduced for
+Team actions.* The owner withdrew this wording once its effect was named — `owner_only` removes an
+action from Chat entirely rather than gating it harder. **The paragraphs below describe the
+SUPERSEDED ruling and its gap; neither is current.**
+
+*The live code does not match this ruling.* All six are `high` on prod today in
+`_shared/action-risk.ts` (`team_invite_member`, `team_invite_resend`, `team_invite_revoke`,
+`team_set_permission`, `member_grant_role`, `member_revoke_role`). `owner_only` is not a stronger
+gate — it removes an action from Chat entirely, at any approval strength. So this ruling does not
+tighten the Team tools, it **withdraws them from PAIGE**, and the confirm-card machinery built for
+them becomes unreachable on those six. Closing the gap is product code in its own change.
+
+*Not settled by the ruling:* `team_set_work_profile` is a Team mutation, is not among the six
+enumerated, and is `ordinary` today. It writes two text columns and cannot reach `permission`. Left
+`ordinary` pending an explicit owner answer rather than swept in by inference.
+
+**2. A Team event is not a client event.** Do not emit a client Rail event with a null
+`contact_id`. The repair is a distinct tenant/workspace-level outcome projection carrying safe
+actor, action, target member or invitation, approval binding, result, and owner-visible evidence —
+proposed as its own Spine Change Request, implemented in its own coordinated workstream. **Not
+started.** This settles the open half of the question the Team card raised.
+
+**3. `PARTIAL` is not lifted by documentation.** Team stays `PARTIAL` until the owner can see a
+truthful tenant-scoped outcome after PAIGE acts AND the live authenticated flow is proven.
+
+**Also on the record: PR #728's post-merge follow-up is a separate ACTIVE hotfix.** Four P1 and one
+P2, not repaired and not made irrelevant by the surface-card work. Two land on surfaces the Team
+card describes: `useRailEvents` can merge the previous scope's events into the feed after a
+tenant/contact switch, and `useSoloPendingActions` keeps the previous tenant's pending actions on
+the Trust Compass after an account switch. The other two P1s are in `paige-apply-extraction` (a
+partial sync counted as success; an extraction claim not released when the transport rejects), and
+the P2 is a failed Skip leaving a proposal unretryable in `PaigeAIChat`.
+
+Issue #198 (prod migration deploy FAILED) stays **open**, untouched.
+
+---
+
+## 2026-09-02 — CORRECTION: the six Team actions stay in PAIGE at `high`
+
+Supersedes decision 1 of the entry above, on the same day, before any code was written to it. The
+prior entry is left standing and marked, not deleted (§58).
+
+**The ruling now.** Invite · resend invitation · revoke invitation · change permission/access ·
+grant role · revoke role **remain in PAIGE Chat, classified `high`**. Each requires the canonical,
+server-verified owner approval card before execution. PAIGE may propose and explain the action, and
+may carry it out only after the owner explicitly approves that exact bounded action. She may never
+manufacture approval, raise autonomy, or bypass the domain authorization check.
+`team_set_work_profile` remains `ordinary` — it changes only job title and responsibilities, cannot
+alter access, still takes the normal compact confirmation, and must never be represented as a
+permission change.
+
+**This matches the live code**, so there is no longer a gap to close and no product change is
+required. The card's table now records classifications rather than a divergence.
+
+**Why the first wording was wrong, which is the part worth keeping.** `owner_only` is not a
+stronger gate. It means *never performed from Chat, at any approval strength, however the operator
+words it.* Applying it to the six would not have hardened them — it would have **withdrawn PAIGE's
+ability to help an owner run their team**, which is the opposite of the product intent. `high` is
+the setting that means "she can do it, and only after you approve this exact call": the approval
+fingerprint travels in the request body, which the model cannot author, so the model asserting
+consent is refused.
+
+**The lesson, and it generalises past this ruling.** A classification name that sounds like a
+severity is not one. `ordinary` → `high` → `owner_only` is not a dial from *softer* to *stricter*;
+the last step changes kind, from "gated" to "absent". A ruling phrased as tightening can therefore
+delete a capability by accident. When a class name is used in a ruling, state the **effect** —
+"stays in Chat behind your approval" or "leaves Chat entirely" — because the effect is what the
+reader is actually deciding.
+
+**Unchanged by this correction, and still true:** the workspace-level outcome projection remains a
+separate Spine Change Request and is not started; Team's truth label remains `PARTIAL`; the
+authenticated live-flow proof is still owed on a capability already serving production; and PR
+#728's post-merge P1/P2 findings remain a separate active hotfix, neither repaired nor made
+irrelevant.
+
+---
+
+## 2026-09-02 — Master Project File reconciled to live Solo Team, and a closeout rule so it stops drifting
+
+Documentation-only, from fresh `main` `05735f26b`.
+
+### §13 CORRECTION — I reported a gap that was not the gap
+
+At the close of PR #675 I told the owner the Master Project File had **zero** mentions of the Solo
+Team capability, on the strength of `grep -ic "solo team"` → 0. **That was wrong.** The file has
+carried a Team entry since 2026-08-31, headed *"Solo Settings → Team management"* — a spelling the
+search never tried. The Second Brain skill's own sweep rule says it plainly: *vary the spelling; an
+absence proven with one spelling is only the absence of that spelling.* I cited that discipline in
+the same report I broke it in.
+
+The real defect was worse than a gap, not better: the file **did** describe Solo Team, and described
+it as *"local branch, NOT LIVE"* while it was serving production. A missing entry is silence; a
+present, confident, wrong entry is what a reader acts on.
+
+### What the Master Project File now says
+
+**§4 (SHIPPED) — new entry, *Solo Team — PAIGE can act on the team (LIVE on production, capability
+`PARTIAL`)*.** Owner job; human surface (Solo Settings → Team); PAIGE's capability limited to the
+canonical approval route; the risk table (six `high` behind the real owner approval card,
+`team_set_work_profile` `ordinary` and never a permission change); the `PARTIAL` label; the live
+limitation that owner-visible workspace-level outcome history is missing; authenticated owner
+browser proof still owed; the workspace-level outcome projection as an unstarted Spine Change
+Request; PR #728's P1/P2 hotfix as separately active; and exact PR/commit/prod evidence.
+
+**Two stale entries corrected in place, marked not deleted (§58):** the §4 PAIGE Chat header still
+said *"PR #675, NOT YET MERGED … nothing below is live"*, and the §5 gaps entry still said *"local
+branch, NOT LIVE"*. Both now carry their correction beside the original wording.
+
+### The standing closeout rule (owner-ruled 2026-09-02)
+
+Recorded in `.claude/skills/second-brain/SKILL.md` — repo-native by design, because the installed
+`flow-by-flow` skill is per-account, cannot see this repository, and must not be silently modified.
+
+A workstream is **not complete** until **both** the relevant Second Brain record **and**
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` are updated, whenever the work changes product capability,
+current platform truth, release status, architecture, owner flow, or a material known limitation.
+The only escape is a **collision-safe handoff** naming all four of: the exact Master Project section,
+the proposed text, the owner, and the reason it could not be updated in the same PR. The skill's
+reporting gate now fails if it reports only the brain.
+
+### Consistency sweep — three more stale claims, each read before judging
+
+- `docs/brain/roles-permissions.md` said `tenant_members` has **no** work-title/responsibilities
+  columns. It has both, as live `text` columns on prod. Corrected; the true half — descriptive only,
+  never an authorization input, authenticated behaviour still unproven — is kept.
+- `docs/brain/config-registry.md` said the Team edge function and RPC family were *in-flight, not
+  deployed*. They are deployed. Corrected, with migration apply confirmed and email delivery plus
+  authenticated behaviour still marked UNVERIFIED.
+- `docs/brain/paige-brain-wiring-standard.md` said *"Gate 2 pending"* and *"she may not send an
+  invitation, change a role, grant access"*. Corrected — and the load-bearing half of that sentence
+  survives, which is why the correction is safe: **not from context alone.** Every act goes through
+  the governed tools and the six access-changing ones require the real approval card.
+- `docs/brain/decision-log.md`'s dated 2026-08-31 entry was **true when written** and is preserved
+  intact with a forward pointer, not rewritten.
+
+**Nothing added here is a secret, a raw provider payload, private tenant data, or a capability claim
+the code does not support.** Team stays `PARTIAL`; no authenticated proof is claimed.

@@ -187,31 +187,12 @@ operator context) · §60 (declared tier availability) · §BRAIN.1–.3 (second
 `paige-spine-integration-standard.md` (platform-wide safe path + owner boundaries) ·
 `cd-pack-port-playbook.md` (how a tier surface gets ported in the first place).
 
-## Solo Team context — owner-only policy; implementation/browser proof owed
+## Solo Team context — narrow contract (SHIPPED via PR #728, 2026-09-02; ~~Gate 2 pending~~)
 
 `get_paige_team_context()` is the Team-owned hydration seam for the authenticated speaker's active tenant. It carries confirmed active roster identity, existing enforced role, informational job title/responsibilities, and—only for an existing Team owner/admin—the Team invitation lifecycle without a token. A missing stored name retains the verified account email so PAIGE can identify the real teammate without inventing a name.
 
-PAIGE may use this reference context to identify the right teammate, draft or prepare an invitation,
-recommend a role change, and prepare a proposed Team action. Context is read evidence, never action
-authority.
+PAIGE may use this reference context to identify the right teammate and prepare the governed Team action.
 
-**Owner policy correction, 2026-09-02.** For the current MVP, every PAIGE Team mutation is
-`owner_only`: editing a work profile; sending/resending/revoking an invitation; granting, revoking or
-changing a role/permission; and any other access-affecting act. No auto lane. A tenant admin may use
-an independently authorized human Team UI where the Team domain contract permits it, but PAIGE may
-not silently invite, elevate or change access.
-
-`list_tool_autonomy()` rows plus applied migrations prove catalogue presence/persisted configuration.
-They do **not** by themselves prove authenticated Chat invocation, owner confirmation, executor
-completion, invitation/email delivery, permission persistence or durable owner-visible outcome. The
-current #728 source contains Team tool declarations and `ordinary`/`high` classifications, so it is
-not yet compliant with this new `owner_only` policy. Do not claim PAIGE can perform Team mutations on
-real Solo tenants until a separate implementation aligns the policy and the full governed chain is
-authenticated and browser-proven.
-
-Owner-visible Team history is required but currently `UNAVAILABLE`: the owner must be able to read
-PAIGE-proposed, approved, executed and failed invite/access changes. It needs the separately scoped
-workspace-level Team outcome SCR in the Spine standard. Never write a contact-keyed client Rail event
-with a null/missing `contact_id`.
+**CORRECTED 2026-09-02.** ~~*She may not send an invitation, change a role, grant access, or take an external action from context alone.*~~ She **can** now send invitations and change access — but the load-bearing half of that sentence survives intact and is why the correction is safe: **not from context alone.** Every act runs through the governed Team tools on the same server seam the Team screen uses, and the six access-changing ones are `high`, requiring the real owner approval card whose fingerprint travels in the request body. Tenant-authored titles and responsibilities remain untrusted reference data that confer no authority. The existing Team authorization checks remain the owning write path; PAIGE is one more caller of them, never a way around them.
 
 There is no cross-domain Hidden/View/Manage profile in this contract. Clients, Campaigns, Analytics, Connections, Integrations, Billing, Mind, Trust Compass, Systems Check, Rail, and the canonical Solo shell are unchanged.

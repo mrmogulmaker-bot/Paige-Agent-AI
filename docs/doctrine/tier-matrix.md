@@ -1388,38 +1388,37 @@ renders `granted_lane` alone would be reporting a request as an outcome.
 Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
 inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
-### PAIGE Chat — Solo Team evidence and owner-only MVP policy
+### PAIGE Chat — Solo Team evidence and governed-action policy
 
 `get_paige_team_context` and the five inline Team tool branches exist in current source. Applied
 migrations and `list_tool_autonomy()` rows prove catalogue presence/persisted configuration. They do
 not prove authenticated Chat refusal/handoff, owner action in the Team UI, persisted outcome, invite
 delivery, permission mutation, or owner-visible history.
 
-**Owner ruling, 2026-09-02:** every PAIGE Team mutation is `owner_only` for MVP and has no auto lane:
-work-profile edits, invite/send/resend/revoke, role/permission grant/revoke/change and every
-access-affecting act. Under the existing canonical meaning of `owner_only`, PAIGE Chat may explain,
-prepare and hand off the proposed change but may never execute it, even after the owner says yes.
-The authenticated owner performs the write through the separately authorized Team UI, governed by
-the Team domain. Current source still classifies the five Chat entries `ordinary`/`high`; it is not
-aligned to this policy and is not claimable as current PAIGE Team mutation capability.
+**Owner correction, 2026-09-02:** the earlier ruling that every Team mutation was `owner_only` is
+superseded because that class removes the action from PAIGE rather than placing it behind a stronger
+approval. The six access-changing actions remain in Chat as `high`, each behind the canonical
+server-verified owner approval card: invite/send, resend, revoke, permission change, role grant and
+role revoke. `team_set_work_profile` remains `ordinary` because it changes descriptive work details
+and cannot alter access. This is the current governed-action policy; the original `owner_only`
+wording remains preserved as corrected history in `docs/brain/decision-log.md` and the Team card.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
 | Team context read | no active tenant | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | unavailable | denied |
-| Any PAIGE Team mutation | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | `UNAVAILABLE` | denied |
+| Governed PAIGE Team mutations | no active tenant | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | `PARTIAL` / `UNVERIFIED` | unavailable | denied |
 
-The PAIGE mutation row remains unavailable. Separate implementation must align every Chat entry to
-canonical `owner_only` refusal/handoff semantics; it must not add a Chat executor or treat Chat
-confirmation as executable authority. A separately authorized implementation may prove the
-authenticated owner's Team-UI write, persisted result and safe workspace-scoped Team outcome. It may
-not use a contact/client Rail event with null/missing `contact_id`. Owner-visible PAIGE Team history
-is a required next surface and is currently `UNAVAILABLE`; see
+The mutation row is `PARTIAL`, not `LIVE`: catalogue and executor wiring exist, but authenticated
+invocation, approval, persisted result, invitation delivery and account-switch behavior remain
+`UNVERIFIED`. Owner-visible workspace-level Team history is still `UNAVAILABLE` and requires a
+separate SCR; it may not be fabricated as a contact/client Rail event with null/missing
+`contact_id`. See
 `docs/brain/paige-spine-integration-standard.md` §7 and
 `docs/brain/solo-platform-taxonomy-and-ui-flow-standard.md` → Settings/Team.
 
-The wider non-Team `high`/autonomy policy is unchanged by this Team ruling. A tenant admin may still
-use the human Team UI where independently authorized; PAIGE may not silently invite, elevate access,
-or execute another Team write.
+The wider non-Team `high`/autonomy policy is unchanged by this correction. A tenant admin may still
+use the human Team UI where independently authorized; PAIGE may never silently invite, elevate
+access or bypass the canonical approval route.
 
 ### Platform metering — LLM usage, `meter_llm_usage` (no surface, operator-only seam)
 
