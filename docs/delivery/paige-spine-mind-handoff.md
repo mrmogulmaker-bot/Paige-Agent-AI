@@ -142,8 +142,11 @@ them**; whoever lands second should paste them then. They are additive and order
 
 ## Parked follow-ups
 
-Filed as repository-visible issues rather than absorbed into this branch. See the Gate 2
-packet for links and status.
+Three distinct defects were found while building this slice and **none was started, branched,
+or absorbed into this diff**. GitHub issue creation was refused for this session's integration
+(`403 Resource not accessible by integration` — no `issues: write`), so they are recorded in
+`docs/delivery/parked-follow-ups-2026-09-02-mind-slice.md` and should be promoted to real
+issues by someone who can create them. Only the owner may convert one into an assignment.
 
 ## Owed before `LIVE`
 
