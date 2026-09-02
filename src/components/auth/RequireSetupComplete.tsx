@@ -24,16 +24,20 @@
 // no playbook. While loading, no active tenant, staff, or already-configured → children
 // render untouched, so a false negative can never strand a real, set-up user.
 //
-// NO REDIRECT LOOP: the chooser lives at /admin/marketplace, which is inside the wrapped
-// /admin/* subtree. The gate NO-OPs whenever the current path is already the chooser, so
-// the chooser is always reachable while gated (§36: a real first-run chooser, not a dead
-// redirect).
+// NO REDIRECT LOOP: Solo first use stays at /solo/{account}/settings/setup; sub-accounts
+// retain /admin/marketplace. The gate no-ops at the resolved chooser.
 import { Navigate, useLocation } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { resolveTierKey } from "@/lib/tier/tierFeatures";
 
-// The marketplace's existing first-run chooser ("choose what your business does").
-const SETUP_CHOOSER_PATH = "/admin/marketplace";
+const LEGACY_SETUP_CHOOSER_PATH = "/admin/marketplace";
+
+export function resolveSetupChooserPath(tierKey: string, accountNumber: number | null | undefined): string {
+  if (tierKey === "solo" && Number.isSafeInteger(accountNumber) && Number(accountNumber) > 0) {
+    return `/solo/${accountNumber}/settings/setup`;
+  }
+  return LEGACY_SETUP_CHOOSER_PATH;
+}
 
 export function RequireSetupComplete({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -59,14 +63,16 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   });
   const gatedTier = tierKey === "solo" || tierKey === "sub_account";
 
-  // Reachable WHILE gated: the marketplace chooser AND the whole /admin/setup subtree —
-  // the real playbook chooser is /admin/setup/playbook, so a gated tenant must be able to
-  // move freely through Setup + the marketplace to choose; only OTHER /admin routes bounce
-  // them to the chooser. (Without /admin/setup here, the gate bounced tenants away from the
-  // very chooser they were sent to find.)
-  const onChooser =
-    location.pathname.startsWith(SETUP_CHOOSER_PATH) ||
-    location.pathname.startsWith("/admin/setup");
+  // A canonical Solo tenant stays inside its canonical owner chain during first use.
+  // Sub-accounts retain the existing Admin chooser until their canonical Setup migration.
+  const chooserPath = resolveSetupChooserPath(tierKey, activeTenant?.account_number);
+  const onLegacyChooser = chooserPath === LEGACY_SETUP_CHOOSER_PATH && (
+    location.pathname.startsWith(LEGACY_SETUP_CHOOSER_PATH) ||
+    location.pathname.startsWith("/admin/setup")
+  );
+  const onChooser = onLegacyChooser ||
+    location.pathname === chooserPath ||
+    location.pathname.startsWith(`${chooserPath}/`);
 
   // Decide at RENDER time (not in a post-paint effect): a gated tenant then never commits
   // a frame of the dashboard before the bounce (§11/§36 — no flash), and there is no
@@ -77,6 +83,6 @@ export function RequireSetupComplete({ children }: { children: React.ReactNode }
   // playbook (grandfathered), or already on the chooser/setup subtree.
   const shouldRedirect =
     !loading && !isPlatformStaff && !!activeTenant && gatedTier && !hasPlaybook && !onChooser;
-  if (shouldRedirect) return <Navigate to={SETUP_CHOOSER_PATH} replace />;
+  if (shouldRedirect) return <Navigate to={chooserPath} replace />;
   return <>{children}</>;
 }

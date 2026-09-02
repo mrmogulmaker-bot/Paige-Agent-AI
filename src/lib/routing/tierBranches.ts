@@ -24,6 +24,7 @@
  *     §10–§15.
  */
 
+import type { SoloDeliveryClass, SoloSurfaceDeclaration } from "@/lib/routing/soloSurfaceContract";
 /** Tier identity for routing. Mirrors `resolveTierKey` (src/lib/tier/tierFeatures.ts) plus operator. */
 export type RouteTierKey =
   | "operator"
@@ -86,6 +87,21 @@ export interface Branch {
   subtabs?: SubTab[];
 }
 
+/** Every Solo surface must declare how it reaches every Solo tenant. */
+export interface SoloSubTab extends SubTab {
+  /** Optional override; otherwise the subtab inherits its branch delivery. */
+  delivery?: SoloDeliveryClass;
+}
+
+export interface SoloBranch extends Omit<Branch, "subtabs">, SoloSurfaceDeclaration {
+  subtabs?: SoloSubTab[];
+}
+
+export type CanonicalSoloSurface = SoloSurfaceDeclaration & {
+  id: string;
+  kind: "branch" | "subtab";
+}
+
 /** A tier's tree: its URL root prefix + its ordered branch set. */
 export interface TierTree {
   /** URL prefix, e.g. "/agency". The account segment + branch follow: `${root}/{account}/{slug}`. */
@@ -113,9 +129,9 @@ export interface TierTree {
  * "normalize" a Solo key to match its agency twin: the key is what the screen actually switches
  * on, so an aligned-looking key produces a dead route (locked by test, §13).
  */
-export const SOLO_BRANCHES: Branch[] = [
+export const SOLO_BRANCHES: SoloBranch[] = [
   {
-    slug: "command-center", key: "home", label: "Command Center", group: "main",
+    slug: "command-center", key: "home", label: "Command Center", group: "main", template: "canonical_solo", delivery: "global_template",
     // Systems Check is the canonical Solo landing surface. The former overview
     // address remains a compatibility alias of the same owner.
     subtabs: [
@@ -124,7 +140,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "paige", key: "paige", label: "Paige", group: "main",
+    slug: "paige", key: "paige", label: "Paige", group: "main", template: "canonical_solo", delivery: "global_template",
     // Source: src/solo/SoloPaigeWorkspace.tsx. Solo intentionally exposes the
     // customer-facing Chat, Knowledge, Helpers, and Capabilities contract only.
     subtabs: [
@@ -136,9 +152,9 @@ export const SOLO_BRANCHES: Branch[] = [
   },
   // Trust Compass has NO sub-tabs in Solo (full-page department drilldown, no sub-tab strip).
   // The agency Trust Compass sub-tabs are an AGENCY-ONLY scope switch (§11c).
-  { slug: "trust-compass", key: "compass", label: "Trust Compass", group: "main" },
+  { slug: "trust-compass", key: "compass", label: "Trust Compass", group: "main", template: "canonical_solo", delivery: "global_template" },
   {
-    slug: "automations", key: "auto", label: "Automations", group: "main",
+    slug: "automations", key: "auto", label: "Automations", group: "main", template: "canonical_solo", delivery: "global_template",
     // Source: src/solo/automations-build.tsx.
     subtabs: [
       { slug: "library", key: "lib", label: "Automations" },
@@ -147,7 +163,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "clients", key: "clients", label: "Clients", group: "main",
+    slug: "clients", key: "clients", label: "Clients", group: "main", template: "canonical_solo", delivery: "global_template",
     // Owner-approved relationship workspace. Pipeline remains under Campaigns. Delivery is
     // preserved in its legacy implementation but is not a Clients subtab. Hidden compatibility
     // entries keep previously copied URLs resolvable without presenting them as current IA.
@@ -161,7 +177,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "calendar", key: "cal", label: "Calendar", group: "main",
+    slug: "calendar", key: "cal", label: "Calendar", group: "main", template: "canonical_solo", delivery: "global_template",
     // One canonical Calendar owner. Legacy slugs remain aliases so copied links
     // resolve without preserving the retired fixture IA.
     subtabs: [
@@ -174,7 +190,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "growth", key: "growth", label: "Campaigns", group: "main",
+    slug: "growth", key: "growth", label: "Campaigns", group: "main", template: "canonical_solo", delivery: "global_template",
     // Campaigns owns six customer-facing reporting views. Vibe Studio remains the
     // sole creative owner and opens through its existing side action. Retired
     // creative slugs resolve to a Campaigns-owned compatibility landing, never a
@@ -189,7 +205,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "analytics", key: "analytics", label: "Analytics", group: "main",
+    slug: "analytics", key: "analytics", label: "Analytics", group: "main", template: "canonical_solo", delivery: "global_template",
     // Source: src/solo/analytics2.tsx.
     subtabs: [
       { slug: "brief", key: "brief", label: "Brief" },
@@ -201,7 +217,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "marketplace", key: "market", label: "Marketplace", group: "platform",
+    slug: "marketplace", key: "market", label: "Marketplace", group: "platform", template: "canonical_solo", delivery: "global_template",
     // Source: src/solo/marketplace.tsx — FOUR only. Curated + Publish are agency-only
     // (a Solo tenant consumes the marketplace, it does not curate or publish to a book).
     subtabs: [
@@ -212,7 +228,7 @@ export const SOLO_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "settings", key: "settings", label: "Settings", group: "platform",
+    slug: "settings", key: "settings", label: "Settings", group: "platform", template: "canonical_solo", delivery: "global_template",
     // Owner-locked Solo Settings taxonomy. Previously shipped Setup, Team, Integrations,
     // and Business Vault paths are compatibility redirects in SoloApp, never parallel owners.
     subtabs: [
@@ -228,6 +244,19 @@ export const SOLO_BRANCHES: Branch[] = [
   },
 ];
 
+
+/** Flatten the runtime registry so guards cover branches and every routed subtab. */
+export function canonicalSoloSurfaces(): CanonicalSoloSurface[] {
+  return SOLO_BRANCHES.flatMap((branch) => [
+    { id: branch.slug, kind: "branch" as const, template: branch.template, delivery: branch.delivery },
+    ...(branch.subtabs ?? []).map((subtab) => ({
+      id: `${branch.slug}/${subtab.slug}`,
+      kind: "subtab" as const,
+      template: branch.template,
+      delivery: subtab.delivery ?? branch.delivery,
+    })),
+  ]);
+}
 /**
  * AGENCY_BRANCHES — the Agency tree (15). Keys match `src/agency/AgencyApp.tsx`'s `screens`.
  * Superset of Solo with the manager-tier branches (Client Support + Billing over a book of

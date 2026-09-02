@@ -424,7 +424,7 @@ describe("tenant route owners preserve the newest authenticated account context"
     const routeTenant = tenant({
       id: "calendar-solo",
       name: "solo Calendar Account",
-      account_type: "solo",
+      account_type: "standalone",
       account_number: 424242,
     });
     mount("/solo/424242/calendar/agenda", <Route path="/solo/*" element={<SoloEntry />} />);
@@ -704,5 +704,21 @@ describe("tenant route owners preserve the newest authenticated account context"
     expect(accountName()).toBe("Home Solo Workspace");
     expect(accountTier()).toBe("Solo");
     expect(container.textContent).not.toContain("Parked Child Workspace");
+  });
+
+  it("fails closed with an executable recovery path when a manager opens a Solo URL", async () => {
+    const agency = tenant({
+      id: "wrong-tier-agency",
+      name: "Synthetic Agency Workspace",
+      account_type: "agency",
+      account_number: 600001,
+    });
+    mount("/solo/424242/command-center", <Route path="/solo/*" element={<SoloEntry />} />);
+    await startOverlappingLoads();
+    await resolveLoad(1, loadResult(agency.id, [agency]));
+
+    expect(container.querySelector("[data-tenant-shell]")).toBeNull();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin"]')?.textContent).toContain("Open assigned workspace");
   });
 });

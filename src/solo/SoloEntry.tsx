@@ -1,9 +1,10 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import SoloApp from "@/solo/SoloApp";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { EmptyState, PageSkeleton } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 
+import { isCanonicalSoloTenant } from "@/solo/canonicalSoloTenant";
 /**
  * SoloEntry — the `/solo/*` dispatcher (§65 R3d-i).
  *
@@ -24,7 +25,7 @@ import { Button } from "@/components/ui/button";
  */
 export default function SoloEntry() {
   const location = useLocation();
-  const { accountContextLoading, accountContextStatus, activeTenant, refresh } = useTenantContext();
+  const { accountContextLoading, accountContextStatus, activeTenant, isPlatformStaff, refresh } = useTenantContext();
 
   if (accountContextLoading || accountContextStatus === "resolving") return <PageSkeleton />;
 
@@ -50,6 +51,29 @@ export default function SoloEntry() {
       </div>
     );
   }
+  // Fail closed before mounting SoloApp when the authenticated active tenant is
+  // not a literal top-level standalone tenant. The URL account remains address-only.
+  if (!isCanonicalSoloTenant({
+    isPlatformStaff,
+    account_type: activeTenant.account_type,
+    parent_tenant_id: activeTenant.parent_tenant_id,
+    account_number: activeTenant.account_number,
+  })) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center p-6" role="alert">
+        <EmptyState
+          title="This Solo workspace isn't available"
+          description="Your active account doesn't own a Solo workspace. Open its assigned workspace to continue."
+          action={
+            <Button asChild variant="gold">
+              <Link to="/admin">Open assigned workspace</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
 
   return (
     <Routes>
