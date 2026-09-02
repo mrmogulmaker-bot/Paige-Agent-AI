@@ -125,6 +125,31 @@ function mcpSources() {
 
 const EXEMPT = /\/\/\s*mcp-confirm-exempt:\s*\S/;
 
+/**
+ * Comment text inside a node — read from real COMMENT TRIVIA, never from the node's source text.
+ *
+ * Matching the exemption pattern against raw block text meant any string could carry it: putting
+ * `// mcp-confirm-exempt: whatever` inside a tool's own `description` exempted a destructive
+ * handler with a model-settable boolean, and the guard reported zero violations. An escape hatch
+ * that a data field can open is not an escape hatch, it is a bypass.
+ *
+ * The scanner is asked for comments directly, so a marker in a string, a template or a regex is
+ * simply not a comment and cannot exempt anything.
+ */
+function commentTextWithin(node, sf) {
+  const full = sf.getFullText();
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* skipTrivia */ false, ts.LanguageVariant.Standard, full);
+  scanner.setTextPos(node.pos);
+  const out = [];
+  while (scanner.getTextPos() < node.end) {
+    const kind = scanner.scan();
+    if (kind === ts.SyntaxKind.EndOfFileToken) break;
+    if (kind === ts.SyntaxKind.SingleLineCommentTrivia ||
+        kind === ts.SyntaxKind.MultiLineCommentTrivia) out.push(scanner.getTokenText());
+  }
+  return out.join("\n");
+}
+
 function walk(node, visit) {
   visit(node);
   node.forEachChild((c) => walk(c, visit));
@@ -172,6 +197,7 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
       config: configArg && ts.isObjectLiteralExpression(configArg) && readableConfig(configArg)
         ? configArg : null,
       text: node.getFullText(sf),
+      comments: commentTextWithin(node, sf),
       line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
     });
   });
@@ -470,7 +496,7 @@ export function findViolations(src, file = "<memory>") {
   const out = [];
   const scopes = destructiveScopes(src, file);
   for (const tool of findToolCalls(src, file)) {
-    if (EXEMPT.test(tool.text)) continue;
+    if (EXEMPT.test(tool.comments)) continue;
     if (!tool.config) continue;           // reported separately as unanalysable
     const handler = prop(tool.config, "handler");
     const schema = prop(tool.config, "inputSchema");
@@ -700,6 +726,18 @@ mcp.tool(NAME, {
   check("passes a boolean on a NON-destructive tool", v(`
 mcp.tool("list_things", { inputSchema: z.object({ include_archived: z.boolean() }),
   handler: async () => ok({ rows: [] }) });`), 0);
+  check("an exemption marker in a STRING does not exempt (Codex)", v(`
+mcp.tool("fake_exempt", {
+  description: "// mcp-confirm-exempt: not a real comment",
+  inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
+});`), 1);
+  check("an exemption marker in a TEMPLATE literal does not exempt", v(`
+mcp.tool("fake_exempt2", {
+  description: \`// mcp-confirm-exempt: still not a comment\`,
+  inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
+});`), 1);
   check("respects an explained exemption", v(`
 mcp.tool("x", { inputSchema: z.object({ confirm: z.boolean() }),
   // mcp-confirm-exempt: server re-validates a single-use claim before this runs
@@ -727,7 +765,7 @@ for (const file of sources) {
   const src = fs.readFileSync(file, "utf8");
   const calls = findToolCalls(src, file);
   tools += calls.length;
-  for (const c of calls) if (!c.config && !EXEMPT.test(c.text)) unanalysable.push({ file, ...c });
+  for (const c of calls) if (!c.config && !EXEMPT.test(c.comments)) unanalysable.push({ file, ...c });
   violations = violations.concat(findViolations(src, file));
 }
 
