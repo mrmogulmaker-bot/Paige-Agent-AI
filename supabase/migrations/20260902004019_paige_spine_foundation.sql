@@ -30,15 +30,17 @@ returns table (
 )
 language plpgsql
 stable
-security invoker
+security definer
 set search_path = pg_catalog, public
 as $$
 declare
+  v_uid uuid := auth.uid();
+  v_tenant uuid := public.current_user_tenant_id();
   v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 100);
 begin
-  if auth.uid() is null then return; end if;
-  if public.current_user_tenant_id() is null then return; end if;
+  if v_uid is null or v_tenant is null then return; end if;
   if nullif(btrim(p_client_ref), '') is null then return; end if;
+  if not (public.has_any_role(v_uid, array['admin','super_admin','coach']) or public.is_platform_owner()) then return; end if;
 
   return query
   select
@@ -67,7 +69,7 @@ begin
     ('rail:' || e.id::text)::text as outcome_ref
   from public.paige_client_events e
   join public.clients c on c.id = e.contact_id and c.tenant_id = e.tenant_id
-  where e.tenant_id = public.current_user_tenant_id()
+  where e.tenant_id = v_tenant
     and upper(c.account_number) = upper(btrim(p_client_ref))
     and e.event_kind = 'owner.crm_mutation'
     and e.surface = 'campaigns_pipeline'
@@ -87,4 +89,4 @@ revoke all on function public.get_pipeline_spine_evidence(text,integer) from pub
 grant execute on function public.get_pipeline_spine_evidence(text,integer) to authenticated;
 
 comment on function public.get_pipeline_spine_evidence(text,integer) is
-  'PAIGE Spine v1 safe evidence adapter for existing Pipeline deal-stage Rail outcomes. Returns no raw title, summary, payload, user id, internal deal id, or stage content.';
+  'PAIGE Spine v1 hardened safe evidence lens for existing Pipeline deal-stage Rail outcomes. Direct Rail access stays revoked; returns no raw title, summary, payload, user id, internal deal id, or stage content.';

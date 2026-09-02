@@ -2,7 +2,7 @@
 -- lifecycle, and raw-content non-disclosure. Synthetic fixtures; always rolled back.
 BEGIN;
 
-SELECT plan(20);
+SELECT plan(21);
 
 SELECT ok(
   NOT has_function_privilege('anon', 'public.get_pipeline_spine_evidence(text,integer)', 'EXECUTE'),
@@ -10,20 +10,24 @@ SELECT ok(
 );
 SELECT ok(
   has_function_privilege('authenticated', 'public.get_pipeline_spine_evidence(text,integer)', 'EXECUTE'),
-  'authenticated callers can reach the invoker-rights adapter'
+  'authenticated callers can reach the hardened safe lens'
 );
 SELECT ok(
   NOT has_function_privilege('service_role', 'public.get_pipeline_spine_evidence(text,integer)', 'EXECUTE'),
   'service role cannot bypass the human caller boundary'
 );
 SELECT ok(
-  NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.get_pipeline_spine_evidence(text,integer)'::regprocedure),
-  'adapter is SECURITY INVOKER'
+  (SELECT prosecdef FROM pg_proc WHERE oid = 'public.get_pipeline_spine_evidence(text,integer)'::regprocedure),
+  'adapter is SECURITY DEFINER'
 );
 SELECT ok(
   (SELECT proconfig @> ARRAY['search_path=pg_catalog, public']
      FROM pg_proc WHERE oid = 'public.get_pipeline_spine_evidence(text,integer)'::regprocedure),
   'adapter pins its search path'
+);
+SELECT ok(
+  NOT has_table_privilege('authenticated', 'public.paige_client_events', 'SELECT'),
+  'authenticated callers retain no direct Rail table access'
 );
 
 INSERT INTO auth.users (id, aud, role, email) VALUES
@@ -46,7 +50,8 @@ ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id
 INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at) VALUES
   ('f1000000-0000-0000-0000-000000001111', 'f1000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
   ('f1000000-0000-0000-0000-000000001111', 'f1000000-0000-0000-0000-000000000002', 'member', 'active', false, now()),
-  ('f2000000-0000-0000-0000-000000002222', 'f2000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
+  ('f2000000-0000-0000-0000-000000002222', 'f2000000-0000-0000-0000-000000000001', 'owner', 'active', true, now()),
+  ('f2000000-0000-0000-0000-000000002222', 'f1000000-0000-0000-0000-000000000001', 'admin', 'active', false, now());
 
 UPDATE public.profiles SET active_tenant_id = 'f1000000-0000-0000-0000-000000001111'
  WHERE user_id IN ('f1000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-000000000002');

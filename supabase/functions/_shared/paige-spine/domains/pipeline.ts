@@ -17,9 +17,10 @@ export const PIPELINE_DEAL_STAGE_EVIDENCE = {
     signalKinds: ["pipeline.deal_stage_moved"],
     adapter: "public.get_pipeline_spine_evidence",
     audience: "owner_internal",
-    freshness: "available for 30 days, stale through 365 days, then excluded",
+    freshness: "available for 30 days, stale through the 365-day projection window, then excluded",
     staleAfterDays: 30,
-    retentionDays: 365,
+    projectionWindowDays: 365,
+    factKeys: ["change_type", "outcome", "actor"],
   },
   action: {
     classification: "read",
