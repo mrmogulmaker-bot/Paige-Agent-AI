@@ -52,17 +52,40 @@ function mcpSources() {
 }
 
 /**
- * Split source into `mcp.tool("name", { … })` blocks by brace matching.
+ * Count `mcp.tool(` CALL SITES, form-agnostically and without interpreting the file.
+ *
+ * Deliberately a raw regex with no comment/string stripping. The first version of this counter
+ * stripped the whole file first, and that stripper DESYNCHRONISED on the real source — measured:
+ * it lost exactly one of the 117 declarations (`send_btf_template_email`) after mis-reading a quote
+ * upstream, then recovered. A counter that can silently lose a declaration is precisely the failure
+ * this check exists to detect, so the counter must be the dumb one and the extractor the clever one.
+ *
+ * The trade is deliberate and one-directional: a literal `mcp.tool(` written inside a comment or a
+ * string WILL trip this check. That is a loud, easily-fixed false positive. The alternative — a
+ * clever counter that quietly under-counts — hides a real unparsed tool, which is the hole.
+ */
+export function countToolCallSites(src) {
+  return (src.match(/\bmcp\.tool\s*\(/g) || []).length;
+}
+
+/**
+ * Split source into `mcp.tool(<name>, { … })` blocks by brace matching.
  *
  * The scan tracks string, template and comment state, because this file is thousands of lines of
  * prose-heavy handlers and a naive brace count trips on the first `{` inside a description.
+ *
+ * ALL THREE QUOTE FORMS ARE ACCEPTED. The first version matched only a double-quoted name, so
+ * `mcp.tool('bulk_delete_contacts', { … })` — valid TypeScript — was never extracted, and a
+ * model-confirmed delete inside it would never have been inspected. The zero-tools check below
+ * could not save it either: it is aggregate-only, so the other 116 declarations keep the count
+ * nonzero and CI passes in silence. Raised as a P1 by the Codex review of `f663fe0d`.
  */
 export function extractToolBlocks(src) {
   const blocks = [];
-  const re = /mcp\.tool\(\s*"([^"]+)"\s*,\s*\{/g;
+  const re = /mcp\.tool\(\s*(?:"([^"]+)"|'([^']+)'|`([^`$\\]+)`)\s*,\s*\{/g;
   let m;
   while ((m = re.exec(src))) {
-    const name = m[1];
+    const name = m[1] ?? m[2] ?? m[3];
     let i = m.index + m[0].length - 1; // at the opening brace
     let depth = 0, inS = null, inTpl = false, inLine = false, inBlock = false;
     for (; i < src.length; i++) {
@@ -171,6 +194,22 @@ mcp.tool("bulk_delete_contacts", {
 });
 `, 0);
 
+  // POSITIVE: the P1 from the Codex review — a single-quoted name must not be invisible.
+  check("catches a single-quoted destructive tool", `
+mcp.tool('bulk_delete_contacts', {
+  inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); return ok({}); },
+});
+`, 1);
+
+  // POSITIVE: and a backtick-named one.
+  check("catches a template-literal-named destructive tool", `
+mcp.tool(\`bulk_delete_contacts\`, {
+  inputSchema: z.object({ confirm: z.boolean() }),
+  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); return ok({}); },
+});
+`, 1);
+
   // NEGATIVE: braces inside strings must not swallow the next tool.
   check("does not let a brace in prose merge two tools", `
 mcp.tool("safe_one", {
@@ -182,6 +221,22 @@ mcp.tool("safe_two", {
   handler: async () => ok({}),
 });
 `, 0);
+
+  // The mismatch detector: every quote form parses, so parsed === call sites.
+  check("every quote form parses, so the counts agree", (() => {
+    const src = `
+mcp.tool("a", { handler: async () => ok({}) });
+mcp.tool('b', { handler: async () => ok({}) });
+mcp.tool(\`c\`, { handler: async () => ok({}) });
+`;
+    return countToolCallSites(src) === 3 && extractToolBlocks(src).length === 3 ? 0 : 1;
+  })(), 0);
+
+  // A name form the extractor cannot read is VISIBLE as a mismatch rather than silently skipped.
+  check("an unreadable name form shows up as a mismatch", (() => {
+    const src = `mcp.tool(NAME_CONST, { handler: async () => ok({}) });`;
+    return countToolCallSites(src) === 1 && extractToolBlocks(src).length === 0 ? 0 : 1;
+  })(), 0);
 
   console.log(bad ? `\n✗ mcp-destructive-confirm-lint self-test: ${bad} failure(s).`
                   : "\n✓ mcp-destructive-confirm-lint self-test passed.");
@@ -197,10 +252,28 @@ if (sources.length === 0) {
 
 let violations = [];
 let tools = 0;
+const skipped = [];
 for (const file of sources) {
   const src = fs.readFileSync(file, "utf8");
-  tools += extractToolBlocks(src).length;
+  const parsed = extractToolBlocks(src);
+  const declared = countToolCallSites(src);
+  // PARTIAL PARSING FAILS CLOSED. A declaration the extractor does not recognise is a tool this
+  // guard never looks at, and the aggregate zero-check cannot see it because the others keep the
+  // count nonzero. Comparing against a form-agnostic count is what makes a skip loud.
+  if (parsed.length !== declared) skipped.push({ file, parsed: parsed.length, declared });
+  tools += parsed.length;
   violations = violations.concat(findViolations(src, file));
+}
+
+if (skipped.length) {
+  console.error("✗ mcp-destructive-confirm-lint: the parser skipped at least one tool declaration.\n");
+  for (const s of skipped) {
+    console.error(`  ${s.file} — parsed ${s.parsed} of ${s.declared} declaration(s)`);
+  }
+  console.error("\n  A declaration this guard cannot parse is a tool it never inspects, and the");
+  console.error("  zero-tools check below cannot catch it because the rest keep the count nonzero.");
+  console.error("  Teach `extractToolBlocks` the declaration form rather than lowering this check.");
+  process.exit(1);
 }
 
 if (tools === 0) {
