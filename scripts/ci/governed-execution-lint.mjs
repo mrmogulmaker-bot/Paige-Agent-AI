@@ -227,7 +227,16 @@ export function booleanApprovalFields(src, fileName = "in-memory.ts") {
   if (!members) return { parsed: false, fields: [] };
   const declared = [];
   for (const m of members) {
-    if (!ts.isPropertySignature(m) || !m.name) continue;
+    // A member this rule cannot read is NOT a member it may ignore. `approved(): boolean`, a call
+    // signature and an index signature are all valid TypeScript that add a caller-expressible
+    // channel, and all three were skipped here — reported by Codex against the doc sentence
+    // claiming the type declares only three members, which the code did not enforce.
+    // Refusing is the same answer as everywhere else in this guard: a shape I cannot read is not
+    // the admitted one.
+    if (!ts.isPropertySignature(m) || !m.name) {
+      declared.push(`<unreadable member kind: ${ts.SyntaxKind[m.kind]}>`);
+      continue;
+    }
     // Identifier, string literal, OR a computed name with a constant inside (`["approved"]?: …`),
     // which is a perfectly ordinary property signature and extracted by neither of the first two.
     let nm = null;
@@ -384,6 +393,17 @@ interface GovernedApproval { approved?: boolean; }`).fields.length, 1);
     booleanApprovalFields(APPROVAL(`claimedFor?:\n    string`)).fields, []);
   check("R3 passes the real shape",
     booleanApprovalFields(`type GovernedApproval = { autonomyLane: "auto" | "confirm" | "off" | string; claimedArgs?: Record<string, unknown> | null; };`).fields, []);
+  // Codex on 016ccbf5: a member this rule could not read was silently skipped, so all three of
+  // these shapes returned no fields while adding a caller-expressible channel.
+  check("R3 refuses a METHOD member",
+    booleanApprovalFields(APPROVAL(`claimedFor?: string; approved(): boolean`)).fields,
+    ["<unreadable member kind: MethodSignature>"]);
+  check("R3 refuses an INDEX signature",
+    booleanApprovalFields(APPROVAL(`claimedFor?: string; [k: string]: unknown`)).fields,
+    ["<unreadable member kind: IndexSignature>"]);
+  check("R3 refuses a CALL signature",
+    booleanApprovalFields(APPROVAL(`claimedFor?: string; (): boolean`)).fields,
+    ["<unreadable member kind: CallSignature>"]);
   check("R3 fails closed when absent", booleanApprovalFields("type Other = { a: boolean };").parsed, false);
 
   // R4
