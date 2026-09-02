@@ -51,7 +51,7 @@ asserted two ways, because a property proven only by a test is one a later edit 
 | 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives |
 | 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** |
 | 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
-| 9 | Refusal and failure behaviour | ten typed codes, every one fail-closed |
+| 9 | Refusal and failure behaviour | eleven typed codes, every one fail-closed |
 | 10 | Safe bounded outcome interface | a mutation must NAME an outcome channel or be refused. **The channel's shape is the Rail workstream's and is deliberately not defined here** |
 | 11 | Auditability | a structured record carrying no arguments and no secrets |
 
@@ -82,6 +82,25 @@ contract, whose entire shape is: *an atomic claim returns the stored arguments, 
 That collapse is also a simplification worth naming. Because a successful claim IS the arguments,
 there is no separate "it worked" flag that can get out of step with them, so "approved, but running
 something else" is **unrepresentable** rather than merely rejected.
+
+## The fail-open this slice shipped and then caught
+
+Recorded because the mechanism matters more than the fix.
+
+The first version clamped `auto`→`confirm` for `high`, branched on `off` and on `confirm`, and let
+everything else fall through to `execute`. The lane is typed `"auto" | "confirm" | "off" | string`,
+and that widening is not cosmetic — **the caller resolves the lane**, so `""` from a failed lookup,
+`"AUTO"` from a casing difference, a typo, or an `undefined` all reach the seam. Every one of them
+fell through and ran a `high` action **with no claim and no approval at all**.
+
+**Fifty-five hand-written tests missed it**, including tests written specifically to prove that a
+non-Chat caller cannot bypass high-risk approval. They missed it because they enumerate the branches
+the author was thinking about, and a fail-open lives in the branch nobody wrote a case for.
+
+An exhaustive sweep of the decision space — 165,888 combinations checked against an oracle rather
+than a list of expectations — found it on its first run. The sweep is now a permanent test for that
+reason, and the fix is two redundant guards: an explicit refusal of any unrecognised lane, plus a
+tail assertion that the only lane reaching execution is `auto` on an `ordinary` action.
 
 ## What CI holds
 

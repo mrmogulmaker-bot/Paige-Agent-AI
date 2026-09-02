@@ -300,6 +300,21 @@ describe("the layers that were previously inline, and therefore unreachable", ()
     expect(d.kind === "refuse" && d.code).toBe("outcome_channel_undeclared");
   });
 
+  it("REGRESSION: an unrecognised autonomy lane fails CLOSED, it does not execute", () => {
+    // This was a real fail-open. `""`, `"AUTO"`, `"nonsense"` and `undefined` all reached the tail
+    // `execute` and ran a `high` action with no claim at all, because the clamp only rewrote
+    // `auto` and only `off`/`confirm` had branches. Found by the exhaustive sweep, not by a
+    // hand-written case — which is the whole argument for keeping that sweep.
+    for (const lane of ["", "AUTO", "Confirm", "nonsense", undefined as unknown as string]) {
+      for (const capability of [HIGH, ORDINARY]) {
+        const d = decide({ caller: caller(), capability,
+                           approval: { autonomyLane: lane }, requestArgs: { x: 1 } });
+        expect(d.kind).toBe("refuse");
+        expect(d.kind === "refuse" && d.code).toBe("autonomy_lane_unrecognized");
+      }
+    }
+  });
+
   it("honours `off` as a brake at every class", () => {
     for (const capability of [ORDINARY, HIGH]) {
       const d = decide({ caller: caller(), capability, approval: { autonomyLane: "off" }, requestArgs: {} });
@@ -333,5 +348,128 @@ describe("the layers that were previously inline, and therefore unreachable", ()
     }
     for (const code of seen) expect(GOVERNED_REFUSAL_CODES).toContain(code);
     expect(seen.size).toBeGreaterThan(0);
+  });
+});
+
+/** The sweep's own fixture axes — deliberately wider than the readable cases above. */
+const SWEEP_LANES = ["auto", "confirm", "off", "", "AUTO", "Confirm", "nonsense",
+                     undefined as unknown as string];
+const SWEEP_CAPS = [
+  { id: "crm_delete_contact", effect: "mutate" as const },      // high
+  { id: "crm_create_contact", effect: "mutate" as const },      // ordinary
+  { id: "automation_set_grant", effect: "mutate" as const },    // owner_only
+  { id: "crm_delete_everything", effect: "mutate" as const },   // unclassified write
+  { id: "crm_search_contacts", effect: "read" as const },       // genuine read
+  { id: "crm_delete_contact", effect: "read" as const },        // mis-declared
+];
+const SWEEP_OUTCOMES = [undefined, "", "   ", "rail"];
+const SWEEP_CLAIMS = [undefined, null, {}, { contact_id: "APPROVED" }];
+const SWEEP_CALLER_ARGS = { contact_id: "CALLER_SUPPLIED" };
+
+/**
+ * EXHAUSTIVE SWEEP — kept because it earned its place.
+ *
+ * The hand-written cases above are readable and they are not sufficient. This sweep enumerates the
+ * whole decision space and checks an ORACLE rather than a list of expectations, and on its first
+ * run it found a real fail-OPEN that all 55 of them missed: an autonomy lane this seam does not
+ * recognise (`""`, `"AUTO"`, `undefined`, a typo) fell through to the tail `execute` and ran a
+ * `high` action with NO claim and NO approval. The lane is typed `... | string` precisely because
+ * the caller resolves it, so those values are reachable, not theoretical.
+ *
+ * The lesson is the reason it stays: hand-written cases test the branches the author was thinking
+ * about, and a fail-open lives in the branch nobody wrote a case for.
+ */
+describe("exhaustive sweep of the whole decision space", () => {
+  it("every execute is justified, and no approved mutation ever runs caller args", () => {
+    let checked = 0, execs = 0; const bad: string[] = [];
+    for (const door of DOORS) for (const authed of [true,false]) for (const lane of SWEEP_LANES)
+    for (const cap of SWEEP_CAPS) for (const oc of SWEEP_OUTCOMES) for (const claimedArgs of SWEEP_CLAIMS)
+    for (const access of [undefined,{allowed:false},{allowed:true}])
+    for (const tenantSource of ["server","request","unknown"] as const)
+    for (const tenantId of ["t", null]) {
+      const d = decideGovernedExecution({
+        caller:{ authenticated: authed, userId: authed?"u":null, tenantId, tenantSource, door, access },
+        capability:{ ...cap, outcomeChannel: oc },
+        approval:{ autonomyLane: lane, claimedArgs: claimedArgs as never },
+        requestArgs: SWEEP_CALLER_ARGS,
+      });
+      checked++;
+      if (d.kind !== "execute") continue;
+      execs++;
+      const ctx = JSON.stringify({door,authed,lane,cap,oc,claimedArgs,access,tenantSource,tenantId});
+
+      // Gate preconditions that must hold for ANY execute.
+      if (tenantSource !== "server" || !authed || !tenantId || access?.allowed !== true)
+        { bad.push("EXECUTED WITHOUT GATE: "+ctx); continue; }
+
+      const risk = classifyAction(cap.id);
+      if (cap.effect === "read") {
+        // A read may only execute when it is genuinely unclassified and not write-shaped.
+        if (risk !== "unclassified" || cap.id !== "crm_search_contacts")
+          bad.push("BAD READ EXECUTED: "+ctx);
+        continue;
+      }
+      // Mutations.
+      if (risk === "unclassified" || risk === "owner_only") { bad.push("UNGOVERNED MUTATION: "+ctx); continue; }
+      if (typeof oc !== "string" || oc.trim() === "") { bad.push("NO OUTCOME CHANNEL: "+ctx); continue; }
+      const laneEff = (lane === "auto" && risk === "high") ? "confirm" : lane;
+      if (laneEff === "off") { bad.push("EXECUTED ON OFF: "+ctx); continue; }
+      if (laneEff === "confirm") {
+        if (!(claimedArgs && typeof claimedArgs === "object")) { bad.push("CONFIRM WITHOUT CLAIM: "+ctx); continue; }
+        // THE property: the approved path runs the STORED args, never the caller's.
+        if (JSON.stringify(d.args) !== JSON.stringify(claimedArgs))
+          bad.push("APPROVED PATH DID NOT RUN STORED ARGS: "+ctx);
+        if (JSON.stringify(d.args) === JSON.stringify(SWEEP_CALLER_ARGS) && JSON.stringify(claimedArgs) !== JSON.stringify(SWEEP_CALLER_ARGS))
+          bad.push("APPROVED PATH RAN CALLER ARGS: "+ctx);
+      } else if (laneEff === "auto") {
+        if (risk !== "ordinary") bad.push("AUTO EXECUTED A NON-ORDINARY: "+ctx);
+      } else {
+        bad.push("EXECUTED ON AN UNKNOWN LANE: "+ctx);
+      }
+    }
+    console.log(`  swept ${checked} combinations, ${execs} executes, ${bad.length} violations`);
+    for (const b of bad.slice(0,8)) console.log("   ", b);
+    expect(bad.length).toBe(0);
+    expect(execs).toBeGreaterThan(0);
+  });
+
+  it("is byte-identical across all six doors for every combination", () => {
+    const mism: string[] = [];
+    for (const authed of [true,false]) for (const lane of SWEEP_LANES) for (const cap of SWEEP_CAPS)
+    for (const oc of SWEEP_OUTCOMES) for (const claimedArgs of SWEEP_CLAIMS)
+    for (const access of [undefined,{allowed:false},{allowed:true}])
+    for (const tenantSource of ["server","request","unknown"] as const) {
+      const seen = new Set(DOORS.map((door) => {
+        const d = decideGovernedExecution({
+          caller:{ authenticated: authed, userId: authed?"u":null, tenantId:"t", tenantSource, door, access },
+          capability:{ ...cap, outcomeChannel: oc },
+          approval:{ autonomyLane: lane, claimedArgs: claimedArgs as never },
+          requestArgs:{ a:1 },
+        });
+        const { audit, ...rest } = d as never as { audit: Record<string,unknown> };
+        const { door: _d, ...auditRest } = audit;
+        return JSON.stringify({ rest, auditRest });
+      }));
+      if (seen.size !== 1) mism.push(JSON.stringify({lane,cap,oc,claimedArgs,access,tenantSource}));
+    }
+    console.log(`  door-blindness: ${mism.length} mismatches`);
+    expect(mism.length).toBe(0);
+  });
+
+  it("owner_only and unclassified never execute under ANY input", () => {
+    const bad: string[] = [];
+    for (const door of DOORS) for (const lane of SWEEP_LANES) for (const claimedArgs of SWEEP_CLAIMS)
+    for (const oc of SWEEP_OUTCOMES) for (const eff of ["mutate","read"] as const)
+    for (const id of ["automation_set_grant","automation_set_state","crm_delete_everything"]) {
+      const d = decideGovernedExecution({
+        caller:{ authenticated:true, userId:"u", tenantId:"t", tenantSource:"server", door, access:{allowed:true} },
+        capability:{ id, effect: eff, outcomeChannel: oc },
+        approval:{ autonomyLane: lane, claimedArgs: claimedArgs as never },
+        requestArgs:{},
+      });
+      if (d.kind === "execute") bad.push(JSON.stringify({id,eff,lane,claimedArgs,oc,door}));
+    }
+    console.log(`  owner_only/unclassified executes: ${bad.length}`);
+    expect(bad.length).toBe(0);
   });
 });

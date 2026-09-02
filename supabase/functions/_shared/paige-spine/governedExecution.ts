@@ -149,13 +149,14 @@ export type GovernedRefusalCode =
   | "effect_mismatch"
   | "owner_only"
   | "outcome_channel_undeclared"
-  | "autonomy_off";
+  | "autonomy_off"
+  | "autonomy_lane_unrecognized";
 
 /** Every refusal this seam can produce. Exported so a test can prove the list is covered. */
 export const GOVERNED_REFUSAL_CODES: readonly GovernedRefusalCode[] = Object.freeze([
   "tenant_not_server_derived", "unauthenticated", "tenant_unresolved", "capability_unidentified",
   "access_denied", "unclassified_mutation", "effect_mismatch", "owner_only",
-  "outcome_channel_undeclared", "autonomy_off",
+  "outcome_channel_undeclared", "autonomy_off", "autonomy_lane_unrecognized",
 ] as const);
 
 /**
@@ -290,9 +291,27 @@ export function decideGovernedExecution(input: {
       "This change declares no durable outcome, so its result could not be shown to the operator.");
   }
 
-  // 8 — AUTONOMY FLOOR. One-directional, exactly as the Chat handler applies it: a stored `auto`
-  // preference cannot retire the approval a `high` action's class exists to require. `off` always
-  // survives — a brake is the operator's to pull at any class.
+  // 8 — AUTONOMY FLOOR.
+  //
+  // FAIL CLOSED ON A LANE THIS SEAM DOES NOT RECOGNISE. This check exists because its absence was
+  // a real fail-OPEN, found by an exhaustive sweep of the decision space after 55 hand-written
+  // tests missed it. The lane arrives as `"auto" | "confirm" | "off" | string`, and the widening to
+  // `string` is not cosmetic — the caller resolves this value, so a typo, a casing difference
+  // (`"AUTO"`), an empty string from a failed lookup, or an `undefined` all reach here. With only
+  // `off` and `confirm` branching below, EVERY other value fell through to the tail `execute` —
+  // which ran a `high` action with no claim and no approval at all.
+  //
+  // Guessing is what produced that hole, so an unrecognised lane is refused rather than coerced to
+  // a safe default: a lane the server could not resolve is a broken autonomy resolution, and the
+  // honest answer is to stop, not to pick one.
+  if (laneRequested !== "auto" && laneRequested !== "confirm" && laneRequested !== "off") {
+    return refuse("autonomy_lane_unrecognized",
+      "The autonomy setting for this workspace could not be read, so this action was not run.");
+  }
+
+  // One-directional, exactly as the Chat handler applies it: a stored `auto` preference cannot
+  // retire the approval a `high` action's class exists to require. `off` always survives — a brake
+  // is the operator's to pull at any class.
   const clamped = laneRequested === "auto" && risk === "high";
   const laneEffective = clamped ? "confirm" : laneRequested;
 
@@ -325,8 +344,24 @@ export function decideGovernedExecution(input: {
              audit: { ...base, laneEffective, clamped, decision: "execute" } };
   }
 
-  // An `auto` lane on an `ordinary` action: no approval was required, so the request's own
-  // arguments are the call. (`high` can never reach here — step 8 clamped it to `confirm`.)
+  // The ONLY remaining lane is `auto`, and the only risk that reaches it is `ordinary` — `high` was
+  // clamped to `confirm` above, `owner_only` and unclassified were refused, and every unrecognised
+  // value was refused. No approval was required, so the request's own arguments are the call.
+  //
+  // Asserted rather than assumed: this used to be a bare fallthrough, and a bare fallthrough is
+  // what let an unrecognised lane execute a `high` action.
+  //
+  // DELIBERATELY REDUNDANT, AND MEASURED AS SUCH. Given the unrecognised-lane refusal in step 8,
+  // this branch is unreachable today — mutation testing confirms it: removing EITHER guard alone
+  // leaves the suite green, because the other still catches it, while removing BOTH fails two
+  // tests. That is defence in depth on a hole that already bit once, not dead weight. Do not
+  // delete this because it "cannot fire", and do not delete step 8's check because "the tail
+  // covers it" — each is only unreachable while the other stands.
+  if (laneEffective !== "auto" || risk !== "ordinary") {
+    return refuse("autonomy_lane_unrecognized",
+      "This action did not resolve to a runnable autonomy state, so it was not run.",
+      laneEffective, clamped);
+  }
   return {
     kind: "execute", args: requestArgs, risk,
     audit: { ...base, laneEffective, clamped, decision: "execute" },
