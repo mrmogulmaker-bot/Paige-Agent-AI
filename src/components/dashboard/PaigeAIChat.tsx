@@ -357,9 +357,13 @@ const PaigeAIChatInner = ({
   // the tenant now keys on this, and there is one definition of "the scope changed" instead of
   // two that can disagree.
   //
-  // Surfaces that never focus a client (Solo, the operator desk) pass no `clientId`, so their
+  // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
   const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}`;
+  // The thread a person asked for, parked across the reset their own click causes (#765).
+  // Same idiom, and same reason, as the refusal notice below: releasing focus changes the
+  // epoch, and the epoch change invalidates the very load the release was made for.
+  const pendingThreadSelectionRef = useRef<{ epoch: string; id: string } | null>(null);
   // A refusal releases focus, which CHANGES this epoch, which resets the transcript — so a naive
   // "clear focus on refusal" deletes the very sentence the person needs to read. The notice is
   // parked here on the way out and adopted as the opening message on the way back in, so the
@@ -486,6 +490,9 @@ const PaigeAIChatInner = ({
     // Adopted only by the transition it belongs to: the one LEAVING the epoch the refusal happened
     // under. Any other epoch change discards it, so a notice cannot survive to greet an unrelated
     // switch. Discarded either way — it is a one-shot handoff, never sticky state.
+    const parkedSelection = pendingThreadSelectionRef.current;
+    pendingThreadSelectionRef.current =
+      parkedSelection?.epoch === leavingEpoch ? { epoch: scopeEpoch, id: parkedSelection.id } : null;
     const parked = pendingScopeNoticeRef.current;
     pendingScopeNoticeRef.current = null;
     const scopeNotice = parked?.epoch === leavingEpoch ? parked.text : null;
@@ -500,7 +507,15 @@ const PaigeAIChatInner = ({
     setCancelled(false);
     setConnectionIssue(null);
     retryTurnRef.current = null;
-    setHistoryHydrated(false);
+    // RE-ARMING THE AUTO-RESUME IS WHAT ERASED THE EXPLANATION (#765).
+    //
+    // Clearing this re-opens the initial-history effect below, which resumes `threads[0]`
+    // and overwrites `messages` — including a refusal notice this reset has just adopted as
+    // the opening message. The notice is parked precisely so it can survive the reset it
+    // causes; resuming a saved thread over it defeated that on every account with any
+    // history, which is every real one. When a notice was adopted, history is already
+    // settled: show the explanation and resume nothing.
+    setHistoryHydrated(scopeNotice !== null);
     setHistoryTransitioning(false);
     setMobileRailOpen(false);
     resetTranscriptFollow();
@@ -604,7 +619,15 @@ const PaigeAIChatInner = ({
     //
     // Released rather than refused: the person asked to open this conversation, and it is a
     // conversation they own. What is not true is that it is about the client currently in focus.
-    if (clientId) onFocusRelease?.("thread_resumed");
+    if (clientId) {
+      // Park BEFORE releasing. The release drops the focus, which moves the epoch, which
+      // invalidates this load through the request fence — so without this the person's click
+      // is discarded and hydration resumes `threads[0]`, opening a conversation they did not
+      // ask for. Parked against the epoch it was made under, so it can only be adopted by the
+      // transition it belongs to.
+      pendingThreadSelectionRef.current = { epoch: scopeEpoch, id };
+      onFocusRelease?.("thread_resumed");
+    }
     const previousTranscriptThreadId = hydratedFromRef.current;
     const requestTicket = requestFenceRef.current.begin(scopeEpoch);
     if (soloTenantSafety) {
@@ -660,17 +683,41 @@ const PaigeAIChatInner = ({
   // that empty pre-resolution render would strand the owner on a blank chat.
   useEffect(() => {
     if (!enableHistory || historyHydrated || !threadsApi.isFetched) return;
+    // A FOCUSED CLIENT STARTS ON A FRESH CONVERSATION, AND IS NEVER AUTO-RESUMED INTO ONE (#765).
+    //
+    // Focusing a client changes `scopeEpoch`, so the reset effect above nulls `hydratedFromRef`
+    // and clears `historyHydrated` — which un-gates this effect. Without this guard it resumed
+    // `threads[0]` and `selectThread` released the focus that had just been set, so on any
+    // account with a saved conversation the person lost their client before they could send a
+    // turn. It worked only on an account with NO saved thread, which is why it hid for so long.
+    //
+    // The release in `selectThread` is deliberately NOT weakened to fix this. The rail lists
+    // owner-level threads, so opening one really must drop a client focus — that transcript may
+    // be about someone else. What was wrong is treating hydration as if it were the person
+    // choosing. Skipping the resume is also the safer half of that pair: resuming while keeping
+    // the focus would carry another client's transcript into this client's context.
+    //
+    // Clearing the focus changes the epoch again, so the owner-level history resumes normally.
+    if (clientId) {
+      pendingThreadSelectionRef.current = null;
+      setHistoryHydrated(true);
+      return;
+    }
     // A controlled parent that already knows the thread wins over "resume the newest":
     // the other door has a selection, and guessing threads[0] here would fight it.
     if (isThreadControlled && controlledThreadId) {
       setHistoryHydrated(true);
       return;
     }
-    const latest = threadsApi.threads[0];
-    if (latest) void selectThread(latest.id);
+    // A thread the person actually asked for outranks "resume the newest". Their click was
+    // parked because the focus release it triggered invalidated its own load.
+    const requested = pendingThreadSelectionRef.current;
+    pendingThreadSelectionRef.current = null;
+    const target = requested?.id ?? threadsApi.threads[0]?.id;
+    if (target) void selectThread(target);
     setHistoryHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId]);
+  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId]);
 
   // CONTROLLED SYNC — the other half of "one thread, two doors". When the parent moves
   // the selection (the other door opened a thread, or created one on its first send),

@@ -77,6 +77,16 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     try { localStorage.setItem(railKey, railCollapsed ? "1" : "0"); } catch { /* storage unavailable — non-fatal */ }
   }, [railKey, railCollapsed]);
   const clearFocus = () => setFocusedClient(null);
+  // A FOCUS BELONGS TO AN ACCOUNT (#765). `focusedClient` is local state and this body is not
+  // remounted on an account switch, so without this the banner keeps naming a client from the
+  // workspace being left, and the chat keeps that client in its scope epoch. The Solo shell
+  // already applies exactly this rule, and its scope store masks a stored scope at read time
+  // for the same reason.
+  //
+  // Until #765 this was cleared BY ACCIDENT: the account switch re-armed the history resume,
+  // and `selectThread` released the focus on its way past. Not resuming is the correct repair,
+  // so the cleanup has to become deliberate instead of a side effect of the defect.
+  useEffect(() => { setFocusedClient(null); }, [activeTenantId]);
   const focusProse = useMemo(() => buildFocusProse(focusedClient), [focusedClient]);
 
   // Tenant-wide approvals — the single source for BOTH the command-bar momentum
