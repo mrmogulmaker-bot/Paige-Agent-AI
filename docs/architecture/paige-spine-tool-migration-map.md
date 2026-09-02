@@ -573,7 +573,13 @@ source and from the repository's own guards.
 
 ---
 
-## 10. What this work taught — and the collision-safe handoff for `lessons-learned.md`
+## 10. What this work taught — and two collision-safe handoffs
+
+**Two Second Brain files could not be written without introducing a merge conflict into another
+agent's open PR.** Both records are therefore carried here in full, each with the four-part handoff.
+Neither is deferred, and neither is dropped.
+
+### Handoff A — the two lessons, for `docs/brain/lessons-learned.md`
 
 The two lessons below belong in `docs/brain/lessons-learned.md`. **They are not written there, because
 appending to that file introduces a merge conflict with three active PRs.**
@@ -592,7 +598,7 @@ All four append to the same end-of-file region. `docs/brain/README.md` and
 both carry their records normally. `docs/brain/decision-log.md` already conflicts with #751
 independently of this change and is not made worse by it, so its record is written.
 
-### The four-part handoff
+#### The four-part handoff (A)
 
 - **Target file and section** — `docs/brain/lessons-learned.md`, appended at end of file, as two new
   `##` entries.
@@ -654,3 +660,89 @@ independently of this change and is not made worse by it, so its record is writt
 > row with no surface reading it is not owner visibility, and a written row the browser may not select
 > is not either. When a capability claims an outcome, follow it forward to a rendered surface before
 > believing it.
+
+---
+
+### Handoff B — the decision-log entry, for `docs/brain/decision-log.md`
+
+**Added 2026-09-02, at final verification.** This entry WAS written into
+`docs/brain/decision-log.md` and has been removed again, because the collision changed under it.
+
+**What changed.** At first measurement, PR **#751** already conflicted with `main` on
+`decision-log.md`, so appending there added nothing new and the entry was written. #751 then merged
+`main` into itself (`019ab5ac`, 16:02 UTC), clearing its own conflict — and both appends now land at
+the same end-of-file point, so mine had become the one **introducing** a conflict. Measured with
+`git merge-tree --write-tree`: #751 vs `main` = 0 conflicts, #751 vs this head = 1, in
+`docs/brain/decision-log.md`. The file is reverted to `main` and the record moved here.
+
+**This is worth recording on its own:** a collision result is only true at the moment it is measured.
+A "pre-existing, therefore safe to append" judgement expires as soon as the other PR syncs, so it
+must be re-measured at final verification rather than carried forward from the first pass.
+
+#### The four-part handoff (B)
+
+- **Target file and section** — `docs/brain/decision-log.md`, appended at end of file, as one new
+  `##` dated entry.
+- **Owner of the follow-up** — whichever of **#751** or this PR merges **second**; whoever is last
+  adds it without conflict.
+- **Reason it could not be in this PR** — appending introduces a merge conflict with #751, which is
+  clean against `main` as of 16:02 UTC today. Resolving another agent's file is out of scope for this
+  assignment; omitting the record is not acceptable, so the text is here in full.
+- **Proposed text** — exactly the entry below, verbatim.
+
+---
+
+>
+> ## 2026-09-02 · PAIGE Spine Tool Migration Map — the 105 legacy Chat tools each get one disposition
+>
+> **Planning record only. No tool migrated, no handler edited, no registry entry added, nothing merged
+> or deployed.** Grounded on `origin/main` `e35920898ec942e5e8abaf52a5daab9bb67e0820`.
+>
+> **Baseline re-measured, not assumed.** `lint:chat-tool-registry` → 105 inline (baseline 105, pass) ·
+> `paige-spine-registry-lint.mjs` → 1 capability · `lint:action-risk` → 62 classified (32 ordinary, 28
+> high, 2 owner_only, 5 exempt, 0 unclassified writes). **No delta from the prior audit** — the guard,
+> the handler parse and the frozen baseline file all return 105 independently.
+>
+> **Reconciliation.** 62 classified but only **60** are Chat tools. The two extras are
+> `marketplace_install` and `marketplace_uninstall`. **This was already on record** — the Master Project
+> File's tool-confirmation entry calls them "containment tombstones with no tool definition and no
+> dispatch branch". The map re-derived it independently and confirms it; it is not a new find. The same
+> entry's `MUTATING_TOOLS` count of 52 has since drifted to 62 and was corrected in place.
+>
+> **The map** — `docs/architecture/paige-spine-tool-migration-map.md`. Every tool carries exactly one
+> disposition; "no decision yet" appears nowhere. **13 Migrate · 79 Spine Change Request · 3 Keep
+> unavailable · 10 Retire.** Nine sequenced waves, a CI-ratchet proposal naming four bypasses the
+> existing guard does not cover, and the ten-condition `LIVE` standard.
+>
+> **The migration rule this establishes.** A capability's disposition is decided by two properties of
+> the shipped contract, never by the shape of its current tool: **the shape of its evidence** (the
+> Spine carries enumerated event signals with a constant safe summary — not records, lists, names or
+> free text) and **the subject of its outcome** (the Rail is per-client at three independent layers, so
+> a workspace-level act has nowhere to be recorded). A capability failing either is a Spine Change
+> Request, not a port.
+>
+> **Three Spine Change Requests identified, all unrequested and unstarted:** SCR-1 workspace-level
+> outcome projection · SCR-2 non-client subject types · SCR-3 a record/list evidence shape. Every wave
+> after the foundation depends on at least one.
+>
+> **Wave issues:** #756 (foundation) · #757 · #755 (existing, Pipeline) · #758 · #759 · #760 · #761 ·
+> #762 · #763. The PAIGE Attention Register Project does not exist yet, so they are linked from the map
+> rather than added to it; that addition remains pending.
+>
+> **Re-grounded after #747 merged (`dcddf676`), same day.** `main` was merged into the branch and every
+> guard re-run on the merged head: 105 inline · 1 capability · 62 classified, all unchanged. Three claims
+> were corrected rather than left to drift — the Pipeline capability's `mindBinding` is now `PARTIAL`
+> (not `UNAVAILABLE`), one cited line number shifted, and #747 stopped being a collision. Also recorded:
+> `SCR-2026-09-02` is the repo's first **approved** Spine Change Request and sets the `SCR-<date>` naming
+> convention; the map's `SCR-1/2/3` are shorthand for three requests that have **not** been raised.
+>
+> **Collision-safe handoff owed.** Two lessons from this work belong in `lessons-learned.md` and are
+> **not** written there: appending introduces a merge conflict with #754, #731 and #729, all three of
+> which are clean against `main` today (measured with `git merge-tree --write-tree`). The full proposed
+> text, the named owner (whichever of those PRs merges last) and the reason are in section 10 of
+> `docs/architecture/paige-spine-tool-migration-map.md`. `README.md` and the Master Project File were
+> checked the same way, conflict with nothing, and carry their records normally.
+
+*(End of proposed text. When it is written, add one line noting it arrived via this handoff rather
+than in the map's own PR — otherwise its "carry their records normally" sentence reads as though the
+decision log did too, and it did not.)*
