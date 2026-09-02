@@ -22,7 +22,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
       throw err;
     }
   });
-import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
+import { useNavigate, Routes, Route, useParams, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageSkeleton } from "@/components/ui/page";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -33,11 +33,7 @@ import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
-import {
-  WORKSPACE_CHOOSER_PATH,
-  WORKSPACE_CHOOSER_SETTLED_PARAM,
-  workspaceRootForTenant,
-} from "@/lib/auth/workspaceEntry";
+import { WORKSPACE_CHOOSER_PATH, hasEnteredWorkspace } from "@/lib/auth/workspaceEntry";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 import { RequireFeature } from "@/components/tier/RequireFeature";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
@@ -263,10 +259,9 @@ const Admin = () => {
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
   const { tierKey, soloStandalone, loading: tierLoading } = useTierFeatures();
-  // Read once, from the URL the chooser sent us back with. Not storage, not state:
-  // it must survive the full-page assign the chooser performs.
-  const chooserAlreadySettled =
-    new URLSearchParams(window.location.search).get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1";
+  // `/admin/*` is ONE route element, so this component renders for every path
+  // beneath it. The entry question belongs to the door itself — see the gate below.
+  const atAdminDoor = useLocation().pathname.replace(/\/+$/, "") === "/admin";
 
   useEffect(() => {
     let cancelled = false;
@@ -367,31 +362,41 @@ const Admin = () => {
   //
   // A FRESH sign-in already asks — `Auth.tsx` runs `shouldOfferAccountPicker` over
   // the caller's active memberships and routes to `/choose-account`. This applies
-  // the SAME rule to the restored-session door, which is the only reason the two
-  // paths behaved differently. It is not a new product decision; it is the shipped
-  // one, finally applied at both entrances.
+  // the SAME rule to the restored-session door. It is not a new product decision;
+  // it is the shipped one, finally applied at both entrances.
   //
-  // FOUR THINGS IT DELIBERATELY WILL NOT DO:
+  // IT FIRES ON THE DOOR, NOT ON THE SUBTREE — and that distinction is the whole
+  // of a confirmed infinite redirect. `/admin/*` is a single route element, so an
+  // unscoped check here runs on `/admin/marketplace` and `/admin/setup` too: the
+  // two paths `RequireSetupComplete` deliberately exempts so a tenant can choose a
+  // playbook. A multi-context tenant mid-setup then cycled forever — chooser →
+  // their workspace root → setup gate → `/admin/marketplace` → chooser — and could
+  // never reach Setup to break out of it. Anything below the door is somewhere the
+  // person has already navigated to; only the door asks.
+  //
+  // THREE MORE THINGS IT DELIBERATELY WILL NOT DO:
   //  • It never fires until the account context is genuinely settled. Asking off a
   //    half-resolved set would itself be a fallback into a wrong account.
   //  • It never fires for a single-context person — there is nothing to choose, and
-  //    the chooser would only bounce them back.
+  //    the chooser would only send them back.
   //  • It never fires for platform staff, who move between tenants through the
   //    audited operator seam (§53), not this one.
-  //  • It never fires when the active tenant has no deep-linkable root, mirroring
-  //    the §58 defensive fallbacks in the three gates below rather than redirecting
-  //    to a URL that cannot be built.
   //
-  // The `picked` marker is what makes this loop-proof: this host counts workspaces
-  // from the tenant context while the chooser re-queries memberships, so the two
-  // can disagree by one. See `WORKSPACE_CHOOSER_SETTLED_PARAM`.
+  // `hasEnteredWorkspace` is what stops it asking twice. It is keyed on the tenant
+  // id, so a context the person did NOT choose re-arms the question by itself.
   if (
+    atAdminDoor &&
     !isPlatformStaff &&
     !accountContextLoading &&
     accountContextStatus === "ready" &&
-    !chooserAlreadySettled &&
-    workspaceRootForTenant(activeTenant) != null &&
+    !hasEnteredWorkspace(activeTenantId) &&
     shouldOfferAccountPicker({
+      // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
+      // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible
+      // tenant list, filtered to active. For a non-staff caller the two coincide
+      // today — the `tenants` SELECT policy is `is_tenant_member(id)`, and that
+      // helper requires an active membership — so this asks the same question by
+      // a different route. If that policy ever widens, this count widens with it.
       activeMembershipCount: (tenants ?? []).filter((t) => t.status === "active").length,
       isPlatformStaff,
     })

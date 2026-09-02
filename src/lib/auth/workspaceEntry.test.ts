@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   WORKSPACE_CHOOSER_PATH,
   authorizedRootForTier,
   decideWorkspaceEntry,
   routeAllowsTier,
   workspaceRootForTenant,
+  clearWorkspaceScopedState,
+  hasEnteredWorkspace,
+  rememberWorkspaceEntered,
 } from "./workspaceEntry";
 import type { TierClassification } from "@/lib/tier/tierFeatures";
 
@@ -74,23 +77,96 @@ describe("workspace entry containment", () => {
     expect(authorizedRootForTier("god", 5)).toBeNull();
   });
 
+  const soloOn = { solo_shell_enabled: true };
+  const agencyOn = { agency_shell_enabled: true };
+
   it("resolves a tenant's own workspace root from its server-side classification", () => {
-    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1971670 }))
+    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1971670, features: soloOn }))
       .toBe("/solo/1971670/command-center");
-    expect(workspaceRootForTenant({ account_type: "sub_account", parent_tenant_id: "p", account_number: 3855 }))
+    expect(workspaceRootForTenant({ account_type: "sub_account", parent_tenant_id: "p", account_number: 3855, features: agencyOn }))
       .toBe("/business/3855/command-center");
-    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 1924546 }))
+    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 1924546, features: agencyOn }))
       .toBe("/agency/1924546/command-center");
     // §51 parent-first: a mislabelled child is still a sub-account.
-    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: "p", account_number: 42 }))
+    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: "p", account_number: 42, features: agencyOn }))
       .toBe("/business/42/command-center");
+  });
+
+  // §57/§58. These are OPERATOR-SET per-tenant canaries, and the three gates in
+  // `Admin.tsx` each promise to be byte-unchanged while they are unset. A resolver
+  // that routed on tier alone would hand the un-canaried shell to a tenant whose
+  // operator has not enabled it — overriding a decision that is not ours to make.
+  it("refuses to route into a shell whose per-tenant canary is OFF", () => {
+    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1, features: {} }))
+      .toBeNull();
+    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1, features: null }))
+      .toBeNull();
+    expect(workspaceRootForTenant({ account_type: "sub_account", parent_tenant_id: "p", account_number: 2, features: {} }))
+      .toBeNull();
+    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 3, features: {} }))
+      .toBeNull();
+    // The flags are not interchangeable: a Solo flag does not open the agency shell.
+    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 3, features: soloOn }))
+      .toBeNull();
+  });
+
+  // Copied from the Solo gate's own reasoning: `resolveTierKey` fail-safes an
+  // unknown or absent account_type to "solo", so tier alone would route a
+  // freshly-provisioned tenant, mid-setup, into the Solo shell.
+  it("requires a LITERAL standalone account_type before routing to the Solo shell", () => {
+    expect(workspaceRootForTenant({ account_type: null, parent_tenant_id: null, account_number: 9, features: soloOn }))
+      .toBeNull();
+    expect(workspaceRootForTenant({ account_type: "", parent_tenant_id: null, account_number: 9, features: soloOn }))
+      .toBeNull();
   });
 
   it("returns no root rather than a fabricated URL when there is nothing to build one from", () => {
     // The caller falls back honestly on null; it must never invent a path.
     expect(workspaceRootForTenant(null)).toBeNull();
     expect(workspaceRootForTenant(undefined)).toBeNull();
-    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: null }))
+    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: null, features: soloOn }))
       .toBeNull();
+  });
+
+  describe("entry record", () => {
+    beforeEach(() => {
+      sessionStorage.clear();
+      localStorage.clear();
+    });
+
+    it("remembers WHICH workspace was entered, so a context nobody chose re-asks", () => {
+      rememberWorkspaceEntered("tenant-a");
+      expect(hasEnteredWorkspace("tenant-a")).toBe(true);
+      // The active context moved to something this session never chose.
+      expect(hasEnteredWorkspace("tenant-b")).toBe(false);
+      expect(hasEnteredWorkspace(null)).toBe(false);
+      expect(hasEnteredWorkspace(undefined)).toBe(false);
+    });
+
+    it("does not record an absent tenant", () => {
+      rememberWorkspaceEntered(null);
+      rememberWorkspaceEntered(undefined);
+      rememberWorkspaceEntered("");
+      expect(sessionStorage.getItem("paige.workspace.entered")).toBeNull();
+    });
+
+    it("clears the leaving workspace's identity and navigation state, and only that", () => {
+      sessionStorage.setItem("paige_impersonating_contact", '{"id":"contact-from-old-account"}');
+      sessionStorage.setItem("paige_stay_in_client_view", "1");
+      sessionStorage.setItem("paige.oauth.return", '{"path":"/solo/111/settings"}');
+      localStorage.setItem("paige.activeBusinessId", "business-from-old-account");
+      // Personal preferences belong to the person, not the account.
+      localStorage.setItem("paige:workspaceRail:collapsed:tenant-a", "1");
+      localStorage.setItem("paige-tenant-theme", "dark");
+
+      clearWorkspaceScopedState();
+
+      expect(sessionStorage.getItem("paige_impersonating_contact")).toBeNull();
+      expect(sessionStorage.getItem("paige_stay_in_client_view")).toBeNull();
+      expect(sessionStorage.getItem("paige.oauth.return")).toBeNull();
+      expect(localStorage.getItem("paige.activeBusinessId")).toBeNull();
+      expect(localStorage.getItem("paige:workspaceRail:collapsed:tenant-a")).toBe("1");
+      expect(localStorage.getItem("paige-tenant-theme")).toBe("dark");
+    });
   });
 });

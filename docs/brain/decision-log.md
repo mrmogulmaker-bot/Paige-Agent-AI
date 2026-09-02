@@ -1,5 +1,31 @@
 # Decision Log — chronological one-liners
 
+- **The second peer pass found an infinite redirect in the fix for the first one (2026-09-02, PR #811)** —
+  the entry gate added to `/admin` was placed in `Admin`'s render body, and `/admin/*` is a SINGLE
+  route element, so it fired on every path beneath the door — including `/admin/marketplace` and
+  `/admin/setup`, the two paths `RequireSetupComplete` exempts so a tenant can choose a playbook. A
+  multi-context tenant mid-setup cycled forever: chooser → workspace root → setup gate →
+  `/admin/marketplace` → chooser, **and could never reach Setup to break out of it**. Every edge was
+  proven against the real components. **Nothing in this repository rendered `Admin` at all**, which is
+  why no test caught it; `Admin.entryGate.test.tsx` is its first, and three of its nine cases go red
+  against the unscoped gate. **Two more from the same pass, both real:** the `?picked=1` loop-breaker
+  survived exactly ONE navigation (any in-app link pushes a history entry with no query string, so the
+  first click re-armed the gate) — replaced by a session record keyed on the TENANT ID, so a context
+  nobody chose re-arms by itself; and `workspaceRootForTenant` ignored the per-tenant shell canaries,
+  so the chooser would have routed people into `solo_shell_enabled` / `agency_shell_enabled` shells
+  their operator had not enabled, and routed a freshly-provisioned `account_type: null` tenant into
+  the Solo shell — the exact case `Admin.tsx`'s Solo gate rejects in its own comment. It now requires
+  the flag AND a literal `standalone`, copied from that gate so the two entrances cannot disagree.
+  **The pattern across both peer passes, worth naming:** every finding was in code that type-checked,
+  built, and passed its own author's tests. Two of the three could only be seen by walking a whole
+  cycle through components the change did not touch. **Also landed here:** choosing a workspace now
+  clears the leaving account's identity and navigation state — an impersonated contact, a selected
+  business, a client-view latch, and a stashed OAuth return path that was literally a route back into
+  the previous workspace — while leaving tenant-keyed values and pure cosmetics alone. And a fixture
+  bug caught by running the tests rather than reading them: new `solo`/`agency` feature constants
+  shadowed the module-level `TierClassification` constants of the same names, turning an agency case
+  into a solo one.
+
 - **Entry asks which workspace; the shell no longer switches (owner ruling 2026-09-02, PR #811)** — an
   owner opened Paige expecting their Solo workspace and was placed in a sub-account, with an in-shell
   control that offered to switch accounts and no plain way back. **NOT a tenant-isolation breach, and

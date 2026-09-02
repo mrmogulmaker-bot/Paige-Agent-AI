@@ -121,42 +121,141 @@ export function decideWorkspaceEntry(input: {
 }
 
 /**
- * The workspace root a given tenant should be entered at.
+ * The workspace root a given tenant should be entered at, or null when that
+ * tenant has no deep-linkable root and must be entered inline at `/admin`.
  *
  * ONE home (§18) for "this is the context — where does the person land?", shared
- * by the chooser (after an explicit choice) and by the shell host (when deciding
- * whether it may resume a parked context at all). Returns null when the tenant
- * has no deep-linkable root, which is the honest signal to fall back rather than
- * fabricate a URL.
+ * by the chooser and by the shell host.
+ *
+ * IT HONOURS THE PER-TENANT CANARY FLAGS, WHICH IS THE WHOLE POINT (§57/§58).
+ * The three gates in `Admin.tsx` are deliberately flag-conditional — the Solo
+ * gate requires `solo_shell_enabled` AND a literal `account_type='standalone'`,
+ * Gates A and B require `agency_shell_enabled` — and each carries an explicit
+ * "byte-unchanged when the flag is unset" contract, because these are
+ * operator-set per-tenant canaries, not a tier-wide switch. A resolver that
+ * classified on tier alone would hand the un-canaried shell to tenants whose
+ * operator has not enabled it, silently overriding a decision that is not ours
+ * to make. Returning null for those tenants is not a failure: `/admin` renders
+ * their shell inline exactly as it does today.
+ *
+ * The `standalone` requirement is copied from the Solo gate for the reason that
+ * gate states in its own comment — `resolveTierKey` fail-safes an unknown or
+ * absent `account_type` to "solo", so tier alone would route a
+ * freshly-provisioned tenant, mid-setup, into the Solo shell.
  */
 export function workspaceRootForTenant(tenant: {
   account_type?: string | null;
   parent_tenant_id?: string | null;
   account_number?: number | string | null;
+  features?: Record<string, unknown> | null;
 } | null | undefined): string | null {
   if (!tenant) return null;
-  return authorizedRootForTier(
-    resolveTierKey({
-      account_type: tenant.account_type ?? null,
-      parent_tenant_id: tenant.parent_tenant_id ?? null,
-      isPlatformStaff: false,
-    }),
-    tenant.account_number ?? null,
-  );
+  const features = tenant.features ?? {};
+  const tier = resolveTierKey({
+    account_type: tenant.account_type ?? null,
+    parent_tenant_id: tenant.parent_tenant_id ?? null,
+    isPlatformStaff: false,
+  });
+  // The literal `standalone` compare below is copied verbatim from the Solo gate
+  // in `Admin.tsx` (`soloStandalone`), so the two entrances cannot disagree about
+  // who the Solo shell belongs to. `resolveTierKey` fail-safes an unknown
+  // account_type to "solo", so the literal compare is what stops a
+  // freshly-provisioned tenant being routed into that shell mid-setup.
+  const flagged =
+    tier === "solo"
+      ? features.solo_shell_enabled === true &&
+        // tier-feature-exempt: tier ROUTING (which shell to enter), not a feature toggle.
+        tenant.account_type === "standalone" &&
+        (tenant.parent_tenant_id ?? null) === null
+      : features.agency_shell_enabled === true;
+  if (!flagged) return null;
+  return authorizedRootForTier(tier, tenant.account_number ?? null);
 }
 
 /**
- * The marker the chooser adds when it has already run and decided not to ask.
+ * The session key recording which workspace this browsing session has already
+ * entered through the chooser.
  *
- * The shell host sends a multi-context person to the chooser instead of silently
- * resuming whichever context `active_tenant_id` happens to be parked on. The two
- * surfaces count "how many workspaces does this person have?" from different
- * sources — the host reads the tenant context, the chooser re-queries active
- * memberships — so they can legitimately disagree by one, and without this marker
- * a disagreement is an infinite redirect rather than a wrong number.
+ * WHY THIS IS NOT "BROWSER STORAGE AS PROOF OF ACCESS", which the ruling bans.
+ * It carries no claim about what may be read. Scope is, and remains, entirely
+ * server-enforced: `profiles.active_tenant_id` behind its membership trigger,
+ * and `current_user_tenant_id()` re-applying the same predicate on every read.
+ * A person who forged this value would change nothing except whether they are
+ * asked a question they have already answered.
  *
- * It is a LOOP BREAKER, never a grant: it says "the chooser already ran", and
- * carries no claim about which tenant may be read. Scope stays server-enforced
- * (`active_tenant_id` + the membership trigger + RLS), exactly as before.
+ * IT IS KEYED ON THE TENANT ID, DELIBERATELY. A bare "already asked" boolean
+ * would go stale the moment the active context changed underneath it — which is
+ * the exact failure this whole repair exists to fix. Storing WHICH workspace was
+ * entered means a context the person did not choose re-arms the question by
+ * itself.
+ *
+ * It replaces a `?picked=1` URL marker, which survived exactly one navigation:
+ * any in-app link pushes a history entry with no query string, so the next click
+ * anywhere re-armed the gate and ejected the person to the chooser.
  */
-export const WORKSPACE_CHOOSER_SETTLED_PARAM = "picked";
+export const WORKSPACE_ENTERED_KEY = "paige.workspace.entered";
+
+/** Record that this session entered `tenantId` by choosing it. Best-effort. */
+export function rememberWorkspaceEntered(tenantId: string | null | undefined): void {
+  if (!tenantId) return;
+  try {
+    sessionStorage.setItem(WORKSPACE_ENTERED_KEY, tenantId);
+  } catch {
+    // Private mode or blocked storage: the person is asked again, which is the
+    // safe direction to fail.
+  }
+}
+
+/** Has this session already chosen the workspace it is currently in? */
+export function hasEnteredWorkspace(activeTenantId: string | null | undefined): boolean {
+  if (!activeTenantId) return false;
+  try {
+    return sessionStorage.getItem(WORKSPACE_ENTERED_KEY) === activeTenantId;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Client-side state that belongs to the workspace a person is LEAVING, and must
+ * not follow them into the one they just chose.
+ *
+ * Entering a workspace is a full-page load, so React state, context and the query
+ * cache are already gone; what survives a load is browser storage. Each key below
+ * carries prior-account IDENTITY or NAVIGATION rather than a personal preference,
+ * which is the line drawn here: a rail someone collapsed or a theme they picked is
+ * theirs and follows them, but a contact they were impersonating, a business they
+ * had selected, a client-view latch and a stashed return path all name the OLD
+ * account and would render — or navigate — under the new one's heading.
+ *
+ * `paige.oauth.return` is the sharpest of them: it is a route back into the
+ * previous workspace, and leaving it in place is precisely the "old deep link that
+ * reopens the wrong account" this repair exists to end.
+ *
+ * Deliberately NOT cleared: tenant-keyed values (they are already scoped, e.g.
+ * `paige:workspaceRail:collapsed:{tenantId}`), pure cosmetics (theme, density, rail
+ * collapse, command-center view), and anything belonging to the operator seam.
+ * Over-clearing would silently reset preferences a person set on purpose.
+ */
+const WORKSPACE_SCOPED_STORAGE = {
+  session: [
+    "paige_impersonating_contact",
+    "paige_stay_in_client_view",
+    "paige.oauth.return",
+  ],
+  local: ["paige.activeBusinessId"],
+} as const;
+
+/** Drop the leaving workspace's identity/navigation state. Best-effort. */
+export function clearWorkspaceScopedState(): void {
+  try {
+    for (const key of WORKSPACE_SCOPED_STORAGE.session) sessionStorage.removeItem(key);
+  } catch {
+    // Storage unavailable; nothing was stored either, so nothing can leak.
+  }
+  try {
+    for (const key of WORKSPACE_SCOPED_STORAGE.local) localStorage.removeItem(key);
+  } catch {
+    // As above.
+  }
+}

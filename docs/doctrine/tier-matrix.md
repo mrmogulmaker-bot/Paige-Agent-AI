@@ -1576,6 +1576,39 @@ behind by an earlier agency act-as (#806). `/admin` now applies the same shipped
 the one change here with cross-tier reach:** an agency or enterprise operator holding more than one
 active tenant now sees the chooser on the `/admin` door too, where before they went straight through.
 
+**IT FIRES ON THE DOOR — the exact path `/admin` — AND NOT ON THE SUBTREE, which is the whole of a
+confirmed infinite redirect.** `/admin/*` is a single route element, so a check in `Admin`'s render
+body runs for every path beneath it, `/admin/marketplace` and `/admin/setup` included — the two paths
+`RequireSetupComplete` deliberately exempts so a tenant can choose a playbook. A multi-context tenant
+mid-setup then cycled forever (chooser → their workspace root → setup gate → `/admin/marketplace` →
+chooser) and could never reach Setup to break out. Found by the §39 peer-gate, not by any test,
+because nothing in the repository rendered `Admin` at all; `Admin.entryGate.test.tsx` is its first,
+and three of its nine cases go red against the unscoped gate.
+
+**The settlement record survives navigation, and its predecessor did not.** `hasEnteredWorkspace`
+reads a session key written by the chooser before it leaves. It replaced a `?picked=1` URL marker
+that survived exactly one navigation — any in-app link pushes a history entry with no query string,
+so the first click anywhere re-armed the gate. The key is the TENANT ID, not a boolean: a context the
+person did not choose re-arms the question by itself, which is the situation this whole repair exists
+for. It carries no claim about what may be read — scope stays `active_tenant_id` behind its
+membership trigger plus `current_user_tenant_id()` on every read — so it is a loop breaker, never a
+grant.
+
+**The chooser respects the per-tenant shell canaries (§57/§58).** `workspaceRootForTenant` returns a
+root only when that tenant's own `solo_shell_enabled` / `agency_shell_enabled` is set, and only for a
+LITERAL `standalone` account_type in the Solo case — both copied from the gates in `Admin.tsx`, which
+promise to be byte-unchanged while those operator-set flags are unset. A flag-off tenant resolves to
+null and enters inline at `/admin`, exactly as today. Without this the chooser would have handed the
+un-canaried shell to tenants whose operator had not enabled it, and routed a freshly-provisioned
+`account_type: null` tenant into the Solo shell — the case that gate rejects in as many words.
+
+**Choosing a workspace drops the previous one's identity and navigation state.** A full page load
+already clears React state and the query cache; what survives is browser storage. Four keys named the
+OLD account rather than a preference belonging to the person — an impersonated contact, a selected
+business, a client-view latch, and a stashed OAuth return path, the last being literally a route back
+into the previous workspace. All four are cleared on selection. Tenant-keyed values and pure
+cosmetics (theme, density, rail collapse) are deliberately left alone.
+
 **No in-shell picker survives.** `MemberAccountSwitcher` — which listed every readable tenant with no
 status filter and PERSISTED `active_tenant_id` on selection — is deleted; `WorkspaceExitControl`
 replaces it in the Solo and legacy `/admin` shells and only navigates OUT to the chooser. **It is not

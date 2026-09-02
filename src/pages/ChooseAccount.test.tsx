@@ -11,9 +11,9 @@ const harness = vi.hoisted(() => ({
   user: { id: "user-1", email: "mrmogulmaker@gmail.com" } as { id: string; email: string } | null,
   context: {
     tenants: [
-      { id: "antonio", slug: "antonio", name: "Antonio Daniel LLC", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 111111 },
-      { id: "mogul", slug: "mogul", name: "Mogul Maker Academy", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 222222 },
-      { id: "hidden", slug: "hidden", name: "Not My Account", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 333333 },
+      { id: "antonio", slug: "antonio", name: "Antonio Daniel LLC", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 111111, features: { solo_shell_enabled: true } },
+      { id: "mogul", slug: "mogul", name: "Mogul Maker Academy", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 222222, features: { solo_shell_enabled: true } },
+      { id: "hidden", slug: "hidden", name: "Not My Account", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 333333, features: { solo_shell_enabled: true } },
     ],
     accountContextLoading: false,
     accountContextStatus: "ready",
@@ -54,6 +54,8 @@ describe("ChooseAccount", () => {
   let root: Root;
 
   beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
     harness.user = { id: "user-1", email: "mrmogulmaker@gmail.com" };
     harness.memberships = [
       { tenant_id: "antonio", role: "admin" },
@@ -116,20 +118,52 @@ describe("ChooseAccount", () => {
     });
     expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/solo/222222/command-center");
 
-    // Same single choice, but nothing to build a root from: fall back to /admin
-    // CARRYING the settled marker rather than to a bare /admin.
+    // Entering is recorded BEFORE leaving, so the `/admin` door does not ask
+    // again for a workspace this session has just resolved.
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
+
+    // Same single choice, but its shell canary is OFF: that tenant's shell only
+    // exists inline at `/admin`, so that is where it goes — and the entry is still
+    // recorded, which is what stops `/admin` bouncing it straight back here.
     act(() => root.unmount());
     host.remove();
+    sessionStorage.clear();
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
     harness.context.tenants = harness.context.tenants.map((t) =>
-      t.id === "mogul" ? { ...t, account_number: null } : t,
+      t.id === "mogul" ? { ...t, features: {} } : t,
     ) as typeof harness.context.tenants;
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
     });
     expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
-    expect(host.querySelector("[data-search]")?.getAttribute("data-search")).toBe("?picked=1");
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
+  });
+
+  // Nothing from the previous account may render under the new one's heading.
+  // A full-page load already clears React state and the query cache; what survives
+  // is browser storage, and these four keys name the OLD account rather than a
+  // preference belonging to the person.
+  it("drops the leaving workspace's identity and navigation state when a choice is made", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
+    harness.context.switchTenant = vi.fn(async () => true);
+    sessionStorage.setItem("paige_impersonating_contact", '{"id":"contact-from-old-account"}');
+    sessionStorage.setItem("paige.oauth.return", '{"path":"/solo/111111/settings"}');
+    localStorage.setItem("paige.activeBusinessId", "business-from-old-account");
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Mogul Maker Academy"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(sessionStorage.getItem("paige_impersonating_contact")).toBeNull();
+    expect(sessionStorage.getItem("paige.oauth.return")).toBeNull();
+    expect(localStorage.getItem("paige.activeBusinessId")).toBeNull();
+    expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
+    Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 });
