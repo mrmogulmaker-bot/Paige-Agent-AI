@@ -30,7 +30,17 @@ vi.mock("@/integrations/supabase/client", () => {
       from: () => builder(),
       channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
       removeChannel: () => {},
-      rpc: () => Promise.resolve({ data: null, error: null }),
+      // #746 — THE DOUBLE FOLLOWS THE SEAM. The feed used to read the relation through
+      // `.from(...).limit(...)`; it now calls the `get_solo_rail_activity` resolver, because the
+      // browser has no SELECT privilege on `paige_client_events` and never did after
+      // `20260712200000:25`. This mock returned a hardcoded `{data:null,error:null}`, so once the
+      // hook moved, `harness.result` was ignored and the error case silently rendered as EMPTY —
+      // which is the exact confusion these tests exist to forbid. Routing the RPC through the
+      // same `harness.result` keeps the assertions honest at the new seam.
+      rpc: (fn: string) =>
+        fn === "get_solo_rail_activity"
+          ? Promise.resolve(harness.result ?? { data: [], error: null })
+          : Promise.resolve({ data: null, error: null }),
       auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
     },
   };

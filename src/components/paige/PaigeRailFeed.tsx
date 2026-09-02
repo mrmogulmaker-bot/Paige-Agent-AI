@@ -105,7 +105,12 @@ interface Props {
  * the component; unsubscribes and re-opens automatically when `tenantId` changes.
  */
 export function PaigeRailFeed({ tenantId }: Props) {
-  const { events, connected } = useRailEvents({ scope: "tenant", tenantId });
+  // §13 — `historyError` and `historyLoaded` are READ, and #746 is why. This destructured
+  // `{ events, connected }` only, so a history read that was REFUSED rendered exactly like a
+  // workspace where nothing had happened. The read had been failing in production since the
+  // table grant was revoked, and this surface reported it as "Nothing across your clients yet".
+  // A confident empty state is the one thing a broken read must never produce.
+  const { events, connected, historyLoaded, historyError } = useRailEvents({ scope: "tenant", tenantId });
 
   // No tenant → nothing to stream. Render a stable, non-crashing placeholder.
   if (!tenantId) {
@@ -122,7 +127,14 @@ export function PaigeRailFeed({ tenantId }: Props) {
   return (
     <div>
       <Header connected={connected} />
-      {events.length === 0 ? (
+      {events.length === 0 && historyError ? (
+        // Denied / failed. Say so, and do not claim the workspace is quiet.
+        <p role="alert" className="px-0.5 py-2 text-xs text-muted-foreground">
+          Recent activity could not be loaded, so this is not a record of nothing happening.
+        </p>
+      ) : events.length === 0 && !historyLoaded ? (
+        <p className="px-0.5 py-2 text-xs text-muted-foreground">Loading recent activity…</p>
+      ) : events.length === 0 ? (
         <p className="px-0.5 py-2 text-xs text-muted-foreground">
           Nothing across your clients yet — Paige's moves and client activity show up here live.
         </p>

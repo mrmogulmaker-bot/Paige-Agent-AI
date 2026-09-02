@@ -167,11 +167,21 @@ export function useSoloActivityFeed(): SoloActivityFeed {
 
     const read = async () => {
       try {
+        // ── READ THROUGH THE RESOLVER, NOT THE RELATION (#746). ──
+        //
+        // This was `supabase.from("paige_client_events")` with NO filter of any kind — it leaned
+        // entirely on the `pce_staff_read` policy to scope a cross-tenant activity table. It also
+        // could not execute: `authenticated` has held no SELECT on that relation since
+        // `20260712200000:25` revoked it, so the privilege check refused before RLS was ever
+        // consulted (verified on production 2026-09-02). This surface was the one consumer that
+        // reported the refusal honestly, which is why the platform looked merely quiet rather
+        // than broken.
+        //
+        // `get_solo_rail_activity` resolves the workspace server-side from the caller's session
+        // and takes no tenant argument, so the unfiltered read is now a scoped one by
+        // construction rather than by policy. It returns only reviewed display fields.
         const { data, error: readError } = await supabase
-          .from("paige_client_events")
-          .select("id,title,summary,actor_type,from_department,to_department,occurred_at")
-          .order("occurred_at", { ascending: false })
-          .limit(MAX_ITEMS);
+          .rpc("get_solo_rail_activity", { p_limit: MAX_ITEMS });
         if (cancelled || !mounted.current) return;
         if (readError) {
           // Never turn a failed read into "nothing happened" (§13).
