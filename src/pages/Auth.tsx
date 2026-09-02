@@ -23,6 +23,7 @@ import {
 } from "@/lib/auth/signupPlanIntent";
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
+import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -220,6 +221,15 @@ const Auth = () => {
       }
     } catch {
       /* non-blocking */
+    }
+
+    const [{ count: activeMembershipCount, error: membershipError }, staff] = await Promise.all([
+      supabase.from("tenant_members").select("tenant_id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "active"),
+      supabase.rpc("is_platform_admin"),
+    ]);
+    if (!membershipError && !staff.error && shouldOfferAccountPicker({ activeMembershipCount: activeMembershipCount ?? 0, isPlatformStaff: Boolean(staff.data) })) {
+      navigate("/choose-account", { replace: true });
+      return;
     }
 
     const target = await Promise.race<string>([
@@ -446,7 +456,7 @@ const Auth = () => {
       // from an earlier visitor on this browser (§9).
       if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
       void trackEvent("signup_cta_click", "acquisition", { method: "google" });
-      const result = await signInWithOAuth("google", oauthRedirectWithPlan());
+      const result = await signInWithOAuth("google", oauthRedirectWithPlan(), { chooseAccount: isLogin });
       if (result.error) {
         toast({ title: "Google sign-in failed", description: String(result.error), variant: "destructive" });
       }

@@ -15,10 +15,16 @@ export type OAuthProvider = "google" | "apple";
 export async function signInWithOAuth(
   provider: OAuthProvider,
   redirectTo: string = `${window.location.origin}/app`,
+  behavior: { chooseAccount?: boolean } = {},
 ): Promise<{ redirected: boolean; error: Error | null }> {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: { redirectTo },
+    options: {
+      redirectTo,
+      ...(provider === "google" && behavior.chooseAccount
+        ? { queryParams: { prompt: "select_account" } }
+        : {}),
+    },
   });
   return { redirected: !error && !!data?.url, error: error ?? null };
 }

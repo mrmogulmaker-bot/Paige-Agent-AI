@@ -94,6 +94,7 @@ const TenantRedesign = lazyWithReload(() => import("./prototype/TenantRedesign")
 // Solo operator side (§65 R3d-i) — the SoloApp shell, its own top-level
 // address (/solo/{account}), peer to /business and /admin.
 const SoloEntry = lazyWithReload(() => import("./solo/SoloEntry"));
+const ChooseAccount = lazyWithReload(() => import("./pages/ChooseAccount"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
 const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
@@ -231,6 +232,7 @@ const App = () => (
             <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/choose-account" element={<PageSuspense><ChooseAccount /></PageSuspense>} />
             <Route path="/login" element={<Navigate to="/auth" replace />} />
             {/* §65 R4 — the operator subtree. The `index` leg inside OperatorEntry keeps bare
                 /operator as the login door (nothing in the product links to it, so a blank

@@ -743,6 +743,12 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
+
+- Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser; after identity is established, Paige offers the workspace chooser only when that authenticated user has more than one active `tenant_members` row.
+- The chooser displays only the caller's RLS-filtered tenant records intersected with their own active membership rows. It never treats an account number, URL, email text or client-supplied tenant id as authorization. Platform operators, client/invite continuations and single-membership users retain their existing direct routing.
+- Choosing a workspace persists `profiles.active_tenant_id` through the existing guarded `switchTenant` seam before the browser scope changes. A failed write leaves the current workspace unchanged. The Solo header exposes the same independent-membership switcher; the existing server-gated agency parent/sub-account switcher remains separate and unchanged.
+- Truth status: 7 focused policy/OAuth/render tests pass, the TypeScript ratchet adds no errors, focused lint is green and the production build succeeds. Live authenticated Google return, both-account selection, retry, session expiry, account-switch persistence and preview runtime remain UNVERIFIED. Do not merge or deploy without the separate final go-live approval.
 ### Solo Settings → Team management (Gate 1 approved 2026-08-31; local branch, NOT LIVE)
 
 - The sparse Team destination is replaced by a roster-first workspace with server-side search/filter, 25-person pages and an explicit Load more path. Settings remains the one vertical scroll owner; the people list never creates a nested scrollbar.
@@ -1167,6 +1173,7 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+- **2026-09-01 — multi-tenant email identity and workspace identity were previously collapsed into one redirect.** A Google identity can hold several independent Paige memberships, while the agency parent/sub-account switcher governs a different relationship. The approved correction keeps those authority domains distinct: Google selects the person, Paige intersects that person's active membership rows with RLS-visible tenants, and the existing guarded active-tenant write commits the chosen workspace. This is a Gate 1 implementation record only; live authenticated proof and Gate 2 remain outstanding.
 
 - **2026-09-01 — the Pipeline draft entry still claimed optional starter creation after the owner
   removed every preset pipeline and preset stage.** The implemented creation path is blank-first and
