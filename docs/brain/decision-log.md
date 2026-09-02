@@ -1323,3 +1323,37 @@ exact drift this log already recorded a lesson about (a doc reading *"local bran
 serving production): the Master Project File entry's heading, status paragraph and closing gate line
 now read as merged and deployed, with the `UNVERIFIED` authenticated proof preserved and restated as
 the one thing still owed.
+
+## 2026-09-02 · Spine Wave 0 — the Rail read seam is a resolver, not a table grant (#746, PR #776)
+
+**Decision.** Owner-visible Rail history is read through per-scope `SECURITY DEFINER` resolvers. The
+browser gets no `SELECT` on `paige_client_events`, now or later.
+
+**The defect this settles.** `20260712190000:94` granted that SELECT to `authenticated`;
+`20260712200000:25` revoked it; nothing re-granted it. Verified on prod 2026-09-02:
+`has_table_privilege('authenticated','public.paige_client_events','SELECT')` → **false**. Every
+history read returned `42501` **before** RLS was consulted, so `pce_staff_read`/`pce_client_read`
+were never evaluated. **Three** browser readers were affected, not the one #746 names.
+
+**Why a resolver rather than restoring the grant** — three independent reasons: (1)
+`useSoloActivityFeed` reads that relation with **no filter at all**, so a grant makes an unfiltered
+browser read of a cross-tenant activity table live; (2) PR **#644** revokes every remaining browser
+privilege here on its way to the same RPC-only boundary, so a grant would fight it — the resolver
+route is what reconciles #746 with **#735**; (3) a resolver returns a reviewed subset, a grant
+returns whatever the columns hold forever.
+
+**Adopted, not rebuilt.** `get_client_rail` already existed and `authenticated` already held EXECUTE;
+the client scope now calls it and nothing was written for it. Only the tenant scope was missing →
+`get_solo_rail_activity`, which takes **no tenant argument**, reproduces `pce_staff_read` in-body via
+`current_user_tenant_id()` (not raw `profiles.active_tenant_id` — the §51/#588 shape), and **refuses
+with 42501 rather than returning zero rows**.
+
+**Two Rail contracts, split by audience — recorded so nobody merges them.** The rendered owner feed
+may carry `title`/`summary`; **Mind may not**, because it is a model-ingestion surface. #644's
+exclusion of those fields is correct and was deliberately not weakened. Tracked as **#777**.
+
+**Not released.** The migration is written and rollback-proven, not applied. The Rail remains
+unreadable in production until Gate 2, so `paige-spine-and-rail-state.md` and the Master Project File
+are deliberately **not** updated yet — they are still true.
+
+**Parked:** #777 (Rail text provenance contract) · #778 (delete `railHistoryFilter` after #729).
