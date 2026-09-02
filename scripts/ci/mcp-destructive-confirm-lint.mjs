@@ -140,42 +140,73 @@ function commentTextWithin(node, sf) {
   return collectComments(sf, node.pos, node.end).join("\n");
 }
 
-/** Literal parts whose CONTENT is token text, not trivia — never scan for comments from their pos. */
-const TEMPLATE_PARTS = new Set([
-  ts.SyntaxKind.TemplateHead, ts.SyntaxKind.TemplateMiddle, ts.SyntaxKind.TemplateTail,
-]);
+/**
+ * Every LEAF token's span, cached per source file. A comment cannot overlap a token — that is what
+ * makes it trivia — so the parser's own token spans are the ground truth for validating a
+ * candidate comment range, whatever produced it.
+ */
+/** Every leaf token, punctuation included — `getChildren`, not `forEachChild`. */
+function eachLeaf(node, sf, fn) {
+  const kids = node.getChildren(sf);
+  if (kids.length === 0) { fn(node); return; }
+  for (const k of kids) eachLeaf(k, sf, fn);
+}
+
+const leafSpansCache = new WeakMap();
+function leafSpans(sf) {
+  let spans = leafSpansCache.get(sf);
+  if (spans) return spans;
+  spans = [];
+  // getChildren, NOT forEachChild: punctuation is a real token and a real comment anchor.
+  // `inputSchema: …, // exempt` hangs off the COMMA, which forEachChild never visits.
+  eachLeaf(sf, sf, (n) => spans.push([n.getStart(sf), n.end]));
+  spans.sort((a, b) => a[0] - b[0]);
+  leafSpansCache.set(sf, spans);
+  return spans;
+}
+
+/** Does this candidate range collide with a real token? Then it is token TEXT, not a comment. */
+function overlapsToken(spans, pos, end) {
+  let lo = 0, hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const [s0, e0] = spans[mid];
+    if (e0 <= pos) lo = mid + 1;
+    else if (s0 >= end) hi = mid - 1;
+    else return true;
+  }
+  return false;
+}
 
 /**
- * Comments between `from` and `to`, taken from the PARSER's own trivia — never from a fresh scan.
+ * Comments between `from` and `to`, validated against the parser's token spans.
  *
- * A standalone `ts.createScanner` has no idea it is inside a template literal, so it lacks the
- * parser's template-tail rescan: in `` `${value} // mcp-confirm-exempt: fake` `` it reads the text
- * after `}` as a real single-line comment. My first fix for the string bypass therefore
- * REINTRODUCED that bypass one level subtler — the marker moved from a plain string into an
- * interpolated one and worked again.
- *
- * `getLeadingCommentRanges`/`getTrailingCommentRanges` at node boundaries cannot make that mistake,
- * because the parser has already decided where tokens end and trivia begins. Template head/middle/
- * tail nodes are skipped explicitly: their `pos` sits at a `}` with template TEXT after it, and
- * scanning trivia from there is exactly the misreading being fixed.
+ * Three attempts got here, and the first two were guesses about where text can hide:
+ *   1. a raw regex over block text  -> a plain string exempted a destructive tool
+ *   2. a standalone scanner         -> a template tail did, lacking the parser's rescan
+ * The third is a PROPERTY rather than a position: a comment cannot overlap a token. Candidates come
+ * from both the leading and trailing scans — leading-only is not enough, because
+ * `getLeadingCommentRanges` deliberately excludes a same-line trailing comment and dropping
+ * trailing scans breaks the legitimate `code(); // exempt` form — and each is then checked against
+ * real tokens. A template tail, a string body and JSX text are all tokens; nothing inside one
+ * survives, however it was produced.
  */
 function collectComments(sf, from, to) {
   const full = sf.getFullText();
+  const spans = leafSpans(sf);
   const seen = new Map();
   const add = (ranges) => {
     for (const r of ranges || []) {
-      if (r.pos >= from && r.end <= to) seen.set(r.pos, full.slice(r.pos, r.end));
+      if (r.pos < from || r.end > to) continue;
+      if (overlapsToken(spans, r.pos, r.end)) continue;
+      seen.set(r.pos, full.slice(r.pos, r.end));
     }
   };
-  const visit = (n) => {
+  eachLeaf(sf, sf, (n) => {
     if (n.end < from || n.pos > to) return;
-    if (!TEMPLATE_PARTS.has(n.kind)) {
-      add(ts.getLeadingCommentRanges(full, n.pos));
-      add(ts.getTrailingCommentRanges(full, n.end));
-    }
-    n.forEachChild(visit);
-  };
-  visit(sf);
+    add(ts.getLeadingCommentRanges(full, n.pos));
+    add(ts.getTrailingCommentRanges(full, n.end));
+  });
   return [...seen.values()];
 }
 
