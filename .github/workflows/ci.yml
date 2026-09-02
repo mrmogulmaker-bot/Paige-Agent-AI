@@ -271,6 +271,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:action-risk:test
 
+      # The shared governed execution seam must stay blind to which door called it. A decision
+      # that consults the door makes "reach it a different way" a way to gain permission — which
+      # is how 117 MCP tools ended up outside the gate entirely (#784).
+      - name: Lint — governed execution seam is door-blind and has one approval home
+        if: ${{ !cancelled() }}
+        run: npm run lint:governed-execution
+
+      - name: Governed-execution guard catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:governed-execution:test
+
       # A similarity search whose search_path excludes `extensions` cannot resolve `<=>` and raises
       # on every call. Three shipped functions were in that state for months, invisible because
       # every call site degrades to an empty result — "no matches" and "cannot execute" look the

@@ -44,6 +44,8 @@
     "lint:vector-path": "node scripts/ci/vector-search-path-lint.mjs",
     "lint:vector-path:test": "node scripts/ci/vector-search-path-lint.mjs --self-test",
     "lint:action-risk:test": "node scripts/ci/action-risk-lint.mjs --self-test",
+    "lint:governed-execution": "node scripts/ci/governed-execution-lint.mjs",
+    "lint:governed-execution:test": "node scripts/ci/governed-execution-lint.mjs --self-test",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs",
     "lint:readiness-copy": "node scripts/ci/readiness-copy-parity.mjs",
     "lint:readiness-copy:test": "node scripts/ci/readiness-copy-parity.mjs --self-test",
