@@ -1276,3 +1276,41 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+## A green drive proved geometry twice, not two themes (2026-09-02, Solo Setup form-fit)
+
+`settings-scroll-drive.mjs` and `settings-setup-identity-drive.mjs` both run every case at four
+viewports **× two themes**, and both had been reporting those runs as theme coverage. They were not.
+
+`scripts/live-drive/harness/settings-mount/main.tsx` applies `?theme=` to the document before first
+paint — `data-pg`, the `dark` class, and `data-theme` on `.paige-solo` — and it does set them.
+But `TenantCommandCenterShell` renders its own wrappers with `data-pg={isDark ? "dark" : "light"}`
+read from next-themes' `resolvedTheme`, and `<ThemeProvider forcedTheme={theme}>` does **not** set
+`resolvedTheme`. Measured at 1366×768:
+
+```
+light  html[data-pg=light]  →  DIV[data-pg=light]  DIV[data-pg=light]   --pg-canvas #fbf9f5
+dark   html[data-pg=dark]   →  DIV[data-pg=light]  DIV[data-pg=light]   --pg-canvas #fbf9f5
+```
+
+The shell's own `data-pg` overrides the document's for everything beneath it, so the whole Solo
+surface renders the Mineral palette in both runs. Two arrival screenshots at the same viewport
+differ only by a fade-in frame.
+
+**What survives and what does not.** Geometry is theme-independent here — every number was byte-identical
+across the two runs (`3986/702`, `797 px`, `82%`), so the Setup overflow finding stands at 8/8 as a
+*geometry* fact. **Colour, contrast and any Obsidian rendering claim do not survive**, and are
+`UNVERIFIED` until the harness passes the resolved theme into the shell rather than only onto the
+document.
+
+**Why this class is dangerous rather than merely wrong.** The drive was green. It ran the loop, it
+labelled the cases `light` and `dark`, it wrote a screenshot per case, and every artefact it produced
+said two themes had been exercised. Nothing failed, so nothing prompted a second look — the
+theme axis had to be probed on purpose, by reading a computed token rather than trusting the
+label the harness printed.
+
+*Rule:* **a matrix axis is not covered because the loop iterated over it.** Assert the axis actually
+changed something observable in the rendered output — a computed token, a measured value, a pixel —
+or report the axis `UNVERIFIED`. A loop variable that never reaches the system under test is a label,
+not coverage. Related: *"A proof only tests what crosses its own boundary"* (2026-09-01), the same
+failure one layer down.
