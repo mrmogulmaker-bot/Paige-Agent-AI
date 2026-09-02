@@ -59,13 +59,21 @@
  *
  * IT DOES PROMISE, and each of these is bounded and complete rather than a list of known evasions:
  *   · Every call to a method named `tool` — `x.tool(…)` or `x["tool"](…)` — is found by the parser.
- *   · Such a registration is inspected ONLY when EVERY member of its configuration is a plain
- *     property assignment written in place. A variable, a factory, a spread, a shorthand, a
- *     computed key — anything that can carry members this guard cannot enumerate — is reported as
- *     UNANALYSABLE and FAILS the run. This is an allowlist of what can be read, not an enumeration
- *     of what to catch, which is why it cannot be outrun by a new spelling. Once every member is
- *     visible, an ABSENT member is a fact and not a gap, so a tool that simply declares no schema
- *     or no handler passes rather than raising a false alarm.
+ *   · Such a registration is inspected ONLY when the guard can both SEE every member and LOOK
+ *     INSIDE the two that matter. Every member must be a property assignment or method with a
+ *     readable name — a spread, a shorthand, a computed key hides members it cannot enumerate — AND
+ *     the `handler` / `inputSchema` initializers must be inline rather than references to a body
+ *     defined elsewhere. Anything else is UNANALYSABLE and FAILS the run.
+ *
+ *     Visibility alone was not enough, and getting that wrong here is instructive: `{ handler }`
+ *     was rejected while `{ handler: handler }` sailed through, because the key was visible and
+ *     only the BODY was elsewhere. `prop()` returned an identifier, the walkers found no deletion
+ *     and no boolean, and "declares nothing" read as safe. Same hole, longhand.
+ *
+ *     This is an allowlist of what can be read, not an enumeration of what to catch, which is why
+ *     it cannot be outrun by a new spelling. Once a member is both visible and inline, an ABSENT
+ *     member is a fact and not a gap — a tool declaring no schema takes no boolean and one
+ *     declaring no handler performs no act, so both pass rather than raising a false alarm.
  *   · An inspected destructive handler may not declare ANY model-settable boolean, by shape.
  *   · A tool name this guard cannot resolve is never CLEARED by the scope map — unknown counts as
  *     possibly delete-scoped.
@@ -183,15 +191,63 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
  * Measured against the real surfaces: all 117 registrations are inline object literals whose members
  * are exclusively PropertyAssignment, so this costs zero exemptions today.
  */
+/** The member's name, when it has one this guard can read. Identifier or string literal only. */
+function memberName(p) {
+  if (!p.name) return null;
+  if (ts.isIdentifier(p.name)) return p.name.text;
+  if (ts.isStringLiteralLike(p.name)) return p.name.text;
+  return null;                                   // computed or otherwise unnameable
+}
+
+/** The two members whose CONTENT this guard has to walk, not merely see the name of. */
+const CRITICAL_MEMBERS = new Set(["handler", "inputSchema"]);
+
+/**
+ * Is this initializer something the walkers can actually look inside?
+ *
+ * A bare reference — `handler: destructiveHandler`, `inputSchema: schemas.purge` — is a visible key
+ * pointing at a body defined elsewhere, so `prop()` hands back an identifier, the handler walker
+ * finds no deletion and the schema walker finds no boolean. That reads as "declares nothing" and
+ * passes, which is the same fail-open as a spread wearing longhand. Rejecting shorthand `{ handler }`
+ * while accepting `{ handler: handler }` was an inconsistency in this guard, not a real distinction.
+ *
+ * Stated as a NEGATIVE over a closed set of reference forms rather than an allowlist of good ones:
+ * anything that is not a reference — an arrow, a function, a call, an object literal — carries an
+ * inline body the walkers can traverse. Measured across the real surfaces: 117 arrow-function
+ * handlers, and schemas that are 112 call expressions plus 5 `as` expressions. Zero cost.
+ */
+function inspectableInitializer(node) {
+  let n = node;
+  while (n && (ts.isAsExpression(n) || ts.isParenthesizedExpression(n) ||
+               (ts.isSatisfiesExpression && ts.isSatisfiesExpression(n)))) n = n.expression;
+  if (!n) return false;
+  return !(ts.isIdentifier(n) || ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n));
+}
+
 function readableConfig(objectLiteral) {
-  return objectLiteral.properties.every((p) =>
-    ts.isPropertyAssignment(p) && p.name && (ts.isIdentifier(p.name) || ts.isStringLiteralLike(p.name)));
+  for (const p of objectLiteral.properties) {
+    // `async handler(args) { … }` is an inline body with a readable name, and `prop()` already
+    // returns method declarations. Rejecting it was a false failure on a config this guard reads
+    // perfectly well.
+    if (ts.isMethodDeclaration(p)) {
+      if (memberName(p) === null) return false;
+      continue;
+    }
+    if (!ts.isPropertyAssignment(p)) return false;      // spread, shorthand, accessor
+    const nm = memberName(p);
+    if (nm === null) return false;                      // computed key
+    if (CRITICAL_MEMBERS.has(nm) && !inspectableInitializer(p.initializer)) return false;
+  }
+  return true;
 }
 
 function prop(objectLiteral, name) {
   for (const p of objectLiteral.properties) {
-    if ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p)) && p.name &&
-        ts.isIdentifier(p.name) && p.name.text === name) {
+    // Name matching must accept exactly what `readableConfig` accepted. When it accepted a quoted
+    // key that this did not, `{ "handler": … }` was marked readable and then read as ABSENT — the
+    // tool was neither reported unanalysable nor inspected, and a destructive handler passed. Two
+    // functions disagreeing about what a name is, is a hole; they now share `memberName`.
+    if ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p)) && memberName(p) === name) {
       return ts.isPropertyAssignment(p) ? p.initializer : p;
     }
   }
@@ -416,15 +472,38 @@ mcp.tool("x", { inputSchema: z.object({ confirm: z.literal(true) }),
   check("a SPREAD configuration is unanalysable, not silently empty (Codex)",
     findToolCalls(`mcp.tool("x", { ...cfg });`).map((t) => t.config !== null), [false]);
   check("ELEMENT-ACCESS registration is seen (Codex)",
-    findToolCalls(`mcp["tool"]("x", { inputSchema: a, handler: b });`).length, 1);
+    findToolCalls(`mcp["tool"]("x", { inputSchema: z.object({}), handler: async () => {} });`).length, 1);
   // Once every member is visible, an ABSENT member is a fact rather than a gap: no handler means
   // no act, no schema means no model input. Failing these would be a false alarm.
   check("a fully-visible config missing handler is readable, not unanalysable",
-    findToolCalls(`mcp.tool("x", { inputSchema: a });`).map((t) => t.config !== null), [true]);
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}) });`).map((t) => t.config !== null), [true]);
   check("a SHORTHAND member makes the config unanalysable",
-    findToolCalls(`mcp.tool("x", { handler, inputSchema: a });`).map((t) => t.config !== null), [false]);
+    findToolCalls(`mcp.tool("x", { handler, inputSchema: z.object({}) });`).map((t) => t.config !== null), [false]);
   check("a readable config still parses",
-    findToolCalls(`mcp.tool("x", { inputSchema: a, handler: b });`).map((t) => t.config !== null), [true]);
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), handler: async () => {} });`).map((t) => t.config !== null), [true]);
+  // Round 6 (Codex). The first two are holes I introduced with the visibility rule an hour earlier.
+  check("QUOTED member names are read, not marked readable-then-absent (Codex)", v(`
+mcp.tool("quoted_purge", {
+  "inputSchema": z.object({ confirm: z.boolean() }),
+  "handler": async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
+});`), 1);
+  check("an ALIASED handler is unanalysable, exactly like the shorthand form (Codex)",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), handler: destructiveHandler });`)
+      .map((t) => t.config !== null), [false]);
+  check("an ALIASED schema is unanalysable (Codex)",
+    findToolCalls(`mcp.tool("x", { inputSchema: schemas.purge, handler: async () => {} });`)
+      .map((t) => t.config !== null), [false]);
+  check("a METHOD-syntax handler is inspectable, not a false failure (Codex)",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), async handler(a) { return a; } });`)
+      .map((t) => t.config !== null), [true]);
+  check("a method-syntax destructive handler is still CAUGHT", v(`
+mcp.tool("method_purge", {
+  inputSchema: z.object({ confirm: z.boolean() }),
+  async handler({ confirm }) { if (confirm) await admin.from("clients").delete(); },
+});`), 1);
+  check("an `as`-wrapped schema stays readable (matches the 5 real ones)",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({}) as Shape, handler: async () => {} });`)
+      .map((t) => t.config !== null), [true]);
   check("a COMPUTED name cannot be cleared by the scope map (Codex)", v(`
 const TOOL_SCOPE = { handle_data_subject_request: "admin.delete" };
 mcp.tool(NAME, {
