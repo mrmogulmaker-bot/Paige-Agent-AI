@@ -197,7 +197,8 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 and safe Pipeline evidence*), not through #675. Applied on prod ref `xygzykjyynhzqytbqnzu`:
 `supabase_migrations.schema_migrations` carries `20261039000000` and `20261040000000`, and
 `list_tool_autonomy()` returns all five `team_*` rows under the `Team` category. Documentation record:
-**PR #675** (`05735f26b`), which is documentation only and shipped no code.
+**PR #675** (`05735f26b`) and **PR #730** (`ed22066e7`, which reconciled this file to the live
+capability) — both documentation only, shipping no code.
 
 **Owner job.** Manage the people in a workspace: team members, invitations, work details, roles and
 access.

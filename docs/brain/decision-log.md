@@ -955,10 +955,10 @@ and deployment status. A GitHub `Production: success` record is release metadata
 authenticated-flow proof. This is a historical checkpoint, not a current-`main` cutoff.
 
 **Current-base boundary after release-close integration.** This branch now integrates
-`ed22066e71294099e48f0b52c742e3f379faf23c` (#730). The first-parent range after the historical #705
-checkpoint contains exactly 24 inherited `main` records: the prior 22 through #728, then #675's
-canonical surface-card home and #730's Team/Master closeout. Their updates are inherited base truth; they were not audited by the
-seven-record evidence table below. A new exact-head claim must re-run both first-parent and docs-path
+`e35920898ec942e5e8abaf52a5daab9bb67e0820` (#732). The first-parent range after the historical #705
+checkpoint contains exactly 25 inherited `main` records: the prior 22 through #728, then #675's
+canonical surface-card home, #730's Team/Master reconciliation and #732's closeout. Their updates are
+inherited base truth; they were not audited by the seven-record evidence table below. A new exact-head claim must re-run both first-parent and docs-path
 checks.
 
 | PR | Durable truth that changed | Exact evidence | Review / release state | Limits |
@@ -1215,3 +1215,47 @@ reporting gate now fails if it reports only the brain.
 
 **Nothing added here is a secret, a raw provider payload, private tenant data, or a capability claim
 the code does not support.** Team stays `PARTIAL`; no authenticated proof is claimed.
+
+### Landed — Gate 2, merge, and verification on `main`
+
+The owner approved Gate 2 at exact head `7e470f69c8f47dd0fe7112fbe68ab7a0d0813c28`. PR #730 merged to
+`main` as **`ed22066e71294099e48f0b52c742e3f379faf23c`** (squash; 7 files, +198/−15 — byte-identical to
+the approved diff, since the branch carried a single commit).
+
+Verified on `origin/main` after the merge, by reading it rather than trusting the merge response: the
+new §4 entry is present; the §4 PAIGE Chat header and the §5 Team entry both carry their §58
+strike-through correction beside the original wording; the both-records closeout rule is in the
+repo-local skill. The other `local branch, NOT LIVE` line in §5 belongs to the **multi-membership login
+account picker**, a different workstream, and was correctly left untouched.
+
+CI on that exact head, read directly rather than counted: `verify` success, `audit` success, combined
+commit status success (both Vercel contexts), `mergeable_state: clean`. `Supabase Preview` skipped and
+`migration-lint` absent — both path-filter on `supabase/**`, which this PR does not touch, so their
+absence corroborates the documentation-only scope instead of indicating missing coverage.
+
+**Unchanged by the merge, still owed:** authenticated owner browser proof of the Team flow; the
+workspace-level outcome projection (an unstarted Spine Change Request); PR #728's P1/P2 hotfix, which
+remains a separate active workstream this did not repair. Team remains `PARTIAL`.
+
+### Parked, not fixed — a stale claim this closeout's sweep found
+
+`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 carries MET1 (§34-L1 metering) as a ✅ **SHIPPED** entry
+while simultaneously asserting *"branch `codex/paige-knowledge-active-tenant-isolation-v2`, **NOT
+MERGED — draft PR, Gate 2 not requested**"* — contradictory on its face, and stale:
+`supabase/functions/_shared/token-pricing.ts` and `supabase/migrations/20261038000000_the_meter_actually_runs.sql`
+are both on `main`, added by **`76bb3bbca` (PR #728)**, established with `git log --diff-filter=A`. Both
+were present at base `05735f26b` too, so this predates PR #730 and was not caused by it.
+
+**It is NOT fixed here.** Under the owner's standing scope-control rule (2026-09-02), a distinct issue
+found mid-assignment is parked rather than absorbed: it belongs to the §34 metering workstream, not to
+the Solo Team assignment, and the assigned flow works correctly without it. Parked as
+**issue #737**. Only the owner may convert that into an implementation assignment.
+
+Recorded honestly: the correction was briefly present in PR #732's diff before the scope-control rule
+was issued, and was reverted out of it. Nothing about the entry's behavioural claims was ever
+re-verified — whether the meter actually drains on prod is MET2's evidence, not this closeout's.
+
+Three further status claims were read and left alone for the same reason, and are carried in the same
+parked issue as **unverified rather than known-wrong**: the multi-membership login account picker,
+Solo Campaigns → Pipeline board, and Setup-owned A2P legal identity. All three sit in §5 (gaps), which
+is the correct home for in-flight work.

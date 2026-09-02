@@ -81,9 +81,9 @@ unsupported agent claims here. A stale brain is worse than none — it lies with
   first-parent `main` records were inventoried: #701, #699, #700, #702, #703, #704, #705. Exact
   heads, check/deploy evidence, durable changes, and `UNVERIFIED` limits are in
   `decision-log.md` → “2026-09-01 — release reconciliation after #697.”
-- **Current release-close integration base:** `ed22066e71294099e48f0b52c742e3f379faf23c`
-  (#730). The first-parent range after #705 contains exactly 24 inherited `main` records: the prior
-  22 through #728, then #675's canonical surface-card home and #730's Team/Master closeout. Those records are
+- **Current release-close integration base:** `e35920898ec942e5e8abaf52a5daab9bb67e0820`
+  (#732). The first-parent range after #705 contains exactly 25 inherited `main` records: the prior
+  22 through #728, then #675's canonical surface-card home, #730's Team/Master reconciliation and #732's closeout. Those records are
   current-base input, not records audited by the historical seven-release table. This section makes
   no claim that the old pass reconciled them. Re-run both first-parent and docs-path checks before a
   new exact-head release claim.
