@@ -323,7 +323,15 @@ describe("Solo PAIGE workspace contract", () => {
     expect(chat).toContain('setInput("")');
     expect(chat).toContain("setAttachedDoc(null)");
     expect(chat).toContain("setIsLoading(false)");
-    expect(chat).toContain("setHistoryHydrated(false)");
+    // #765 — this became CONDITIONAL, and the condition is the point. Re-arming the resume
+    // unconditionally let the auto-resume overwrite a refusal notice THIS SAME reset had just
+    // adopted two lines above, on any account holding at least one saved thread — which is every
+    // real account, and which is why `pendingScopeNoticeRef` was inert in production.
+    // An ACCOUNT switch still re-arms exactly as before: a notice is adopted only when
+    // `parked.epoch === leavingEpoch`, and a refusal parks under a CLIENT epoch, so an account
+    // transition never carries one and `scopeNotice` is null. The behaviour this line was written
+    // to pin is unchanged; only the refusal path is now protected.
+    expect(chat).toContain("setHistoryHydrated(scopeNotice !== null)");
     expect(chat).toContain("setHistoryTransitioning(false)");
     expect(chat).toContain("retryTurnRef.current = null");
     expect(app).toMatch(/paigeTabEpochRef\.current=activeTenantId;setPaigeDockedTab\('chat'\)/);

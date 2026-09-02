@@ -52,14 +52,26 @@ un-clips Clients, Campaigns and Compass too — which is precisely how it broke 
 
 | Surface | Policy |
 |---|---|
-| Settings, Connections, Integrations | Visible scrolling where needed |
+| Settings → **Setup**, Connections (incl. Calendars), Integrations | Visible scrolling, with the bar drawn |
+| Settings → Team, Notifications, Security & data, Vault, Billing | Form-fitting — they genuinely fit their host |
 | Command Center, Clients, Campaigns/Growth, Compass, Mind, Analytics | Form-fitting, design-locked. Owner authorization required to change |
+
+This row used to read *"Settings, Connections, Integrations — visible scrolling where
+needed"*, which was true of no Settings destination but two: the class that DRAWS the bar was
+applied only to `connections` and `integrations`, so **Setup rendered 3,973–4,174px into a
+702–934px host with no scrollbar in either lane** — 78–82% below the fold, at every supported
+viewport. Owner ruling 2026-09-02 authorized Setup, and the enumeration above is now exact
+rather than approximate. **Which destinations qualify is a product decision requiring an owner
+ruling, not a repair**; the list lives in `SETTINGS_VISIBLE_SCROLL_DESTINATIONS`
+(`src/components/tenant-shell/settings-scroll-contract.ts`) and fails closed for anything
+unrecognised.
 
 ## What already enforces this — do not build a second home
 
 | Rule | Enforced by |
 |---|---|
-| Locked surfaces stay form-fitting; the Settings exception cannot widen | `src/solo/settings.scroll-policy.test.tsx` |
+| Locked surfaces stay form-fitting; the Settings exception cannot widen silently | `src/solo/settings.scroll-policy.test.tsx` |
+| Which Settings destinations draw the bar, and that the drive agrees with the product | `SETTINGS_VISIBLE_SCROLL_DESTINATIONS` + `src/solo/settings.scroll-policy.test.tsx` |
 | One shell, one screen host, no tenant identity in layout | `src/solo/soloShell.contract.test.tsx` |
 | Shell owns one PAIGE surface, brand home, Settings focus restore | `src/components/tenant-shell/TenantCommandCenterShell.ownership.test.tsx` |
 | Rendered geometry on locked surfaces, four viewports | `scripts/live-drive/solo-locked-surfaces-drive.mjs` |

@@ -131,6 +131,77 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo Settings → Setup — the visible-scroll policy (LIVE on production; merged 2026-09-02)
+
+**Status: MERGED to `main` and deployed.** Gate 1 approved 2026-09-02; Gate 2 approved on exact
+head `77d94c66`; merged as `1d189155` (PR #751). Recorded here per §0 because it changes an
+owner-facing Solo capability **and the official Settings UI policy**, which is answered from this
+file. **The authenticated owner browser proof below is still `UNVERIFIED` — shipping did not
+satisfy it.**
+
+**The owner-facing change.** Solo Settings → Setup now draws a visible, draggable main-content
+scrollbar. Before this, it rendered 3,973–4,174px of business brief into a 702–934px host at every
+supported Solo viewport — **78–82% below the fold on arrival with no scrollbar in either lane** — so
+an owner could reasonably believe the first section was the whole page. It was the only one of the
+eight Settings destinations that overflowed its host. Nothing about the business brief, its
+information architecture, its fields, permissions or provider connections changed.
+
+**The policy, as ruled (2026-09-02).** A Settings surface may use a clearly visible, accessible
+main-content scrollbar when real configuration content materially exceeds the available viewport.
+
+| Surface | Policy |
+|---|---|
+| **Settings → Setup** | **Visible scrollbar — newly authorized** |
+| Settings → Connections (incl. Calendars), Settings → Integrations | Visible scrollbar — already authorized |
+| Short Settings destinations that genuinely fit (Team, Notifications, Security & data, Vault, Billing) | Form-fitting |
+| Command Center, Clients, Campaigns, Analytics | Form-fitting, design-locked — a separate owner ruling is required to change any of them |
+| Marketplace | May use a visible main-region scrollbar when its content requires it. **Out of scope of this change; its code was not touched** |
+
+**This is not a global scrolling rule for the platform.** The exception stays enumerated.
+
+**Where the policy lives.** `SETTINGS_VISIBLE_SCROLL_DESTINATIONS` and
+`settingsDestinationShowsScrollbar()` in
+`src/components/tenant-shell/settings-scroll-contract.ts` — one value, read by both `SoloSettings`
+and `settings-scroll-drive.mjs`, with a test asserting the two agree. It **fails closed**: an
+unrecognised destination stays form-fitting. Adding a destination to it is a product decision
+requiring an owner ruling, not a repair.
+
+**Why the defect survived every guard.** The policy used to be
+`const visibleScroll = tab === "connections" || tab === "integrations"`, and the only test of it
+asserted that exact source line. Setup resolved `overflow-y: auto` from the same shared exception and
+simply never received the class that *draws* the bar — so it could scroll and could not show that it
+scrolled, and nothing failed. **No CSS changed in the repair**: the visible-scrollbar rules already
+existed and were already correct.
+
+**Canonical across all Solo tenants.** One shared shell, one shared policy value, no tenant, account
+number, URL or fixture branch anywhere in the change. Verified structurally identical across two
+synthetic Solo tenant contexts.
+
+**A harness defect this exposed, and repaired.** The Settings drive had iterated `light` and `dark`
+for weeks while rendering one palette both times: the harness used `forcedTheme`, which leaves
+next-themes' `resolvedTheme` alone, and the shell stamps its own `data-pg` from `resolvedTheme`. So
+**every "both themes" claim from that harness was one palette measured twice.** Repaired, and the
+drive now scores the rendered token per environment instead of trusting the loop. Geometry is
+theme-independent, so prior geometry results stand; prior colour claims from that harness do not.
+
+**Evidence.** Rendered structural at 1536×770, 1366×768, 1024×768 and 900×1000 in both palettes:
+Setup passes the full visible-scroll battery — bar visible with a stable gutter, wheel, End, PageDown,
+Space and scrollbar drag all reach the last control, travel reaches the end, focus reaches the
+spatially deepest control with a visible ring, keyboard visits every control, focus exits both
+directions, one scroll owner, no horizontal overflow. Locked surfaces stay `overflow-y: hidden`.
+
+**`UNVERIFIED`, and not claimed: authenticated owner browser proof.** No leg has been driven signed
+in on the live platform. A reproduced-shell drive with a synthetic transport is structural evidence,
+never authenticated proof — and the merge did not change that. **This is the one thing still owed on
+this change**: sign in as a Solo owner → Settings → Setup → confirm a scrollbar is visible on arrival
+at a laptop height → drag it to the bottom → confirm *How Paige uses it* is reachable → Tab from the
+top and confirm focus stays on screen to the last control → open and fold PAIGE and confirm position
+and keyboard path survive → repeat on a second Solo tenant.
+
+Records: `docs/brain/decision-log.md` (2026-09-02) · `docs/doctrine/surface-cards/setup.md` (the
+department card, carried by PR #731) · `docs/brain/solo-settings-scroll-and-release-playbook.md`
+(the Settings-scoped playbook — update owed, see that PR).
+
 ### PAIGE Mind — a recorded Pipeline outcome, read and cited (LIVE on production, capability `PARTIAL`) — 2026-09-02
 
 **Evidence, on current `main`.** Merged in **PR #747** as `dcddf6761e84cc298588b6fbe1c39c61a5ec5fc8`,
@@ -150,16 +221,21 @@ this client**, which scopes the Solo PAIGE fold to that deal's client. Scope is 
 server re-resolves tenant by `current_user_tenant_id()` and re-authorizes the client before any read,
 and the scope clears on a client or account switch.
 
-> **⚠ THIS ENTRY PATH IS BROKEN ON ANY ACCOUNT THAT HAS A SAVED CONVERSATION — issue #765.**
-> Found post-merge and verified on `main` at `dcddf6761e`. Setting a client scope resets history
-> hydration, which auto-resumes the newest saved thread, which releases the focus that was just set.
-> The scope is dropped before the person can type, so **the evidence binding never receives a
-> `clientId` and never runs** for a real account. It fails closed — no evidence reaches PAIGE, nothing
-> leaks, no client's transcript reaches another. The capability underneath (safe lens, projection,
-> citation, refusals) is unaffected and still covered by its tests; what does not work today is the
-> path that hands it a client. A second, milder defect in the same flow traps keyboard focus in the
-> deal drawer (#766). **Neither is fixed, branched, or started** — they are durable follow-ups
-> awaiting the owner. Until #765 is fixed, do not read the rows below as a flow an owner can complete.
+> **THE ENTRY PATH WAS BROKEN AND IS NOW REPAIRED IN CODE — issue #765, PR #773 (`f7fe9718`).**
+> Found post-merge on `dcddf6761e`: setting a client scope reset history hydration, which
+> auto-resumed the newest saved thread, which released the focus just set. The scope was dropped
+> before the person could type, so the binding never received a `clientId` on any account holding a
+> saved conversation — i.e. every real account. It failed closed: no evidence reached PAIGE, nothing
+> leaked, no client's transcript reached another. **Repaired 2026-09-02** in the shared Chat
+> component, so both client-focusing surfaces are covered, together with three connected defects the
+> same auto-resume caused: a refusal explanation destroyed, a saved conversation opening the wrong
+> thread, and a stale cross-account focus. Every guard is mutation-proven.
+>
+> **The repair does NOT lift this capability to `LIVE`.** It is code-proven only. An authenticated
+> owner drive on two Solo tenants and rendered PAIGE drawer proof are both still `UNVERIFIED` and
+> owed — and that drive is the check that would have caught #765 in the first place. Until it runs,
+> the rows below are proven by contract tests and grants, not by a person completing the flow.
+> Separately parked and untouched: #766 (keyboard-focus trap), #769–#772.
 
 **PAIGE capability, stated exactly.** She can read safe, tenant-scoped and client-scoped recorded
 Pipeline outcome evidence through the merged safe lens `public.get_pipeline_spine_evidence`, state
@@ -174,13 +250,15 @@ deal through this capability.** No Pipeline Chat write tool and no approval path
 citation. Title, summary, payload, stage name, deal id, contact/client/user/tenant ids, provider
 bodies, secrets and reasoning traces all stay forbidden.
 
-**Truth label: `PARTIAL`, not `LIVE`, and it is not lifted by this release.** Still owed and still
-`UNVERIFIED`: an authenticated owner drive on two Solo tenants, rendered proof at 1536×770, 1366×768,
-1024×768 and 900×1000, and `supabase test db` with a full-history replay. **The owed authenticated
-drive is exactly what would have caught #765** — every layer below the entry path was proven, and the
-one thing not driven is the one thing that fails (§70: a wired code path is not a usable capability). Detail:
+**Truth label: `PARTIAL`, not `LIVE`, and neither this release nor the #765 repair lifts it.** Still
+owed and still `UNVERIFIED`: an authenticated owner drive on two Solo tenants, rendered proof at
+1536×770, 1366×768, 1024×768 and 900×1000, and `supabase test db` with a full-history replay. **The
+owed authenticated drive is exactly what would have caught #765** — every layer below the entry path
+was proven, and the one thing not driven is the one thing that failed (§70: a wired code path is not
+a usable capability). That lesson stands after the repair, because the repair is also code-proven
+only. Detail:
 `docs/delivery/paige-spine-mind-handoff.md`; per-tier rows: `docs/doctrine/tier-matrix.md` (§66
-ledger). Parked, not started: issues #748, #749, #750, **#765 (breaks this entry path)** and #766.
+ledger). Parked, not started: issues #748, #749, #750, #766, #769, #770, #771, #772. (#765 is REPAIRED — PR #773, `f7fe9718`.)
 
 **Next required lane, not started:** the Pipeline Chat Write Bridge (§5) needs its own Gate 1.
 
@@ -247,6 +325,52 @@ The other two P1s are in `paige-apply-extraction`; the P2 is a failed Skip leavi
 unretryable.
 
 
+
+### PAIGE Spine — tool migration state (planning record, 2026-09-02; NO capability changed)
+
+**Measured on `origin/main` `e3592089` by running the repository's own guards, not from memory.**
+
+| Measure | Value | Guard |
+|---|---|---|
+| Inline legacy Chat tools | **105** | `npm run lint:chat-tool-registry` |
+| Registered Spine capabilities | **1** | `scripts/ci/paige-spine-registry-lint.mjs` |
+| Classified actions | **62** — 32 `ordinary` · 28 `high` · 2 `owner_only` · 5 exempt · 0 unclassified writes | `npm run lint:action-risk` |
+
+**The Spine is PARTIAL and no department-wide connectivity is implied.** The one registered
+capability is `pipeline.deal_stage_evidence` — a read, `chatBinding: PARTIAL`, and **`mindBinding:
+PARTIAL` since #747 merged (`dcddf676`, 2026-09-02)**, mapped to **no** Chat tool. The guards were
+re-run on the merged head: 105 · 1 · 62, all unchanged. PAIGE reaches every department today through the 105
+hand-wired tools, not through the Spine.
+
+**Two of the 62 classified actions are not Chat tools at all** — `marketplace_install` and
+`marketplace_uninstall`, already on record above as containment tombstones. The migration map
+re-derived this independently and confirms it; it is not a new find. The real install path is the
+`marketplace-install` edge function, which the Chat gate never sees (#740).
+
+**Leg 7 — *owner can see the truthful result* — is closed for 100% of PAIGE's writes.** Of the 60
+classified actions that are Chat tools, **13** emit a per-client Rail event whose production read is
+denied (#746), and **47** emit only a `paige_audit_log` row, which has no Solo reader. This is why
+no mutating capability can be labelled `LIVE` today, regardless of how well it is built.
+
+**Migration is phased and governed.** The plan is
+`docs/architecture/paige-spine-tool-migration-map.md` — every one of the 105 tools carries exactly
+one disposition (**13 Migrate · 79 Spine Change Request · 3 Keep unavailable · 10 Retire**), nine
+sequenced waves, a CI-ratchet proposal, and the ten-condition `LIVE` standard. Wave issues:
+[#756](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/756) (foundation) ·
+[#757](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/757) ·
+[#755](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/755) ·
+[#758](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/758) ·
+[#759](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/759) ·
+[#760](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/760) ·
+[#761](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/761) ·
+[#762](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/762) ·
+[#763](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/763).
+
+**No legacy tool is considered live through this plan.** The map is a planning record. It migrated
+nothing, enabled nothing, and promoted no label. Three Spine Change Requests it identifies — a
+workspace-level outcome projection, non-client subject types, and a record/list evidence shape —
+are **unrequested and unstarted**, and every wave after the foundation depends on at least one.
+
 ### Paige's tool confirmation is bound to SERVER-HELD state (2026-09-01, `20261021000000`)
 
 `confirm:true` on a mutating tool is no longer decided by the model's own output. The autonomy gate
@@ -278,9 +402,11 @@ silent way. Neither was reachable by the SQL proof or the unit tests as they sto
 `JSON.parse(tc.function.arguments)` — the model's own output. A model emitting `confirm:true` on
 its first call executed immediately; and because the tool loop dedupes rounds on the exact argument
 string, it could even propose and self-approve **inside a single HTTP turn** with no operator
-message in between. `MUTATING_TOOLS` carries **52 entries**, two of which (`marketplace_install`,
+message in between. `MUTATING_TOOLS` carried **52 entries** when this was written, two of which (`marketplace_install`,
 `marketplace_uninstall`) are containment tombstones with no tool definition and no dispatch branch
-and can never reach it. The rest include `member_grant_role`,
+and can never reach it. **Re-measured 2026-09-02 on `e3592089`: 62** (`npm run lint:action-risk`) — the
+set is `mutatingTools()`, i.e. every entry in the risk policy, and Solo Team, Comms and Pipeline have
+added to it since. The two tombstones are unchanged and are still the only two with no tool definition. The rest include `member_grant_role`,
 `n8n_delete_workflow`, `zapier_run_action` and `comms_buy_number`.
 
 **What it does NOT claim (§13).** It proves the server proposed first, that a turn intervened, that
@@ -969,6 +1095,51 @@ PR #729 hotfix is clear.** It was deliberately NOT implemented in the Mind branc
 expanded into it.
 
 
+### PLATFORM-LEVEL — PAIGE Spine / Rail current state + the owner's priority order (2026-09-02)
+
+Full record: **`docs/brain/paige-spine-and-rail-state.md`**. Recorded here because these are
+platform-wide facts, not one department's, and because two of them are routinely misread.
+
+**The Spine is `PARTIAL`. One registered capability, 105 inline Chat tools.** Measured by the repo's
+own guards on 2026-09-02: `paige-spine-registry-lint` → `PASS (1 capability)`;
+`chat-tool-registry-lint` → `105 tool(s) inline`. That one capability is
+`pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`, `mindBinding: PARTIAL`
+(raised from `UNAVAILABLE` by PR #747, merged 2026-09-02; still `PARTIAL`, not `LIVE`).
+**Do not read the Spine's existence as departments being connected to PAIGE.** They are not; she
+reaches them through the 105 hand-wired tools. Team and Setup each record the same of themselves in
+their surface cards.
+
+**Owner-visible Solo Rail activity is `UNAVAILABLE`.** Status, verbatim:
+*production Rail history cannot be read, and the current owner-facing consumer treatment is not
+reliable enough to distinguish denied history from empty history.* **Not healthy, not empty, not
+honest, not repaired, not production-executable.** `paige_client_events` has **no SELECT grant for
+`authenticated`** on production (revoked by `20260712200000`, never re-granted; read-only catalog
+query 2026-09-02), so the read fails before RLS. Per issue **#746** — re-verified here — the two
+shipped Context Rail consumers (`PaigeRailFeed.tsx:108`, `ClientActivityFeed.tsx:144`) destructure
+only `{ events, connected }`, and `historyError`/`historyLoaded` have no reader in `src/`, so **a
+refused read renders as "nothing yet"** and an operator can be told PAIGE has done nothing. (The Solo
+Trust Compass consumer, `compass.tsx:377`, does distinguish — which is why the platform statement is
+*not reliable enough* rather than *never*.) **Leg 7 of the build path — *owner can see the result* —
+is therefore broken for every department that emits to the Rail**, and `paige_audit_log` has no Solo
+reader either.
+
+**Pipeline governance — three findings, follow-up work and NOT capability:** the Spine's Pipeline
+evidence is a **silent subset** (`deal_move_stage` and `pipeline_attach` move deals with no Rail
+event, so PAIGE cannot see her own move); `deal_move_stage` never consults `move_policy`; and
+`pipeline_move_approvals` is **write-only** — nothing anywhere sets `approved|rejected|cancelled`, so
+a held request is unresolvable and permanently blocks archiving its stage or pipeline.
+
+**Owner-ruled priority order (2026-09-02).** Later items do not start ahead of earlier ones:
+
+1. **PR #729** — the cross-account Rail/Compass hotfix on #728. **BLOCKED from Gate 2 by issue #746.**
+2. **Rail recovery + owner-visible outcome reading — issue #746 (RELEASE-BLOCKING).** This is the required *separate* Rail Recovery prerequisite for #729's first owner flow to become production-executable; it is **not** assigned to #729. PR #644 may hold the right direction but is **NOT authorized as a release path**: it must be freshly grounded on current `main`, checked against the canonical Spine contract, reviewed for internal-identifier exposure, and proven mergeable first — and #746 notes its resolver returns no `title`/`summary`, which the rail renders, so it is not a drop-in.
+3. **Pipeline governance repair — issue #755 — a parked prerequisite before any Pipeline Chat write bridge.**
+4. **Stale doctrine correction** (done for the Trust Compass claims; see §10).
+5. **Calendar as the next bounded read-only Spine capability.**
+
+**Not authorized by this record:** no Calendar evidence, Pipeline mutation, provider work, or other
+implementation begins from it.
+
 ### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
 
 - Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser; after identity is established, Paige offers the workspace chooser only when that authenticated user has more than one active `tenant_members` row.
@@ -1295,6 +1466,7 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 
 - Before ANY claim about the codebase (what exists, what's wired, what's shipped): grep first, check Section 4 second, memory NEVER
 - Before ANY paste that references a table/function/file: verify it exists
+- **A finding discovered outside the current assignment's scope becomes a GitHub issue immediately, and is not started.** GitHub Issues are the authoritative individual work records; the PAIGE Attention Register is the one owner-facing view over them. This doc holds material platform truth — its legacy in-file ledger (Section 6) is not extended, and a new finding goes to Issues, never here. The standard — the five records, the register's nine fields and six views, the live lists that already exist, and the honest record that the register's board does not exist yet — is `docs/doctrine/paige-attention-register.md`.
 - **CC's code check is authoritative** — Cowork's sandbox agents can miss recently-shipped migrations or files; when CC disagrees with Section 4 or Section 10, CC's finding wins
 
 ### Session end (any agent that shipped work)
@@ -2025,3 +2197,43 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   its own subaccount. Provider identifiers and submission state are server-owned.
 - **PAIGE boundary:** may explain missing fields and propose non-sensitive facts for confirmation;
   cannot invent the tax number, choose the representative, submit, purchase, or imply approval.
+
+- **2026-09-02 — three doctrine files said the Trust Compass migration was not on production. It is.**
+  `docs/doctrine/autonomy-architecture.md`, `docs/doctrine/one-approval-gate.md` and
+  `docs/brain/glossary.md` each stated that `20261039000000` was *"not applied to production yet"* /
+  *"neither it nor the resolver exists on prod today."* A read-only catalog query on ref
+  `xygzykjyynhzqytbqnzu` (2026-09-02) returns `trust_effective_rung()` and
+  `resolve_tool_autonomy(uuid,text)` as **existing**, with `20261039000000` and `20261040000000` in
+  `schema_migrations` (910 applied = 910 repo `.sql` files, zero drift). All three corrected in place
+  per §58 — struck, not deleted.
+  **Why it mattered beyond bookkeeping:** `one-approval-gate.md` instructed builders *"Do not write,
+  or build against, a claim that the Compass evaluates the action contract until it is persisted and
+  enforced server-side."* That instruction rested on a false premise, so a slice obeying it would have
+  under-built against a clamp that is in fact deployed.
+  **The correction is deliberately narrow, and the caution survives in a truer form.** What was proven
+  is **existence** (catalog class). **Runtime enforcement was NOT tested and remains `UNVERIFIED`** —
+  and `20261019001000:41-48` separately states the compass clamps *at render only*, since
+  `resolve_tool_autonomy` reads `tenant_tool_autonomy` and never reads the compass. Reconciling that
+  with §4's record of `operator_rls_coverage` FAILING and already capping the ceiling 3→2 is open work
+  owned by whoever holds autonomy. No approval-authority claim changed: it remains the server
+  action-risk policy plus the confirmation gate.
+
+- **2026-09-02 — "the Spine exists" was being read as "the departments are connected." They are not.**
+  One registered capability (`pipeline.deal_stage_evidence`, read-only, Chat `PARTIAL`, Mind
+  `UNAVAILABLE`) against **105** inline Chat tools, both measured by the repo's own guards. Recorded in
+  §5 and in full in `docs/brain/paige-spine-and-rail-state.md` so no future session infers platform-wide
+  Spine connectivity from the foundation's presence.
+
+- **2026-09-02 — an absent Solo activity feed was available to be misread as an idle workspace**, and
+  **my first record of it overstated how safely it fails.** `authenticated` holds no SELECT grant on
+  `paige_client_events` in production, so the read fails before RLS — that part stands. But the first
+  version said the hook "honestly renders an error rather than an empty feed" and called it "a dead
+  capability, not a lying one." ~~*That framing.*~~ **CORRECTED (§58):** it generalised from one
+  hook's internal branch to the platform's behaviour without checking any consumer. Issue **#746**
+  established, and this session re-verified, that the two shipped Context Rail consumers read only
+  `{ events, connected }` and that `historyError`/`historyLoaded` have no reader in `src/` — so a
+  refused read renders as "nothing yet". The Solo Trust Compass consumer *does* distinguish, which is
+  why the truthful status is **not reliable enough**, not *never*. Status of record: *production Rail
+  history cannot be read, and the current owner-facing consumer treatment is not reliable enough to
+  distinguish denied history from empty history.* **The lesson is the one this log exists for: a hook
+  returning an error is not a person seeing one, and only the consumer settles that.**

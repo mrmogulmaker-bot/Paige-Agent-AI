@@ -36,8 +36,21 @@ Approval authority is **the server action-risk policy plus the confirmation gate
 
 The Solo Trust Compass dial is a **non-authoritative UI control**: an in-memory object that resets
 on reload, which no server code reads. The platform rung `trust_effective_rung()` is real and does
-clamp — but its migration is not applied to production yet. Do not write, or build against, a claim
-that the Compass evaluates the action contract until it is persisted and enforced server-side.
+clamp.
+
+~~*But its migration is not applied to production yet. Do not write, or build against, a claim that
+the Compass evaluates the action contract until it is persisted and enforced server-side.*~~
+
+**CORRECTED 2026-09-02 (§58 — the premise, not the caution).** The migration **is** applied:
+`trust_effective_rung()` and `resolve_tool_autonomy(uuid,text)` both exist on production ref
+`xygzykjyynhzqytbqnzu` (read-only catalog query; `20261039000000` and `20261040000000` present in
+`schema_migrations`). The struck sentence therefore rested on a false premise, and a slice obeying it
+would have under-built against a clamp that is in fact deployed.
+
+**The caution survives in a narrower and truer form:** deployment is not enforcement. Do not build
+against a claim that the Compass evaluates the action contract **until runtime enforcement is proven**
+— existence was verified, reachability was not. Approval authority is unchanged by this correction and
+remains the server action-risk policy plus the confirmation gate, nothing else.
 
 ## Spine and Rail are not the same thing (vocabulary, so it stops drifting)
 

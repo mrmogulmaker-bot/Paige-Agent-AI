@@ -1463,9 +1463,12 @@ stage outcome proves for a selected client, cites its opaque `rail:` reference, 
 infer past it. Read-only. **SHIPPED 2026-09-02** — PR #747 merged as `dcddf6761e`, production-
 deployed, and migration `20261041000000` persisted on prod ref `xygzykjyynhzqytbqnzu`. Read these
 rows as live availability; read the truth label below as the capability's maturity, which is lower.
-**And read the first row with issue #765 beside it:** the `paige:open` scope is released again
-immediately on any account that has a saved conversation, so on every real account that row is
-reachable in code and not completable by a person. Verified post-merge, fail-closed, not yet fixed.
+**The first row's entry path was broken and is now repaired (#765, PR #773 `f7fe9718`).** The
+`paige:open` scope used to be released again immediately on any account holding a saved
+conversation, so on every real account that row was reachable in code and not completable by a
+person. Fail-closed throughout, and repaired 2026-09-02 along with three connected defects in the
+same auto-resume. The repair is code-proven and mutation-tested; it does not by itself make the row
+owner-completable evidence — see the UNVERIFIED note below.
 
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|
@@ -1498,7 +1501,8 @@ clients join, so it is null exactly where the name is (`20261041000000`, mutatio
 
 **UNVERIFIED at this ledger entry, after the release:** authenticated runtime on any tier, and
 rendered proof at the four viewports. Both remain owed — and the missing authenticated drive is
-precisely what left #765 undetected until a post-merge review found it. The post-merge persisted-apply confirmation
+precisely what left #765 undetected until a post-merge review found it. It is still missing after
+the repair, so the same gap that hid #765 is still open. The post-merge persisted-apply confirmation
 is **no longer owed** — it was taken on prod on 2026-09-02 and is recorded in the Master Project File
 §4. **No tier row above has been driven by an authenticated session**; every ✓ and ✗ is proven by the
 adapter's own grants, in-body predicates and contract tests, which is a weaker class of evidence than

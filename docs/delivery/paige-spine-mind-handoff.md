@@ -181,8 +181,9 @@ the newest saved thread; `selectThread` releases the focused client because open
 conversation is supposed to. The scope is gone before the person types, so the binding never receives
 a `clientId`. On an account with **no** saved thread it works — which is the only case the tests and
 my own reasoning covered. Fail-closed: no evidence reaches PAIGE, nothing leaks. A second, milder
-defect in the same flow leaves the deal drawer's keyboard focus trap in place (#766). **Neither is
-fixed or started here.**
+defect in the same flow leaves the deal drawer's keyboard focus trap in place (#766). **Neither was
+fixed in that slice. #765 was repaired afterwards in PR #773 (`f7fe9718`), together with the two
+defects below and a fourth the repair itself made necessary; #766 remains parked and untouched.**
 
 The lesson is not that a check was skipped. Every layer was proven: the adapter, the projection, the
 citation, the refusals, the migration under real caller roles, mutation-tested. What was never done
@@ -212,8 +213,9 @@ Neither is wrong. Reading either in isolation — which is how each was reviewed
 
 ## Owed before `LIVE`
 
-0. **Fix #765 first.** Until it is fixed the drive below cannot pass on any account that has a saved
-   conversation, because the scope is released before a turn is sent.
+0. ~~**Fix #765 first.**~~ **DONE 2026-09-02 — PR #773 (`f7fe9718`).** The drive below could not have
+   passed on any account with a saved conversation, because the scope was released before a turn was
+   sent. It can now be attempted; it has still not been run.
 1. Authenticated owner drive of `/solo/{account}/growth` → deal → **Open PAIGE for this client** →
    PAIGE cites a recorded outcome, on two Solo tenants — at least one of which **already has saved
    conversations**, since an empty account is the one case that passes today.

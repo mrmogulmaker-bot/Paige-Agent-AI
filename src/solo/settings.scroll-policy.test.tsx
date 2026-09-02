@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SETTINGS_SCROLLBAR_SHOWN } from "./settings-scroll-owner";
-import { SETTINGS_SCROLL_OWNER_CLASS, holdsSettingsScrollFocus } from "@/components/tenant-shell/settings-scroll-contract";
+import {
+  SETTINGS_SCROLL_OWNER_CLASS,
+  SETTINGS_VISIBLE_SCROLL_DESTINATIONS,
+  holdsSettingsScrollFocus,
+  settingsDestinationShowsScrollbar,
+} from "@/components/tenant-shell/settings-scroll-contract";
 
 /**
  * THE TWO HALVES OF THE OWNER'S SCROLL POLICY, LOCKED (2026-08-31).
@@ -222,14 +227,68 @@ describe("Settings gets one visible, usable scroll owner", () => {
     expect(drive).toMatch(/FLOW_FORCE_ASSERTION_FAILURE/);
     expect(drive).toMatch(/finally\s*\{[\s\S]*stopProcessTree\(vite\)/);
     expect(drive).toMatch(/viewports:\s*RUN_VIEWPORTS/);
-    expect(drive).toMatch(/expectedScreenshots = RUN_VIEWPORTS\.length \* RUN_THEMES\.length \* 2/);
+    expect(drive).toMatch(/expectedScreenshots = RUN_VIEWPORTS\.length \* RUN_THEMES\.length \* 3/);
+    expect(drive).toMatch(/PAIGE opens once beside Setup/);
+    expect(drive).toMatch(/folding PAIGE restores Setup End/);
     expect(drive).toMatch(/PAIGE opens once beside overflowing Connections/);
     expect(drive).toMatch(/second PAIGE fold restores Connections PageDown/);
   });
-  it("shows the visible scrollbar only on Connections and Integrations", () => {
-    expect(settingsTsx).toMatch(/const visibleScroll = tab === "connections" \|\| tab === "integrations"/);
+
+  it("scores that the theme axis reaches the rendered shell, not just the loop", () => {
+    // The drive iterated light and dark for weeks while the shell rendered one
+    // palette both times. An axis is covered only when something rendered
+    // changes with it, so this asserts a computed token, per environment.
+    expect(drive).toMatch(/theme actually reaches the rendered shell/);
+    expect(drive).toMatch(/#100e14/);
+    expect(drive).toMatch(/#fbf9f5/);
+    // And the harness must not go back to the prop that broke it.
+    const harness = read("scripts/live-drive/harness/settings-mount/main.tsx");
+    expect(harness).toMatch(/defaultTheme=\{theme\}/);
+    expect(rules(harness)).not.toMatch(/forcedTheme/);
+  });
+  it("decides the visible scrollbar through the one shared policy, never an inline list", () => {
+    // The destination list used to be an inline `tab === "a" || tab === "b"` here.
+    // That is how Setup ended up with `overflow-y: auto` and no scrollbar for
+    // weeks: the surface silently overflowed, and the only place the policy was
+    // written was a boolean expression no test could read as a policy. It now
+    // lives in the shared shell contract, where it is a value with its own tests.
+    expect(settingsTsx).toMatch(/settingsDestinationShowsScrollbar\(tab\)/);
     expect(settingsTsx).toMatch(/classList\.toggle\(SETTINGS_SCROLLBAR_SHOWN, visibleScroll\)/);
+    expect(settingsTsx).not.toMatch(/const visibleScroll = tab === /);
     expect(settingsTsx).not.toMatch(/EVERY Settings destination/);
     expect(settings).not.toMatch(/:has\(> \.solo-settings\)/);
+  });
+
+  it("authorizes the visible scrollbar on exactly Setup, Connections and Integrations", () => {
+    // Owner ruling 2026-09-02: Setup joins the authorized visible-scroll set,
+    // because its real configuration content materially exceeds the viewport at
+    // every supported Solo height. Measured before the ruling: 3,973-4,174px of
+    // content in a 702-934px host, 78-82% below the fold, no scrollbar drawn.
+    expect([...SETTINGS_VISIBLE_SCROLL_DESTINATIONS].sort())
+      .toEqual(["connections", "integrations", "setup"]);
+    for (const dest of ["setup", "connections", "integrations"]) {
+      expect(settingsDestinationShowsScrollbar(dest), `${dest} must show its scrollbar`).toBe(true);
+    }
+  });
+
+  it("leaves every SHORT Settings destination form-fitting", () => {
+    // The exception does not widen to the destinations that genuinely fit. Each
+    // of these was measured at exactly its host height, at all four viewports.
+    for (const dest of ["team", "notifications", "security-data", "vault", "billing"]) {
+      expect(settingsDestinationShowsScrollbar(dest), `${dest} must stay form-fitting`).toBe(false);
+    }
+    // And it is not a default-open policy: an unknown destination stays clipped.
+    expect(settingsDestinationShowsScrollbar("clients")).toBe(false);
+    expect(settingsDestinationShowsScrollbar("")).toBe(false);
+  });
+
+  it("keeps the drive's authorized set identical to the product's", () => {
+    // Two lists that must agree, previously kept in step by nobody. If the drive
+    // still classified Setup as form-fitting it would assert `canvasH <= clientH`
+    // on a surface the product now scrolls, and fail for the opposite reason.
+    const driveSet = drive.match(/VISIBLE_SCROLL_DESTINATIONS = new Set\(\[([^\]]*)\]\)/);
+    expect(driveSet, "the drive no longer declares its authorized set").toBeTruthy();
+    const declared = [...driveSet![1].matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+    expect(declared).toEqual([...SETTINGS_VISIBLE_SCROLL_DESTINATIONS].sort());
   });
 });
