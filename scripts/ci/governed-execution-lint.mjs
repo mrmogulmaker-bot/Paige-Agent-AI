@@ -157,7 +157,13 @@ export function importsGate(src, fileName = "in-memory.ts") {
  * An allowlist, so every addition is a deliberate act rather than a drift. The test an entry has to
  * pass is not "is it a boolean" — it is: CAN THIS MEMBER GRANT? A member that can only ever narrow
  * what runs is safe here; one that can express "yes, approved" is the thing this rule exists to
- * keep out, whatever its type says.
+ * keep out.
+ *
+ * The name alone does not carry that. Admitting `claimedFor` by NAME left `claimedFor?: boolean`
+ * passing green — the same field, re-typed into exactly the success flag this rule forbids, with
+ * the allowlist recording only the label and not the reason it was admitted. So an allowlisted
+ * member is additionally rejected if its declared type admits a boolean, and the reason each entry
+ * was admitted is now enforced rather than merely written down.
  *
  *   autonomyLane  the workspace's resolved lane. Selects how much approval is REQUIRED; every
  *                 unrecognised value refuses.
@@ -192,9 +198,33 @@ export function booleanApprovalFields(src, fileName = "in-memory.ts") {
     else if (ts.isComputedPropertyName(m.name)) nm = lit(m.name.expression) ?? "<computed>";
     else nm = lit(m.name);
     // A name this rule cannot resolve is not waved through: an unnameable member is still a member.
-    declared.push(nm ?? "<unresolved>");
+    const name = nm ?? "<unresolved>";
+    if (!APPROVAL_FIELDS_ALLOWED.has(name)) { declared.push(name); continue; }
+    // ALLOWLISTED BY NAME IS NOT ENOUGH. Each entry was admitted for a stated reason — that it can
+    // only ever narrow — and for `claimedFor` that reason is precisely its being a string. Checking
+    // the name alone means a later `claimedFor?: boolean` keeps the guard green while turning the
+    // field into the success flag this whole rule exists to forbid. The allowlist has to enforce
+    // the REASON, not the label.
+    if (m.type && declaresBoolean(m.type)) declared.push(`${name} (declared boolean)`);
   }
-  return { parsed: true, fields: declared.filter((f) => !APPROVAL_FIELDS_ALLOWED.has(f)) };
+  return { parsed: true, fields: declared };
+}
+
+/**
+ * Does this type admit a boolean — as `boolean`, as `true`/`false`, or inside a union?
+ *
+ * Bounded and complete in a way general dataflow is not: this walks ONE type annotation on ONE
+ * declaration, and the ways to spell a boolean in a type position are enumerable.
+ */
+function declaresBoolean(typeNode) {
+  let found = false;
+  walk(typeNode, (n) => {
+    if (n.kind === ts.SyntaxKind.BooleanKeyword) found = true;
+    if (ts.isLiteralTypeNode(n) &&
+        (n.literal.kind === ts.SyntaxKind.TrueKeyword ||
+         n.literal.kind === ts.SyntaxKind.FalseKeyword)) found = true;
+  });
+  return found;
 }
 
 /**
@@ -307,6 +337,19 @@ if (process.argv.includes("--self-test")) {
     booleanApprovalFields('type GovernedApproval = { autonomyLane: string; "approved"?: boolean; };').fields, ["approved"]);
   check("R3 two members on one line",
     booleanApprovalFields("type GovernedApproval = { autonomyLane: string; a?: boolean; b?: boolean; };").fields, ["a", "b"]);
+  // Round 6 (Codex). An allowlisted NAME whose type turns it into an assertion.
+  check("R3 rejects an allowlisted field redeclared as a boolean (Codex)",
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedFor?: boolean };`).fields,
+    ["claimedFor (declared boolean)"]);
+  check("R3 rejects an allowlisted field narrowed to a boolean literal (Codex)",
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedFor?: true };`).fields,
+    ["claimedFor (declared boolean)"]);
+  check("R3 rejects a boolean hidden in a union",
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedFor?: string | boolean };`).fields,
+    ["claimedFor (declared boolean)"]);
+  check("R3 still accepts the narrowing-only string",
+    booleanApprovalFields(`type GovernedApproval = { autonomyLane: string; claimedArgs?: Record<string, unknown> | null; claimedFor?: string };`).fields,
+    []);
   check("R3 passes the real shape",
     booleanApprovalFields("type GovernedApproval = { autonomyLane: string; claimedArgs?: Record<string, unknown> | null; };").fields, []);
   check("R3 fails closed when absent", booleanApprovalFields("type Other = { a: boolean };").parsed, false);
