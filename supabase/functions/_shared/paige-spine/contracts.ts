@@ -1,6 +1,7 @@
-export const SPINE_ACTION_CLASSIFICATIONS = ["read", "prepare", "mutate", "external_effect"] as const;
+export const SPINE_ACTION_CLASSIFICATIONS = ["read", "mutate", "external_effect"] as const;
 export type SpineActionClassification = (typeof SPINE_ACTION_CLASSIFICATIONS)[number];
 export type SpineApprovalAuthority = "chat-canonical" | "none";
+export type SpineRiskPolicy = "read_only" | "ordinary" | "high";
 
 export type SpineCapability = {
   readonly key: string;
@@ -12,14 +13,17 @@ export type SpineCapability = {
     readonly adapter: string;
     readonly audience: string;
     readonly freshness: string;
+    /** Visibility window for the safe projection; source retention stays domain-owned. */
     readonly staleAfterDays: number;
-    readonly retentionDays: number;
+    readonly projectionWindowDays: number;
+    readonly factKeys: readonly string[];
   };
   readonly action?: {
     readonly classification: SpineActionClassification;
     readonly executor: string;
+    readonly chatTool?: string;
     readonly idempotency: string;
-    readonly riskPolicyKey: string;
+    readonly riskPolicyKey: SpineRiskPolicy;
     readonly approvalAuthority: SpineApprovalAuthority;
   };
   readonly outcome?: {
@@ -36,6 +40,7 @@ export type SpineCapability = {
 export type SpineSignal = {
   readonly signal_id: string;
   readonly kind: string;
+  /** Server-consumer scope evidence. It is not presentation copy. */
   readonly tenant_id: string;
   readonly subject_type: string;
   readonly subject_ref: string;

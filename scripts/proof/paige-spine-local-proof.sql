@@ -50,6 +50,7 @@ CREATE FUNCTION public.has_any_role(_user_id uuid, _roles text[])
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = ANY (_roles))
 $$;
+CREATE FUNCTION public.is_platform_owner() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$ SELECT false $$;
 CREATE FUNCTION public.current_user_tenant_id()
 RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT p.active_tenant_id FROM public.profiles p
@@ -67,8 +68,7 @@ CREATE POLICY rail_staff_read ON public.paige_client_events FOR SELECT TO authen
   USING (tenant_id = public.current_user_tenant_id()
     AND public.has_any_role(auth.uid_uuid(), ARRAY['admin','super_admin','coach']));
 GRANT USAGE ON SCHEMA public, auth TO authenticated;
-GRANT SELECT ON public.clients, public.paige_client_events TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.uid(), auth.uid_uuid(), public.has_any_role(uuid,text[]), public.current_user_tenant_id() TO authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid(), auth.uid_uuid(), public.has_any_role(uuid,text[]), public.is_platform_owner(), public.current_user_tenant_id() TO authenticated;
 
 \ir ../../supabase/migrations/20260902004019_paige_spine_foundation.sql
 
@@ -76,14 +76,17 @@ DO $$ BEGIN
   IF has_function_privilege('anon', 'public.get_pipeline_spine_evidence(text,integer)', 'EXECUTE') THEN
     RAISE EXCEPTION 'anonymous execute privilege leaked';
   END IF;
+  IF has_table_privilege('authenticated', 'public.paige_client_events', 'SELECT') THEN
+    RAISE EXCEPTION 'direct source-table access leaked';
+  END IF;
   IF NOT has_function_privilege('authenticated', 'public.get_pipeline_spine_evidence(text,integer)', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated execute privilege missing';
   END IF;
   IF has_function_privilege('service_role', 'public.get_pipeline_spine_evidence(text,integer)', 'EXECUTE') THEN
     RAISE EXCEPTION 'service role execute privilege leaked';
   END IF;
-  IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.get_pipeline_spine_evidence(text,integer)'::regprocedure) THEN
-    RAISE EXCEPTION 'adapter is not security invoker';
+  IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.get_pipeline_spine_evidence(text,integer)'::regprocedure) THEN
+    RAISE EXCEPTION 'adapter is not security definer';
   END IF;
 END $$;
 
