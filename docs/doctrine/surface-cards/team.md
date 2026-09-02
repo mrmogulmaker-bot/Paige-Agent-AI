@@ -6,9 +6,16 @@ cannot see what Paige did. See *Rail outcome* below — that is the whole reason
 Written 2026-09-02 by applying the Alignment Standard's build path to the Team capability. Legs 1–5
 pass. Legs 6–7 do not.
 
-**The code this describes is already on `main`**, merged in #728 (`76bb3bbca`) — the tools, their
-risk classifications, the tenant-agreement guard, the autonomy clamp and the catalogue migration.
-This card is the department's record of it, not a proposal.
+**The code this describes is already LIVE ON PRODUCTION**, merged in #728 (`76bb3bbca`) — the
+tools, their risk classifications, the tenant-agreement guard, the autonomy clamp and the catalogue
+migration. Verified 2026-09-02 against prod (`xygzykjyynhzqytbqnzu`), not inferred from the merge:
+`schema_migrations` carries `20261039000000` and `20261040000000`, and `list_tool_autonomy()`
+returns all five `team_*` rows under the `Team` category. This card is the department's record of a
+shipped capability, not a proposal.
+
+**That is why `PARTIAL` matters rather than being a paperwork nicety.** The capability is running
+for tenants now, so the gap below — an owner cannot see what PAIGE did to their team — is running
+too.
 
 **Team is NOT declared in the Spine registry.** `supabase/functions/_shared/paige-spine/registry.ts`
 declares exactly one capability today (`PIPELINE_DEAL_STAGE_EVIDENCE`). Team should be declared —
@@ -128,8 +135,10 @@ exist without a `contact_id`, or whether workspace-level outcomes get their own 
   owner. PAIGE now refuses first with an honest reason; **the Team screen still shows the false
   message**, because correcting a `SECURITY DEFINER` resolver is its own change with its own
   producer inventory.
-- **Required browser proof, OWED — no leg of this has been driven on the live authenticated
-  platform.** Needed: invite a real address from chat and from the screen; resend and revoke;
+- **Required browser proof, OWED ON A LIVE CAPABILITY — no leg of this has been driven on the live
+  authenticated platform, and the code is already serving production.** The order of those two
+  facts is the point: this is not proof owed before a release, it is proof owed on something
+  already released. Needed: invite a real address from chat and from the screen; resend and revoke;
   change a permission and confirm the roster reflects it; edit work details and confirm the
   omitted field survived; drive the owner-only refusal as an admin; and confirm what the owner sees
   afterwards, which is the gap above.
