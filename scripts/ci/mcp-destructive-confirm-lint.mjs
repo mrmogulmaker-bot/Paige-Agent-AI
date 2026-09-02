@@ -59,11 +59,13 @@
  *
  * IT DOES PROMISE, and each of these is bounded and complete rather than a list of known evasions:
  *   · Every call to a method named `tool` — `x.tool(…)` or `x["tool"](…)` — is found by the parser.
- *   · Such a registration is inspected ONLY when both `handler` and `inputSchema` are plain
- *     property assignments written in place. Every other configuration shape (a variable, a spread,
- *     a factory, a missing member) is reported as UNANALYSABLE and FAILS the run. This is an
- *     allowlist of what can be read, not an enumeration of what to catch, which is why it cannot
- *     be outrun by a new spelling.
+ *   · Such a registration is inspected ONLY when EVERY member of its configuration is a plain
+ *     property assignment written in place. A variable, a factory, a spread, a shorthand, a
+ *     computed key — anything that can carry members this guard cannot enumerate — is reported as
+ *     UNANALYSABLE and FAILS the run. This is an allowlist of what can be read, not an enumeration
+ *     of what to catch, which is why it cannot be outrun by a new spelling. Once every member is
+ *     visible, an ABSENT member is a fact and not a gap, so a tool that simply declares no schema
+ *     or no handler passes rather than raising a false alarm.
  *   · An inspected destructive handler may not declare ANY model-settable boolean, by shape.
  *   · A tool name this guard cannot resolve is never CLEARED by the scope map — unknown counts as
  *     possibly delete-scoped.
@@ -158,22 +160,33 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
 }
 
 /**
- * Can this guard actually READ the two members it needs?
+ * Can this guard SEE every member of this configuration?
  *
- * Both `handler` and `inputSchema` must be plain property assignments written in place. A spread,
- * a shorthand referring to a binding, a computed key, or a simply-absent member all mean the real
- * configuration lives somewhere this guard does not follow — and an unreadable configuration is
- * reported as unanalysable, never quietly treated as declaring nothing.
+ * The question is visibility, not content. `mcp.tool("x", { ...cfg })` is an object literal whose
+ * real handler and schema live somewhere this guard does not follow — so `prop()` finds nothing,
+ * the tool looks like it declares no destructive act, and it passes. That is a fail-OPEN inside the
+ * check written to fail closed, and the fix is an allowlist of the one member form that can
+ * actually be read rather than a list of the ways to hide one.
+ *
+ * A spread, a shorthand referring to a binding elsewhere, a computed key, a method or accessor —
+ * each can carry members this guard cannot enumerate, so any of them makes the whole configuration
+ * unanalysable and fails the run.
+ *
+ * Deliberately NOT a requirement that `handler` and `inputSchema` be present. My first version
+ * demanded both, and that was wrong in a way worth recording: once every member is visible, an
+ * ABSENT member is a fact, not a gap. A tool declaring no `inputSchema` takes no model-settable
+ * boolean and one declaring no `handler` performs no act — both trivially safe, and failing them as
+ * "a configuration this guard cannot read" would be a false alarm about a config it reads perfectly.
+ * A guard that cries wolf gets an exemption written for it, and that is how a real one gets waved
+ * through later.
  *
  * Measured against the real surfaces: all 117 registrations are inline object literals whose members
- * are exclusively PropertyAssignment, and every one declares both. So this costs zero exemptions
- * today, and any future registration that trips it is genuinely one this guard cannot vouch for.
+ * are exclusively PropertyAssignment, so this costs zero exemptions today.
  */
 function readableConfig(objectLiteral) {
-  return REQUIRED_MEMBERS.every((want) => objectLiteral.properties.some((p) =>
-    ts.isPropertyAssignment(p) && p.name && ts.isIdentifier(p.name) && p.name.text === want));
+  return objectLiteral.properties.every((p) =>
+    ts.isPropertyAssignment(p) && p.name && (ts.isIdentifier(p.name) || ts.isStringLiteralLike(p.name)));
 }
-const REQUIRED_MEMBERS = ["handler", "inputSchema"];
 
 function prop(objectLiteral, name) {
   for (const p of objectLiteral.properties) {
@@ -404,8 +417,12 @@ mcp.tool("x", { inputSchema: z.object({ confirm: z.literal(true) }),
     findToolCalls(`mcp.tool("x", { ...cfg });`).map((t) => t.config !== null), [false]);
   check("ELEMENT-ACCESS registration is seen (Codex)",
     findToolCalls(`mcp["tool"]("x", { inputSchema: a, handler: b });`).length, 1);
-  check("a config missing handler is unanalysable",
-    findToolCalls(`mcp.tool("x", { inputSchema: a });`).map((t) => t.config !== null), [false]);
+  // Once every member is visible, an ABSENT member is a fact rather than a gap: no handler means
+  // no act, no schema means no model input. Failing these would be a false alarm.
+  check("a fully-visible config missing handler is readable, not unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: a });`).map((t) => t.config !== null), [true]);
+  check("a SHORTHAND member makes the config unanalysable",
+    findToolCalls(`mcp.tool("x", { handler, inputSchema: a });`).map((t) => t.config !== null), [false]);
   check("a readable config still parses",
     findToolCalls(`mcp.tool("x", { inputSchema: a, handler: b });`).map((t) => t.config !== null), [true]);
   check("a COMPUTED name cannot be cleared by the scope map (Codex)", v(`
