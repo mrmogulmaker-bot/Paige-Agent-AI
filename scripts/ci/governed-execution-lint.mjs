@@ -75,28 +75,64 @@ const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
  * for this on the sibling guard reopened the very bypass it closed. Template head/middle/tail nodes
  * are skipped: their `pos` sits at a `}` with template TEXT after it.
  */
-/** Literal parts whose CONTENT is token text, not trivia — never scan for comments from their pos. */
-const TEMPLATE_PARTS = new Set([
-  ts.SyntaxKind.TemplateHead, ts.SyntaxKind.TemplateMiddle, ts.SyntaxKind.TemplateTail,
-]);
+/**
+ * Every LEAF token's span, cached per source file.
+ *
+ * A comment cannot overlap a token — that is what makes it trivia. So the parser's own token spans
+ * are the ground truth for validating a candidate comment range, whatever produced it.
+ */
+const leafSpansCache = new WeakMap();
+function leafSpans(sf) {
+  let spans = leafSpansCache.get(sf);
+  if (spans) return spans;
+  spans = [];
+  const visit = (n) => {
+    if (n.getChildCount(sf) === 0) { spans.push([n.getStart(sf), n.end]); return; }
+    n.forEachChild(visit);
+  };
+  visit(sf);
+  spans.sort((a, b) => a[0] - b[0]);
+  leafSpansCache.set(sf, spans);
+  return spans;
+}
+
+/** Does this candidate range collide with any real token? Then it is token TEXT, not a comment. */
+function overlapsToken(spans, pos, end) {
+  let lo = 0, hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const [s0, e0] = spans[mid];
+    if (e0 <= pos) lo = mid + 1;
+    else if (s0 >= end) hi = mid - 1;
+    else return true;
+  }
+  return false;
+}
 
 function exemptComments(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
   const full = sf.getFullText();
+  const spans = leafSpans(sf);
   const lines = new Set();
   let any = false;
   const add = (ranges) => {
     for (const r of ranges || []) {
+      // THE VALIDITY TEST. A candidate that overlaps a token is not a comment, however it was
+      // produced. This is what finally closed a bypass I fixed twice and reopened twice: a bare
+      // scanner read a template tail as a comment, and a trailing scan at the end of `<div>` read
+      // element TEXT as one. Both candidates collide with a real token; neither survives here.
+      // Leading-only was not an option either — `getLeadingCommentRanges` deliberately excludes a
+      // same-line trailing comment, so dropping trailing scans broke the legitimate
+      // `code(); // exempt` form. Take both, then validate.
+      if (overlapsToken(spans, r.pos, r.end)) continue;
       if (!EXEMPT.test(full.slice(r.pos, r.end))) continue;
       any = true;
       lines.add(sf.getLineAndCharacterOfPosition(r.pos).line + 1);
     }
   };
   const visit = (n) => {
-    if (!TEMPLATE_PARTS.has(n.kind)) {
-      add(ts.getLeadingCommentRanges(full, n.pos));
-      add(ts.getTrailingCommentRanges(full, n.end));
-    }
+    add(ts.getLeadingCommentRanges(full, n.pos));
+    add(ts.getTrailingCommentRanges(full, n.end));
     n.forEachChild(visit);
   };
   visit(sf);
