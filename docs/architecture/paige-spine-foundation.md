@@ -22,7 +22,7 @@ The registry fails closed at import and in CI. A mutable or external-effect capa
 
 The `tenant_id`, signal UUID, and opaque `rail:` references in the contract are server-consumer scope/provenance evidence, not presentation copy. The 365-day value is a safe projection visibility window; source Rail retention remains independently domain-owned.
 
-This slice is `PARTIAL`: evidence is registered and has targeted runtime proof, but Chat and Mind bindings are `UNAVAILABLE`. It intentionally registers no Pipeline mutation. Pipeline currently has domain-held move-approval semantics; a Chat-owned reconciliation is required before any mutation can join the Spine.
+This slice is `PARTIAL`: evidence is registered and the read-only Chat adapter has structural and targeted runtime proof, so the Chat binding is `PARTIAL`; authenticated preview proof is still required before `LIVE`. The Mind binding remains `UNAVAILABLE`. It intentionally registers no Pipeline mutation. Pipeline currently has domain-held move-approval semantics; a Chat-owned reconciliation is required before any mutation can join the Spine.
 
 ## Domain self-service
 
@@ -40,3 +40,27 @@ A domain owner may add its own declaration and safe adapter in a later immutable
 A Spine Change Request is required before changing a shared primitive: registry schema, resolver result semantics, safe signal fields, lifecycle vocabulary, approval authority, Chat adapter contract, or projection-window interpretation.
 
 The request must include: requested change; affected domains and flows; collision packet with current exact heads; tenant and sensitivity analysis; compatibility and migration plan; tests and rollback; Chat-owner review for any action/approval change; and owner Gate 1 approval. Implementation and release remain separate authority gates.
+
+## Contribution model for future agents
+
+### Domain self-service lane
+
+Ordinary additive capabilities do not require returning to one specific coordinator. A domain-owning agent may extend the Spine when it keeps the shared contract unchanged and completes this sequence:
+
+1. **Fresh collision check** — fetch current main and every active owner branch that touches the domain, Chat handler, registry, resolver, Rail source, migrations, or CI. Record exact heads and preserve newer work.
+2. Add one declaration under supabase/functions/_shared/paige-spine/domains/ and export it from the canonical registry.
+3. Reuse an existing durable Rail/outcome source or add one immutable, tenant-safe migration for a fixed-field adapter. Never expose raw payloads or accept a caller-supplied tenant id.
+4. Add registry, safe-field, malformed-result, real-role, cross-tenant, account-switch, and direct-source-denial tests.
+5. Add the smallest owning consumer. A shared file with no deployable consumer is intentionally red in CI; do not weaken edge-affected.py or convert zero consumers into a pass.
+6. Keep chatBinding, mindBinding, and maturity truthful. Code and structural tests may justify PARTIAL; LIVE requires the corresponding correctly authenticated end-to-end proof.
+7. Publish a green draft with exact automated, static, rendered/runtime, authenticated, and UNVERIFIED evidence separated. Merge and deployment remain separate authority gates.
+
+This lane covers additive domain declarations, domain-owned safe adapters, tests, and consumers that use the existing resolver contract. It does not authorize editing another domain's behavior or a shared approval primitive.
+
+### Shared-contract lane
+
+A Spine Change Request and coordinated owner review are required for registry shape, resolver semantics, safe signal fields, lifecycle vocabulary, approval authority, Chat adapter contract, projection-window meaning, new shared stores/buses, or cross-domain behavior. Mutations and external effects also require the Chat owner's canonical risk classification, one-approval treatment, idempotency, recovery, and authenticated proof.
+
+### Required handoff packet
+
+Every agent leaves: exact base/head; active-owner heads inspected; affected-flow and collision map; changed files; registry key and domain owner; human surface; Rail/source and safe adapter; roles and denial cases; consumer/deployment identity; test commands and results; runtime/authenticated evidence; remaining BLOCKED, FAIL, and UNVERIFIED items; and explicit merge/deployment authority. That packet lets the next agent continue without relying on a particular person's memory.

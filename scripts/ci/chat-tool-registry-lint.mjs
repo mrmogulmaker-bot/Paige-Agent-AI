@@ -18,19 +18,25 @@
  *   · Removing one (a migration to the registry) → the baseline is stale; update it in the same
  *     PR. The guard says so and prints the exact line to delete.
  *
- * WHAT THIS DOES NOT CLAIM. There is no Spine registry in this repository yet — a separate audit
- * is grounding it against real code. Until it lands, this guard cannot say "register it HERE",
- * only "not inline, and talk to the Chat workstream". That is an honest half of the rule rather
- * than a fabricated whole: it makes new coupling impossible to add silently, which is the half
- * that stops the bleeding. Point the failure message at the registry the moment one exists.
+ * CANONICAL REGISTRY. Domain declarations live in the PAIGE Spine registry. This guard still
+ * forbids new inline Chat coupling even when a tool name is registered: registration establishes
+ * governance metadata, while the Chat-owner adapter is the consumer boundary. Existing inline
+ * tools remain a descending migration baseline, never a template for new work.
  *
  *   node scripts/ci/chat-tool-registry-lint.mjs
  *   node scripts/ci/chat-tool-registry-lint.mjs --self-test
  */
 import fs from "node:fs";
+import { PAIGE_SPINE_CAPABILITIES } from "../../supabase/functions/_shared/paige-spine/registry.ts";
 
 const HANDLER = "supabase/functions/paige-ai-chat/index.ts";
 const BASELINE = "scripts/ci/chat-tool-baseline.txt";
+const REGISTRY = "supabase/functions/_shared/paige-spine/registry.ts";
+const registeredChatTools = new Map(
+  PAIGE_SPINE_CAPABILITIES
+    .filter((capability) => capability.action?.chatTool)
+    .map((capability) => [capability.action.chatTool, capability.key]),
+);
 
 /** A tool declaration is `name: "snake_case",` alone on its line inside the tools array. */
 export function declaredTools(source) {
@@ -66,7 +72,7 @@ if (process.argv.includes("--self-test")) {
   process.exit(bad ? 1 : 0);
 }
 
-for (const f of [HANDLER, BASELINE]) {
+for (const f of [HANDLER, BASELINE, REGISTRY]) {
   if (!fs.existsSync(f)) {
     console.log(`✗ chat-tool-registry-lint: ${f} is missing — that is a resolver failure, not a pass.`);
     process.exit(1);
@@ -86,7 +92,13 @@ if (added.length) {
   console.log("\n  Owner ruling, 2026-09-01: domains own features, the Spine owns governance, Chat is a");
   console.log("  consumer. A new Paige tool is registered by its domain with safe evidence and action");
   console.log("  metadata; the Chat workstream completes the adapter and approval treatment.");
-  console.log("  Read docs/doctrine/one-approval-gate.md, then talk to the Chat workstream.");
+  for (const tool of added) {
+    const capability = registeredChatTools.get(tool);
+    console.log(capability
+      ? "  " + tool + " is registered by " + capability + ", but must still enter Chat through its adapter."
+      : "  " + tool + " has no canonical Spine capability declaration.");
+  }
+  console.log("  Read " + REGISTRY + ", docs/architecture/paige-spine-foundation.md, then use the Chat-owner adapter seam.");
   console.log("  This baseline may shrink as tools migrate. It must not grow.");
   process.exit(1);
 }

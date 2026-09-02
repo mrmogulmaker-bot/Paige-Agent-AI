@@ -21,7 +21,7 @@ describe("PAIGE Spine registry", () => {
     expect(validateSpineRegistry(PAIGE_SPINE_CAPABILITIES)).toEqual([]);
     expect(PAIGE_SPINE_CAPABILITIES[0]).toMatchObject({
       key: "pipeline.deal_stage_evidence", domain: "pipeline", owner: "solo-pipeline", maturity: "PARTIAL",
-      chatBinding: "UNAVAILABLE", mindBinding: "UNAVAILABLE", sharedPrimitiveChange: "NONE",
+      chatBinding: "PARTIAL", mindBinding: "UNAVAILABLE", sharedPrimitiveChange: "NONE",
       action: { classification: "read", riskPolicyKey: "read_only", approvalAuthority: "none" },
     });
   });

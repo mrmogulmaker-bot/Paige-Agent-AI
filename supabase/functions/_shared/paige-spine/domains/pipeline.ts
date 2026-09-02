@@ -37,7 +37,7 @@ export const PIPELINE_DEAL_STAGE_EVIDENCE = {
     projector: "public.get_pipeline_spine_evidence",
     railVisibility: "owner_internal",
   },
-  chatBinding: "UNAVAILABLE",
+  chatBinding: "PARTIAL",
   mindBinding: "UNAVAILABLE",
   sharedPrimitiveChange: "NONE",
   maturity: "PARTIAL",

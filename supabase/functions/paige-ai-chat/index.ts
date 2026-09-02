@@ -33,6 +33,7 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
 import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
+import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -720,6 +721,7 @@ serve(async (req) => {
     // `tenant_isolation` policy admits `tenant_id IS NULL` to ANY authenticated user — but it is
     // necessary, not sufficient. A platform operator is the one sanctioned cross-tenant caller.
     let authorizedClientId: string | null = null;
+    let authorizedClientRef: string | null = null;
     let clientScopeRefusal: string | null = null;
     if (payloadClientId) {
       try {
@@ -749,7 +751,7 @@ serve(async (req) => {
         } else {
           const { data: authClientRow, error: authClientErr } = await supabaseClient
             .from("clients")
-            .select("id, tenant_id")
+            .select("id, tenant_id, account_number")
             .eq("id", payloadClientId)
             .not("tenant_id", "is", null)
             .maybeSingle();
@@ -763,6 +765,10 @@ serve(async (req) => {
             clientScopeRefusal = "client belongs to a different workspace";
           } else {
             authorizedClientId = (authClientRow as any).id as string;
+            const accountNumber = (authClientRow as any).account_number;
+            authorizedClientRef = typeof accountNumber === "string" && accountNumber.trim()
+              ? accountNumber.trim().toUpperCase()
+              : null;
           }
         }
       } catch (e) {
@@ -779,6 +785,8 @@ serve(async (req) => {
     }
     /** The ONLY client id any consumer may use. Null means caller-scoped or refused. */
     const scopedClientId: string | null = authorizedClientId;
+    /** Public-safe immutable client reference resolved by the same caller-scoped authorization read. */
+    const scopedClientRef: string | null = authorizedClientRef;
     /** True when a client was named but could not be authorized: do NO client-scoped work. */
     const clientScopeDenied: boolean = clientScopeRefusal !== null;
       // THE SIX REFUSAL REASONS ARE NOT ONE KIND OF THING, and a consumer that treats them as one
@@ -1090,6 +1098,31 @@ JSON:`;
           JSON.stringify({ ...preflight.body, error: preflight.body.reason }),
           { status: preflight.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
+      }
+    }
+
+    // PAIGE SPINE — first governed Chat consumer.
+    // The request supplies only a client UUID. The public-safe account reference above came from
+    // the caller-JWT client after the same tenant/owner authorization decision that gates every
+    // other client-scoped read. The resolver also runs on that caller client, never service role,
+    // so the safe database lens recreates role and active-tenant authority at the database edge.
+    //
+    // The existing UI request fence aborts this request and rejects late chunks whenever the
+    // tenant/client epoch changes. req.signal carries that invalidation into the resolver checks.
+    // If transport cancellation cannot propagate, the UI fence still discards the entire stream.
+    let spineEvidenceBlock = "";
+    if (scopedClientId) {
+      if (scopedClientRef) {
+        spineEvidenceBlock = await loadSpineEvidenceForChat(supabaseClient, scopedClientRef, {
+          isCurrent: () => !req.signal.aborted,
+        });
+      } else {
+        spineEvidenceBlock = [
+          "=== PAIGE SPINE — VERIFIED PIPELINE EVIDENCE ===",
+          "Status: UNAVAILABLE",
+          "No verified Pipeline evidence is available for this turn. Do not infer activity, absence, or outcomes.",
+          "=== END PAIGE SPINE EVIDENCE ===",
+        ].join("\n");
       }
     }
 
@@ -1889,6 +1922,9 @@ JSON:`;
       //    Buffering the frame while streaming the persisted extraction of it on every later
       //    turn is not a rule, it is a coincidence of which surface was audited.
       !!memoryBlock ||
+      // Server-validated Spine evidence remains tenant/client evidence, so it uses the
+      // same buffered final-scope gate even though its model projection is fixed-field.
+      !!spineEvidenceBlock ||
       // 6. The client file, but ONLY on a funding tenant — and the gate is the point, not a
       //    hedge. Every document-derived line in `buildUserContext` sits inside its
       //    `if (fundingEnabled)` branch: the uploaded PDF's file name, the three bureau scores,
@@ -4105,6 +4141,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       { role: "system", content: PAIGE_VOICE_BLOCK },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
+      ...(spineEvidenceBlock ? [{ role: "system", content: spineEvidenceBlock }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
