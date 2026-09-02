@@ -59,7 +59,11 @@ const DATA_METHODS = new Set(["rpc", "from"]);
 const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
 
 function parse(src, fileName = "in-memory.ts") {
-  return ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  // Parse TSX as TSX. With ScriptKind.TS a JSX element derails error recovery and constructs AFTER
+  // it can vanish from the tree — so a dynamic gate load in a `.tsx` file read as `.ts` was simply
+  // not there to find. The script kind must follow the real extension.
+  const kind = /\.tsx$/i.test(fileName) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, kind);
 }
 function walk(node, visit) { visit(node); node.forEachChild((c) => walk(c, visit)); }
 function lineOf(sf, node) { return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1; }
@@ -75,13 +79,19 @@ function lit(node) { return node && ts.isStringLiteralLike(node) ? node.text : n
  * parser, and so is any future spelling. Recording it (`door: caller.door` inside an object
  * literal) is the single legitimate use, so that shape — and only that shape — is allowed.
  */
-export function doorBranches(src) {
-  const sf = parse(src);
+export function doorBranches(src, fileName = "in-memory.ts") {
+  const sf = parse(src, fileName);
   const hits = [];
   walk(sf, (n) => {
     let isDoorRead = false;
     if (ts.isPropertyAccessExpression(n) && n.name.text === "door") isDoorRead = true;
     if (ts.isElementAccessExpression(n) && lit(n.argumentExpression) === "door") isDoorRead = true;
+    // `const { door } = caller` extracts the same value with no property access at all.
+    if (ts.isBindingElement(n)) {
+      const src_ = n.propertyName ?? n.name;
+      const nm = src_ && ts.isIdentifier(src_) ? src_.text : lit(src_);
+      if (nm === "door") isDoorRead = true;
+    }
     if (!isDoorRead) return;
     // The one permitted use: `door: <this read>` as an object-literal property.
     const p = n.parent;
@@ -103,11 +113,17 @@ export function doorBranches(src) {
  * names the function nowhere in the import clause, and `await import(…)` is not an import
  * declaration at all. The repository uses dynamic imports widely, so that form is not hypothetical.
  */
-export function importsGate(src) {
-  const sf = parse(src);
+export function importsGate(src, fileName = "in-memory.ts") {
+  const sf = parse(src, fileName);
   let found = false;
   walk(sf, (n) => {
     if (found) return;
+    // `export * from "…"` and `export { x } from "…"` load the module just as an import does, and
+    // a barrel re-export lets a consumer adopt the gate through a different specifier entirely.
+    if (ts.isExportDeclaration(n) && n.moduleSpecifier) {
+      const m = lit(n.moduleSpecifier);
+      if (m && SUPERSEDED.test(m)) { found = true; return; }
+    }
     if (ts.isImportDeclaration(n)) {
       const m = lit(n.moduleSpecifier);
       if (m && SUPERSEDED.test(m)) { found = true; return; }
@@ -137,8 +153,8 @@ export function importsGate(src) {
  */
 const APPROVAL_FIELDS_ALLOWED = new Set(["autonomyLane", "claimedArgs"]);
 
-export function booleanApprovalFields(src) {
-  const sf = parse(src);
+export function booleanApprovalFields(src, fileName = "in-memory.ts") {
+  const sf = parse(src, fileName);
   let members = null;
   walk(sf, (n) => {
     if (members) return;
@@ -150,8 +166,14 @@ export function booleanApprovalFields(src) {
   const declared = [];
   for (const m of members) {
     if (!ts.isPropertySignature(m) || !m.name) continue;
-    const nm = ts.isIdentifier(m.name) ? m.name.text : lit(m.name);
-    if (nm) declared.push(nm);
+    // Identifier, string literal, OR a computed name with a constant inside (`["approved"]?: …`),
+    // which is a perfectly ordinary property signature and extracted by neither of the first two.
+    let nm = null;
+    if (ts.isIdentifier(m.name)) nm = m.name.text;
+    else if (ts.isComputedPropertyName(m.name)) nm = lit(m.name.expression) ?? "<computed>";
+    else nm = lit(m.name);
+    // A name this rule cannot resolve is not waved through: an unnameable member is still a member.
+    declared.push(nm ?? "<unresolved>");
   }
   return { parsed: true, fields: declared.filter((f) => !APPROVAL_FIELDS_ALLOWED.has(f)) };
 }
@@ -162,13 +184,30 @@ export function booleanApprovalFields(src) {
  * Flags a REFERENCE to a data method, not only a call, because `client.rpc.bind(client)` is a claim
  * one alias away from being made — an idiom this repository already uses.
  */
-export function claimTouches(src) {
-  const sf = parse(src);
+/** Receivers whose `.from` is a standard-library conversion, not a data client. */
+const NOT_A_CLIENT = new Set(["Array", "Object", "String", "Number", "Date", "Buffer", "Set", "Map",
+                              "Promise", "JSON", "Math", "Reflect", "Uint8Array", "BigInt"]);
+
+export function claimTouches(src, fileName = "in-memory.ts") {
+  const sf = parse(src, fileName);
   const hits = [];
   walk(sf, (n) => {
     let why = null;
     if (ts.isIdentifier(n) && CLAIM_NAMES.test(n.text)) why = n.text;
-    if (ts.isPropertyAccessExpression(n) && DATA_METHODS.has(n.name.text)) why = `.${n.name.text}`;
+    if (ts.isPropertyAccessExpression(n) && DATA_METHODS.has(n.name.text)) {
+      // `Array.from(items)` is a conversion, not a data client. Flagging it would force a
+      // misleading exemption into the seam, and an exemption written to silence a false positive is
+      // how a guard gets weakened for real.
+      const recv = n.expression;
+      const isLib = ts.isIdentifier(recv) && NOT_A_CLIENT.has(recv.text);
+      if (!isLib) why = `.${n.name.text}`;
+    }
+    // `const { rpc } = client` extracts the method with no property access left to match.
+    if (ts.isBindingElement(n)) {
+      const src_ = n.propertyName ?? n.name;
+      const nm = src_ && ts.isIdentifier(src_) ? src_.text : lit(src_);
+      if (nm && DATA_METHODS.has(nm)) why = `destructured ${nm}`;
+    }
     if (ts.isElementAccessExpression(n)) {
       const k = lit(n.argumentExpression);
       if (k && DATA_METHODS.has(k)) why = `["${k}"]`;
@@ -196,7 +235,7 @@ export function gateCallers(roots) {
       if (/\.(test|spec)\.(ts|tsx)$/.test(rel)) continue;
       const src = fs.readFileSync(p, "utf8");
       if (EXEMPT.test(src)) continue;
-      if (importsGate(src)) found.push(rel);
+      if (importsGate(src, rel)) found.push(rel);
     }
   };
   for (const r of roots) if (fs.existsSync(r)) walkDir(r);
@@ -274,7 +313,7 @@ if (!fs.existsSync(SEAM)) {
 const src = fs.readFileSync(SEAM, "utf8");
 let failed = false;
 
-const branches = doorBranches(src);
+const branches = doorBranches(src, SEAM);
 if (branches.length) {
   failed = true;
   console.error(`✗ R1 door-blindness: ${branches.length} place(s) read the calling door outside the audit line.\n`);
@@ -283,7 +322,7 @@ if (branches.length) {
   console.error("  permission. Record the door on the audit line; never read it anywhere else.");
 }
 
-const approval = booleanApprovalFields(src);
+const approval = booleanApprovalFields(src, SEAM);
 if (!approval.parsed) {
   failed = true;
   console.error("\n✗ R3: could not find the GovernedApproval declaration. Failing closed.");
@@ -295,7 +334,7 @@ if (!approval.parsed) {
   console.error("  one a MODEL can express (#784).");
 }
 
-const claims = claimTouches(src);
+const claims = claimTouches(src, SEAM);
 if (claims.length) {
   failed = true;
   console.error(`\n✗ R4 one home for claiming: ${claims.length} reference(s) to a claim or data client.\n`);
