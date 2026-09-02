@@ -67,6 +67,29 @@ effective = min( grant the human gave the process,
 and a process whose **trigger** has no substrate is `dark` regardless of the arithmetic, because a
 process that cannot be told it should run is not running whatever its grant says.
 
+### Honesty about the ceiling, and the two things called "Trust Compass" (owner amendment, 2026-09-01)
+
+> *"Do not state that Trust Compass currently evaluates a common action contract. Today, the
+> authoritative enforcement is the server action-risk policy and the confirmation/approval gate.
+> Until Compass is persisted and enforced on the server, it is a non-authoritative UI control and
+> must be documented honestly."* — owner
+
+Verified against production the day this was written, because the name covers two different
+things and only one of them enforces anything:
+
+| Called "Trust Compass" | What it is | Enforces? |
+|---|---|---|
+| `trust_effective_rung()` | The PLATFORM trust rung (§68): requested rung walked down to the highest one whose attestation is in date and whose safety proofs pass. Read by `resolve_automation_autonomy` | **Real, and it clamps** — but it is defined in `20261039000000`, which is **not applied to production yet**. Neither it nor the resolver exists on prod today |
+| The Solo Compass dial | `TRUST` in `src/solo/compass.tsx` — a module-level in-memory object seeded from a fixture | **No.** Dragging it changes a browser variable and is lost on reload. Nothing server-side reads it, and it does not write to what `trust_effective_rung()` reads |
+
+So the arithmetic above describes the ceiling **as designed and as written on this branch**, not as
+enforced in production today. What actually decides whether Paige needs permission, right now, is
+the server action-risk policy and the confirmation gate — see `docs/doctrine/one-approval-gate.md`.
+
+**The per-department dial is a separate, unfinished thing** and wiring it is tracked as its own
+decision. Do not read the table above as saying the dial works. Two components sharing one name is
+how a room agrees while meaning different things — the same reason Spine and Rail were split.
+
 ### The floor stays, and this is the part worth arguing
 
 The obvious reading of the ruling is "replace per-tool autonomy with per-process autonomy." That

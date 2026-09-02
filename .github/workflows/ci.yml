@@ -251,6 +251,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:approval-gate
 
+      # Owner ruling 2026-09-01: domains own features, the Spine owns governance, Chat is a
+      # consumer. A RATCHET, not a wall — the handler already declares 100 tools inline and the
+      # ruling says migrate one at a time with no big-bang refactor. The baseline may shrink; it
+      # must not grow, so new coupling cannot be added silently.
+      - name: No new tool is hand-wired into the Chat handler
+        if: ${{ !cancelled() }}
+        run: npm run lint:chat-tool-registry
+
+      - name: Chat-tool registry ratchet catches what it claims to
+        if: ${{ !cancelled() }}
+        run: npm run lint:chat-tool-registry:test
+
       - name: Approval-channel guard catches what it claims to
         if: ${{ !cancelled() }}
         run: npm run lint:approval-gate:test

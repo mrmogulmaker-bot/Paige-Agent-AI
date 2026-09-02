@@ -74,7 +74,9 @@
     "lint:user-facing-admin-urls:test": "node scripts/ci/user-facing-admin-producer-lint.mjs --self-test",
     "proof:tool-confirmation": "node scripts/run-tool-confirmation-proof.mjs",
     "lint:approval-gate": "node scripts/ci/one-approval-gate-lint.mjs",
-    "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test"
+    "lint:approval-gate:test": "node scripts/ci/one-approval-gate-lint.mjs --self-test",
+    "lint:chat-tool-registry": "node scripts/ci/chat-tool-registry-lint.mjs",
+    "lint:chat-tool-registry:test": "node scripts/ci/chat-tool-registry-lint.mjs --self-test"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

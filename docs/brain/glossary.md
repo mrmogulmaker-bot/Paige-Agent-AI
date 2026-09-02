@@ -200,3 +200,12 @@ owner-owed — don't paper over the disagreement.*
   approval is PROVEN goes to the Chat build first.
 - The full Spine contract is being grounded by a separate audit; when it lands it is the
   authority on everything except the approval step, which stays where it is.
+
+## "Trust Compass" names TWO things (recorded 2026-09-01 — verified against prod)
+
+- **`trust_effective_rung()`** — the PLATFORM trust rung (§68), read by `resolve_automation_autonomy`.
+  Real and clamping, but its migration is not applied to production yet.
+- **The Solo Compass dial** — `TRUST` in `src/solo/compass.tsx`, an in-memory object seeded from a
+  fixture. Enforces nothing; dragging it is lost on reload; no server code reads it.
+
+Say which one you mean. Approval authority today is the action-risk policy plus the confirm gate.

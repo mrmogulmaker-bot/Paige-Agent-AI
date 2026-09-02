@@ -30,6 +30,15 @@ In practice this costs a feature agent nothing:
 The test: *am I adding something Paige can do, or changing how we know the operator agreed?* The
 first is yours. The second is not.
 
+## What is authoritative today (owner amendment, 2026-09-01)
+
+Approval authority is **the server action-risk policy plus the confirmation gate**. Nothing else.
+
+The Solo Trust Compass dial is a **non-authoritative UI control**: an in-memory object that resets
+on reload, which no server code reads. The platform rung `trust_effective_rung()` is real and does
+clamp — but its migration is not applied to production yet. Do not write, or build against, a claim
+that the Compass evaluates the action contract until it is persisted and enforced server-side.
+
 ## Spine and Rail are not the same thing (vocabulary, so it stops drifting)
 
 Recorded here because the two words were already being used interchangeably, and a shared word
