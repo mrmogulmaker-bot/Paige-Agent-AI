@@ -10,6 +10,31 @@ manifest, Chat tool, Trust Compass clamp, shared executor, or Rail outcome contr
 render, migration, deployment record, or static tool registration is not authenticated capability
 proof.
 
+### Current grounding audit — source truth at `origin/main` `797d6f08c53e89f8cf36bde24d6df90714922629`
+
+This docs pass did not perform a fresh authenticated production query. The exact source establishes:
+
+- PAIGE Chat's current mutating-tool choke point is `MUTATING_TOOLS` plus the server RPC
+  `resolve_tool_autonomy` in `supabase/functions/paige-ai-chat/index.ts`. Missing/failed policy reads
+  fail to `confirm`; the first unconfirmed call returns `needs_confirm`, and only `auto` or an explicit
+  second `confirm:true` call falls through to the action branch. The persisted source contract is
+  `tenant_tool_autonomy` in `supabase/migrations/20260711200000_paige_tool_autonomy.sql`.
+- The existing CI guard `scripts/ci/tool-catalogue-lint.mjs` is a **ratchet, not the final Spine
+  registry wall**. On this exact source it reports 52 runtime-gated tools, 29 catalogue entries, and
+  23 governed-but-invisible baseline tools. It blocks widening that known mismatch; it does **not**
+  yet reject every direct/hard-wired Chat tool/action or competing approval channel.
+- `scripts/ci/action-authority-lint.mjs` currently proves authority precedes side effects for seven
+  covered action branches. It is useful evidence, not proof of a platform-wide registry.
+- Solo Compass uses the module-local `TRUST` store in `src/solo/compass.tsx`; Agency's
+  `useAgencyCompass.ts` labels autonomy tiers preview-only with no persisted tier store; the operator
+  `useCompass.ts` derives display lanes from action-kind defaults. No server-persisted Compass
+  evaluation contract was proven. **The Compass UI is non-authoritative/in-memory or derived display
+  today and must not be described as evaluating permissions or actions.**
+
+Therefore the centralized Spine registry plus full CI rejection contract below is **REQUIRED but
+PARTIAL / not yet fully implemented**. Exact deployed persistence and authenticated behavior remain
+`UNVERIFIED` in this documentation pass.
+
 ---
 
 ## 1. What the Spine is
@@ -26,7 +51,7 @@ The conceptual path is:
 Tenant/client domain event
   -> safe domain evidence contract
   -> Mind and PAIGE Chat read adapter
-  -> Trust Compass restriction + server authorization
+  -> server action-risk policy + confirmation/approval gate
   -> governed domain action, when separately available
   -> safe attributable outcome
   -> Rail history/outcome + owning page
@@ -37,8 +62,12 @@ component. It does not replace the domain server contract, safe evidence boundar
 Trust treatment, governed executor, or human-management page.
 
 This standard extends the established platform taxonomy
-`Human -> Read -> Brain -> Trust Compass -> Write -> Rail -> Page`. It does not create permission,
-provider access, an action, or implementation authority by naming those stages.
+`Human -> Read -> Brain -> Trust Compass -> Write -> Rail -> Page`. In that taxonomy, Trust Compass
+names the intended governance experience; it does **not** describe today's authoritative runtime.
+Until a server-persisted Compass contract exists, the server action-risk policy plus the
+confirmation/approval gate is the clamp. No runtime or document may claim “Compass evaluated” merely
+because a dial, lane, label, or in-memory preference rendered. Naming a stage creates no permission,
+provider access, action, or implementation authority.
 
 ---
 
@@ -84,7 +113,7 @@ error.
 |---|---|---|
 | **Feature/domain workstream** | Domain UI, domain data, tenant-safe server contract, safe event/evidence manifest, domain action implementation, and safe domain outcome shape. | Chat core, Mind central resolver, Trust Compass policy, Rail core writer/schema, Systems Check core logic, or the shared executor. |
 | **Designated PAIGE Chat workstream** | The bounded Chat read/write adapter or tool, tenant/client scope, approval treatment, governed invocation, and final user-visible Chat behavior. It closes the authenticated Chat capability end to end. | Rewriting the domain's source of truth or bypassing the domain server contract. |
-| **Designated shared-Spine owner(s)** | Central interfaces and policy for Mind resolution, Trust Compass, Rail core, Systems Check core, and shared execution. They accept or reject precise Spine Change Requests and protect cross-domain invariants. | Quietly absorbing domain truth, provider payloads, or feature-specific business logic into a shared core. |
+| **Designated shared-Spine owner(s)** | Central interfaces and policy for Mind resolution, the future server-persisted Compass contract, Rail core, Systems Check core, the centralized registry/action-risk policy, and shared execution. They accept or reject precise Spine Change Requests and protect cross-domain invariants. | Quietly absorbing domain truth, provider payloads, or feature-specific business logic into a shared core. |
 
 Feature/domain agents must **not** directly wire, fork, or rewrite:
 
@@ -95,14 +124,39 @@ Feature/domain agents must **not** directly wire, fork, or rewrite:
 - Systems Check core logic; or
 - the shared executor.
 
-Existing interfaces may be consumed exactly as contracted. If a required interface is missing, the
-feature/domain workstream files a **Spine Change Request** for the designated shared owner; it does
-not invent a parallel writer, private resolver, local approval system, second chat, or shadow
+Existing stable interfaces are the normal path: the domain registers its evidence/action/outcome
+contract within the schema, and the PAIGE Chat workstream completes the bounded binding. A **Spine
+Change Request** is required only when the capability needs a genuinely new shared primitive or a
+schema change. It is not required for ordinary registration within the stable schema. No workstream
+may invent a parallel writer, private resolver, local approval system, second chat, or shadow
 executor.
 
 ---
 
-## 4. Read and action are separate capabilities
+## 4. The Spine registry is code-enforced, not a documentation list
+
+The stable registry/policy is the common self-service integration contract. Within its schema, a
+domain registers its capability key, safe evidence contract, tenant/client scope resolver, action
+risk/approval treatment when applicable, and safe outcome contract. The domain does not need a Spine
+Change Request to add a normal entry. The designated PAIGE Chat workstream then supplies the final
+bounded adapter/tool binding and user-visible behavior.
+
+The registry must be enforced at runtime and in CI. CI must fail when a change:
+
+- adds a direct or hard-wired PAIGE Chat read tool or action outside the centralized registry;
+- adds a mutation/action branch with no centralized server action-risk-policy entry;
+- creates a competing confirmation, approval, autonomy, or execution channel outside the
+  centralized policy/gate; or
+- bypasses the registered tenant/client scope, domain server contract, or safe outcome path.
+
+Documentation, comments, a hand-maintained second list, or a ratchet that merely prevents an existing
+gap from growing does not satisfy this contract. The current `MUTATING_TOOLS` / catalogue arrangement
+and `lint:tool-catalogue` ratchet are **PARTIAL** foundations; the unified registry and hard-fail CI
+coverage remain owed and must be grounded in their own implementation workstream.
+
+---
+
+## 5. Read and action are separate capabilities; current authority is server-side
 
 Publishing safe evidence does not authorize an action. Registering an action does not make it
 autonomous. Recording an outcome does not prove the action was authorized or successful.
@@ -111,19 +165,24 @@ For every governed domain action:
 
 - the server re-resolves tenant/account/client scope and the active actor;
 - the domain authorization contract establishes the caller's maximum permission;
-- Trust Compass may restrict that maximum to observe, prepare, ask for confirmation, or act;
-- **Trust Compass can never elevate permission** beyond the domain authorization contract;
-- approval treatment is capability-specific and explicit;
+- the centralized server action-risk policy determines whether the action is off, may run, or must
+  enter the confirmation/approval gate;
+- approval treatment is capability-specific, explicit, and enforced before the side effect;
 - execution is bounded, attributable, idempotent where external effects are possible, recoverable,
   and fail-closed; and
 - the final outcome is normalized safely for Rail and the owning human surface.
+
+**Trust Compass does not currently evaluate or authorize the action.** Its UI is non-authoritative
+today. A future server-persisted Compass contract may further restrict the already-authorized domain
+action, but it may never elevate the domain permission ceiling or bypass the server action-risk and
+approval gates.
 
 Custom job titles and responsibilities are descriptive context only. They never grant, widen, or
 substitute for `role`, `is_owner`, RLS, server authorization, or capability approval.
 
 ---
 
-## 5. Required Spine declaration on every feature assignment
+## 6. Required Spine declaration on every feature assignment
 
 Every new feature assignment must contain this declaration before implementation begins:
 
@@ -139,9 +198,10 @@ Registers a governed action: YES / NO — capability and approval treatment, or 
 Emits an attributable outcome: YES / NO — safe outcome/reference, or reason
 No Spine obligation: YES / NO — evidence-backed reason; cannot be selected with a YES above
 
+Stable registry entry/entries:
 Current maturity: LIVE / PARTIAL / UNAVAILABLE
 Authenticated behavior: VERIFIED / UNVERIFIED
-Spine Change Request needed: NONE / identifier + designated owner
+Spine Change Request for a NEW shared primitive/schema: NONE / identifier + designated owner
 ```
 
 The declaration may assign later delivery to the Chat/shared workstreams; it may not silently turn an
@@ -153,7 +213,11 @@ or “someone later” is not an owner.
 
 ---
 
-## 6. Spine Change Request — the only path for a missing shared interface
+## 7. Spine Change Request — only for a new shared primitive or schema
+
+Ordinary registration within the stable Spine schema is self-service and does not need a change
+request. File one only when the stable contract cannot express the required safe evidence, scope,
+action-risk/approval, outcome, or shared execution primitive without changing a shared interface.
 
 A precise Spine Change Request states:
 
@@ -161,7 +225,7 @@ A precise Spine Change Request states:
 2. the missing shared interface and its designated owner;
 3. the safe evidence/action/outcome contract needed — normalized fields, never raw samples;
 4. tenant/account/client scope and active-user visibility rules;
-5. permission ceiling, Trust Compass restriction, and approval treatment;
+5. permission ceiling, server action-risk policy, and confirmation/approval treatment;
 6. expected Rail outcome/provenance and the human page that owns intervention;
 7. known producers, consumers, collisions, migration/backfill implications, and failure behavior;
 8. current implementation maturity and exact `UNVERIFIED` limits; and
@@ -173,7 +237,7 @@ read/write behavior.
 
 ---
 
-## 7. Completion and evidence
+## 8. Completion and evidence
 
 A domain can claim **Spine-complete** only when every declared leg is proven at its actual boundary:
 
@@ -181,7 +245,8 @@ A domain can claim **Spine-complete** only when every declared leg is proven at 
 - Mind and PAIGE Chat return only evidence the authenticated user may access;
 - account/client switching cannot retain the prior scope;
 - missing, stale, partial, denied, retry, abandonment, and recovery states are truthful;
-- any action respects the domain permission ceiling plus Trust Compass restriction and approval;
+- any action respects the domain permission ceiling, centralized server action-risk policy, and
+  confirmation/approval gate;
 - the outcome is attributable and reaches the intended Rail/page consumer without raw content; and
 - authenticated end-to-end behavior is verified for each claimed capability.
 
@@ -191,7 +256,21 @@ authenticated capability.
 
 ---
 
-## 8. Relationship to existing contracts
+## 9. Incremental adoption — no big-bang rewrite
+
+- **All new capabilities follow this standard now.** Their assignment declares the Spine legs and
+  owners before implementation, and ordinary cases register within the stable schema.
+- **Existing direct couplings migrate one at a time behind existing seams.** Each bounded migration
+  preserves behavior and authorization unless its separately approved scope says otherwise, adds the
+  registry/policy binding, and removes the superseded direct coupling only after verification.
+- Do not pause unrelated active work, prescribe a platform-wide refactor, or create a migration flag
+  day. File and sequence concrete debt from the grounding audit without widening it.
+- A legacy direct path remains truth-labeled `PARTIAL` / `UNVERIFIED` until migrated; its existence is
+  not permission to copy the pattern into a new capability.
+
+---
+
+## 10. Relationship to existing contracts
 
 - `docs/brain/paige-brain-wiring-standard.md` is the runtime-brain coverage ledger and implementation
   checklist. This document governs the cross-workstream ownership split and the broader evidence ->

@@ -10,8 +10,9 @@
 
 This is the Solo Connections/A2P domain specialization under
 `docs/brain/paige-spine-integration-standard.md`. Feature owners keep the domain contract and safe
-evidence manifest; missing Mind, Chat, Trust, Rail-core, Systems Check, or shared-executor interfaces
-go to their designated owners as Spine Change Requests rather than direct shared-core edits.
+evidence manifest and use the stable Spine registry for ordinary integration. Only a genuinely new
+shared primitive/schema becomes a Spine Change Request. The PAIGE Chat workstream completes the final
+binding; feature owners do not make direct shared-core edits.
 
 Paige Agent AI is building toward full governed autonomy across the Solo account. Everything
 below exists so that ambition is served by the foundation that already ships, rather than by a

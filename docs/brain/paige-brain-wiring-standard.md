@@ -94,14 +94,19 @@ has no Spine obligation. For any declared Spine leg, completion is coordinated a
       also defines the safe evidence/action/outcome manifest. This does not authorize editing a
       central resolver, shared writer, or executor.
 - [ ] **3a. EVIDENCE / CONTEXT (Layer A) — does she need to KNOW it unprompted?** The domain owner
-      publishes the safe evidence contract. If it must join a central context composer, the
-      Mind/shared-Spine owner wires the resolver from a precise Spine Change Request, using a real
-      scoped read with an honest "not available" fallback.
+      publishes the safe evidence contract and registers it within the stable Spine schema. The
+      Mind/shared-Spine owner maintains the central resolver; a Spine Change Request is needed only
+      if the domain requires a new shared primitive/schema, not for ordinary registration. Reads use
+      real scoped records with an honest "not available" fallback.
 - [ ] **3b. CHAT READ / WRITE (Layer D) — does she need to QUERY or ACT on it?** The designated PAIGE
       Chat workstream completes the bounded adapter/tool, tenant/client scope, approval treatment,
       governed invocation, and final Chat behavior. It registers the correct `TOOL_SCOPE` and tier
       (`MASTER_ONLY_TOOLS` / `AGENCY_TOOLS` / default). A feature agent supplies the domain contract;
       it does **not** wire or rewrite Chat core itself.
+- [ ] **3c. REGISTRY + CI — is the binding mechanically enforced?** A new capability uses the
+      centralized registry/policy. CI rejects direct/hard-wired Chat tools/actions and competing
+      approval channels. The current catalogue ratchet is `PARTIAL`; do not call that final contract
+      complete until the unified hard-fail guard is implemented and proven.
 - [ ] **4. Tier availability declared** via `getTierFeatureSet()` / `hasFeature()` (§60), never an
       inline `account_type ===` compare. `lint:tier-features` enforces this.
 - [ ] **5. Honest when it cannot answer (§13).** A tool that has no substrate returns a stated gap —

@@ -38,8 +38,9 @@ Every paste Cowork produces for CC or Codex includes the line:
 
 Every new feature assignment also includes the `PAIGE SPINE DECLARATION` from
 `docs/brain/paige-spine-integration-standard.md`: evidence/action/outcome/no-obligation plus named
-domain, PAIGE Chat, and shared-Spine owners. A missing shared interface is a Spine Change Request,
-not authority for the feature workstream to alter shared cores.
+domain, PAIGE Chat, and shared-Spine owners. Ordinary capabilities self-register within the stable
+schema; only a new shared primitive/schema is a Spine Change Request. Neither path authorizes a
+feature workstream to alter shared cores.
 
 ---
 
@@ -124,9 +125,15 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 **Canonical:** `docs/brain/paige-spine-integration-standard.md`. The Spine is the platform-wide safe
 path from tenant/client domain event to structured Mind/PAIGE Chat evidence, a governed action when
 separately authorized, and an attributable Rail outcome. Rail is part of the Spine, not the whole
-architecture. Feature/domain, designated PAIGE Chat, and shared-Spine ownership is explicit; Trust
-may restrict but never elevate domain permission. Platform implementation remains **PARTIAL** and
-must be verified per domain — the standard itself is not a shipped-adapter claim.
+architecture. **Today the server action-risk policy plus confirmation/approval gate is authoritative;
+the Compass UI is non-authoritative/in-memory or derived and does not evaluate actions or
+permissions.** The required registry is code-enforced with CI rejecting direct/hard-wired Chat
+tools/actions and competing approval channels; current source is only a `PARTIAL` foundation (52
+runtime-gated / 29 catalogued / 23 governed-but-invisible at the 2026-09-01 audit). Normal domains
+self-register; only new shared primitives/schemas need a Spine Change Request. Adoption is
+incremental — all new capabilities comply now, while legacy direct couplings migrate one at a time
+without pausing unrelated work. Deployed persistence and authenticated behavior remain `UNVERIFIED`
+in this documentation pass.
 
 ### Security cluster (`docs/security/DOCTRINE_*.md`)
 
@@ -1183,8 +1190,9 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 ### Second Brain architecture standards (`docs/brain/`)
 
 - PAIGE Spine Integration Standard — `paige-spine-integration-standard.md` (owner-approved safe
-  integration architecture; assignment declaration; domain/Chat/shared ownership; Spine Change
-  Requests; platform implementation `PARTIAL`)
+  integration architecture; assignment declaration; domain/Chat/shared ownership; code-enforced
+  registry/CI requirement; self-service registration; new-primitive-only Spine Change Requests;
+  incremental adoption; platform implementation `PARTIAL`)
 - Primary-brain wiring standard — `paige-brain-wiring-standard.md` (runtime context/tool coverage
   ledger; subordinate to the Spine ownership boundary)
 
