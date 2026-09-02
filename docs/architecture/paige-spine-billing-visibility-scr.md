@@ -379,16 +379,19 @@ answer (§70).
 
 **The routed handoffs**, each to the workstream that owns it, none absorbed into this request:
 
-| Handoff | Owner | Carries |
-|---|---|---|
-| B-1 … B-5 | Billing | §4 |
-| SCR-1 (workspace-level outcome projection) | Rail / Spine foundation | §1a, §6 |
-| The billing Rail vocabulary | Rail | §6, gated on SCR-1 |
-| The billing Mind projection | Mind | §7, gated on the Rail carrying real evidence |
-| A platform-billing and notification-readiness check | Systems Check | §8 |
-| Solo Settings → Notifications cleanup | Solo Shell | §8 |
-| Client consent and delivery preferences | Client Portal | §8 |
-| The revenue-classification visibility decision | Owner, with Billing | §9 |
+| Handoff | Owner | Issue | Carries |
+|---|---|---|---|
+| B-1 … B-5 source contracts | Billing | **#819** | §4 |
+| SCR-1 (workspace-level outcome projection) | Rail / Spine foundation | **#820** | §1a, §6 |
+| The billing Rail vocabulary | Rail | **#820** | §6, gated on SCR-1 |
+| The billing Mind projection | Mind | **#821** | §7, gated on the Rail carrying real evidence |
+| A platform-billing and notification-readiness check | Systems Check | **#822** | §8 |
+| Solo Settings → Notifications cleanup | Solo Shell | **#822** | §8 |
+| Client consent and delivery preferences | Client Portal | **#823** | §8 |
+| The revenue-classification visibility decision | Owner, with Billing | **#819** (B-3) | §9 |
+
+Each is filed against the workstream that owns it, with the exact contract it owes and the reason
+it is blocked. None of them is work this request does on their behalf.
 
 **And the two this request raises for the Spine itself:** SCR-2026-09-02-B (a workspace subject
 type) and SCR-2026-09-02-C (a record/list evidence shape). Both are shared-primitive changes. Both
