@@ -131,11 +131,13 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
-### Solo Settings → Setup — the visible-scroll policy (Gate 1 approved 2026-09-02; draft PR, NOT LIVE)
+### Solo Settings → Setup — the visible-scroll policy (LIVE on production; merged 2026-09-02)
 
-**Status: implemented on a branch, verified structurally, awaiting Gate 2. Not merged, not
-deployed.** Recorded here per §0 because it changes an owner-facing Solo capability **and the
-official Settings UI policy**, which is answered from this file.
+**Status: MERGED to `main` and deployed.** Gate 1 approved 2026-09-02; Gate 2 approved on exact
+head `77d94c66`; merged as `1d189155` (PR #751). Recorded here per §0 because it changes an
+owner-facing Solo capability **and the official Settings UI policy**, which is answered from this
+file. **The authenticated owner browser proof below is still `UNVERIFIED` — shipping did not
+satisfy it.**
 
 **The owner-facing change.** Solo Settings → Setup now draws a visible, draggable main-content
 scrollbar. Before this, it rendered 3,973–4,174px of business brief into a 702–934px host at every
@@ -190,7 +192,11 @@ directions, one scroll owner, no horizontal overflow. Locked surfaces stay `over
 
 **`UNVERIFIED`, and not claimed: authenticated owner browser proof.** No leg has been driven signed
 in on the live platform. A reproduced-shell drive with a synthetic transport is structural evidence,
-never authenticated proof. **Do not merge or deploy without the separate exact-head Gate 2 approval.**
+never authenticated proof — and the merge did not change that. **This is the one thing still owed on
+this change**: sign in as a Solo owner → Settings → Setup → confirm a scrollbar is visible on arrival
+at a laptop height → drag it to the bottom → confirm *How Paige uses it* is reachable → Tab from the
+top and confirm focus stays on screen to the last control → open and fold PAIGE and confirm position
+and keyboard path survive → repeat on a second Solo tenant.
 
 Records: `docs/brain/decision-log.md` (2026-09-02) · `docs/doctrine/surface-cards/setup.md` (the
 department card, carried by PR #731) · `docs/brain/solo-settings-scroll-and-release-playbook.md`
@@ -1395,6 +1401,7 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 
 - Before ANY claim about the codebase (what exists, what's wired, what's shipped): grep first, check Section 4 second, memory NEVER
 - Before ANY paste that references a table/function/file: verify it exists
+- **A finding discovered outside the current assignment's scope becomes a GitHub issue immediately, and is not started.** GitHub Issues are the authoritative individual work records; the PAIGE Attention Register is the one owner-facing view over them. This doc holds material platform truth — its legacy in-file ledger (Section 6) is not extended, and a new finding goes to Issues, never here. The standard — the five records, the register's nine fields and six views, the live lists that already exist, and the honest record that the register's board does not exist yet — is `docs/doctrine/paige-attention-register.md`.
 - **CC's code check is authoritative** — Cowork's sandbox agents can miss recently-shipped migrations or files; when CC disagrees with Section 4 or Section 10, CC's finding wins
 
 ### Session end (any agent that shipped work)

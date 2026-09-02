@@ -26,6 +26,7 @@ Paige-specific half. It is our own content and adds to flow-by-flow rather than 
 |---|---|
 | `docs/brain/README.md` | **Always.** The index and the verified platform snapshot |
 | `docs/brain/config-registry.md` | Anything touching infra or a third-party seam — Supabase, Stripe, Twilio, ElevenLabs, CI, MCP |
+| `docs/doctrine/paige-attention-register.md` | Any task likely to surface a finding outside its own scope — where such a finding goes, and what is already recorded |
 | The domain doc the README points at | Whatever area the task is in |
 | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 | Any "do we have this?" question — §4 is SHIPPED, §5 is gaps |
 | `docs/doctrine/tier-matrix.md` | Anything whose visibility or gating differs per account type |
@@ -75,6 +76,7 @@ The last step of the work, **in the same change**. Not a follow-up.
 | A reusable pattern or skill emerged | The mechanic, so the next task inherits it | `docs/brain/` + its index row in `README.md` |
 | Tier, surface, or gating changed | The per-tier reality **as shipped** | `docs/doctrine/tier-matrix.md` |
 | A new doc was added | Its index row | `docs/brain/README.md` |
+| A finding was discovered **outside this task's scope** | The issue — evidence, impact, next step, what was not verified — filed **when it was found**, not here | GitHub Issues. The PAIGE Attention Register is a view over them and is `UNAVAILABLE` until its board exists — `docs/doctrine/paige-attention-register.md` §7 |
 
 What binds which: **§0** the master reference · **§BRAIN.3** `docs/brain/` · **§66** the tier matrix ·
 **§13** record what is real, never what a commit intends · **§58** never delete a dated entry to fix
@@ -107,7 +109,27 @@ on the same section, a scope boundary the owner set, an answer that is not yours
 "I'll do it later" is not a handoff. A handoff missing any of the four is an omission wearing a
 plan's clothes.
 
-**Do not modify the installed `flow-by-flow` skill to carry this.** That skill is installed per
+### The record that is not a closeout — a finding you are not fixing
+
+The closeout rule above covers what this task **changed**. It does not cover what this task
+**found**. Those are different obligations and only one of them is discharged by updating a doc.
+
+A finding outside the current assignment's scope is written to a GitHub issue **when it is found**,
+not at the end, and it is not started, not branched, and not absorbed into the open diff. The issue
+is the record; the PAIGE Attention Register is the owner-facing view over it; this brain is where the
+*lesson* goes, never the backlog. The standard, including what each of the five records is for, is
+`docs/doctrine/paige-attention-register.md`.
+
+**A finding parked in a task list, a PR body, or this conversation is not parked — it is lost.**
+Each of those homes disappears without anyone noticing: agent task lists die with the session, PR
+bodies are read once at merge, and a transcript is compacted. That is the entire reason the register
+exists, and it is why "I noted it" is not a discharge of this step.
+
+A finding that touches tenant isolation, unauthorized access, secrets, destructive writes, or unsafe
+external action is reported immediately and may block the release. It is still not silently absorbed
+into the branch.
+
+**Do not modify the installed `flow-by-flow` skill to carry any of the rules above.** That skill is installed per
 account and cannot see this repository; editing it would put a repo-specific rule somewhere this
 repo does not control and cannot review. This file is the repo-native home — the same reason it
 exists at all.
@@ -154,6 +176,9 @@ step, and only one of those is honest.
   not having looked.
 - How the sweep was narrowed, if at all — and what reading the omissions showed.
 - That no secret value was written.
+- **Every finding this task discovered outside its own scope, and the issue number each one now
+  has** — or the explicit statement that it found none. "Noted for later" is a `FAIL`: it names no
+  record anyone else can reach.
 - **Whether `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` needed updating, and if so that it was** — or
   the four-part collision-safe handoff, in full. A gate that reports only the brain is incomplete.
 
