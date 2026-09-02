@@ -104,7 +104,12 @@
  * with another pattern: the durable fix is not a longer list here, it is routing mutating MCP tools
  * through the governed seam (#784), where the classification is the authority instead of the shape.
  *
- * ESCAPE HATCH: `// mcp-confirm-exempt: <reason>` inside the block — deliberate and explained.
+ * NO ESCAPE HATCH, deliberately. There was one, and review picked it SIX different ways: a plain
+ * string, a template tail, JSX text, a comment belonging to the PRECEDING statement, a block comment
+ * merely EXPLAINING the marker, and an inner tool's exemption covering the outer one it was nested
+ * in. It was also entirely UNUSED — zero occurrences across the surfaces. A hatch nobody opens that
+ * six people can pick is not a feature. A genuine exception now edits THIS FILE: visible in a diff,
+ * reviewed, and impossible to write by accident.
  *
  *   node scripts/ci/mcp-destructive-confirm-lint.mjs
  *   node scripts/ci/mcp-destructive-confirm-lint.mjs --self-test
@@ -123,107 +128,13 @@ function mcpSources() {
     .filter((p) => fs.existsSync(p));
 }
 
-/**
- * An exemption is a LINE comment that STARTS with the marker — anchored, deliberately.
- *
- * Unanchored, a block comment EXPLAINING the marker exempted the registration:
- * `/* syntax: // mcp-confirm-exempt: example *\/`. The token-overlap test cannot catch that and
- * should not try — the text genuinely IS a comment. What it is not is an exemption. Anchoring at
- * `^//` excludes block comments (their text starts `/*`) and requires the marker to be the
- * comment's whole purpose rather than something mentioned inside it. Tested per comment, never
- * against a joined blob, so one comment cannot lend its prefix to another.
- */
-const EXEMPT = /^\/\/\s*mcp-confirm-exempt:\s*\S/;
 
-/**
- * Comment text inside a node — read from real COMMENT TRIVIA, never from the node's source text.
- *
- * Matching the exemption pattern against raw block text meant any string could carry it: putting
- * `// mcp-confirm-exempt: whatever` inside a tool's own `description` exempted a destructive
- * handler with a model-settable boolean, and the guard reported zero violations. An escape hatch
- * that a data field can open is not an escape hatch, it is a bypass.
- *
- * The scanner is asked for comments directly, so a marker in a string, a template or a regex is
- * simply not a comment and cannot exempt anything.
- */
-function commentsWithin(node, sf) {
-  // `getStart(sf)`, NOT `pos`. A node's `pos` is its FULL start, which includes the leading trivia
-  // that belongs to whatever came before it — so `foo(); // mcp-confirm-exempt: unrelated` on the
-  // line above a registration was read as that registration's own exemption, and a destructive
-  // boolean-gated tool passed while its block contained no exemption at all. An exemption has to be
-  // written INSIDE the thing it exempts; a comment about the previous statement is not consent.
-  return collectComments(sf, node.getStart(sf), node.end);
-}
 
 /**
  * Every LEAF token's span, cached per source file. A comment cannot overlap a token — that is what
  * makes it trivia — so the parser's own token spans are the ground truth for validating a
  * candidate comment range, whatever produced it.
  */
-/** Every leaf token, punctuation included — `getChildren`, not `forEachChild`. */
-function eachLeaf(node, sf, fn) {
-  const kids = node.getChildren(sf);
-  if (kids.length === 0) { fn(node); return; }
-  for (const k of kids) eachLeaf(k, sf, fn);
-}
-
-const leafSpansCache = new WeakMap();
-function leafSpans(sf) {
-  let spans = leafSpansCache.get(sf);
-  if (spans) return spans;
-  spans = [];
-  // getChildren, NOT forEachChild: punctuation is a real token and a real comment anchor.
-  // `inputSchema: …, // exempt` hangs off the COMMA, which forEachChild never visits.
-  eachLeaf(sf, sf, (n) => spans.push([n.getStart(sf), n.end]));
-  spans.sort((a, b) => a[0] - b[0]);
-  leafSpansCache.set(sf, spans);
-  return spans;
-}
-
-/** Does this candidate range collide with a real token? Then it is token TEXT, not a comment. */
-function overlapsToken(spans, pos, end) {
-  let lo = 0, hi = spans.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const [s0, e0] = spans[mid];
-    if (e0 <= pos) lo = mid + 1;
-    else if (s0 >= end) hi = mid - 1;
-    else return true;
-  }
-  return false;
-}
-
-/**
- * Comments between `from` and `to`, validated against the parser's token spans.
- *
- * Three attempts got here, and the first two were guesses about where text can hide:
- *   1. a raw regex over block text  -> a plain string exempted a destructive tool
- *   2. a standalone scanner         -> a template tail did, lacking the parser's rescan
- * The third is a PROPERTY rather than a position: a comment cannot overlap a token. Candidates come
- * from both the leading and trailing scans — leading-only is not enough, because
- * `getLeadingCommentRanges` deliberately excludes a same-line trailing comment and dropping
- * trailing scans breaks the legitimate `code(); // exempt` form — and each is then checked against
- * real tokens. A template tail, a string body and JSX text are all tokens; nothing inside one
- * survives, however it was produced.
- */
-function collectComments(sf, from, to) {
-  const full = sf.getFullText();
-  const spans = leafSpans(sf);
-  const seen = new Map();
-  const add = (ranges) => {
-    for (const r of ranges || []) {
-      if (r.pos < from || r.end > to) continue;
-      if (overlapsToken(spans, r.pos, r.end)) continue;
-      seen.set(r.pos, full.slice(r.pos, r.end));
-    }
-  };
-  eachLeaf(sf, sf, (n) => {
-    if (n.end < from || n.pos > to) return;
-    add(ts.getLeadingCommentRanges(full, n.pos));
-    add(ts.getTrailingCommentRanges(full, n.end));
-  });
-  return [...seen.values()];
-}
 
 function walk(node, visit) {
   visit(node);
@@ -272,7 +183,6 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
       config: configArg && ts.isObjectLiteralExpression(configArg) && readableConfig(configArg)
         ? configArg : null,
       text: node.getFullText(sf),
-      comments: commentsWithin(node, sf),      // bounded to the call's own syntax, not its trivia
       line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
     });
   });
@@ -571,7 +481,6 @@ export function findViolations(src, file = "<memory>") {
   const out = [];
   const scopes = destructiveScopes(src, file);
   for (const tool of findToolCalls(src, file)) {
-    if (tool.comments.some((c) => EXEMPT.test(c))) continue;
     if (!tool.config) continue;           // reported separately as unanalysable
     const handler = prop(tool.config, "handler");
     const schema = prop(tool.config, "inputSchema");
@@ -801,28 +710,6 @@ mcp.tool(NAME, {
   check("passes a boolean on a NON-destructive tool", v(`
 mcp.tool("list_things", { inputSchema: z.object({ include_archived: z.boolean() }),
   handler: async () => ok({ rows: [] }) });`), 0);
-  check("an exemption marker in a STRING does not exempt (Codex)", v(`
-mcp.tool("fake_exempt", {
-  description: "// mcp-confirm-exempt: not a real comment",
-  inputSchema: z.object({ confirm: z.boolean() }),
-  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
-});`), 1);
-  check("a marker after an INTERPOLATION does not exempt (Codex)", v(`
-mcp.tool("tmpl_exempt", {
-  description: \`\${v} // mcp-confirm-exempt: fake\`,
-  inputSchema: z.object({ confirm: z.boolean() }),
-  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
-});`), 1);
-  check("an exemption marker in a TEMPLATE literal does not exempt", v(`
-mcp.tool("fake_exempt2", {
-  description: \`// mcp-confirm-exempt: still not a comment\`,
-  inputSchema: z.object({ confirm: z.boolean() }),
-  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); },
-});`), 1);
-  check("respects an explained exemption", v(`
-mcp.tool("x", { inputSchema: z.object({ confirm: z.boolean() }),
-  // mcp-confirm-exempt: server re-validates a single-use claim before this runs
-  handler: async ({ confirm }) => { if (confirm) await admin.from("clients").delete(); return ok({}); } });`), 0);
   check("finds every tool in a file with prose braces", findToolCalls(`
 mcp.tool("a", { description: "a } brace and a { brace", handler: async () => ok({}) });
 mcp.tool("b", { handler: async () => ok({}) });`).length, 2);
@@ -846,9 +733,7 @@ for (const file of sources) {
   const src = fs.readFileSync(file, "utf8");
   const calls = findToolCalls(src, file);
   tools += calls.length;
-  for (const c of calls) {
-    if (!c.config && !c.comments.some((x) => EXEMPT.test(x))) unanalysable.push({ file, ...c });
-  }
+  for (const c of calls) if (!c.config) unanalysable.push({ file, ...c });
   violations = violations.concat(findViolations(src, file));
 }
 
@@ -880,7 +765,9 @@ if (violations.length) {
   console.error("  classified in _shared/action-risk.ts and routed through the shared governed Spine");
   console.error("  execution seam. Do NOT invent an approval channel here — that is the Chat build's");
   console.error("  decision, and a second channel is the failure the doctrine exists to stop.");
-  console.error("\n  Genuine exception: mark the line `// mcp-confirm-exempt: <reason>` inside the block.");
+  console.error("\n  There is no comment-based exemption. A genuine exception edits this guard, which is");
+  console.error("  visible in a diff and reviewed — the comment marker was removed after review picked");
+  console.error("  it six different ways while nothing in the codebase ever used it.");
   process.exit(1);
 }
 
