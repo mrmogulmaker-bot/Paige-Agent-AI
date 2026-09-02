@@ -27,17 +27,32 @@
  *   node scripts/ci/chat-tool-registry-lint.mjs --self-test
  */
 import fs from "node:fs";
-import { PAIGE_SPINE_CAPABILITIES } from "../../supabase/functions/_shared/paige-spine/registry.ts";
+import { dirname, resolve } from "node:path";
 
 const HANDLER = "supabase/functions/paige-ai-chat/index.ts";
 const BASELINE = "scripts/ci/chat-tool-baseline.txt";
 const REGISTRY = "supabase/functions/_shared/paige-spine/registry.ts";
-const registeredChatTools = new Map(
-  PAIGE_SPINE_CAPABILITIES
-    .filter((capability) => capability.action?.chatTool)
-    .map((capability) => [capability.action.chatTool, capability.key]),
-);
-
+/**
+ * Follow the canonical registry domain imports without executing Deno or TypeScript modules.
+ * Main CI intentionally runs Node 20, while the Spine contract validates the executable
+ * registry under Node 24. This source lens keeps the direct Chat guard compatible with both
+ * runners and fails closed if the registry no longer exposes inspectable domain declarations.
+ */
+export function registeredChatToolsFromSources(registrySource, readDomainSource) {
+  const imports = [...registrySource.matchAll(/from\s+["'](\.\/domains\/[^"']+\.ts)["']/g)].map((match) => match[1]);
+  if (!imports.length) throw new Error("canonical Spine registry exposes no domain declaration imports");
+  const tools = new Map();
+  for (const imported of imports) {
+    const source = readDomainSource(imported);
+    const blocks = source.split(/(?=export\s+const\s+[A-Z0-9_]+\s*=)/g);
+    for (const block of blocks) {
+      const key = block.match(/\bkey:\s*["']([^"']+)["']/)?.[1];
+      const chatTool = block.match(/\bchatTool:\s*["']([a-z0-9_]+)["']/)?.[1];
+      if (key && chatTool) tools.set(chatTool, key);
+    }
+  }
+  return tools;
+}
 /** A tool declaration is `name: "snake_case",` alone on its line inside the tools array. */
 export function declaredTools(source) {
   return [...source.matchAll(/^\s*name: "([a-z0-9_]+)",\s*$/gm)].map((m) => m[1]);
@@ -68,6 +83,10 @@ if (process.argv.includes("--self-test")) {
     if (got.added.length === want.added && got.removed.length === want.removed) console.log(`  ok   ${label}`);
     else { console.log(`  FAIL ${label} — expected ${JSON.stringify(want)}, got added=${JSON.stringify(got.added)} removed=${JSON.stringify(got.removed)}`); bad++; }
   }
+  const syntheticRegistry = 'import { EXAMPLE } from "./domains/example.ts";';
+  const syntheticTools = registeredChatToolsFromSources(syntheticRegistry, () => 'export const EXAMPLE = { key: "example.write", action: { chatTool: "example_write" } };');
+  if (syntheticTools.get("example_write") === "example.write") console.log("  ok   follows canonical registry domain imports without executing TypeScript");
+  else { console.log("  FAIL canonical registry source lens did not resolve the declared Chat tool"); bad++; }
   console.log(bad ? `\n✗ chat-tool-registry-lint self-test: ${bad} failure(s).` : "\n✓ chat-tool-registry-lint self-test passed.");
   process.exit(bad ? 1 : 0);
 }
@@ -85,6 +104,16 @@ if (!declared.length) {
 }
 const baseline = fs.readFileSync(BASELINE, "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
 const { added, removed } = compare(declared, baseline);
+let registeredChatTools;
+try {
+  registeredChatTools = registeredChatToolsFromSources(
+    fs.readFileSync(REGISTRY, "utf8"),
+    (imported) => fs.readFileSync(resolve(dirname(REGISTRY), imported), "utf8"),
+  );
+} catch (error) {
+  console.log(`✗ chat-tool-registry-lint: canonical Spine registry could not be inspected — ${error?.message ?? error}`);
+  process.exit(1);
+}
 
 if (added.length) {
   console.log(`✗ chat-tool-registry-lint: ${added.length} tool(s) hand-wired into the Chat handler.\n`);

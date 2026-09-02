@@ -77,7 +77,8 @@ describe("PAIGE Spine Chat binding", () => {
   it("keeps future domain additions self-service while shared changes stay governed", () => {
     const guard = readFileSync("scripts/ci/chat-tool-registry-lint.mjs", "utf8");
     const doctrine = readFileSync("docs/architecture/paige-spine-foundation.md", "utf8");
-    expect(guard).toContain("PAIGE_SPINE_CAPABILITIES");
+    expect(guard).toContain("registeredChatToolsFromSources");
+    expect(guard).toContain('const REGISTRY = "supabase/functions/_shared/paige-spine/registry.ts"');
     expect(guard).not.toContain("There is no Spine registry in this repository yet");
     expect(doctrine).toContain("Domain self-service lane");
     expect(doctrine).toContain("Shared-contract lane");
