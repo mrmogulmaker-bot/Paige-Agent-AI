@@ -22,7 +22,7 @@ The registry fails closed at import and in CI. A mutable or external-effect capa
 
 The `tenant_id`, signal UUID, and opaque `rail:` references in the contract are server-consumer scope/provenance evidence, not presentation copy. The 365-day value is a safe projection visibility window; source Rail retention remains independently domain-owned.
 
-This slice is `PARTIAL`: evidence is registered and the read-only Chat adapter has structural and targeted runtime proof, so the Chat binding is `PARTIAL`; authenticated preview proof is still required before `LIVE`. The Mind binding remains `UNAVAILABLE`. It intentionally registers no Pipeline mutation. Pipeline currently has domain-held move-approval semantics; a Chat-owned reconciliation is required before any mutation can join the Spine.
+This slice is `PARTIAL`: evidence is registered and the read-only Chat adapter has structural and targeted runtime proof, so the Chat binding is `PARTIAL`; authenticated preview proof is still required before `LIVE`. The **Mind binding is `PARTIAL`** as of 2026-09-02: `_shared/paige-spine/mindEvidence.ts` projects the same resolver result into a bounded, attributable Mind record — citation, freshness, read-only boundary — and Chat renders that projection rather than the raw signals, so the two cannot describe one record differently. That projection is deliberately the Pipeline domain's, NOT a platform-wide Mind primitive; generalising it so a second domain depends on its shape changes Mind-wide retrieval semantics and needs its own Spine Change Request. `LIVE` still requires the authenticated drive. See `docs/delivery/paige-spine-mind-handoff.md`. It intentionally registers no Pipeline mutation. Pipeline currently has domain-held move-approval semantics; a Chat-owned reconciliation is required before any mutation can join the Spine.
 
 ## Domain self-service
 
@@ -34,6 +34,26 @@ A domain owner may add its own declaration and safe adapter in a later immutable
 4. no shared registry schema, resolver semantics, approval authority, or Chat routing rule changes;
 5. the domain adds focused registry, SQL contract, real-role isolation, and regression tests;
 6. maturity stays truthful until authenticated end-to-end proof exists.
+
+## Approved Spine Change Requests
+
+### SCR-2026-09-02 — the Chat-facing block may carry the safe citation
+
+**Approved by the owner, 2026-09-02, at Gate 1.** The rendered Chat evidence block now names
+the opaque `rail:<uuid>` source reference and states the read-only boundary. The previous
+contract withheld the reference deliberately and a merged test asserted its absence, which is
+why this needed a request rather than an edit: `renderSpineEvidenceForChat` is the Chat
+adapter contract, a shared primitive.
+
+**Bound.** The `rail:` reference is the approved citation for this first Mind/Pipeline slice.
+It stays tenant-scoped, is non-dereferenceable outside authorized context, and reveals none
+of the forbidden raw fields. Nothing else widened: no registry schema, resolver semantics,
+safe-field set, lifecycle vocabulary, approval authority, projection-window meaning, shared
+store or event bus changed. Approval authority stays `none`; no Chat tool was registered.
+
+**Honest note.** The citation is `'rail:' || <Rail event id>`, so that record's UUID is inside
+it by construction. It is the one identifier permitted to cross; it names a record, not a
+person or a deal, and it is asserted to appear only inside the citation and never loose.
 
 ## Spine Change Request
 
