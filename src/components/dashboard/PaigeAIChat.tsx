@@ -357,7 +357,7 @@ const PaigeAIChatInner = ({
   // the tenant now keys on this, and there is one definition of "the scope changed" instead of
   // two that can disagree.
   //
-  // Surfaces that never focus a client (Solo, the operator desk) pass no `clientId`, so their
+  // Surfaces that never focus a client (the operator desk) pass no `clientId`, so their
   // epoch is `"<tenant>|"` and their behaviour is byte-for-byte what it was.
   const scopeEpoch = `${activeTenantId ?? ""}|${clientId ?? ""}`;
   // A refusal releases focus, which CHANGES this epoch, which resets the transcript — so a naive
@@ -660,6 +660,25 @@ const PaigeAIChatInner = ({
   // that empty pre-resolution render would strand the owner on a blank chat.
   useEffect(() => {
     if (!enableHistory || historyHydrated || !threadsApi.isFetched) return;
+    // A FOCUSED CLIENT STARTS ON A FRESH CONVERSATION, AND IS NEVER AUTO-RESUMED INTO ONE (#765).
+    //
+    // Focusing a client changes `scopeEpoch`, so the reset effect above nulls `hydratedFromRef`
+    // and clears `historyHydrated` — which un-gates this effect. Without this guard it resumed
+    // `threads[0]` and `selectThread` released the focus that had just been set, so on any
+    // account with a saved conversation the person lost their client before they could send a
+    // turn. It worked only on an account with NO saved thread, which is why it hid for so long.
+    //
+    // The release in `selectThread` is deliberately NOT weakened to fix this. The rail lists
+    // owner-level threads, so opening one really must drop a client focus — that transcript may
+    // be about someone else. What was wrong is treating hydration as if it were the person
+    // choosing. Skipping the resume is also the safer half of that pair: resuming while keeping
+    // the focus would carry another client's transcript into this client's context.
+    //
+    // Clearing the focus changes the epoch again, so the owner-level history resumes normally.
+    if (clientId) {
+      setHistoryHydrated(true);
+      return;
+    }
     // A controlled parent that already knows the thread wins over "resume the newest":
     // the other door has a selection, and guessing threads[0] here would fight it.
     if (isThreadControlled && controlledThreadId) {
@@ -670,7 +689,7 @@ const PaigeAIChatInner = ({
     if (latest) void selectThread(latest.id);
     setHistoryHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId]);
+  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId, clientId]);
 
   // CONTROLLED SYNC — the other half of "one thread, two doors". When the parent moves
   // the selection (the other door opened a thread, or created one on its first send),

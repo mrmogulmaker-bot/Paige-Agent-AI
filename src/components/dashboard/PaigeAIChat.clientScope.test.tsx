@@ -14,10 +14,17 @@
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 
-const harness = vi.hoisted(() => ({ tenantId: "account-a" as string | null }));
+const harness = vi.hoisted(() => ({
+  tenantId: "account-a" as string | null,
+  // An account's SAVED conversations. Defaulted empty so every pre-existing test in this
+  // file behaves exactly as before — and note that this default is precisely why #765 hid:
+  // with no saved thread there is nothing to auto-resume, so the defect cannot fire.
+  threads: [] as Array<{ id: string; title: string; updated_at: string }>,
+  loadTurns: vi.fn(async (_id: string): Promise<Array<{ role: string; content: string }>> => []),
+}));
 
 vi.mock("@tanstack/react-query", () => ({ useQuery: () => ({ data: null }) }));
 vi.mock("@/hooks/useTenantContext", () => ({
@@ -39,8 +46,8 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 vi.mock("@/hooks/usePaigeThreads", () => ({
   usePaigeThreads: () => ({
-    threads: [], isLoading: false, isFetched: true,
-    loadTurns: vi.fn(async () => []), ensureThread: vi.fn(async () => "thread-a"),
+    threads: harness.threads, isLoading: false, isFetched: true,
+    loadTurns: harness.loadTurns, ensureThread: vi.fn(async () => "thread-a"),
     onTurnPersisted: vi.fn(), renameThread: vi.fn(), archiveThread: vi.fn(), deleteThread: vi.fn(),
   }),
 }));
@@ -346,5 +353,140 @@ describe("PAIGE chat — a parked notice cannot survive to greet an unrelated sw
     await act(async () => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
+  });
+});
+
+/**
+ * #765 — FOCUSING A CLIENT MUST NOT BE UNDONE BY AN AUTOMATIC THREAD RESUME.
+ *
+ * The defect. Setting a client scope changes `scopeEpoch`, so the reset effect nulls
+ * `hydratedFromRef` and clears `historyHydrated`. That un-gates the initial-history effect,
+ * which auto-resumes `threads[0]`; `selectThread` then reaches its release line and drops the
+ * focus that was set milliseconds earlier. The person never gets to send a turn under the
+ * client they chose.
+ *
+ * Why every earlier test missed it: they all mock `threads: []`. With no saved conversation
+ * there is nothing to resume, so the surface behaves correctly on an EMPTY account and fails on
+ * every real one. These tests pin the populated account.
+ *
+ * Why the release itself is NOT removed: opening a saved owner-level thread while a client is
+ * focused really must drop the focus, because that transcript may be about someone else. The
+ * repair separates the person choosing a thread (still releases) from hydration restoring one
+ * (must not). Written before the fix and confirmed red.
+ */
+describe("PAIGE chat — focusing a client survives an account that has saved conversations (#765)", () => {
+  const SAVED = { id: "thread-owner-1", title: "Earlier work", updated_at: "2026-09-01T10:00:00.000Z" };
+  const PRIOR = "Notes recorded about a DIFFERENT client";
+
+  afterEach(() => {
+    harness.threads = [];
+    harness.loadTurns.mockReset();
+    harness.loadTurns.mockImplementation(async () => []);
+  });
+
+  it("keeps the focus, and loads no saved conversation into the new client's context", async () => {
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+    const onFocusRelease = vi.fn();
+
+    // Owner-level first: the saved conversation IS resumed. This is the behaviour the repair
+    // must preserve, so it is asserted rather than assumed.
+    const { host, root } = await mount({ clientId: null, onFocusRelease, renderRail: () => null });
+    expect(harness.loadTurns).toHaveBeenCalledWith(SAVED.id);
+    expect(host.textContent).toContain(PRIOR);
+    harness.loadTurns.mockClear();
+
+    // The person opens PAIGE for one client from Pipeline.
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory clientId="client-b" onFocusRelease={onFocusRelease} renderRail={() => null} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onFocusRelease).not.toHaveBeenCalled();          // the focus survives
+    expect(harness.loadTurns).not.toHaveBeenCalled();        // nothing was auto-resumed
+    expect(host.textContent).not.toContain(PRIOR);           // no prior content carried across
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("lets the owner send the turn they came to send, under the client they chose", async () => {
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+    const fetchMock = vi.fn(async () =>
+      sseResponse([`data: ${JSON.stringify({ choices: [{ delta: { content: "One recorded outcome." } }] })}\n\n`, "data: [DONE]\n\n"]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onFocusRelease = vi.fn();
+    const { host, root } = await mount({ clientId: "client-b", onFocusRelease, renderRail: () => null });
+    // Stated explicitly so this test cannot pass for the wrong reason. The real parents
+    // (`PaigeWorkspace.clearFocus`, `SoloPaigeWorkspace.releaseScope`) DO clear on release, and
+    // the resulting epoch change would wipe the transcript — so the production symptom of #765
+    // is a lost focus, not a leaked payload. This asserts the focus was never released at all,
+    // rather than relying on a no-op parent to leave the stale transcript in place.
+    expect(onFocusRelease).not.toHaveBeenCalled();
+
+    const textarea = host.querySelector("textarea")!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+      setter.call(textarea, "what do the records prove");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const send = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((b) => /send/i.test(b.getAttribute("aria-label") ?? ""))!;
+    await act(async () => { send.click(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(host.textContent).toContain("One recorded outcome.");
+    // The turn went out under the chosen client, and carried none of the saved conversation.
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body));
+    expect(body.clientId).toBe("client-b");
+    expect(JSON.stringify(body.messages)).not.toContain(PRIOR);
+
+    await act(async () => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("still releases the focus when the PERSON opens a saved conversation", async () => {
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+    const onFocusRelease = vi.fn();
+    let rail: { onSelect: (id: string) => void } | null = null;
+
+    const { host, root } = await mount({
+      clientId: "client-b",
+      onFocusRelease,
+      renderRail: (api: { onSelect: (id: string) => void }) => { rail = api; return null; },
+    });
+    expect(onFocusRelease).not.toHaveBeenCalled();
+
+    // A deliberate act by the person, not hydration. This one MUST still release, because the
+    // transcript it opens is owner-level and may be about a different client.
+    await act(async () => { rail!.onSelect(SAVED.id); await Promise.resolve(); await Promise.resolve(); });
+    expect(onFocusRelease).toHaveBeenCalledWith("thread_resumed");
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("resumes the owner's history again once the focus is cleared", async () => {
+    harness.threads = [SAVED];
+    harness.loadTurns.mockImplementation(async () => [{ role: "assistant", content: PRIOR }]);
+
+    const { host, root } = await mount({ clientId: "client-b", onFocusRelease: vi.fn(), renderRail: () => null });
+    expect(harness.loadTurns).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.render(<PaigeAIChat hideHeader fill enableHistory clientId={null} onFocusRelease={vi.fn()} renderRail={() => null} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(harness.loadTurns).toHaveBeenCalledWith(SAVED.id);
+    expect(host.textContent).toContain(PRIOR);
+
+    await act(async () => root.unmount());
+    host.remove();
   });
 });
