@@ -10,6 +10,16 @@
  *
  * §13: the daily engagement series only renders a trendline when there are ≥ 2
  * days of real events (the section enforces the "insufficient data" empty state).
+ *
+ * #802 — A DENIED READ IS NOT ZERO ACTIVITY. `authenticated` holds no SELECT on
+ * `paige_client_events` in production (revoked by 20260712200000, deliberately: that revoke is
+ * what keeps the same-shaped flaw in `pce_staff_read` unreachable). This hook used to destructure
+ * only `{ data }`, discard the error, and then build a DENSE series of zeros across the range — so
+ * a refusal arrived at the section as a fully-formed "0 events every day" answer and rendered as
+ * *Insufficient data*. That is worse than an empty feed: it is a metric an owner could act on.
+ *
+ * `unavailable` now carries that distinction, and on a failed read the zero series is NOT built at
+ * all. Absent data and refused data are different answers and must never share a shape.
  */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +32,11 @@ export interface EngagementDay {
 
 export interface ClientEngagement {
   loading: boolean;
+  /**
+   * True when the read was REFUSED or FAILED — not when it succeeded and found nothing.
+   * A caller that treats this as "no activity" reintroduces the #802 defect.
+   */
+  unavailable: boolean;
   byDay: EngagementDay[];
   totalEvents: number;
   distinctClients: number;
@@ -29,6 +44,7 @@ export interface ClientEngagement {
 
 const EMPTY: ClientEngagement = {
   loading: true,
+  unavailable: false,
   byDay: [],
   totalEvents: 0,
   distinctClients: 0,
@@ -44,7 +60,7 @@ export function useClientEngagement(start: string, end: string): ClientEngagemen
       const startIso = new Date(start).toISOString();
       const endIso = new Date(end + "T23:59:59").toISOString();
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("paige_client_events")
         .select("occurred_at, contact_id")
         .gte("occurred_at", startIso)
@@ -52,6 +68,14 @@ export function useClientEngagement(start: string, end: string): ClientEngagemen
         .limit(50000);
 
       if (cancelled) return;
+
+      // #802: bind the refusal and STOP. Falling through would synthesise a dense zero series
+      // that is indistinguishable from a real quiet period.
+      if (error) {
+        console.warn("[useClientEngagement] engagement read refused or failed:", error.message);
+        setState({ loading: false, unavailable: true, byDay: [], totalEvents: 0, distinctClients: 0 });
+        return;
+      }
 
       const rows = (data as { occurred_at: string; contact_id: string }[] | null) || [];
 
@@ -76,6 +100,7 @@ export function useClientEngagement(start: string, end: string): ClientEngagemen
 
       setState({
         loading: false,
+        unavailable: false,
         byDay,
         totalEvents: rows.length,
         distinctClients: clients.size,
