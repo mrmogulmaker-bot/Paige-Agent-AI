@@ -39,7 +39,12 @@
  *   R4  The seam never touches a claim or a data client — not `.rpc(`/`.from(`, and not a reference
  *       to them either, since `.rpc.bind(client)` is a claim wearing a different hat.
  *
- * ESCAPE HATCH: `// governed-execution-exempt: <reason>` on the line — deliberate and explained.
+ * NO ESCAPE HATCH, deliberately. There was one, and review picked it five different ways across
+ * this guard and its MCP sibling: a plain string, a template tail, JSX text, a comment belonging to
+ * the PRECEDING statement, and a block comment merely EXPLAINING the marker. It was also entirely
+ * UNUSED — zero occurrences in product code. A hatch nobody opens that five people can pick is not
+ * a feature. A genuine exception now edits THIS FILE: a visible, reviewable act rather than a
+ * comment anyone can write.
  *
  * WHAT PASSING DOES NOT MEAN. Nothing is required to USE the seam yet, so this proves the seam has
  * not acquired a door-dependent branch, a rival assembly, a boolean approval input, or its own
@@ -56,105 +61,13 @@ const SEAM = "supabase/functions/_shared/paige-spine/governedExecution.ts";
 const SUPERSEDED = /(^|\/)toolConfirmation(\.ts)?$/;
 const CLAIM_NAMES = /^(paige_pending_confirmations|claimConfirmation|confirmFingerprint)$/;
 const DATA_METHODS = new Set(["rpc", "from"]);
-/**
- * An exemption is a LINE comment that STARTS with the marker — anchored, deliberately.
- *
- * Unanchored, `/* syntax: // governed-execution-exempt: example *\/` matched: a block comment
- * explaining the marker disabled the rule for the whole file. The token-overlap test cannot catch
- * that, because it IS a comment; what it is not is an exemption. Anchoring at `^//` excludes block
- * comments (their text starts `/*`) and requires the marker to be the comment's whole purpose
- * rather than something mentioned inside it.
- */
-const EXEMPT = /^\/\/\s*governed-execution-exempt:\s*\S/;
 
-/**
- * Which lines carry a REAL exemption comment, and whether the file carries one at all.
- *
- * Testing the pattern against raw source let any string silence a rule: a line holding
- * `const msg = "// governed-execution-exempt: fake"` exempted that line's door read or claim, and
- * — worse — the file-level check tested the WHOLE source, so one such string anywhere exempted an
- * entire production file from the superseded-gate rule. An escape hatch a data field can open is
- * not an escape hatch. (The sibling MCP guard had the identical defect; found there by review,
- * found here by looking for the same shape rather than waiting for it to come back.)
- *
- * Comments come from the PARSER's own trivia (`getLeadingCommentRanges`/`getTrailingCommentRanges`
- * at node boundaries), NOT from a fresh scan. A standalone scanner does not know it is inside a
- * template literal and lacks the parser's template-tail rescan, so it reads
- * `` `${v} // governed-execution-exempt: fake` `` as a real comment — which is how the first fix
- * for this on the sibling guard reopened the very bypass it closed. Template head/middle/tail nodes
- * are skipped: their `pos` sits at a `}` with template TEXT after it.
- */
 /**
  * Every LEAF token's span, cached per source file.
  *
  * A comment cannot overlap a token — that is what makes it trivia. So the parser's own token spans
  * are the ground truth for validating a candidate comment range, whatever produced it.
  */
-/**
- * Every leaf token, punctuation included — `getChildren`, not `forEachChild`.
- *
- * A trailing comment often hangs off punctuation: `inputSchema: …, // exempt` anchors to the COMMA,
- * which forEachChild never visits. Found on the sibling guard while proving this same test there;
- * the fixtures here happened to anchor to a semicolon that forEachChild does reach, so this guard
- * passed for the wrong reason.
- */
-function eachLeaf(node, sf, fn) {
-  const kids = node.getChildren(sf);
-  if (kids.length === 0) { fn(node); return; }
-  for (const k of kids) eachLeaf(k, sf, fn);
-}
-
-const leafSpansCache = new WeakMap();
-function leafSpans(sf) {
-  let spans = leafSpansCache.get(sf);
-  if (spans) return spans;
-  spans = [];
-  eachLeaf(sf, sf, (n) => spans.push([n.getStart(sf), n.end]));
-  spans.sort((a, b) => a[0] - b[0]);
-  leafSpansCache.set(sf, spans);
-  return spans;
-}
-
-/** Does this candidate range collide with any real token? Then it is token TEXT, not a comment. */
-function overlapsToken(spans, pos, end) {
-  let lo = 0, hi = spans.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const [s0, e0] = spans[mid];
-    if (e0 <= pos) lo = mid + 1;
-    else if (s0 >= end) hi = mid - 1;
-    else return true;
-  }
-  return false;
-}
-
-function exemptComments(src, fileName = "in-memory.ts") {
-  const sf = parse(src, fileName);
-  const full = sf.getFullText();
-  const spans = leafSpans(sf);
-  const lines = new Set();
-  let any = false;
-  const add = (ranges) => {
-    for (const r of ranges || []) {
-      // THE VALIDITY TEST. A candidate that overlaps a token is not a comment, however it was
-      // produced. This is what finally closed a bypass I fixed twice and reopened twice: a bare
-      // scanner read a template tail as a comment, and a trailing scan at the end of `<div>` read
-      // element TEXT as one. Both candidates collide with a real token; neither survives here.
-      // Leading-only was not an option either — `getLeadingCommentRanges` deliberately excludes a
-      // same-line trailing comment, so dropping trailing scans broke the legitimate
-      // `code(); // exempt` form. Take both, then validate.
-      if (overlapsToken(spans, r.pos, r.end)) continue;
-      if (!EXEMPT.test(full.slice(r.pos, r.end))) continue;
-      any = true;
-      lines.add(sf.getLineAndCharacterOfPosition(r.pos).line + 1);
-    }
-  };
-  eachLeaf(sf, sf, (n) => {
-    add(ts.getLeadingCommentRanges(full, n.pos));
-    add(ts.getTrailingCommentRanges(full, n.end));
-  });
-  return { lines, any };
-}
 
 function parse(src, fileName = "in-memory.ts") {
   // Parse TSX as TSX. With ScriptKind.TS a JSX element derails error recovery and constructs AFTER
@@ -179,7 +92,6 @@ function lit(node) { return node && ts.isStringLiteralLike(node) ? node.text : n
  */
 export function doorBranches(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
-  const exempt = exemptComments(src, fileName);
   const hits = [];
   walk(sf, (n) => {
     let isDoorRead = false;
@@ -197,7 +109,6 @@ export function doorBranches(src, fileName = "in-memory.ts") {
     if (p && ts.isPropertyAssignment(p) && p.initializer === n &&
         p.name && ts.isIdentifier(p.name) && p.name.text === "door") return;
     const line = lineOf(sf, n);
-    if (exempt.lines.has(line)) return;
     hits.push({ line, text: lineText(src, line) });
   });
   const byLine = new Map();
@@ -353,7 +264,6 @@ const NOT_A_CLIENT = new Set(["Array", "Object", "String", "Number", "Date", "Bu
 
 export function claimTouches(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
-  const exempt = exemptComments(src, fileName);
   const hits = [];
   walk(sf, (n) => {
     let why = null;
@@ -379,7 +289,6 @@ export function claimTouches(src, fileName = "in-memory.ts") {
     if (ts.isStringLiteralLike(n) && CLAIM_NAMES.test(n.text)) why = n.text;
     if (!why) return;
     const line = lineOf(sf, n);
-    if (exempt.lines.has(line)) return;
     hits.push({ line, why });
   });
   const byLine = new Map();
@@ -398,7 +307,6 @@ export function gateCallers(roots) {
       const rel = p.split(path.sep).join("/");
       if (/\.(test|spec)\.(ts|tsx)$/.test(rel)) continue;
       const src = fs.readFileSync(p, "utf8");
-      if (exemptComments(src, rel).any) continue;
       if (importsGate(src, rel)) found.push(rel);
     }
   };
@@ -426,31 +334,11 @@ if (process.argv.includes("--self-test")) {
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);
   check("R1 ignores the word in prose", doorBranches('// a different door === ever\nconst a = 1;').length, 0);
   check("R1 ignores the word in a string", doorBranches('const m = "the door === here";').length, 0);
-  check("R1 respects an exemption",
-    doorBranches('if (caller.door === "mcp") return x; // governed-execution-exempt: owner-ruled').length, 0);
-
-  // R2
   check("R2 named import", importsGate('import { decideToolConfirmation } from "../toolConfirmation.ts";'), true);
   check("R2 NAMESPACE import (Codex)", importsGate('import * as c from "../toolConfirmation.ts";'), true);
   check("R2 DYNAMIC import (Codex)",
     importsGate('const { decideToolConfirmation } = await import("../toolConfirmation.ts");'), true);
   check("R2 require()", importsGate('const c = require("../toolConfirmation.ts");'), true);
-  // The exemption bypass, found by looking for the shape review had just found in the SIBLING
-  // guard rather than waiting for it to come back here.
-  check("R1 a marker in a STRING does not exempt",
-    doorBranches(`const m = "// governed-execution-exempt: fake"; if (caller.door === "mcp") return 1;`).length, 1);
-  check("R1 a marker after an INTERPOLATION does not exempt (Codex, via #789)",
-    doorBranches("const m = `${v} // governed-execution-exempt: fake`; if (caller.door === \"mcp\") return 1;").length, 1);
-  check("R4 a marker after an INTERPOLATION does not exempt",
-    claimTouches("const m = `${v} // governed-execution-exempt: fake`; await client.rpc(\"x\", a);").length, 1);
-  check("R1 a marker inside a BLOCK comment does not exempt (Codex)",
-    doorBranches(`/* syntax: // governed-execution-exempt: example */\nif (caller.door === "mcp") return 1;`).length, 1);
-  check("R1 a marker in a REAL comment still exempts",
-    doorBranches(`if (caller.door === "mcp") return 1; // governed-execution-exempt: deliberate`).length, 0);
-  check("R4 a marker in a STRING does not exempt",
-    claimTouches(`const n = "// governed-execution-exempt: fake"; await client.rpc("x", a);`).length, 1);
-  check("R4 a marker in a REAL comment still exempts",
-    claimTouches(`await client.rpc("x", a); // governed-execution-exempt: deliberate`).length, 0);
   check("R2 does not flag the defining module",
     importsGate("export function decideToolConfirmation(i) { return i; }"), false);
   check("R2 ignores the name in prose", importsGate("// decideToolConfirmation is canonical\nconst a=1;"), false);
