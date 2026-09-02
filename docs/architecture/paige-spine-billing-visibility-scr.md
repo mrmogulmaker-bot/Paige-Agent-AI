@@ -27,32 +27,61 @@ the Billing screen.
 
 ---
 
-## 1. The finding that decides this whole request
+## 1. What the Spine can carry today, and what actually blocks these three
 
-> **The Spine's evidence contract is an EVENT-SIGNAL contract, not a data-read contract.**
+The migration map's central finding — *"the Spine's evidence contract is an EVENT-SIGNAL contract,
+not a data-read contract"* (`paige-spine-tool-migration-map.md` §2, merged as `852f6023`) — is the
+right starting point, and this document's first draft **over-read it**. The correction is below and
+it changes which workstream is blocked.
 
-That sentence is not new here — it is the central finding of
-`docs/architecture/paige-spine-tool-migration-map.md` §2, merged to `main` as `852f6023`. It is
-restated because it settles all three capabilities at once, before any question about Billing's
-source data arises:
+Four constraints, each read from the shipped source:
 
 | Constraint | What the code enforces | Verified at |
 |---|---|---|
 | **C1** | The Rail is per-client at three independent layers. `paige_client_events.contact_id` is `NOT NULL REFERENCES clients(id)`; `record_rail_event` raises `contact not in tenant`; the Chat emitter returns early with no contact. **A workspace-level outcome has nowhere to be recorded.** | `20260712163259_paige_context_rail_step1_foundation.sql:80,176` |
 | **C2** | The resolver accepts exactly one subject type and rejects any row where `subject_type !== "client"`. | `_shared/paige-spine/resolveEvidence.ts:40` |
-| **C3** | `safe_summary` must be byte-identical to the capability's declared constant, and every fact must be an enumerated scalar. It cannot express a record, a list, a name, a count, a status string, or free text. | `resolveEvidence.ts:45` and `safeFacts` |
+| **C3** | `safe_summary` must be byte-identical to the capability's declared constant, and every fact value must be **one of an enumerated set declared at registration**. | `resolveEvidence.ts:45`, `safeFacts:17-28` |
+| **C4** | Spine evidence loads **only inside a client-scoped Chat turn** — `spineEvidenceBlock` is populated within `if (scopedClientId)`, so a question asked with no focused client reaches no Spine evidence at all. | `paige-ai-chat/index.ts:1114-1127` |
 
-**All three requested capabilities are data reads.** A plan state, a list of notices, and a health
-summary are records and lists — precisely the shape C3 excludes. All three name a **workspace**, not
-a client — precisely the subject C2 rejects. And the Rail vocabulary in §6 is workspace-level —
-precisely the outcome C1 has nowhere to put.
+### C3 is a SHAPING constraint, not a bar — a correction to this document's own argument
 
-So the honest disposition, before Billing supplies anything at all:
+**This section first claimed C3 "cannot express a record, a list, a name, a count, a status string,
+or free text", and concluded that no capability could be registered above `UNAVAILABLE` no matter
+what Billing supplied. That was wrong**, and it was the load-bearing claim of the whole request.
+Measured against the same files it cited:
 
-> **None of the three capabilities can be registered in the Spine as it exists today, at any
-> maturity above `UNAVAILABLE`, no matter how good Billing's source contracts are.**
+- `SpineFact = boolean | number | string | null` (`contracts.ts:5`) — numbers and strings **are**
+  representable.
+- `facts` is `Record<string, SpineFact>` (`contracts.ts:63`) — a bounded record of scalars **is**
+  expressible.
+- `resolveSpineEvidence` returns `signals: readonly SpineSignal[]` (`resolveEvidence.ts:9`) — a
+  **list** is already the shape it returns, so a notice history could be N signals.
 
-This is not a reason to build a parallel path. It is the reason this request exists.
+What C3 actually forbids is an **unenumerated** value: `safeFacts` admits a fact only when it matches
+a value declared in the capability's `factValues` (`resolveEvidence.ts:25`).
+
+| Wanted | Expressible under C3 |
+|---|---|
+| An access state from a fixed set (`trialing`, `active`, `past_due`) | **Yes** — enumerate it |
+| Whether a billing contact is configured | **Yes** — a boolean |
+| A notice's category and delivery state, from fixed sets | **Yes** |
+| An unresolved-failure count as a **bounded band** | **Yes** — enumerate the bands |
+| An **exact** count | No — every value would have to be enumerated |
+| A plan **name** or an owner-visible topic **label**, read from a row | No — arbitrary strings |
+
+**So the health capability is largely expressible today and the other two are partly so.** The
+correction matters practically, not just for the record: the original claim would have sent the Spine
+workstream to build a record/list evidence shape that is not what is missing.
+
+### What actually blocks all three, after the correction
+
+**C2 and C4, both structural, either one sufficient.** Every capability here names a **workspace**,
+which `resolveEvidence.ts:40` rejects outright; and even with a workspace subject, C4 means a billing
+question asked without a focused client never reaches the resolver.
+
+Plus the plain fact that **the sources do not exist** (§2b) — no billing authority model, no notice
+ledger, no delivery-path signal. That is a Billing blocker rather than a Spine one, and it is why all
+three stay `UNAVAILABLE` today, now for reasons that are stated correctly.
 
 ### 1a. This request raises the three changes the migration map named and nobody raised
 
@@ -66,8 +95,8 @@ these carry a suffix.
 
 | This request | Migration-map shorthand | What it asks for | Needed by |
 |---|---|---|---|
-| **SCR-2026-09-02-B** | SCR-2 | The resolver accepts a **workspace** subject type alongside `client`, with tenancy still derived server-side | all three capabilities |
-| **SCR-2026-09-02-C** | SCR-3 | A **record/list** evidence shape, bounded and enumerated, distinct from the event-signal shape | all three capabilities; `my_billing_notice_history.read` cannot exist without it |
+| **SCR-2026-09-02-B** | SCR-2 **and C4** | The resolver accepts a **workspace** subject type alongside `client`, with tenancy still derived server-side — **and the Chat loading path reaches the resolver on a turn with no focused client.** Both, or the capabilities are declared and still unreachable | all three capabilities |
+| **SCR-2026-09-02-C** | *(not SCR-3)* | **Withdrawn as originally scoped.** It asked for a record/list shape the contract already has. What remains, if anything, is per-capability vocabulary work at registration time — enumerating the states and bands each capability may report — which is ordinary capability declaration, not a shared-primitive change | — |
 | *(depends on)* | SCR-1 | A workspace-level outcome projection, so a workspace act has somewhere to be recorded | the Rail vocabulary in §6 |
 
 **SCR-1 is not raised here.** It belongs to whoever owns the Rail, it is required by 47 of 60
@@ -95,11 +124,11 @@ Run before writing any of the contract below.
 | `is_tenant_admin_as(actor, tenant)` | `20260714235406_marketplace_mcp_actor_seam.sql:42` | Active `tenant_members` row with `role IN ('owner','admin')`. `service_role` grant only. |
 | `tenant_role` enum | `owner \| admin \| coach \| member` | The available vocabulary for caller identity. |
 | `_assert_billing_admin()` | `20260702023046_…sql:57` | **Not the gate for this request.** It governs L2 tenant→client service billing, and it keys on the *global* `has_role(uid,'admin')`, which carries no tenant — the §59 global-role trap. Named here so nobody adopts it for platform billing. |
-| Systems Check registry | `20260816000000_systems_check_layer1.sql:199-208` | Registers `payment_processor_connected`/`payment_readiness` and `payment_method_options`/`payment_options` — tenant→client payment readiness under §38's processor-agnostic declared-field rule. **No platform-billing check and no billing-notification check exists.** |
+| Systems Check registry | `20260816000000_systems_check_layer1.sql` — seed begins `:229`, the two payment checks at `:306` and `:316` (an earlier draft cited `:199-208`, which is RLS policy for the finding table, not the registry) | Registers `payment_processor_connected`/`payment_readiness` and `payment_method_options`/`payment_options` — tenant→client payment readiness under §38's processor-agnostic declared-field rule. **No platform-billing check and no billing-notification check exists.** |
 | Solo Settings → Billing | `src/solo/settings.tsx:1457` | Reads `useSoloComms().billing`. Platform subscription `PARTIAL`; invoices, payment method, usage all `UNAVAILABLE`. |
 | Solo Settings → Notifications | `src/solo/settings.tsx:1451` | Two cards, `PARTIAL` and `UNAVAILABLE`. The empty destination the UI handoff in §8 names. |
 | `PAIGE_SPINE_CAPABILITIES` | `_shared/paige-spine/registry.ts:4` | Exactly one registered capability (`pipeline.deal_stage_evidence`). No billing domain exists. |
-| Chat tool surface | `paige-ai-chat/index.ts` | 111 `name:` tool declarations; **zero billing tools**. Adding one is out of scope here and in every later phase until §7's conditions are met. |
+| Chat tool surface | `paige-ai-chat/index.ts` | **105** inline tools — the figure the repo's own `lint:chat-tool-registry` guard reports, and the one the migration map uses. An earlier draft said 111, from an unanchored `grep` that counted `name:` occurrences rather than tool declarations. **Zero billing tools**. Adding one is out of scope here and in every later phase until §7's conditions are met. |
 
 ### 2b. What does NOT exist — measured, not assumed
 
@@ -149,7 +178,7 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Refusal** | A caller who is neither Owner nor an explicitly granted delegate is refused with a reason that names the missing authority and does not reveal whether the underlying record exists. A refusal is never a degraded read. |
 | **`UNAVAILABLE` behaviour** | Where a field has no proven source — today: the promotional/trial/paid classification, and any delegate authority — the capability reports that field absent with its reason. **It never substitutes a default, an inference, or a plan name it did not read.** |
 | **Audit boundary** | The read is recorded as a read: capability key, caller, resolved tenant, outcome (`answered` / `refused` / `unavailable`). **No projected values are written to the audit record**, because an audit row is a second copy of whatever it stores. |
-| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B, SCR-2026-09-02-C, and B-1/B-2/B-3 in §4. |
+| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B (workspace subject **and** the non-client Chat path) and B-1/B-2/B-3 in §4. |
 
 ### 3.2 `billing.my_billing_notice_history`
 
@@ -164,7 +193,7 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Refusal** | An attempt to read another recipient's history is refused as an authority failure, and is never answered with an empty list — an empty list is a fact about the caller, not a way to hide a refusal. |
 | **`UNAVAILABLE` behaviour** | **This is the capability's state today and it is total.** No billing notice ledger exists (§2b). It reports `UNAVAILABLE` with that reason. It must **never** fall back to `public.notifications`, which is untenanted and carries raw bodies. |
 | **Audit boundary** | Read recorded as above. Never the notice content, never the label, never the recipient's address. |
-| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B, SCR-2026-09-02-C, and B-4 in §4 — the ledger itself. |
+| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B (workspace subject **and** the non-client Chat path) and B-4 in §4 — the ledger itself. |
 
 ### 3.3 `billing.workspace_billing_notification_health`
 
@@ -179,7 +208,7 @@ snake case, namespace matching `domain` (`registry.ts:6,17`).
 | **Refusal** | Non-Owner without explicit grant is refused by authority, not by empty aggregate. |
 | **`UNAVAILABLE` behaviour** | Today every input is absent: no contact model, no delegate model, no delivery ledger. It reports `UNAVAILABLE` per sub-fact with its reason. **A health surface that reports "healthy" because it found nothing to report is the exact false-green this contract exists to prevent** (§32), so absence of evidence is rendered as absence, never as health. |
 | **Audit boundary** | Read recorded as above. |
-| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B, SCR-2026-09-02-C, and B-2/B-4/B-5 in §4. |
+| **Maturity today** | `UNAVAILABLE`. Blocked on SCR-2026-09-02-B (workspace subject **and** the non-client Chat path) and B-2/B-4/B-5 in §4. |
 
 ### 3.4 What none of them may become
 
@@ -287,9 +316,16 @@ claim delivery or health without proven runtime evidence. A pattern with no reco
 conclusion, not evidence — and the Brain's rule is that what it concludes is a conclusion
 (`connections-rail-contract.md` §4).
 
-**Sequencing is a hard order, not a preference:** Mind consumes nothing until the Rail contract in
-§6 exists *and* has real evidence flowing through it. A Mind projection built against an empty Rail
-would report health it has never observed, which is §32's false-green wearing a different hat.
+**Sequencing is a hard order, not a preference — and it binds MIND ONLY.** Mind consumes nothing
+until the Rail contract in §6 exists *and* has real evidence flowing through it. A Mind projection
+built against an empty Rail would report health it has never observed, which is §32's false-green
+wearing a different hat.
+
+**It does not gate the reads.** An earlier draft's wording made the Chat capabilities wait on the
+Rail and Mind work; that was wrong and would have made an unrelated workstream a hidden blocker. The
+three read capabilities depend on SCR-2026-09-02-B and the Billing contracts in §4, and on nothing in
+§6 or §7. If Billing and the Spine subject/routing work land first, the reads may proceed with the
+Rail vocabulary still unbuilt.
 
 `PIPELINE_MIND_CAPABILITY` is explicit that its shape is one domain's bounded view and that
 generalising it for a second domain *"changes Mind-wide retrieval semantics… that needs a Spine
@@ -394,6 +430,7 @@ Each is filed against the workstream that owns it, with the exact contract it ow
 it is blocked. None of them is work this request does on their behalf.
 
 **And the two this request raises for the Spine itself:** SCR-2026-09-02-B (a workspace subject
-type) and SCR-2026-09-02-C (a record/list evidence shape). Both are shared-primitive changes. Both
-need acceptance before any billing capability can be specified further, and neither is designed
-here.
+type, and the non-client Chat loading path that makes it reachable). **SCR-2026-09-02-C is withdrawn
+as originally scoped** — it asked for a record/list evidence shape the contract already has, on a
+reading of C3 that this document got wrong and has corrected in §1. B is a shared-primitive change,
+needs acceptance before any billing capability can be specified further, and is not designed here.
