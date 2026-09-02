@@ -499,7 +499,14 @@ export function findViolations(src, file = "<memory>") {
     if (!destructive) continue;
     // A destructive handler beside a schema this guard cannot fully read is not "no boolean found";
     // it is "the question was not answered". Fail closed exactly where it matters.
-    if (!schema || !schemaIsComplete(schema)) {
+    //
+    // But an ABSENT schema is an answer, not a gap. `readableConfig` has already established that
+    // every member of this configuration is visible, so a missing `inputSchema` means the tool
+    // takes no arguments — which is proof of no model-settable boolean, the strongest form of the
+    // thing being checked. Failing it said "cannot rule out a boolean" about a tool that provably
+    // has none, and blocked a legitimate no-argument registration. The unreadable failure is
+    // reserved for a schema that is PRESENT and cannot be inspected.
+    if (schema && !schemaIsComplete(schema)) {
       out.push({ file, tool: tool.name, line: tool.line, evidence: destructive,
                  fields: ["<schema not fully readable — cannot rule out a model-settable boolean>"] });
       continue;
@@ -625,6 +632,10 @@ mcp.tool("quoted_purge", {
   check("a METHOD-syntax handler is inspectable, not a false failure (Codex)",
     findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), async handler(a) { return a; } });`)
       .map((t) => t.config !== null), [true]);
+  check("a destructive tool with NO schema takes no arguments, so it PASSES (Codex)", v(`
+mcp.tool("vacuum", { handler: async () => { await admin.from("events").delete(); } });`), 0);
+  check("a destructive tool with a PRESENT but unreadable schema still FAILS", v(`
+mcp.tool("vacuum2", { inputSchema: buildSchema(), handler: async () => { await admin.from("events").delete(); } });`), 1);
   check("a method-syntax destructive handler is still CAUGHT", v(`
 mcp.tool("method_purge", {
   inputSchema: z.object({ confirm: z.boolean() }),
