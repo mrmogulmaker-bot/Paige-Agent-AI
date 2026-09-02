@@ -32,6 +32,12 @@ import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
+import {
+  WORKSPACE_CHOOSER_PATH,
+  WORKSPACE_CHOOSER_SETTLED_PARAM,
+  workspaceRootForTenant,
+} from "@/lib/auth/workspaceEntry";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 import { RequireFeature } from "@/components/tier/RequireFeature";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
@@ -252,11 +258,15 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
-  const { isPlatformStaff, activeTenantId, activeTenant, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
+  const { isPlatformStaff, activeTenantId, activeTenant, tenants, accountContextLoading, accountContextStatus, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
   // §51-safe canonical tier resolver — tierKey === "solo" ONLY for a standalone,
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
   const { tierKey, soloStandalone, loading: tierLoading } = useTierFeatures();
+  // Read once, from the URL the chooser sent us back with. Not storage, not state:
+  // it must survive the full-page assign the chooser performs.
+  const chooserAlreadySettled =
+    new URLSearchParams(window.location.search).get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1";
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +354,49 @@ const Admin = () => {
         <PageSkeleton />
       </AdminLoaderBoundary>
     );
+  }
+
+  // ENTRY ASKS; IT DOES NOT RESUME (owner ruling 2026-09-02).
+  //
+  // `/admin` is the door a RESTORED session comes through, and until now it went
+  // straight to whichever context `active_tenant_id` was parked on. That is how an
+  // owner who expected their Solo workspace was placed in a sub-account instead:
+  // a previous agency act-as had left a membership row and a parked context behind
+  // (#806), Gate B below read the child's tier, and the sub-account shell mounted
+  // with nothing in it that said "this is not where you live."
+  //
+  // A FRESH sign-in already asks — `Auth.tsx` runs `shouldOfferAccountPicker` over
+  // the caller's active memberships and routes to `/choose-account`. This applies
+  // the SAME rule to the restored-session door, which is the only reason the two
+  // paths behaved differently. It is not a new product decision; it is the shipped
+  // one, finally applied at both entrances.
+  //
+  // FOUR THINGS IT DELIBERATELY WILL NOT DO:
+  //  • It never fires until the account context is genuinely settled. Asking off a
+  //    half-resolved set would itself be a fallback into a wrong account.
+  //  • It never fires for a single-context person — there is nothing to choose, and
+  //    the chooser would only bounce them back.
+  //  • It never fires for platform staff, who move between tenants through the
+  //    audited operator seam (§53), not this one.
+  //  • It never fires when the active tenant has no deep-linkable root, mirroring
+  //    the §58 defensive fallbacks in the three gates below rather than redirecting
+  //    to a URL that cannot be built.
+  //
+  // The `picked` marker is what makes this loop-proof: this host counts workspaces
+  // from the tenant context while the chooser re-queries memberships, so the two
+  // can disagree by one. See `WORKSPACE_CHOOSER_SETTLED_PARAM`.
+  if (
+    !isPlatformStaff &&
+    !accountContextLoading &&
+    accountContextStatus === "ready" &&
+    !chooserAlreadySettled &&
+    workspaceRootForTenant(activeTenant) != null &&
+    shouldOfferAccountPicker({
+      activeMembershipCount: (tenants ?? []).filter((t) => t.status === "active").length,
+      isPlatformStaff,
+    })
+  ) {
+    return <Navigate to={WORKSPACE_CHOOSER_PATH} replace />;
   }
 
   // Flag-gated Solo-shell takeover (§58 byte-unchanged when the flag is unset/false).

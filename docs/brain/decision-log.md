@@ -1,5 +1,53 @@
 # Decision Log — chronological one-liners
 
+- **Entry asks which workspace; the shell no longer switches (owner ruling 2026-09-02, PR #811)** — an
+  owner opened Paige expecting their Solo workspace and was placed in a sub-account, with an in-shell
+  control that offered to switch accounts and no plain way back. **NOT a tenant-isolation breach, and
+  that was established BEFORE any code was written:** `guard_active_tenant_membership()` is a
+  `BEFORE UPDATE` trigger on `profiles.active_tenant_id` that raises `42501` unless the target is a
+  tenant the caller genuinely holds, and `current_user_tenant_id()` re-applies the same predicate at
+  READ time — two independent server layers, so neither a profile write nor a URL edit can point scope
+  at a tenant the person does not belong to. The defect is an AUTHORIZED context presented in the
+  WRONG OPERATING MODE. Measured shape on prod (no account named, §63): 2 users hold memberships
+  spanning a top-level Solo tenant and a child, 1 profile is parked on a child, 0 legacy
+  `standalone`-with-parent rows. **The mechanism:** `agency_enter_subaccount` leaves a permanent
+  membership row behind (#806), `active_tenant_id` stays parked on the child, `/admin` Gate B reads
+  `sub_account` and mounts `/business/{n}` — and the old `MemberAccountSwitcher` rendered only when
+  the active tenant was `standalone`, so the one control that could have helped was absent in exactly
+  the situation that needed it. **Shipped:** `workspaceEntry.ts` as the one home for "may this caller
+  be on this route, and where do they belong instead?", tier gates on `/solo/*` and `/business/*` that
+  fail closed to the caller's own root or to the chooser, the switcher DELETED in favour of a
+  `WorkspaceExitControl` that selects nothing and only navigates out, and — the change that actually
+  fixes the reported flow — `/admin` now runs the SAME `shouldOfferAccountPicker` predicate `Auth.tsx`
+  has always run at sign-in, so a RESTORED session is asked which workspace it wants instead of
+  silently resuming a parked one. **THE CORRECTION WORTH KEEPING (§13):** the first revision's headline
+  claim was that the `/business/*` tier gate fixed the reported flow. **It did not** — the parked
+  context IS a sub-account, so the gate allowed it; the gate only ever caught a Solo-tier caller at a
+  `/business` URL, which nothing routes to. The reported flow is fixed by the entry rule, not the tier
+  gate. **CI caught the regression the author's own scoped test run could not:** gating `/agency/*` too
+  destroyed agency act-as, because during a drill-down `activeTenant` becomes the CHILD while authority
+  comes from the parent, so the gate ejected operators out of the very path `/agency/{parent}/sub/{child}`
+  exists to serve. Reverted byte-identical; the Agency-tier hole it reached for is filed, not guessed at.
+  **The §39 peer-gate then returned BLOCK and found four more the tests had not:** a null `activeTenant`
+  with a settled context was being classified as tier `solo` and would eject an owner mid-`switchTenant`
+  (a null is "we do not know yet", never a tier); `/solo/*` had the exact mirror hole that `/business/*`
+  was being fixed for; `WorkspaceExitControl`'s docblock claimed to close the "parked with no way back"
+  half while not being mounted in the shell that strands people; and it counted `tenants` unfiltered
+  while the chooser counts active ones, so the button could be a silent round trip. All four fixed here.
+  **Also caught in review: `shouldOfferWorkspaceExit` was a byte-for-byte duplicate of the shipped
+  `shouldOfferAccountPicker` (§18)** — deleted, and the one predicate is now used by sign-in, the
+  `/admin` door and the exit control alike. **Parked, deliberately, with production-data consequences:**
+  #806 (the injected membership), #807 (`get_user_primary_tenant` can return a sub-account as "home";
+  `agency_login_default` suppresses the reset for every user, not just agency operators), #808 (the
+  sub-account shell has no exit and its pack is silent on one — §00, so it is Claude Design's call).
+  No membership, role or account record was edited: the brief forbids that before the authorization and
+  routing behaviour is understood. **Cross-tier reach, flagged rather than buried:** an agency or
+  enterprise operator holding more than one active tenant now meets the chooser on the `/admin` door
+  too. **UNVERIFIED:** no authenticated runtime drive — the container's browser CONNECT tunnel dies with
+  `ERR_CONNECTION_RESET` (re-measured on this head, not remembered from
+  `lessons-learned.md:1233`) and `LIVE_DRIVE_EMAIL`/`_PASSWORD` are unset, so the 13 required flows are
+  OWED to a capable session (§32.c).
+
 - **Both phone-number UI lanes now send the price they displayed, and the legacy operator tab asks before charging (#717 `0fb179bb`, MERGED 2026-09-01)** — the agent lane had a quote guard and server re-verification; the two lanes a HUMAN clicks had neither. Both posted `{ phone_number }` only, and `comms-purchase-number` guards its `platform_number_pricing` re-check on `if (agreedMonthlyCents !== null)`, so the check was **skipped entirely** for them — a price that moved between the search and the click was simply charged. The legacy `NumbersTab` was worse: `onClick={() => void buy(n)}`, **no confirmation of any kind**, rendering the price as `—` when the operator had not priced the type, so one click could start a recurring charge at an amount nobody was shown. **FIXED:** Solo passes the `priceCents` its confirm already named (it had the figure on screen and simply never sent it); the legacy tab sends `retail_price.monthly_cents` and asks first, in Solo's existing wording so the two read as one product (§6). Both omit the key when the type is unpriced — there is nothing to hold anyone to — which preserves today's behaviour rather than blocking a working path. **§37 consumer half, which is the part that would have been missed:** sending the amount means these lanes can now RECEIVE `price_changed` / `price_unverifiable`, and **neither surface knew those codes** — the right refusal would have surfaced as *"try another number"*. Copy added to both (`connectError.ts` COMMS_COPY and `purchaseFailureCopy`). **The legacy tab had NO test**, which is how one-click buying survived; `NumbersTab.purchase.test.tsx` is its first, and **5 of its 7 cases fail against the previous version**. The Solo assertion used `toMatchObject` and so passed whether or not the amount was sent — now `toEqual`, and it fails against the old code too. **UNRULED:** an unpriced number is still buyable on both lanes with the confirm saying "an unlisted monthly price". Whether that should be possible is a product question, not a defect. **Landed in two commits, and the second is the lesson:** the first widened `purchase()`'s implementation and call site but left the exported `SoloNumbersData` interface declaring one parameter, so CI's typecheck ratchet failed with `TS2554` on `settings.tsx` — a type-only defect no test could catch, because `settings.numbers.test.tsx` drives the real hook and the runtime path was correct throughout. See `lessons-learned.md`, *"Widening an implementation without widening the interface that declares it"*.
 - **⚠ CORRECTED 2026-09-02 (§58 — the entry stays, its runtime claim does not).** The binding
   described in the next bullet SHIPPED and its migration is applied on prod, but `paige-ai-chat` no

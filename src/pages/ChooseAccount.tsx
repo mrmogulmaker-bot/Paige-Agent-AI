@@ -7,6 +7,7 @@ import { useTenantContext, type TenantSummary } from "@/hooks/useTenantContext";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { supabase } from "@/integrations/supabase/client";
 import { tenantAccountLabel } from "@/lib/auth/accountSelection";
+import { WORKSPACE_CHOOSER_SETTLED_PARAM, workspaceRootForTenant } from "@/lib/auth/workspaceEntry";
 
 type Membership = { tenant_id: string; role: string };
 type Choice = { tenant: TenantSummary; role: string };
@@ -56,10 +57,20 @@ export default function ChooseAccount() {
       .map((tenant) => ({ tenant, role: roles.get(tenant.id) ?? "member" }));
   }, [context.tenants, memberships]);
 
+  // Nothing to choose, so do not ask. The destination is the person's OWN
+  // workspace root where one can be resolved; `/admin` is the fallback, and it
+  // carries the settled marker because `/admin` now sends multi-context people
+  // here — the two surfaces count workspaces from different sources, so without
+  // the marker a disagreement between them would be an infinite redirect.
   useEffect(() => {
     if (loading || context.accountContextLoading || context.accountContextStatus !== "ready") return;
-    if (context.isPlatformStaff || choices.length < 2) navigate("/admin", { replace: true });
-  }, [choices.length, context.accountContextLoading, context.accountContextStatus, context.isPlatformStaff, loading, navigate]);
+    if (!context.isPlatformStaff && choices.length >= 2) return;
+    // Platform staff keep their existing landing exactly (§58): they move between
+    // tenants through the audited operator seam, not this chooser, so they are
+    // never sent into a tenant workspace root by it.
+    const only = !context.isPlatformStaff && choices.length === 1 ? choices[0].tenant : null;
+    navigate(workspaceRootForTenant(only) ?? `/admin?${WORKSPACE_CHOOSER_SETTLED_PARAM}=1`, { replace: true });
+  }, [choices, context.accountContextLoading, context.accountContextStatus, context.isPlatformStaff, loading, navigate]);
 
   const choose = async (choice: Choice) => {
     setError(null);
@@ -70,7 +81,14 @@ export default function ChooseAccount() {
       setError("Paige couldn't open that account. Your current workspace is unchanged.");
       return;
     }
-    window.location.assign("/admin");
+    // Enter the chosen workspace at ITS OWN root rather than routing back through
+    // `/admin`, which is the door that resumes a parked context. A full-page assign
+    // (not a client navigate) is kept deliberately: `switchTenant` has just changed
+    // the server-side active context, and every provider should re-resolve against
+    // it from scratch rather than carry the previous workspace's caches across.
+    window.location.assign(
+      workspaceRootForTenant(choice.tenant) ?? `/admin?${WORKSPACE_CHOOSER_SETTLED_PARAM}=1`,
+    );
   };
 
   const handleDifferentGoogleAccount = async () => {

@@ -4,7 +4,7 @@ import {
   authorizedRootForTier,
   decideWorkspaceEntry,
   routeAllowsTier,
-  shouldOfferWorkspaceExit,
+  workspaceRootForTenant,
 } from "./workspaceEntry";
 import type { TierClassification } from "@/lib/tier/tierFeatures";
 
@@ -74,11 +74,23 @@ describe("workspace entry containment", () => {
     expect(authorizedRootForTier("god", 5)).toBeNull();
   });
 
-  it("offers the leave-and-choose exit only to a genuinely multi-context person", () => {
-    expect(shouldOfferWorkspaceExit({ authorizedContextCount: 2, isPlatformStaff: false })).toBe(true);
-    expect(shouldOfferWorkspaceExit({ authorizedContextCount: 1, isPlatformStaff: false })).toBe(false);
-    expect(shouldOfferWorkspaceExit({ authorizedContextCount: 0, isPlatformStaff: false })).toBe(false);
-    // Platform staff switch through the audited operator seam, not this exit.
-    expect(shouldOfferWorkspaceExit({ authorizedContextCount: 5, isPlatformStaff: true })).toBe(false);
+  it("resolves a tenant's own workspace root from its server-side classification", () => {
+    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: 1971670 }))
+      .toBe("/solo/1971670/command-center");
+    expect(workspaceRootForTenant({ account_type: "sub_account", parent_tenant_id: "p", account_number: 3855 }))
+      .toBe("/business/3855/command-center");
+    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: null, account_number: 1924546 }))
+      .toBe("/agency/1924546/command-center");
+    // §51 parent-first: a mislabelled child is still a sub-account.
+    expect(workspaceRootForTenant({ account_type: "agency", parent_tenant_id: "p", account_number: 42 }))
+      .toBe("/business/42/command-center");
+  });
+
+  it("returns no root rather than a fabricated URL when there is nothing to build one from", () => {
+    // The caller falls back honestly on null; it must never invent a path.
+    expect(workspaceRootForTenant(null)).toBeNull();
+    expect(workspaceRootForTenant(undefined)).toBeNull();
+    expect(workspaceRootForTenant({ account_type: "standalone", parent_tenant_id: null, account_number: null }))
+      .toBeNull();
   });
 });

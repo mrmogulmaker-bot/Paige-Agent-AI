@@ -1537,6 +1537,59 @@ metadata, explicitly labelled, never promoted to a billing column, and **null on
 228 rows** because those calls were never priced upstream. The key is always present so the absence
 is stated. See the decision log entry for MET1.
 
+### Workspace entry and containment — `/solo/*`, `/business/*`, `/agency/*`, `/choose-account`
+
+**§66, same commit as the ship.** Owner ruling 2026-09-02: account choice happens at ENTRY, never
+inside a workspace. This row records who may MOUNT each shell after the change, and — because the
+defect that forced it was a person being placed in a mode they do not operate in — which tier each
+route now refuses.
+
+| Route root | Mounts | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| `/solo/*` | Solo shell | — (no tenant ⇒ held) | → `/agency/{n}` | → `/agency/{n}` | ✓ | → `/business/{n}` | — | → `/auth` |
+| `/business/*` | Sub-account shell (`AgencyApp mode="subaccount"`) | — (no tenant ⇒ held) | → `/agency/{n}` | → `/agency/{n}` | → `/solo/{n}` | ✓ | — | → `/auth` |
+| `/agency/*` numeric | Agency shell | unchanged | ✓ | ✓ | **unchanged — see below** | ✓ *(acting-child)* | — | unchanged |
+| `/agency/*` non-numeric | Legacy board | unchanged | ✓ | ✓ | unchanged | unchanged | — | unchanged |
+| `/choose-account` | Entry chooser | → `/admin` | ✓ | ✓ | ✓ | ✓ | — | → `/auth` |
+
+**`/agency/*` is deliberately NOT gated, and that is a stated gap rather than an oversight.** A first
+revision of this change gated the numeric leg too, and CI proved it destroyed a shipped capability
+(§58): during an agency act-as, `activeTenant` becomes the CHILD while the operator's authority comes
+from the parent, so a tier gate read `sub_account` and ejected the operator out of the
+`/agency/{parent}/sub/{child}/…` path that exists to serve exactly that flow. The hole the gate was
+reaching for — a Solo caller who TYPES `/agency/{n}` mounts the agency shell and is never sent home,
+because `AgencyApp`'s own guard returns early when the caller owns no agency — is real, is reachable
+only by typing a URL (nothing routes a Solo caller there), belongs to the Agency tier, and is tracked
+separately rather than closed by a guess about agency behaviour.
+
+**A `—` in the God column is a HOLD, not a refusal.** An operator with no active tenant has no tenant
+classification, and the entries refuse to classify an unresolved caller at all: a null `activeTenant`
+is "we do not know yet", not "tier solo". That distinction is load-bearing — `switchTenant` commits
+the new active id before the tenant list refetches, so treating the gap as a tier would eject an
+owner mid-switch out of a workspace they legitimately hold.
+
+**Entry now ASKS at both doors, where it previously asked at only one.** A fresh sign-in already
+routed a multi-context person to `/choose-account` (`Auth.tsx`, via `shouldOfferAccountPicker`). A
+RESTORED session came through `/admin` and silently resumed whichever context `active_tenant_id` was
+parked on — which is how an owner who expected their Solo workspace was placed in a sub-account left
+behind by an earlier agency act-as (#806). `/admin` now applies the same shipped predicate. **This is
+the one change here with cross-tier reach:** an agency or enterprise operator holding more than one
+active tenant now sees the chooser on the `/admin` door too, where before they went straight through.
+
+**No in-shell picker survives.** `MemberAccountSwitcher` — which listed every readable tenant with no
+status filter and PERSISTED `active_tenant_id` on selection — is deleted; `WorkspaceExitControl`
+replaces it in the Solo and legacy `/admin` shells and only navigates OUT to the chooser. **It is not
+mounted in the sub-account shell**, whose account slot is pack-locked (§00, `src/agency/CLAUDE.md`)
+and whose pack is silent on such a control; tracked as #808. So recovery from inside `/business/*`
+depends on the entry rule above, not on a control in that shell — stated here rather than left for a
+reader to assume the coverage is complete.
+
+**Evidence class.** Every row is proven by component-level tests that drive the real entry with a
+mocked tenant context and read the resulting router location, plus the pure rule's own unit tests —
+`SoloEntry.test.tsx`, `BusinessEntry.test.tsx`, `ChooseAccount.test.tsx`, `workspaceEntry.test.ts`,
+each proven red against the pre-change code. **No row has been driven by an authenticated session**,
+which is a weaker class of evidence than a drive and must not be represented as one.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

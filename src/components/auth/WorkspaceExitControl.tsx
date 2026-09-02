@@ -3,7 +3,8 @@ import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { WORKSPACE_CHOOSER_PATH, shouldOfferWorkspaceExit } from "@/lib/auth/workspaceEntry";
+import { WORKSPACE_CHOOSER_PATH } from "@/lib/auth/workspaceEntry";
+import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
 import { toast } from "sonner";
 
 /**
@@ -26,13 +27,27 @@ import { toast } from "sonner";
  * is preserved here in full; only the place the choice happens has moved, from
  * inside the shell to the entry chooser.
  *
- * It also closes the other half of the reported defect. The old switcher rendered
- * only when the active tenant was `standalone`, so it was ABSENT in exactly the
- * situation an owner needed it — parked in a sub-account with no way back. This
- * control's visibility does not depend on the current workspace's tier at all.
+ * WHERE IT IS MOUNTED, AND WHERE IT IS NOT (§13 — an earlier draft of this
+ * comment claimed more than the code did). It is mounted in the Solo shell
+ * (`SoloApp`) and in the legacy `/admin` shell (`AdminLayout`), which together
+ * cover every Solo owner whether or not their tenant carries
+ * `solo_shell_enabled`. It is NOT mounted in the sub-account shell: `/business/*`
+ * renders `AgencyApp`, whose account slot resolves to `null` for a member who
+ * owns no agency, and that shell is locked to the Claude Design pack verbatim
+ * (`src/agency/CLAUDE.md`) — a PACK-FIRST search across every file in
+ * `agency-mode-shell/` returned zero hits for such a control, so under §00 the
+ * decision is Claude Design's, not this session's. Tracked as #808.
  *
- * Shown only to a genuinely multi-context person: a single-workspace owner has
- * nothing to choose, and platform staff switch through the audited operator seam.
+ * So this control is the recovery path for the shells it is IN. What keeps an
+ * owner out of the shell it is missing from is the entry rule, not this button:
+ * `/admin` now asks a multi-context person which workspace they want instead of
+ * resuming whichever one `active_tenant_id` was parked on.
+ *
+ * Its visibility does not depend on the current workspace's tier — the old
+ * switcher rendered only when the active tenant was `standalone`, so it was
+ * absent in exactly the situation an owner needed it. It is shown only to a
+ * genuinely multi-context person: a single-workspace owner has nothing to
+ * choose, and platform staff switch through the audited operator seam.
  */
 export function WorkspaceExitControl() {
   const navigate = useNavigate();
@@ -52,7 +67,19 @@ export function WorkspaceExitControl() {
     }
   }, []);
 
-  if (!shouldOfferWorkspaceExit({ authorizedContextCount: tenants.length, isPlatformStaff })) return null;
+  // §18 — the "does this person have somewhere else to go?" rule already had a
+  // home: `shouldOfferAccountPicker`, which `Auth.tsx` runs at sign-in to decide
+  // whether the chooser appears at all. This control asks the SAME question, so
+  // it calls the SAME predicate rather than a second copy that can drift.
+  //
+  // It must also count the SAME POPULATION the chooser will actually offer, which
+  // is active tenants only. Counting the raw list would show this button to
+  // someone whose second tenant is not active — they would click it, the chooser
+  // would find fewer than two choices, and it would send them straight back into
+  // the shell they were trying to leave. A recovery control that silently does
+  // nothing is worse than one that is absent, because it spends the owner's trust.
+  const reachable = tenants.filter((t) => t.status === "active").length;
+  if (!shouldOfferAccountPicker({ activeMembershipCount: reachable, isPlatformStaff })) return null;
 
   return (
     <Button

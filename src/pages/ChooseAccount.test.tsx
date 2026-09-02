@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({
@@ -11,9 +11,9 @@ const harness = vi.hoisted(() => ({
   user: { id: "user-1", email: "mrmogulmaker@gmail.com" } as { id: string; email: string } | null,
   context: {
     tenants: [
-      { id: "antonio", slug: "antonio", name: "Antonio Daniel LLC", status: "active", account_type: "standalone", parent_tenant_id: null },
-      { id: "mogul", slug: "mogul", name: "Mogul Maker Academy", status: "active", account_type: "standalone", parent_tenant_id: null },
-      { id: "hidden", slug: "hidden", name: "Not My Account", status: "active", account_type: "standalone", parent_tenant_id: null },
+      { id: "antonio", slug: "antonio", name: "Antonio Daniel LLC", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 111111 },
+      { id: "mogul", slug: "mogul", name: "Mogul Maker Academy", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 222222 },
+      { id: "hidden", slug: "hidden", name: "Not My Account", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 333333 },
     ],
     accountContextLoading: false,
     accountContextStatus: "ready",
@@ -43,6 +43,11 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 import ChooseAccount from "./ChooseAccount";
+
+function LocationProbe() {
+  const loc = useLocation();
+  return <i data-loc={loc.pathname} data-search={loc.search} />;
+}
 
 describe("ChooseAccount", () => {
   let host: HTMLDivElement;
@@ -76,5 +81,55 @@ describe("ChooseAccount", () => {
     expect(host.textContent).toContain("Mogul Maker Academy");
     expect(host.textContent).not.toContain("Not My Account");
     expect(host.querySelectorAll("button").length).toBeGreaterThanOrEqual(3);
+  });
+
+  // The owner ruling of 2026-09-02: choosing a workspace ENTERS it. Routing the
+  // choice back through `/admin` is what re-opened the parked context and put an
+  // owner in a workspace they had not chosen, so the destination is the chosen
+  // workspace's own root.
+  it("enters the CHOSEN workspace at its own root instead of routing back through /admin", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
+    harness.context.switchTenant = vi.fn(async () => true);
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Mogul Maker Academy"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(harness.context.switchTenant).toHaveBeenCalledWith("mogul");
+    expect(assign).toHaveBeenCalledWith("/solo/222222/command-center");
+    expect(assign).not.toHaveBeenCalledWith("/admin");
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
+
+  // The loop breaker. `/admin` now sends a multi-context person here, and the two
+  // surfaces count workspaces from different sources — this page re-queries
+  // memberships, the host reads the tenant context — so they can disagree by one.
+  // Without the marker on the way back, a disagreement is an infinite redirect.
+  it("leaves to the single workspace's root, and marks the fallback so /admin cannot bounce it back", async () => {
+    harness.memberships = [{ tenant_id: "mogul", role: "owner" }];
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/solo/222222/command-center");
+
+    // Same single choice, but nothing to build a root from: fall back to /admin
+    // CARRYING the settled marker rather than to a bare /admin.
+    act(() => root.unmount());
+    host.remove();
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    harness.context.tenants = harness.context.tenants.map((t) =>
+      t.id === "mogul" ? { ...t, account_number: null } : t,
+    ) as typeof harness.context.tenants;
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
+    expect(host.querySelector("[data-search]")?.getAttribute("data-search")).toBe("?picked=1");
   });
 });

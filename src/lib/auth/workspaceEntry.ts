@@ -41,6 +41,17 @@ export type WorkspaceRouteRoot = "solo" | "business" | "agency";
  * `enterprise` shares the agency shell by design (§60 — Enterprise is the Agency
  * baseline plus per-tenant customization), so it is authorized on `/agency`.
  * Nothing else is: a tier absent from its row is redirected home, never rendered.
+ *
+ * ONLY `/business/*` RUNS THIS GATE TODAY, and the agency row is stated rather
+ * than enforced. An earlier revision of this change gated the `/agency/*` numeric
+ * leg too and BROKE a shipped capability (§58): an agency operator acting inside
+ * a sub-account carries the CHILD's classification while their authority comes
+ * from the parent, so the gate ejected them out of the acting-child path that
+ * `/agency/{parent}/sub/{child}/…` exists to serve. CI caught it — see
+ * `TenantRouteOwnerAccountContext.integration.test.tsx`. The agency-tier hole the
+ * gate was reaching for (a Solo caller who TYPES `/agency/{n}` mounts the agency
+ * shell and is never sent home) is real, out of this brief's scope, and tracked
+ * separately rather than fixed here by a guess about agency behaviour.
  */
 const ROUTE_TIERS: Record<WorkspaceRouteRoot, readonly TierKey[]> = {
   solo: ["solo"],
@@ -110,16 +121,42 @@ export function decideWorkspaceEntry(input: {
 }
 
 /**
- * Should this person be offered an explicit "leave and choose another workspace"
- * exit? Only when they genuinely hold more than one authorized context.
+ * The workspace root a given tenant should be entered at.
  *
- * This is NOT an in-shell picker and must never become one: it navigates OUT to
- * the chooser, which is the only place a context is selected. A single-context
- * person is offered nothing, because there is nothing to choose.
+ * ONE home (§18) for "this is the context — where does the person land?", shared
+ * by the chooser (after an explicit choice) and by the shell host (when deciding
+ * whether it may resume a parked context at all). Returns null when the tenant
+ * has no deep-linkable root, which is the honest signal to fall back rather than
+ * fabricate a URL.
  */
-export function shouldOfferWorkspaceExit(input: {
-  authorizedContextCount: number;
-  isPlatformStaff: boolean;
-}): boolean {
-  return !input.isPlatformStaff && input.authorizedContextCount > 1;
+export function workspaceRootForTenant(tenant: {
+  account_type?: string | null;
+  parent_tenant_id?: string | null;
+  account_number?: number | string | null;
+} | null | undefined): string | null {
+  if (!tenant) return null;
+  return authorizedRootForTier(
+    resolveTierKey({
+      account_type: tenant.account_type ?? null,
+      parent_tenant_id: tenant.parent_tenant_id ?? null,
+      isPlatformStaff: false,
+    }),
+    tenant.account_number ?? null,
+  );
 }
+
+/**
+ * The marker the chooser adds when it has already run and decided not to ask.
+ *
+ * The shell host sends a multi-context person to the chooser instead of silently
+ * resuming whichever context `active_tenant_id` happens to be parked on. The two
+ * surfaces count "how many workspaces does this person have?" from different
+ * sources — the host reads the tenant context, the chooser re-queries active
+ * memberships — so they can legitimately disagree by one, and without this marker
+ * a disagreement is an infinite redirect rather than a wrong number.
+ *
+ * It is a LOOP BREAKER, never a grant: it says "the chooser already ran", and
+ * carries no claim about which tenant may be read. Scope stays server-enforced
+ * (`active_tenant_id` + the membership trigger + RLS), exactly as before.
+ */
+export const WORKSPACE_CHOOSER_SETTLED_PARAM = "picked";

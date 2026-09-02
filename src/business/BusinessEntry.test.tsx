@@ -1,61 +1,90 @@
-// Wiring proof for the `/business/*` tier gate (owner ruling 2026-09-02).
+// Wiring proof for the `/business/*` entry guards (owner ruling 2026-09-02).
 //
 // The pure rule is covered by `src/lib/auth/workspaceEntry.test.ts`. This file
 // asserts the different thing that actually matters for the reported defect:
-// that the ENTRY COMPONENT applies it. Before this gate existed, `BusinessEntry`
-// checked only `accountContextLoading`, so a Solo-tier caller mounted the
-// sub-account shell — and `AgencyApp`'s own guard then rewrote the URL to
-// `/business/{their own Solo account number}` and left them there.
+// that the ENTRY COMPONENT applies it, and — just as important — that it does
+// NOT apply it to a caller it has not classified yet.
 //
-// Rendering uses `react-dom/server` (RTL is not installed — adding a dep is a
-// §14 proposal, not a reflex), matching the sibling `AgentPresence.test.tsx`.
-// A `<Navigate>` renders no markup, so the assertion reads the router's
-// resulting location rather than the output string.
-import { describe, it, expect, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+// It renders on a real client root inside `act` rather than with
+// `renderToStaticMarkup`, because `<Navigate>` navigates in an effect: under
+// static markup no redirect ever runs, so a test written that way can only ever
+// observe "the shell did not mount" and never WHERE the caller was sent. An
+// earlier revision of this file claimed to read the resulting location and did
+// not. These tests read it.
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type Tenant = {
+  account_type: string | null;
+  parent_tenant_id: string | null;
+  account_number: number | null;
+  status?: string;
+};
 
 const tc = vi.hoisted(() => ({
   ctx: {
     accountContextLoading: false,
+    accountContextStatus: "ready" as string,
     isPlatformStaff: false,
-    activeTenant: null as null | { account_type: string | null; parent_tenant_id: string | null; account_number: number | null },
+    activeTenant: null as Tenant | null,
+    refresh: async () => {},
   },
 }));
-vi.mock("@/hooks/useTenantContext", () => ({
-  useTenantContext: () => tc.ctx,
-}));
+vi.mock("@/hooks/useTenantContext", () => ({ useTenantContext: () => tc.ctx }));
 // The sub-account shell is heavy and irrelevant here — we only need to know
-// whether the gate let anything through to it.
-vi.mock("@/agency/AgencyApp", () => ({
-  default: () => <div data-mounted="sub-account-shell" />,
-}));
+// whether the guards let anything through to it.
+vi.mock("@/agency/AgencyApp", () => ({ default: () => <div data-mounted="sub-account-shell" /> }));
+
+import BusinessEntry from "./BusinessEntry";
 
 function LocationProbe() {
   const loc = useLocation();
-  return <output data-location={loc.pathname} />;
+  return <i data-loc={loc.pathname} />;
 }
 
-async function renderAt(path: string): Promise<{ html: string; location: string }> {
-  const { default: BusinessEntry } = await import("./BusinessEntry");
-  const html = renderToStaticMarkup(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/business/*" element={<BusinessEntry />} />
-        <Route path="*" element={<LocationProbe />} />
-      </Routes>
-    </MemoryRouter>,
-  );
-  const m = /data-location="([^"]*)"/.exec(html);
-  return { html, location: m?.[1] ?? "" };
-}
+describe("/business/* entry guards", () => {
+  let host: HTMLDivElement;
+  let root: Root;
 
-describe("/business/* tier gate", () => {
-  it("redirects a Solo-tier caller to their OWN Solo root instead of mounting the sub-account shell", async () => {
+  beforeEach(() => {
+    tc.ctx.accountContextLoading = false;
+    tc.ctx.accountContextStatus = "ready";
+    tc.ctx.isPlatformStaff = false;
+    tc.ctx.activeTenant = null;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  async function renderAt(path: string) {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/business/*" element={<BusinessEntry />} />
+            <Route path="*" element={<LocationProbe />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+    return {
+      html: host.innerHTML,
+      location: host.querySelector("[data-loc]")?.getAttribute("data-loc") ?? null,
+    };
+  }
+
+  it("sends a Solo-tier caller to their OWN Solo root instead of mounting the sub-account shell", async () => {
     tc.ctx.activeTenant = { account_type: "standalone", parent_tenant_id: null, account_number: 1971670 };
-    const { html } = await renderAt("/business/9999/command-center");
-    // The redirect happens; the sub-account shell is never mounted.
+    const { html, location } = await renderAt("/business/9999/command-center");
     expect(html).not.toContain("sub-account-shell");
+    expect(location).toBe("/solo/1971670/command-center");
   });
 
   it("still mounts the sub-account shell for a caller whose tier genuinely owns it", async () => {
@@ -70,17 +99,39 @@ describe("/business/* tier gate", () => {
     expect(html).toContain("sub-account-shell");
   });
 
+  it("fails closed to the chooser when a wrong-tier caller has no account number to go home to", async () => {
+    tc.ctx.activeTenant = { account_type: "standalone", parent_tenant_id: null, account_number: null };
+    const { html, location } = await renderAt("/business/9999/command-center");
+    expect(html).not.toContain("sub-account-shell");
+    expect(location).toBe("/choose-account");
+  });
+
   it("does not mount the shell while the account context is still resolving", async () => {
     tc.ctx.accountContextLoading = true;
     tc.ctx.activeTenant = { account_type: "sub_account", parent_tenant_id: "p", account_number: 1 };
     const { html } = await renderAt("/business/1/command-center");
     expect(html).not.toContain("sub-account-shell");
-    tc.ctx.accountContextLoading = false;
   });
 
-  it("fails closed rather than mounting the shell when a wrong-tier caller has no account number", async () => {
-    tc.ctx.activeTenant = { account_type: "standalone", parent_tenant_id: null, account_number: null };
-    const { html } = await renderAt("/business/9999/command-center");
+  // The defect this guard exists for: `switchTenant` commits the new active id
+  // before the tenant list refetches, so `activeTenant` is briefly null while the
+  // context reports itself ready. Classifying that as a tier — `resolveTierKey`
+  // fail-safes a null `account_type` to "solo" — would eject a sub-account owner
+  // out of the shell they legitimately own, mid-switch.
+  it("does NOT classify an unresolved caller as Solo and eject them", async () => {
+    tc.ctx.accountContextStatus = "ready";
+    tc.ctx.activeTenant = null;
+    const { html, location } = await renderAt("/business/3855/command-center");
     expect(html).not.toContain("sub-account-shell");
+    // It holds on this route with an honest recovery affordance; it does not
+    // redirect anywhere, and it certainly does not redirect to a Solo root.
+    expect(location).toBeNull();
+    expect(host.textContent).toContain("Couldn't verify your workspace");
+  });
+
+  it("sends a signed-out caller to sign in, carrying where they were going", async () => {
+    tc.ctx.accountContextStatus = "signed_out";
+    const { location } = await renderAt("/business/3855/command-center");
+    expect(location).toBe("/auth");
   });
 });
