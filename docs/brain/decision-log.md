@@ -1323,3 +1323,55 @@ exact drift this log already recorded a lesson about (a doc reading *"local bran
 serving production): the Master Project File entry's heading, status paragraph and closing gate line
 now read as merged and deployed, with the `UNVERIFIED` authenticated proof preserved and restated as
 the one thing still owed.
+
+## 2026-09-02 — The Canonical Solo Parity Program opens; Wave 0 baseline published
+
+**Owner-assigned, standing.** Ownership is no longer the one-off Setup scrollbar repair: it is making
+every current and future Solo account receive the same canonical Solo product template as `main`.
+One active wave at a time; discoveries are parked as durable issues rather than absorbed.
+
+**Wave 0 delivered**, on `main` @ `8eda0e8d`, with no product change:
+- PR #774 merged (`8eda0e8d`) — the Setup record now reads as merged and deployed rather than as an
+  unmerged draft.
+- `docs/doctrine/canonical-solo-parity-matrix.md` — every Solo route, branch, sub-tab, Settings
+  destination and PAIGE entry point, marked with the seven program statuses, plus the wave plan.
+
+**The finding that governs the program, and it is not a shell defect.** `src/pages/Admin.tsx:373-393`
+mounts the canonical Solo shell only when `features.solo_shell_enabled === true` on that tenant's own
+row (`useTenantContext.tsx:512`). Measured on prod: **4 of 7 top-level Solo tenants carry it; 3 do
+not** and render the legacy `/admin` shell instead. So every parity repair reaches 4 of 7 Solo
+accounts until the owner rules on finishing the rollout. Config-as-data working as designed — and
+exactly the gap between "the template is correct" and "every account receives it".
+
+**Three counts corrected against the record.** Prod now has **13 tenants** (2 agency · 7 top-level
+Solo · 4 sub-account), not the 11 in this brain's 2026-08-09 snapshot — that snapshot was true when
+written and is superseded, not wrong. `SOLO_BRANCHES` is **10 branches / 45 sub-tabs**
+(`tierBranches.test.ts:200,215`), while its own docblock says 13/47. And only **6 of 10 branches have
+a nav entry** — `paige`, `trust-compass` and `automations` are aliases of Command Center
+(`tenantShellRoutes.ts:49`), `calendar` is addressable with no nav home by design.
+
+**Evidence capability — independently re-measured, and it CONFIRMS an existing lesson rather than
+discovering anything.** `docs/brain/lessons-learned.md:1233` already recorded on 2026-09-01 that
+*"prod is not reachable headless" is the wrong reason — the browser tunnel is*, with the same two
+blockers. This session measured the same result from scratch: `curl` 200, Chromium launches,
+Playwright navigation dies with `ws_closed_mid_exchange`, and `LIVE_DRIVE_EMAIL`/`LIVE_DRIVE_PASSWORD`
+are unset. **Recorded as confirmation, not as a new finding — and as a §BRAIN.1 miss on this
+session's part**, which re-derived a documented answer instead of reading the lessons file first.
+What this program adds is the tenant half: seven real Solo tenants exist, so the two-tenant
+comparison is blocked on capability and credentials, **not** on tenant availability. Every `AUTH-CMP`
+row stays `UNVERIFIED` until a scoped test-tenant credential pair exists (never owner PII, §63).
+
+**Parked, not absorbed:** [#779](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/779)
+Clients › Delivery renders fabricated client records and an invented PAIGE narrative — the only Solo
+surface presenting false tenant data as fact ·
+[#780](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/780) Trust Compass numbers and
+autonomy dial are fixtures and its primary buttons only close the modal ·
+[#781](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/781) `paige:open` prompts authored
+by four sites and read by none, plus two listeners with no dispatcher ·
+[#782](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/782) Solo documentation parity — 1
+of 14 surface cards exist, two `main` docs assert a card that is not on `main`, and the tier-matrix
+Solo ledger covers 1 of ~18 surfaces.
+
+**The PAIGE Attention Register Project still does not exist**, so these are linked from the durable
+record and their Register addition remains pending — the convention already set by
+`paige-spine-and-rail-state.md:182-183` and `paige-spine-tool-migration-map.md:353-354`.
