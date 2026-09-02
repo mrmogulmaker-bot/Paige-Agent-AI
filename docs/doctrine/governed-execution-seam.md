@@ -44,14 +44,14 @@ asserted two ways, because a property proven only by a test is one a later edit 
 | # | Point | Where it is enforced |
 |---|---|---|
 | 1 | Authenticated caller identity | `caller.authenticated` + `userId`; refuses `unauthenticated` |
-| 2 | Server-derived tenant | `tenantSource` must be `"server"`. **The type has no field for a caller-supplied tenant**, so a request cannot name the tenant it wants to act in |
+| 2 | Server-derived tenant | `tenantSource` must be `"server"` — and **this is an ADAPTER OBLIGATION the seam checks, not a property it can prove.** `GovernedCaller.tenantId` and `tenantSource` are both populated by the adapter, so `{ tenantId: request.workspaceId, tenantSource: "server" }` satisfies the seam while being exactly the thing the point exists to stop. The seam refuses a tenancy that does not *claim* server derivation; only the adapter can make the claim true. An earlier version of this row said the type has no field for a caller-supplied tenant, which is false and is the more dangerous direction to be wrong in |
 | 3 | Capability identity | `capability.id` — the exact `action-risk.ts` key |
 | 4 | Role / access policy | `caller.access`, evaluated by the surface. **An absent verdict is a refusal**, never permission |
 | 5 | Action-risk classification | delegated to `classifyAction` — not re-implemented |
 | 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives |
 | 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** |
 | 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
-| 9 | Refusal and failure behaviour | eleven typed codes, every one fail-closed |
+| 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`) |
 | 10 | Safe bounded outcome interface | a mutation must NAME an outcome channel or be refused. **The channel's shape is the Rail workstream's and is deliberately not defined here** |
 | 11 | Auditability | a structured record carrying no arguments and no secrets |
 
@@ -104,7 +104,7 @@ tail assertion that the only lane reaching execution is `auto` on an `ordinary` 
 
 ## What CI holds
 
-`lint:governed-execution` (+ `--self-test`, 44 cases). Each rule was mutation-tested by introducing
+`lint:governed-execution` (+ `--self-test`, 43 cases — `grep -c '^  check('`, not a count of output lines, which included the trailing summary line and is how 43 was published as 44). Each rule was mutation-tested by introducing
 the violation and confirming the guard fails.
 
 | Rule | Holds |
@@ -138,7 +138,7 @@ either entry in place would introduce a conflict rather than inherit one.
 
 ### Handoff A — for `docs/brain/decision-log.md` (owner: whichever of #783 / #776 merges last)
 
-> - **Spine Wave 1A — shared governed execution seam** (2026-09-02) — `_shared/paige-spine/governedExecution.ts`: one pure, door-blind decision covering identity, server-derived tenancy, capability identity, access, action-risk, the autonomy clamp, approval-proof validation, stored-argument execution, typed fail-closed refusals, a declared outcome channel, and a secret-free audit record. Held by `lint:governed-execution` (R1 door-blind · R2 no adoption of the superseded #711 gate · R3 no boolean approval input · R4 one home for claiming), all four mutation-tested. 67 property tests, including an exhaustive 539,136-combination sweep of the decision space. Every non-equivalent mutation of the seam is caught; the two deliberately redundant unrecognised-lane guards are the known survivors — removing EITHER alone leaves the suite green because the other still catches it, and removing BOTH fails two tests, which is the point of keeping them. **Foundation only — nothing adopts it, no capability migrated, no customer-facing behaviour changed.** Deliberately does NOT import `_shared/toolConfirmation.ts`: it is unwired (`paige-ai-chat/index.ts:7922`) and its only importer anywhere is its own test.
+> - **Spine Wave 1A — shared governed execution seam** (2026-09-02) — `_shared/paige-spine/governedExecution.ts`: one pure, door-blind decision covering identity, server-derived tenancy, capability identity, access, action-risk, the autonomy clamp, approval-proof validation, stored-argument execution, typed fail-closed refusals, a declared outcome channel, and a secret-free audit record. Held by `lint:governed-execution` (R1 door-blind · R2 no adoption of the superseded #711 gate · R3 no boolean approval input · R4 one home for claiming), all four mutation-tested. 67 property tests, including an exhaustive 539,136-combination sweep of the decision space. The mutations actually exercised — the door branch, the lane clamp, the approval-claim shape test, the capability binding, the stored-argument rule and the outcome-channel requirement — are each caught. **This is not a claim that every non-equivalent mutation is caught, and two known classes survive:** the deliberately redundant unrecognised-lane guards (removing EITHER alone leaves the suite green because the other still catches it; removing BOTH fails two tests, which is the point of keeping them), and the refusal *messages* — changing the human-readable text of `tenant_unresolved` is observable and passes all 67 tests, because the suite asserts on refusal CODES rather than on prose. **Foundation only — nothing adopts it, no capability migrated, no customer-facing behaviour changed.** Deliberately does NOT import `_shared/toolConfirmation.ts`: it is unwired (`paige-ai-chat/index.ts:7922`) and its only importer anywhere is its own test.
 
 ### Handoff B — for `docs/brain/lessons-learned.md` (owner: last of #754 / #731 / #729)
 

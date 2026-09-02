@@ -25,14 +25,21 @@
  * absence of such a branch, because a property proven only by a test is a property a later edit can
  * quietly remove.
  *
- * IT WRAPS THE CANONICAL GATE. IT DOES NOT REPLACE IT.
- * ---------------------------------------------------
- * The approve/deny call itself is delegated to `decideToolConfirmation`, unchanged, and the
- * classification to `classifyAction`, unchanged. This module adds only the layers that were
- * previously inline and therefore unavailable: identity, server-derived tenancy, capability
- * identity, access, the clamp, the fail-closed refusals, and a structured audit record. Adding a
- * second way to prove approval is the failure `docs/doctrine/one-approval-gate.md` exists to stop,
- * and it is not what this is.
+ * IT CONSUMES AN APPROVAL RESULT. IT NEVER PRODUCES ONE.
+ * ------------------------------------------------------
+ * This module does NOT call `decideToolConfirmation`, and must not: that gate (#711) is superseded
+ * and unwired, a CI rule refuses any adoption of it, and an earlier version of this header said the
+ * approve/deny call was delegated to it — the exact opposite instruction to what the code does and
+ * what the doctrine requires.
+ *
+ * What actually happens: an approval reaches this seam ALREADY REDEEMED, as the result of the
+ * caller's atomic single-use claim, carried in `GovernedApproval` as the stored arguments plus the
+ * capability those arguments were approved for. This module validates that result — the shape, the
+ * capability binding, and that stored arguments are what execute — and classification is delegated
+ * to `classifyAction`, unchanged. It adds only the layers that were previously inline and therefore
+ * unavailable: identity, the tenancy assertion, capability identity, access, the clamp, the
+ * fail-closed refusals, and a structured audit record. Adding a second way to PROVE approval is the
+ * failure `docs/doctrine/one-approval-gate.md` exists to stop, and it is not what this is.
  *
  * WHY THIS SEAM IS STRICTER THAN CHAT, AND WHY THAT IS THE SAFE DIRECTION
  * ----------------------------------------------------------------------
