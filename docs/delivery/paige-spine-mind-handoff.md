@@ -149,6 +149,21 @@ never defined), **#750** (a `paige:open` dispatch that may still have no listene
 long-form record in `docs/delivery/parked-follow-ups-2026-09-02-mind-slice.md`. Only the owner
 may convert one into an assignment.
 
+## Known gaps, stated rather than smoothed over
+
+- **The control opens PAIGE; it does not ask the question.** The deal card's button is labelled
+  *"Open PAIGE for this client"* rather than *"Ask…"* because opening scoped is all it does. The
+  event carries a `prompt`, matching the shape the two pre-existing dispatches already use, but
+  no listener consumes one yet — prefilling the composer would mean editing `PaigeAIChat.tsx`,
+  which PR #729 owns. The person types their question; PAIGE then answers from the record.
+- **Setting a client scope resets the transcript.** That is the existing request fence doing its
+  job — `scopeEpoch` is tenant plus client, so a client change invalidates the turn and clears
+  the conversation. It is correct, and it is also the first thing a person will notice.
+- **The in-context strip is built from the Solo shell's existing primitives** (`spw-truth`,
+  `spw-link-button`) rather than a new treatment, and has **no rendered proof**. Its existence
+  and its Clear control are correctness — a scope you cannot see or release is a scope you can
+  ask the wrong question under. How it should look is Claude Design's, and is flagged for them.
+
 ## Owed before `LIVE`
 
 1. Authenticated owner drive of `/solo/{account}/growth` → deal → **Ask PAIGE about this
