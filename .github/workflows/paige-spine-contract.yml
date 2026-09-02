@@ -1,0 +1,39 @@
+name: PAIGE Spine contract
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/paige-spine/**"
+      - "supabase/migrations/20260902004019_paige_spine_foundation.sql"
+      - "supabase/tests/paige_spine_foundation.sql"
+      - "src/__tests__/paige-spine-*.test.ts"
+      - "scripts/ci/paige-spine-registry-lint.mjs"
+      - "scripts/ci/chat-tool-registry-lint.mjs"
+      - ".github/workflows/paige-spine-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/paige-spine/**"
+      - "supabase/migrations/20260902004019_paige_spine_foundation.sql"
+      - "supabase/tests/paige_spine_foundation.sql"
+      - "src/__tests__/paige-spine-*.test.ts"
+      - "scripts/ci/paige-spine-registry-lint.mjs"
+      - "scripts/ci/chat-tool-registry-lint.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs --self-test
+      - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs
+      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts
