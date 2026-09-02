@@ -1,13 +1,6 @@
 import type { SpineCapability } from "../contracts.ts";
 
-/**
- * First Spine vertical slice. The durable source is the existing Pipeline-owned
- * Rail event emitted only after a successful deal-stage transition.
- *
- * This declaration activates no new mutation. Pipeline's domain-held approval
- * semantics must be reconciled by the PAIGE Chat owner before a mutating
- * capability can be registered safely.
- */
+/** Existing Pipeline-owned successful deal-stage Rail outcomes; no new mutation. */
 export const PIPELINE_DEAL_STAGE_EVIDENCE = {
   key: "pipeline.deal_stage_evidence",
   domain: "pipeline",
@@ -20,7 +13,17 @@ export const PIPELINE_DEAL_STAGE_EVIDENCE = {
     freshness: "available for 30 days, stale through the 365-day projection window, then excluded",
     staleAfterDays: 30,
     projectionWindowDays: 365,
-    factKeys: ["change_type", "outcome", "actor"],
+    sourceSystem: "context_rail",
+    sourceActorTypes: ["person", "paige"],
+    classification: "operational",
+    lifecycle: "observed",
+    safeSummary: "A pipeline stage changed.",
+    referencePrefix: "rail:",
+    factValues: {
+      change_type: ["stage_changed"],
+      outcome: ["succeeded"],
+      actor: ["person", "paige"],
+    },
   },
   action: {
     classification: "read",
