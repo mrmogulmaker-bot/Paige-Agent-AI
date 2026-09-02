@@ -1281,7 +1281,7 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 
 - Before ANY claim about the codebase (what exists, what's wired, what's shipped): grep first, check Section 4 second, memory NEVER
 - Before ANY paste that references a table/function/file: verify it exists
-- **A finding discovered outside the current assignment's scope becomes a GitHub issue immediately, and is not started.** GitHub Issues are the authoritative individual work records; the PAIGE Attention Register is the one owner-facing view over them; this doc holds material platform truth, never a backlog. The standard — the five records, the register's nine fields and six views, and the honest record that the register's GitHub Project does not exist yet — is `docs/doctrine/paige-attention-register.md`.
+- **A finding discovered outside the current assignment's scope becomes a GitHub issue immediately, and is not started.** GitHub Issues are the authoritative individual work records; the PAIGE Attention Register is the one owner-facing view over them. This doc holds material platform truth — its legacy in-file ledger (Section 6) is not extended, and a new finding goes to Issues, never here. The standard — the five records, the register's nine fields and six views, the live lists that already exist, and the honest record that the register's board does not exist yet — is `docs/doctrine/paige-attention-register.md`.
 - **CC's code check is authoritative** — Cowork's sandbox agents can miss recently-shipped migrations or files; when CC disagrees with Section 4 or Section 10, CC's finding wins
 
 ### Session end (any agent that shipped work)

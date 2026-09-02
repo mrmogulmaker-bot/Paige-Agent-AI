@@ -26,6 +26,7 @@ Paige-specific half. It is our own content and adds to flow-by-flow rather than 
 |---|---|
 | `docs/brain/README.md` | **Always.** The index and the verified platform snapshot |
 | `docs/brain/config-registry.md` | Anything touching infra or a third-party seam — Supabase, Stripe, Twilio, ElevenLabs, CI, MCP |
+| `docs/doctrine/paige-attention-register.md` | Any task likely to surface a finding outside its own scope — where such a finding goes, and what is already recorded |
 | The domain doc the README points at | Whatever area the task is in |
 | `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4 | Any "do we have this?" question — §4 is SHIPPED, §5 is gaps |
 | `docs/doctrine/tier-matrix.md` | Anything whose visibility or gating differs per account type |
@@ -75,7 +76,7 @@ The last step of the work, **in the same change**. Not a follow-up.
 | A reusable pattern or skill emerged | The mechanic, so the next task inherits it | `docs/brain/` + its index row in `README.md` |
 | Tier, surface, or gating changed | The per-tier reality **as shipped** | `docs/doctrine/tier-matrix.md` |
 | A new doc was added | Its index row | `docs/brain/README.md` |
-| A finding was discovered **outside this task's scope** | The issue — evidence, impact, next step, what was not verified — and its register record | GitHub Issues, then the PAIGE Attention Register (`docs/doctrine/paige-attention-register.md`) |
+| A finding was discovered **outside this task's scope** | The issue — evidence, impact, next step, what was not verified — filed **when it was found**, not here | GitHub Issues. The PAIGE Attention Register is a view over them and is `UNAVAILABLE` until its board exists — `docs/doctrine/paige-attention-register.md` §7 |
 
 What binds which: **§0** the master reference · **§BRAIN.3** `docs/brain/` · **§66** the tier matrix ·
 **§13** record what is real, never what a commit intends · **§58** never delete a dated entry to fix
@@ -128,7 +129,7 @@ A finding that touches tenant isolation, unauthorized access, secrets, destructi
 external action is reported immediately and may block the release. It is still not silently absorbed
 into the branch.
 
-**Do not modify the installed `flow-by-flow` skill to carry this.** That skill is installed per
+**Do not modify the installed `flow-by-flow` skill to carry any of the rules above.** That skill is installed per
 account and cannot see this repository; editing it would put a repo-specific rule somewhere this
 repo does not control and cannot review. This file is the repo-native home — the same reason it
 exists at all.
