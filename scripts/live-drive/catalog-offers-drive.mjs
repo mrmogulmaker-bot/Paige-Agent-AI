@@ -165,7 +165,14 @@ async function main() {
         check(/\$500 × 6/.test(inst.text), `${id}: instalment shows its arithmetic`);
         check(!/Fixed amount/.test(inst.text), `${id}: instalment is not labelled a fixed amount`);
 
-        // 2c. An unreadable permission is not a denied one.
+        // 2c. A recurring plan is per-period. Rendering it bare turns a $99/month retainer into a
+        // one-off "$99" — the same lie as the instalment, for the shape the writer actually emits.
+        await setMode(page, "recurring");
+        const rec = await measure(page);
+        check(/\$99 \/ month/.test(rec.text), `${id}: recurring shows its period`, rec.text);
+        check(!/Fixed amount/.test(rec.text), `${id}: recurring is not labelled a fixed amount`);
+
+        // 2d. An unreadable permission is not a denied one.
         await setMode(page, "authority-unknown");
         const unknown = await measure(page);
         check(/could not be read just now/.test(unknown.text), `${id}: unknown authority says so`);
@@ -219,8 +226,13 @@ async function main() {
     const ctx = await browser.newContext({ viewport: { width: 1536, height: 770 } });
     const page = await ctx.newPage();
     await page.goto(URL, { waitUntil: "networkidle" });
+    // Wait for the surface itself, not just the network. One run of this block reported a false
+    // FAIL because `main.paige-solo` was momentarily absent after the theme click and `measure`
+    // read null — a gate that goes red at random teaches the reader to ignore its red.
+    await page.waitForSelector("main.paige-solo");
     const light = (await measure(page)).bg;
     await page.click("[data-theme-toggle]"); await settle(page);
+    await page.waitForSelector("main.paige-solo");
     const dark = (await measure(page)).bg;
     check(light !== dark, "light and dark are genuinely different", `${light} vs ${dark}`);
     // Not merely different — the exact shipped token values, so a washed-out theme cannot pass.

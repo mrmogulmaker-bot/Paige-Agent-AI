@@ -175,6 +175,33 @@ describe("Catalog Offers — truthfulness", () => {
     expect(cell.textContent).not.toContain("Fixed amount");
   });
 
+  it("shows a recurring plan per period, never as a flat one-off price", () => {
+    // The BLOCKER an independent review of the pushed diff caught. The instalment fix guarded on
+    // `kind === "installment"` alone, so the OTHER per-period kind — and the one the shipped
+    // writer actually produces — fell through and rendered a $99/month retainer as a one-off
+    // "$99 · Fixed amount", disagreeing with this offer's own detail drawer.
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [{ id: "pr", nickname: "Monthly", unitAmount: 9900, currency: "usd", billingInterval: "month", kind: "recurring", installmentsTotal: null, active: true }] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("$99 / month");
+    expect(cell.textContent).toContain("Recurring plan");
+    expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
+  it("keeps the period when a recurring plan is only the floor of several", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
+      { id: "pr", nickname: "Monthly", unitAmount: 9900, currency: "usd", billingInterval: "month", kind: "recurring", installmentsTotal: null, active: true },
+      { id: "py", nickname: "Yearly", unitAmount: 99000, currency: "usd", billingInterval: "year", kind: "recurring", installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    // A floor that drops the period would read "From $99" for a monthly plan — the same lie.
+    expect(cell.textContent).toContain("From $99 / month");
+    expect(cell.textContent).toContain("Several plans recorded");
+  });
+
   it("does not call several recorded plans one fixed amount", () => {
     setCampaigns();
     setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
@@ -186,6 +213,21 @@ describe("Catalog Offers — truthfulness", () => {
     expect(cell.textContent).toContain("From $500");
     expect(cell.textContent).toContain("Several plans recorded");
     expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
+  it("does not hide the price and the conflict sentence from a screen reader", () => {
+    // An `aria-label` REPLACES an element's contents for name computation. Naming the row
+    // "{name} — {state}" made the price and the entire derived-conflict sentence — this
+    // surface's honesty device — inaudible. Caught by an independent review of the pushed diff.
+    setCampaigns();
+    setOffers({ offers: [offer({ availability: "active", pricePresentation: "fixed", prices: [] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const row = host.querySelector("button.co-row") as HTMLElement;
+    expect(row.getAttribute("aria-label")).toBeNull();
+    // With no label overriding them, the contents form the name.
+    expect(row.textContent).toContain("no amount is recorded against it");
+    expect(row.textContent).toContain("—");
+    expect(row.textContent).toContain("Active");
   });
 
   it("says the kind is not stated rather than guessing one", () => {

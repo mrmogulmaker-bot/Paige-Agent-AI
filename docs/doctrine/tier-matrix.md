@@ -1595,24 +1595,36 @@ nothing, changes nothing and charges nothing.
 | Sub-account | ✓ via `growth` | Identical to Solo (§60). |
 | Client / Anonymous | ✗ | No client or anonymous route reaches `/solo/*`. A *paused* or *draft* offer additionally stops being readable by `anon`, because `tp_public_active_read` is `status = 'active'`. |
 
-**Authority inside the tenant.** The read asks `tenant_members.tenant_role` for the SAME workspace
-the rows come from, never a global role — §59's global-role trap, and the exact defect repaired in
-`20261043000000`. `canManage` is `owner`/`admin`; a plain member sees the catalog and is told in
+**Authority inside the tenant.** The read asks `tenant_members.role` — the column; `tenant_role` is
+the enum TYPE, and asking for it returns 42703 — filtered on all three of the SAME workspace the
+rows come from, the caller's own `auth.uid()`, and `status = 'active'`. All three matter: the
+workspace scope is what keeps this off a global role (§59's global-role trap, the defect repaired
+in `20261043000000`), and the caller + active-seat filters are what make the row unique, since an
+admin can read every member row in their tenant and an unfiltered `maybeSingle()` would raise
+PGRST116. The predicate matches `is_tenant_admin()` exactly. `canManage` is `owner`/`admin`; a plain member sees the catalog and is told in
 words that they cannot change it. Slice 2A exposes no write, so `canManage` currently gates only
 that notice; Slice 2B's command seam is what it will really gate.
 
 **Evidence, separated.**
-- *Automated:* 31 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
+- *Automated:* 34 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 15 that EXECUTE
   the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
   file exists because the first mocks the read entirely: an adversarial review of the pushed diff
   found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
   which would have made `canManage` false for every owner — silently, past 24 green tests and a
   clean `tsc`. Three perturbations are proven to turn the new suite red: the wrong column name, a
-  dropped caller scope, and re-deriving the commercial kind from billing cadence.
+  dropped caller scope, and re-deriving the commercial kind from billing cadence. A second review at
+  `c7ea208` added three more, each proven to fail against the prior commit before it passed: a
+  recurring plan's per-period figure headlined as a flat price, that same figure as the floor of
+  several plans, and an `aria-label` that replaced the row's contents and made the price and the
+  derived-conflict sentence inaudible to a screen reader.
+- *Correction to this row (§13).* It previously read `251/251`. That figure came from a local run of
+  a script version edited before it was pushed; the committed script yields 243, and the reviewer
+  could not reproduce 251. The count is now 259 because the same review's BLOCKER added a recurring
+  fixture and two rendered checks per frame. Cite what the committed script prints, not a local run.
 - *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
   `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
   `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
-- *Rendered:* 251/251 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
+- *Rendered:* 259/259 checks in `scripts/live-drive/catalog-offers-drive.mjs` — the real components
   with only the network read stubbed, across both palettes and all four Solo widths, asserting the
   six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
   canvas values in each theme.

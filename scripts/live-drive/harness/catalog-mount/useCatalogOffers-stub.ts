@@ -4,7 +4,7 @@
 // test is the real one, so a regression in its states, copy, geometry or truth-telling is caught.
 // Every fixture below is a plausible tenant record — never one of the owner's real accounts (§63).
 type Mode = "populated" | "empty" | "readonly" | "error" | "resolving" | "unpriced"
-  | "authority-unknown" | "fields-unavailable" | "instalment";
+  | "authority-unknown" | "fields-unavailable" | "instalment" | "recurring";
 
 let mode: Mode = "populated";
 const listeners = new Set<() => void>();
@@ -59,6 +59,10 @@ const UNPRICED = [{ ...OFFERS[0], id: "o7", name: "Cohort Four — Foundations",
 // An instalment plan: `unitAmount` is PER INSTALMENT and must never headline as the whole price.
 const INSTALMENT = [{ ...OFFERS[0], id: "o8", name: "Foundations — payment plan",
   prices: [price("pi", 50000, "Plan", "month", "installment", 6)] }];
+// A recurring plan: `unitAmount` is PER PERIOD. This is one of only two shapes the shipped writer
+// produces, so a retainer rendered as a flat one-off price is the commonest form of the lie.
+const RECURRING = [{ ...OFFERS[0], id: "o9", name: "Advisory retainer",
+  prices: [price("pr", 9900, "Monthly", "month", "recurring", null)] }];
 
 export function setCatalogHarnessMode(next: Mode) {
   mode = next;
@@ -83,6 +87,7 @@ export function useCatalogOffers() {
   if (mode === "readonly") return { ...base(OFFERS), canManage: false };
   if (mode === "unpriced") return base(UNPRICED);
   if (mode === "instalment") return base(INSTALMENT);
+  if (mode === "recurring") return base(RECURRING);
   if (mode === "authority-unknown") return { ...base(OFFERS), canManage: false, authorityUnknown: true };
   if (mode === "fields-unavailable") return { ...base(OFFERS), fieldsUnavailable: true };
   return base(OFFERS);

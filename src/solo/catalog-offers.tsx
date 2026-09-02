@@ -74,16 +74,29 @@ const activePlanCount = (offer) =>
   offer.prices.filter((price) => price.active && typeof price.unitAmount === "number").length;
 
 /**
- * `tenant_prices` is multi-plan by design (deposit, instalment, recurring). For an instalment plan
- * `unit_amount` is the PER-INSTALMENT figure, so printing it as the headline turns a $3,000 program
- * into "$500 · Fixed amount" — a false price on the record whose whole purpose is to be the one
- * true price. An instalment is therefore shown as its arithmetic, never as a single number.
+ * `tenant_prices` is multi-plan by design (deposit, instalment, recurring), and for TWO of those
+ * kinds `unit_amount` is not the whole price. An instalment's figure is per-instalment, so printing
+ * it bare turns a $3,000 program into "$500 · Fixed amount". A recurring plan's figure is
+ * per-period, so printing it bare turns a $99/month retainer into a one-off "$99" — on the surface
+ * whose whole purpose is to be the one true price, and in disagreement with this offer's own detail
+ * drawer, which does print the interval. Both are shown qualified, never as a single number.
+ *
+ * The per-period test keys on `billing_interval`, not on `kind`, because that is the column that
+ * actually carries the period and it is what the drawer reads. A row that records an interval is
+ * therefore qualified however it was written, not only one whose kind happens to say so.
  */
-function instalmentText(plan) {
-  if (plan?.kind !== "installment" || typeof plan.unitAmount !== "number") return null;
+function qualifiedPrice(plan) {
+  if (!plan || typeof plan.unitAmount !== "number") return null;
   const each = money(plan.unitAmount, plan.currency);
   if (!each) return null;
-  return plan.installmentsTotal ? `${each} × ${plan.installmentsTotal}` : `${each} per instalment`;
+  if (plan.kind === "installment") {
+    return {
+      text: plan.installmentsTotal ? `${each} × ${plan.installmentsTotal}` : `${each} per instalment`,
+      note: "Instalment plan",
+    };
+  }
+  const period = plan.billingInterval && plan.billingInterval !== "one_time" ? plan.billingInterval : null;
+  return period ? { text: `${each} / ${period}`, note: "Recurring plan" } : null;
 }
 
 /**
@@ -98,15 +111,24 @@ function priceLine(offer) {
   const amount = lead ? money(lead.unitAmount, lead.currency) : null;
   if (!presentation && !amount) return { text: "No price stated", unstated: true };
   if (!amount) return { text: "—", unstated: true };
-  // An instalment carries its own arithmetic, so the presentation label beneath it would be
-  // wrong twice over: it is not one fixed amount, and the figure shown is already qualified.
-  const instalment = instalmentText(lead);
-  if (instalment) return { text: instalment, unstated: false, note: "Instalment plan" };
   // Several priced plans cannot honestly be one "fixed amount"; the lowest is a floor, not the price.
-  if (presentation === "fixed" && activePlanCount(offer) > 1) {
-    return { text: `From ${amount}`, unstated: false, note: "Several plans recorded" };
+  const several = activePlanCount(offer) > 1;
+  const floor = several || presentation === "from";
+  // A qualified figure carries its own arithmetic, so the presentation label beneath it would be
+  // wrong twice over: it is not one fixed amount, and the figure shown is already qualified.
+  const qualified = qualifiedPrice(lead);
+  if (qualified) {
+    return {
+      text: floor ? `From ${qualified.text}` : qualified.text,
+      unstated: false,
+      note: several ? "Several plans recorded" : qualified.note,
+    };
   }
-  return { text: presentation === "from" ? `From ${amount}` : amount, unstated: false };
+  return {
+    text: floor ? `From ${amount}` : amount,
+    unstated: false,
+    note: several ? "Several plans recorded" : undefined,
+  };
 }
 
 /**
@@ -137,10 +159,17 @@ function OfferRow({ offer, onOpen }) {
       type="button"
       className="co-row"
       onClick={() => onOpen(offer)}
-      aria-label={`${offer.name} — ${state.label}`}
+      /* No aria-label. An aria-label REPLACES the element's contents for name computation, so
+         naming the row "{name} - {state}" made the price, and the whole derived-conflict sentence
+         that is this surface's honesty device, inaudible to a screen reader. The contents ARE the
+         name: title, summary, price, qualifier, delivery, state, and the conflict when there is
+         one. */
     >
       <span className="co-head">
         <span className="co-kind" title={kindLabel} data-kind={kind ?? "unstated"}>
+          {/* The glyph says nothing to a screen reader and `title` on a span is not reliably
+              announced, so the kind is carried as real text. */}
+          <span className="sr-only">{kindLabel}</span>
           <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
             strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             {/* No recorded kind gets a neutral mark, not a guessed one. */}
