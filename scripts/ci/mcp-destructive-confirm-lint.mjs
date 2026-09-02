@@ -137,7 +137,12 @@ const EXEMPT = /\/\/\s*mcp-confirm-exempt:\s*\S/;
  * simply not a comment and cannot exempt anything.
  */
 function commentTextWithin(node, sf) {
-  return collectComments(sf, node.pos, node.end).join("\n");
+  // `getStart(sf)`, NOT `pos`. A node's `pos` is its FULL start, which includes the leading trivia
+  // that belongs to whatever came before it — so `foo(); // mcp-confirm-exempt: unrelated` on the
+  // line above a registration was read as that registration's own exemption, and a destructive
+  // boolean-gated tool passed while its block contained no exemption at all. An exemption has to be
+  // written INSIDE the thing it exempts; a comment about the previous statement is not consent.
+  return collectComments(sf, node.getStart(sf), node.end).join("\n");
 }
 
 /**
@@ -257,7 +262,7 @@ export function findToolCalls(src, fileName = "in-memory.ts") {
       config: configArg && ts.isObjectLiteralExpression(configArg) && readableConfig(configArg)
         ? configArg : null,
       text: node.getFullText(sf),
-      comments: commentTextWithin(node, sf),
+      comments: commentTextWithin(node, sf),   // bounded to the call's own syntax, not its trivia
       line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
     });
   });
