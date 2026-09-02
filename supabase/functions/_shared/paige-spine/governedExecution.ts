@@ -102,31 +102,48 @@ export type GovernedDoor = "chat" | "automation" | "agent" | "skill" | "mcp" | "
  * Who is asking. **Both `tenantId` and `tenantSource` are populated by the ADAPTER, and the seam
  * cannot tell a server-derived tenant from a request-supplied one.**
  *
- * An earlier version of this comment claimed the type has no field for a caller-supplied tenant and
- * that a request therefore cannot name the tenant it wants to act in. That is false, and it is the
- * dangerous direction to be wrong in — this passes every check:
+ * EVERY FIELD ON THIS BOUNDARY IS AN ADAPTER ASSERTION, NOT A FACT THIS SEAM ESTABLISHES.
  *
- *     { tenantId: request.workspaceId, tenantSource: "server" }
+ * Read that as the rule for the whole type rather than a caveat on one field, because it was
+ * learned one field at a time and that is the expensive way. Each of these passes every check:
  *
- * What the seam enforces is that a caller must ASSERT server derivation and is refused without the
- * assertion; making the assertion TRUE is the adapter's obligation and nothing here can verify it.
- * Read this as a contract you are required to honour, not a guarantee you are receiving.
+ *     { authenticated: true, userId: request.userId }        no credential was verified
+ *     { tenantId: request.workspaceId, tenantSource: "server" }   a request naming its own tenant
+ *     { access: { allowed: true } }                          no policy was consulted
+ *     { autonomyLane: request.lane }                         no workspace setting was resolved
+ *
+ * The seam enforces that a caller MAKES each assertion and refuses without it. Making the assertion
+ * TRUE is the adapter's obligation, and nothing here can verify any of them — this module has no
+ * credential, no policy engine, no autonomy store and no claim table. It is a decision function
+ * over what it is told.
+ *
+ * So each field below documents what the ADOPTER must establish before setting it. Read them as
+ * obligations you are required to honour, never as guarantees you are receiving. An adapter that
+ * populates any of them from request data defeats this boundary, and the boundary cannot tell.
  */
 export type GovernedCaller = {
-  /** Proven from a verified credential — a JWT subject or an equivalent server-side check. */
+  /** ADAPTER MUST: verify a real credential — a JWT signature or an equivalent server-side check
+   *  — before setting this. The seam reads the boolean and cannot check what produced it. */
   authenticated: boolean;
-  /** The verified subject (`auth.uid()`), or null when there is none. */
+  /** ADAPTER MUST: derive this from the verified credential (`auth.uid()`), never from a request
+   *  field. Null when there is none. */
   userId: string | null;
-  /** The tenant the SERVER derived. */
+  /** ADAPTER MUST: resolve this server-side. A request-supplied workspace id here is a
+   *  cross-tenant hole the seam cannot see. */
   tenantId: string | null;
-  /** How `tenantId` was obtained. Anything but "server" is refused. */
+  /** How `tenantId` was obtained. Anything but "server" is refused — but "server" is a CLAIM the
+   *  adapter makes about its own work, not a property this seam can confirm. */
   tenantSource: "server" | "request" | "unknown";
   /** Audit only. */
   door: GovernedDoor;
   /**
-   * The surface's own role/access verdict, ALREADY EVALUATED. This seam does not own the platform's
-   * role model (§53 tiers, staff roles, scopes differ per surface), so it requires the verdict
-   * rather than guessing it — and treats an absent verdict as a refusal, never as permission.
+   * The surface's own role/access verdict. This seam does not own the platform's role model (§53
+   * tiers, staff roles, scopes differ per surface), so it requires the verdict rather than guessing
+   * it — and treats an absent verdict as a refusal, never as permission.
+   *
+   * ADAPTER MUST: derive `allowed` from the applicable server-side policy. `{ allowed: true }` from
+   * a request field or a permissive default passes the only check there is. An earlier version of
+   * this comment said "ALREADY EVALUATED", which reads as a guarantee that evaluation happened.
    */
   access?: { allowed: boolean; reason?: string };
 };
@@ -160,11 +177,21 @@ export type GovernedCapability = {
  * the value arrives from a database row or parsed JSON, where TypeScript has no reach. So the
  * shape is checked at runtime, and a `true` arriving here is the exact bare boolean the canonical
  * rule forbids as approval — refused loudly rather than quietly treated as absent.
+ *
+ * AND THE SAME RULE AS `GovernedCaller`: every field here is an adapter assertion. This module has
+ * no autonomy store and no claim table, so it cannot check that the lane came from a setting or
+ * that any compare-and-set ever ran.
  */
 export type GovernedApproval = {
-  /** The workspace autonomy lane, resolved server-side. */
+  /** ADAPTER MUST: resolve this from the workspace's autonomy setting server-side. A
+   *  request-supplied `"auto"` reaches the execute path on an ordinary mutation with no claim at
+   *  all — the seam recognises the VALUE and clamps `high`; it cannot see where the value came
+   *  from. */
   autonomyLane: "auto" | "confirm" | "off" | string;
-  /** The result of the caller's atomic claim against the canonical proposal store. */
+  /** ADAPTER MUST: set this ONLY to the result of a real atomic single-use claim against the
+   *  canonical proposal store, and the arguments must be the ones that store held.
+   *  `{ claimedArgs: request.args, claimedFor: capability.id }` satisfies `readClaim` and executes.
+   *  The redemption is the adapter's to perform and the adapter's to get right. */
   claimedArgs?: Record<string, unknown> | null;
   /**
    * The capability id the claim was redeemed AGAINST, as the caller resolved it.

@@ -41,14 +41,21 @@ asserted two ways, because a property proven only by a test is one a later edit 
 
 ## The eleven enforcement points, and where each lives
 
+> **Read the whole table under one rule: every input to this seam is an ADAPTER ASSERTION, not a
+> fact the seam establishes.** It has no credential, no policy engine, no autonomy store and no
+> claim table — it is a decision function over what it is told. Points 1, 2, 4, 6 and 7 each name
+> something the adopter must have actually done; the seam refuses when the assertion is absent and
+> cannot tell when it is false. Four consecutive review rounds found this stated as a guarantee on
+> one field after another, which is why it is now stated once, here and on both exported types.
+
 | # | Point | Where it is enforced |
 |---|---|---|
-| 1 | Authenticated caller identity | `caller.authenticated` + `userId`; refuses `unauthenticated` |
+| 1 | Authenticated caller identity | `caller.authenticated` + `userId`; refuses `unauthenticated`. **Adapter must have verified a real credential** — the seam reads a boolean |
 | 2 | Server-derived tenant | `tenantSource` must be `"server"` — and **this is an ADAPTER OBLIGATION the seam checks, not a property it can prove.** `GovernedCaller.tenantId` and `tenantSource` are both populated by the adapter, so `{ tenantId: request.workspaceId, tenantSource: "server" }` satisfies the seam while being exactly the thing the point exists to stop. The seam refuses a tenancy that does not *claim* server derivation; only the adapter can make the claim true. An earlier version of this row said the type has no field for a caller-supplied tenant, which is false and is the more dangerous direction to be wrong in |
 | 3 | Capability identity | `capability.id` — the exact `action-risk.ts` key |
-| 4 | Role / access policy | `caller.access`, evaluated by the surface. **An absent verdict is a refusal**, never permission |
+| 4 | Role / access policy | `caller.access`, evaluated by the surface. **An absent verdict is a refusal**, never permission — but `{ allowed: true }` from a request field passes, so the adapter must derive it from real policy |
 | 5 | Action-risk classification | delegated to `classifyAction` — not re-implemented |
-| 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives |
+| 6 | Autonomy floor | one-directional clamp: `auto` on `high` becomes `confirm`; `off` always survives. **The lane's provenance is the adapter's** — the seam reads the value, not the setting |
 | 7 | Approval-proof validation | a successful atomic claim, or nothing. **There is no boolean input** — but, like point 2, the claim having actually happened is an **adapter obligation the seam cannot verify**. `readClaim` proves the value is a plain object and the execute branch proves `claimedFor` matches; a fabricated `{ claimedArgs, claimedFor }` built from request data passes both |
 | 8 | Stored approved arguments | an approved path runs `claimedArgs`; `requestArgs` is not consulted on it |
 | 9 | Refusal and failure behaviour | **thirteen** typed codes, every one fail-closed (`GOVERNED_REFUSAL_CODES`) |
