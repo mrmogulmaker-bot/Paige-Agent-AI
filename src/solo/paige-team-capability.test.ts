@@ -244,6 +244,28 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     expect(branch).toContain("headers: { Authorization: authHeader }");
   });
 
+  it("does not let the invite seam tell a real owner they are not one", () => {
+    // The three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()`,
+    // which the roster and the other two RPCs use, COALESCEs it to the earliest active membership.
+    // So a sole OWNER with a null active_tenant_id reads their own roster, passes the tenant guard,
+    // and is then told "only an owner or admin may invite team members" — which is false, and which
+    // Paige would relay in her own voice. That is the §13 failure: not a poor error string, but a
+    // true statement about the resolver rendered as a false statement about the person.
+    //
+    // The RPCs are deliberately not changed (they are shared with the Team screen and have the same
+    // defect); what is asserted is that the refusal names the real cause, ahead of the write.
+    const guard = HANDLER.slice(HANDLER.indexOf("const inviteSeamBlocked = async ()")).slice(0, 2200);
+    expect(guard).toContain('.select("active_tenant_id")');
+    expect(guard).toContain("This isn't about your permissions; you may well be its owner.");
+    // A failed read must not manufacture a refusal — it proves nothing, and the RPC's own check is
+    // still ahead of any write.
+    expect(guard).toContain("if (error) return null;");
+    // It guards the invitation acts only: the two RPCs resolve the same way the roster does, so
+    // applying it to them would refuse work that would have succeeded.
+    const applied = HANDLER.split("const inviteBlocked = await inviteSeamBlocked();").length - 1;
+    expect(applied, "the invite resolver check guards exactly the invitation branch").toBe(1);
+  });
+
   it("carries the email-delivery outcome into the result instead of assuming it", () => {
     // Creating an invitation and delivering its email are two acts and the second fails alone.
     // `emailed` is what stops "invited them" being said about somebody who was never contacted.

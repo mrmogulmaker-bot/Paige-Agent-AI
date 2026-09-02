@@ -925,3 +925,14 @@ a way that `auto` on `automation_set_grant` is not. Both halves are in one place
 narrowed. The `owner_only` half should not be: "Paige may never grant or raise her own autonomy
 through Chat regardless of action class or owner wording" is explicit, and a settings toggle is
 owner wording.
+
+**The last peer-gate finding, closed: the invite seam told a real owner they were not one.** The
+three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()` — used by the
+roster and the other two RPCs — COALESCEs it to the caller's earliest active membership. So a sole
+OWNER whose `active_tenant_id` happens to be null reads their own roster, passes the tenant guard,
+and is then told *"only an owner or admin may invite team members."* They are the owner. Paige would
+have relayed that in her own voice, which is the §13 failure — a true statement about a resolver
+rendered as a false statement about a person. The refusal now names the real cause before any email
+is attempted. **The RPCs are deliberately unchanged:** they are shared with the Team screen, which
+has the identical defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with
+its own producer inventory (§37). Logged as open.
