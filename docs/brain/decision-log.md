@@ -936,3 +936,85 @@ rendered as a false statement about a person. The refusal now names the real cau
 is attempted. **The RPCs are deliberately unchanged:** they are shared with the Team screen, which
 has the identical defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with
 its own producer inventory (§37). Logged as open.
+
+---
+
+## 2026-09-02 — The PAIGE Solo Platform Alignment Standard (owner, standing)
+
+**`main` is the reference template for the Solo tier.** Every active standalone Solo tenant gets the
+same shared shell, navigation, enabled surfaces and current-main behaviour. Records, plan,
+permissions, integrations, connections and truthful availability may differ; **the product template
+must not.** Never build for the tenant visible in a URL or fixture. An account number, fixture,
+preview or one observed tenant is not proof that a behaviour is canonical.
+
+**The required build path — the whole standard in one line:**
+
+```
+owner can use the page → tenant-safe record exists → safe domain evidence enters the Spine
+→ PAIGE/Mind understands the right scoped truth → governed action occurs only when authorized
+→ Rail records the outcome → owner can see the truthful result
+```
+
+A green unit test, static screen, mock or fixture is not completion. Evidence is reported in five
+separated classes: automated · static · rendered structural · authenticated browser runtime ·
+UNVERIFIED. A live owner capability is never claimed without authenticated browser proof.
+
+**Department ownership.** Each department owns its UI, tenant records, domain logic and domain
+actions, and must NOT invent or modify Chat's central handler, Mind's memory rules,
+approval/confirmation mechanisms, Trust Compass enforcement, Rail infrastructure or Systems Check
+conclusions. It publishes safe tenant-scoped evidence and action metadata through the Spine
+contract; the Chat workstream completes the bounded adapter, approval treatment and owner-visible
+capability. A **Spine Change Request** is only for a genuinely new shared primitive, shared schema,
+approval mechanism, resolver behaviour or cross-domain contract.
+
+**Surface cards are mandatory** before changing any department — ten fields and a truth label of
+LIVE · PARTIAL · UNAVAILABLE · NOT CONNECTED · PROPOSED. Home: `docs/doctrine/surface-cards/`.
+
+### §13 CORRECTION — an absence I asserted without looking
+
+An earlier version of this entry, and of the surface-cards README, stated that **neither** the
+"Solo Platform Taxonomy and UI Flow Standard" **nor** the "PAIGE Spine Integration Standard" existed
+in the repository. **The Spine half was false.** `docs/architecture/paige-spine-foundation.md`, the
+registry at `supabase/functions/_shared/paige-spine/registry.ts`, its CI contract workflow and its
+handoff doc had all landed on `main` in #728 at 12:57 UTC; the claim was written at 13:12 UTC — from
+a stale local tree, without fetching `main` first.
+
+The rule this breaks is one already written down here: answer from the record, not from memory or a
+stale checkout, and never assert an absence without a real search. An unfalsifiable claim of absence
+is indistinguishable from not having looked, which is precisely what happened. **Fetch, then
+assert.** The Taxonomy half stands — no single document under that name exists, verified against
+`origin/main` — and the nearest sources are mapped in the surface-cards README.
+
+### The first surface card: Team is PARTIAL, and the registry agrees
+
+`docs/doctrine/surface-cards/team.md`. Legs 1–5 of the build path pass; 6 and 7 do not.
+
+**A Team action emits no Rail event, and the owner has nowhere to see it happened.**
+`emitRailForTool` returns early on `if (!contactId) return` — the Rail is per-client by
+construction, and a Team action has no contact. That early return is CORRECT; emitting one anyway
+would invent a client involvement. An attribution row IS written to `paige_audit_log`,
+tenant-stamped and complete — but **no Solo surface reads `paige_audit_log`**. The Trust Compass
+panel and the Team hub's own *"What the team did"* both read `paige_client_events` via
+`useSoloActivityFeed`, so a permission change PAIGE makes on a team does not appear in that team's
+own activity feed. And because PAIGE is a rail *beside* the page, an owner on Team with her open
+sees a stale roster after she acts.
+
+**The Spine registry independently reaches the same verdict.** It declares exactly one capability
+today (`PIPELINE_DEAL_STAGE_EVIDENCE`); Team is not declared, and could not be declared complete,
+because the registry requires `outcome.railVisibility` and Team has none.
+
+**Filed as a Spine Change Request, deliberately not built.** The foundation doc states in its own
+opening that it "does not create a second Rail, event bus, memory store, approval store, or PAIGE
+workspace", and requires an approved Change Request identifier for any shared primitive. The
+question is narrow: may a Rail event exist without a `contact_id`, or do workspace-level outcomes
+get their own projection that `useSoloActivityFeed` unions in? Either answer makes Team declarable
+with real Rail visibility. Neither is the Chat workstream's to pick alone.
+
+### Branch note — the Team code was already on main
+
+The Team capability (tools, classifications, tenant-agreement guard, autonomy clamp, catalogue
+migration) merged to `main` in #728, not through PR #675. Verified rather than assumed: `main`
+carries all 909 of the branch's migrations, all five tool declarations and the clamp, and its
+`paige-ai-chat` handler is a strict superset. PR #675's branch was therefore rebuilt on `main`,
+leaving only these documents — the alternative was a 110-commit branch whose only real content was
+already merged.
