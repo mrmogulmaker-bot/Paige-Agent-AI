@@ -63,6 +63,44 @@ const CLAIMING = /paige_pending_confirmations|claimConfirmation|confirmFingerpri
 
 const EXEMPT = /\/\/\s*governed-execution-exempt:\s*\S/;
 
+/**
+ * Rewrite computed member access to dot access BEFORE anything strips strings.
+ *
+ * `caller["door"]` and `client["rpc"](…)` are ordinary JavaScript and mean exactly what
+ * `caller.door` and `client.rpc(…)` mean — but the property name lives inside a STRING, so any
+ * check that strips strings first sees `caller[""]` and `client[""](…)` and matches nothing.
+ * Codex raised this as two separate evasions (R1 and R4) on `55b578fc`; both were real, and both
+ * are one bug: the guard was reading syntax that the stripper had already destroyed.
+ *
+ * Normalising first means the rules match the MEANING rather than one spelling of it.
+ */
+export function normalizeComputedAccess(src) {
+  return src.replace(/\[\s*(["'`])([A-Za-z_$][A-Za-z0-9_$]*)\1\s*\]/g, ".$2");
+}
+
+/**
+ * Remove comments but KEEP string bodies.
+ *
+ * R2 matches on a module SPECIFIER, which lives inside a string — the full stripper blanks exactly
+ * the thing it needs to read, which is how the namespace-import evasion survived a first fix.
+ */
+export function stripComments(src) {
+  let out = "", i = 0;
+  while (i < src.length) {
+    const c = src[i], n = src[i + 1];
+    if (c === "/" && n === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
+    if (c === "/" && n === "*") { i += 2; while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++; i += 2; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      const q = c; out += c; i++;
+      while (i < src.length) { if (src[i] === "\\") { out += src.slice(i, i + 2); i += 2; continue; }
+                               out += src[i]; if (src[i] === q) { i++; break; } i++; }
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
 /** Remove comments and string/template bodies so prose and messages cannot trip a rule. */
 export function stripCommentsAndStrings(src) {
   let out = "", i = 0;
@@ -82,7 +120,7 @@ export function stripCommentsAndStrings(src) {
 
 /** R1 — any `door` used in a comparison or a condition. */
 export function doorBranches(src) {
-  const code = stripCommentsAndStrings(src);
+  const code = stripCommentsAndStrings(normalizeComputedAccess(src));
   const hits = [];
   const patterns = [
     /\bdoor\b\s*(===|!==|==|!=)/g,                    // door === "mcp"
@@ -107,13 +145,26 @@ export function doorBranches(src) {
   return [...byLine.values()].sort((a, b) => a.line - b.line);
 }
 
-/** R3 — a boolean field anywhere in the GovernedApproval declaration. */
+/**
+ * R3 — `GovernedApproval` may declare these fields and NOTHING else.
+ *
+ * The first version hunted for the literal token `boolean`, which Codex correctly showed is a
+ * spelling check rather than a semantic one: `approved?: true | false`, `approved?: ApprovalFlag`,
+ * or `approved?: 0 | 1` all declare a caller-expressible approval flag and none contains the word.
+ * Chasing spellings is unwinnable without a type checker.
+ *
+ * An ALLOWLIST inverts it. Two fields are legitimate — the lane, and the result of the atomic claim
+ * — so anything else is a new approval input regardless of how its type is written, and the rule
+ * needs no opinion about types at all. Fails closed when the declaration cannot be found.
+ */
+const APPROVAL_FIELDS_ALLOWED = new Set(["autonomyLane", "claimedArgs"]);
+
 export function booleanApprovalFields(src) {
   const code = stripCommentsAndStrings(src);
   const m = code.match(/type\s+GovernedApproval\s*=\s*\{([\s\S]*?)\n\};/);
   if (!m) return { parsed: false, fields: [] };
-  const fields = [...m[1].matchAll(/(\w+)\s*\??\s*:\s*boolean\b/g)].map((x) => x[1]);
-  return { parsed: true, fields };
+  const declared = [...m[1].matchAll(/^\s*(\w+)\s*\??\s*:/gm)].map((x) => x[1]);
+  return { parsed: true, fields: declared.filter((f) => !APPROVAL_FIELDS_ALLOWED.has(f)) };
 }
 
 /**
@@ -124,7 +175,13 @@ export function booleanApprovalFields(src) {
  * first real run flags its own source of truth is a guard people learn to ignore.
  */
 export function importsGate(src) {
-  const code = stripCommentsAndStrings(src);
+  const code = stripComments(src);
+  // Keyed on the MODULE, not on the binding. `import * as c from "../toolConfirmation.ts"` followed
+  // by `c.decideToolConfirmation(...)` names the function nowhere in the import clause, so a
+  // binding-name check let the exact adoption R2 exists to block straight through (Codex P2 on
+  // `55b578fc`). Any import of that module is the thing worth failing on.
+  if (/import[^;]*from\s*["'][^"']*\/toolConfirmation(\.ts)?["']/.test(code)) return true;
+  // Keep the named-import form too, for a re-export or a differently-rooted path.
   return /import\s[^;]*\bdecideToolConfirmation\b[^;]*from/.test(code);
 }
 
@@ -176,6 +233,21 @@ if (process.argv.includes("--self-test")) {
   check("R1 respects an explained exemption",
     doorBranches(`if (caller.door === "mcp") return x; // governed-execution-exempt: owner-ruled`).length, 0);
 
+  check("R1 catches COMPUTED door access (Codex P2)",
+    doorBranches('if (caller["door"] === "mcp") return x;').length, 1);
+  check("R1 catches computed access with single quotes",
+    doorBranches("if (caller['door'] !== 'chat') return x;").length, 1);
+  check("R2 catches a NAMESPACE import of the superseded module (Codex P2)",
+    importsGate('import * as confirmation from "../toolConfirmation.ts";'), true);
+  check("R2 still catches the named import",
+    importsGate('import { decideToolConfirmation } from "../toolConfirmation.ts";'), true);
+  check("R3 catches a boolean-EQUIVALENT approval field (Codex P2)",
+    booleanApprovalFields('type GovernedApproval = {\n  autonomyLane: string;\n  approved?: true | false;\n};').fields,
+    ["approved"]);
+  check("R3 catches an aliased-type approval field",
+    booleanApprovalFields('type GovernedApproval = {\n  autonomyLane: string;\n  approved?: ApprovalFlag;\n};').fields,
+    ["approved"]);
+
   check("R2 does not flag the module that DEFINES the gate",
     importsGate(`export function decideToolConfirmation(input) { return { kind: "execute" }; }`), false);
   check("R2 flags a file that imports the gate",
@@ -183,11 +255,11 @@ if (process.argv.includes("--self-test")) {
   check("R2 is not tripped by the name in prose",
     importsGate(`// decideToolConfirmation is the canonical gate\nconst a = 1;`), false);
 
-  check("R3 catches a boolean approval field",
+  check("R3 catches a plain boolean approval field",
     booleanApprovalFields(`type GovernedApproval = {\n  autonomyLane: string;\n  confirm?: boolean;\n};`).fields,
     ["confirm"]);
-  check("R3 passes a claim-only approval",
-    booleanApprovalFields(`type GovernedApproval = {\n  autonomyLane: string;\n  claim?: ConfirmationClaim;\n};`).fields,
+  check("R3 passes the real claim-only approval shape",
+    booleanApprovalFields(`type GovernedApproval = {\n  autonomyLane: string;\n  claimedArgs?: Record<string, unknown> | null;\n};`).fields,
     []);
   check("R3 reports when it could not parse the type",
     booleanApprovalFields(`type Something = { a: boolean };`).parsed, false);
@@ -221,9 +293,11 @@ if (!approval.parsed) {
   console.error("  that cannot find what it checks passes everything.");
 } else if (approval.fields.length) {
   failed = true;
-  console.error(`\n✗ R3 no boolean approval input: GovernedApproval declares ${approval.fields.map((f) => `\`${f}\``).join(", ")}.`);
-  console.error("  An approval a caller can express as `true` is one a MODEL can express as `true`.");
-  console.error("  On this seam an approval is a successful atomic claim, or it is nothing (#784).");
+  console.error(`\n✗ R3 approval-input allowlist: GovernedApproval declares ${approval.fields.map((f) => `\`${f}\``).join(", ")}.`);
+  console.error("  Only `autonomyLane` and `claimedArgs` are permitted. Any other field is a new");
+  console.error("  approval input, whatever its type is spelled as — and an approval a caller can");
+  console.error("  express is one a MODEL can express (#784). An approval here is a successful");
+  console.error("  atomic claim, or it is nothing.");
 }
 
 const callers = gateCallers(["supabase/functions", "src"]);
@@ -238,7 +312,7 @@ if (rogue.length) {
 }
 
 // R4 — the seam receives a claim; it does not perform one.
-const seamCode = stripCommentsAndStrings(src);
+const seamCode = stripCommentsAndStrings(normalizeComputedAccess(src));
 if (CLAIMING.test(seamCode)) {
   failed = true;
   console.error("\n✗ R4 one home for claiming: the seam performs its own claim or data access.");
