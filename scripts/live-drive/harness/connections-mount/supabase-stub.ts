@@ -203,6 +203,40 @@ function persist() {
   }
 }
 
+/**
+ * Settings › Team roster. Sized to a REALISTIC Solo workspace rather than to
+ * whatever number happens to fit the host: Team is contractually form-fitting
+ * (`SETTINGS_VISIBLE_SCROLL_DESTINATIONS` excludes it), and a one-row roster
+ * would prove that trivially while telling us nothing about a real owner's
+ * screen. The drive measures the real height at this size.
+ */
+type StubTeamMember = {
+  membership_id: string; user_id: string; full_name: string | null; email: string | null;
+  status: string; permission: "owner" | "admin" | "member" | "coach"; is_owner: boolean;
+  job_title: string | null; responsibilities: string | null; last_sign_in_at: string | null;
+};
+
+const teamStore: StubTeamMember[] = [
+  { membership_id: "hm-1", user_id: "hu-1", full_name: "Harness Owner", email: "owner@harness.example.invalid", status: "active", permission: "owner", is_owner: true, job_title: "Founder", responsibilities: "Owns the business and its client relationships.", last_sign_in_at: "2026-09-01T12:00:00.000Z" },
+  { membership_id: "hm-2", user_id: "hu-2", full_name: "Harness Operations", email: "ops@harness.example.invalid", status: "active", permission: "admin", is_owner: false, job_title: "Operations lead", responsibilities: "Runs scheduling, onboarding and the weekly client review.", last_sign_in_at: "2026-08-30T09:15:00.000Z" },
+  { membership_id: "hm-3", user_id: "hu-3", full_name: "Harness Delivery", email: "delivery@harness.example.invalid", status: "active", permission: "member", is_owner: false, job_title: "Delivery specialist", responsibilities: "Owns milestone delivery for retained clients.", last_sign_in_at: "2026-08-29T17:40:00.000Z" },
+  { membership_id: "hm-4", user_id: "hu-4", full_name: null, email: "pending@harness.example.invalid", status: "active", permission: "member", is_owner: false, job_title: null, responsibilities: null, last_sign_in_at: null },
+  { membership_id: "hm-5", user_id: "hu-5", full_name: "Harness Coaching", email: "coach@harness.example.invalid", status: "active", permission: "coach", is_owner: false, job_title: "Client coach", responsibilities: "Runs the coaching cadence and keeps notes current.", last_sign_in_at: "2026-08-28T14:05:00.000Z" },
+  { membership_id: "hm-6", user_id: "hu-6", full_name: "Harness Support", email: "support@harness.example.invalid", status: "suspended", permission: "member", is_owner: false, job_title: "Support", responsibilities: "Handles inbound client questions.", last_sign_in_at: "2026-07-11T08:00:00.000Z" },
+];
+
+/** `empty` is the FIRST-USE state: a workspace that is still just its owner. */
+function teamRoster(): StubTeamMember[] {
+  return state() === "empty" ? teamStore.slice(0, 1) : teamStore;
+}
+
+function teamInvitations() {
+  return [
+    { id: "hi-1", email: "invited@harness.example.invalid", permission: "member" as const, uses: 0, revoked_at: null, expires_at: "2027-01-01T00:00:00.000Z" },
+    { id: "hi-2", email: "expired@harness.example.invalid", permission: "admin" as const, uses: 0, revoked_at: null, expires_at: "2026-01-01T00:00:00.000Z" },
+  ];
+}
+
 const ok = (data: unknown) => ({ data, error: null as { message: string } | null });
 const fail = (message: string) => ({ data: null, error: { message } });
 
@@ -458,6 +492,65 @@ export const supabase = {
         current_period_end: new Date(Date.now() + 20 * 86_400_000).toISOString(),
         cancel_at_period_end: false,
       }));
+    }
+
+    // Settings › Team. Before this existed the stub fell through to `ok(null)`,
+    // `normalizeTeamWorkspace(null)` returned null, and the surface rendered its
+    // "Team unavailable" error branch — at every viewport and both palettes. The
+    // canonical-shell drive still scored those runs GREEN, because a form-fit
+    // check on an error card passes exactly as an error card fits. 40 Team rows
+    // of 1536 were measuring a surface nobody could use. That is the §32
+    // false-green in its purest form: the assertion was real, the subject was not.
+    //
+    // Rows are visibly synthetic ("Harness …", `.invalid` addresses) so no frame
+    // can be mistaken for a tenant's real roster and no invented person appears
+    // in an artifact (§13/§63). Writes persist in the store below, so "change it,
+    // save it, and see it hold" is provable rather than assumed (§70).
+    if (name === "get_solo_team_workspace") {
+      if (state() === "error") return Promise.resolve(fail("team roster access denied"));
+      const viewerCanManage = state() !== "readonly";
+      const roster = teamRoster();
+      const search = String((args as Record<string, unknown> | undefined)?.p_search ?? "").trim().toLowerCase();
+      const permissionFilter = String((args as Record<string, unknown> | undefined)?.p_permission ?? "all");
+      const filtered = roster.filter((m) => {
+        const matchesSearch = !search
+          || [m.full_name, m.email, m.job_title, m.responsibilities]
+              .some((v) => String(v ?? "").toLowerCase().includes(search));
+        const matchesPermission = permissionFilter === "all" || m.permission === permissionFilter;
+        return matchesSearch && matchesPermission;
+      });
+      return Promise.resolve(ok({
+        tenant_id: TENANT,
+        tenant_name: TENANT_NAME,
+        viewer_permission: viewerCanManage ? "owner" : "member",
+        can_manage_profiles: viewerCanManage,
+        can_manage_invitations: viewerCanManage,
+        can_change_permissions: viewerCanManage,
+        // Deliberately the FILTERED count, matching the shipped SQL
+        // (`20260901001520_solo_team_workspace.sql`), so the harness reproduces
+        // the product's own counting rather than a tidier version of it.
+        total_members: filtered.length,
+        members: filtered,
+        invitations: state() === "empty" ? [] : teamInvitations(),
+      }));
+    }
+    if (name === "set_solo_team_member_work_profile") {
+      const a = (args ?? {}) as Record<string, unknown>;
+      const row = teamStore.find((m) => m.membership_id === String(a.p_membership_id));
+      if (!row) return Promise.resolve(fail("member not found"));
+      if (state() === "readonly") return Promise.resolve(fail("work profile update denied"));
+      row.job_title = a.p_job_title == null ? null : String(a.p_job_title);
+      row.responsibilities = a.p_responsibilities == null ? null : String(a.p_responsibilities);
+      return Promise.resolve(ok({ ...row }));
+    }
+    if (name === "set_solo_team_member_permission") {
+      const a = (args ?? {}) as Record<string, unknown>;
+      const row = teamStore.find((m) => m.membership_id === String(a.p_membership_id));
+      if (!row) return Promise.resolve(fail("member not found"));
+      if (state() === "readonly") return Promise.resolve(fail("permission change denied"));
+      if (row.is_owner) return Promise.resolve(fail("owner permission is protected"));
+      row.permission = String(a.p_permission) as typeof row.permission;
+      return Promise.resolve(ok({ ...row }));
     }
 
     // Settings › Integrations. Both connectors answer "not connected", which is
