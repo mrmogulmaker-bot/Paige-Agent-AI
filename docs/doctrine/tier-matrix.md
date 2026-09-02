@@ -1388,6 +1388,47 @@ renders `granted_lane` alone would be reporting a request as an outcome.
 Agency by resell, Enterprise both — so no owner ruling was sought. Agency's ✓ above is for acting
 inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 
+### Solo Settings → Team — removing someone from a workspace, `/solo/{account}/settings/team`
+
+**§66, same commit as the ship — and the row is deliberately NOT ticked as live.** This entry
+records a capability that is **merged-pending**: the migration `20261043000000` is written, its
+guards are proven against production inside a rolled-back transaction, and nothing is applied. It
+becomes live only when the migration is applied and an authenticated drive confirms it. Until then
+the honest label is `PENDING`, not `SHIPPED`.
+
+An Owner can remove one active **Admin or Member** from the workspace they are currently in, from
+the existing member editor on the Team screen. `remove_solo_team_member(_member_user_id,
+_expected_tenant_id)` derives the actor from `auth.uid()` and the workspace from
+`current_user_tenant_id()`; the tenant argument is a **refusal-only** confirmation token that can
+abort the call and can never select a workspace.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Remove an Admin or Member (Owner only) | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Remove an Owner or co-Owner | — | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove yourself | — | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove a legacy specialised permission (e.g. Coach) | — | ✗ | ✗ | ✗ | ✗ | ✗ | 403 |
+| Remove somebody by direct table write | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+The ✓ rows are Owner-only *within* that tier: an Admin is refused by the same function that serves
+the Owner. The God row is `—` for the same honest reason the Chat seam's is — a tenant-less operator
+has no `current_user_tenant_id()`, so the function raises rather than reaching across tenants; an
+operator who has switched into a tenant resolves as that tenant.
+
+**The last row is the part that makes the others true.** Before this change,
+`GRANT SELECT, INSERT, UPDATE, DELETE … TO authenticated` (`20260629175341:62`) plus the `FOR ALL`
+policy `Tenant admins manage members` let any tenant **Admin** `DELETE` any membership row —
+including every Owner's — straight through PostgREST, and `anon` and `authenticated` both held
+`TRUNCATE`, which row-level security does not gate at all (measured, not assumed:
+`docs/evidence/team-removal/`). The same migration revokes `INSERT, UPDATE, DELETE, TRUNCATE` from
+both browser roles. `SELECT` is untouched. Every writer of the table is a `SECURITY DEFINER`
+function owned by `postgres`, so no legitimate path loses anything.
+
+**Removal ends one workspace's access and nothing wider**, proven against production with a person
+holding memberships in two workspaces: the other membership, that workspace's roster, the person's
+platform identity, their profile and their authored history are all untouched, and a global role
+they still earn elsewhere is retained. A re-invitation through the existing path remains possible.
+
 ### PAIGE Chat — the Solo Team seam, `/solo/{account}/paige/chat` and every other chat surface
 
 **§66, same commit as the ship.** Paige could already READ a workspace's team — the roster, each

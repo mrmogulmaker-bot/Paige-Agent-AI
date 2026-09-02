@@ -55,6 +55,38 @@ export function permissionPresentation(permission: TeamPermission, isOwner: bool
   return { label: permission ? permission.charAt(0).toUpperCase() + permission.slice(1).replace(/_/g, " ") : "Member", mutable: false };
 }
 
+/**
+ * What the screen says when a removal does not go through.
+ *
+ * WHY THIS EXISTS RATHER THAN PRINTING `error.message`. The neighbouring controls surface the raw
+ * Postgres string, which is fine while the refusal is one this product authored and wrong the
+ * moment it is not: a trigger deeper down answers with things like
+ * `OWNER_GUARD: tenant ownership may only be changed via grant_co_owner()/revoke_co_owner()`, and
+ * backend identifiers are not product copy. So the reasons this seam authors are recognised, and
+ * everything else degrades to an honest sentence that promises nothing about the cause.
+ *
+ * `reconciled` marks the one refusal that is not a failure: the person was already gone, so the
+ * roster is simply behind. It must never be reported as a removal this owner performed.
+ * `retryable` is false wherever trying again would refuse identically — offering a Try again that
+ * cannot succeed is a worse answer than saying so.
+ */
+export type RemovalRefusal = { message: string; retryable: boolean; reconciled: boolean };
+
+export function removalRefusal(raw: string | null | undefined, personName: string, workspaceName: string): RemovalRefusal {
+  const text = (raw ?? "").toLowerCase();
+  const known: Array<[RegExp, RemovalRefusal]> = [
+    [/only the workspace owner/, { message: "Only the workspace owner can remove people from this workspace.", retryable: false, reconciled: false }],
+    [/an owner cannot be removed/, { message: `${personName} is an owner of ${workspaceName}, and an owner can't be removed here.`, retryable: false, reconciled: false }],
+    [/cannot remove yourself/, { message: "You can't remove yourself from this workspace.", retryable: false, reconciled: false }],
+    [/only an admin or a member/, { message: `${personName}'s access level isn't handled on this screen, so nothing was changed.`, retryable: false, reconciled: false }],
+    [/active workspace changed/, { message: `Your active workspace changed before this could run, so nothing was removed. Open ${workspaceName} again to try.`, retryable: false, reconciled: false }],
+    [/authentication required/, { message: "Your session ended before this could run. Sign in again and nothing will have changed.", retryable: false, reconciled: false }],
+    [/not on this workspace/, { message: `${personName} is no longer on this team. Nothing further was changed.`, retryable: false, reconciled: true }],
+  ];
+  for (const [pattern, refusal] of known) if (pattern.test(text)) return refusal;
+  return { message: `Nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
+}
+
 export function validateWorkProfile(title: string, responsibilities: string): { title?: string; responsibilities?: string } {
   const errors: { title?: string; responsibilities?: string } = {};
   if (title.trim().length > 120) errors.title = "Keep the job title to 120 characters or fewer.";
