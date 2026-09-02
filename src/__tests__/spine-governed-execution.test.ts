@@ -454,6 +454,8 @@ const isStoredClaim = (c: unknown): c is Record<string, unknown> =>
  * executing. A tightening that silently empties a test is indistinguishable from one that works.
  */
 const SWEEP_CLAIMED_FOR = ["MATCH", "another_capability", undefined] as const;
+/** The single value used where the seam provably never reads it. */
+const ONE_CLAIMED_FOR = ["MATCH"] as const;
 const SWEEP_CALLER_ARGS = { contact_id: "CALLER_SUPPLIED" };
 
 /**
@@ -469,12 +471,28 @@ const SWEEP_CALLER_ARGS = { contact_id: "CALLER_SUPPLIED" };
  * The lesson is the reason it stays: hand-written cases test the branches the author was thinking
  * about, and a fail-open lives in the branch nobody wrote a case for.
  */
+/**
+ * An exhaustive proof is not a unit test, and vitest's 5s default is a statement about unit tests.
+ *
+ * Grounded rather than guessed: CI timed this file's sweep out at 5s when it enumerated 1.1M
+ * combinations, while the same run took under a second locally — 157 test files sharing a runner
+ * make per-test wall time nothing like local. The cross-product is now half that size and the
+ * headroom is explicit, so a slow runner reports a slow proof rather than a phantom failure.
+ */
+const SWEEP_TIMEOUT_MS = 30_000;
+
 describe("exhaustive sweep of the whole decision space", () => {
   it("every execute is justified, and no approved mutation ever runs caller args", () => {
     let checked = 0, execs = 0; const bad: string[] = [];
     for (const door of DOORS) for (const authed of [true,false]) for (const lane of SWEEP_LANES)
     for (const cap of SWEEP_CAPS) for (const oc of SWEEP_OUTCOMES) for (const claimedArgs of SWEEP_CLAIMS)
-    for (const claimedForRaw of SWEEP_CLAIMED_FOR)
+    // `claimedFor` is consulted at exactly ONE site in the seam — inside the stored-claim branch —
+    // so varying it for a claim that is absent, failed or malformed is provably redundant work, not
+    // extra coverage. Enumerating it anyway tripled the sweep to 1.1M combinations and pushed the
+    // test past vitest's 5s default on CI, which is a cost every future run would have paid for
+    // nothing. Redundancy proven rather than assumed: with the full cross-product the mutation run
+    // reports the same 96 violations this one does.
+    for (const claimedForRaw of (isStoredClaim(claimedArgs) ? SWEEP_CLAIMED_FOR : ONE_CLAIMED_FOR))
     for (const access of [undefined,{allowed:false},{allowed:true}])
     for (const tenantSource of ["server","request","unknown"] as const)
     for (const tenantId of ["t", null]) {
@@ -543,7 +561,7 @@ describe("exhaustive sweep of the whole decision space", () => {
     for (const b of bad.slice(0,8)) console.log("   ", b);
     expect(bad.length).toBe(0);
     expect(execs).toBeGreaterThan(0);
-  });
+  }, SWEEP_TIMEOUT_MS);
 
   it("is byte-identical across all six doors for every combination", () => {
     const mism: string[] = [];
@@ -566,7 +584,7 @@ describe("exhaustive sweep of the whole decision space", () => {
     }
     console.log(`  door-blindness: ${mism.length} mismatches`);
     expect(mism.length).toBe(0);
-  });
+  }, SWEEP_TIMEOUT_MS);
 
   it("owner_only and unclassified never execute under ANY input", () => {
     const bad: string[] = [];
@@ -583,5 +601,5 @@ describe("exhaustive sweep of the whole decision space", () => {
     }
     console.log(`  owner_only/unclassified executes: ${bad.length}`);
     expect(bad.length).toBe(0);
-  });
+  }, SWEEP_TIMEOUT_MS);
 });
