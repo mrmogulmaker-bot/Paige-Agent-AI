@@ -313,21 +313,6 @@ function isBuilderChain(id) {
 const SCHEMA_NS = "z";
 
 /**
- * An identifier passed to `z.enum(…)`.
- *
- * The one place a name may go unread, and NOT because it is trusted — because it cannot matter.
- * `z.enum` produces a string-literal union; there is no argument it can be given that yields a
- * boolean field. So the guard's question ("does this schema declare a model-settable boolean?") is
- * answered for that field without knowing what the name holds. A fact about the builder, not a
- * claim about the value.
- */
-function isEnumArgument(id) {
-  const p = id.parent;
-  return !!p && ts.isCallExpression(p) && p.arguments.includes(id) &&
-    ts.isPropertyAccessExpression(p.expression) && p.expression.name.text === "enum";
-}
-
-/**
  * Is every value in this schema one this guard has actually SEEN?
  *
  * NO NAME RESOLUTION. An earlier version of this guard resolved same-file top-level constants so
@@ -338,18 +323,27 @@ function isEnumArgument(id) {
  * half-built type checker inside a lint is a fail-open with good manners.
  *
  * So resolution is GONE, and with it that whole class: nothing is resolved, so nothing can be
- * stale, shadowed or rebound. What remains is a visibility test with one narrow, type-theoretic
- * exception:
+ * stale, shadowed or rebound. What remains is a pure visibility test, with no exceptions at all:
  *
- *   permitted  literals, object and array literals, `z.…` builder chains, property keys, and an
- *              identifier in `z.enum(…)` position (where no value can produce a boolean)
+ *   permitted  literals, object and array literals, `z.…` builder chains, and property keys
  *   refused    a bare identifier used as a value, a call not rooted at `z` (`buildSchema()`,
  *              `jsonObjectOrString.describe(…)`), a spread of a name — anything whose content is
  *              decided somewhere this guard has not looked
  *
- * Measured against the real surfaces: 1,147 of 1,148 schema calls are `z`-rooted, and all 9 free
- * identifiers are `z.enum` arguments. The cost is ONE explained exemption, against a symbol table
- * and three live fail-opens. That is the trade, made deliberately.
+ * There WAS one further exception — an identifier in `z.enum(…)` position — justified on the
+ * grounds that `z.enum` yields a string-literal union and so no argument could produce a boolean.
+ * That justification was false on the version this repository runs. Measured on zod 4.5.4:
+ *
+ *     z.enum([true, false]).safeParse(true)  ->  { success: true, data: true }
+ *
+ * A type-theoretic claim that is merely untrue is worse than a name list, because it reads as
+ * proof. The exception is gone, and removing it changed nothing on the real surfaces: still 117
+ * tools, still zero violations — the free identifiers it covered sit beside handlers that destroy
+ * nothing, where schema readability was never required. It was defended, not needed.
+ *
+ * The trade, stated plainly: an unreadable schema beside a destructive handler now fails, always,
+ * and no exception exists to argue about. That is a visibility test with no escape, against a
+ * symbol table and three live fail-opens.
  */
 function schemaIsComplete(node) {
   let sawShape = false;
@@ -361,7 +355,7 @@ function schemaIsComplete(node) {
       return;
     }
     if (!ts.isIdentifier(n)) return;
-    if (isKeyPosition(n) || isBuilderChain(n) || isEnumArgument(n)) return;
+    if (isKeyPosition(n) || isBuilderChain(n)) return;
     complete = false;                        // a name standing for a value, unread
   });
   return sawShape && complete;
@@ -465,10 +459,23 @@ function destructiveCall(node) {
  * passes through an ARGUMENT position, the call describes something inside another builder.
  * A chain like `z.any().optional()` never does, so it is still the field's own type.
  */
+const ELEMENT_TYPE_CONTAINERS = new Set(["record", "array", "map", "set", "tuple", "promise"]);
+
 function unconstrainedField(call) {
   let n = call;
   while (n.parent) {
-    if (ts.isCallExpression(n.parent) && n.parent.arguments.includes(n)) return false;
+    if (ts.isCallExpression(n.parent) && n.parent.arguments.includes(n)) {
+      // Argument position alone was WRONG, and Codex proved it on the previous head:
+      // `z.union([z.string(), z.any()])` and `z.optional(z.any())` put the `any` in an
+      // argument while leaving the FIELD unconstrained. The question is not whether it is
+      // an argument but whose type it describes — a container's ELEMENT, or the field's own.
+      //
+      // Enumerating containers rather than combinators is deliberate: a zod method this
+      // guard has never heard of then falls to "the field's own type" and is FLAGGED. The
+      // other direction would let each new combinator through silently, which is how the
+      // boolean-spelling list kept losing.
+      return !ELEMENT_TYPE_CONTAINERS.has(calleeMethod(n.parent.expression) ?? "");
+    }
     if (ts.isPropertyAssignment(n.parent)) return n.parent.initializer === n;
     n = n.parent;
   }
@@ -732,6 +739,18 @@ mcp.tool("t", { inputSchema: z.object({ confirm: z.unknown().optional() }), ${DE
   // a data payload, not a branch flag — the coarse version of this rule failed the real surface.
   check("z.record(z.string(), z.any()) is a payload, not a settable flag", v(`
 mcp.tool("t", { inputSchema: z.object({ id: z.string(), corrections: z.record(z.string(), z.any()).optional() }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
+  // Codex on 70c7f0c5: argument position alone cannot tell a container's element type from a
+  // combinator that widens the field itself. Both reproduced at 0 violations before this fix.
+  check("z.union([z.string(), z.any()]) leaves the FIELD unconstrained", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.union([z.string(), z.any()]) }), ${DESTRUCTIVE} });`), 1);
+  check("z.optional(z.any()) leaves the FIELD unconstrained", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.optional(z.any()) }), ${DESTRUCTIVE} });`), 1);
+  check("z.array(z.any()) is an element type, not the field", v(`
+mcp.tool("t", { inputSchema: z.object({ id: z.string(), items: z.array(z.any()) }), handler: async ({ id }) => { await admin.rpc("handle_data_subject_request", { id }); } });`), 0);
+  // Zod 4.5.4 measured: z.enum([true,false]).safeParse(true) -> { success: true, data: true }.
+  // The exception that let an unread identifier through here rested on that being impossible.
+  check("an unread z.enum argument no longer passes", v(`
+mcp.tool("t", { inputSchema: z.object({ confirm: z.enum(FLAGS) }), ${DESTRUCTIVE} });`), 1);
   check("an ELEMENT-ACCESS delete is still a delete", v(`
 mcp.tool("t", { inputSchema: z.object({ confirm: z.boolean() }), handler: async ({ confirm }) => { if (confirm) await admin.from("clients")["delete"](); } });`), 1);
   check("an ELEMENT-ACCESS destructive rpc is still destructive", v(`
