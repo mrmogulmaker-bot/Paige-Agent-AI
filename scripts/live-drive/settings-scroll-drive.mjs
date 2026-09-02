@@ -51,7 +51,15 @@ const DESTINATIONS = [
 ];
 /** Connections' four segments are child state, not addresses — clicked, not navigated. */
 const SEGMENTS = ["Communications", "Calendars", "Registration", "Health", "Available"];
-const VISIBLE_SCROLL_DESTINATIONS = new Set(["connections", "integrations"]);
+/**
+ * The authorized visible-scroll destinations, kept identical to the product's own
+ * declaration in `src/components/tenant-shell/settings-scroll-contract.ts`.
+ * `settings.scroll-policy.test.tsx` asserts the two lists match: a drive that
+ * still classified Setup as form-fitting would assert "nothing is clipped" on a
+ * surface the product now deliberately scrolls, and fail it for the opposite
+ * reason. Setup was added by owner ruling 2026-09-02.
+ */
+const VISIBLE_SCROLL_DESTINATIONS = new Set(["setup", "connections", "integrations"]);
 let currentTheme = "dark";
 
 const results = [];
@@ -754,6 +762,40 @@ async function main() {
           await openDestination(page, dest, false);
           const geom = await page.evaluate(measure);
           const label = `${env} ${dest}`;
+
+          // THE THEME AXIS ACTUALLY REACHED THE RENDERED SHELL.
+          //
+          // Scored once per environment, on the first destination — and here
+          // rather than before the loop because the page has to have NAVIGATED:
+          // measured on a fresh `newPage()` this found no shell at all and failed
+          // for the wrong reason, which is its own small lesson about asserting
+          // against a surface that has not rendered yet.
+          //
+          // This loop has always iterated `light` and `dark`, and until 2026-09-02
+          // that was all it did: the harness passed the theme with `forcedTheme`,
+          // which leaves next-themes' `resolvedTheme` alone, and the shell stamps
+          // its OWN `data-pg` from `resolvedTheme` onto wrappers inside the
+          // document one. Both runs rendered Mineral, and every "both themes"
+          // claim this drive produced was one palette measured twice. Geometry is
+          // theme-independent, so nothing failed and nothing looked wrong.
+          //
+          // A matrix axis is not covered because the loop iterated over it. This
+          // asserts a RENDERED token, the only thing that could have caught it:
+          // `--pg-canvas` is #100e14 in Obsidian and #fbf9f5 in Mineral, and the
+          // shell's own `data-pg` must agree with the theme under test.
+          if (dest === DESTINATIONS[0]) {
+            const palette = await page.evaluate(() => {
+              const solo = document.querySelector(".paige-solo");
+              return {
+                shell: [...document.querySelectorAll("div[data-pg]")].map((el) => el.getAttribute("data-pg")),
+                canvas: solo ? getComputedStyle(solo).getPropertyValue("--pg-canvas").trim().toLowerCase() : "",
+              };
+            });
+            const expected = theme === "dark" ? "#100e14" : "#fbf9f5";
+            record(`${env} · theme actually reaches the rendered shell`,
+              palette.canvas === expected && palette.shell.length > 0 && palette.shell.every((v) => v === theme),
+              `--pg-canvas ${palette.canvas} (expected ${expected}) · shell data-pg ${JSON.stringify(palette.shell)}`);
+          }
           record(`${label} · renders`, geom.hasHost && geom.canvasH > 0,
             `${geom.controlCount} controls, canvas ${geom.canvasH}px`);
           if (VISIBLE_SCROLL_DESTINATIONS.has(dest)) {
@@ -941,6 +983,44 @@ async function main() {
             && integrationRefoldKeyboard.reverseExit && !integrationPaigeRefold.docX && !integrationPaigeRefold.hostX,
           `reopen=${integrationPaigeReopen.paige}/${integrationPaigeReopen.workspaceCount} refold=${integrationPaigeRefold.paige} owners=${integrationPaigeRefold.ownerCount} tabReturn=${integrationTabReturn} keyFocus=${integrationKeyState.focusInside} keyboard=${integrationRefoldKeyboard.seen}/${integrationRefoldKeyboard.count}`);
 
+        // SETUP, WITH PAIGE OPEN AND FOLDED — the newly authorized visible-scroll
+        // surface, and the one the 2026-09-02 ruling was about.
+        //
+        // Integrations fits at laptop widths and Connections is a different
+        // destination with different content, so neither proves Setup. Opening
+        // PAIGE narrows the host, which re-lays out a 34-field form and changes
+        // its extent; the contract is that Setup keeps exactly ONE scroll owner
+        // through the cycle, never gains a horizontal one, and returns a complete
+        // keyboard path to its terminal control after the fold.
+        await openDestination(page, "setup", false);
+        await settle(page);
+        await page.locator('button[aria-label="Direct PAIGE"]').click();
+        await page.waitForTimeout(120);
+        const setupPaigeOpen = await shellState();
+        record(`${env} · PAIGE opens once beside Setup without stealing its owner`,
+          setupPaigeOpen.paige === "open" && setupPaigeOpen.workspaceCount === 1
+            && !setupPaigeOpen.workspaceHidden && setupPaigeOpen.ownerCount === 1
+            && setupPaigeOpen.ownerScrollHeight > setupPaigeOpen.ownerClientHeight + 1
+            && !setupPaigeOpen.docX && !setupPaigeOpen.hostX,
+          `state=${setupPaigeOpen.paige} count=${setupPaigeOpen.workspaceCount} owners=${setupPaigeOpen.ownerCount} extent=${setupPaigeOpen.ownerScrollHeight}/${setupPaigeOpen.ownerClientHeight}`);
+
+        await page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]').click();
+        await page.waitForTimeout(120);
+        await resetScroll(page);
+        const setupTabReturn = await tabIntoSettings(page);
+        await page.keyboard.press("End");
+        await page.waitForTimeout(160);
+        const setupEnd = await page.evaluate(measure);
+        const setupKeyboard = await keyboardAudit(page);
+        const setupFolded = await shellState();
+        record(`${env} · folding PAIGE restores Setup End and complete keyboard reach`,
+          setupFolded.paige === "closed" && setupFolded.workspaceHidden
+            && setupFolded.ownerCount === 1 && setupTabReturn && inView(setupEnd, h)
+            && setupKeyboard.seen === setupKeyboard.count && setupKeyboard.reachable
+            && setupKeyboard.forwardExit && setupKeyboard.reverseExit
+            && !setupFolded.docX && !setupFolded.hostX,
+          `fold=${setupFolded.paige} owners=${setupFolded.ownerCount} tabReturn=${setupTabReturn} last=${setupEnd.lastTop}-${setupEnd.lastBottom} keyboard=${setupKeyboard.seen}/${setupKeyboard.count}`);
+
         // Repeat the PAIGE cycle on an actually overflowing Connections surface.
         // Integrations can fit at laptop widths, so it cannot alone prove that an
         // open/fold cycle preserves the long surface's owner and terminal controls.
@@ -1036,6 +1116,14 @@ async function main() {
         const intShot = path.join(OUT, `settings-integrations-${theme}-${vp}.png`);
         await page.screenshot({ path: intShot, fullPage: false });
         screenshots.push({ route: "integrations", theme, viewport: vp, path: intShot });
+        // Setup, arrival state — the surface the 2026-09-02 ruling authorized, and
+        // the frame that shows the change: a drawn scrollbar where an owner
+        // previously had no signal that 78-82% of the brief was below the fold.
+        await openDestination(page, "setup", false);
+        await resetScroll(page);
+        const setupShot = path.join(OUT, `settings-setup-${theme}-${vp}.png`);
+        await page.screenshot({ path: setupShot, fullPage: false });
+        screenshots.push({ route: "setup", theme, viewport: vp, path: setupShot });
 
         // The design-locked surfaces, at this same viewport and theme.
         await formFitNegativeControls(page, env);
@@ -1044,10 +1132,12 @@ async function main() {
       }
     }
 
-    const expectedScreenshots = RUN_VIEWPORTS.length * RUN_THEMES.length * 2;
+    const expectedScreenshots = RUN_VIEWPORTS.length * RUN_THEMES.length * 3;
     const requiredPaigeLabels = [
       "exactly one PAIGE workspace opens on Integrations",
       "Integrations PAIGE reopens and refolds",
+      "PAIGE opens once beside Setup",
+      "folding PAIGE restores Setup End",
       "PAIGE opens once beside overflowing Connections",
       "first PAIGE fold restores Connections End",
       "second PAIGE fold restores Connections PageDown",
@@ -1062,7 +1152,7 @@ async function main() {
       !hasSemanticCoverage(semanticMutation),
       `full=${coveredEnvironments} afterMutation=${hasSemanticCoverage(semanticMutation)}`);
     const coveredScreenshots = RUN_VIEWPORTS.every(([w, h]) => RUN_THEMES.every((theme) =>
-      ["connections", "integrations"].every((route) => screenshots.some((shot) =>
+      ["connections", "integrations", "setup"].every((route) => screenshots.some((shot) =>
         shot.viewport === `${w}x${h}` && shot.theme === theme && shot.route === route))));
     record("evidence provenance · report covers every actually requested viewport/theme/surface",
       coveredEnvironments && coveredScreenshots && screenshots.length === expectedScreenshots,

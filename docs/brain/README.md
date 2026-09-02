@@ -53,6 +53,7 @@ worse than none — it lies with authority.
 | `goat-anchor-registry.md` | The intellectual DNA of Paige's professional intelligence — WHOSE proven framework anchors WHICH domain (v1, 13 anchors). Branded names OK in docs; **code = mechanic-descriptive only** | Seeding a skill / authoring a methodology anchor / investor IP disclosure |
 | `paige-skills-inventory.md` | What Paige DOES at professional level — the 12-category, ~100-skill inventory (v1). The S2 seeding target list; complements the GOAT registry (what she executes vs whose thinking she reasons from) | Seeding a skill / S2 wave / investor IP disclosure |
 | `pipeline-identity-contract.md` | Draft Pipeline UUID/PPL identity, zero-deal duplicate catalogue, truthful provenance, and exact-reference governed archive contract | Any Pipeline catalogue, create, rename, stage-management, archive, or Paige Pipeline-tool work |
+| `paige-spine-and-rail-state.md` | **Verified Spine + Rail current state, and the existence-vs-reachability rule.** One registered capability against 105 inline Chat tools; why most departments cannot be added without a Change Request; and why owner-visible Solo Rail activity is UNAVAILABLE rather than empty | "Is department X connected to PAIGE?" · before any Spine capability · before reading anything into an empty Solo activity feed |
 
 ---
 
@@ -167,6 +168,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/architecture/ECOSYSTEM_FULL_STACK_BOUNDARIES.md` | Full-stack boundary map | Cross-boundary integration |
 | `docs/architecture/MARKETPLACE-DATA-MODEL.md` | Marketplace data model | Marketplace tables/RLS |
 | `docs/architecture/SPRINT_C1_TENANT_READINESS.md` | Sprint C.1 non-MMA tenant readiness gate | Tenant-readiness onboarding |
+| `docs/architecture/paige-spine-tool-migration-map.md` | **Every one of the 105 legacy Chat tools, with one disposition each** (13 Migrate · 79 Spine Change Request · 3 Keep unavailable · 10 Retire), nine sequenced waves, the verified baseline and its reconciliation, the CI-ratchet proposal, and the ten-condition `LIVE` standard. Records why the Spine's evidence contract carries enumerated events and not records | Before adding a Chat tool, migrating one to the Spine, or answering "is department X connected to PAIGE?" — read `paige-spine-and-rail-state.md` first for the *state*, this for the *plan* |
 
 ## Strategy · Audits · Assessments index
 

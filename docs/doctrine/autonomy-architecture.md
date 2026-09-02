@@ -79,11 +79,20 @@ things and only one of them enforces anything:
 
 | Called "Trust Compass" | What it is | Enforces? |
 |---|---|---|
-| `trust_effective_rung()` | The PLATFORM trust rung (§68): requested rung walked down to the highest one whose attestation is in date and whose safety proofs pass. Read by `resolve_automation_autonomy` | **Real, and it clamps** — but it is defined in `20261039000000`, which is **not applied to production yet**. Neither it nor the resolver exists on prod today |
+| `trust_effective_rung()` | The PLATFORM trust rung (§68): requested rung walked down to the highest one whose attestation is in date and whose safety proofs pass. Read by `resolve_automation_autonomy` | **Real, and it clamps.** ~~*It is defined in `20261039000000`, which is not applied to production yet. Neither it nor the resolver exists on prod today.*~~ **CORRECTED 2026-09-02 (§58 — EXISTENCE only): both `trust_effective_rung()` and `resolve_tool_autonomy(uuid,text)` EXIST on production ref `xygzykjyynhzqytbqnzu`, verified by a read-only `to_regprocedure` catalog query alongside `20261039000000` and `20261040000000` in `schema_migrations` (910 applied = 910 repo files). Whether either is REACHED at runtime, and what rung it returns, was NOT tested and stays `UNVERIFIED` — see the note below the table.** |
 | The Solo Compass dial | `TRUST` in `src/solo/compass.tsx` — a module-level in-memory object seeded from a fixture | **No.** Dragging it changes a browser variable and is lost on reload. Nothing server-side reads it, and it does not write to what `trust_effective_rung()` reads |
 
-So the arithmetic above describes the ceiling **as designed and as written on this branch**, not as
-enforced in production today. What actually decides whether Paige needs permission, right now, is
+**Existence is not reachability (added 2026-09-02).** The catalog check above proves the functions are
+DEPLOYED. It proves nothing about whether any runtime path calls them. Two facts sit either side of
+that line and must not be collapsed: the Master Project File §4 records `operator_rls_coverage`
+FAILING on production and already capping the ceiling 3→2 via the §68 decay law, which is evidence
+the decay law is being evaluated; and `20261019001000:41-48` states that the compass clamps **at
+render only** — `resolve_tool_autonomy` reads `tenant_tool_autonomy` and never reads the compass — so
+a lowered ceiling changes what an operator SEES, not what the runtime permits. Reconciling those two
+is open work owned by whoever holds autonomy, and no session should assume either way from this table.
+
+So the arithmetic above describes the ceiling **as designed and as deployed**, not as proven enforced
+in production today. What actually decides whether Paige needs permission, right now, is
 the server action-risk policy and the confirmation gate — see `docs/doctrine/one-approval-gate.md`.
 
 **The per-department dial is a separate, unfinished thing** and wiring it is tracked as its own
