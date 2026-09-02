@@ -133,6 +133,32 @@ describe("a non-Chat caller cannot bypass high-risk approval", () => {
     expect(d.kind).toBe("propose");
   });
 
+  it("REFUSES a claim that is an object but not a PLAIN one", () => {
+    // Measured, not reasoned about: before this, a class instance executed and carried its own
+    // enumerable fields through as the stored arguments, and a Date and a Map executed with
+    // nothing. A claim comes back from the proposal store as JSON; none of these could be one.
+    class Fake { approved = true; }
+    for (const exotic of [new Date(), new Fake(), new Map([["a", 1]])]) {
+      const d = decide({
+        caller: caller({ door: "mcp" }), capability: HIGH,
+        approval: { autonomyLane: "confirm", claimedArgs: exotic as never, claimedFor: HIGH.id },
+        requestArgs: {},
+      });
+      expect(d.kind === "refuse" && d.code).toBe("approval_claim_malformed");
+    }
+  });
+
+  it("still accepts a null-prototype object, which a JSON parse can legitimately produce", () => {
+    const args = Object.assign(Object.create(null), { contact_id: "APPROVED" });
+    const d = decide({
+      caller: caller(), capability: HIGH,
+      approval: { autonomyLane: "confirm", claimedArgs: args, claimedFor: HIGH.id },
+      requestArgs: { contact_id: "CALLER" },
+    });
+    expect(d.kind).toBe("execute");
+    expect(d.kind === "execute" && d.args).toEqual({ contact_id: "APPROVED" });
+  });
+
   it("REFUSES a claim that was granted for a DIFFERENT capability", () => {
     // Measured before the binding existed: stored args a human approved for an ordinary
     // `crm_create_contact` executed a `high` `crm_delete_contact`. The seam sees only the claim's

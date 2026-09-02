@@ -187,6 +187,14 @@ function readClaim(value: unknown): Claim {
   if (value === undefined) return { state: "absent" };
   if (value === null) return { state: "failed" };
   if (typeof value !== "object" || Array.isArray(value)) return { state: "malformed" };
+  // A PLAIN object, not merely an object. A claim comes back from the proposal store as JSON, so a
+  // Date, a Map or a class instance could never be one — and measuring rather than reasoning about
+  // this was worth it: `new Fake()` with an own `approved = true` executed, carrying that field
+  // through as the stored arguments. Nothing was granted that the caller could not already have
+  // passed as a plain object, but "the stored call" has to MEAN the stored call, and a Map whose
+  // entries vanish under property access is not one.
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return { state: "malformed" };
   return { state: "stored", args: value as Record<string, unknown> };
 }
 
