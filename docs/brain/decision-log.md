@@ -936,3 +936,169 @@ rendered as a false statement about a person. The refusal now names the real cau
 is attempted. **The RPCs are deliberately unchanged:** they are shared with the Team screen, which
 has the identical defect, and correcting a `SECURITY DEFINER` tenant resolver is its own change with
 its own producer inventory (§37). Logged as open.
+
+---
+
+## 2026-09-02 — The PAIGE Solo Platform Alignment Standard (owner, standing)
+
+**`main` is the reference template for the Solo tier.** Every active standalone Solo tenant gets the
+same shared shell, navigation, enabled surfaces and current-main behaviour. Records, plan,
+permissions, integrations, connections and truthful availability may differ; **the product template
+must not.** Never build for the tenant visible in a URL or fixture. An account number, fixture,
+preview or one observed tenant is not proof that a behaviour is canonical.
+
+**The required build path — the whole standard in one line:**
+
+```
+owner can use the page → tenant-safe record exists → safe domain evidence enters the Spine
+→ PAIGE/Mind understands the right scoped truth → governed action occurs only when authorized
+→ Rail records the outcome → owner can see the truthful result
+```
+
+A green unit test, static screen, mock or fixture is not completion. Evidence is reported in five
+separated classes: automated · static · rendered structural · authenticated browser runtime ·
+UNVERIFIED. A live owner capability is never claimed without authenticated browser proof.
+
+**Department ownership.** Each department owns its UI, tenant records, domain logic and domain
+actions, and must NOT invent or modify Chat's central handler, Mind's memory rules,
+approval/confirmation mechanisms, Trust Compass enforcement, Rail infrastructure or Systems Check
+conclusions. It publishes safe tenant-scoped evidence and action metadata through the Spine
+contract; the Chat workstream completes the bounded adapter, approval treatment and owner-visible
+capability. A **Spine Change Request** is only for a genuinely new shared primitive, shared schema,
+approval mechanism, resolver behaviour or cross-domain contract.
+
+**Surface cards are mandatory** before changing any department — ten fields and a truth label of
+LIVE · PARTIAL · UNAVAILABLE · NOT CONNECTED · PROPOSED. Home: `docs/doctrine/surface-cards/`.
+
+### §13 CORRECTION — an absence I asserted without looking
+
+An earlier version of this entry, and of the surface-cards README, stated that **neither** the
+"Solo Platform Taxonomy and UI Flow Standard" **nor** the "PAIGE Spine Integration Standard" existed
+in the repository. **The Spine half was false.** `docs/architecture/paige-spine-foundation.md`, the
+registry at `supabase/functions/_shared/paige-spine/registry.ts`, its CI contract workflow and its
+handoff doc had all landed on `main` in #728 at 12:57 UTC; the claim was written at 13:12 UTC — from
+a stale local tree, without fetching `main` first.
+
+The rule this breaks is one already written down here: answer from the record, not from memory or a
+stale checkout, and never assert an absence without a real search. An unfalsifiable claim of absence
+is indistinguishable from not having looked, which is precisely what happened. **Fetch, then
+assert.** The Taxonomy half stands — no single document under that name exists, verified against
+`origin/main` — and the nearest sources are mapped in the surface-cards README.
+
+### The first surface card: Team is PARTIAL, and the registry agrees
+
+`docs/doctrine/surface-cards/team.md`. Legs 1–5 of the build path pass; 6 and 7 do not.
+
+**A Team action emits no Rail event, and the owner has nowhere to see it happened.**
+`emitRailForTool` returns early on `if (!contactId) return` — the Rail is per-client by
+construction, and a Team action has no contact. That early return is CORRECT; emitting one anyway
+would invent a client involvement. An attribution row IS written to `paige_audit_log`,
+tenant-stamped and complete — but **no Solo surface reads `paige_audit_log`**. The Trust Compass
+panel and the Team hub's own *"What the team did"* both read `paige_client_events` via
+`useSoloActivityFeed`, so a permission change PAIGE makes on a team does not appear in that team's
+own activity feed. And because PAIGE is a rail *beside* the page, an owner on Team with her open
+sees a stale roster after she acts.
+
+**The Spine registry independently reaches the same verdict.** It declares exactly one capability
+today (`PIPELINE_DEAL_STAGE_EVIDENCE`); Team is not declared, and could not be declared complete,
+because the registry requires `outcome.railVisibility` and Team has none.
+
+**Filed as a Spine Change Request, deliberately not built.** The foundation doc states in its own
+opening that it "does not create a second Rail, event bus, memory store, approval store, or PAIGE
+workspace", and requires an approved Change Request identifier for any shared primitive. The
+question is narrow: may a Rail event exist without a `contact_id`, or do workspace-level outcomes
+get their own projection that `useSoloActivityFeed` unions in? Either answer makes Team declarable
+with real Rail visibility. Neither is the Chat workstream's to pick alone.
+
+### Branch note — the Team code was already on main
+
+The Team capability (tools, classifications, tenant-agreement guard, autonomy clamp, catalogue
+migration) merged to `main` in #728, not through PR #675. Verified rather than assumed: `main`
+carries all 909 of the branch's migrations, all five tool declarations and the clamp, and its
+`paige-ai-chat` handler is a strict superset. PR #675's branch was therefore rebuilt on `main`,
+leaving only these documents — the alternative was a 110-commit branch whose only real content was
+already merged.
+
+---
+
+## 2026-09-02 — Owner decisions on the Solo Team capability, recorded exactly
+
+Ruled alongside Gate 2 on the surface-card documentation. **None of these is implemented by the
+documentation that records them**; two describe work that has not happened.
+
+**1. ~~Every PAIGE Team mutation is `owner_only`~~ — CORRECTED SAME DAY, see the entry below.**
+The original wording, preserved because §58 does not delete a dated ruling: *invite, resend, revoke,
+role/access grant, role/access revocation, permission change; no `high` path is to be introduced for
+Team actions.* The owner withdrew this wording once its effect was named — `owner_only` removes an
+action from Chat entirely rather than gating it harder. **The paragraphs below describe the
+SUPERSEDED ruling and its gap; neither is current.**
+
+*The live code does not match this ruling.* All six are `high` on prod today in
+`_shared/action-risk.ts` (`team_invite_member`, `team_invite_resend`, `team_invite_revoke`,
+`team_set_permission`, `member_grant_role`, `member_revoke_role`). `owner_only` is not a stronger
+gate — it removes an action from Chat entirely, at any approval strength. So this ruling does not
+tighten the Team tools, it **withdraws them from PAIGE**, and the confirm-card machinery built for
+them becomes unreachable on those six. Closing the gap is product code in its own change.
+
+*Not settled by the ruling:* `team_set_work_profile` is a Team mutation, is not among the six
+enumerated, and is `ordinary` today. It writes two text columns and cannot reach `permission`. Left
+`ordinary` pending an explicit owner answer rather than swept in by inference.
+
+**2. A Team event is not a client event.** Do not emit a client Rail event with a null
+`contact_id`. The repair is a distinct tenant/workspace-level outcome projection carrying safe
+actor, action, target member or invitation, approval binding, result, and owner-visible evidence —
+proposed as its own Spine Change Request, implemented in its own coordinated workstream. **Not
+started.** This settles the open half of the question the Team card raised.
+
+**3. `PARTIAL` is not lifted by documentation.** Team stays `PARTIAL` until the owner can see a
+truthful tenant-scoped outcome after PAIGE acts AND the live authenticated flow is proven.
+
+**Also on the record: PR #728's post-merge follow-up is a separate ACTIVE hotfix.** Four P1 and one
+P2, not repaired and not made irrelevant by the surface-card work. Two land on surfaces the Team
+card describes: `useRailEvents` can merge the previous scope's events into the feed after a
+tenant/contact switch, and `useSoloPendingActions` keeps the previous tenant's pending actions on
+the Trust Compass after an account switch. The other two P1s are in `paige-apply-extraction` (a
+partial sync counted as success; an extraction claim not released when the transport rejects), and
+the P2 is a failed Skip leaving a proposal unretryable in `PaigeAIChat`.
+
+Issue #198 (prod migration deploy FAILED) stays **open**, untouched.
+
+---
+
+## 2026-09-02 — CORRECTION: the six Team actions stay in PAIGE at `high`
+
+Supersedes decision 1 of the entry above, on the same day, before any code was written to it. The
+prior entry is left standing and marked, not deleted (§58).
+
+**The ruling now.** Invite · resend invitation · revoke invitation · change permission/access ·
+grant role · revoke role **remain in PAIGE Chat, classified `high`**. Each requires the canonical,
+server-verified owner approval card before execution. PAIGE may propose and explain the action, and
+may carry it out only after the owner explicitly approves that exact bounded action. She may never
+manufacture approval, raise autonomy, or bypass the domain authorization check.
+`team_set_work_profile` remains `ordinary` — it changes only job title and responsibilities, cannot
+alter access, still takes the normal compact confirmation, and must never be represented as a
+permission change.
+
+**This matches the live code**, so there is no longer a gap to close and no product change is
+required. The card's table now records classifications rather than a divergence.
+
+**Why the first wording was wrong, which is the part worth keeping.** `owner_only` is not a
+stronger gate. It means *never performed from Chat, at any approval strength, however the operator
+words it.* Applying it to the six would not have hardened them — it would have **withdrawn PAIGE's
+ability to help an owner run their team**, which is the opposite of the product intent. `high` is
+the setting that means "she can do it, and only after you approve this exact call": the approval
+fingerprint travels in the request body, which the model cannot author, so the model asserting
+consent is refused.
+
+**The lesson, and it generalises past this ruling.** A classification name that sounds like a
+severity is not one. `ordinary` → `high` → `owner_only` is not a dial from *softer* to *stricter*;
+the last step changes kind, from "gated" to "absent". A ruling phrased as tightening can therefore
+delete a capability by accident. When a class name is used in a ruling, state the **effect** —
+"stays in Chat behind your approval" or "leaves Chat entirely" — because the effect is what the
+reader is actually deciding.
+
+**Unchanged by this correction, and still true:** the workspace-level outcome projection remains a
+separate Spine Change Request and is not started; Team's truth label remains `PARTIAL`; the
+authenticated live-flow proof is still owed on a capability already serving production; and PR
+#728's post-merge P1/P2 findings remain a separate active hotfix, neither repaired nor made
+irrelevant.
