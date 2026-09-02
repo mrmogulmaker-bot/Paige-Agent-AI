@@ -192,3 +192,55 @@ playbook stays the Settings-scoped record; it is not the shell contract.
 - `scripts/live-drive/connections-calendars-scroll-drive.mjs`
 - `scripts/live-drive/integrations-fit-drive.mjs`
 - `docs/doctrine/tier-matrix.md` — Connections/Calendars proof and honesty boundary
+
+---
+
+## Setup is the one destination this contract does not yet cover (2026-09-02)
+
+The table at the top of this playbook binds every Settings destination other than Connections and
+Integrations to *"preserve established form-fit/paging"*. **Setup does not form-fit, and never has.**
+Measured at `origin/main` `05735f26b6cb8c0e915c18c2d152025f43f958c6`, reproduced-shell drive with
+PAIGE folded:
+
+| Viewport | Host | Setup content | Below the fold | Scrollbar |
+|---|---|---|---|---|
+| 1536×770 | 704 px | 3,986 px | 3,282 px · 82% | none, either lane |
+| 1366×768 | 702 px | 3,986 px | 3,284 px · 82% | none, either lane |
+| 1024×768 | 702 px | 3,973 px | 3,271 px · 82% | none, either lane |
+| 900×1000 | 934 px | 4,174 px | 3,240 px · 78% | none, either lane |
+
+`settings-scroll-drive.mjs` scores **1384/1392**, and **all 8 failures are Setup** —
+`setup · fits — nothing clipped`, one per viewport/theme. Every other destination fits its host
+exactly. This is not a regression introduced by #683; it is what #683's narrow, correct scoping left
+behind, now measured.
+
+**The mechanism, so nobody re-derives it.** `SoloSettings` applies
+`.tcs-main--settings-scrollbar-hidden` to the resolved owner for *every* destination, which trips the
+`solo-tokens.css:106` exception and gives the host `overflow-y: auto`. It applies
+`SETTINGS_SCROLL_OWNER_CLASS` (`--shown`) only for `connections` and `integrations`. So Setup **can**
+scroll and **cannot** show that it scrolls: `scrollbar-width: none` and
+`::-webkit-scrollbar { display: none }` both apply. Wheel and keyboard reach the last field; a human
+arriving on the page has no way to know there is a last field.
+
+**Do not classify this as a reachability bug.** It is a missing affordance on a surface that is
+five to six times its own host, and the fix is a design decision, not a CSS repair. Four shapes were
+measured and put to the owner on 2026-09-02: as-shipped, a section pager, granting Setup the visible
+scroll, and a rail-plus-scrolling-region inside a form-fitting page.
+
+**Two findings that constrain any fix:**
+
+- **A one-section pager does not close it alone.** Carrier identity is 797–828 px reading and
+  955–986 px editing — taller than the whole 702 px host before page chrome (240–306 px) is
+  subtracted. In editing mode five of seven sections exceed what a pager could give them at 768 px.
+- **Granting Setup a visible scrollbar needs a new explicit owner ruling.** The exception in the
+  table above is deliberately narrow. Widening it is a product decision, not an implementation
+  detail, and no session may take it on its own.
+
+**And the proof bar has a hole in it.** The harness that produced these eight cases does not actually
+apply the theme to the rendered shell — see *"A green drive proved geometry twice, not two themes"*
+in `lessons-learned.md`. The geometry above is sound because it is theme-independent and was
+byte-identical across both runs; **Obsidian rendering is `UNVERIFIED`**, and repairing the harness is
+a prerequisite for proving any Setup change, not an optional extra.
+
+Full department record, including the PAIGE seam, the Rail gap and the open owner decision:
+**`docs/doctrine/surface-cards/setup.md`**.
