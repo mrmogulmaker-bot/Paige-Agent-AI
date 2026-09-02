@@ -131,6 +131,49 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### The Canonical Solo Parity Program — Wave 0 baseline (2026-09-02)
+
+**Status: standing program, Wave 0 complete.** The objective is that every current and future Solo
+account receives the same canonical Solo product template as `main`. Wave 0 shipped the baseline and
+**no product change**. The inventory lives in `docs/doctrine/canonical-solo-parity-matrix.md` — every
+Solo route, branch, sub-tab, Settings destination and PAIGE entry point, each marked canonical /
+needs-authenticated-comparison / needs-UI-repair / backend-owned / Spine-owned /
+intentionally-unavailable / parked.
+
+**The load-bearing answer this file must now give.** Asked *"does every Solo account get the same
+product?"*, the answer today is **no, and not because of a shell fork**. `src/pages/Admin.tsx:373-393`
+mounts the canonical Solo shell only when that tenant's own `features.solo_shell_enabled` is `true`
+(`src/hooks/useTenantContext.tsx:512`). Measured on production 2026-09-02: **4 of 7 top-level Solo
+tenants carry the flag; 3 do not** and render the legacy `/admin` shell. Every parity repair reaches
+4 of 7 Solo accounts until the owner rules on finishing the rollout. This is config-as-data behaving
+as designed, not a defect — but it is the gap between "the template is correct" and "every account
+receives it".
+
+**Verified structure (read from code, test-asserted where noted).** 10 Solo branches and 45 sub-tabs
+(`tierBranches.test.ts:200,215` — the file's own docblock saying 13/47 is stale). Only **6 branches
+have a navigation entry**; `paige`, `trust-compass` and `automations` are aliases of Command Center
+and `calendar` is addressable with no nav home by design. 8 Settings destinations, each carrying a
+truth label in code (`src/solo/settings-contract.ts:95-102`). Production now has 13 tenants — 2
+agency, 7 top-level Solo, 4 sub-account.
+
+**Known and parked, not silently absorbed:** Clients › Delivery renders fabricated client records and
+an invented PAIGE narrative ([#779](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/779) —
+the only Solo surface presenting false tenant data as fact); Trust Compass headline numbers and its
+autonomy dial are fixtures and its primary buttons only close the modal
+([#780](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/780)); `paige:open` prompts are
+authored by four call sites and read by none
+([#781](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/781)); Solo documentation parity —
+1 of 14 surface cards exist and the tier-matrix Solo ledger covers 1 of ~18 surfaces
+([#782](https://github.com/mrmogulmaker-bot/Paige-Agent-AI/issues/782)).
+
+**`UNVERIFIED` — authenticated comparison across two real Solo tenants.** The blocker is already on
+record: `docs/brain/lessons-learned.md:1233` (2026-09-01) establishes that production *is* reachable
+and that what fails is the browser's CONNECT tunnel, alongside unset
+`LIVE_DRIVE_EMAIL`/`LIVE_DRIVE_PASSWORD`. Re-measured independently this session with the same
+result. What this program adds: seven real Solo tenants exist, so the two-tenant comparison is
+blocked on capability and credentials, **not** on tenant availability.
+
+
 ### Solo Settings → Setup — the visible-scroll policy (LIVE on production; merged 2026-09-02)
 
 **Status: MERGED to `main` and deployed.** Gate 1 approved 2026-09-02; Gate 2 approved on exact
