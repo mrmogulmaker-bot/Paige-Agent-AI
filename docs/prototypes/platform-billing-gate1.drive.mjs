@@ -28,8 +28,18 @@ await collect("initial");
 for (const v of ["current","beta","trialing","promo","trialended","cancelsched","canceled","unsupported","unavailable","none","loading","error"]) { await page.click(`[data-plan="${v}"]`); await collect("plan:"+v); }
 for (const v of ["included","warn75","warn90","exhausted","nometer"]) { await page.click(`[data-usage="${v}"]`); await collect("usage:"+v); }
 for (const v of ["entry","unavailable"]) { await page.click(`[data-portal="${v}"]`); await collect("portal:"+v); }
+// Put the page in the state where an Owner WOULD have a plan act and a portal act, so the
+// Admin/Member assertion below is over real elements, never a vacuous every() on zero.
+await page.click('[data-plan="current"]'); await page.click('[data-portal="entry"]');
+const ownerActs = await page.$$eval("#planActions button:not([disabled]), #cardPortal button:not([disabled])", bs => bs.length);
 await page.click('[data-viewer="member"]'); await collect("member");
-const noActs = async () => (await page.$$eval("#addonList button, #planActions button, #cardPortal button", bs => bs.every(b=>b.disabled))) && (await page.$eval("#roleRefusal", e=>!e.hidden));
+const noActs = async () => {
+  const plan = await page.$$eval("#planActions button", bs => bs.length);            // Owner has 1 here; Admin/Member must have 0
+  const portal = await page.$$eval("#cardPortal button", bs => bs.map(b => b.disabled)); // present and disabled
+  const addons = await page.$$eval("#addonList button", bs => bs.length > 0 && bs.every(b => b.disabled));
+  const refusal = await page.$eval("#roleRefusal", e => !e.hidden);
+  return plan === 0 && portal.length >= 1 && portal.every(Boolean) && addons && refusal;
+};
 const memberButtonsDisabled = await noActs();
 await page.click('[data-viewer="adminonly"]'); await collect("admin");
 const adminButtonsDisabled = await noActs();
@@ -47,6 +57,6 @@ await page.click('[data-screen="boundary"]'); await collect("boundary");
 await page.click('[data-screen="operator"]'); await collect("operator");
 await page.click('[data-pgtheme="dark"]'); await page.click('[data-vp="900x1000"]'); await collect("dark-narrow");
 const missing = REQUIRED.filter(r=>!seen.has(r));
-console.log(JSON.stringify({ required: REQUIRED.length, seen: [...seen].filter(s=>REQUIRED.includes(s)).length, missing, memberButtonsDisabled, adminButtonsDisabled, pageErrors: errors }, null, 2));
+console.log(JSON.stringify({ required: REQUIRED.length, seen: [...seen].filter(s=>REQUIRED.includes(s)).length, missing, ownerActs, memberButtonsDisabled, adminButtonsDisabled, pageErrors: errors }, null, 2));
 await browser.close();
-process.exit(missing.length||errors.length||!memberButtonsDisabled||!adminButtonsDisabled?1:0);
+process.exit(missing.length||errors.length||ownerActs!==2||!memberButtonsDisabled||!adminButtonsDisabled?1:0);

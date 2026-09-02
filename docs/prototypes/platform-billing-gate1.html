@@ -10,11 +10,12 @@
    FLOW PROTOTYPE — Platform Billing, Solo Settings → Billing (Gate 1)
    Throwaway · read-only · zero production mutation · zero network beyond fonts.
 
-   PURPOSE: let the owner traverse every required billing state and rule on the
-   decisions in docs/delivery/platform-billing-gate1-packet.md §4.1 (D1–D8).
+   PURPOSE: let the owner traverse every required billing state. Gate 1 was approved
+   2026-09-02 with rulings R1–R17 (packet §4.2–§4.4); the decision drawer below is kept
+   as the historical review surface.
    Nothing here creates or implies a Stripe object, a meter, a charge, or an
-   entitlement. Every figure marked "proposed" is a prototype value awaiting a
-   ruling; every "mock" chip marks a simulated backend.
+   entitlement. Every figure marked "proposed" or "illustrative" is a prototype value;
+   every "mock" chip marks a simulated backend.
 
    PALETTE PROVENANCE: every --pg-* value is lifted VERBATIM from
    src/index.css L243–L313 (the shipped Mineral/Obsidian set) and the .ss-*
@@ -425,13 +426,13 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
   <details><summary>Known mocks and unverified behaviour</summary><div class="body">
     <ul><li>Plan, status, price, renewal: today's real read returns plan/status/price/renewal for a solo workspace, and <code>trialing</code> is a real status; the $74.50 paid beta plan, the 30-day beta trial offer, and promotional grants do not exist as backend contracts — all three are prototype/design truth until Foundation B builds the entitlement model.</li>
     <li>Portal entry: the shipped function keys the Stripe customer on the person's email, not the workspace (packet finding A1). The "Mapped" state shows the intended behaviour after Billing Foundation; "Unavailable" is what must show until then.</li>
-    <li>Usage: the only measured meter is AI usage in tokens. Allowance, thresholds, warnings, and "used up" behaviour are proposals pending D5–D8. No estimate is ever shown as usage.</li>
+    <li>Usage: the only measured meter is AI usage in tokens. D5–D8 are ruled (visibility only, no automatic overage); the allowance VALUE is defined per meter later, so the figures are illustrative. No estimate is ever shown as usage.</li>
     <li>Add-ons: every item is a fixture. No catalogue read, no checkout, no webhook. Outcomes are chosen by the reviewer with the mock buttons.</li>
     <li>Role refusal and account switch: Owner-only is the ruled MVP authority (R2); Admin and Member both see the refusal. The switch is a simulated workspace change.</li>
     <li>Motion: light fades on state change only; the Reduced control removes them. No haptics are claimed — this is a browser simulation.</li></ul>
   </div></details>
-  <details open><summary>Decision surface — Gate 1</summary><div class="body rv-decide">
-    <p>Rule on: (1) the boundary as drawn; (2) the Billing page shape and order; (3) D1–D8 in the packet §4.1; (4) the sequence in packet §5. Approval authorizes drafting the Billing Foundation brief only. It does not authorize any Stripe object, meter, charge, provider connection, or billing implementation.</p>
+  <details><summary>Decision surface — Gate 1 (historical: approved 2026-09-02, rulings R1–R17 in packet §4.2–§4.4)</summary><div class="body rv-decide">
+    <p>Kept as the record of the questions as originally put: (1) the boundary as drawn; (2) the Billing page shape and order; (3) D1–D8; (4) the sequence. Gate 1 is approved; nothing here authorizes any Stripe object, meter, charge, provider connection, entitlement record, or billing implementation.</p>
     <label><input type="checkbox" id="c1"> Boundary approved as drawn</label>
     <label><input type="checkbox" id="c2"> Settings → Billing shape approved (subscription · invoices/portal · included usage · add-ons · Sales pointer)</label>
     <label><input type="checkbox" id="c3"> Operator plan / add-on configuration flow approved</label>
@@ -539,7 +540,7 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
       case "beta":
         body.innerHTML='<div class="ss-fields" data-state="plan-beta">'+f("Plan","Solo — paid beta")+f("Status","Active")+f("Price","$74.50 / month")+f("Renews","1 October 2026")+'</div>'+
           '<p class="ss-note"><span class="ss-tag">proposed · not in effect</span> D3 is ruled (a new explicit $74.50 price, created only in the provider-action release); D1, D2 and D4 are deferred to the Beta activation packet. Until the price exists on the platform, this state is never shown to a workspace.</p>'+
-          '<p><b>After the beta:</b> <span id="afterBeta">D4 — recommended: workspaces that joined during the beta keep $74.50; new workspaces pay $149.</span></p>';
+          '<p><b>After the beta:</b> <span id="afterBeta">D4 is deferred to the Beta activation packet; whatever it rules, an existing subscription is never changed silently.</span></p>';
         acts.innerHTML=(S.viewer==="member"||S.viewer==="adminonly")?'':'<button class="ss-btn" type="button" data-portal-open>Manage billing</button>';
         break;
       default:
@@ -572,10 +573,10 @@ body { margin:0; background:var(--rv-bg); color:var(--rv-ink); font:400 14px/1.5
     var tone=pct>=100?"bad":pct>=75?"warn":"ok";
     var msg={included:"You are well within what is included this cycle.", warn75:"You have used three quarters of what is included this cycle. Nothing changes yet; this is a heads-up.", warn90:"You have used 90% of what is included. If it runs out before 1 October, see below for what happens.", exhausted:"You have used everything included this cycle."}[S.usage];
     var after={exhausted:'<div class="ss-hand" style="margin-top:8px"><div><strong>What happens now</strong><p><b>D7 — ruled:</b> your workspace stays fully usable and nothing extra is charged. <b>D8 — ruled:</b> there is no automatic overage; any future paid top-up would need its own ruling and would be opt-in and shown here first. <span class="ss-tag">ruled 2026-09-02</span></p></div></div>'}[S.usage]||"";
-    body.innerHTML='<div data-state="'+sid+'"><div class="ss-row"><strong>AI usage this cycle</strong><span class="ss-status" data-tone="'+tone+'"><i></i>'+pct+'% of included used</span><span class="ss-tag">illustrative — allowance undefined until D5</span></div>'+
+    body.innerHTML='<div data-state="'+sid+'"><div class="ss-row"><strong>AI usage this cycle</strong><span class="ss-status" data-tone="'+tone+'"><i></i>'+pct+'% of included used</span><span class="ss-tag">illustrative — the allowance value is set per meter</span></div>'+
       '<div class="ss-meter" data-tone="'+tone+'" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'" aria-label="Included AI usage used"><i style="width:'+pct+'%"></i></div>'+
       '<p style="margin-top:6px">'+esc(msg)+'</p>'+
-      '<div class="ss-fields" style="margin-top:8px"><div class="ss-field"><span>Measured as</span><strong>Tokens, from the platform’s own record</strong></div><div class="ss-field"><span>Included this cycle</span><strong>D5 — to be defined</strong></div><div class="ss-field"><span>Warnings</span><strong>D6 — recommended at 75% and 90%</strong></div><div class="ss-field"><span>Resets</span><strong>1 October 2026</strong></div></div>'+after+
+      '<div class="ss-fields" style="margin-top:8px"><div class="ss-field"><span>Measured as</span><strong>Tokens, from the platform’s own record</strong></div><div class="ss-field"><span>Included this cycle</span><strong>D5 — to be defined</strong></div><div class="ss-field"><span>Warnings</span><strong>Heads-up only (D6 ruled); thresholds illustrative</strong></div><div class="ss-field"><span>Resets</span><strong>1 October 2026</strong></div></div>'+after+
       '<p class="ss-note">Never counted here: anything estimated, anything from your browser, anything a model guessed. Only measured platform records.</p></div>';
   }
 
