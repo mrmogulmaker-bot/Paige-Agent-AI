@@ -227,9 +227,12 @@ function unwrap(node) {
  *
  *   handler      must be a FUNCTION LITERAL — an arrow, a function expression, or method syntax.
  *                A closed set, and what the surface actually contains: 117 of 117 are arrows.
- *   inputSchema  must CONTAIN an inline object literal somewhere — that is the thing the boolean
- *                walker reads. `z.object({ … })` qualifies; `buildSchema()` and `schemas.purge`
- *                do not. Measured: 117 of 117 qualify.
+ *   inputSchema  must be COMPLETELY inline: an object literal must be present, and no part of the
+ *                shape may come from somewhere else. A spread (`z.object({ ...approvalFields })`),
+ *                a shorthand, or a property whose value is a bare reference
+ *                (`z.object({ confirm: someSchema })`) each hide a member the boolean walker would
+ *                otherwise have read. `buildSchema()` and `schemas.purge` fail for want of any
+ *                literal at all. Measured: 117 of 117 qualify.
  *
  * Both are stated as what CAN be read rather than as ways to hide, which is the only formulation
  * that does not lose to the next spelling.
@@ -240,9 +243,31 @@ function inspectableInitializer(node, member) {
   if (member === "handler") {
     return ts.isArrowFunction(n) || ts.isFunctionExpression(n);
   }
+  // The schema must be BOTH present and complete. "Contains an object literal" was the third
+  // half-answer in a row: `z.object({ ...approvalFields })` has one, so it read as inspectable,
+  // while `modelSettableBooleans` could not follow the spread and saw no boolean — a destructive
+  // handler beside it passed. `z.object({ confirm: someSchema })` hides one the same way, a level
+  // lower. So the test is now the general property rather than the case: every part of the shape
+  // must be written here.
   let hasInlineShape = false;
-  walk(n, (c) => { if (ts.isObjectLiteralExpression(c)) hasInlineShape = true; });
-  return hasInlineShape;
+  let complete = true;
+  walk(n, (c) => {
+    if (!ts.isObjectLiteralExpression(c)) return;
+    hasInlineShape = true;
+    for (const member of c.properties) {
+      // A spread or a shorthand injects members from a binding this guard does not resolve.
+      if (ts.isSpreadAssignment(member) || ts.isShorthandPropertyAssignment(member)) {
+        complete = false;
+        continue;
+      }
+      if (!ts.isPropertyAssignment(member)) continue;
+      // A value that is a bare reference hides whatever it points at — including a boolean.
+      const v = unwrap(member.initializer);
+      if (v && (ts.isIdentifier(v) || ts.isPropertyAccessExpression(v) ||
+                ts.isElementAccessExpression(v))) complete = false;
+    }
+  });
+  return hasInlineShape && complete;
 }
 
 function readableConfig(objectLiteral) {
@@ -530,6 +555,15 @@ mcp.tool("method_purge", {
   check("a FACTORY-BUILT schema is unanalysable",
     findToolCalls(`mcp.tool("x", { inputSchema: buildSchema("p"), handler: async () => {} });`)
       .map((t) => t.config !== null), [false]);
+  check("a SPREAD inside the schema is unanalysable (Codex)",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({ ...approvalFields }), handler: async () => {} });`)
+      .map((t) => t.config !== null), [false]);
+  check("a schema property whose VALUE is a reference is unanalysable",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({ confirm: someSchema }), handler: async () => {} });`)
+      .map((t) => t.config !== null), [false]);
+  check("a NESTED object in the schema still parses",
+    findToolCalls(`mcp.tool("x", { inputSchema: z.object({ a: z.object({ b: z.string() }) }), handler: async () => {} });`)
+      .map((t) => t.config !== null), [true]);
   check("a function-EXPRESSION handler stays readable",
     findToolCalls(`mcp.tool("x", { inputSchema: z.object({}), handler: async function (a) { return a; } });`)
       .map((t) => t.config !== null), [true]);
