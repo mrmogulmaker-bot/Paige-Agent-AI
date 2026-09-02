@@ -324,6 +324,50 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
   assert("10.13 …but it IS recorded in the audit row, where it belongs",
     r.rec.inserts.some((i) => i.table === "audit_logs" && JSON.stringify(i.row).includes(SECRET)),
     JSON.stringify(r.rec.inserts.map((i) => i.row?.action)));
+  // THE FOUR VERDICTS A TWO-FIELD WHITELIST BLINDED. A first attempt at narrowing this payload kept
+  // only `scores_error` and `negative_items` — which 10.13 could not detect, because its sentinel
+  // sits in both of them. The verdicts that are ABOUT the body (`sync_reported_failure`,
+  // `sync_reported_no_results`) and the two group reports nobody kept then wrote an audit row of
+  // nulls: the evidence of what broke was gone precisely when it was least reconstructable.
+  const auditRow = (r) => {
+    const hit = r.rec.inserts.find((i) => i.table === "audit_logs" && i.row?.action === "extraction_apply_failed");
+    return hit ? JSON.stringify(hit.row) : "";
+  };
+  {
+    const S = "INQUIRY_DETAIL_SENTINEL";
+    const r = await drive({ approved_keys: ["hard_inquiries"],
+      body: { success: true, results: { hard_inquiries: `refused: ${S}` } } });
+    assert("10.15 a hard_inquiries verdict records what it was derived from",
+      auditRow(r).includes(S), auditRow(r));
+  }
+  {
+    const S = "POSITIVE_DETAIL_SENTINEL";
+    const r = await drive({ approved_keys: ["positive_accounts"],
+      body: { success: true, results: { positive_accounts: `refused: ${S}` } } });
+    assert("10.16 …and so does a positive_accounts verdict",
+      auditRow(r).includes(S), auditRow(r));
+  }
+  {
+    const r = await drive({ approved_keys: ["negative_items"], body: { success: true, results: "not-an-object" } });
+    assert("10.17 a verdict about the BODY's SHAPE records that shape, not two nulls",
+      /"sync_results_shape":"string"/.test(auditRow(r)), auditRow(r));
+  }
+  {
+    const S = "TOP_LEVEL_ERROR_SENTINEL";
+    const r = await drive({ approved_keys: ["negative_items"],
+      body: { success: false, error: `sync refused: ${S}`, results: {} } });
+    assert("10.18 a sync that declared its own failure records what it said",
+      auditRow(r).includes(S), auditRow(r));
+  }
+  {
+    // …and the one field the narrowing exists to exclude STAYS excluded. Derived credit sub-scores
+    // about the subject are not evidence for any of these verdicts (§9).
+    const S = "FACTOR_SCORES_SENTINEL";
+    const r = await drive({ approved_keys: ["negative_items"],
+      body: { success: true, results: { negative_items: { failed: 1 }, factor_scores: { detail: S } } } });
+    assert("10.19 …while derived credit sub-scores are still kept out of the audit row",
+      !auditRow(r).includes(S), auditRow(r));
+  }
   assert("10.14 …and the answer still says which groups failed, and that it can be retried",
     Array.isArray(r.body.failed_groups) && r.body.failed_groups.includes("scores")
       && r.body.failed_groups.includes("negative_items") && r.body.retryable === true,
@@ -555,16 +599,43 @@ async function drive({ approved_keys, row = {}, claimReturns, releaseError = nul
   mutateDuringSync = null; syncRejects = null;
   assert("15.1 a non-retryable failure does not tell the person to try again",
     body.retryable === false && !/try again/i.test(String(body.error)), JSON.stringify(body));
-  assert("15.2 …and says the proposal needs a hand instead of going quiet",
-    /needs a hand/i.test(String(body.error)), String(body.error));
-  // THE ASSERTION THE CONTRADICTION SLIPPED PAST. 15.1/15.2 check only for the absence of "try
-  // again" and the presence of "needs a hand" — both of which were TRUE of the self-contradicting
-  // sentence review found: "The proposal is open again — I couldn't reopen it either, so it needs
-  // a hand." `retryable === false` means the release did not land, so the row is NOT open again.
+  // THIS SCENARIO IS THE CONCURRENT DECLINE, NOT A STUCK ROW — the person dismissed the proposal
+  // while the sync ran, so the release matched nothing. It used to assert "needs a hand" here,
+  // which was an over-claim: nothing is stuck and nobody has to look at anything. Independent
+  // review caught that the one case §15 actually drives was the one the sentence was untrue of.
+  assert("15.2 …and says the proposal moved on rather than that someone must intervene",
+    !/needs a hand/i.test(String(body.error)) && /(changed|isn't waiting|is not waiting)/i.test(String(body.error)),
+    String(body.error));
+  // THE ASSERTIONS THE CONTRADICTION SLIPPED PAST, both guarded by a positive precondition so they
+  // cannot pass merely because no answer came back — the lesson this branch wrote down after 12.0.
   assert("15.2a …and does NOT also claim the proposal is open again, which would be the opposite",
-    !/proposal is open again/i.test(String(body.error)), String(body.error));
+    body.retryable === false && typeof body.error === "string"
+      && !/proposal is open again/i.test(body.error), JSON.stringify(body));
   assert("15.2b …the two halves of the answer agree with each other",
-    body.retryable === false && !/open again/i.test(String(body.error)), JSON.stringify(body));
+    body.retryable === false && typeof body.error === "string" && !/open again/i.test(body.error),
+    JSON.stringify(body));
+}
+{
+  // THE OTHER NON-RETRYABLE CASE, which had no coverage at all: the release itself ERRORS. Here the
+  // row really is stuck as `applied` with nothing applied, and this is the one answer that is
+  // entitled to say so. Without this the two branches of `retryable === false` could be collapsed
+  // back into one sentence and only the untrue half would be under test.
+  const rec = fake.setScenario({
+    authUser: { id: USER }, stateful: true,
+    releaseError: { code: "57014", message: "statement timeout" },
+    uploadRow: { id: UPLOAD, user_id: USER, client_id: null, analysis_status: "completed",
+                 extraction_review_state: "awaiting_review", analysis_result: STRUCTURED },
+  });
+  syncCalls = []; syncStatus = 200; syncBody = null;
+  syncRejects = new TypeError("timeout");
+  const { body } = await callHandler(["negative_items"]);
+  syncRejects = null;
+  assert("15.2c a release that ERRORS is the case that genuinely needs a hand, and says so",
+    body.retryable === false && typeof body.error === "string" && /needs a hand/i.test(body.error),
+    JSON.stringify(body));
+  assert("15.2d …and the row is left claimed, which is what makes it stuck",
+    rec.scenarioRow().extraction_review_state === "applied",
+    rec.scenarioRow().extraction_review_state);
 }
 {
   const retryable = await drive({ approved_keys: ["negative_items"], rejects: new TypeError("timeout") });

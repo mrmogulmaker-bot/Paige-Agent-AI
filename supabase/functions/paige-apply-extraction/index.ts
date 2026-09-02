@@ -320,9 +320,17 @@ serve(async (req) => {
   // needs a hand." Independent review caught it. `retryable === false` means the release did NOT
   // land, so the proposal is NOT open again, and a sentence must not assert the opposite of the
   // flag beside it. Each caller now supplies both forms, and neither is derived from the other.
+  //
+  // THREE, NOT TWO — because `retryable === false` covers two different situations and one sentence
+  // could not be true of both. The release either ERRORED (genuinely stuck, someone has to look) or
+  // it MATCHED NOTHING, which means the row is no longer `applied` because the person declined or
+  // changed it while this ran. Telling them "it needs a hand" in that second case is an over-claim:
+  // nothing is stuck, they dismissed it on purpose. Independent review caught this in the driver's
+  // own §15, which exercises exactly the concurrent-decline path.
+  // OWED TO CLAUDE DESIGN: the words are theirs; what each may not ASSERT is ours.
   const releaseAndFail = async (
     auditData: Record<string, unknown>,
-    messages: { released: string; stuck: string },
+    messages: { released: string; stuck: string; changed: string },
     extra: Record<string, unknown> = {},
   ) => {
     const { error: failAuditErr } = await admin.from("audit_logs").insert({
@@ -351,10 +359,13 @@ serve(async (req) => {
     // HONEST LIMIT: nothing reads this yet. It is truthful data in the answer and in the audit
     // trail, but it does NOT close the hole it describes — when a release fails, the row stays
     // `applied`, and the next attempt takes the `already_applied` branch above and answers 200,
-    // which the card renders as "Done". That is tracked as its own follow-up (issue #733) and is
-    // deliberately NOT solved here; recorded as an open finding rather than implied fixed.
+    // which the card renders as "Done". Closing it means changing how the card treats an
+    // `already_applied` it did not itself cause — a change to the approval path, and outside the
+    // five findings this branch repairs. Tracked as issue #733 and deliberately NOT solved here;
+    // the reasoning stays in the code because a reader here cannot open a tracker.
     const retryable = !relErr && !!released;
-    return json({ error: retryable ? messages.released : messages.stuck, retryable, ...extra }, 502);
+    const answer = relErr ? messages.stuck : (released ? messages.released : messages.changed);
+    return json({ error: answer, retryable, ...extra }, 502);
   };
 
   // ── Perform the write through the owning contract. ──
@@ -385,6 +396,7 @@ serve(async (req) => {
       {
         released: "I couldn't confirm whether those saved. The proposal is open again — take a look and try again.",
         stuck: "I couldn't confirm whether those saved, and I couldn't reopen the proposal either. It needs a hand.",
+        changed: "I couldn't confirm whether those saved. The proposal has changed since — it isn't waiting on this any more.",
       },
     );
   }
@@ -401,6 +413,7 @@ serve(async (req) => {
       {
         released: "I couldn't save those to the profile. The proposal is open again — take a look and try again.",
         stuck: "I couldn't save those to the profile, and I couldn't reopen the proposal either. It needs a hand.",
+        changed: "I couldn't save those to the profile. The proposal has changed since — it isn't waiting on this any more.",
       },
     );
   }
@@ -408,19 +421,43 @@ serve(async (req) => {
   // ── A 2xx IS NOT A WRITE. Check what the sync SAID about every group the person approved. ──
   const failedGroups = syncGroupFailures(approved, scoped, syncBody);
   if (failedGroups.length > 0) {
-    const syncResults = (syncBody as Record<string, unknown>)?.results ?? null;
-    console.error("[apply-extraction] sync reported failed groups:", failedGroups, syncBody);
+    // WHAT THE VALIDATOR READ, AND NOTHING IT DIDN'T. The whole `results` object was recorded here
+    // before, and on this branch the sync has run every step — so it can carry `factor_scores`,
+    // derived credit sub-scores about the SUBJECT, written under the CALLER's `user_id`. That one
+    // field is what does not belong in an audit row about which groups failed.
+    //
+    // A FIRST ATTEMPT AT THIS NARROWING KEPT TWO FIELDS AND BLINDED FOUR VERDICTS. `syncGroupFailures`
+    // reads five — and can also return `sync_reported_failure` or `sync_reported_no_results`, which
+    // are verdicts about the BODY rather than about a group. Keeping only `scores_error` and
+    // `negative_items` left those four cases writing an audit row of two nulls, so the malformed
+    // body that caused the verdict — the only evidence of what broke — went unrecorded. Privacy was
+    // the right instinct and a two-field whitelist was the wrong instrument; the fix is to record
+    // everything the verdict was derived FROM and exclude the one field it was never derived from.
+    const syncTop = (syncBody ?? {}) as Record<string, unknown>;
+    const rawResults = syncTop.results;
+    const syncResults = (!!rawResults && typeof rawResults === "object" && !Array.isArray(rawResults))
+      ? rawResults as Record<string, unknown>
+      : null;
+    // `sync_reported_no_results` is a verdict about a shape, so the shape is the evidence for it.
+    const resultsShape = rawResults === undefined
+      ? "absent"
+      : rawResults === null ? "null" : Array.isArray(rawResults) ? "array" : typeof rawResults;
+    const syncDetail = {
+      sync_success: syncTop.success ?? null,
+      sync_error: syncTop.error ?? null,
+      sync_results_shape: resultsShape,
+      sync_scores_error: syncResults?.scores_error ?? null,
+      sync_scores_updated: syncResults?.scores_updated ?? null,
+      sync_negative_items: syncResults?.negative_items ?? null,
+      sync_hard_inquiries: syncResults?.hard_inquiries ?? null,
+      sync_positive_accounts: syncResults?.positive_accounts ?? null,
+    };
+    // The log gets the same subset, for the same reason. An earlier revision narrowed the audit row
+    // while this line still wrote the entire body to the function logs — the comment claimed a
+    // property the function did not have (independent review).
+    console.error("[apply-extraction] sync reported failed groups:", failedGroups, syncDetail);
     return await releaseAndFail(
-      // Only the two fields the validator actually read. The whole `results` object was recorded
-      // here before, and on this branch it has completed every sync step — so it can carry
-      // `factor_scores`, derived credit sub-scores about the SUBJECT, written under the CALLER's
-      // `user_id`. Neither the audit row nor this function needs that much of someone's credit
-      // data to say which groups failed (raised by independent review).
-      {
-        failed_groups: failedGroups,
-        sync_scores_error: (syncResults as Record<string, unknown> | null)?.scores_error ?? null,
-        sync_negative_items: (syncResults as Record<string, unknown> | null)?.negative_items ?? null,
-      },
+      { failed_groups: failedGroups, ...syncDetail },
       // §13/§11 — TWO THINGS THIS SENTENCE MAY NOT DO, both found by review of the pushed diff.
       // It may not say "Nothing was changed": this branch fires precisely when SOME approved groups
       // succeeded and others did not, so on a partial failure that claim is false about the one
@@ -432,6 +469,7 @@ serve(async (req) => {
       {
         released: "Some of those didn't save. The proposal is open again — take a look and try again.",
         stuck: "Some of those didn't save, and I couldn't reopen the proposal either. It needs a hand.",
+        changed: "Some of those didn't save. The proposal has changed since — it isn't waiting on this any more.",
       },
       { failed_groups: failedGroups },
     );

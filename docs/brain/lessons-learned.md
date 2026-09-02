@@ -1449,3 +1449,31 @@ Route every invocation of the system under test through one guarded entry point,
 synthetic answer that cannot be mistaken for a real one (an impossible status code) so later
 sections still run.
 
+
+## A correction is a claim, and it is held to the standard it is invoking
+
+Correcting a number I had reported from memory, I wrote that the test count *and* the driver count
+were both wrong — having re-run only the test count. Independent review re-ran the other one: it
+was **75**, exactly as first recorded. So a paragraph whose stated purpose was *"numbers reported
+from memory are the same class of error as the claims they were meant to substantiate"* substantiated
+nothing about half of what it corrected, and defamed an accurate figure in the process.
+
+Withdrawing it was not enough either. The withdrawal said the driver count "was not re-measured and
+is not being asserted" — which is honest, but leaves a reader believing the original might have been
+wrong. Measuring it took one worktree and forty seconds.
+
+*Rule:* **a correction carries the same burden of proof as the claim it corrects, and no rhetorical
+credit for humility.** Re-run every figure you are about to overturn, including the ones you are
+overturning only for symmetry. Announcing a standard is not evidence of having met it.
+
+## Privacy narrowing is a whitelist of what the decision READ, not of what looks small
+
+A failure audit row recorded the sync's whole response, which on that branch can carry derived
+credit sub-scores about the subject. Narrowing it to two fields removed the leak and blinded four of
+the six verdicts the validator can return — including the two that are *about the body's shape*,
+whose only evidence is the malformed body that no longer got written. The regression assertion did
+not catch it: its sentinel happened to sit in both surviving fields.
+
+*Rule:* **narrow by excluding the field that caused the concern, and keep everything the verdict was
+derived from.** Then prove it per verdict, not once — an attribution test whose fixture lands in the
+fields you kept will pass no matter how much you threw away.
