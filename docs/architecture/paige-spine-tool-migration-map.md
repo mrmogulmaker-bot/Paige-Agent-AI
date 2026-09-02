@@ -65,6 +65,13 @@ Two further ghosts of the same shape already carry an in-file correction: `pipel
 
 ### Related, and deliberately not duplicated
 
+**`docs/brain/paige-spine-and-rail-state.md`** is the verified **state** record — what the Spine and
+Rail are today, and why an empty Solo activity feed must not be read as "nothing happened". It landed
+on `main` as `f0fcd2dd` (#743) while this map was open, and it reports the same three baselines this
+map measured — **1 capability · 105 inline tools · 62 classified actions** — reached independently.
+**Read it first.** This map is the *plan*; that file is the *state*, and it explicitly says it is not
+a backlog. Neither should grow into the other (§18).
+
 `docs/delivery/PAIGE-CHAT-DELIVERY-MAP.md` is a Full Project Audit of the PAIGE Chat surface grounded
 2026-08-31. It maps the Chat **estate** — front doors, slices, seams, the attribution row. This map
 covers a different axis: what each declared tool must become under the Spine contract. Neither
