@@ -871,6 +871,45 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### PLATFORM-LEVEL — PAIGE Spine / Rail current state + the owner's priority order (2026-09-02)
+
+Full record: **`docs/brain/paige-spine-and-rail-state.md`**. Recorded here because these are
+platform-wide facts, not one department's, and because two of them are routinely misread.
+
+**The Spine is `PARTIAL`. One registered capability, 105 inline Chat tools.** Measured by the repo's
+own guards on 2026-09-02: `paige-spine-registry-lint` → `PASS (1 capability)`;
+`chat-tool-registry-lint` → `105 tool(s) inline`. That one capability is
+`pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`, `mindBinding: UNAVAILABLE`.
+**Do not read the Spine's existence as departments being connected to PAIGE.** They are not; she
+reaches them through the 105 hand-wired tools. Team and Setup each record the same of themselves in
+their surface cards.
+
+**Owner-visible Solo Rail activity is UNAVAILABLE — not empty, and not healthy.**
+`useSoloActivityFeed` reads `paige_client_events` directly as `authenticated`, and **production has no
+SELECT grant for that role on that table** (revoked by `20260712200000`, never re-granted; verified
+2026-09-02 by read-only catalog query). RLS is never consulted — the grant is checked first. The hook
+correctly renders an error rather than an empty feed, so this is a dead capability rather than a lying
+one. **Leg 7 of the build path — *owner can see the result* — is therefore broken for every department
+that emits to the Rail**, and `paige_audit_log` has no Solo reader either. If a session sees no
+activity in Solo, the first hypothesis is this grant.
+
+**Pipeline governance — three findings, follow-up work and NOT capability:** the Spine's Pipeline
+evidence is a **silent subset** (`deal_move_stage` and `pipeline_attach` move deals with no Rail
+event, so PAIGE cannot see her own move); `deal_move_stage` never consults `move_policy`; and
+`pipeline_move_approvals` is **write-only** — nothing anywhere sets `approved|rejected|cancelled`, so
+a held request is unresolvable and permanently blocks archiving its stage or pipeline.
+
+**Owner-ruled priority order (2026-09-02).** Later items do not start ahead of earlier ones:
+
+1. **PR #729** — the active cross-account Rail/Compass hotfix on #728 (P1 leaks on the read path the rest depends on).
+2. **Rail recovery + owner-visible outcome reading.** PR #644 may hold the right direction but is **NOT authorized as a release path**: it must be freshly grounded on current `main`, checked against the canonical Spine contract, reviewed for internal-identifier exposure, and proven mergeable first.
+3. **Pipeline governance repair — before any Pipeline Chat write bridge.**
+4. **Stale doctrine correction** (done for the Trust Compass claims; see §10).
+5. **Calendar as the next bounded read-only Spine capability.**
+
+**Not authorized by this record:** no Calendar evidence, Pipeline mutation, provider work, or other
+implementation begins from it.
+
 ### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
 
 - Google OAuth remains the identity authority. On an explicit login Google is asked to show its own identity chooser; after identity is established, Paige offers the workspace chooser only when that authenticated user has more than one active `tenant_members` row.
@@ -1927,3 +1966,34 @@ The tenant prototype now exposes canonical Calendar and Conversations mounts alo
   its own subaccount. Provider identifiers and submission state are server-owned.
 - **PAIGE boundary:** may explain missing fields and propose non-sensitive facts for confirmation;
   cannot invent the tax number, choose the representative, submit, purchase, or imply approval.
+
+- **2026-09-02 — three doctrine files said the Trust Compass migration was not on production. It is.**
+  `docs/doctrine/autonomy-architecture.md`, `docs/doctrine/one-approval-gate.md` and
+  `docs/brain/glossary.md` each stated that `20261039000000` was *"not applied to production yet"* /
+  *"neither it nor the resolver exists on prod today."* A read-only catalog query on ref
+  `xygzykjyynhzqytbqnzu` (2026-09-02) returns `trust_effective_rung()` and
+  `resolve_tool_autonomy(uuid,text)` as **existing**, with `20261039000000` and `20261040000000` in
+  `schema_migrations` (910 applied = 910 repo `.sql` files, zero drift). All three corrected in place
+  per §58 — struck, not deleted.
+  **Why it mattered beyond bookkeeping:** `one-approval-gate.md` instructed builders *"Do not write,
+  or build against, a claim that the Compass evaluates the action contract until it is persisted and
+  enforced server-side."* That instruction rested on a false premise, so a slice obeying it would have
+  under-built against a clamp that is in fact deployed.
+  **The correction is deliberately narrow, and the caution survives in a truer form.** What was proven
+  is **existence** (catalog class). **Runtime enforcement was NOT tested and remains `UNVERIFIED`** —
+  and `20261019001000:41-48` separately states the compass clamps *at render only*, since
+  `resolve_tool_autonomy` reads `tenant_tool_autonomy` and never reads the compass. Reconciling that
+  with §4's record of `operator_rls_coverage` FAILING and already capping the ceiling 3→2 is open work
+  owned by whoever holds autonomy. No approval-authority claim changed: it remains the server
+  action-risk policy plus the confirmation gate.
+
+- **2026-09-02 — "the Spine exists" was being read as "the departments are connected." They are not.**
+  One registered capability (`pipeline.deal_stage_evidence`, read-only, Chat `PARTIAL`, Mind
+  `UNAVAILABLE`) against **105** inline Chat tools, both measured by the repo's own guards. Recorded in
+  §5 and in full in `docs/brain/paige-spine-and-rail-state.md` so no future session infers platform-wide
+  Spine connectivity from the foundation's presence.
+
+- **2026-09-02 — an absent Solo activity feed was available to be misread as an idle workspace.** It is
+  neither empty nor healthy: `authenticated` holds no SELECT grant on `paige_client_events` in
+  production, so the direct read fails and the hook honestly renders an error. Recorded so the next
+  session's first hypothesis is the grant, not the tenant.

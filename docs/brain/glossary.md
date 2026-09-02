@@ -204,7 +204,10 @@ owner-owed — don't paper over the disagreement.*
 ## "Trust Compass" names TWO things (recorded 2026-09-01 — verified against prod)
 
 - **`trust_effective_rung()`** — the PLATFORM trust rung (§68), read by `resolve_automation_autonomy`.
-  Real and clamping, but its migration is not applied to production yet.
+  Real and clamping. ~~*Its migration is not applied to production yet.*~~ **CORRECTED 2026-09-02
+  (§58): it EXISTS on production, with `resolve_tool_autonomy(uuid,text)` — read-only catalog query,
+  2026-09-02. Runtime enforcement is a separate question and stays `UNVERIFIED`; see
+  `../doctrine/autonomy-architecture.md` "Existence is not reachability".**
 - **The Solo Compass dial** — `TRUST` in `src/solo/compass.tsx`, an in-memory object seeded from a
   fixture. Enforces nothing; dragging it is lost on reload; no server code reads it.
 

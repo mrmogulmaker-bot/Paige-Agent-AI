@@ -178,6 +178,14 @@ the canonical server-verified approval card, and `team_set_work_profile` stays `
   Compass panel and the Team hub's own *"What the team did"* — both read `paige_client_events`
   through `useSoloActivityFeed`. So **a permission change PAIGE makes on this very team does not
   appear in that team's own activity feed.**
+  **AMENDED 2026-09-02 — the conclusion stands, and the reason is stronger than this bullet says.**
+  Those feeds do not merely lack a Team event: **they cannot read the Rail at all.**
+  `useSoloActivityFeed` selects `paige_client_events` directly as `authenticated`, and production has
+  **no SELECT grant for that role on that table** (revoked by `20260712200000`, never re-granted;
+  read-only catalog query, 2026-09-02). The hook honestly renders an error rather than an empty feed.
+  So the destination this bullet points at is unavailable for **every** department, not only for Team's
+  contact-less events. See `docs/brain/paige-spine-and-rail-state.md`. Nothing here is repaired by the
+  amendment; Team stays `PARTIAL`.
 - Because PAIGE is a rail *beside* the page, an owner sitting on Team with PAIGE open sees a stale
   roster after she acts: `useTeamWorkspace` refetches on mount and on its own mutations, and
   nothing signals it from the chat.
