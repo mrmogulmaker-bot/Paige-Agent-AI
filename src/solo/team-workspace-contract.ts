@@ -15,6 +15,20 @@ export type TeamMemberRecord = {
   last_sign_in_at: string | null;
 };
 
+/**
+ * What the provider told us about one invitation email, joined server-side by
+ * `get_solo_team_workspace`. NULL is a real and common answer: an invitation created before the
+ * send was ever recorded has no delivery, and saying so is the honest reading. It must never be
+ * rendered as "sent" — the whole reason this exists is that "the POST was accepted" was being
+ * shown as though it meant delivered.
+ */
+export type InviteDelivery = {
+  status: string;
+  at: string;
+  error: string | null;
+  history: { status: string; at: string }[];
+};
+
 export type TeamInviteRecord = {
   id: string;
   email: string | null;
@@ -24,7 +38,51 @@ export type TeamInviteRecord = {
   revoked_at: string | null;
   uses: number;
   token?: string | null;
+  delivery?: InviteDelivery | null;
 };
+
+/** The stages an invitation email passes through, in the order a person reads them. */
+export const DELIVERY_STEPS = ["sent", "delivered", "opened", "clicked"] as const;
+
+/**
+ * What to SAY about a delivery state, and whether it is a problem.
+ *
+ * Deliberately not a lookup that falls through to the raw provider word: an unrecognised status
+ * shown verbatim would put provider vocabulary in front of an operator, and this surface has
+ * already had to remove backend text from its refusals once.
+ */
+export function deliveryPresentation(delivery: InviteDelivery | null | undefined): {
+  label: string;
+  tone: "none" | "progress" | "good" | "bad";
+  detail: string | null;
+} {
+  if (!delivery) {
+    return { label: "Not sent yet", tone: "none", detail: "No email has been recorded for this invitation." };
+  }
+  switch (delivery.status) {
+    case "sent":
+      return { label: "Sent", tone: "progress", detail: "Handed to the email provider. Not yet confirmed as delivered." };
+    case "delivered":
+      return { label: "Delivered", tone: "good", detail: "Accepted by the recipient's mail server." };
+    case "opened":
+      return { label: "Opened", tone: "good", detail: "The invitation email was opened." };
+    case "clicked":
+      return { label: "Link clicked", tone: "good", detail: "The recipient opened the join link." };
+    case "delivery_delayed":
+      return { label: "Delayed", tone: "progress", detail: "The mail server is retrying. This often clears on its own." };
+    case "bounced":
+      return { label: "Bounced", tone: "bad", detail: delivery.error ?? "The address rejected it. Check the spelling and invite again." };
+    case "complained":
+      return { label: "Marked as spam", tone: "bad", detail: "The recipient reported it. Reach them another way before resending." };
+    case "suppressed":
+      return { label: "Not sent — address suppressed", tone: "bad", detail: "This address previously bounced or complained, so it was not emailed." };
+    case "failed":
+      return { label: "Could not send", tone: "bad", detail: delivery.error ?? "The provider refused it. Try again, or share the link directly." };
+    default:
+      // An unmodelled status is reported as unknown rather than printed raw.
+      return { label: "Unknown", tone: "none", detail: "The provider reported a status this screen does not recognise." };
+  }
+}
 
 export type TeamWorkspaceRecord = {
   tenant_id: string;
@@ -137,6 +195,16 @@ export function validateWorkProfile(title: string, responsibilities: string): { 
   if (title.trim().length > 120) errors.title = "Keep the job title to 120 characters or fewer.";
   if (responsibilities.trim().length > 2_000) errors.responsibilities = "Keep responsibilities to 2,000 characters or fewer.";
   return errors;
+}
+
+/**
+ * Whether an invitation is finished with — the test the screen uses to move it out of the active
+ * list, and the same test the database uses to decide whether it may be cleared. Kept as one
+ * expression so the two cannot drift: a row the screen files under "past" that the server then
+ * refuses to archive would be a dead button.
+ */
+export function inviteIsFinished(invite: Pick<TeamInviteRecord, "uses" | "revoked_at" | "expires_at">, now = new Date()): boolean {
+  return inviteLifecycle(invite, now) !== "pending";
 }
 
 export function inviteLifecycle(invite: Pick<TeamInviteRecord, "uses" | "revoked_at" | "expires_at">, now = new Date()): InviteLifecycle {
