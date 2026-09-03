@@ -2064,7 +2064,9 @@ billing-contacts card**, which the approved Gate-1 prototype does not cover (§0
 
 **§66, and late — this is the debt from merging without it.** Slice 2B merged as `cd9d2e21` and
 this row is a follow-up rather than the same commit, which is the rule broken to record it. Said
-plainly because the alternative is a ledger that quietly disagrees with production.
+plainly because the alternative is a ledger that quietly disagrees with production. (It is also,
+as of `09691d1a` below, no longer the freshest fact about this surface — the six-finding fix
+landed same-day, this time in the same PR/commit as the row update.)
 
 **What a person can now do.** From an empty catalog, "Add your first offer" opens a slide-over
 editor; a name is the only requirement; anything left blank is written as NULL and renders as the
@@ -2082,30 +2084,52 @@ publishes something by accident while renaming it.
 | Agency (as a tenant) | ✓ own catalog only | Never a sub-account's — the tenant is never taken from the caller. |
 | Client / Anonymous | ✗ | `REVOKE ALL … FROM PUBLIC, anon`, verified live: `anon_can_execute: false`. |
 
-**Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after `cd9d2e21`,
+**Superseded same day by #863.** `cd9d2e21`'s delayed Codex review (see lessons-learned) returned
+six real findings against the merged head — four P1, including a draft saved to the wrong tenant on
+a workspace switch and an edit silently rewriting the *database* price under a Stripe-backed offer
+while checkout kept charging the old figure (a real §38 divergence). All six verified against the
+code and fixed in `09691d1a` (PR #863, migration `20261111000000`), which re-declares both RPCs —
+`save_solo_offer` gained a 15th argument, `_price_id uuid`, and the stale 14-arg signature was
+dropped in the same migration. The table above (who can write) is unchanged by the fix; what changed
+is what a legitimate write is now permitted to do to an existing price.
+
+**What #863 added on top of the write itself.** Editing an offer now targets the exact plan shown
+(`_price_id`, not an assumed `sort_order = 0`) and refuses in-place to touch a price that already
+carries a `stripe_price_id` or belongs to a deposit/instalment plan — the person sees why as a
+`price_note`, never a silent no-op. `set_solo_offer_status` refuses to publish an offer as `active`
+on a storefront-enabled tenant with no checkout-ready price (unreachable today: 0 storefront
+tenants, fixed anyway per §31). The draft-tenant bug was a frontend fix: the client now sends the
+tenant the form was opened against, not whichever tenant is current when Save fires.
+
+**Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after `09691d1a`,
 never from the pipeline reporting success:
 
 ```
-select version, name from supabase_migrations.schema_migrations where version='20261110000000';
-→ 20261110000000  a_solo_owner_can_write_their_own_offer
+select version from supabase_migrations.schema_migrations order by version desc limit 1;
+→ 20261111000000
 
-save_solo_offer        security_definer: true   anon: false   authenticated: true
-set_solo_offer_status  security_definer: true   anon: false   authenticated: true
+select p.oid::regprocedure, p.prosecdef, has_function_privilege('anon',...), has_function_privilege('authenticated',...)
+→ save_solo_offer(uuid,uuid,text,text,text,text,text,text,text,text,integer,text,text,timestamptz,uuid)
+    security_definer: true   anon: false   authenticated: true
+→ set_solo_offer_status(uuid,uuid,text,timestamptz)
+    security_definer: true   anon: false   authenticated: true
 ```
 
-Queried immediately after the merge both came back EMPTY — the deploy had not run yet. Recorded
-because "merged" and "live on the database" are different facts, and the gap between them is where
-a false green lives.
+Exactly one `save_solo_offer` row exists — the old 14-arg signature's own `DROP FUNCTION` (carried
+in the same migration) is confirmed gone, not just superseded. The first check, run before
+`deploy-migrations.yml` had finished, still showed `schema_migrations` capped at `20261110000000`
+— recorded again here because the empty-then-populated gap is the same fact every time, not a fluke
+worth forgetting.
 
 **Truth label: `PARTIAL` / Authenticated Runtime Proof Owed.** The schema is live and the surface
 is rendered-proven, but nobody has signed into a real tenant and created an offer. `tenant_products`
 is still empty on production, so first-use is the state every tenant sees.
 
-**Evidence.** 2619 tests / 190 files. Rendered: **523/523** across both palettes and all four Solo
-widths, zero orphan processes — up from 419, because the drive previously passed over a surface
-whose write half it never touched and whose stub did not even provide `saveOffer`. Five new guards
-each proven RED against their own defect. Both functions compiled against production's real schema
-inside a rolled-back transaction, zero persisted afterward.
+**Evidence (at `09691d1a`).** 2666 tests / 191 files. Rendered: **523/523** across both palettes and
+all four Solo widths, zero orphan processes. Five new checkout-safety guards each proven RED against
+their own defect before being trusted; both RPCs re-proven against production's real schema inside a
+rolled-back transaction, zero persisted afterward, including a deliberate sub-test proving the new
+15-arg signature inherits `PUBLIC` EXECUTE by default until the migration's own `REVOKE` runs.
 
 **The contradiction this slice did NOT settle.** The Catalog pack
 (`super-admin-shell-v3/campaigns-catalog-sales-spec.md`) says "The state is derived, never chosen…
@@ -2116,8 +2140,11 @@ Solo model; the ruling is owed when the two catalogs converge, and belongs to th
 Design, not here.
 
 **Owed.** Price editing beyond the single lead price — 2A renders plans, tiers and instalments;
-2B authors only one. `tenant-product-upsert` still needs a `status` allowlist, a `currency`
-allowlist, and cross-field validation of `kind` against `billing_interval`.
+2B authors only one (though #863 made editing that one plan safe against the storefront/deposit/
+instalment cases above). `tenant-product-upsert` still needs a `status` allowlist, a `currency`
+allowlist, and cross-field validation of `kind` against `billing_interval`. A visual/colour pass on
+the Solo Catalog buttons is requested and explicitly deferred to Claude Design (§00) — no design
+decision made here.
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 

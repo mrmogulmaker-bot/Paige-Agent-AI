@@ -881,6 +881,33 @@ open in front of me and violated within the hour — the version rule while quot
 sequencing rule while reading it. Familiarity with a lesson is not a defence against it, and may be
 the opposite: the recognition feels like compliance.
 
+## Waiting correctly still needs an exit — a dead reviewer is not a silent gate
+
+**2026-09-03, PR #863, same session as both entries above.** Applied the sequencing rule from the
+entry directly above it, immediately: CI green on the exact head, marked ready, then watched for
+the verdict rather than merging. Codex's review ran and failed with an unknown error. Retriggered
+with `@codex review` — ran and failed again, same error, ninety seconds later. Two failures on a
+service the PR's own code never touches is a service outage, not a PR defect, and the general
+pattern here is the same one §32's flake rule already states for CI: confirm with one retry, then
+stop hammering a dead endpoint.
+
+The difference from #800: nobody decided unilaterally to stop waiting. The owner was told plainly —
+"Codex is down, both retries failed the same way" — and gave an explicit instruction to merge on
+green CI alone. That instruction is what changed the state, not a judgment call that waiting had
+gone on long enough. A peer-gate that cannot be satisfied because its reviewer is unreachable is
+still a gate that was asked to open; the difference between this and #800 is which party decided it
+could stay closed.
+
+**The distinction worth keeping:** "the review didn't have time to run" (a sequencing choice, #800,
+a violation) is a different failure than "the review could not run at all" (a service state, this
+entry, reported and handed to the one person who can authorize proceeding without it). Merging
+without a returned verdict is identical code in both cases — `merge_pull_request` doesn't know why
+Codex is silent — so the thing that makes one a violation and the other correct is entirely outside
+the diff: who decided, and on what evidence. That evidence should be preserved here rather than
+assumed obvious in the moment, because "I checked and it seemed down" is not the same claim as "two
+independent runs failed with the same error, ninety seconds apart, against code Codex had not yet
+seen."
+
 **And a second-order lesson, since this is the third time this branch wrote about the same event.**
 Two of the three write-ups were wrong before they were right: the first blamed the guard, and an
 earlier one blamed review. Diagnose from the log, not from the shape of the story you are already
