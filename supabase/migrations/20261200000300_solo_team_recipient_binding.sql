@@ -273,4 +273,3 @@ BEGIN
 
   RETURN _tok.tenant_id;
 END $function$;
-
