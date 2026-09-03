@@ -111,8 +111,11 @@ export type GovernedDoor = "chat" | "automation" | "agent" | "skill" | "mcp" | "
  *     { tenantId: request.workspaceId, tenantSource: "server" }   a request naming its own tenant
  *     { access: { allowed: true } }                          no policy was consulted
  *     { autonomyLane: request.lane }                         no workspace setting was resolved
- *     { id: "crm_create_contact", effect: "mutate" }         naming a DIFFERENT act than the one
+ *     { id: "crm_create_contact", effect: "mutate",
+ *       outcomeChannel: "rail" }                             naming a DIFFERENT act than the one
  *                                                            about to run — see GovernedCapability
+ *     requestArgs selecting another operation                the fourth input, inline on the
+ *                                                            function signature, bound to nothing
  *
  * The seam enforces that a caller MAKES each assertion and refuses without it. Making the assertion
  * TRUE is the adapter's obligation, and nothing here can verify any of them — this module has no
@@ -169,8 +172,13 @@ export type GovernedCapability = {
   /** ADAPTER MUST: pass the canonical `action-risk.ts` key of the act it is ABOUT TO PERFORM. A
    *  mismatched name silently reclassifies the risk, and the seam cannot detect it. */
   id: string;
-  /** ADAPTER MUST: state the executor's real effect. `"read"` on a mutating executor skips the
-   *  entire mutation path — classification, clamp, approval and outcome. */
+  /** ADAPTER MUST: state the executor's real effect — and pair it with an honest `id`, because the
+   *  two are checked TOGETHER. `effect: "read"` alone does not bypass anything: a classified
+   *  mutation name is refused `effect_mismatch`, and a write-shaped unclassified name is refused
+   *  `unclassified_mutation`. The bypass needs BOTH halves false — a read-looking, unclassified
+   *  `id` declared `read` over a mutating executor — which then skips classification, clamp,
+   *  approval and outcome in one move. An earlier version of this comment blamed `effect` alone,
+   *  overstating a real hazard, which in a document adopters act on is its own defect. */
   effect: "read" | "mutate";
   /**
    * Opaque name of the durable outcome channel this mutation reports on. REQUIRED for a mutation.
@@ -332,7 +340,15 @@ export function decideGovernedExecution(input: {
   caller: GovernedCaller;
   capability: GovernedCapability;
   approval: GovernedApproval;
-  /** The arguments the caller wants to run. Used ONLY on an `auto` lane, never on an approved one. */
+  /**
+   * The arguments the caller wants to run. Used ONLY on an `auto` lane, never on an approved one.
+   *
+   * ADAPTER MUST: pass arguments that belong to the declared `capability.id` and to the executor
+   * about to run them. This is the FOURTH adapter input and it carries the same rule as the three
+   * exported types — nothing here binds these arguments to the capability, so arguments selecting a
+   * different operation reproduce exactly the gap described on `GovernedCapability.id`. They are
+   * returned verbatim for a genuine read and for an ordinary `auto`-lane mutation.
+   */
   requestArgs: unknown;
 }): GovernedDecision {
   const { caller, capability, approval, requestArgs } = input;

@@ -48,15 +48,22 @@ asserted two ways, because a property proven only by a test is one a later edit 
 > refuses when an assertion is absent and cannot tell when it is false.
 >
 > **Point 3 is the sharpest edge**, and it was missed even by the sweep that fixed the others:
-> `{ id: "crm_create_contact", effect: "mutate" }` handed to a DELETE executor classifies as
-> ordinary, needs no claim, and auto-executes. `classifyAction` validates the risk mapping for a
-> NAME; nothing binds that name, or `effect`, to the executor about to run. **Point 10** is the same
-> shape — any non-empty `outcomeChannel` satisfies the mutation requirement, because this module has
-> no Rail to ask whether the channel records anything.
+> `{ id: "crm_create_contact", effect: "mutate", outcomeChannel: "rail" }` handed to a DELETE
+> executor classifies as ordinary, needs no claim, and auto-executes. (The channel is part of the
+> example because without it the call is refused `outcome_channel_undeclared` and the bypass does
+> not reproduce.) `classifyAction` validates the risk mapping for a NAME; nothing binds that name to
+> the executor about to run. **Point 10** is the same shape — any non-empty `outcomeChannel`
+> satisfies the mutation requirement, because this module has no Rail to ask whether the channel
+> records anything.
 >
-> Five consecutive review rounds found this stated as a guarantee on one field after another, and
-> the round that "swept" it still claimed completeness across "both exported types" when there are
-> three. The rule is now on all three, and this note no longer claims to be exhaustive.
+> **There is also a FOURTH input** that is not one of the three types: `requestArgs`, inline on the
+> function signature, returned verbatim for a genuine read and for an ordinary `auto`-lane mutation.
+> Nothing binds it to the declared capability either.
+>
+> Six consecutive review rounds found this stated as a guarantee on one input after another. Twice
+> the round that "swept" it closed with a completeness claim that was itself wrong — first "both
+> exported types" when there were three, then "all three" when a fourth input sits on the signature.
+> **This note makes no completeness claim at all.**
 
 | # | Point | Where it is enforced |
 |---|---|---|
