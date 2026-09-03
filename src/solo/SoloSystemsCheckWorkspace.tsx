@@ -306,6 +306,11 @@ export function SoloSystemsCheckWorkspace({ accountContext, openPaige, workspace
   const refresh = () => {
     command.refresh();
     systems.refresh();
+    // The Rail panel refreshes with the rest of the screen. Without this line "Refresh current
+    // data" leaves it on whatever it last read until its own 15s poll or a window-focus event —
+    // so a person who just watched a read fail, or who expects a just-recorded event, presses
+    // Refresh and the one panel they were looking at does not move. Found by review on #877.
+    activity.refresh();
   };
 
   const openFinding = (finding: SystemsCheckFinding, trigger: HTMLElement) => {

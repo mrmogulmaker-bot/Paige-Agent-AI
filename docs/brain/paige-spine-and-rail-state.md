@@ -414,6 +414,24 @@ mounted inside the same `PaigeWorkspace` (`PaigeWorkspace.tsx:283`). So the tena
 Agency / sub-account / admin-shell surface, and a Solo tenant had **no** surface showing the
 tenant-wide rail at all.
 
+> **§13 CORRECTION, 2026-09-03, same day — the claim above is WRONG and is kept, marked, rather
+> than rewritten (§58).** "A Solo tenant had no tenant-wide rail surface at all" is false, and it
+> contradicts the table in this same edit. `TrustCompass` IS mounted on Solo (`SoloApp.tsx:253`)
+> and its panel calls `useSoloActivityFeed` (`compass.tsx:469`); so does Team → Activity
+> (`team.tsx:233`). Both read `get_solo_rail_activity`, which is the TENANT-WIDE reader. So Solo
+> already had two tenant-wide rail surfaces before this slice.
+>
+> **What was actually true, stated precisely:** `PaigeRailFeed` — the specific strip Slice B
+> repaired — is unreachable on Solo, and the Command Center, Solo's DEFAULT LANDING route, carried
+> no Rail surface. The panel's real value is putting the rail on the surface a Solo owner lands on,
+> not making a previously-invisible capability visible.
+>
+> Caught by an independent review on #877 (P2), after merge. The overstatement had been repeated
+> into the master reference, this record, the tier matrix, the PR body, the commit message, and the
+> report to the owner — one unchecked claim propagated to six places because it was written once and
+> then copied rather than re-derived. Corrected in all of them.
+
+
 **Why this was invisible until now.** Slice B's proof was automated, static and deployed-bundle —
 all of which pass for a component that renders correctly on a surface nobody can reach. It surfaced
 only when the owner test map was written against the *actual* account topology rather than against
