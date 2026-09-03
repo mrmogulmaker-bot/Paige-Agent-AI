@@ -282,6 +282,28 @@ async function main() {
           String(after.activeFilter));
         check(!after.horizontal, `${id}: the switched workspace does not overflow`);
 
+        // 3d. RESTORED SESSION — required by the Solo Shell scope rule, and it is a real state
+        // rather than a synonym for first entry. A returning owner lands on the Catalog by URL
+        // while `accountContextLoading` is still true, and the workspace resolves underneath a
+        // surface that is already mounted. Three things can go wrong and none were driven before:
+        // the surface can read tenant data before the context resolves (§9), the resolving frame
+        // can survive the resolution, and the deep-linked destination can be lost when it lands.
+        await setMode(page, "resolving");
+        const restoring = await measure(page);
+        check(restoring.rows === 0, `${id}: restored session shows no offers before the workspace resolves`,
+          `rows=${restoring.rows}`);
+        check(/Resolving/i.test(restoring.text), `${id}: restored session says it is resolving`);
+        check(restoring.firstUse === 0,
+          `${id}: an unresolved workspace is not mistaken for an empty one`);
+
+        await setMode(page, "populated");
+        const restored = await measure(page);
+        check(restored.rows > 0, `${id}: the workspace fills in once it resolves`, `rows=${restored.rows}`);
+        check(!/Resolving/i.test(restored.text), `${id}: the resolving frame does not survive resolution`);
+        check(restored.selectedTab === "Catalog",
+          `${id}: the deep-linked destination survives the restore`, String(restored.selectedTab));
+        check(!restored.horizontal, `${id}: the restored surface does not overflow`);
+
         // 4. Read-only.
         await setMode(page, "readonly");
         const readonly = await measure(page);

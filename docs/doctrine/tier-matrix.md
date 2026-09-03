@@ -1710,7 +1710,7 @@ that notice; Slice 2B's command seam is what it will really gate.
 - *Static/build:* `ci:tsc` clean against the ratchet; `lint:views`, `lint:definer-fns`,
   `lint:tier-features`, `lint:skeleton`, `lint:migration-versions`, `lint:managed-schema`,
   `lint:pg-tokens`, `lint:write-targets` all pass; production build passes.
-- *Rendered:* 331/331 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes, — the real components
+- *Rendered:* 387/387 checks in `scripts/live-drive/catalog-offers-drive.mjs`, reproduced on three consecutive runs leaving zero orphan processes, — the real components
   with only the network read stubbed, across both palettes and all four Solo widths, asserting the
   six-tab lock, no horizontal overflow, no fabricated commerce data, no `$0`, and the exact shipped
   canvas values in each theme.
