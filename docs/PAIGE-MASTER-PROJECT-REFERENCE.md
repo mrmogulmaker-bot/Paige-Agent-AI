@@ -3164,14 +3164,28 @@ the canonical resolver, which already encodes a `tenant_members` seat, `agency_c
 deliberately not memoised. Independently re-derived across all 10 gate-passing prod users: 9
 allowed, 1 already refused on `main`, **zero newly refused**.
 
-**THE SIBLING THIS DOES NOT CLOSE.** `propose_action` pairs the same global `user_roles` gate
-(~L10989) with a **service-role insert** into `paige_pending_approvals` stamped
-`tenant_id: personaCtx.tenant_id` (~L11023). It is outside `CRM_SERVICE_TOOLS`, so #892 does not
-cover it, and it is arguably worse than a read: it files an outbound draft into another workspace's
-approval queue. Deliberately not folded in — widening a security PR mid-review is how this PR's
-third draft went wrong. **Two instances means the PATTERN is the bug, not the site:** a global role
-gate paired with a service-role write stamped from the conversation's tenant. The follow-up sweeps
-for the rest.
+**WHAT #892 DOES NOT CLOSE — a swept, four-site PATTERN.** A sweep of `paige-ai-chat` on `main`
+after #892 found the same shape at three further tools, each pairing the global `user_roles` gate
+(§59) with an action scoped by `personaCtx.tenant_id`:
+
+| Site | What the conversation's tenant controls | Line (main @ d7ecc4a7) |
+|---|---|---|
+| `propose_action` | service-role insert filing an outbound draft (`cs_draft`, resolved `contact_id`) into that workspace's approval queue | gate L10995 |
+| `forge_subagent` | `POST /functions/v1/subagent-forge` with the **service-role key** and `tenant_id` in the body — creates a sub-agent there | gate L10928 |
+| `list_subagents` | `POST /functions/v1/paige-orchestrator` with the service-role key and `{action:"tool_invoke", slug, input, tenant_id}` — **invokes an arbitrary registered tool** in that workspace | gate L10894 |
+
+The third is the most consequential, and its own comment states the intent: *"§9: pass the tenant
+scope so the orchestrator only surfaces/invokes"* for that tenant. So `tenant_id` **is** the
+downstream authority boundary — supplied by a client-link-first resolver behind a tenant-agnostic
+gate.
+
+Checked and cleared: `isOperator` (L4518) is a prompt-UX signal only; the adjacent comment confirms
+`callerTier` is the real authority.
+
+**Four instances means the PATTERN is the bug, not the site.** The fix therefore belongs in ONE
+shared helper (§18), not four copies — otherwise the fifth site is written wrong the same way, which
+is how this spread. Deliberately not folded into #892: widening a security PR on my own momentum is
+exactly how that PR's third draft went wrong. Tracked as its own slice, needing its own peer-gate.
 
 **§13 — three drafts, wrong three different ways, and only one caught by review.**
 1. A hand-rolled `tenant_members` check, narrower than the canonical resolver; would have locked out
