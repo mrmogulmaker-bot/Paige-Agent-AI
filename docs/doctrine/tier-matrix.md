@@ -2164,10 +2164,14 @@ operator acting on a tenant's catalog *should* write without a membership row (i
 `is_tenant_admin` should carry an operator bypass here the way other admin-facing RPCs do) is a
 product decision, not a bug this row fixes silently — flagged, not resolved, per the table above.
 **Also owed: closing the agency RPC gap** — either `save_solo_offer`/`set_solo_offer_status` gain an
-explicit `account_type NOT IN ('agency','enterprise')` guard matching the UI's `CREATION_SURFACES`
-exclusion, or the owner rules that agency write access is intentional and the UI gate is what's
-wrong. Either resolution is a code change outside this docs-only PR's scope; recording the gap
-honestly is what this PR does. A visual/colour pass on the Solo Catalog buttons is requested and
+explicit `account_type <> 'agency'` guard (Enterprise is deliberately excluded from any such guard:
+`ENTERPRISE_FEATURES` is a strict union of `SOLO_FEATURES` and `AGENCY_FEATURES` plus
+`CREATION_SURFACES` explicitly re-added — §60/§61's hybrid tier is creation-capable by design, and
+an `account_type NOT IN ('agency','enterprise')` guard would have wrongly revoked that; caught by
+Codex, PR #860, round 4, against this row's own prior draft), or the owner rules that agency write
+access is intentional and the UI gate is what's wrong. Either resolution is a code change outside
+this docs-only PR's scope; recording the gap honestly is what this PR does. A visual/colour pass on
+the Solo Catalog buttons is requested and
 explicitly deferred to Claude
 Design (§00) — no design decision made here.
 
