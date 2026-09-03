@@ -1691,3 +1691,46 @@ looking at when they act.** Hover, focus, and any overlay that animates across t
 person is in at the moment they commit. Drive them and measure them. Two direction checks that cost
 nothing: a hover on a fixed-light label must **darken**, and an `::after` over text needs
 `z-index:-1` with `isolation:isolate` on the parent, not `inset:0` alone.
+
+---
+
+## 0k. A constraint that describes the happy path forbids the escape hatch
+
+**2026-09-03, Solo Sales client agreements.**
+
+`CHECK (status = 'draft' OR (starts_on IS NOT NULL AND price_basis <> 'quote_pending'))` reads as an
+obvious rule: a draft may be incomplete, anything you commit to may not. It shipped a surface where
+**a half-finished draft could never be cancelled** — because `cancelled` is not `draft`, so
+abandoning an incomplete record demanded that it first be completed. Reproduced before the fix: the
+UPDATE was refused and the row stayed `draft`.
+
+The same shape hid three more times in one migration. Every cross-field CHECK that had no matching
+`RAISE` in the RPC body surfaced to the user as
+`violates check constraint "tca_price_basis_quote_ck"` — a database object name in visible copy,
+from a control the surface had enabled. One of those paths was **two clicks from the empty state**.
+
+*Rule:* **enumerate the TERMINAL and ABANDONMENT transitions before writing a completeness
+constraint** — cancelling, deleting and archiving are exits, not achievements, and a rule written
+about the happy path will block them. And **every CHECK needs a sentence in front of it**: if the
+constraint is the error surface, the constraint name is the error message.
+
+---
+
+## 0l. Schema with no writer reads as delivered
+
+**2026-09-03, same slice.**
+
+Six columns, an immutability trigger and a CHECK constraint shipped to hold a dated catalog-price
+snapshot. The editor hardcoded `catalogPriceId: null` and never offered the basis that would set it,
+so **not one of them could ever be written**. The trigger was guarded on a column that was always
+null and could never fire; the CHECK could never be exercised; and the migration's own header
+claimed the two records were "linked by id and by a dated snapshot" — false in the shipped product.
+
+Nothing failed. Typecheck passed, the build passed, the tests passed, and the next session reading
+the schema would have concluded the feature was there.
+
+*Rule:* **a column is not shipped until something writes it and something reads it back.** For every
+new column, name the write path and the read path before merge; if either is "later", say so in the
+record rather than letting the schema imply otherwise. The cheap check is a query that would be
+non-zero if the feature worked — `select count(*) where <new column> is not null` — and knowing, in
+advance, which user action makes it non-zero.

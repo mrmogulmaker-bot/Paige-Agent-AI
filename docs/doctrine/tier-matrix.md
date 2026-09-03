@@ -3038,6 +3038,110 @@ not the error phase, where "Sales operations could not load" is a second occurre
 break round 1's contract, not evidence round 2's own changes work. The checks that actually cover
 round 2 are the ones added in round 3.
 
+### Campaigns → Sales, Slice 2 — what one client agreed to (`tenant_client_agreements`)
+
+**What shipped.** A Solo owner or admin can record the terms one client agreed to for one canonical
+Catalog offer: the arrangement (one-off · recurring · instalments · deposit · custom), the amount
+and currency, cadence where it applies, start, optional renewal and optional end, and a status of
+draft · active · paused · completed · cancelled. Catalog stays the sole source of what the business
+sells; **nothing here writes to `tenant_products` or `tenant_prices`**, and that is machine-checked
+rather than asserted — a `pg_get_functiondef` scan of both RPCs for any write against those tables
+returns clean, run in the pre-merge proof.
+
+| Tier | Reads terms | Writes terms | Why |
+|---|---|---|---|
+| God / platform operator | Yes, via `is_platform_owner()` | Only inside a resolved tenant | Same disjunct `clients` already carries |
+| Agency (as a tenant) | Its own book only | Owner/admin only | Never the children's — no aggregate |
+| Solo | Yes | Owner/admin only | The tier this was built for |
+| Sub-account | Yes, its own only | Owner/admin only | Identical to Solo (§60) |
+| Plain tenant member | **No — silently zero rows** | No | See the honest caveat below |
+| Coach | Only agreements whose client they are assigned to | No | Inherited from `clients_coaches_assigned` |
+| Client / portal user | **No** | No | The restrictive gate refuses before the client's own row can match |
+| Anonymous | No | No | `anon` revoked on table and both functions |
+
+**The visibility model, and why it is inheritance rather than restatement.**
+`tenant_service_subscriptions` reads `tenant_id = current_user_tenant_id()` with no role predicate,
+while `clients` gives a plain member zero rows — so a member sees a subscription naming a client id
+and an amount and cannot resolve who it is. Copying that shape here would have reproduced it **with
+a negotiated price attached**. Instead an agreement is visible if and only if its client is visible
+(`EXISTS (SELECT 1 FROM clients WHERE id = contact_id)`), under a restrictive tenant gate. The
+restrictive half is not decoration: `clients_linked_self_read` would otherwise have let every
+**portal client** read their own agreement's terms — a capability nobody specified.
+
+**§13 — the guarantee that is NOT a guarantee.** "A plain member sees zero" is true of the
+tenant-member ROLE, not of every caller. `clients_admins_full` gates on `has_any_role`, which reads
+the **global** `user_roles` table with no tenant column, so a person who is owner/admin of any
+tenant and merely a member of another can read that other tenant's client book and, through the
+EXISTS, the agreements in it. This is a `clients`-owned defect and is **not** widened from Sales.
+Measured on prod at merge: the shape returns **zero rows** — every active member is owner/admin of
+their own tenant only — so the exposure is **latent, not live**. Re-run that query per release.
+
+**What the §1 crew caught that the build would otherwise have shipped.** Three designers and two
+adversarial reviewers; the reviewers executed against production replicas rather than reading the
+proposal, and between them found nine real defects in work already written:
+
+> **A draft could never be cancelled.** `tca_committed_is_complete_ck` demanded a start date for any
+> non-draft status, so abandoning a half-finished draft was refused — reproduced here before the fix
+> (the UPDATE was rejected and the row stayed `draft`), and re-proved after it. Terminal states are
+> now exempt, because cancelling *is* abandonment.
+>
+> **The catalog price snapshot was dead schema.** `catalogPriceId` was hardcoded `null` and the
+> basis picker offered only negotiated/quote-pending, so six columns, an immutability trigger and a
+> CHECK could never be reached — the owner's "explicitly labelled snapshot" had shipped as the
+> override alone. Now wired end to end through a plan picker.
+>
+> **Four paths rendered raw Postgres constraint names to the tenant**, and the first was two clicks
+> from the empty state: the term defaulted to `one_time` while the save gate ignored the term, so
+> choosing "Not quoted yet" enabled a Save that could only ever fail with
+> `violates check constraint "tca_price_basis_quote_ck"`. Every cross-field CHECK now has a sentence
+> in front of it, and the gate knows which basis needs which term.
+>
+> **The FK proved a client EXISTS, never that it is YOURS.** A `service_role` writer — a future edge
+> function, or Paige's own agent, which §10 requires the seam to allow — could have written
+> `tenant_id = A` against a client of tenant B. Such a row is invisible to **every** caller including
+> its own tenant's owner, while still occupying the live-agreement unique slot: silent dark data
+> blocking a legitimate later agreement. `trg_agreement_tenant_links` now enforces it in the
+> database, and the cross-tenant insert was **run and refused** in the pre-merge proof (0 dark rows).
+>
+> **The agreements read modelled authorization as an error channel** — the shipped `tenant_orders`
+> lesson, committed one table over in a file whose own docstring names it. Proxying off
+> `clientsReadable` looked right and fails for a **coach**, whose client read succeeds on assigned
+> clients while the agreements read is row-filtered to the same subset: a coach in a workspace
+> holding twelve would have been told "Nothing recorded yet." There is now a separate
+> `agreementsReadable`, derived from this table's own policy shape, with a test for the coach case.
+>
+> Also fixed: a catalog-basis row became permanently uneditable once the offer's list price moved
+> (the RPC re-read the live price while the snapshot stayed frozen and the CHECK demanded equality);
+> `setAgreementStatus` sent the *current* tenant rather than the one the row was loaded against, so
+> its refusal guard could never fire; terminal states could be reopened, rewriting what a client
+> owed; and both trigger functions were `SECURITY DEFINER` with PostgreSQL's default
+> `EXECUTE TO PUBLIC`.
+
+**Deferred, and named rather than implied.** No deal or campaign link. The campaign side is not a
+choice: `useSoloCampaigns.ts:181` hardcodes `campaigns = []` on every tier because the upstream
+bridge is not tenant-authorized, so a campaign picker would be empty 100% of the time. The deal side
+IS source-backed and is a real follow-up. Also deferred: `payment_schedule` and `title` exist as
+columns and are not yet reachable from the editor.
+
+**A naming collision, reported rather than resolved.** "Agreement" already means a SIGNED DOCUMENT
+in seven places, including `clients.agreement_signed_at` on the very table this band reads and an
+"Agreements" card on the same client's portal panel. The owner named the area "Agreements /
+Retainers", so that is what it is called; the band's sub-line disambiguates in place ("signing and
+documents stay with the client's own record") rather than renaming it. Whether to rename is CD's.
+
+**Proof, separated by class (§13).** *Automated:* 109 tests (40 surface, 15 executed adapter, 54
+sibling), typecheck exit 0, production build green, `lint:migration-versions`, `lint:definer-fns`,
+`lint:tier-features`, `lint:skeleton`, `lint:write-targets` and gold-discipline all pass; eslint 0
+errors. *Rendered:* **504/504** `drive:sales-ops` across four widths × both palettes, driving all
+six terms states, and asserting that the catalog snapshot ($3,000 in the fixture) is never displayed
+as what the client agreed ($2,500); **218/218** `drive:campaigns-nav`, all six tabs reachable.
+*SQL executed:* the table, both triggers and both RPCs created and rolled back on prod; the
+cancel-a-draft path reproduced broken and re-proved fixed; the cross-tenant insert refused.
+*Production persistence:* **OWED until CI applies the migration** — the pre-merge proof is a
+rollback, which proves the SQL runs and proves nothing about it being live (§32.a).
+*Authenticated runtime:* **OWED.** No route to the deployed origin and no test-tenant credential
+from this session.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

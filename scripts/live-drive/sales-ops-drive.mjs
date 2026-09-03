@@ -350,6 +350,62 @@ async function main() {
             || hovered.map((b) => `${b.ratio}:1`).join(" "));
         await page.screenshot({ path: path.join(OUT, `populated-${theme}-${frame.name}.png`), fullPage: true });
 
+        // ── 2b. CLIENT TERMS — every state the brief names, driven in the rendered surface.
+        const setTerms = async (mode) => {
+          await page.click(`[data-agreements="${mode}"]`);
+          await page.waitForTimeout(90);
+        };
+
+        await setTerms("none");
+        const termsNone = await measure(page);
+        check(/Nothing recorded yet\. Pick a client/.test(termsNone.text),
+          `${id}: first use teaches what a term is, rather than showing a bare zero`);
+        check(/Recording it bills nobody and sends nothing/.test(termsNone.text),
+          `${id}: the terms band states the money boundary`);
+        check(!/\b(invoiced|charged|collected)\b/i.test(termsNone.text),
+          `${id}: nothing on the terms band implies money moved`);
+
+        await setTerms("no-clients");
+        const termsNoClients = await measure(page);
+        check(/no clients are recorded in this workspace yet/.test(termsNoClients.text),
+          `${id}: a missing prerequisite is named, and points at the surface that fixes it`);
+
+        await setTerms("unreadable");
+        const termsUnread = await measure(page);
+        check(/not readable at your access level/.test(termsUnread.text),
+          `${id}: an unreadable term list says so rather than showing zero`);
+        check(/That is different from there being none/.test(termsUnread.text),
+          `${id}: unknown is distinguished from none on terms`);
+        check(!/Nothing recorded yet\. Pick a client/.test(termsUnread.text),
+          `${id}: an unreadable list never renders the first-use teaching copy`);
+
+        await setTerms("populated");
+        const termsFull = await measure(page);
+        check(/Jordan Avery/.test(termsFull.text), `${id}: a recorded term names its client`);
+        check(/\$2,500/.test(termsFull.text), `${id}: the agreed figure renders from minor units`);
+        // The catalog snapshot must NOT be mistaken for the agreed figure. The fixture sets them
+        // deliberately different, so a surface that conflated them would show the wrong number.
+        check(!/\$3,000/.test(termsFull.text),
+          `${id}: the catalog snapshot is not shown as what the client agreed`);
+        check(/Recurring/.test(termsFull.text) && /monthly/.test(termsFull.text),
+          `${id}: the arrangement and its cadence read as words`);
+        check(!termsFull.horizontal, `${id}: the terms band does not overflow`);
+        check(novel(termsFull.subAA).length === 0, `${id}: terms introduce no sub-AA pair of their own`,
+          novel(termsFull.subAA).map((p) => `"${p.text}" ${p.ratio}:1 <${p.floor}`).join(" | "));
+        recordInherited(id, termsFull.subAA);
+        await page.screenshot({ path: path.join(OUT, `terms-${theme}-${frame.name}.png`), fullPage: true });
+
+        await setTerms("readonly");
+        const termsRead = await measure(page);
+        check(/An owner or admin records this/.test(termsRead.text),
+          `${id}: a caller who may not write is told who may, with no dead control`);
+
+        await setTerms("error");
+        const termsErr = await measure(page);
+        check(/could not be read, so this is unknown rather than empty/.test(termsErr.text),
+          `${id}: a failed terms read is unknown, never empty`);
+        await setTerms("none");
+
         // ── 3. UNREADABLE ACTIVITY — a member whose RLS filters every row. This is the state the
         // original `!error` model could never reach, so it is driven explicitly.
         await setMode(page, "activity-unreadable");

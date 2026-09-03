@@ -242,6 +242,18 @@ button.so-row:hover { background: var(--violet-tint); }
 button.so-row:hover .so-cell-name { color: var(--violet); }
 button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 6px; }
 
+.so-field select {
+  appearance: none;
+  padding-right: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+                    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+.so-field select:disabled { opacity: .55; cursor: not-allowed; }
+
 .so-absent {
   margin: 0 0 14px; max-width: 74ch;
   font-size: 12px; line-height: 1.6; color: var(--ink-3); text-wrap: pretty;
@@ -280,12 +292,12 @@ button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 
 .so-field > span, .so-field > legend {
   padding: 0; font: 500 11.5px/1 var(--font); color: var(--ink-2);
 }
-.so-field input, .so-field textarea {
+.so-field input, .so-field textarea, .so-field select {
   width: 100%; min-height: 34px; padding: 7px 10px;
   border: 1px solid var(--line); border-radius: var(--r-s);
   background: var(--canvas); color: var(--ink); font: 400 12.5px/1.4 var(--font);
 }
-.so-field input:focus-visible, .so-field textarea:focus-visible {
+.so-field input:focus-visible, .so-field textarea:focus-visible, .so-field select:focus-visible {
   outline: 2px solid var(--violet); outline-offset: 1px; border-color: var(--violet);
 }
 .so-money { display: flex; gap: 8px; }
