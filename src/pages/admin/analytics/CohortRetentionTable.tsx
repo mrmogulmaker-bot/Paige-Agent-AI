@@ -14,6 +14,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  *     activity = paige_client_events.occurred_at for that contact_id (RLS-scoped).
  *
  * Same CohortRow shape, same D1/D7/D30 eligibility math, same table render.
+ *
+ * #802 — A DENIED ACTIVITY READ IS NOT ZERO RETENTION, and here that mattered more than in the
+ * engagement chart. In `client_lifecycle` the COHORTS come from `clients` (readable) while the
+ * ACTIVITY comes from `paige_client_events` (browser SELECT deliberately revoked). Discarding the
+ * activity error therefore produced real cohorts, with real sizes, showing 0% D1/D7/D30 — a
+ * confident, wrong measurement rather than an obviously empty table. `unavailable` stops the
+ * computation before any row is built.
  */
 export type CohortMode = "platform_signup" | "client_lifecycle";
 
@@ -48,11 +55,33 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
   const [rows, setRows] = useState<CohortRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasEnoughData, setHasEnoughData] = useState(true);
+  /** #802: the read was REFUSED or FAILED — distinct from "succeeded and found little". */
+  const [unavailable, setUnavailable] = useState(false);
+  /**
+   * Which `mode` the state above actually describes.
+   *
+   * Resetting inside the effect is NOT enough. `useEffect` is passive: on a `mode` change React
+   * commits the render — new title, PREVIOUS rows — and the browser can paint that frame before
+   * the effect ever runs. So the stored result is keyed by its mode and the render below refuses
+   * to show a result belonging to a different one. That removes the frame rather than shortening
+   * it, which is the same reason the Rail consumers clear during render instead of in an effect.
+   */
+  const [resultMode, setResultMode] = useState<CohortMode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // Re-enter LOADING and drop the previous run's result atomically. `loading` starts true
+        // only on first mount; without this, a `mode` change on the same instance leaves
+        // loading=false with the prior run's `rows`/`hasEnoughData` intact, so between the switch
+        // and the new reads resolving the component renders stale rows — or the insufficient-data
+        // copy — underneath the NEW mode's title. That is the same prior-scope paint the Rail
+        // consumers are being repaired for, in a different component.
+        setLoading(true);
+        setUnavailable(false);
+        setRows([]);
+        setHasEnoughData(true);
         const sinceWeeks = 8;
         const earliest = startOfWeekUTC(new Date());
         earliest.setUTCDate(earliest.getUTCDate() - sinceWeeks * 7);
@@ -64,17 +93,32 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
 
         if (mode === "client_lifecycle") {
           // TENANT lens — clients + paige_client_events (RLS-scoped, NO tenant param).
-          const { data: clients } = await supabase
+          const { data: clients, error: clientsErr } = await supabase
             .from("clients")
             .select("id, created_at")
             .gte("created_at", earliest.toISOString())
             .limit(5000);
 
-          const { data: events } = await supabase
+          const { data: events, error: eventsErr } = await supabase
             .from("paige_client_events")
             .select("contact_id, occurred_at")
             .gte("occurred_at", earliest.toISOString())
             .limit(50000);
+
+          // #802: stop before the eligibility math. Continuing would emit real cohort rows whose
+          // retention columns are a measurement of a refusal, not of client behaviour.
+          if (clientsErr || eventsErr) {
+            console.warn(
+              "[CohortRetentionTable] client_lifecycle read refused or failed:",
+              (clientsErr ?? eventsErr)?.message,
+            );
+            if (!cancelled) {
+              setUnavailable(true);
+              setRows([]);
+              setResultMode(mode);
+            }
+            return;
+          }
 
           for (const ev of events || []) {
             if (!ev.contact_id) continue;
@@ -90,19 +134,35 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
           }
         } else {
           // PLATFORM lens — profiles + analytics_events page_view (platform-wide).
-          const { data: profiles } = await supabase
+          const { data: profiles, error: profilesErr } = await supabase
             .from("profiles")
             .select("user_id, created_at")
             .gte("created_at", earliest.toISOString())
             .limit(5000);
 
-          const { data: pageViews } = await supabase
+          const { data: pageViews, error: pageViewsErr } = await supabase
             .from("analytics_events")
             .select("user_id, created_at")
             .eq("event_name", "page_view")
             .gte("created_at", earliest.toISOString())
             .not("user_id", "is", null)
             .limit(50000);
+
+          // These tables are NOT the denied Rail table, so this branch is not the #802 defect.
+          // It is the same discard, in the same function, on the same error path — fixing one half
+          // and knowingly leaving the other silent would be the half-fix §37 warns about.
+          if (profilesErr || pageViewsErr) {
+            console.warn(
+              "[CohortRetentionTable] platform_signup read refused or failed:",
+              (profilesErr ?? pageViewsErr)?.message,
+            );
+            if (!cancelled) {
+              setUnavailable(true);
+              setRows([]);
+              setResultMode(mode);
+            }
+            return;
+          }
 
           for (const ev of pageViews || []) {
             if (!ev.user_id) continue;
@@ -171,6 +231,7 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
         setHasEnoughData(
           result.length > 0 && result.some((r) => r.d30 != null || r.d7 != null),
         );
+        setResultMode(mode);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -179,6 +240,11 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
       cancelled = true;
     };
   }, [mode]);
+
+  // The render-time half of the guard: a result that belongs to another mode is not shown at all,
+  // so no committed frame can carry the previous mode's answer under this one's title.
+  const showingStaleMode = resultMode !== mode;
+  const isLoading = loading || showingStaleMode;
 
   return (
     <Card>
@@ -190,8 +256,20 @@ export function CohortRetentionTable({ mode = "platform_signup" }: { mode?: Coho
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
+        {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading cohorts…</p>
+        ) : unavailable ? (
+          /*
+           * #802 — MUST precede the "not enough data" branch, which is what a refusal used to be
+           * reported as. OWED TO CLAUDE DESIGN (§00): wording follows the existing in-repo
+           * precedent (`src/solo/compass.tsx:377`, `src/solo/team.tsx:235`); CD owns how this
+           * should read and look. This commit establishes only that the state exists.
+           */
+          <p className="text-sm text-muted-foreground" role="alert">
+            {mode === "client_lifecycle"
+              ? "Retention could not be loaded, so this is not a record of clients failing to return."
+              : "Retention could not be loaded, so this is not a record of users failing to return."}
+          </p>
         ) : !hasEnoughData ? (
           <p className="text-sm text-muted-foreground">
             {mode === "client_lifecycle"

@@ -2807,8 +2807,11 @@ group("safety-first streaming: the sources the first enumeration missed");
       current_user_tenant_id: { data: CHILD, error: null },
       is_platform_owner: { data: false, error: null },
       tenant_sender_identity: { data: [{ from_name: "PRIVATE-SENDER-MARKER Coaching", from_address: "private-sender-marker@ada.test" }], error: null },
-      // The rail arrives through an RPC, not a table read.
-      get_client_rail: { data: [{ event_kind: "note.added", title: "PRIVATE-RAIL-MARKER call notes", occurred_at: new Date().toISOString() }], error: null },
+      // The rail arrives through an RPC, not a table read. #804 moved this seam from
+      // `get_client_rail` to the minimum-evidence `get_client_rail_for_chat`; the mock name must
+      // track it, or hydration silently yields no rows and 21.w fails because the turn is never
+      // marked protected. That is exactly how it was caught.
+      get_client_rail_for_chat: { data: [{ event_kind: "note.added", title: "PRIVATE-RAIL-MARKER call notes", occurred_at: new Date().toISOString() }], error: null },
     },
     tableExtras: {
       user_roles: () => [{ role: "admin" }],

@@ -244,26 +244,68 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     expect(branch).toContain("headers: { Authorization: authHeader }");
   });
 
-  it("does not let the invite seam tell a real owner they are not one", () => {
-    // The three invitation RPCs read `profiles.active_tenant_id` RAW; `current_user_tenant_id()`,
-    // which the roster and the other two RPCs use, COALESCEs it to the earliest active membership.
-    // So a sole OWNER with a null active_tenant_id reads their own roster, passes the tenant guard,
-    // and is then told "only an owner or admin may invite team members" — which is false, and which
-    // Paige would relay in her own voice. That is the §13 failure: not a poor error string, but a
-    // true statement about the resolver rendered as a false statement about the person.
+  it("names the workspace on every invitation act instead of letting the server guess one", () => {
+    // WHAT THIS REPLACES. The three invitation RPCs used to read `profiles.active_tenant_id` RAW
+    // while the roster used `current_user_tenant_id()`, so a sole OWNER with a null pointer read
+    // their own roster and was then told "only an owner or admin may invite team members" — false,
+    // about the owner of that workspace. Paige carried a `inviteSeamBlocked` pre-read so that at
+    // least the reason she gave was true.
     //
-    // The RPCs are deliberately not changed (they are shared with the Team screen and have the same
-    // defect); what is asserted is that the refusal names the real cause, ahead of the write.
-    const guard = HANDLER.slice(HANDLER.indexOf("const inviteSeamBlocked = async ()")).slice(0, 2200);
-    expect(guard).toContain('.select("active_tenant_id")');
-    expect(guard).toContain("This isn't about your permissions; you may well be its owner.");
-    // A failed read must not manufacture a refusal — it proves nothing, and the RPC's own check is
-    // still ahead of any write.
-    expect(guard).toContain("if (error) return null;");
-    // It guards the invitation acts only: the two RPCs resolve the same way the roster does, so
-    // applying it to them would refuse work that would have succeeded.
-    const applied = HANDLER.split("const inviteBlocked = await inviteSeamBlocked();").length - 1;
-    expect(applied, "the invite resolver check guards exactly the invitation branch").toBe(1);
+    // The database repair (20261047000000) removed the cause: authority is now proved against a
+    // workspace the caller NAMES. So the workaround is asserted GONE, not merely relocated — had it
+    // survived, the invitation would now succeed while Paige refused it in her own voice, which is
+    // the same false refusal one layer further from the truth.
+    expect(HANDLER, "the workaround is deleted, not moved").not.toContain("inviteSeamBlocked");
+    expect(HANDLER).not.toContain("This isn't about your permissions; you may well be its owner.");
+    expect(HANDLER).not.toContain("no workspace is set as your active one");
+    // Scoped to the team seam deliberately. Unrelated code (marketplace scope, trace working
+    // context) reads `profiles.active_tenant_id` legitimately and is not this defect; asserting its
+    // absence file-wide would be a false claim about what was repaired.
+    const teamSeam = HANDLER.slice(
+      HANDLER.indexOf("const teamSeamTenantMismatch = async ()"),
+      HANDLER.indexOf("const describeTeamMember = async ("),
+    );
+    expect(teamSeam.length).toBeGreaterThan(0);
+    // Comment-stripped: the paragraph recording what was removed names the column deliberately, and
+    // an assertion satisfied by prose would pass while the code did the opposite.
+    const teamSeamCode = teamSeam
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\/?\*)/.test(line))
+      .join("\n");
+    expect(teamSeamCode, "the team seam no longer reads the raw pointer").not.toContain("active_tenant_id");
+
+    // Every invitation act names the workspace this conversation is about. Derived from the branch
+    // rather than counted against a hardcoded number, so adding a fourth act cannot pass silently.
+    const branchStart = HANDLER.indexOf('const invokeBody = tc.function.name === "team_invite_member"');
+    const branch = HANDLER.slice(branchStart, HANDLER.indexOf('} else if (tc.function.name === "member_grant_role")', branchStart));
+    const actions = branch.match(/action: /g) ?? [];
+    const named = branch.match(/expectedTenantId: personaCtx\?\.tenant_id \?\? null,/g) ?? [];
+    expect(actions.length, "create, and the shared resend/revoke shape").toBe(2);
+    expect(named.length, "each invitation shape names its workspace").toBe(actions.length);
+
+    // The workspace it names is the one already reconciled against the roster, and that
+    // reconciliation still runs ahead of every invitation act.
+    // lastIndexOf, NOT indexOf. The same guard string appears in the work-profile and
+    // permission branches earlier in the file, so a windowed indexOf matched one of THOSE —
+    // the assertion stayed green with the invitation branch's own guard deleted. Caught by
+    // adversarial review. This is the guard that makes `personaCtx.tenant_id` non-null and
+    // roster-agreeing, and without it PAIGE would name a workspace nothing had reconciled.
+    const guardAt = HANDLER.lastIndexOf("const wrongTenant = await teamSeamTenantMismatch();", branchStart);
+    expect(guardAt, "the invitation branch has its own tenant guard").toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(branchStart);
+    // Anchored to the branch OPENER, not to a character budget. Round 2 of the adversarial read
+    // proved the previous backstops were decorative: with the invitation branch's own guard
+    // deleted, `guardAt` fell back to the `team_set_permission` guard 1820 chars earlier — under
+    // the 2000 budget — and `member_grant_role` opens AFTER the invite branch, so that check could
+    // never match. All four assertions passed against the regression they were written to catch.
+    // Anchored on the branch's own CONDITION rather than on brace style. Round 3: `} else if (`
+    // was fragile both ways — writing the opener as `} else if(` let a deleted guard pass, and a
+    // comment containing that text between the guard and the body made it fail with the guard
+    // present. There is no formatter in this repo, but a semantic anchor costs nothing.
+    const inviteBranchOpen = HANDLER.lastIndexOf('tc.function.name === "team_invite_member" ||', branchStart);
+    expect(inviteBranchOpen, "the invitation branch's condition was located").toBeGreaterThan(-1);
+    expect(guardAt, "the guard is inside the invitation branch, not the one before it")
+      .toBeGreaterThan(inviteBranchOpen);
   });
 
   it("carries the email-delivery outcome into the result instead of assuming it", () => {
