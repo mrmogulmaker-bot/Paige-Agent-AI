@@ -18,7 +18,6 @@ import {
   Sun,
   type LucideIcon,
 } from "lucide-react";
-import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { useAgentPresence } from "@/components/ui/paige";
 import { holdsSettingsScrollFocus } from "./settings-scroll-contract";
@@ -595,7 +594,6 @@ export function TenantCommandCenterShell({
           <div className="tcs-command-actions">
             <div className="tcs-account-controls" aria-label="Account context controls">{accountControls}</div>
             <DialPadTrigger />
-            <AdminBridgeBell />
           </div>
         </header>
 
