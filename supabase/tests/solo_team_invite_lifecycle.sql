@@ -54,7 +54,7 @@ INSERT INTO auth.users (id, aud, role, email) VALUES
   ('f1000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated', 'inv-member@tests.invalid'),
   ('f1000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', 'inv-outsider@tests.invalid');
 
-INSERT INTO public.tenants (id, slug, name, status, account_type, brand_code, account_number, features) VALUES
+INSERT INTO public.tenants (id, slug, name, status, account_type, account_number_prefix, account_number, features) VALUES
   ('f1000000-0000-0000-0000-00000000aaaa', 'invite-lifecycle-a', 'Invite Lifecycle A', 'active', 'standalone', 'ILA', 9330001, '{}'::jsonb),
   ('f1000000-0000-0000-0000-00000000bbbb', 'invite-lifecycle-b', 'Invite Lifecycle B', 'active', 'standalone', 'ILB', 9330002, '{}'::jsonb);
 
@@ -64,11 +64,16 @@ INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, j
   ('f1000000-0000-0000-0000-00000000aaaa', 'f1000000-0000-0000-0000-000000000003', 'member', 'active', false, now() - interval '8 days'),
   ('f1000000-0000-0000-0000-00000000bbbb', 'f1000000-0000-0000-0000-000000000004', 'owner',  'active', true,  now() - interval '7 days');
 
+-- ON CONFLICT, not a plain INSERT: the `auth.users` insert above fires the profile-creation
+-- trigger, so every row already exists by the time this runs. The membership rows are inserted
+-- FIRST on purpose — `guard_active_tenant_membership()` fires on UPDATE of `profiles` and demands
+-- an active membership in the workspace being pointed at, and this statement is an UPDATE.
 INSERT INTO public.profiles (user_id, active_tenant_id) VALUES
   ('f1000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-00000000aaaa'),
   ('f1000000-0000-0000-0000-000000000002', 'f1000000-0000-0000-0000-00000000aaaa'),
   ('f1000000-0000-0000-0000-000000000003', 'f1000000-0000-0000-0000-00000000aaaa'),
-  ('f1000000-0000-0000-0000-000000000004', 'f1000000-0000-0000-0000-00000000bbbb');
+  ('f1000000-0000-0000-0000-000000000004', 'f1000000-0000-0000-0000-00000000bbbb')
+ON CONFLICT (user_id) DO UPDATE SET active_tenant_id = EXCLUDED.active_tenant_id;
 
 -- One live invitation, one revoked, one expired, one accepted.
 INSERT INTO public.tenant_invite_tokens (id, tenant_id, token, kind, default_role, email, expires_at, uses, revoked_at) VALUES
