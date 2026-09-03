@@ -1186,6 +1186,14 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Solo platform-bell containment — 2026-09-03
+
+Owner-authorized scoped security patch: the canonical tenant header no longer imports or mounts `AdminBridgeBell`. The retained platform header bell and legacy `/admin/notifications` page are wrapped in the existing server-verifying `RequireOperator` guard. No notification records, source components, senders, policies, or recipient models are changed. This is UI reachability containment, not database-policy remediation: **static authorization defect confirmed / production data exposure unverified**. No production notification contents were inspected.
+
+Scope: `TenantCommandCenterShell.tsx`, `AdminLayout.tsx`, the notifications route in `Admin.tsx`, and narrow regression tests. Current-main collision check found no overlapping containment hunk; PR #724's shared Admin file changes concern shell takeover, which this patch preserves. Settings menu/redirect work is a separate slice. Tests cover forbidden tenant imports, guard ordering, pending authority, tenant refusal, verified operator access, and subject-change cleanup; existing operator/shell suites cover adjacent transitions. Authenticated production pathway and viewport proof remain Proof Owed until exercised; automated results do not establish production data exposure or database denial.
+
+No replacement Solo inbox is introduced. A future Attention surface requires tenant-safe source-backed summaries. Platform-wide delivery remains operator-owned; Billing contacts, Team outcomes, connection health, Security, Sales and Client Portal contracts remain with their respective source owners.
+
 ### Billing Foundation C — the Solo Billing screen (PR #833, **RELEASED — merged `11997dac` 2026-09-03; no production write of any kind**)
 
 **What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two

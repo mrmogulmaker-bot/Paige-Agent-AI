@@ -26,6 +26,7 @@ import { useNavigate, Routes, Route, useParams, Navigate, useLocation } from "re
 import { supabase } from "@/integrations/supabase/client";
 import { PageSkeleton } from "@/components/ui/page";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import RequireOperator from "@/operator/RequireOperator";
 import { PracticeOverview } from "@/pages/admin/PracticeOverview";
 import { AdminNotFound } from "@/pages/admin/AdminNotFound";
 import { toast } from "sonner";
@@ -938,7 +939,7 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><ApprovalsInbox /></Suspense>
         } />
         <Route path="notifications" element={
-          <Suspense fallback={<SuspenseFallback />}><AdminNotifications /></Suspense>
+          <RequireOperator><Suspense fallback={<SuspenseFallback />}><AdminNotifications /></Suspense></RequireOperator>
         } />
         <Route path="data-registry" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><DataSourceRegistryAdmin /></Suspense></AdminOnly>

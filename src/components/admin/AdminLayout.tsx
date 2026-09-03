@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { OperatorHubStrip } from "@/components/admin/platform/OperatorTabs";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
+import RequireOperator from "@/operator/RequireOperator";
 import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
@@ -591,7 +592,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             {/* #140 A2 — the ONE global dialer trigger (§18/§21). Drives the single
                 Device in VoiceDeviceProvider; click-to-call anywhere pops this pad. */}
             <DialPadTrigger />
-            <AdminBridgeBell />
+            <RequireOperator><AdminBridgeBell /></RequireOperator>
             <ThemeToggle variant="on-primary" />
 
             {/* Profile dropdown (Slice 1c-iii): identity + Workspace settings
