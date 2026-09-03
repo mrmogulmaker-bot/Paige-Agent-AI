@@ -97,6 +97,55 @@ function lit(node) {
 }
 
 /**
+ * The target of a read this guard could not name. Distinct from `null`, which means "read it, and
+ * it is not interesting" — the whole failure class both of these rules had is treating those two
+ * as the same answer. Ignorance is not innocence.
+ */
+const UNREADABLE = Symbol("unreadable");
+
+/** Every same-file `const/let/var NAME = "literal"` binding, so a named specifier can be resolved. */
+function constStrings(sf) {
+  const out = new Map();
+  walk(sf, (n) => {
+    if (!ts.isVariableDeclaration(n) || !n.initializer || !ts.isIdentifier(n.name)) return;
+    const v = lit(n.initializer);
+    if (v !== null && !out.has(n.name.text)) out.set(n.name.text, v);
+  });
+  return out;
+}
+
+/**
+ * A module specifier's VALUE, resolved as far as this file allows: a literal, a substitution-free
+ * template, a same-file string const, or a concatenation of those. Anything else is UNREADABLE.
+ *
+ * `import(p)` where `p` is a variable was the hole: `lit()` returned null, the rule read that as
+ * "not the superseded module", and a dynamic adoption of the #711 bare-boolean gate stayed green.
+ * The four real non-literal dynamic imports in the scan roots are all `import(SPEC)` over a
+ * module-level const, so resolving that form is what keeps failing closed from costing anything.
+ */
+function specifierValue(node, consts) {
+  let n = node;
+  while (n && isTransparent(n)) n = n.expression;
+  if (!n) return UNREADABLE;
+  if (ts.isStringLiteralLike(n)) return n.text;
+  if (ts.isIdentifier(n)) return consts.has(n.text) ? consts.get(n.text) : UNREADABLE;
+  if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const l = specifierValue(n.left, consts), r = specifierValue(n.right, consts);
+    return l === UNREADABLE || r === UNREADABLE ? UNREADABLE : l + r;
+  }
+  if (ts.isTemplateExpression(n)) {
+    let out = n.head.text;
+    for (const sp of n.templateSpans) {
+      const v = specifierValue(sp.expression, consts);
+      if (v === UNREADABLE) return UNREADABLE;
+      out += v + sp.literal.text;
+    }
+    return out;
+  }
+  return UNREADABLE;
+}
+
+/**
  * R1 — every mention of `door` except the two that are legitimate.
  *
  * INVERTED, on Codex's recommendation and after this guard was extended three times by adding
@@ -286,35 +335,50 @@ function isValuePosition(node) {
  * names the function nowhere in the import clause, and `await import(…)` is not an import
  * declaration at all. The repository uses dynamic imports widely, so that form is not hypothetical.
  */
-export function importsGate(src, fileName = "in-memory.ts") {
+/**
+ * Why a file counts as loading the superseded gate: `"loads"` when the specifier RESOLVES to it,
+ * `"unreadable"` when a dynamic load's specifier cannot be read at all — and `null` only when the
+ * guard actually read every specifier and none matched.
+ */
+export function gateLoadReason(src, fileName = "in-memory.ts") {
   const sf = parse(src, fileName);
-  let found = false;
+  const consts = constStrings(sf);
+  let found = null;
   walk(sf, (n) => {
     if (found) return;
     // `export * from "…"` and `export { x } from "…"` load the module just as an import does, and
     // a barrel re-export lets a consumer adopt the gate through a different specifier entirely.
     if (ts.isExportDeclaration(n) && n.moduleSpecifier) {
       const m = lit(n.moduleSpecifier);
-      if (m && SUPERSEDED.test(m)) { found = true; return; }
+      if (m && SUPERSEDED.test(m)) { found = "loads"; return; }
     }
     if (ts.isImportDeclaration(n)) {
       const m = lit(n.moduleSpecifier);
-      if (m && SUPERSEDED.test(m)) { found = true; return; }
+      if (m && SUPERSEDED.test(m)) { found = "loads"; return; }
       // A named import of the function through some other path still counts.
       const clause = n.importClause?.namedBindings;
       if (clause && ts.isNamedImports(clause) &&
-          clause.elements.some((e) => e.name.text === "decideToolConfirmation")) found = true;
+          clause.elements.some((e) => e.name.text === "decideToolConfirmation")) found = "loads";
       return;
     }
     if (ts.isCallExpression(n)) {
       const isDynamicImport = n.expression.kind === ts.SyntaxKind.ImportKeyword;
-      const isRequire = ts.isIdentifier(n.expression) && n.expression.text === "require";
+      const isRequire = ts.isIdentifier(n.expression) && ts.isIdentifier(n.expression) &&
+                        n.expression.text === "require";
       if (!isDynamicImport && !isRequire) return;
-      const m = lit(n.arguments[0]);
-      if (m && SUPERSEDED.test(m)) found = true;
+      // A dynamic load with no argument at all loads nothing this rule can be wrong about.
+      if (!n.arguments.length) return;
+      const m = specifierValue(n.arguments[0], consts);
+      if (m === UNREADABLE) { found = "unreadable"; return; }
+      if (SUPERSEDED.test(m)) found = "loads";
     }
   });
   return found;
+}
+
+/** Boolean face of `gateLoadReason`, kept because every caller and case reads it as one. */
+export function importsGate(src, fileName = "in-memory.ts") {
+  return gateLoadReason(src, fileName) !== null;
 }
 
 /**
@@ -458,12 +522,34 @@ export function claimTouches(src, fileName = "in-memory.ts") {
     // R1 had this exact blind spot and I fixed it there WITHOUT checking whether the sibling rule
     // reading the same syntax had it too. It did. The class sweep is the point, not the instance.
     if (ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)) {
-      const nm = bindingKeyName(ts.isPropertyAssignment(n) ? n.name : n.name);
-      if (nm && DATA_METHODS.has(nm) && !isValuePosition(n.parent)) why = `destructured ${nm}`;
+      const nm = bindingKeyName(n.name);
+      if (!isValuePosition(n.parent)) {
+        if (nm && DATA_METHODS.has(nm)) why = `destructured ${nm}`;
+        // `({ [m]: fn } = client)` — the computed-key form of the destructuring ASSIGNMENT that
+        // already slipped past this rule once. It is only unreadable in a TARGET position; an
+        // object being BUILT (`const o = { [k]: v }`) is a value position and stays untouched.
+        else if (nm === null && ts.isComputedPropertyName(n.name)) {
+          why = "[unreadable] a destructured key this guard cannot name";
+        }
+      }
     }
+    // `client["rpc"]` was caught; `client["r"+"pc"]`, `client[m]` and `const { [m]: fn } = client`
+    // were NOT — `lit()` returned null and the rule read that as "not a data method". That is the
+    // same fail-open the sibling MCP guard closed one PR earlier with an explicit unreadable
+    // sentinel, and I swept this file for DESTRUCTURING rather than for the class the sentinel
+    // names. Enumerate what is provably harmless and refuse the rest: a string key that is not a
+    // data method, or a numeric index, can never be `.rpc`. Anything else fails CLOSED.
     if (ts.isElementAccessExpression(n)) {
-      const k = lit(n.argumentExpression);
-      if (k && DATA_METHODS.has(k)) why = `["${k}"]`;
+      const a = n.argumentExpression;
+      const k = lit(a);
+      if (k !== null) { if (DATA_METHODS.has(k)) why = `["${k}"]`; }
+      else if (!a || !ts.isNumericLiteral(a)) why = "[unreadable] a property read whose key this guard cannot name";
+    }
+    // `const { [m]: fn } = client` — a computed key on a BindingElement, unreadable for the same
+    // reason and reachable for the same purpose.
+    if (ts.isBindingElement(n) && n.propertyName && ts.isComputedPropertyName(n.propertyName)
+        && lit(n.propertyName.expression) === null) {
+      why = "[unreadable] a destructured key this guard cannot name";
     }
     if (ts.isStringLiteralLike(n) && CLAIM_NAMES.test(n.text)) why = n.text;
     if (!why) return;
@@ -486,7 +572,8 @@ export function gateCallers(roots) {
       const rel = p.split(path.sep).join("/");
       if (/\.(test|spec)\.(ts|tsx)$/.test(rel)) continue;
       const src = fs.readFileSync(p, "utf8");
-      if (importsGate(src, rel)) found.push(rel);
+      const reason = gateLoadReason(src, rel);
+      if (reason) found.push({ file: rel, reason });
     }
   };
   for (const r of roots) if (fs.existsSync(r)) walkDir(r);
@@ -549,12 +636,19 @@ if (process.argv.includes("--self-test")) {
   check("R4 still ignores a record that merely NAMES rpc", claimTouches("const doc = { rpc: \"documented\" };").length, 0);
   check("R1 ignores an unrelated destructured key", doorBranches("const { tenantId } = caller; return tenantId;").length, 0);
 
-  // R2 AND R3 SWEPT FOR THE SAME BLIND SPOT, after it was found in R1 and then in R4.
+  // R2 AND R3 SWEPT FOR DESTRUCTURING, after it was found in R1 and then in R4.
   //
-  // It is NOT there — neither rule reads a destructurable expression: R2 reads module specifiers
+  // It is not there — neither rule reads a destructurable expression: R2 reads module specifiers
   // and R3 reads type members. That is a negative result, and it is asserted rather than merely
   // concluded, because "I checked once" and "CI checks forever" are different guarantees and this
   // stack has already lost a helper to a silent deletion no test noticed.
+  //
+  // §13 CORRECTION, 2026-09-03. That sweep was reported as covering "R1's and R4's blind spot".
+  // It covered the INSTANCE — destructuring — and not the CLASS, which is a target this guard
+  // cannot read, and which I had named with an explicit sentinel in the sibling MCP guard one PR
+  // earlier. Review then found the class alive in BOTH swept-adjacent rules: R2 read a dynamic
+  // `import(p)` as "not the superseded module" and R4 read `client[m]` as "not a data method".
+  // Both now fail closed, and the cases below run the forms that were green.
   for (const [label, decl] of [
     ["a plain boolean", `export type GovernedApproval = { confirm: boolean };`],
     ["a QUOTED key", `export type GovernedApproval = { "confirm": boolean };`],
@@ -573,6 +667,25 @@ if (process.argv.includes("--self-test")) {
     ["a require", `const g = require("../toolConfirmation.ts");`],
   ]) check(`R2 sees the superseded gate through ${label}`, Number(importsGate(src, "t.ts")), 1);
   check("R2 ignores an unrelated module", Number(importsGate(`import { x } from "./other.ts";`, "t.ts")), 0);
+
+  // R2 — THE UNREADABLE-SPECIFIER CLASS (Codex, post-merge on #792). Each of these returned FALSE
+  // before, so the superseded #711 bare-boolean gate could have been adopted dynamically with the
+  // guard green. The specifier is now RESOLVED through the same file first, and only what still
+  // cannot be read fails closed.
+  for (const [label, src] of [
+    ["a variable specifier", `const p = "../toolConfirmation.ts"; const g = await import(p);`],
+    ["a CONCATENATED specifier", `const g = await import("../toolConfirm" + "ation.ts");`],
+    ["a TEMPLATE specifier", "const d = \"..\"; const g = await import(`${d}/toolConfirmation.ts`);"],
+    ["require() with a variable", `const p = "../toolConfirmation.ts"; const g = require(p);`],
+  ]) check(`R2 RESOLVES the gate through ${label}`, gateLoadReason(src, "t.ts"), "loads");
+  check("R2 FAILS CLOSED on a specifier it cannot resolve at all",
+    gateLoadReason("const g = await import(pickAtRuntime());", "t.ts"), "unreadable");
+  // The controls that make failing closed affordable: the four real non-literal dynamic imports in
+  // the scan roots are all `import(SPEC)` over a module-level const, and they must stay silent.
+  check("R2 resolves an UNRELATED const specifier and stays quiet",
+    gateLoadReason(`const S = "npm:pdf-lib@1.17.1"; const l = await import(S);`, "t.ts"), null);
+  check("R2 stays quiet on a literal unrelated module",
+    gateLoadReason(`import { x } from "./other.ts";`, "t.ts"), null);
   check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);
   check("R1 ignores the word in prose", doorBranches('// a different door === ever\nconst a = 1;').length, 0);
@@ -647,6 +760,22 @@ interface GovernedApproval { approved?: boolean; }`).fields.length, 1);
   check("R4 from()", claimTouches('const r = client.from("t");').length, 1);
   check("R4 claim table name", claimTouches('const t = "paige_pending_confirmations";').length, 1);
   check("R4 clean seam code", claimTouches("const risk = classifyAction(capability.id);").length, 0);
+
+  // R4 — THE UNREADABLE-KEY CLASS (Codex, post-merge on #792). `client["rpc"]` was caught and each
+  // of these was not, because an unreadable key read as "not a data method" — ignorance answering
+  // as innocence. Enumerate what is provably harmless (a string key that is not a data method, a
+  // numeric index) and refuse the rest.
+  for (const [label, src] of [
+    ["a CONCATENATED key", `const r = await client["r" + "pc"]("x", {});`],
+    ["a VARIABLE key", `const m = "rpc"; const r = await client[m]("x", {});`],
+    ["a computed DESTRUCTURING key", `const m = "rpc"; const { [m]: fn } = client; await fn("x", {});`],
+    ["a computed destructuring ASSIGNMENT key", `const m = "rpc"; let fn; ({ [m]: fn } = client); await fn("x", {});`],
+  ]) check(`R4 FAILS CLOSED on ${label}`, claimTouches(src).length, 1);
+  // Controls: what is provably harmless must stay silent, or the rule is unusable and the next
+  // person weakens it to get CI green — which is how a guard dies.
+  check("R4 allows a numeric index", claimTouches("const first = rows[0];").length, 0);
+  check("R4 allows a readable non-data key", claimTouches('const v = cfg["timeout"];').length, 0);
+  check("R4 allows BUILDING an object with a computed key", claimTouches('const k = "a"; const o = { [k]: 1 };').length, 0);
 
   // ── review, on head eb0dbd83 ────────────────────────────────────────────────────────────────
   // Three code findings, all reproduced against the shipped guard first. Two are fail-OPEN, one is
@@ -735,11 +864,19 @@ if (claims.length) {
 const rogue = gateCallers(["supabase/functions", "src"]);
 if (rogue.length) {
   failed = true;
-  console.error(`\n✗ R2 no quiet adoption: ${rogue.length} file(s) load the SUPERSEDED #711 gate.\n`);
-  for (const f of rogue) console.error(`  ${f}`);
+  console.error(`\n✗ R2 no quiet adoption: ${rogue.length} file(s) load, or may load, the SUPERSEDED #711 gate.\n`);
+  for (const f of rogue) {
+    console.error(`  ${f.file}${f.reason === "unreadable" ? "   ← dynamic load with an unreadable specifier" : ""}`);
+  }
   console.error("\n  That module is unwired and superseded by the inline sequence over");
   console.error("  `paige_pending_confirmations`. Adopting it is an approval-semantics change,");
   console.error("  which belongs to the Chat build.");
+  if (rogue.some((f) => f.reason === "unreadable")) {
+    console.error("\n  A line marked 'unreadable specifier' is a dynamic import or require whose target this");
+    console.error("  guard cannot name, so it cannot rule out that the target is the superseded gate. It");
+    console.error("  fails CLOSED. Write the specifier as a literal or a same-file string const; do not");
+    console.error("  teach the guard to skip the loads it cannot read.");
+  }
 }
 
 if (failed) process.exit(1);

@@ -1850,6 +1850,19 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 ## 10. §13 corrections log
 
+ - **2026-09-03 — I swept for the instance that had just bitten me, not for the class I had just
+   learned, and reported it as a sweep.** Commit `eb0dbd83` on #792 was titled *"swept R2 and R3 for
+   R1's and R4's blind spot — a NEGATIVE result, asserted"*. The measurement was real and the result
+   still holds: neither rule reads a destructurable expression. But **destructuring was the INSTANCE**;
+   the class is *a target the guard cannot read*, and I had already named that class with an explicit
+   `UNREADABLE_METHOD` sentinel in the sibling MCP guard **one PR earlier**. Independent review found
+   the class alive in both rules the sweep had covered: R2 read a dynamic `import(p)` as "not the
+   superseded gate", so the #711 bare-boolean gate could have been adopted dynamically with CI green;
+   R4 read `client[m]` as "not a data method", so the shared seam could have made its own atomic claim
+   undetected. **A sweep is only a sweep if it names the property being swept for.** Mine named a
+   syntax. Both now fail closed, with the specifier resolved through the same file first so that
+   failing closed costs nothing on the four real dynamic imports in the scan roots.
+
  - **2026-09-02 — a tier gate I shipped as the headline fix did not fix the reported flow, and I said
    so before Gate B rather than after.** The Solo account-context repair (#811) originally led with
    *"`/business/*` had no tier gate; adding one closes the defect."* The first clause is true and the
