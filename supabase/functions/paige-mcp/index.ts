@@ -1789,10 +1789,12 @@ mcp.tool("update_contact", {
 
 mcp.tool("bulk_delete_contacts", {
   description:
-    "Permanently delete up to 100 contacts (clients rows) in a single call. Scoped to the caller's tenant — contacts in other tenants are silently skipped. Returns per-id status. Use with care: this hard-deletes the client row and cascades to dependent CRM data per the schema's FK rules. For non-destructive removal, prefer archiving via `update_lifecycle_stage` to `client_churned` or `client_alumni`. Pass `confirm: true` to execute; without it the tool returns a dry-run preview.",
+    "Preview which of up to 100 contacts (clients rows) are in scope for removal. Scoped to the caller's tenant \u2014 contacts in other tenants are silently skipped. Returns a per-id preview. DELETION IS NOT PERFORMED FROM THIS SURFACE: a destructive act needs a governed approval proof, and an MCP caller has no way to present one, so this tool previews and never deletes. For removal that IS available here, archive via `update_lifecycle_stage` to `client_churned` or `client_alumni`.",
   inputSchema: z.object({
     contact_ids: z.array(z.string()).min(1).max(100),
-    confirm: z.boolean().optional().describe("Must be true to actually delete. Defaults to false → dry-run preview."),
+    confirm: z.boolean().optional().describe(
+      "Accepted for compatibility and deliberately NOT honoured as approval. Passing true returns a refusal, not a deletion.",
+    ),
   }),
   handler: async ({ contact_ids, confirm }) => {
     const tenant_id = await actorTenantId();
@@ -1809,36 +1811,55 @@ mcp.tool("bulk_delete_contacts", {
     const eligibleIds = eligible.map((r) => r.id as string);
     const skipped = contact_ids.filter((id) => !eligibleIds.includes(id));
 
-    if (!confirm) {
+    // CONTAINED 2026-09-02 (issue #784). This handler used to hard-delete these rows with the
+    // service-role client whenever `confirm` was true. `confirm` is a field in the tool's own
+    // argument object, which means it is the MODEL'S OWN JSON — exactly the shape
+    // `docs/doctrine/one-approval-gate.md` names as forbidden: "That flag is the model's own JSON.
+    // It selects a branch; it proves nothing." The identical act in Chat is `crm_delete_contact`,
+    // classified `high` in `_shared/action-risk.ts`, and Chat refuses model-asserted approval for
+    // `high` outright. The same destruction was reachable here with no risk classification, no
+    // autonomy lane, and no approval proof of any kind.
+    //
+    // The fix is deliberately NOT "wire a new approval channel into MCP". That decision belongs to
+    // the Chat build (same doctrine: "No agent decides how permission is proven"), and a second
+    // channel is the failure that doctrine exists to stop. So this surface stops destroying, and
+    // the capability returns only when mutating MCP tools are classified and routed through the
+    // shared governed Spine execution seam. Until then the preview is the whole tool.
+    const preview = {
+      would_remove: eligible,
+      would_remove_count: eligible.length,
+      skipped_not_in_tenant: skipped,
+      deletion_available: false,
+    };
+
+    if (confirm !== true) {
       return ok({
-        dry_run: true,
-        would_delete: eligible,
-        would_delete_count: eligible.length,
-        skipped_not_in_tenant: skipped,
-        next: "Re-call with `confirm: true` to permanently delete.",
+        ...preview,
+        preview_only: true,
+        next:
+          "Deletion is not available from this surface. To remove these contacts from active work, " +
+          "call `update_lifecycle_stage` with `client_churned` or `client_alumni`.",
       });
     }
 
-    if (eligibleIds.length === 0) {
-      return ok({ deleted: [], deleted_count: 0, skipped_not_in_tenant: skipped });
-    }
-
-    const { data: deleted, error: dErr } = await admin
-      .from("clients")
-      .delete()
-      .in("id", eligibleIds)
-      .select("id");
-    if (dErr) return err(dErr.message);
-
-    const deletedIds = (deleted ?? []).map((r) => r.id as string);
-    await audit("bulk_delete_contacts", "client", null, {
-      tenant_id, count: deletedIds.length, ids: deletedIds, skipped_count: skipped.length,
+    // An approval was asserted in the arguments. Record the attempt — a blocked destructive
+    // request is precisely what an audit log is for — then refuse. Nothing was deleted.
+    await audit("bulk_delete_contacts_blocked", "client", null, {
+      tenant_id,
+      requested_count: contact_ids.length,
+      eligible_count: eligible.length,
+      skipped_count: skipped.length,
+      reason: "model_supplied_confirm_is_not_approval",
     });
-    return ok({
-      deleted: deletedIds,
-      deleted_count: deletedIds.length,
-      skipped_not_in_tenant: skipped,
-    });
+
+    return err(
+      "Nothing was deleted, and nothing will be. Deleting contacts is a destructive action that " +
+      "requires a real approval from the operator, and a `confirm` flag inside these arguments is " +
+      "not one \u2014 it is your own output. This surface has no way to carry that approval, so it " +
+      "previews only. Tell the operator plainly that you cannot delete contacts here, and offer to " +
+      "archive them instead with `update_lifecycle_stage` (`client_churned` or `client_alumni`). " +
+      `In scope had this been available: ${eligible.length} of ${contact_ids.length}.`,
+    );
   },
 });
 
