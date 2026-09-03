@@ -771,6 +771,69 @@ because nothing mechanical was added at the time — only the note. The lesson b
 recording a failure class without building the check that catches it buys one session's memory,
 not a guard.
 
+### 2026-09-03, PR #810: the guard works. WHEN you run it is the variable.
+
+Offer Catalog Slice 2A was renumbered **three times** — `…44` to the Rail, `…45` to Billing
+Foundation A, `…48` to team-member removal (#845). The third one adds a dimension the shapes above
+do not cover, and it is a timing dimension rather than a new shape.
+
+The branch re-grounded on main and ran `lint:migration-versions` **clean at `20261048000000`**.
+#845 merged afterwards, carrying that same version. Nothing about the check was wrong; the base
+simply moved between looking and merging.
+
+**The correction that matters, because the first write-up of this got it backwards.** It was
+initially reported — and committed into the migration header and the tier matrix — that the guard
+was *"structurally blind"* to this. Reading the actual `verify` log disproved it:
+
+```
+BASE_REF: 1a22637c3ea8fdaa195ad24e53cec582dbc7bcd5
+✗ migration-version-collision-lint: 1 collision(s).
+  two migrations share version 20261048000000 ...
+##[error]Process completed with exit code 1.
+```
+
+CI passes the **real merge base** to the lint, so the guard caught it the moment #845 landed, and
+`database-contract` caught it independently by replaying from zero. One root cause, both red
+checks, no defective guard. What was blind was the **local** run, which compares against whatever
+`origin/main` the working copy last fetched — and that fetch predated #845.
+
+**So the operative rules are about process, not tooling:**
+- A green **local** `lint:migration-versions` is a hint. **CI is the authority**, because only CI
+  evaluates against the base you are actually merging into.
+- Re-grounding at the END is necessary and **still not sufficient**. The base moves after you look
+  at it. On a contended range, expect to renumber at merge time and pick the version LATE.
+- A stronger pre-merge check, when it is worth the time, is to scan **every remote branch** rather
+  than main: `for b in $(git branch -r ...); do git ls-tree -r --name-only "$b" supabase/migrations
+  ...`. It found that only #845's and the Rail's migrations existed at or above `…48` across all
+  423 branches. That is an *improvement* to a working guard, not a fix for a broken one — do not
+  file it as a defect.
+
+**And then I broke this entry's own rule, in the same session, having just quoted it.** The
+version chosen that way — `20261050000000` — was genuinely free across every branch, and still
+wrong. Production's ledger already carried `20261104000000`, `20261103000000` and
+`20261102010000`, whose files this repository could not see at the time: **shape 3, named a few
+paragraphs above.** Applying 50 would have put it behind three migrations already live. The
+branch scan answers "is it free"; only `select max(version) from
+supabase_migrations.schema_migrations` answers "does it sort after what is applied", and both
+must hold. It was caught because another PR's commit message happened to mention prod's newest
+version — luck, not method.
+
+So the check before taking a version is **two queries, not one**:
+1. free across the repo and every remote branch (the scan above), AND
+2. **strictly greater than `max(version)` in prod's ledger** (an MCP query — the repo cannot
+   tell you this).
+
+The meta-lesson, which is the reason this paragraph exists at all: reading the rule is not
+applying it. This entry was open in the same session, quoted in a commit message, and the very
+next decision violated it — because the decision *felt* thorough (423 branches!) and thoroughness
+in the wrong dimension reads exactly like rigour.
+
+**And a second-order lesson, since this is the third time this branch wrote about the same event.**
+Two of the three write-ups were wrong before they were right: the first blamed the guard, and an
+earlier one blamed review. Diagnose from the log, not from the shape of the story you are already
+telling — a failure that has happened three times is exactly when the narrative starts writing
+itself ahead of the evidence.
+
 ---
 
 ## A predicate proof is not a write proof (2026-09-01, #695 → #699)
