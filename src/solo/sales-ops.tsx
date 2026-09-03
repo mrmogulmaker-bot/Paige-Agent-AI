@@ -149,10 +149,12 @@ function ReadyRow({ state, label, detail, action, word: override }) {
  * three parts; this is the same contract for the two editors on this surface, not a second
  * invention of it.
  *
- * Returns the ref to put on the panel. The caller keeps its own Escape handling, because only the
- * caller knows whether a save is in flight.
+ * Returns the ref to put on the panel. It takes NO arguments on purpose: Escape stays with the
+ * caller, because only the caller knows whether a save is in flight and must not be interrupted.
+ * The first version declared `(onClose, busy)` and used neither — parameters that read as though
+ * this hook handles dismissal when it does not.
  */
-function useModalDialog(onClose, busy) {
+function useModalDialog() {
   const panelRef = React.useRef(null);
   React.useEffect(() => {
     const previous = document.activeElement;
@@ -198,7 +200,7 @@ function PaymentEditor({ data, onClose }) {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState(null);
   const firstRef = React.useRef(null);
-  const panelRef = useModalDialog(onClose, busy);
+  const panelRef = useModalDialog();
 
   React.useEffect(() => { firstRef.current?.focus(); }, []);
   React.useEffect(() => {
@@ -304,7 +306,7 @@ function QuickOffer({ offers, tenantId, onClose, onCreated }) {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState(null);
   const nameRef = React.useRef(null);
-  const panelRef = useModalDialog(onClose, busy);
+  const panelRef = useModalDialog();
 
   React.useEffect(() => { nameRef.current?.focus(); }, []);
   React.useEffect(() => {
