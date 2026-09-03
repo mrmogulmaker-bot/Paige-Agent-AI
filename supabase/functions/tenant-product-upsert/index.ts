@@ -75,6 +75,23 @@ Deno.serve(async (req) => {
     return json(403, { error: "tenant_admin_required" });
   }
 
+  // The offer/product catalog is Solo-only right now (same product boundary as
+  // save_solo_offer / set_solo_offer_status, migration 20261131000000). Never trust
+  // a browser-provided account type — re-check the real tenant row server-side.
+  // A caller-supplied role/membership is not evidence of tier; this is.
+  const { data: tenantRow } = await admin
+    .from("tenants")
+    .select("account_type, parent_tenant_id")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (
+    !tenantRow ||
+    tenantRow.parent_tenant_id !== null ||
+    tenantRow.account_type !== "standalone"
+  ) {
+    return json(403, { error: "solo_workspaces_only" });
+  }
+
   // Must have a connected Stripe account before listing products for sale
   const { data: connect } = await admin
     .from("tenant_stripe_accounts")
