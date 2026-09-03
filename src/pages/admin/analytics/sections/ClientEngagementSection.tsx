@@ -15,7 +15,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { HeartHandshake, Users } from "lucide-react";
+import { HeartHandshake, Users, AlertTriangle } from "lucide-react";
 import { SectionCard, StatTile, StatRow, EmptyState } from "@/components/ui/page";
 import { useClientEngagement } from "@/hooks/analytics/useClientEngagement";
 import { CohortRetentionTable } from "../CohortRetentionTable";
@@ -33,6 +33,22 @@ export function ClientEngagementSection({ start, end }: { start: string; end: st
       >
         {data.loading ? (
           <div className="h-56 w-full animate-pulse rounded bg-muted" />
+        ) : data.unavailable ? (
+          /*
+           * #802 — this branch MUST come before the "insufficient data" one. A refused read
+           * previously arrived here as a dense series of zeros, so it was reported as a real
+           * measurement of no engagement. Saying so plainly is the whole point of the slice.
+           *
+           * OWED TO CLAUDE DESIGN (§00): the wording and treatment here follow the existing
+           * in-repo precedent for this exact situation (`src/solo/compass.tsx:377`,
+           * `src/solo/team.tsx:235`) rather than inventing a new one. CD owns how it should read
+           * and look; this commit only establishes that the state EXISTS and is not a metric.
+           */
+          <EmptyState
+            icon={AlertTriangle}
+            title="Client engagement is unavailable"
+            description="This could not be loaded, so it is not a record of no engagement. Nothing here reflects your clients' actual activity until it loads."
+          />
         ) : daysWithActivity < 2 ? (
           <EmptyState
             icon={HeartHandshake}

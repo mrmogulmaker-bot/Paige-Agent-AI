@@ -47,6 +47,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 // Captured once, before any test can mutate the harness.
 const PRISTINE_TENANTS = harness.context.tenants.map((t) => ({ ...t }));
 
+import { registerAccountSwitchGuard } from "@/lib/auth/accountSwitchGuard";
 import ChooseAccount from "./ChooseAccount";
 
 function LocationProbe() {
@@ -215,6 +216,29 @@ describe("ChooseAccount", () => {
     expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
     expect(host.textContent).toContain("couldn't load your Paige accounts");
     expect(Array.from(host.querySelectorAll("button")).some((b) => b.textContent?.includes("Retry"))).toBe(true);
+  });
+
+  // §58 — a protection that shipped on `main` for the control this PR DELETES.
+  // `settings-setup.tsx` registers a guard while Setup is dirty or mid-save, and
+  // the deleted `MemberAccountSwitcher` was its only caller. Replacing that control
+  // has to carry its protection across, not just its capability.
+  it("refuses to switch when a registered guard says the workspace has unsaved work", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, assign, search: "" } });
+    harness.context.switchTenant = vi.fn(async () => true);
+    const release = registerAccountSwitchGuard(async () => false);
+
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
+    });
+    const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes("Mogul Maker Academy"));
+    await act(async () => { button?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(harness.context.switchTenant).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+    release();
+    Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 
   // Nothing from the previous account may render under the new one's heading.

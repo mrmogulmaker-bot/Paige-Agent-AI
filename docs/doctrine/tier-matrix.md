@@ -1456,6 +1456,58 @@ reported, not silently changed, because that RPC has its own callers.
 **§61 default: no exception.** God/Solo/Sub-account per the standing distribution, Agency inside a
 workspace it has switched into, Enterprise both. No owner ruling was sought, and none was needed.
 
+### Solo Team — an invitation goes to the workspace the operator named, `/solo/{account}/settings/team`
+
+**§66, same commit as the ship. NOT YET RELEASED — this records the change under review in #815, not
+live availability.** Nothing below is shipped truth until the PR merges and `20261047000000` is
+confirmed persisted on prod; this row is written now because §66 binds the ledger to the commit, and
+it will be corrected to SHIPPED or removed rather than left ambiguous.
+
+**The defect.** `create_/resend_/revoke_solo_team_invite` read `profiles.active_tenant_id` **raw**
+while `get_solo_team_workspace` — the read that decides whether the Invite button is even offered —
+used `current_user_tenant_id()`, which COALESCEs to the caller's earliest active membership. The two
+disagreed, and a sole owner whose pointer was null read their own roster, was offered the button, and
+was told *"only an owner or admin may invite team members"* about a workspace they own. The
+null-pointer population is manufactured continuously: provisioning never writes the column, the
+client computes a working value and declines to persist it (so the null survives every login), tenant
+deletion clears it, and removing somebody from a workspace clears it by design.
+
+**The repair.** Authority is proved against a workspace the caller NAMES.
+`solo_team_invite_authority(_actor, _expected_tenant_id)` requires an active `tenant_members` row
+with owner or admin authority in that exact workspace — no COALESCE, no ORDER BY, no LIMIT. The Team
+screen sends the `tenant_id` it rendered the roster and workspace name from; PAIGE sends the tenant
+the conversation is already reconciled to. The parameter is **refusal-only**: it can abort a call and
+can never select a workspace the caller has no authority in.
+
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|
+| Invite / resend / revoke, workspace named and proved | — | ✓ | ✓ | ✓ | ✓ | — | 403 |
+| Invite without naming a workspace | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+| Invite into a workspace the caller is not an owner/admin of | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
+
+The God `—` is unchanged and still honest rather than a gate: a tenant-less operator has no
+membership row to prove, so the resolver refuses. An operator switched into a tenant is the Agency ✓
+case (§51). Anon and `authenticated` cannot execute any of the three at all — service_role only.
+
+**Why the read's fallback was deliberately not inherited (owner ruling, 2026-09-02).** Guessing the
+earliest active membership is cheap for a roster read, which self-corrects on screen. An invitation
+emails a live 7-day access token to a stranger and cannot be recalled. A guess is acceptable only
+where a harmless read can self-correct, so the invite family takes the same refusal-only
+expected-workspace token that member removal takes rather than a fallback designed for reads.
+
+**PAIGE's workaround was deleted, not moved.** `inviteSeamBlocked` pre-read the raw pointer so that
+at least her refusal named a true cause. With the cause gone it would have become the only thing
+refusing an invitation that now succeeds — the same false refusal one layer further from the truth,
+where the database can no longer falsify it. `teamSeamTenantMismatch` remains and still runs ahead
+of every invitation act; it is what makes the workspace PAIGE names trustworthy.
+
+**§61 default: no exception.** Distribution is unchanged from the Team seam rows above; this repairs
+how an existing capability resolves its workspace and grants nobody anything new.
+
+**Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
+(2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
+Owed** until the owner confirms the live flow.
+
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
 **§66, same commit as the ship.** The first Mind binding: PAIGE states what a recorded Pipeline
@@ -1671,6 +1723,30 @@ mocked tenant context and read the resulting router location, plus the pure rule
 `SoloEntry.test.tsx`, `BusinessEntry.test.tsx`, `ChooseAccount.test.tsx`, `workspaceEntry.test.ts`,
 each proven red against the pre-change code. **No row has been driven by an authenticated session**,
 which is a weaker class of evidence than a drive and must not be represented as one.
+### Platform Billing — Foundation A seams (branch `claude/billing-foundation-a`, PR #816) — **NOT LIVE**
+
+**§66, same commit as the ship — recorded as PENDING, not as shipped.** Nothing owner-visible
+ships in A (the Solo Billing screen is Foundation C). What changes per tier is the set of
+Paige-callable billing seams (§10) and who they refuse; the rows below say what the migration
+`20261047000000` will enforce once it is merged under Gate B and persisted on prod. Until that
+confirmation lands (deploy-migrations `db-live` tag, objects queried on prod), every cell is a
+design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants) — never "live".
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| `get_workspace_billing_authority()` (the one read; never a Stripe id) | `scope=none` (act-as pointer with no seat resolves to nothing) | `scope=agency`, everything `not_applicable` | `scope=enterprise`, `not_applicable` | `can_manage_billing` / `can_view_billing` = true; mapping state absent / ambiguous / mapped | false / false; state still truthful | `scope=sub_account`, `not_applicable` | non-owner path (false) or `scope=none` | EXECUTE revoked |
+| `platform-billing-portal` (hosted Stripe portal, flag default OFF) | `no_active_workspace` | `not_applicable_scope` | `not_applicable_scope` | the only allowed caller (and only when `mapped`, flag on, keys named) | `owner_only` | `not_applicable_scope` | `owner_only` / `no_active_workspace` | 401 |
+| `platform_billing_contact_designate` / `_revoke` (primary billing contact = verified current Owner; billing delegate = verified current Admin) | `no_active_workspace` | `billing_not_applicable` | `billing_not_applicable` | ✓ (Owner-only, audited) | `billing_workspace_owner_only` | `billing_not_applicable` | `billing_workspace_owner_only` | EXECUTE revoked |
+| `get_workspace_billing_contacts()` (Owner-only view; no email column) | `no_active_workspace` | `billing_not_applicable` | `billing_not_applicable` | ✓ | `billing_workspace_owner_only` (never an empty set) | `billing_not_applicable` | `billing_workspace_owner_only` | EXECUTE revoked |
+| `platform_billing_paid_activation_ready(tenant)` (R19 gate; **no caller yet**) | ✓ (operator) | 42501 | 42501 | 42501 | 42501 | 42501 | 42501 | EXECUTE revoked |
+| `platform_billing_account_reconcile()` (backfill; ambiguous/shared RETURNED, never inserted) | ✓ (operator / service) | 42501 | 42501 | 42501 | 42501 | 42501 | 42501 | EXECUTE revoked |
+| Tables `platform_billing_accounts` / `_contacts` / `_notification_log` (direct SELECT) | operator read (RLS) | 0 rows | 0 rows | 0 rows | 0 rows | 0 rows | 0 rows | no grant |
+
+**Receive / view / manage are three permissions, enforced separately.** A billing delegate reads
+`receives_billing_notices=true` and nothing else; `can_view_billing` / `can_manage_billing` stay
+Owner-only. **No delivery exists:** "receives" means designated, not delivered to. **Neither
+designation creates, changes, transfers, implies, or records legal ownership, equity, corporate or
+trust ownership, trustee or co-owner status** (owner ruling R27, 2026-09-02).
 
 ## Known ambiguities and hazards (log, don't hide — §13)
 

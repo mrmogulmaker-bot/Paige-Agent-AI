@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { WORKSPACE_CHOOSER_PATH, enterableWorkspaces } from "@/lib/auth/workspaceEntry";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
+import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import { toast } from "sonner";
 
 /**
@@ -51,7 +52,7 @@ import { toast } from "sonner";
  */
 export function WorkspaceExitControl() {
   const navigate = useNavigate();
-  const { tenants = [], isPlatformStaff } = useTenantContext();
+  const { tenants = [], isPlatformStaff, activeTenantId } = useTenantContext();
 
   // The switcher this replaces stashed a post-switch toast for the destination
   // to show. Keep draining that key so a notice written before this shipped is
@@ -81,11 +82,35 @@ export function WorkspaceExitControl() {
   const reachable = enterableWorkspaces(tenants).length;
   if (!shouldOfferAccountPicker({ activeMembershipCount: reachable, isPlatformStaff })) return null;
 
+  // LEAVING IS WHERE THE UNSAVED WORK IS LOST, so the account-switch guard runs
+  // HERE and not only at the chooser. `settings-setup.tsx` registers that guard
+  // while Setup is dirty or mid-save, and registration is tied to Setup being
+  // MOUNTED — navigating to the chooser unmounts it, taking the guard with it. So
+  // a guard consulted only at the switch would already be gone by the time it was
+  // asked, and the edits would already be gone with it.
+  //
+  // It was the deleted `MemberAccountSwitcher` that used to call this, from inside
+  // the shell where Setup was still mounted. Replacing that control means carrying
+  // its protection across, not just its capability — otherwise this change silently
+  // removes a safeguard that shipped separately (§58).
+  //
+  // The destination is deliberately unnamed: at this point the person has not chosen
+  // one, which is the entire purpose of the chooser.
+  const leave = async () => {
+    const allowed = await allowAccountSwitch({
+      fromTenantId: activeTenantId ?? null,
+      toTenantId: "",
+      toTenantName: "another workspace",
+    });
+    if (!allowed) return;
+    navigate(WORKSPACE_CHOOSER_PATH);
+  };
+
   return (
     <Button
       variant="outline"
       size="sm"
-      onClick={() => navigate(WORKSPACE_CHOOSER_PATH)}
+      onClick={() => void leave()}
       aria-label="Leave this workspace and choose another"
     >
       <LogOut className="mr-1.5 h-4 w-4" />

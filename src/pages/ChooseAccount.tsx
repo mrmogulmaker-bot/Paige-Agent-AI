@@ -7,6 +7,7 @@ import { useTenantContext, type TenantSummary } from "@/hooks/useTenantContext";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { supabase } from "@/integrations/supabase/client";
 import { tenantAccountLabel } from "@/lib/auth/accountSelection";
+import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import {
   WORKSPACE_CHOOSER_SETTLED_PARAM,
   clearWorkspaceScopedState,
@@ -125,6 +126,15 @@ export default function ChooseAccount() {
 
   const choose = async (choice: Choice) => {
     setError(null);
+    // Also honoured at the actual switch, not only at the exit that led here. The
+    // guard registry is module-level, so any surface still mounted with unsaved work
+    // gets its say — and this is the moment scope actually changes.
+    const allowed = await allowAccountSwitch({
+      fromTenantId: context.activeTenantId ?? null,
+      toTenantId: choice.tenant.id,
+      toTenantName: choice.tenant.name,
+    });
+    if (!allowed) return;
     setSwitchingTo(choice.tenant.id);
     const switched = await context.switchTenant(choice.tenant.id);
     if (!switched) {
