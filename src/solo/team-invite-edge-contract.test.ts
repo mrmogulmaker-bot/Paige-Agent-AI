@@ -76,15 +76,27 @@ describe("solo-team-invitations passes the named workspace to the one authority"
       resolve(process.cwd(), "supabase/migrations/20261047000000_an_invitation_is_sent_to_the_workspace_the_owner_named.sql"),
       "utf8",
     );
+    // Compared as PARSED ENTRIES, not as source text. Round 4: `toContain` on the raw array text
+    // let an entry be deleted silently whenever another entry contains it — dropping
+    // "team invitation not found" still passed, because "pending team invitation not found" holds
+    // it as a substring. The handler matches by EQUALITY, so the test must too, or a resend on a
+    // missing invite quietly becomes generic copy at HTTP 500 with this guard green.
+    const entries = [...list.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(entries.length, "the allowlist entries parsed").toBeGreaterThanOrEqual(12);
+
     const raised = [...migration.matchAll(/RAISE EXCEPTION '([^']+)'/g)].map((m) => m[1]);
     expect(raised.length, "the migration's raises were found").toBeGreaterThanOrEqual(10);
     for (const sentence of new Set(raised)) {
-      expect(list, `the migration raises "${sentence}" — it must reach the operator`).toContain(sentence);
+      expect(entries, `the migration raises "${sentence}" — it must reach the operator`).toContain(sentence);
     }
 
-    // This function's own throws travel too.
-    for (const own of [...HANDLER.matchAll(/throw new Error\("([^"]+)"\)/g)].map((m) => m[1])) {
-      expect(list, `this function throws "${own}" — it must reach the operator`).toContain(own);
+    // This function's own throws travel too. The count floor matters: change these to single quotes
+    // or a template literal and the regex yields nothing, the loop body never runs, and the test
+    // passes while the allowlist silently loses both entries.
+    const own = [...HANDLER.matchAll(/throw new Error\("([^"]+)"\)/g)].map((m) => m[1]);
+    expect(own.length, "this function's own throws were found").toBeGreaterThanOrEqual(2);
+    for (const thrown of own) {
+      expect(entries, `this function throws "${thrown}" — it must reach the operator`).toContain(thrown);
     }
 
     // Everything else is logged and replaced, and equality is what keeps caller-controlled text
