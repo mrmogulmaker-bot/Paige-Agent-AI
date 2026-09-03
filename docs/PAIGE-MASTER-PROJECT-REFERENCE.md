@@ -1228,6 +1228,14 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Platform notification permission repair — 2026-09-03
+
+Owner-scoped follow-up to released #883: operator-only SELECT and read_at UPDATE on the legacy platform notification store; remove excessive anonymous/authenticated privileges and all four legacy permissive policies. A restrictive operator boundary prevents permissive-policy reintroduction from admitting tenants. The table remains outside realtime publication (confirmed current production metadata); source producers and service-role privileges remain unchanged. No production notification records are read, seeded, updated or deleted for proof.
+
+The owner additionally authorized exactly `list_admin_notifications` and `create_admin_notification` in `paige-mcp`: operator-only discovery and invocation, generic refusal before privileged notification access, no named denial audit, existing operator scopes preserved. No other MCP tool changes. #4's same-file environment renames do not overlap these hunks. Branch: `codex/platform-notification-permissions`.
+
+Proof: actual MCP gate/discovery execution with synthetic actors; isolated PostgreSQL role simulations (tenant/global admin/coach refusal, both operator roles allowed, update column limits, no publication, service-role insert preserved, migration applied twice). CI repeats the fixture on PostgreSQL 17. Production verification is catalog/function-definition evidence only, not a live exploit. Signed-in owner walkthrough remains Proof Owed. Sender/producer authorization is explicitly not repaired by this slice; adjacent static concerns in `platform-independence-sweep` and `notify-approval-event` remain source-owner security follow-ups, not permission to edit their behavior here.
+
 ### Solo platform-bell containment — 2026-09-03
 
 Owner-authorized scoped security patch: the canonical tenant header no longer imports or mounts `AdminBridgeBell`. The retained platform header bell and legacy `/admin/notifications` page are wrapped in the existing server-verifying `RequireOperator` guard. No notification records, source components, senders, policies, or recipient models are changed. This is UI reachability containment, not database-policy remediation: **static authorization defect confirmed / production data exposure unverified**. No production notification contents were inspected.

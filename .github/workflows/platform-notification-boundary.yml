@@ -1,0 +1,39 @@
+name: Platform notification boundary
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*platform_notifications_operator_only.sql'
+      - 'supabase/tests/platform_notifications_operator_only.sql'
+      - '.github/workflows/platform-notification-boundary.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*platform_notifications_operator_only.sql'
+      - 'supabase/tests/platform_notifications_operator_only.sql'
+      - '.github/workflows/platform-notification-boundary.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-role-simulation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: notification_policy_contract
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: notification_policy_contract
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synthetic role proof only - never production
+        run: psql -X -v ON_ERROR_STOP=1 -f supabase/tests/platform_notifications_operator_only.sql
