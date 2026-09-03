@@ -967,6 +967,35 @@ describe("Catalog Offers — rendered flows", () => {
     expect(sql).toContain("DROP FUNCTION IF EXISTS public.save_solo_offer(");
   });
 
+  it("refuses a non-Solo tenant's write, checked server-side against the real account row", () => {
+    // Static guard over the migration, same reason as above: this is SQL and the harness has no
+    // database. The Catalog interface is Solo-only today (no Agency/sub-account/Enterprise UI
+    // reaches it), but the RPCs enforced only membership — so an owner/admin of ANY tenant could
+    // call them directly. This asserts the guard exists, is a literal comparison against the
+    // authenticated tenant row (never a client-supplied claim), and runs in BOTH functions.
+    const fix = read("supabase/migrations/20261131000000_catalog_offers_are_solo_only_for_now.sql");
+    const sql = stripSql(fix);
+    // The check resolves from the SERVER-side tenant row, not a request parameter.
+    expect(sql).toContain("SELECT t.account_type, t.parent_tenant_id INTO _account_type, _parent_tenant");
+    expect(sql).toContain("FROM public.tenants t WHERE t.id = _tenant");
+    // A parented tenant (any sub-account, including a legacy account_type='standalone' one) and a
+    // non-'standalone' account_type are both refused — the same literal test as isSoloStandalone().
+    expect(sql).toContain("_parent_tenant IS NOT NULL OR _account_type IS DISTINCT FROM 'standalone'");
+    // Both functions carry the guard — count the occurrences rather than trusting one match.
+    expect(sql.match(/the offer catalog is available to Solo workspaces only right now/g)?.length).toBe(2);
+    // It runs AFTER authentication and membership, so a non-member never learns tier information —
+    // and BEFORE any row is inserted or updated, so a refused caller never mutates anything.
+    const saveFn = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.save_solo_offer"), sql.indexOf("CREATE OR REPLACE FUNCTION public.set_solo_offer_status"));
+    const authAt = saveFn.indexOf("authentication required");
+    const memberAt = saveFn.indexOf("only an owner or admin may change");
+    const tierAt = saveFn.indexOf("Solo workspaces only");
+    const firstInsertAt = saveFn.indexOf("INSERT INTO public.tenant_products");
+    expect(authAt).toBeGreaterThan(-1);
+    expect(memberAt).toBeGreaterThan(authAt);
+    expect(tierAt).toBeGreaterThan(memberAt);
+    expect(firstInsertAt).toBeGreaterThan(tierAt);
+  });
+
   it("switches between the two concepts without leaving the tab", () => {
     setCampaigns(); setOffers();
     renderAt("/solo/4471/growth/catalog");

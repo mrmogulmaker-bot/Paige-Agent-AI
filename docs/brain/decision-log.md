@@ -1849,3 +1849,33 @@ render as a distinct "Selection needed" banner rather than two rows that both lo
 Codex was reported down at review time; owner explicitly authorized substituting an Agent-based
 adversarial review and resuming Codex review when it returns — recorded so a future session does
 not read this as skipping review discipline.
+
+## 2026-09-03 — Catalog write RPCs are Solo-only server-side; a real gap, not just doc drift
+
+Owner ruling: the Catalog interface (`/solo/{account}/growth/catalog`) is Solo-only in the UI
+today — no Agency, sub-account, Enterprise, Operator, or legacy Admin surface reaches it — so its
+direct write RPCs must refuse those account types too, server-side, rather than relying on the
+missing UI as the access control. This closes exactly the gap PR #860's rounds 3-5 documented as
+"UI: ✗ · RPC: ✓ — an exposed gap, not a feature": `save_solo_offer`/`set_solo_offer_status`
+enforced membership (`is_tenant_admin`) but never `account_type`, so any tenant's owner/admin could
+call them directly, including a platform operator who happened to also hold a real membership row.
+
+The fix (migration `20261131000000`) mirrors the existing STRICT client-side gate,
+`isSoloStandalone()` (`!parent_tenant_id && account_type === 'standalone'`) — never the fail-safe
+tier resolver, which defaults an unknown account_type to "solo" and would be the wrong posture for
+an authorization decision. Resolved from the caller's own `tenants` row via
+`current_user_tenant_id()`, never a client-supplied claim. Producer inventory (§37): only
+`useCatalogOffers.ts` (the Catalog editor) and `sales-ops.tsx` (Sales' quick-create-offer flow,
+PR #866) call either RPC, both inside `src/solo/`, both reachable only by a `solo`-tier session —
+neither broken by the guard. `tenant-product-upsert` (the legacy `/admin/setup` Storefront panel's
+write path, with its own pre-existing §38 Stripe-destination-charge concern) has the identical
+missing check and is a genuinely separate seam — flagged for a follow-up, not folded into this
+narrow hotfix.
+
+Proven 10/10 in a rolled-back transaction against production's real schema and real tenant/user
+rows (an Agency owner, a sub-account admin, and a temporarily-relabelled Enterprise tenant's owner
+all refused with the new message; the Solo owner's create and status-change paths, a cross-tenant
+write, a client-supplied tenant claim, and the pre-existing unauthenticated/no-membership refusals
+all proven unchanged). `docs/doctrine/tier-matrix.md`'s Slice 2B rows updated in the same commit —
+the gap they described as open is now closed, and the table records the new server-side reality
+per tier.
