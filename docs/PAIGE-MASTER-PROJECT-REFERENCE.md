@@ -1355,7 +1355,7 @@ a stale JSDoc header on `settings-billing.tsx` (fixed) and a migration comment o
 webhook writer that does not exist yet (fixed to future tense), and Codex review is to resume when
 it returns.
 
-### Billing Experience — payment-method connect + Spine evidence, items 4–5 (owner brief 2026-09-03, continuation of #865)
+### Billing Experience — payment-method connect + Spine evidence, items 4–5 (PR #870, **MERGED `cdea70ae` 2026-09-03; migrations persisted-apply confirmed on production**)
 
 **Continuation of the row above**, built on the fresh branch off #865's merged `main`, per the
 owner's explicit item-4/item-5 brief, authorized through PR/merge/deploy/production verification
@@ -1397,11 +1397,26 @@ dual-primary reason for a genuine two-live-primary workspace; the fixture recrea
 state by disabling `trg_platform_billing_one_primary` (the #865 Slice A trigger, permanently live on
 prod) for exactly the two inserts that reconstruct MMA's own pre-trigger pair, then re-enabling it
 before the migration under proof runs — the same shape of state the trigger tolerates, never one it
-was bypassed to create going forward. **Status: `PARTIAL` / `Authenticated Runtime Proof Owed`** —
-no browser-driving tool in this session (§32.c): the shared-writer unit tests prove real Stripe
-SetupIntent/PaymentMethod retrieval logic, but a live click-through of "Set up payment method" →
-Stripe-hosted Checkout → return → confirmation banner has not been driven end-to-end; the
-migration's persisted-apply confirmation is owed on merge (§32.a), same standing pattern as #865.
+was bypassed to create going forward.
+
+**§32.a, checked after merge, not assumed.** Queried directly against prod (ref
+`xygzykjyynhzqytbqnzu`): `schema_migrations` carries `20261140000000`;
+`get_billing_spine_evidence()` exists in `pg_proc` with `prosecdef=true` and the declared grant
+shape confirmed by `has_function_privilege()` (`authenticated=true`, `anon=false`,
+`service_role=false`). Both edge functions are `ACTIVE` on prod: `platform-billing-connect` (new,
+v1) and `stripe-webhook` (v53, carrying the new payment-method-connect block).
+
+**Status: `PARTIAL` / `Authenticated Runtime Proof Owed`** — no browser-driving tool in this
+session (§32.c): the shared-writer unit tests prove real Stripe SetupIntent/PaymentMethod retrieval
+logic, but a live click-through of "Set up payment method" → Stripe-hosted Checkout → return →
+confirmation banner has not been driven end-to-end and remains owed to the next capable session.
+
+**Cross-reference.** PR #869 (`claude/spine-billing-packet`, a different session, merged just
+before this one) audited the OLDER `get_workspace_billing_authority()` contract for Spine readiness
+and flagged plan/promotional state and amount-due as absent from it. This PR's
+`get_billing_spine_evidence()` is built on the NEWER `get_workspace_billing_status()` instead, and
+now supplies both of those fields (policy-bounded — never a full ledger). Which contract Spine's
+actual caller wires to is a follow-up integration decision, not resolved by this PR.
 
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 

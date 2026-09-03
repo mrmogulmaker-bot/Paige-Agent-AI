@@ -2243,7 +2243,7 @@ the fix is in this same PR. **Authenticated runtime on the deployed surface: OWE
 browser-driving tool in this session; owed to the next capable session, same as the AI-usage slice
 above.
 
-### Platform Billing — payment-method connect + Spine billing evidence, items 4–5 (owner brief 2026-09-03)
+### Platform Billing — payment-method connect + Spine billing evidence, items 4–5 (PR #870, **MERGED `cdea70ae` 2026-09-03; migration persisted-apply confirmed on production**)
 
 **Continuation of the row above (PR #865, items 1–3, merged `5ae7a34a`).** Built on the fresh branch
 off that merged production `main`, per the owner's explicit item-4/item-5 continuation brief
@@ -2316,14 +2316,31 @@ to tolerate, not one it was bypassed to create going forward); P13 a sub-account
 rows; P80 `anon` EXECUTE is refused (`insufficient_privilege`). Transaction rolled back —
 production unaffected by the proof run itself.
 
-**§32.a persisted-apply confirmation: OWED**, to be recorded here after merge (schema_migrations
-advancing to include `20261140000000`, `get_billing_spine_evidence()` present in `pg_proc`, per the
-same direct-query discipline used for items 1–3 above) — not assumed from a green rollback proof.
-**Authenticated runtime on the deployed Checkout/webhook round-trip: OWED** (§32.c) — this session
-has no browser-driving tool; the webhook side is proven by real Stripe SetupIntent/PaymentMethod
+**§32.a persisted-apply confirmation, checked after merge, not assumed.** Queried directly against
+prod (ref `xygzykjyynhzqytbqnzu`): `schema_migrations` carries `20261140000000`;
+`get_billing_spine_evidence()` exists in `pg_proc`, `prosecdef=true`, and
+`has_function_privilege()` confirms `authenticated=true` / `anon=false` / `service_role=false` —
+the exact grant shape the migration declares. Both edge functions deployed by
+`deploy-edge-functions.yml` on the merge commit are `ACTIVE`: `platform-billing-connect` (new, v1)
+and `stripe-webhook` (v53, carrying the new payment-method-connect block).
+
+**Authenticated runtime on the deployed Checkout/webhook round-trip: still OWED** (§32.c) — this
+session has no browser-driving tool; the webhook side is proven by real Stripe SetupIntent/PaymentMethod
 retrieval calls in the shared-writer unit tests, but a live click-through of "Set up payment
 method" → Stripe-hosted Checkout → return → confirmation banner has not been driven end-to-end by
 this session and is owed to the next capable one, same standing gap as the items 1–3 row above.
+
+**Cross-reference to a sibling PR merged just before this one (#869, `claude/spine-billing-packet`,
+a different session).** That packet audited `get_workspace_billing_authority()` (Foundation A's
+older contract) for Spine readiness and found plan/promotional state and amount-due both absent
+from it — recommending Billing be asked for exactly those fields next. `get_billing_spine_evidence()`
+in this PR is built on `get_workspace_billing_status()` (Foundation C's newer, corrected contract),
+not on `get_workspace_billing_authority()`, and it now supplies both of #869's flagged gaps (plan/
+promotional state via `access_state`/`plan_slug`, and a policy-bounded amount-due via
+`amount_due_cents`, never a full ledger). Wiring Spine's actual caller to this new function instead
+of, or alongside, #869's narrower authority-based read is a follow-up integration decision, not
+made by this PR — recorded so a future session sees both contracts exist and knows which one this
+slice answers.
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 

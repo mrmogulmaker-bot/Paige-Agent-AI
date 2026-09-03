@@ -1902,3 +1902,25 @@ re-derive this from a failed `BEGIN..ROLLBACK` run first.
 Production rollback proof: 14/14 (P1–P13 + P80), 0 failures, nothing persisted. §32.a
 persisted-apply confirmation and §32.c authenticated runtime are both owed post-merge, same standing
 pattern as #865.
+
+## 2026-09-03 — Billing Experience items 4-5: merged, deployed, §32.a confirmed (PR #870)
+
+PR #870 merged at `cdea70ae`; all 7 CI checks green (audit, lint, contract, database-contract,
+verify, Vercel, Supabase Preview), no Claude Approvals check configured on this repo. §32.a
+persisted-apply confirmed by direct query on prod (ref `xygzykjyynhzqytbqnzu`): `schema_migrations`
+carries `20261140000000`; `get_billing_spine_evidence()` exists in `pg_proc`, `prosecdef=true`, and
+`has_function_privilege()` confirms the declared grant shape (`authenticated=true`, `anon=false`,
+`service_role=false`). `deploy-edge-functions.yml` and `deploy-migrations.yml` both succeeded on
+the merge commit; `platform-billing-connect` (new, v1) and `stripe-webhook` (v53) are both `ACTIVE`.
+
+A sibling PR, #869 (`claude/spine-billing-packet`, a different session), merged four minutes before
+#870 landed. It audited the older `get_workspace_billing_authority()` contract and flagged
+plan/promotional state and amount-due as gaps Spine needs. Item 5's `get_billing_spine_evidence()`
+is built on the newer `get_workspace_billing_status()` instead and now supplies both fields —
+recorded so a future session knows two Spine-facing billing contracts now exist and which one
+answers #869's flagged gap. Wiring Spine's actual caller to the new function is a follow-up, not
+done by #870.
+
+Still owed: §32.c authenticated browser drive of the Checkout round-trip (no browser-driving tool
+in this session); payment-method removal (deliberately out of scope, no removal seam exists yet);
+independent adversarial review (post-release audit per the brief, not a merge blocker).
