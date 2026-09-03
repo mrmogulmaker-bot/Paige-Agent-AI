@@ -10,6 +10,14 @@ const harness = vi.hoisted(() => ({
   systems: vi.fn(),
 }));
 
+// The workspace now carries the Rail "Recent activity" panel, which reads the deployed resolver
+// through `useSoloActivityFeed`. Without this stub the real supabase client is constructed and a
+// network call is attempted from a unit test — it degrades honestly rather than failing, but a
+// test that reaches the network is nondeterministic. The panel's own five states are driven in
+// `soloCommandCenterRailPanel.test.tsx`; here it is pinned quiet.
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: { rpc: () => Promise.resolve({ data: [], error: null }) },
+}));
 vi.mock("./data/useCommandCenter", () => ({ useCommandCenter: () => harness.command() }));
 vi.mock("@/hooks/useSystemsCheck", () => ({ useSystemsCheck: () => harness.systems() }));
 

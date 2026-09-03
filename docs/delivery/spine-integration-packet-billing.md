@@ -144,7 +144,7 @@ So the corrected table is:
 | Amount due today | **NO, and forbidden** | **`amount_due_cents`** — live on prod |
 | Measured usage | **NO** | **seats / contacts / SMS / AI token fields** — live on prod |
 
-**Zero of the six were unavailable.** The "amount due is forbidden to a reader" claim was the worst
+**Zero of the six were unavailable** — though that statement over-corrects, and peer-gate finding 7 in [packet 2](./spine-integration-packet-team.md) narrows it: all six are *exposed*, none is *forbidden*, and the money-shaped ones are refused or zero for every workspace on production today. The "amount due is forbidden to a reader" claim was the worst
 of it: I read a §2 sentence about what a reader *derives* and reported it as a prohibition on a
 field that already existed. A doc's own summary of its surface is not the surface; §BRAIN.2 says to
 answer from the source, and one named function is not an enumeration of the source.
@@ -160,7 +160,7 @@ rather than re-deriving anything. Its `facts` carry `plan_slug`, `plan_name`, `a
 last4, expiry, Stripe ids, full invoices and internal cost calculations are all deliberately omitted
 — narrower than what the Billing screen itself sees.
 
-Verified not yet on production: `supabase_migrations.schema_migrations` carries no `20261140000000`.
+~~Verified not yet on production.~~ **WRONG WHEN COMMITTED** — #870 merged as `cdea70ae` about a minute before this text was pushed, and `20261140000000` plus `get_billing_spine_evidence()` are both live on production now. See peer-gate finding 1 in [packet 2](./spine-integration-packet-team.md).
 
 **So the decision this packet put to the owner is moot.** It offered three options; option 2 was "ask
 Billing first for a safe plan/promotional field." Billing had already answered, in an open PR, before

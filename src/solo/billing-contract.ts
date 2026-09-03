@@ -846,3 +846,111 @@ export function resolveWorkspaceBillingStatusPresentation(input: {
     planFields: NO_STATUS_FIELDS, providerFields, usageFields: NO_STATUS_FIELDS, note: "", canRetry: false,
   };
 }
+
+/* ── Payment-method setup (item 4, owner brief 2026-09-03) ──────────────────────────────────────
+ *
+ * A SEPARATE presentation contract from the plan/usage read above, deliberately: whether a
+ * payment method exists is a readiness fact, and R13 says a readiness fact is never merged into
+ * the access-state claim. This resolver's gating mirrors the SERVER's own gate exactly (both read
+ * `authority.scope`/`authority.canManageBilling`) so the UI never offers an action the server is
+ * certain to refuse (§36 — no dead-end buttons). `providerState`/payment-method DISPLAY facts come
+ * from the status read (the same one the plan card uses); the OWNER gate comes from the SAME
+ * authority read that already, correctly, backs the hosted-portal act — one source for "is this
+ * workspace's provider mapping real," not a second one invented for this section.
+ */
+
+export type PaymentSetupStateId =
+  | "setup-loading"
+  | "setup-unreadable"
+  | "setup-not-applicable"
+  | "setup-not-owner"
+  | "setup-needs-review"
+  | "setup-needed"
+  | "setup-connected";
+
+export interface PaymentSetupPresentation {
+  state: PaymentSetupStateId;
+  heading: string;
+  body: string;
+  /** Populated only for setup-connected, from a real attached method. */
+  fields: ReadonlyArray<{ label: string; value: string }>;
+  /** True only when the act could plausibly succeed — the server's own gate says so too. */
+  canAct: boolean;
+  actionLabel: string;
+  canRetry: boolean;
+}
+
+export interface PaymentSetupInput {
+  loading: boolean;
+  readFailed: boolean;
+  scope: BillingScope;
+  canManageBilling: boolean;
+  billingAccountState: BillingAccountState;
+  paymentMethodConnected: boolean;
+  paymentMethodBrand: string | null;
+  paymentMethodLast4: string | null;
+  paymentMethodExpMonth: number | null;
+  paymentMethodExpYear: number | null;
+}
+
+const NO_SETUP_FIELDS: ReadonlyArray<{ label: string; value: string }> = [];
+
+export function resolveWorkspacePaymentSetupPresentation(input: PaymentSetupInput): PaymentSetupPresentation {
+  const bare = (state: PaymentSetupStateId, heading: string, body: string, canRetry = false): PaymentSetupPresentation =>
+    ({ state, heading, body, fields: NO_SETUP_FIELDS, canAct: false, actionLabel: "", canRetry });
+
+  if (input.loading) return bare("setup-loading", "Clearing and resolving this account…", "");
+  if (input.readFailed) {
+    return bare("setup-unreadable", "Couldn’t read this workspace’s payment setup",
+      "Nothing about your payment setup could be confirmed just now. Nothing about your access has changed.", true);
+  }
+  if (input.scope !== "top_level_solo") {
+    return bare("setup-not-applicable", "Not applicable to this account type yet",
+      "There is no supported platform billing account for this workspace, so there is no payment method to set up here.");
+  }
+  if (!input.canManageBilling) {
+    return bare("setup-not-owner", "Payment setup is managed by the workspace owner",
+      "The payment method PAIGE Platform charges this workspace is the owner's to set up and change. Your access here is unaffected.");
+  }
+  if (input.billingAccountState === "ambiguous") {
+    return bare("setup-needs-review", "Needs a platform review before this can be shown",
+      "This workspace's billing records need a platform review before payment setup can proceed. Nothing about your access has changed. The platform has been notified.");
+  }
+  if (input.billingAccountState !== "mapped" && input.billingAccountState !== "absent") {
+    return bare("setup-needs-review", "Not available yet",
+      "The platform reported this workspace's billing setup in a way this page does not recognize, so payment setup is not offered. Nothing about your access has changed.");
+  }
+
+  if (input.paymentMethodConnected) {
+    const exp = input.paymentMethodExpMonth && input.paymentMethodExpYear
+      ? ` (exp ${input.paymentMethodExpMonth}/${input.paymentMethodExpYear})` : "";
+    return {
+      state: "setup-connected",
+      heading: "Payment method on file",
+      body: "PAIGE Platform charges this method for this workspace's subscription. Setting up a new one replaces it.",
+      fields: fieldsFrom([["On file", `${input.paymentMethodBrand ?? "Card"} •••• ${input.paymentMethodLast4 ?? "····"}${exp}`]]),
+      canAct: true, actionLabel: "Update payment method", canRetry: false,
+    };
+  }
+  return {
+    state: "setup-needed",
+    heading: "Set up a payment method",
+    body: "This is the payment method PAIGE Platform charges for this workspace's own subscription — not a way to collect money from this workspace's clients. Setting one up does not start a charge, change the plan, or end promotional access.",
+    fields: NO_SETUP_FIELDS, canAct: true, actionLabel: "Set up payment method", canRetry: false,
+  };
+}
+
+/** Owner copy per refusal from `platform-billing-connect`. Facts about what happened, never a
+ * guess about the account — same discipline as `PORTAL_REFUSAL_COPY`. */
+export const PAYMENT_SETUP_REFUSAL_COPY: Record<string, string> = {
+  no_active_workspace: "No workspace is selected, so there is no payment setup to open.",
+  not_applicable_scope: "Platform billing is not applicable to this account type yet.",
+  owner_only: "Payment setup is managed by the workspace owner. Ask them to set it up.",
+  billing_account_ambiguous: "This workspace's billing records need a platform review before payment setup can proceed. Nothing about your access has changed.",
+  billing_account_unresolvable: "The payment provider could not open a setup page for this workspace. The attempt was recorded for the platform to review.",
+  needs_config: "Payment setup is not configured for this workspace on the platform side yet.",
+  audit_failed: "The platform could not record this request, so setup was not opened. Try again.",
+  authority_unreadable: "Your billing permissions could not be read just now. Try again.",
+  workspace_changed: "You switched workspaces while setup was opening, so it was not opened.",
+  network: "Could not reach the platform. Try again.",
+};

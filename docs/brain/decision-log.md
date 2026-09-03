@@ -1870,3 +1870,87 @@ render as a distinct "Selection needed" banner rather than two rows that both lo
 Codex was reported down at review time; owner explicitly authorized substituting an Agent-based
 adversarial review and resuming Codex review when it returns — recorded so a future session does
 not read this as skipping review discipline.
+
+## 2026-09-03 — Catalog write RPCs are Solo-only server-side; a real gap, not just doc drift
+
+Owner ruling: the Catalog interface (`/solo/{account}/growth/catalog`) is Solo-only in the UI
+today — no Agency, sub-account, Enterprise, Operator, or legacy Admin surface reaches it — so its
+direct write RPCs must refuse those account types too, server-side, rather than relying on the
+missing UI as the access control. This closes exactly the gap PR #860's rounds 3-5 documented as
+"UI: ✗ · RPC: ✓ — an exposed gap, not a feature": `save_solo_offer`/`set_solo_offer_status`
+enforced membership (`is_tenant_admin`) but never `account_type`, so any tenant's owner/admin could
+call them directly, including a platform operator who happened to also hold a real membership row.
+
+The fix (migration `20261131000000`) mirrors the existing STRICT client-side gate,
+`isSoloStandalone()` (`!parent_tenant_id && account_type === 'standalone'`) — never the fail-safe
+tier resolver, which defaults an unknown account_type to "solo" and would be the wrong posture for
+an authorization decision. Resolved from the caller's own `tenants` row via
+`current_user_tenant_id()`, never a client-supplied claim. Producer inventory (§37): only
+`useCatalogOffers.ts` (the Catalog editor) and `sales-ops.tsx` (Sales' quick-create-offer flow,
+PR #866) call either RPC, both inside `src/solo/`, both reachable only by a `solo`-tier session —
+neither broken by the guard. `tenant-product-upsert` (the legacy `/admin/setup` Storefront panel's
+write path, with its own pre-existing §38 Stripe-destination-charge concern) has the identical
+missing check and is a genuinely separate seam — flagged for a follow-up, not folded into this
+narrow hotfix.
+
+Proven 10/10 in a rolled-back transaction against production's real schema and real tenant/user
+rows (an Agency owner, a sub-account admin, and a temporarily-relabelled Enterprise tenant's owner
+all refused with the new message; the Solo owner's create and status-change paths, a cross-tenant
+write, a client-supplied tenant claim, and the pre-existing unauthenticated/no-membership refusals
+all proven unchanged). `docs/doctrine/tier-matrix.md`'s Slice 2B rows updated in the same commit —
+the gap they described as open is now closed, and the table records the new server-side reality
+per tier.
+
+## 2026-09-03 — Billing Experience items 4–5: owner-only payment-method connect + Spine evidence (continuation of #865)
+
+Owner brief authorized continuing directly to items 4 and 5 without a routine approval pause. Item
+4: `platform-billing-connect` edge function opens a Stripe Checkout Session in `mode: "setup"`
+(SetupIntent, never a charge) for the authorized Owner of a `top_level` workspace only — its access
+decision mirrors the existing hosted-portal gate with one deliberate difference (it also allows
+`billing_account_state: "absent"`, since connect is how a mapping first comes to exist). No
+external Stripe object is created before an explicit owner click. `stripe-webhook` gained one new
+discriminated block that resolves the Checkout return's SetupIntent → PaymentMethod and writes it
+via a new shared writer, `upsertPaymentMethod()`, refusing (never overwriting) on a customer-id
+mismatch. Payment-method removal was deliberately left out of scope — no removal seam exists yet,
+and building one safely is separate design work.
+
+Item 5: `get_billing_spine_evidence()` — built entirely on `get_workspace_billing_status()` (never a
+second computation), in the exact fixed-field contract `get_pipeline_spine_evidence()` established.
+Answers Spine's five listed questions and structurally excludes every forbidden category (no Stripe
+id, no card details, no invoice payload, no cross-workspace or sales data) because those fields do
+not exist on the function it reads from.
+
+**The proof-writing lesson worth keeping:** the first draft of the dual-primary fixture assumed it
+could seed two live primary contacts "before the trigger's migration runs" — a technique that
+worked for #865's own Slice A proof (where the trigger didn't exist yet in that isolated
+transaction) but fails once the trigger is permanently live on production, which it now is. The fix
+was `ALTER TABLE ... DISABLE TRIGGER trg_platform_billing_one_primary` for exactly the two inserts
+that reconstruct the real historical pair (MMA's own pre-trigger data), then re-enabling it before
+the migration under proof runs. Recorded so a future proof against an already-shipped guard doesn't
+re-derive this from a failed `BEGIN..ROLLBACK` run first.
+
+Production rollback proof: 14/14 (P1–P13 + P80), 0 failures, nothing persisted. §32.a
+persisted-apply confirmation and §32.c authenticated runtime are both owed post-merge, same standing
+pattern as #865.
+
+## 2026-09-03 — Billing Experience items 4-5: merged, deployed, §32.a confirmed (PR #870)
+
+PR #870 merged at `cdea70ae`; all 7 CI checks green (audit, lint, contract, database-contract,
+verify, Vercel, Supabase Preview), no Claude Approvals check configured on this repo. §32.a
+persisted-apply confirmed by direct query on prod (ref `xygzykjyynhzqytbqnzu`): `schema_migrations`
+carries `20261140000000`; `get_billing_spine_evidence()` exists in `pg_proc`, `prosecdef=true`, and
+`has_function_privilege()` confirms the declared grant shape (`authenticated=true`, `anon=false`,
+`service_role=false`). `deploy-edge-functions.yml` and `deploy-migrations.yml` both succeeded on
+the merge commit; `platform-billing-connect` (new, v1) and `stripe-webhook` (v53) are both `ACTIVE`.
+
+A sibling PR, #869 (`claude/spine-billing-packet`, a different session), merged four minutes before
+#870 landed. It audited the older `get_workspace_billing_authority()` contract and flagged
+plan/promotional state and amount-due as gaps Spine needs. Item 5's `get_billing_spine_evidence()`
+is built on the newer `get_workspace_billing_status()` instead and now supplies both fields —
+recorded so a future session knows two Spine-facing billing contracts now exist and which one
+answers #869's flagged gap. Wiring Spine's actual caller to the new function is a follow-up, not
+done by #870.
+
+Still owed: §32.c authenticated browser drive of the Checkout round-trip (no browser-driving tool
+in this session); payment-method removal (deliberately out of scope, no removal seam exists yet);
+independent adversarial review (post-release audit per the brief, not a merge blocker).

@@ -46,7 +46,7 @@ Grants read from `pg_proc` on production, not from migration text.
 | Requested | Available? | Where it actually lives |
 |---|---|---|
 | Safe role facts | **yes** | `tenant_members.role` via `get_paige_team_context().speaker.permission` and `.members[].permission` |
-| Safe authority facts | **yes** | `is_tenant_owner()`, surfaced as `get_workspace_billing_authority().can_manage_billing` / `.can_view_billing` |
+| Safe authority facts | **yes** | `is_tenant_owner(caller, tenant)` — **both arguments**. NOT `get_workspace_billing_authority().can_manage_billing`, which is ownership AND billing scope; see peer-gate findings 2 and 3 |
 | Billing-notice eligibility | **yes, but it is a Billing fact** | `get_workspace_billing_authority().receives_billing_notices` (the caller's own) and `.billing_contact_state` (the workspace's). It belongs to a **Billing** capability, not this one — see the split correction below |
 | A roster PAIGE can name people from | **already live**, and **out of scope for a Spine safe summary** | see the PII note below |
 | Whether a teammate other than the caller receives notices | **NO** | `get_workspace_billing_contacts()` is Owner-only and returns `display_name` + `user_id` — real contact data, which a Spine read may not carry |
@@ -149,7 +149,7 @@ authority states**, and deliberately carries no name, no email, and no user id:
 | `viewer_permission` | `owner`, `admin`, `coach`, `member` — the full `tenant_role` enum, read from `tenant_members.role`, **not** the collapsed field |
 | `viewer_is_legal_owner` | `true`, `false` (from `is_tenant_owner()`) |
 | `member_count` | integer |
-| `pending_invitation_count` | integer, **owner/admin only**; `unavailable` otherwise |
+| ~~`pending_invitation_count`~~ | **dropped** — Team's block already owns invitations, and its own count is unfiltered; see peer-gate finding 4 |
 
 Billing-notice eligibility and billing-contact state were in this table in the first draft and have
 been moved out — see the correction immediately below.
@@ -301,3 +301,119 @@ added to that line.
 
 Two things I am **not** doing without the source owner: narrowing `get_paige_team_context()`'s
 `permission` computation, and adding a service-role path to either read.
+
+---
+
+## Peer-gate findings, 2026-09-03 — what an independent adversarial read did to this packet
+
+Run per §39 against the real pushed diff, with instructions to assume the document was wrong. It
+was, in six places, and the corrections are below rather than quietly folded in. Two of them are in
+the Billing correction — a correction that needed correcting.
+
+### 1. The Billing correction got #870's state wrong, in the direction its own lesson warns about
+
+It says *"Open PR #870 … verified not yet on production"*. By the time it was committed, `cdea70ae`
+(#870) was already on `main` — merged 18:29 UTC, roughly one minute before the packet commit — and
+the migration deploy pipeline then applied it. Measured now:
+
+```
+schema_migrations 20261140000000        → 1 row
+public.get_billing_spine_evidence()     → exists, service_role = false
+```
+
+The claim was **true when measured** at ~18:26 and **stale when committed** at ~18:30. That is not
+an excuse: a correction whose stated lesson is *"enumerate open pull requests"* asserted a PR's
+state from a reading minutes old. The rule needs a finer grain — **re-check a claim about another
+PR's state immediately before committing it**, because that state is the fastest-moving thing a
+packet cites.
+
+What survives intact: the `service_role` revoke on Billing's new read is real, so **Systems Check
+still cannot consume Billing** — the finding that actually mattered.
+
+### 2. `can_manage_billing` is not legal ownership — and this packet used it as if it were
+
+The availability table sourced *"safe authority facts"* from
+`get_workspace_billing_authority().can_manage_billing`. That field is:
+
+```sql
+_owner := public.is_tenant_owner(auth.uid(), _t) AND _scope = 'top_level_solo';
+```
+
+Ownership **AND** billing scope. Measured on production: of 7 legal owners, **2 sit on agency-scope
+workspaces** and would be projected `viewer_is_legal_owner: false`. Conflating legal ownership with
+billing authority is the same error this packet spends a section routing to Team — introduced in its
+own sourcing spec. The shipped function reads `is_tenant_owner(v_uid, v_tenant)` directly instead.
+
+### 3. `is_tenant_owner()` without the tenant argument answers a different question
+
+The packet wrote the predicate with empty parens. The second parameter defaults to NULL and the body
+then means *"owner of ANY workspace"*:
+
+```sql
+WHERE tm.user_id = _user_id AND tm.is_owner AND (_tenant_id IS NULL OR tm.tenant_id = _tenant_id)
+```
+
+**Five workspaces on production would report a non-owner as owner.** Both shipped Billing functions
+call it correctly with both arguments; the packet's prose dropped one. Proven with the two variants
+executed side by side against a fixture — a legal owner of B holding a member seat in their active
+workspace A: correct `false`, one-argument `true`. That fixture is now the load-bearing assertion in
+the pgTAP proof.
+
+### 4. `pending_invitation_count` does not exist in the source, and the source's number is wrong
+
+`get_paige_team_context()` counts team invite tokens with **no status filter**. On production, tenant
+`d8a0a880` has 2 team tokens — one accepted, one revoked — and PAIGE is told `invitation_count: 2`
+for a workspace with **zero outstanding invitations**. Projecting a correctly-filtered
+`pending_invitation_count` alongside it would have put two contradictory numbers in the same turn.
+
+Dropped from the capability entirely. Team's block already owns invitations, and the mislabel is
+Team's to fix — routed, not shadowed with a rival count. Same reasoning removed `member_count`,
+which Team's block also already ships.
+
+### 5. The enumeration this packet was proudest of was name-based, and incomplete
+
+The sweep matched `proname` against team / member / invite / co_owner / tenant_owner — 52 functions.
+A sweep over `prosrc` for `tenant_members` finds **65 more that the name regex misses**, including:
+
+> **`get_tenant_people()`** — `SECURITY DEFINER`, granted `authenticated`, returning `full_name`,
+> `city`, `state`, `roles[]` and **`is_minority_owned` / `is_women_owned` / `is_veteran_owned`** for
+> every active member. Tenant is server-resolved (`current_user_tenant_id()`), so there is no
+> cross-tenant leak — but the gate is `has_role(auth.uid(), 'admin')`, the tenant-agnostic §59
+> predicate, over **protected-class attributes**.
+
+Also missed: `list_calendar_host_candidates`, `get_tenant_coach_fields`,
+`tenant_roster_excluded_user_ids`, `get_tenant_legal_profile_owner`, `presence_list_online`.
+
+**The corrected rule:** enumerate by what a function *reads and returns*, not by what it is *called*.
+A name-based sweep cannot find a roster read named without any of the roster words, which is exactly
+what `get_tenant_people` is. Routed to the Team owner; flagged to the owner because it is
+protected-class data behind a predicate with a known failure mode.
+
+### 6. "Third sighting … a pattern rather than an oversight" was an overreach
+
+Counted properly, **89** `public` functions reference `has_role` / `has_any_role`. Three was the
+number of times *I* had personally noticed it in a Spine-adjacent read, which is a fact about my
+attention, not about the platform. The predicate's two failure modes are real and unchanged; the
+frequency claim was wrong and is withdrawn.
+
+### 7. "Zero of the six were unavailable" over-corrected
+
+The six fields exist as columns, but `get_workspace_billing_status()` returns them all NULL with
+`can_view = false` for sub-account, agency and enterprise scopes and for any non-owner — **6 of 13
+tenants on production**. Of the 7 eligible, all are `promotional` or `internal_test` and none carries
+a paid subscription, so `amount_due_cents` is **0 for every tenant on the platform**, and it is the
+plan's list monthly price rather than an invoice balance.
+
+"Available as a column" and "carries the requested fact" are different claims. The first correction
+collapsed them while criticising the original packet for collapsing a different pair. The accurate
+statement: **all six are exposed; none is forbidden; and for every workspace on production today the
+money-shaped ones are zero or refused.**
+
+### What survived the attack
+
+The service-role reachability of `list_team_members`, confirmed behaviourally (`SET ROLE
+service_role` → 2 rows, and `tenant_members` neither forces nor is subject to RLS for that role).
+`get_paige_team_context()` refusing `service_role` outright. Zero owner/role divergence across all 13
+members — not merely the active slice, since every row on production is active. The `tenant_role`
+enum. The Billing structural blocker. The registry-collision claim. And the PII assessment: counts
+and a seat role leak nothing a caller cannot already read from Team's own block.

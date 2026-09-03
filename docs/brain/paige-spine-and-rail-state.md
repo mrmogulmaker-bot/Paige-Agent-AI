@@ -402,6 +402,52 @@ Two things follow:
 **Never record this as an empty feed or a healthy one.** If a future session sees no activity in Solo,
 the first hypothesis is this grant, not an idle workspace.
 
+### THE TENANT-WIDE RAIL WAS DARK FOR EVERY SOLO TENANT — measured and repaired 2026-09-03
+
+**The finding.** Slice B repaired all four owner-facing Rail consumers, and two of them were still
+unreachable by a Solo tenant. `PaigeRailFeed` ("Across your clients — live") ships inside
+`PaigeWorkspace`, which `TenantCommandCenterShell` renders **only when the Solo workspace is
+absent** (`TenantCommandCenterShell.tsx:606`) — and the Solo shell always supplies it
+(`SoloApp.tsx:272`). Confirmed by search: **no `PaigeRailFeed` or `PaigeSidebar` reference exists
+anywhere under `src/solo/` or `src/components/tenant-shell/`**, and the mobile `PaigeRailSheet` is
+mounted inside the same `PaigeWorkspace` (`PaigeWorkspace.tsx:283`). So the tenant-wide strip is an
+Agency / sub-account / admin-shell surface, and a Solo tenant had **no** surface showing the
+tenant-wide rail at all.
+
+**Why this was invisible until now.** Slice B's proof was automated, static and deployed-bundle —
+all of which pass for a component that renders correctly on a surface nobody can reach. It surfaced
+only when the owner test map was written against the *actual* account topology rather than against
+the component list. **A repaired consumer on an unreachable surface is not a repaired capability.**
+
+**The repair (this slice).** A compact `Recent activity` panel in the Solo Command Center's Systems
+Check side stack (`SoloSystemsCheckWorkspace.tsx`), reading the SAME already-deployed
+`useSoloActivityFeed` → `get_solo_rail_activity` the Trust Compass and Team Activity panels use.
+**Not a second Rail source**: `useSoloActivityFeed.ts` is byte-unchanged by this slice, and no event
+is duplicated or re-derived. No CSS was added — the panel reuses the surface's own `sc-side-panel` /
+`sc-section-heading` / `sc-approval` / `sc-muted` / `sc-proof` vocabulary.
+
+**Safe fields hold by CONSTRUCTION, not by filtering at the surface.** `get_solo_rail_activity`
+returns eleven display columns; `toActivityItem` narrows those to
+`{id,title,summary,byPaige,departmentSlug,occurredAt}`. There is no `payload`, `ref_table`,
+`ref_id`, `actor_user_id`, `tenant_id` or `contact_id` in the shape at all, so none can reach the
+markup. `id` is a React key and is never rendered, and the feed's `error` string is deliberately
+NOT rendered — `status` alone drives the copy — so no SQLSTATE, server text or function name can
+surface on a tenant screen. Both properties are asserted, and both assertions were falsified.
+
+**Workspace switch has TWO layers, and the first one already existed.** `CommandHub` keys the mount
+on `activeTenantId` (`CommandCenter.tsx:104`), so a switch **unmounts and remounts** the subtree —
+no row, filter, pending read or loading state can survive it. The panel additionally forwards
+`workspaceId` into the feed's render-time guard and request counter. The remount is the primary
+mechanism; the guard is the second layer, and saying it the other way round would overstate what
+the new code does.
+
+**METHOD, carried forward from Slice B.** Every mechanism was deliberately falsified before the
+slice was called done: the five states collapsed to `items.length` (5 failures), the row's UUID
+rendered (1), the raw server error printed (1), the workspace reset moved from render into an
+effect (1), the request-sequence guard removed (1). An `act()`-based assertion structurally cannot
+observe a painted stale frame — the switch test records every committed frame from a
+`useLayoutEffect` instead.
+
 ### CORRECTED 2026-09-03 — the four owner-facing consumers now call the resolvers (Slice B)
 
 **What changed, and the one measurement that makes it matter.** `authenticated` has **no `SELECT`
