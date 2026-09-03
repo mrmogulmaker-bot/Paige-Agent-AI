@@ -2069,15 +2069,20 @@ as of `09691d1a` below, no longer the freshest fact about this surface — the s
 landed same-day, this time in the same PR/commit as the row update.)
 
 **What a person can now do.** From an empty catalog, "Add your first offer" opens a slide-over
-editor; a name is the only requirement; anything left blank is written as NULL and renders as the
-honest em-dash rather than an invented value. An existing offer is edited from the drawer its row
-already opens, and moves through draft / active / paused / archived from the same place. Archive
-asks first. The editor carries NO status control: lifecycle sits beside the offer, so nobody
-publishes something by accident while renaming it.
+editor; a name is the only requirement; any offer-definition field (summary, description, kind,
+etc.) left blank is written as NULL and renders as the honest em-dash rather than an invented
+value. The price is a different object with a different rule: clearing it does not null
+`unit_amount` (non-nullable) — it sets the row `active = false` and leaves the old figures stored,
+so a read that skips inactive rows shows "unstated" for a reason distinct from a genuinely NULL
+offer field (Codex finding, PR #860: the two look identical from the UI but are not the same fact,
+and a future reader of the raw table needs to know that). An existing offer is edited from the
+drawer its row already opens, and moves through draft / active / paused / archived from the same
+place. Archive asks first. The editor carries NO status control: lifecycle sits beside the offer,
+so nobody publishes something by accident while renaming it.
 
 | Tier | Can write an offer | Why |
 |---|---|---|
-| Platform operator (God) | ✓ **only with a tenant selected** | Both RPCs resolve the workspace from `current_user_tenant_id()`; an operator with none is refused `42501` before any row is read. |
+| Platform operator (God) | ✗ refused, unless also a tenant member | `current_user_tenant_id()` honors an operator's selected `active_tenant_id` (via `is_platform_admin()`), so the RPC gets past the tenant resolve — but `is_tenant_admin(_tenant)` checks only `tenant_members.role IN ('owner','admin')` with no operator bypass, so a bare act-as with no membership row fails `42501` at that check. An operator who *also* holds an owner/admin membership in the tenant can write (Codex finding, PR #860 — the row above previously claimed the opposite). |
 | Solo owner / admin | ✓ | `is_tenant_admin()` inside the function body, not the EXECUTE grant (§59). |
 | Solo member | ✗ refused, and the acts are OMITTED not disabled | A disabled control says "later"; the truth is "not your role". |
 | Sub-account owner / admin | ✓ own catalog only | Same session-resolved scope; a foreign offer id simply finds nothing. |
@@ -2142,9 +2147,12 @@ Design, not here.
 **Owed.** Price editing beyond the single lead price — 2A renders plans, tiers and instalments;
 2B authors only one (though #863 made editing that one plan safe against the storefront/deposit/
 instalment cases above). `tenant-product-upsert` still needs a `status` allowlist, a `currency`
-allowlist, and cross-field validation of `kind` against `billing_interval`. A visual/colour pass on
-the Solo Catalog buttons is requested and explicitly deferred to Claude Design (§00) — no design
-decision made here.
+allowlist, and cross-field validation of `kind` against `billing_interval`. Whether a platform
+operator acting on a tenant's catalog *should* write without a membership row (i.e. whether
+`is_tenant_admin` should carry an operator bypass here the way other admin-facing RPCs do) is a
+product decision, not a bug this row fixes silently — flagged, not resolved, per the table above.
+A visual/colour pass on the Solo Catalog buttons is requested and explicitly deferred to Claude
+Design (§00) — no design decision made here.
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
