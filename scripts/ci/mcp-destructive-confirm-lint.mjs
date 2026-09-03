@@ -787,15 +787,37 @@ function modelSettableBooleans(schemaNode) {
  * the head of a chain of methods that provably do not widen the key space, and nothing else.
  */
 const CLOSED_OBJECT_BUILDERS = new Set(["object", "strictObject", "interface"]);
+// THE QUESTION IS THE OUTPUT, NOT THE INPUT — which is the frame the first version got wrong.
+//
+// A handler reads what the schema PRODUCES. I built this list by asking which methods preserve the
+// accepted-key space, and four of them leave that space alone while changing what comes out.
+// Measured against the installed zod:
+//
+//   z.object({id}).transform(() => ({ id:"f", confirm:true }))  →  { id:"f", confirm:true }
+//   z.object({id}).catch({ id:"x", confirm:true })   on bad input →  { id:"x", confirm:true }
+//   z.object({id}).default({ id:"x", confirm:true }) on undefined →  { id:"x", confirm:true }
+//
+// The last of those is mine, not the review's: `default` has the identical shape and nobody named
+// it. All three hand the handler a `confirm` the declared shape never mentions, and `catch` and
+// `default` are model-TRIGGERABLE even though their value is author-written — send malformed input,
+// or omit the field, and the fallback fires. `pipe` joins them because its downstream can produce
+// anything at all.
+//
+// `readonly` and `optional` were measured too, and they strip as expected, so they stay.
 const KEYSPACE_PRESERVING = new Set([
-  // Wrappers that change cardinality, docs or validation but never the set of accepted keys.
-  "optional", "nullable", "nullish", "default", "catch", "readonly", "describe", "brand",
-  "refine", "superRefine", "meta", "register", "transform", "pipe",
+  // Wrappers that change cardinality, docs or validation but never the keys that come OUT.
+  "optional", "nullable", "nullish", "readonly", "describe", "brand",
+  "refine", "superRefine", "meta", "register",
   // Shape edits. They add, remove or relax DECLARED fields — every one of which `shapeFields`
   // already collects — and leave the object as closed as it found it.
   "extend", "safeExtend", "augment", "merge", "pick", "omit", "partial", "required",
   "deepPartial", "strict",
 ]);
+
+// The ONE method whose ARGUMENT's key policy is inherited by the result. Recursing into every
+// `z.`-rooted argument was too broad: `z.object({…}).register(z.registry(), {…})` passes a REGISTRY,
+// not a schema, and calling it not-closed refused a boolean-free destructive tool.
+const INHERITS_ARGUMENT_KEYSPACE = new Set(["merge"]);
 
 function schemaKeySpaceIsClosed(node) {
   const e = unwrapValue(node);
@@ -818,10 +840,12 @@ function schemaKeySpaceIsClosed(node) {
   // Generalised rather than special-cased to `merge`, because "the methods whose argument is also a
   // schema" is one more list to get wrong: ANY argument that is itself a `z.` chain must prove its
   // own closedness. A method added to KEYSPACE_PRESERVING later inherits this check for free.
-  for (const arg of e.arguments) {
-    const a = unwrapValue(arg);
-    if (a && ts.isCallExpression(a) && chainRoot(a.expression) === SCHEMA_NS &&
-        !schemaKeySpaceIsClosed(a)) return false;
+  if (INHERITS_ARGUMENT_KEYSPACE.has(method)) {
+    for (const arg of e.arguments) {
+      const a = unwrapValue(arg);
+      if (a && ts.isCallExpression(a) && chainRoot(a.expression) === SCHEMA_NS &&
+          !schemaKeySpaceIsClosed(a)) return false;
+    }
   }
   return receiver ? schemaKeySpaceIsClosed(receiver) : false;
 }
@@ -1169,7 +1193,14 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
     ["merge(passthrough)", `z.object({}).merge(z.object({}).passthrough())`],
     ["merge(catchall)", `z.object({}).merge(z.object({}).catchall(z.boolean()))`],
     ["merge(looseObject)", `z.object({}).merge(z.looseObject({}))`],
-    ["pipe(passthrough)", `z.object({}).pipe(z.object({}).passthrough())`],
+    // NOTE: refused because `pipe` CHANGES THE OUTPUT, not because its argument's input is open.
+    // The receiver strips first — measured, `z.object({}).pipe(z.object({}).passthrough())`
+    // parses `{confirm:true}` to `{}` — so my original reason for this case was wrong even though
+    // the verdict was right. A downstream can still produce anything, so it stays refused.
+    ["pipe (output is the downstream's, whatever that is)", `z.object({}).pipe(z.object({}).passthrough())`],
+    ["transform that injects a key", `z.object({ id: z.string() }).transform(() => ({ id: "f", confirm: true }))`],
+    ["catch with a fallback carrying a key", `z.object({ id: z.string() }).catch({ id: "x", confirm: true })`],
+    ["default with a fallback carrying a key", `z.object({ id: z.string() }).default({ id: "x", confirm: true })`],
   ];
   const OPEN_HANDLER = `handler: async (args) => { if (args.confirm) await admin.from("clients").delete(); }`;
   for (const [label, schema] of OPEN_SCHEMAS) {
@@ -1185,7 +1216,8 @@ mcp.tool("t", { inputSchema: ${schema}, ${OPEN_HANDLER} });`, "t.ts").length, 1)
     ["extend", `z.object({ id: z.string() }).extend({ note: z.string() })`],
     ["partial + strict", `z.object({ id: z.string() }).partial().strict()`],
     ["merge with a CLOSED schema", `z.object({ id: z.string() }).merge(z.object({ note: z.string() }))`],
-    ["a default value on a closed object", `z.object({ id: z.string() }).default({})`],
+    ["register with a REGISTRY argument (not a schema)", `z.object({ id: z.string() }).register(z.registry(), { description: "x" })`],
+    ["readonly on a closed object", `z.object({ id: z.string() }).readonly()`],
   ]) check(`ADMITS a CLOSED schema: ${label}`, findViolations(`
 mcp.tool("t", { inputSchema: ${schema}, ${OPEN_HANDLER} });`, "t.ts").length, 0);
 
