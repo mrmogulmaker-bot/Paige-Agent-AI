@@ -1,0 +1,186 @@
+/* Campaigns → Sales — Sales Operations.
+ *
+ * Its own stylesheet rather than an append to `solo-campaigns.css`, for the same two reasons
+ * `catalog-offers.css` gave: PR #706 holds that file, and the repo already keeps a stylesheet per
+ * Solo surface (`analytics2.css`, `marketplace.css`, `connections-calendars.css`).
+ *
+ * Every value below is a token from `solo-tokens.css` — no hex anywhere, so both palettes and
+ * forced-colors follow for free. The shell classes this surface sits inside (`campaigns-state`,
+ * `campaigns-skeleton`, `campaigns-truth`) come from `solo-campaigns.css`, which `growth2.tsx`
+ * already imports; nothing here redefines them.
+ *
+ * Z-INDEX, chosen rather than inherited. The Campaigns detail drawer sits at 86/87 and the pipeline
+ * folder organiser at 92/93. This editor takes 96/97 so it can never be occluded by a drawer that
+ * happens to be open behind it — `catalog-offers.css` takes 60/61, which works only because its
+ * editor and that drawer are never open together, and that is an assumption rather than a rule. */
+
+.so { display: block; }
+
+/* ── bands ──────────────────────────────────────────────────────────────────────────────────── */
+
+.so-band { padding: 16px 19px 4px; border-bottom: 1px solid var(--line-soft); }
+.so-band:last-child { border-bottom: 0; }
+
+.so-band-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px;
+}
+/* h3 rather than b: before this surface existed the tab had one <h2> ("Routed capture
+ * activity"). Rebuilding around it left a five-section page whose sections were bold TEXT, so
+ * a screen-reader heading list showed one entry for the whole tab. The rendered weight and
+ * size are unchanged; only the element is. */
+.so-band-head h3 {
+  margin: 0; font: 500 13.5px/1.3 var(--font); letter-spacing: -.006em; color: var(--ink);
+}
+.so-band-head small { font-size: 11.5px; color: var(--ink-3); text-wrap: pretty; }
+
+/* ── readiness ──────────────────────────────────────────────────────────────────────────────── */
+
+.so-ready-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--line-soft);
+}
+.so-ready-row:last-of-type { border-bottom: 0; }
+.so-ready-text { display: block; min-width: 0; }
+.so-ready-text b { display: block; font: 500 12.5px/1.35 var(--font); color: var(--ink); }
+.so-ready-text small {
+  display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.5;
+  color: var(--ink-3); text-wrap: pretty;
+}
+.so-ready-act { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.so-next {
+  margin: 12px 0 14px; padding: 10px 12px; border-radius: var(--r-s);
+  background: var(--gold-tint); border: 1px solid var(--gold-line);
+  font-size: 12px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty;
+}
+.so-next b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+
+/* ── state pills ────────────────────────────────────────────────────────────────────────────── */
+
+/* There is no `.so-pill`. The first version of this file declared one, copying the three
+ * tone→token mappings from `solo-tokens.css`'s live `.pill` but with its own height, size,
+ * tracking and ground — a fork of a primitive that already shipped. It was not free: the darker
+ * ground took the neutral tone from 4.50:1 to 3.79:1 in dark mode, under AA for text that small,
+ * on the readiness panel's primary state signal. §11 says add to the layer rather than fork a
+ * one-off, and the layer already had this — so the component uses `.pill`/`.pill-ok`/`.pill-warn`/
+ * `.pill-bad`/`.pill-n` directly and this section defines nothing. */
+
+/* ── tables ─────────────────────────────────────────────────────────────────────────────────── */
+
+.so-table { display: grid; margin-bottom: 12px; }
+.so-tr {
+  display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, .8fr) auto minmax(0, .7fr) minmax(0, .7fr);
+  gap: 12px; align-items: center; padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft); text-align: left;
+}
+.so-tr-4 { grid-template-columns: minmax(0, 2.2fr) auto minmax(0, .8fr) minmax(0, .9fr); }
+.so-tr:last-child { border-bottom: 0; }
+.so-th {
+  font: 600 10.5px/1 var(--font); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3); padding-bottom: 7px;
+}
+.so-tr > span { min-width: 0; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.so-cell-name {
+  font-weight: 500; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.so-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.so-quiet { color: var(--ink-3); font-size: 11.5px; }
+
+button.so-row {
+  width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line-soft);
+  color: inherit; cursor: pointer;
+}
+button.so-row:hover .so-cell-name { color: var(--violet); }
+button.so-row:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; border-radius: 6px; }
+
+.so-absent {
+  margin: 0 0 14px; max-width: 74ch;
+  font-size: 12px; line-height: 1.6; color: var(--ink-3); text-wrap: pretty;
+}
+
+/* ── the editor slide-over ──────────────────────────────────────────────────────────────────── */
+
+.so-editor-scrim {
+  position: fixed; inset: 0; z-index: 96;
+  background: var(--ink); opacity: .28; border: 0; padding: 0;
+}
+.so-editor {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 97;
+  width: min(460px, 100vw);
+  display: flex; flex-direction: column;
+  background: var(--canvas); border-left: 1px solid var(--line); box-shadow: var(--sh-3);
+  animation: so-slide 180ms ease-out;
+}
+@keyframes so-slide { from { transform: translateX(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.so-editor-head {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 16px 18px 12px; border-bottom: 1px solid var(--line-soft);
+}
+.so-editor-head h2 { margin: 0; font: 500 15px/1.3 var(--font); letter-spacing: -.008em; color: var(--ink); }
+.so-editor-head p {
+  margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty;
+}
+
+.so-editor-body {
+  flex: 1; min-height: 0; overflow: auto; padding: 14px 18px; display: grid; gap: 14px;
+  scrollbar-gutter: stable;
+}
+
+.so-field { display: grid; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.so-field > span, .so-field > legend {
+  padding: 0; font: 500 11.5px/1 var(--font); color: var(--ink-2);
+}
+.so-field input, .so-field textarea {
+  width: 100%; min-height: 34px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-s);
+  background: var(--canvas); color: var(--ink); font: 400 12.5px/1.4 var(--font);
+}
+.so-field input:focus-visible, .so-field textarea:focus-visible {
+  outline: 2px solid var(--violet); outline-offset: 1px; border-color: var(--violet);
+}
+.so-money { display: flex; gap: 8px; }
+
+.so-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.so-pick button {
+  min-height: 28px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--canvas);
+  font: 400 11.5px/1 var(--font); color: var(--ink-2); cursor: pointer;
+}
+/* Gold marks the chosen thing — the act — and nothing else on this surface (§11). */
+.so-pick button[aria-pressed="true"] {
+  border-color: var(--gold); background: var(--gold-tint); color: var(--ink); font-weight: 500;
+}
+.so-pick button:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+
+.so-editor-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 18px; border-top: 1px solid var(--line-soft); background: var(--canvas);
+}
+.so-editor-note { font-size: 11px; line-height: 1.45; color: var(--ink-3); max-width: 34ch; text-wrap: pretty; }
+.so-editor-note[data-tone="bad"] { color: var(--bad); }
+
+/* ── narrow ─────────────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .so-ready-row { grid-template-columns: auto minmax(0, 1fr); }
+  .so-ready-act { grid-column: 1 / -1; justify-content: flex-start; }
+  .so-tr, .so-tr-4 { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .so-th { display: none; }
+}
+
+/* ── motion and contrast ────────────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .so-editor { animation: none; }
+}
+
+/* Forced colours drop background tints entirely, so a pill that carried its meaning only in its
+ * fill would become unreadable. Each one gets a real border in that mode. */
+@media (forced-colors: active) {
+  .so-editor { border-left: 1px solid currentColor; }
+  .so-pick button[aria-pressed="true"] { border: 2px solid currentColor; }
+  .so-next { border: 1px solid currentColor; }
+}

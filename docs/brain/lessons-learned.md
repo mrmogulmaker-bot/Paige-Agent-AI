@@ -6,6 +6,55 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0f. A mocked write hides a required field, and every test still passes (2026-09-03)
+
+- **Symptom:** Campaigns → Sales shipped a "Quick offer" create with 42 green tests, a clean `tsc`
+  ratchet, a passing build and green CI. The write could not have succeeded ONCE, on any tier.
+- **Root cause:** the draft omitted `tenantId`. `useCatalogOffers.saveOffer` forwards it as
+  `_expected_tenant_id`, and `runWrite` merges `{ _expected_tenant_id: activeTenantId, ...args }` —
+  so a draft that OMITS the key still contributes `undefined`, which **wins the spread** and is then
+  dropped entirely by `JSON.stringify`. `save_solo_offer` declares that parameter with no DEFAULT and
+  its 14-argument overload was dropped in `20261111000000`, so PostgREST resolved no function and
+  answered `PGRST202` with the raw signature rendered into the drawer footer. The contract test mocked
+  `saveOffer` outright and asserted `id`/`name`/`kind`/`priceInterval` — never the field whose absence
+  broke it. `// @ts-nocheck` (the house pattern in `src/solo/`) suppressed the missing-required-field
+  error that would otherwise have caught it at compile time.
+- **Rule:** when a test mocks a write, assert **every field the real callee requires**, not the fields
+  the feature is about — a mock proves the handler was CALLED, never that the call could succeed. And
+  a present-but-`undefined` key is not the same as an absent one: it beats a spread fallback and then
+  vanishes on the wire. `git grep` the callee's required-field list and assert it.
+
+## 0g. RLS is a ROW FILTER, so "permission denied" never arrives (2026-09-03)
+
+- **Symptom:** a flag written to distinguish *"you have none"* from *"I could not look"* could never
+  be false. Its honest copy — *"not readable at your access level"* — was unreachable, so a plain
+  member of a workspace WITH recorded payments would be told, in a definite sentence, that it had none.
+- **Root cause:** the code read `const ordersReadable = !response.error`, modelling authorization as an
+  ERROR channel. `tenant_orders` GRANTs `SELECT` to `authenticated`, so every signed-in caller holds
+  the table privilege and never sees `42501`; the only gate is the RLS policy, and RLS **filters rows**
+  — a non-admin's read returns `200`, `data: []`, `error: null`. The adapter test compounded it by
+  faking the denial as `{data: null, error: {code: "42501"}}`, an input that configuration cannot
+  produce, so the test encoded the wrong model and passed.
+- **Rule:** a table with a broad `GRANT` and a narrow RLS policy denies by returning **nothing**, not
+  by erroring. Derive "may this caller read it" from the same predicate the POLICY uses, never from
+  the error channel — and when a fixture models a denial, check the grant first that the denial shape
+  is one the database can actually emit.
+
+## 0h. Reporting a capability as absent when the session actually held it (2026-09-03)
+
+- **Symptom:** a slice shipped with no rendered evidence and a PR body, commit message and tier-matrix
+  ledger all giving the reason as *"this session holds no browser tool"*. An independent reviewer ran
+  `npm run harness:selftest`, which launched real Chromium through Playwright and passed every
+  falsifiability arm — including the contrast arm that catches exactly the defect class the same
+  review then found in that surface's own CSS.
+- **Root cause:** "could not reach live prod" was true and got generalised into "no browser", which was
+  not. The generalisation was never tested against the repo's own harness, which is one npm script away.
+- **Rule:** §32.c keys the honest degrade to **lacking the capability**, never to the agent's name or a
+  guess. Before writing that a capability is absent, RUN the repo's own check for it — here,
+  `npm run harness:selftest`. An unreachable production target does not license skipping LOCAL render
+  evidence, and a capability wrongly reported as absent is a §13 violation even when the rest of the
+  report is accurate.
+
 ## 0c. A migration numbered at "the next free slot" collides the moment `main` moves (2026-09-03)
 
 - **Symptom:** Billing Foundation A's migration was `20261044000000`; while the branch was under review
