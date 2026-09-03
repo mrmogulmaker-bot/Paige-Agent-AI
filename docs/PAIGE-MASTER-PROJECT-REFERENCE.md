@@ -1211,6 +1211,36 @@ Trust Compass consumer, `compass.tsx:377`, does distinguish — which is why the
 is therefore broken for every department that emits to the Rail**, and `paige_audit_log` has no Solo
 reader either.
 
+**A safe server-side Rail reader is now SHIPPED and deployed — and the verdict above still stands
+(2026-09-02).** `public.get_solo_rail_activity(p_limit integer)` is live on production
+(`20261042000000`, then the #794 remediation `20261043000000`; both confirmed in
+`schema_migrations`). It is `SECURITY DEFINER`, takes **no tenant parameter**, returns 11 reviewed
+display fields, and **raises `42501 RAIL_FORBIDDEN` rather than returning an empty timeline** on
+refusal — so a denied caller can no longer be mistaken for an idle workspace. The projection omits
+`payload`, `tenant_id`, `contact_id`, `actor_user_id`, `ref_table` and `ref_id`; it **does** return
+the event row's own `id`, so the accurate claim is that it exposes **no tenant, client, actor or
+source-record identifier and no producer payload** — not that it carries no identifier at all. It deliberately does **not** re-grant browser SELECT on
+`paige_client_events`: that revoke is what keeps the same-shaped flaw in the `pce_staff_read` policy
+unreachable, so the fix for a Rail screen is never a table grant.
+
+**Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
+`useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
+production after both migrations. The remaining *misreporting* is narrower than the read failure: the
+two `useRailEvents` consumers collapse a refusal into an empty feed, while `compass.tsx:377` and
+`team.tsx:235` both render an explicit `role="alert"` failure. **All four are denied; only two of them
+lie about it.** Failure *visibility* and *manual recovery* are separate questions: `team.tsx` offers a
+*Try again* control in every layout, `compass.tsx` only above 1020px — `solo-tokens.css:173` hides its
+retry-bearing branch below that and the foldout replacement (`compass.tsx:440`) has none. **Automatic
+recovery is present regardless:** `useSoloActivityFeed.ts:193–198` re-reads every 15s while visible and
+on window focus, so the missing piece is the *visible manual control*, not recovery. Tracked as a Slice B
+scope item on #746, not as a second misreporting surface. The two Analytics readers of the same denied
+table (`useClientEngagement.ts:48`, `CohortRetentionTable.tsx:74`) discard the error entirely and render
+it as "Insufficient data" — a separate slice, tracked as **#802**. The gap changed shape rather than closing: **before, no safe path
+existed; now a safe path exists and nothing uses it.** Issue **#746 stays open**, and closing it also
+requires authenticated owner runtime proof, not a deployed function. Full record, including the #794
+cross-workspace defect this foundation shipped with and the three lessons from it:
+`docs/brain/paige-spine-and-rail-state.md`.
+
 **Pipeline governance — three findings, follow-up work and NOT capability:** the Spine's Pipeline
 evidence is a **silent subset** (`deal_move_stage` and `pipeline_attach` move deals with no Rail
 event, so PAIGE cannot see her own move); `deal_move_stage` never consults `move_policy`; and
@@ -1225,8 +1255,28 @@ a held request is unresolvable and permanently blocks archiving its stage or pip
 4. **Stale doctrine correction** (done for the Trust Compass claims; see §10).
 5. **Calendar as the next bounded read-only Spine capability.**
 
+> **CORRECTED 2026-09-02 — items 1 and 2 have moved; the ruling above is kept as written.** The Rail
+> recovery path in item 2 was taken by **PR #785** (`20261042000000`) and its **#794 remediation, PR
+> #795** (`20261043000000`), both merged and deployed — **not** by #644, which remains open and
+> unauthorized on the same terms stated above. **#746 is still OPEN**: the merged work is the safe
+> server resolver only, and no owner-facing consumer has been moved onto it, so item 1 (**#729**)
+> remains blocked — its repair reads the direct table, which is still refused by design. What changed
+> is that the unblock is now a consumer change rather than a missing capability. Closing #746 also
+> requires authenticated owner runtime proof. Order 3–5 is unaffected.
+
 **Not authorized by this record:** no Calendar evidence, Pipeline mutation, provider work, or other
 implementation begins from it.
+
+### Platform Billing — Gate 1 packet delivered and APPROVED 2026-09-02 (Phase 1, read-only; NOTHING BUILT)
+
+- **Boundary (owner-ruled 2026-09-02):** Platform Billing = what the Solo WORKSPACE pays PAIGE (base subscription · included allowances · verified usage/telephony charges only if later approved · paid Marketplace add-ons · invoices, payment methods, status, account credits, entitlement), home Settings → Billing plus operator configuration; the billing account belongs to the workspace, never a staff member. Client Billing = what a Solo charges its own customers (invoices, quotes, payments, balances; Offer Catalog as source; tenant's own processor, §38), home Sales — **never modelled, migrated, or implied inside Settings → Billing.**
+- **Delivered (docs only, zero code, zero migrations, zero Stripe objects):** `docs/delivery/platform-billing-gate1-packet.md` (with a §2.7 per-tier availability table, §51/§56) · `docs/doctrine/surface-cards/billing.md` (truth label `PARTIAL`) · `docs/prototypes/platform-billing-gate1.html` (34 states, throwaway) · `docs/handoff/platform-billing-marketplace-addon-handoff.md`.
+- **What exists today (verified on `main` `1fb7928`):** Settings → Billing reads plan/status/price/renewal via `get_tenant_platform_subscription()`; Invoices & payment method and Usage & limits are honest `UNAVAILABLE` cards; no action exists on the surface. Plans: `solo` $149/mo, `agency` $397/mo, `enterprise` custom (migration-seeded; monthly Stripe Price only). Sole writer of `platform_subscriptions` is the Stripe webhook. `platform_invoices` has no writer. Metering: `llm_tokens` + `tts_char` in `platform_usage_events`; no allowance/threshold model; no tenant-facing usage read. Marketplace: one-time paid checkout exists; recurring add-ons do not; Solo entitlement actions deliberately `UNAVAILABLE`. Operator Revenue surfaces are spec shells with null figures. **0 paying tenants.**
+- **Beta direction ($149 reference → $74.50 beta, defined included allowance, no automatic overage until real usage/cost evidence) is modelled as a PROTOTYPE STATE only.** The eight decisions D1–D8 are ruled or deferred per packet §4.2 (D3, D5–D8 ruled; D1, D2, D4 deferred to the Beta activation packet). As originally put — D1 eligibility · D2 start/end/grandfather · D3 separate Stripe Price vs promotion vs other · D4 after-beta state · D5 exact allowance (units must be a measured meter — tokens today) · D6 warnings/limits · D7 usable/limited/paused after exhaustion · D8 overage automatic/opt-in/unavailable (recommended: unavailable during beta). None invented.
+- **Audit findings, all OPEN (packet §3):** A1 HIGH email-keyed `customer-portal`/`check-subscription` (person, not workspace; no admin gate) · A2 HIGH `install_marketplace_item` ungated on `price_cents` (handed to Marketplace owner) · A3 MEDIUM invoice/refund webhook arms not discriminated on `platform_plan_slug` (§197 cross-layer into `tier_state`) · A4 MEDIUM sub-account "no subscription" misreport · A5 LOW/corrected — the `credit_pulls_per_month` seed is already stripped on `main` by `20260726140000`; prod rows UNVERIFIED (an earlier draft mis-reported it as open, caught by the compliance pass) · A6 `platform_invoices` unwritten · A7 no annual Price · A8 telephony `charge_wired:false` (honest).
+- **Proposed sequence:** 1 Billing Foundation → 2 Beta Base Plan + truthful screen → 3 Included-usage visibility (no automatic overage) → 4 Marketplace paid add-ons → 5 additional meters one at a time under the eight-field meter contract. Enforcement of any limit lives at the action-bus clamp (§67/§68), via a Spine Change Request, never in the Billing screen.
+- **Evidence:** static/code for every audit row; prototype state coverage driven headless by the committed `docs/prototypes/platform-billing-gate1.drive.mjs` (34/34 states, structural-harness class, transcript in the packet §11); authenticated runtime NOT driven; UNVERIFIED — prod meter drain (#737), live `stripe_price_id` resolution, which Stripe account the platform rail uses in prod.
+- **GATE 1 APPROVED 2026-09-02 (rulings R1–R17 in packet §4.2–§4.4).** Owner-only billing acts (R2); Stripe-hosted portal (R3); Solo is the canonical billing experience, Operator screens control-plane only (R9); three beta offers — $74.50 paid beta plan (provider release later), 30-day $0 trial, Operator-granted promotional access — behind ONE entitlement projection with a documented precedence rule (R10/R11); **all currently eligible top-level workspaces go onto Promotional Beta Access via explicit records in a dedicated, reversible, separately Gate-B'd rollout after Foundation C — never as a fallback, never counted as revenue (R12–R15)**; paid-subscriber release discipline (R16). Twelve required Solo states (packet §9.1). **Sequence:** #803 docs merge → Foundation A → B → C → promotional rollout packet → its Gate B → trial / paid-beta provider releases. Platform Billing is a standing workstream; every slice carries an exact-head independent review and its own Gate B. **Nothing is merged, deployed, migrated, granted, or created in Stripe by this entry.**
 
 ### Multi-membership login account picker (Gate 1 approved 2026-09-01; local branch, NOT LIVE)
 
