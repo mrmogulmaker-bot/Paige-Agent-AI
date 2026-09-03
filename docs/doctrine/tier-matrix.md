@@ -1701,12 +1701,18 @@ widened additively from `pending, sent, suppressed, failed, bounced, complained,
 constraint still refuses an invented status — both asserted in `solo_team_invite_lifecycle.sql`
 rather than inspected.
 
-**Owed, and it is a genuine external dependency, not a deferral.** The delivery trail reports
-**"Not sent yet"** until the webhook endpoint is registered with Resend and `RESEND_WEBHOOK_SECRET`
-is set. Both are owner actions — one an external production configuration change, one a credential.
-Until they are done the webhook refuses every event **by design** (it fails closed rather than
-trusting an unsigned payload), and no delivery, open or click can be observed. Archive, revoke and
-resend do not depend on it. The surface stays **Authenticated Runtime Proof Owed**.
+**Owed, and it is a genuine external dependency, not a deferral.** `send-portal-invite` logs every
+send unconditionally — the webhook plays no part in that — so the trail is not gated on it the way
+this paragraph first said. What is gated: until the webhook endpoint is registered with Resend and
+`RESEND_WEBHOOK_SECRET` is set, a new invitation's delivery never progresses past **"Sent"** (or
+"Failed", for a send the provider or transport rejected), because nothing writes the
+delivered/opened/clicked rows. **"Delivery not recorded"** — corrected from "Not sent yet" by #856,
+Codex-caught contradiction fixed by #857 — is a *different* state: it means no send row exists at
+all, which is only true for invitations emailed before #850 shipped logging. Both are owner
+actions — one an external production configuration change, one a credential. Until they are done
+the webhook refuses every event **by design** (it fails closed rather than trusting an unsigned
+payload). Archive, revoke and resend do not depend on it. The surface stays **Authenticated
+Runtime Proof Owed**.
 
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
