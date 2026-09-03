@@ -2108,12 +2108,17 @@ hotfix's scope — flagged, not fixed.
 **Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after merge `2240d066`
 (PR #871), never from the pipeline reporting success:
 
-```
+```sql
 select version from supabase_migrations.schema_migrations where version = '20261131000000';
 → 20261131000000
 
-pg_get_functiondef(save_solo_offer)        LIKE '%Solo workspaces only%'  →  true
-pg_get_functiondef(set_solo_offer_status)  LIKE '%Solo workspaces only%'  →  true
+select p.oid::regprocedure as signature,
+  pg_get_functiondef(p.oid) like '%Solo workspaces only%' as has_solo_only_guard
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname in ('save_solo_offer', 'set_solo_offer_status')
+order by p.proname;
+→ save_solo_offer(uuid,uuid,text,text,text,text,text,text,text,text,integer,text,text,timestamp with time zone,uuid) | true
+→ set_solo_offer_status(uuid,uuid,text,timestamp with time zone)                                                    | true
 ```
 
 | Tier | Can write an offer | Why |
