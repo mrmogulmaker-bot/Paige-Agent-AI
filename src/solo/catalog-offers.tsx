@@ -129,7 +129,19 @@ function qualifiedPrice(plan) {
   }
   // A non-recurring kind that nonetheless carries a period: report both recorded facts rather
   // than picking one and asserting it.
-  return period ? { text: `${each} / ${period}`, note: kindNote } : null;
+  if (period) return { text: `${each} / ${period}`, note: kindNote };
+
+  // Returning null here was the THIRD recurrence of one defect, one branch further out each time:
+  // no object means no note, which means the render falls through to the presentation label and
+  // prints "Fixed amount". The `qualified` flag added to close this class never fired, because
+  // there was nothing to carry it. Two shapes reach it, and one is live TODAY through the shipped
+  // Storefront panel — which sends `billing_interval: "one_time"` for every non-recurring kind, so
+  // a deposit-only product renders "$500 · Fixed amount" when a deposit is, by definition, not the
+  // whole price. The other is a kind this build cannot read, which proves nothing either way.
+  //
+  // A recognised one-off with no period is the ONE case where the tenant's own presentation label
+  // is the right thing to print, so it alone still returns null.
+  return plan.kind === "one_time" ? null : { text: each, note: kindNote };
 }
 
 /**
@@ -393,7 +405,14 @@ export function CatalogOffers({ setDetail }) {
           ? offer.prices
               .map((plan) => {
                 const amount = money(plan.unitAmount, plan.currency);
-                const label = plan.nickname || plan.kind || "Plan";
+                // Never the raw enum. `plan.kind` is a backend token, so a plan with no
+                // nickname printed "recurring — $99 / month" to a tenant (§11), and an unreadable
+                // kind printed a generic "Plan" while the row correctly said it could not be read.
+                // Both are the drawer disagreeing with its own row about the same record.
+                const label = plan.nickname
+                  || (plan.kind && Object.hasOwn(PLAN_KIND, plan.kind)
+                    ? PLAN_KIND[plan.kind]
+                    : "Plan type not recognised");
                 const interval = plan.billingInterval && plan.billingInterval !== "one_time"
                   ? ` / ${plan.billingInterval}` : "";
                 return `${label} — ${amount ?? "no amount"}${interval}${plan.active ? "" : " (inactive)"}`;

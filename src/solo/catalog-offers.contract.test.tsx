@@ -212,6 +212,14 @@ describe("Catalog Offers — truthfulness", () => {
       { kind: "recurring", billingInterval: "one_time" },
       { kind: "deposit", billingInterval: "month" },
       { kind: "one_time", billingInterval: "month" },
+      // The NO-INTERVAL cases, which this loop should have carried from the start. Their absence
+      // is why the same defect survived three fixes. K5 is live today: StorefrontPanel sends
+      // billing_interval "one_time" for every non-recurring kind, so a deposit-only product
+      // reaches exactly this row and used to render "$500 · Fixed amount".
+      { kind: "deposit", billingInterval: null },
+      { kind: "deposit", billingInterval: "one_time" },
+      { kind: null, billingInterval: null },
+      { kind: null, billingInterval: "one_time" },
     ]) {
       expect(priceTextFor(over), JSON.stringify(over)).not.toContain("Fixed amount");
     }
@@ -264,6 +272,52 @@ describe("Catalog Offers — truthfulness", () => {
     expect(cell.textContent).not.toContain("Fixed amount");
   });
 
+  it("still says a deposit is a deposit when it is the floor of several plans", () => {
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
+      { id: "pd", nickname: "Deposit", unitAmount: 50000, currency: "usd", billingInterval: "one_time", kind: "deposit", installmentsTotal: null, active: true },
+      { id: "pf", nickname: "Full", unitAmount: 240000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("From $500");
+    expect(cell.textContent).toContain("Deposit");
+    expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
+  it("still calls a plain one-off exactly what the tenant said it is", () => {
+    // The one case that MUST keep falling through to the presentation label: a recognised
+    // one-off with no period really is a single fixed amount, and "Fixed amount" is the
+    // tenant's own recorded choice about how to show it.
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
+      { id: "p1", nickname: null, unitAmount: 240000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("$2,400");
+    expect(cell.textContent).toContain("Fixed amount");
+  });
+
+  it("never prints a backend enum token in the detail drawer", () => {
+    // The drawer's plan line was `plan.nickname || plan.kind || "Plan"`, so a plan with no
+    // nickname showed a tenant the raw column value — "recurring — $99 / month" (§11) — and an
+    // unreadable kind showed a generic "Plan" while the ROW correctly said it could not be read.
+    // Both are the drawer disagreeing with its own row about the same record.
+    setCampaigns();
+    setOffers({ offers: [offer({ prices: [
+      { id: "p1", nickname: null, unitAmount: 9900, currency: "usd", billingInterval: "month", kind: "recurring", installmentsTotal: null, active: true },
+      { id: "p2", nickname: null, unitAmount: 9900, currency: "usd", billingInterval: "month", kind: null, installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    act(() => (host.querySelector("button.co-row") as HTMLElement).click());
+    // The drawer may portal out of `host`, so read the whole document.
+    const shown = document.body.textContent ?? "";
+    expect(shown).toContain("Recurring plan — $99 / month");
+    expect(shown).not.toContain("recurring — $99");
+    expect(shown).toContain("Plan type not recognised — $99 / month");
+  });
+
   it("keeps the period when a recurring plan is only the floor of several", () => {
     setCampaigns();
     setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
@@ -286,6 +340,25 @@ describe("Catalog Offers — truthfulness", () => {
     setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
       { id: "p1", nickname: "Deposit", unitAmount: 50000, currency: "usd", billingInterval: "one_time", kind: "deposit", installmentsTotal: null, active: true },
       { id: "p2", nickname: "Full", unitAmount: 300000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+    ] })] });
+    renderAt("/solo/4471/growth/catalog");
+    const cell = host.querySelector(".co-price") as HTMLElement;
+    expect(cell.textContent).toContain("From $500");
+    // The lead is a DEPOSIT, so the note names that rather than "Several plans recorded" — the
+    // more useful of the two facts, and the `From ` prefix already carries the other. The
+    // "several" label survives for a lead that has nothing of its own to say; see below.
+    expect(cell.textContent).toContain("Deposit");
+    expect(cell.textContent).not.toContain("Fixed amount");
+  });
+
+  it("still says several plans when the lead has nothing of its own to say", () => {
+    // Two plain one-offs: neither is per-period, neither is a deposit, so no record-derived note
+    // exists and the count is the only thing worth printing. This keeps that label from becoming
+    // dead code now that a qualified lead's own note wins.
+    setCampaigns();
+    setOffers({ offers: [offer({ pricePresentation: "fixed", prices: [
+      { id: "pa", nickname: "A", unitAmount: 50000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
+      { id: "pb", nickname: "B", unitAmount: 300000, currency: "usd", billingInterval: "one_time", kind: "one_time", installmentsTotal: null, active: true },
     ] })] });
     renderAt("/solo/4471/growth/catalog");
     const cell = host.querySelector(".co-price") as HTMLElement;
