@@ -208,6 +208,16 @@ try {
               el.scrollHeight > el.clientHeight + 1,
           );
           return {
+            tabColor: (() => {
+              const selected = document.querySelector('.setup-tabs [aria-selected="true"]');
+              const probe = document.createElement('span');
+              probe.style.color = 'var(--pg-ink)';
+              selected.append(probe);
+              const ok = getComputedStyle(selected).color === getComputedStyle(probe).color;
+              probe.remove();
+              if (!ok) throw new Error('Generic link styling changed the selected Setup tab color');
+              return 'canonical';
+            })(),
             horizontal:
               document.documentElement.scrollWidth > innerWidth + 1 ||
               host.scrollWidth > host.clientWidth + 1,

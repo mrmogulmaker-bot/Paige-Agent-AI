@@ -56,7 +56,7 @@ active tab is a no-op. Index redirects replace history; unknown child URLs show 
 not-found state. Drawers retain their draft during sibling history traversal and explicitly return
 to their originating area when closed/applied. Account switching clears prior context.
 
-The pre-existing general SPA history/programmatic exit guard gap is parked with the routing owner;
+The pre-existing general SPA history/programmatic exit guard gap is parked in GitHub issue #858;
 the new subtab work does not silently replace BrowserRouter or claim universal navigation blocking.
 No model, provider, Team, billing, Rail, Spine or Mind capability is added by an addressable URL.
 
