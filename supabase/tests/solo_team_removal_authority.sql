@@ -18,7 +18,7 @@
 -- front of an unguarded table is decoration, so the table privileges are asserted here first.
 BEGIN;
 
-SELECT plan(39);
+SELECT plan(40);
 
 -- ── The table, before the function ──────────────────────────────────────────────────────────────
 -- SELECT is deliberately retained: roughly ten browser reads depend on it.
@@ -53,6 +53,23 @@ SELECT ok(
 SELECT ok(
   NOT has_table_privilege('anon', 'public.tenant_members', 'UPDATE'),
   'anonymous callers cannot UPDATE a membership row'
+);
+
+-- THE CONTROL FOR EVERYTHING ABOVE, and the reason this file can claim the TRUNCATE revoke at all.
+--
+-- Raised by the peer read of this diff: the browser-role grants on `tenant_members` come from the
+-- platform's own blanket privileges, NOT from any migration in this repo — so if a from-zero replay
+-- never granted `anon` those verbs in the first place, every `NOT has_table_privilege` assertion
+-- above would pass whether or not line 177 of the migration exists. A guard that cannot observe
+-- itself is decoration, and TRUNCATE is the headline claim.
+--
+-- So rather than argue it, this measures it: a NEIGHBOURING table this migration never touches must
+-- still carry the grant. If it does, the environment demonstrably distinguishes revoked from
+-- not-revoked, and the assertions above are real. If it does NOT, this fails loudly and tells us the
+-- privilege half of this file proves nothing here — which is the honest outcome, not a silent pass.
+SELECT ok(
+  has_table_privilege('anon', 'public.tenants', 'TRUNCATE'),
+  'a table this migration does not touch still carries the platform grant — so the revokes above are measuring something'
 );
 
 -- ── Reachability of the one supported route ─────────────────────────────────────────────────────
@@ -259,12 +276,24 @@ SELECT is(
   1,
   'the removal itself is recorded once'
 );
+-- REMOVAL IS NOT A ONE-WAY DOOR, proven by actually re-inviting them.
+--
+-- This assertion used to count rows in `tenant_invite_tokens` and expect 0 — which was vacuous:
+-- nothing in this file ever writes that table, so it was 0 before the migration existed, after it,
+-- and if the function body were emptied. It also tested the wrong table; the concern was a lingering
+-- row in `tenant_members`. Named by the peer read of this diff.
+--
+-- The real proof runs the invitation seam released in #815 against the person who was just removed.
+-- `create_solo_team_invite` refuses with 'this person already belongs to the workspace' if ANY
+-- membership row survives, status filter or not — so a successful re-invite is exactly the evidence
+-- that removal left nothing behind, and it ties the two releases together end to end.
 SELECT is(
-  (SELECT count(*)::int FROM public.tenant_invite_tokens
-    WHERE tenant_id = 'd1000000-0000-0000-0000-00000000dddd'
-      AND email = 'rm-admin@tests.invalid'),
-  0,
-  'and nothing blocks re-inviting them: no lingering row, so removal is not a one-way door'
+  (SELECT public.create_solo_team_invite(
+      'd1000000-0000-0000-0000-000000000001'::uuid,
+      'd1000000-0000-0000-0000-00000000dddd'::uuid,
+      'rm-admin@tests.invalid', 'admin', NULL, NULL) ->> 'tenant_id'),
+  'd1000000-0000-0000-0000-00000000dddd',
+  'the removed person can be invited back into the same workspace — removal left nothing behind'
 );
 
 -- A suspended membership is removable. The lookup deliberately carries no status filter: a filter

@@ -11,8 +11,7 @@
  * Usage: node scripts/live-drive/team-removal-render.mjs
  * Requires the harness dev server: npx vite --config scripts/live-drive/harness/team-mount/vite.config.ts
  */
-import { chromium } from "playwright";
-import { resolveExecutablePath } from "./live-drive.mjs";
+import { resolvePlaywright, resolveExecutablePath } from "./live-drive.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -62,6 +61,12 @@ async function main() {
   // instead of the harness; the run then failed hunting a roster row on a page that was never the
   // harness. This target is a LOCAL dev server and makes no external request at all, so it takes
   // no proxy.
+  // The MODULE is resolved through the shared helper too, not imported statically. Named by the peer
+  // read: borrowing `resolveExecutablePath` while keeping `import { chromium } from "playwright"` at
+  // the top adopted half the resolver, and the static half hard-fails at module load in exactly the
+  // environments the dynamic half exists to survive (a globally-installed playwright, or one behind
+  // PW_MODULE_PATH).
+  const { chromium } = await resolvePlaywright();
   const browser = await chromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],

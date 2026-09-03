@@ -270,7 +270,16 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved }:
 
   };
 
-  return <Modal title={identity.primary} description="Work details describe what this person does. Permission controls what they can access." onClose={onClose}
+  // A removal in flight is NOT dismissible, on any path — backdrop, the header X, the footer Close,
+  // or Escape. Found by the peer read of this diff: the dialog could be dismissed mid-call, and if
+  // the server then REFUSED, `setRemoval({ stage: "armed", error: refusal })` landed on an unmounted
+  // component and was discarded. The owner saw a closed dialog and an unchanged roster with no
+  // indication the removal had failed — the failure was silent, which is the one outcome a
+  // destructive action must never have. `inFlight` guards a second CLICK; it never guarded a
+  // dismissal. The window is short but it is exactly the window a slow or failing call widens.
+  const removalInFlight = removal.stage === "pending";
+  return <Modal title={identity.primary} description="Work details describe what this person does. Permission controls what they can access."
+    onClose={() => { if (removalInFlight) return; onClose(); }}
     onEscape={() => { if (removal.stage !== "armed") return false; disarmRemoval(); return true; }}>
     <div className="stw-modal-body">
       <div className="stw-person-summary"><span className="stw-avatar">{initials(member)}</span><div><strong>{identity.primary}</strong>{identity.secondary && <span>{identity.secondary}</span>}</div><span className="stw-pill" data-tone={member.is_owner ? "owner" : "neutral"}>{permission.label}</span></div>
@@ -342,18 +351,24 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
   // reload. The send-time abort stays as the backstop for the same-tick race.
   const { activeTenantId } = useTenantContext();
   const [inviteWorkspace, setInviteWorkspace] = useState<TeamWorkspaceRecord | null>(null);
+  // The outcome of a removal has to live OUTSIDE the dialog. `refresh()` is `load(0)`, which sets
+  // `value` back to null, so the editor unmounts the instant the roster reloads — any confirmation
+  // rendered inside it is destroyed before it can be read or announced.
+  const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     setInviteWorkspace((current) => {
       if (!current || !activeTenantId || current.tenant_id === activeTenantId) return current;
       toast.error(`You switched workspace, so the invitation for ${current.tenant_name} was closed. Nothing was sent.`);
       return null;
     });
+    // The removal announcement is cleared for the SAME reason, found by the peer read of this diff.
+    // It names a workspace ("Dana Reyes no longer has access to Example Team.") and this component
+    // does NOT remount on a switch — that is the premise the invite fix above rests on. Left alone,
+    // the banner sat over the next workspace's roster still making a claim about the previous one:
+    // the same cross-workspace false statement the invitation seam was just repaired to stop making.
+    setNotice(null);
   }, [activeTenantId]);
   const team = useTeamWorkspace(search, permission); const workspace = team.value;
-  // The outcome of a removal has to live OUTSIDE the dialog. `refresh()` is `load(0)`, which sets
-  // `value` back to null, so the editor unmounts the instant the roster reloads — any confirmation
-  // rendered inside it is destroyed before it can be read or announced.
-  const [notice, setNotice] = useState<string | null>(null);
   const rosterRef = useRef<HTMLDivElement>(null);
   // Focus is moved deliberately rather than restored. The roster row that opened the editor is the
   // row that just went, and focusing a detached node silently drops focus to <body>.

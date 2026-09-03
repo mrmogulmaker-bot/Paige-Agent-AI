@@ -242,27 +242,59 @@ describe("the table underneath — a guarded function is not a boundary on its o
   it("has its applied-schema proof actually WIRED INTO CI, not merely written", () => {
     // §68's anchoring case is a check that was registered, had a correct runner, and had NEVER RUN.
     // A pgTAP file nothing executes is that failure exactly: it looks like evidence in a diff and
-    // proves nothing. So the wiring is asserted, and asserted in BOTH triggers — the sibling PR's
-    // round 2 found precisely this fix half-applied, inserted twice into `pull_request` and never
-    // into `push`, which would have left main unguarded while the PR looked covered.
+    // proves nothing.
+    //
+    // THIS GUARD IS STRUCTURAL, NOT A SUBSTRING SEARCH, and that is the whole point. The first
+    // version asserted `workflow.toContain("- run: supabase test db <proof>")`, which the peer read
+    // defeated with ONE character: `      # - run: supabase test db <proof>` contains that
+    // substring, so commenting the step out left the guard green and the proof unrun. That is the
+    // same false-green the sibling PR's round 5 found in its allowlist parser — a guard that cannot
+    // tell live code from a comment — reproduced here in a different file. So: comments are stripped
+    // first, the step must live in a NAMED job, and that job must not be switched off.
     const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/paige-spine-contract.yml"), "utf8");
     const proof = "supabase/tests/solo_team_removal_authority.sql";
+    const RUN = `- run: supabase test db ${proof}`;
 
-    expect(workflow, "the proof is executed by a job").toContain(`- run: supabase test db ${proof}`);
+    // 1. Strip whole-line comments. A `#` mid-line inside a quoted string would be mangled by a
+    //    blunter strip, so only lines whose FIRST non-space character is `#` are dropped.
+    const live = workflow.split("\n").filter((line) => !line.trimStart().startsWith("#"));
 
-    const prAt = workflow.indexOf("pull_request:");
-    const pushAt = workflow.indexOf("push:", prAt);
-    const jobsAt = workflow.indexOf("jobs:", pushAt);
+    // 2. Walk the jobs block and find which job actually carries the step.
+    const jobsAt = live.findIndex((line) => line === "jobs:");
+    expect(jobsAt, "the jobs block was found").toBeGreaterThan(-1);
+    let job: string | null = null;
+    let owner: string | null = null;
+    const conditional = new Set<string>();
+    for (const line of live.slice(jobsAt + 1)) {
+      if (line.trim() === "" ) continue;
+      if (!line.startsWith(" ")) break; // left the jobs block entirely
+      const named = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+      if (named) { job = named[1]; continue; }
+      // A job-level `if:` can switch the whole job off while every step still reads as present.
+      if (job && /^ {4}if:/.test(line)) conditional.add(job);
+      if (job && line.trim() === RUN) owner = job;
+    }
+
+    expect(owner, `${proof} is run by a job, not merely written in the file`).not.toBeNull();
+    expect(conditional.has(owner as string), `the job running ${proof} is not switched off by an if:`).toBe(false);
+
+    // 3. Both triggers, so main is guarded and not just the PR. The sibling PR's round 2 found
+    //    exactly this fix half-applied: inserted twice into `pull_request`, never into `push`.
+    const text = live.join("\n");
+    const prAt = text.indexOf("pull_request:");
+    const pushAt = text.indexOf("push:", prAt);
+    const jobsTextAt = text.indexOf("\njobs:", pushAt);
     // Asserted, because an unfound marker returns -1 and every slice below would silently widen to
     // the whole file — the guard would pass on any placement at all.
     expect(prAt, "the pull_request trigger was found").toBeGreaterThan(-1);
     expect(pushAt, "the push trigger was found").toBeGreaterThan(prAt);
-    expect(jobsAt, "the jobs block was found").toBeGreaterThan(pushAt);
+    expect(jobsTextAt, "the jobs block was found").toBeGreaterThan(pushAt);
+    expect(text.slice(prAt, pushAt), "the pull_request paths filter matches it").toContain(proof);
+    expect(text.slice(pushAt, jobsTextAt), "the push paths filter matches it too").toContain(proof);
 
-    expect(workflow.slice(prAt, pushAt), "the pull_request paths filter matches it").toContain(proof);
-    expect(workflow.slice(pushAt, jobsAt), "the push paths filter matches it too").toContain(proof);
-
-    // And the file it runs has to exist, with a plan that matches the assertions it actually makes.
+    // 4. The file it runs has to exist, with a plan matching the assertions it actually makes.
+    //    HONEST LIMIT: this compares SHAPE, not content — rewriting every assertion as
+    //    `SELECT ok(true, '…')` would keep the counts equal. It catches drift, not sabotage.
     const tap = readFileSync(resolve(process.cwd(), proof), "utf8");
     const planned = Number(/SELECT plan\((\d+)\);/.exec(tap)?.[1]);
     const written = (tap.match(/^SELECT (?:ok|is|throws_ok|lives_ok)\(/gm) ?? []).length;

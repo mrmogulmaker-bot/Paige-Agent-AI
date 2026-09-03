@@ -15,13 +15,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemberEditor, SoloTeamWorkspace } from "./team-workspace";
 import { removalRefusal, type TeamMemberRecord, type TeamWorkspaceRecord } from "./team-workspace-contract";
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), invoke: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), invoke: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn(), tenant: { activeTenantId: "tenant-1" } }));
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: { rpc: mocks.rpc, functions: { invoke: mocks.invoke } },
 }));
 vi.mock("@/hooks/useTenantContext", () => ({
-  useTenantContext: () => ({ activeTenantId: "tenant-1", loading: false }),
+  useTenantContext: () => ({ activeTenantId: mocks.tenant.activeTenantId, loading: false }),
 }));
 vi.mock("sonner", () => ({ toast: { success: mocks.success, error: mocks.error, warning: mocks.warning } }));
 
@@ -57,7 +57,8 @@ async function arm(host: HTMLElement) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  for (const m of Object.values(mocks)) m.mockReset();
+  for (const m of Object.values(mocks)) if (typeof m === "function") (m as unknown as { mockReset: () => void }).mockReset();
+  mocks.tenant.activeTenantId = "tenant-1";
 });
 
 describe("who is offered the control at all", () => {
@@ -405,5 +406,71 @@ describe("the refusal vocabulary itself", () => {
       // No message at all is not a transport failure we can name, so it does not earn a retry.
       expect(refusal.retryable).toBe(false);
     }
+  });
+});
+
+describe("what the peer read of the pushed diff found", () => {
+  it("does not leave a removal announcement standing over a DIFFERENT workspace's roster", async () => {
+    // The banner names a workspace — "Dana Reyes no longer has access to Example Team." — and this
+    // component does NOT remount when the active workspace changes. That is the premise the invite
+    // dialog's own switch guard rests on. Without an equivalent, the announcement sat over the next
+    // workspace's roster still making a claim about the previous one: the same cross-workspace false
+    // statement the invitation seam was repaired to stop making. No test covered it, because every
+    // removal test drove a single workspace.
+    mocks.rpc.mockImplementation((fn: string) => {
+      if (fn === "get_solo_team_workspace") return Promise.resolve({ data: workspace(), error: null });
+      return Promise.resolve({ data: { tenant_id: "tenant-1" }, error: null });
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    // The roster read is debounced, so settle before driving it.
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const row = host.querySelector<HTMLButtonElement>("button.stw-row");
+    expect(row, "the roster rendered a row to open").toBeTruthy();
+    await act(async () => row!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    const banner = host.querySelector('[role="status"].stw-separation-note');
+    expect(banner?.textContent ?? "", "the announcement is shown in its own workspace").toContain("Example Team");
+
+    // Now switch workspace. The claim about the old one must not survive.
+    //
+    // Rendered as a FRESH element rather than re-calling `render()` with the captured one: React
+    // bails out of re-rendering a referentially identical element, so the component never re-read
+    // the mocked context and the test failed for a reason that had nothing to do with the product.
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    const after = host.querySelector('[role="status"].stw-separation-note');
+    expect(after, "the announcement about the previous workspace is gone").toBeNull();
+  });
+
+  it("cannot be dismissed while a removal is in flight, so a refusal is never lost in silence", async () => {
+    // Dismissing mid-call unmounted the editor. If the server then REFUSED, the setState carrying
+    // that refusal landed on an unmounted component and was discarded — closed dialog, unchanged
+    // roster, and NO indication the removal had failed. `inFlight` guarded a second click; it never
+    // guarded a dismissal. A destructive action failing silently is the one outcome to rule out.
+    let settle: (v: { data: null; error: { message: string } }) => void = () => {};
+    mocks.rpc.mockImplementation(() => new Promise((res) => { settle = res; }));
+    const onClose = vi.fn();
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={onClose} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    // Every dismissal path, while the call is still running.
+    const closeX = buttons(host).find((b) => (b.getAttribute("aria-label") ?? "").toLowerCase().includes("close"));
+    if (closeX) await act(async () => closeX.click());
+    const backdrop = host.querySelector<HTMLElement>(".stw-modal-backdrop, [data-modal-backdrop]");
+    if (backdrop) await act(async () => backdrop.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(onClose, "the dialog stayed open while the removal was in flight").not.toHaveBeenCalled();
+
+    // The refusal now has somewhere to land, and the person can read it.
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    expect(host.querySelector('[role="alert"]')?.textContent ?? "").toMatch(/owner/i);
   });
 });
