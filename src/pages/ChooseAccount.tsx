@@ -8,6 +8,7 @@ import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { supabase } from "@/integrations/supabase/client";
 import { tenantAccountLabel } from "@/lib/auth/accountSelection";
 import {
+  WORKSPACE_CHOOSER_SETTLED_PARAM,
   clearWorkspaceScopedState,
   rememberWorkspaceEntered,
   workspaceRootForTenant,
@@ -15,6 +16,21 @@ import {
 
 type Membership = { tenant_id: string; role: string };
 type Choice = { tenant: TenantSummary; role: string };
+
+/**
+ * Where to send someone leaving this page, given the workspace root we resolved.
+ *
+ * A null root means the tenant's shell only exists inline at `/admin`, and the
+ * `/admin` fallback carries a query marker ALONGSIDE the session record. The
+ * record is the durable signal and does the real work; the marker is a
+ * second-chance one for the case the record cannot be written at all — private
+ * mode, blocked storage — where a canary-off tenant would otherwise bounce
+ * between here and the door on every click, one hop per click, forever. It
+ * survives only the immediate hop, which is precisely the hop that needs saving.
+ */
+function leaveFor(root: string | null): string {
+  return root ?? `/admin?${WORKSPACE_CHOOSER_SETTLED_PARAM}=1`;
+}
 
 function roleLabel(role: string): string {
   return role === "owner" ? "Owner" : role === "admin" ? "Admin" : role === "coach" ? "Team member" : role;
@@ -65,23 +81,46 @@ export default function ChooseAccount() {
   // workspace root when their tenant has one; `/admin` otherwise, which is where
   // a tenant whose shell canary is off renders inline anyway.
   //
-  // Recording the entry BEFORE leaving is what makes the `/admin` fallback safe:
-  // `/admin` now sends multi-context people here, and the two surfaces count
-  // workspaces from different sources, so without the record a disagreement
-  // between them would be an infinite redirect rather than a wrong number.
+  // LEAVING FOR `/admin` MUST CARRY A SETTLEMENT SIGNAL, or the two surfaces
+  // deadlock: `/admin` sends multi-context people here, this page re-queries
+  // memberships while the door reads the tenant context, and a disagreement
+  // between those two sources becomes an infinite redirect rather than a wrong
+  // number. An earlier revision wrote the record only on the ONE-choice branch —
+  // so the ZERO-choice branch, which is exactly where the two sources disagree,
+  // looped forever.
+  //
+  // AND A FAILED READ IS NOT ZERO CHOICES. When the membership query errors this
+  // page has learned nothing about the person's workspaces, so it renders its
+  // error card and its Retry rather than leaving. Navigating away on an error is
+  // what made that card unreachable and turned any transient failure on one query
+  // into a redirect storm.
   useEffect(() => {
-    if (loading || context.accountContextLoading || context.accountContextStatus !== "ready") return;
+    if (loading || error) return;
+    if (context.accountContextLoading || context.accountContextStatus !== "ready") return;
     if (!context.isPlatformStaff && choices.length >= 2) return;
     // Platform staff keep their existing landing exactly (§58): they move between
     // tenants through the audited operator seam, not this chooser, so they are
     // never sent into a tenant workspace root by it.
     const only = !context.isPlatformStaff && choices.length === 1 ? choices[0].tenant : null;
     if (only) {
-      clearWorkspaceScopedState();
+      if (only.id !== context.activeTenantId) clearWorkspaceScopedState();
       rememberWorkspaceEntered(only.id);
+    } else if (!context.isPlatformStaff) {
+      // No choice to make. Settle the door against whatever context is actually
+      // active so it does not send this person straight back here.
+      rememberWorkspaceEntered(context.activeTenantId);
     }
-    navigate(workspaceRootForTenant(only) ?? "/admin", { replace: true });
-  }, [choices, context.accountContextLoading, context.accountContextStatus, context.isPlatformStaff, loading, navigate]);
+    navigate(leaveFor(workspaceRootForTenant(only)), { replace: true });
+  }, [
+    choices,
+    context.accountContextLoading,
+    context.accountContextStatus,
+    context.activeTenantId,
+    context.isPlatformStaff,
+    error,
+    loading,
+    navigate,
+  ]);
 
   const choose = async (choice: Choice) => {
     setError(null);
@@ -95,8 +134,10 @@ export default function ChooseAccount() {
     // Drop the leaving workspace's identity/navigation state, then record the
     // choice, both BEFORE leaving: nothing from the previous account may render
     // under the new one, and the `/admin` door must not ask again for a workspace
-    // this person has just explicitly picked.
-    clearWorkspaceScopedState();
+    // this person has just explicitly picked. The clear is conditional because
+    // re-picking the workspace you are already in changes nothing and should not
+    // discard state that belongs to it.
+    if (choice.tenant.id !== context.activeTenantId) clearWorkspaceScopedState();
     rememberWorkspaceEntered(choice.tenant.id);
     // Enter the chosen workspace at ITS OWN root rather than routing back through
     // `/admin`, which is the door that resumes a parked context — except for a
@@ -105,7 +146,7 @@ export default function ChooseAccount() {
     // has just changed the server-side active context, and every provider should
     // re-resolve against it from scratch rather than carry the previous workspace's
     // caches across.
-    window.location.assign(workspaceRootForTenant(choice.tenant) ?? "/admin");
+    window.location.assign(leaveFor(workspaceRootForTenant(choice.tenant)));
   };
 
   const handleDifferentGoogleAccount = async () => {

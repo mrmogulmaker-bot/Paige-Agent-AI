@@ -154,8 +154,10 @@ describe("workspace entry containment", () => {
       sessionStorage.setItem("paige_impersonating_contact", '{"id":"contact-from-old-account"}');
       sessionStorage.setItem("paige_stay_in_client_view", "1");
       sessionStorage.setItem("paige.oauth.return", '{"path":"/solo/111/settings"}');
-      localStorage.setItem("paige.activeBusinessId", "business-from-old-account");
-      // Personal preferences belong to the person, not the account.
+      // Personal preferences belong to the person, not the account — and so does
+      // `paige.activeBusinessId`, whose owning module selects by `owner_user_id`
+      // rather than by tenant. Clearing it would be over-clearing.
+      localStorage.setItem("paige.activeBusinessId", "belongs-to-the-person");
       localStorage.setItem("paige:workspaceRail:collapsed:tenant-a", "1");
       localStorage.setItem("paige-tenant-theme", "dark");
 
@@ -164,7 +166,7 @@ describe("workspace entry containment", () => {
       expect(sessionStorage.getItem("paige_impersonating_contact")).toBeNull();
       expect(sessionStorage.getItem("paige_stay_in_client_view")).toBeNull();
       expect(sessionStorage.getItem("paige.oauth.return")).toBeNull();
-      expect(localStorage.getItem("paige.activeBusinessId")).toBeNull();
+      expect(localStorage.getItem("paige.activeBusinessId")).toBe("belongs-to-the-person");
       expect(localStorage.getItem("paige:workspaceRail:collapsed:tenant-a")).toBe("1");
       expect(localStorage.getItem("paige-tenant-theme")).toBe("dark");
     });

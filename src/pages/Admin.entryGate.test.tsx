@@ -88,6 +88,8 @@ describe("/admin entry gate", () => {
     h.ctx.accountContextLoading = false;
     h.ctx.accountContextStatus = "ready";
     h.tier = { tierKey: "solo", soloStandalone: true, loading: false };
+    h.ctx.soloShellEnabled = true;
+    h.ctx.agencyShellEnabled = false;
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
@@ -98,7 +100,18 @@ describe("/admin entry gate", () => {
     host.remove();
   });
 
+  // A FRESH ROOT PER CALL, deliberately. `MemoryRouter` ignores `initialEntries`
+  // after mount, so re-rendering into the same root leaves the router exactly
+  // where it was: every assertion after the first in a test would read a stale
+  // location and pass for the wrong reason. That is what made the earlier version
+  // of the "keeps not asking" case vacuous — the property it names, surviving a
+  // navigation, was never actually exercised.
   async function renderAt(path: string) {
+    act(() => root.unmount());
+    host.remove();
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
     await act(async () => {
       root.render(
         <MemoryRouter initialEntries={[path]}>
@@ -118,6 +131,10 @@ describe("/admin entry gate", () => {
   // bare null would silently pass if that redirect ever disappeared.
   function notTheChooser(loc: string | null) {
     expect(loc).not.toBe("/choose-account");
+    // Positively assert where it DID go. Without this the helper would pass on a
+    // null location — i.e. if the component stopped rendering at all — which is
+    // the fixture-shaped tautology this guard exists to refuse.
+    expect(loc).toBe("/solo/1971670/command-center");
   }
 
   it("asks a multi-context person which workspace they want, at the door", async () => {
@@ -169,6 +186,42 @@ describe("/admin entry gate", () => {
   it("never asks platform staff, who switch through the audited operator seam", async () => {
     h.ctx.isPlatformStaff = true;
     notTheChooser(await renderAt("/admin"));
+  });
+
+  // React Router matches routes case-insensitively, so `/Admin` mounts this
+  // component too. A literal compare let any non-lowercase spelling — a bookmark,
+  // a typed URL — walk past the entry question and resume a parked context.
+  it("asks on every spelling of the door, not just the lowercase one", async () => {
+    expect(await renderAt("/Admin")).toBe("/choose-account");
+    expect(await renderAt("/admin/")).toBe("/choose-account");
+  });
+
+  // The chooser's second-chance marker, for a browser where the session record
+  // cannot be written at all. It settles only the hop it arrives on.
+  it("accepts the chooser's URL marker as settlement for the hop it arrives on", async () => {
+    const original = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...original, search: "?picked=1" } });
+    notTheChooser(await renderAt("/admin"));
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
+
+  // §58 REGRESSION GUARD — agency act-as. `AccountSwitcher` and `AgencyBoard` both
+  // call `agency_enter_subaccount(child)` and then `window.location.assign("/admin")`,
+  // so `/admin` is a live landing for a drill-down that has ALREADY happened. An
+  // agency owner is always multi-context (provisioning gives them an active owner
+  // membership in every child), so without the record written at those producers
+  // the door intercepts the act-as and sends them to the chooser — breaking the
+  // parent → authorized child flow for the third time in this repair.
+  it("does not intercept an agency act-as that has already been recorded", async () => {
+    const child: Tenant = { id: "child-b", status: "active", account_type: "sub_account", parent_tenant_id: "p", account_number: 3855 };
+    h.ctx.activeTenantId = child.id;
+    h.ctx.activeTenant = child;
+    h.ctx.tenants = [soloTenant, child];
+    h.tier = { tierKey: "sub_account", soloStandalone: false, loading: false };
+    h.ctx.agencyShellEnabled = true;
+    // What the act-as producers now do before assigning to /admin.
+    sessionStorage.setItem("paige.workspace.entered", child.id);
+    expect(await renderAt("/admin")).not.toBe("/choose-account");
   });
 
   it("never asks off a half-resolved account context", async () => {

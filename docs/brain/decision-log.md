@@ -1,5 +1,36 @@
 # Decision Log — chronological one-liners
 
+- **Round three of the peer-gate broke agency act-as for the THIRD time, through a door nobody had
+  inventoried (2026-09-02, PR #811)** — `/admin` is not only a door a person opens; it is a
+  DESTINATION that shipped code redirects to. `AccountSwitcher` and `AgencyBoard` both call
+  `agency_enter_subaccount(child)` and then `window.location.assign("/admin")`, and an agency owner is
+  ALWAYS multi-context because provisioning gives them an active owner membership in every child they
+  create — so the new entry gate intercepted a drill-down that had already happened and sent them to
+  the chooser instead of the child. Round 1 broke the same capability by tier-gating `/agency/*`;
+  round 3 broke it by gating a path the drill-down lands on. **The lesson is §37 stated exactly: a
+  producer inventory has to cover a route as a DESTINATION, not only as a caller.** Fixed by recording
+  the entry at both producers before they hand off — an act-as IS an explicit choice of context —
+  with `actAsLanding.test.ts` guarding the wiring at both, proven red against the previous head.
+  **A second block, and it was in the branch whose own comment claimed to prevent it:** the chooser
+  wrote the settlement record only on the ONE-choice branch, so the ZERO-choice branch — precisely
+  where its membership query and the door's tenant-context count disagree — looped `/admin ↔
+  /choose-account` forever; and because a failed membership read also produced zero choices and still
+  navigated away, the page's own error card and Retry were **unreachable**, turning any transient
+  failure on one query into a redirect storm. Both fixed, both proven failing-first. **Two smaller
+  ones:** React Router matches routes case-insensitively, so `/Admin` walked straight past the entry
+  question and resumed a parked context; and four assertions in the new Admin test were vacuous
+  because `MemoryRouter` ignores `initialEntries` after mount and `renderAt` reused one root — so the
+  "keeps not asking" case never exercised the property it names. **A correction to our own §13 claim
+  went the other way for once:** `paige.activeBusinessId` was being cleared as prior-account state,
+  but its owning module selects by `owner_user_id`, so it names the PERSON. Removed from the cleared
+  set — over-clearing justified by a comment that did not match the code is the same class of mistake
+  as prose asserting a protection. **On the pre-existing setup loop the peer surfaced (#826): measured
+  rather than accepted.** 4 tenants carry the Solo canary, 4 the agency canary, and exactly 1
+  canary-on tenant has no playbook — a top-level agency, which `RequireSetupComplete` deliberately
+  exempts. So it is real in code and unreachable in data today, and a Solo canary rollout (#790) is
+  what would activate it. Filed with that measurement rather than fixed here, because the fix collides
+  with the standing 2026-08-16 shell-ownership directive and wants an owner ruling.
+
 - **The second peer pass found an infinite redirect in the fix for the first one (2026-09-02, PR #811)** —
   the entry gate added to `/admin` was placed in `Admin`'s render body, and `/admin/*` is a SINGLE
   route element, so it fired on every path beneath the door — including `/admin/marketplace` and

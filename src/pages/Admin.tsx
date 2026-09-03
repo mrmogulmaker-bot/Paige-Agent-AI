@@ -33,7 +33,11 @@ import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { shouldOfferAccountPicker } from "@/lib/auth/accountSelection";
-import { WORKSPACE_CHOOSER_PATH, hasEnteredWorkspace } from "@/lib/auth/workspaceEntry";
+import {
+  WORKSPACE_CHOOSER_PATH,
+  WORKSPACE_CHOOSER_SETTLED_PARAM,
+  hasEnteredWorkspace,
+} from "@/lib/auth/workspaceEntry";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 import { RequireFeature } from "@/components/tier/RequireFeature";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
@@ -261,7 +265,21 @@ const Admin = () => {
   const { tierKey, soloStandalone, loading: tierLoading } = useTierFeatures();
   // `/admin/*` is ONE route element, so this component renders for every path
   // beneath it. The entry question belongs to the door itself — see the gate below.
-  const atAdminDoor = useLocation().pathname.replace(/\/+$/, "") === "/admin";
+  // Lower-cased because React Router matches routes case-insensitively: `/Admin`
+  // mounts this component just as `/admin` does, and a literal compare would let
+  // any non-lowercase spelling walk straight past the entry question and resume a
+  // parked context — the exact behaviour the ruling removes.
+  // Secondary to the session record, and only for the hop the chooser just made:
+  // see WORKSPACE_CHOOSER_SETTLED_PARAM. Read from `window.location` because it
+  // must survive the chooser's full-page assign.
+  const chooserSettledOnThisHop = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1";
+    } catch {
+      return false;
+    }
+  })();
+  const atAdminDoor = useLocation().pathname.replace(/\/+$/, "").toLowerCase() === "/admin";
 
   useEffect(() => {
     let cancelled = false;
@@ -390,6 +408,7 @@ const Admin = () => {
     !accountContextLoading &&
     accountContextStatus === "ready" &&
     !hasEnteredWorkspace(activeTenantId) &&
+    !chooserSettledOnThisHop &&
     shouldOfferAccountPicker({
       // Honest note on the quantity: the predicate's parameter is a MEMBERSHIP
       // count, and `Auth.tsx` feeds it exactly that. Here it is the RLS-visible

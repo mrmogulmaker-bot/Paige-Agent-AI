@@ -9,12 +9,14 @@ const harness = vi.hoisted(() => ({
     { tenant_id: "mogul", role: "owner" },
   ],
   user: { id: "user-1", email: "mrmogulmaker@gmail.com" } as { id: string; email: string } | null,
+  membershipError: null as { message: string } | null,
   context: {
     tenants: [
       { id: "antonio", slug: "antonio", name: "Antonio Daniel LLC", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 111111, features: { solo_shell_enabled: true } },
       { id: "mogul", slug: "mogul", name: "Mogul Maker Academy", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 222222, features: { solo_shell_enabled: true } },
       { id: "hidden", slug: "hidden", name: "Not My Account", status: "active", account_type: "standalone", parent_tenant_id: null, account_number: 333333, features: { solo_shell_enabled: true } },
     ],
+    activeTenantId: "antonio",
     accountContextLoading: false,
     accountContextStatus: "ready",
     isPlatformStaff: false,
@@ -31,7 +33,7 @@ vi.mock("@/integrations/supabase/client", () => ({
       signOut: vi.fn(async () => ({ error: null })),
     },
     from: vi.fn(() => {
-      const result = { data: harness.memberships, error: null };
+      const result = { data: harness.memberships, error: harness.membershipError };
       const query = {
         select: vi.fn(() => query),
         eq: vi.fn(() => query),
@@ -56,6 +58,8 @@ describe("ChooseAccount", () => {
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
+    harness.membershipError = null;
+    harness.context.activeTenantId = "antonio";
     harness.user = { id: "user-1", email: "mrmogulmaker@gmail.com" };
     harness.memberships = [
       { tenant_id: "antonio", role: "admin" },
@@ -141,6 +145,40 @@ describe("ChooseAccount", () => {
     expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
   });
 
+  // LOOP GUARD. `/admin` sends multi-context people here; this page re-queries
+  // memberships while the door reads the tenant context, so the two can disagree.
+  // On zero choices an earlier revision wrote no settlement record and still left
+  // for `/admin`, which bounced it straight back — an infinite redirect in exactly
+  // the branch where the sources disagree.
+  it("settles the door before leaving even when it has NOTHING to offer", async () => {
+    harness.memberships = [];
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/admin");
+    // Either signal terminates the cycle: the durable record, or the marker on
+    // the hop for a browser where storage cannot be written at all.
+    expect(
+      sessionStorage.getItem("paige.workspace.entered") === harness.context.activeTenantId ||
+        host.querySelector("[data-search]")?.getAttribute("data-search") === "?picked=1",
+    ).toBe(true);
+  });
+
+  // A FAILED READ IS NOT ZERO CHOICES. Navigating away on an error made the error
+  // card and its Retry unreachable, and turned any transient failure on one query
+  // into a redirect storm.
+  it("shows its error and its Retry instead of leaving when the membership read fails", async () => {
+    harness.membershipError = { message: "network" };
+    await act(async () => {
+      root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /><LocationProbe /></MemoryRouter>);
+    });
+    // It stays here rather than leaving for /admin, which is what makes the card
+    // reachable at all.
+    expect(host.querySelector("[data-loc]")?.getAttribute("data-loc")).toBe("/choose-account");
+    expect(host.textContent).toContain("couldn't load your Paige accounts");
+    expect(Array.from(host.querySelectorAll("button")).some((b) => b.textContent?.includes("Retry"))).toBe(true);
+  });
+
   // Nothing from the previous account may render under the new one's heading.
   // A full-page load already clears React state and the query cache; what survives
   // is browser storage, and these four keys name the OLD account rather than a
@@ -152,7 +190,9 @@ describe("ChooseAccount", () => {
     harness.context.switchTenant = vi.fn(async () => true);
     sessionStorage.setItem("paige_impersonating_contact", '{"id":"contact-from-old-account"}');
     sessionStorage.setItem("paige.oauth.return", '{"path":"/solo/111111/settings"}');
-    localStorage.setItem("paige.activeBusinessId", "business-from-old-account");
+    // Deliberately NOT cleared: `BusinessContext` selects by `owner_user_id`, so
+    // this names the PERSON, not the account they were in.
+    localStorage.setItem("paige.activeBusinessId", "belongs-to-the-person");
 
     await act(async () => {
       root.render(<MemoryRouter initialEntries={["/choose-account"]}><ChooseAccount /></MemoryRouter>);
@@ -162,7 +202,7 @@ describe("ChooseAccount", () => {
 
     expect(sessionStorage.getItem("paige_impersonating_contact")).toBeNull();
     expect(sessionStorage.getItem("paige.oauth.return")).toBeNull();
-    expect(localStorage.getItem("paige.activeBusinessId")).toBeNull();
+    expect(localStorage.getItem("paige.activeBusinessId")).toBe("belongs-to-the-person");
     expect(sessionStorage.getItem("paige.workspace.entered")).toBe("mogul");
     Object.defineProperty(window, "location", { configurable: true, value: original });
   });

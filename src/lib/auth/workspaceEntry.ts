@@ -195,6 +195,23 @@ export function workspaceRootForTenant(tenant: {
  */
 export const WORKSPACE_ENTERED_KEY = "paige.workspace.entered";
 
+/**
+ * A SECOND-CHANCE settlement marker on the URL, for the one case the session
+ * record cannot cover: storage that throws.
+ *
+ * The record above is the durable signal and does the real work. It is also
+ * best-effort — private mode and blocked storage make every write a no-op — and
+ * where that happens a tenant whose shell canary is off has nowhere durable to
+ * land: the chooser sends it to `/admin`, the door sees no record, and the two
+ * bounce, one hop per click, forever. This marker survives exactly the immediate
+ * hop, which is the hop that needs saving.
+ *
+ * It is not a grant, and it is not the primary mechanism. An earlier revision
+ * made it the ONLY mechanism and that was the defect: it survives one navigation,
+ * so the first in-app link re-armed the gate.
+ */
+export const WORKSPACE_CHOOSER_SETTLED_PARAM = "picked";
+
 /** Record that this session entered `tenantId` by choosing it. Best-effort. */
 export function rememberWorkspaceEntered(tenantId: string | null | undefined): void {
   if (!tenantId) return;
@@ -236,6 +253,12 @@ export function hasEnteredWorkspace(activeTenantId: string | null | undefined): 
  * `paige:workspaceRail:collapsed:{tenantId}`), pure cosmetics (theme, density, rail
  * collapse, command-center view), and anything belonging to the operator seam.
  * Over-clearing would silently reset preferences a person set on purpose.
+ *
+ * `paige.activeBusinessId` was in this list and was REMOVED after checking its
+ * owning module: `BusinessContext` selects businesses by `owner_user_id`, not by
+ * tenant, so it names the PERSON rather than the account they were in. Clearing
+ * it would have been over-clearing justified by a comment that did not match the
+ * code — the same class of mistake as prose asserting a protection.
  */
 const WORKSPACE_SCOPED_STORAGE = {
   session: [
@@ -243,7 +266,6 @@ const WORKSPACE_SCOPED_STORAGE = {
     "paige_stay_in_client_view",
     "paige.oauth.return",
   ],
-  local: ["paige.activeBusinessId"],
 } as const;
 
 /** Drop the leaving workspace's identity/navigation state. Best-effort. */
@@ -252,10 +274,5 @@ export function clearWorkspaceScopedState(): void {
     for (const key of WORKSPACE_SCOPED_STORAGE.session) sessionStorage.removeItem(key);
   } catch {
     // Storage unavailable; nothing was stored either, so nothing can leak.
-  }
-  try {
-    for (const key of WORKSPACE_SCOPED_STORAGE.local) localStorage.removeItem(key);
-  } catch {
-    // As above.
   }
 }

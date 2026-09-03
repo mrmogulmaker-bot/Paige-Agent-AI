@@ -1576,6 +1576,15 @@ behind by an earlier agency act-as (#806). `/admin` now applies the same shipped
 the one change here with cross-tier reach:** an agency or enterprise operator holding more than one
 active tenant now sees the chooser on the `/admin` door too, where before they went straight through.
 
+**A SEPARATE, PRE-EXISTING SETUP CYCLE IS NOT CLOSED BY THIS, and the distinction matters.** The
+gate below adds no leg to it, but `RequireSetupComplete` holds a playbook-less Solo or sub-account
+tenant on `/admin/marketplace` while `Admin`'s own shell gates are not path-scoped, so a CANARY-ON
+tenant bounces between that path and its shell root forever. Measured on production: 4 tenants carry
+the Solo canary, 4 the agency canary, and exactly 1 canary-on tenant has no playbook — a top-level
+**agency**, which the setup gate deliberately exempts. So the defect is real in code and unreachable
+in data today, and a Solo canary rollout (#790) is precisely what would activate it. Tracked as #826;
+the fix touches a standing shell-ownership directive and wants an owner ruling.
+
 **IT FIRES ON THE DOOR — the exact path `/admin` — AND NOT ON THE SUBTREE, which is the whole of a
 confirmed infinite redirect.** `/admin/*` is a single route element, so a check in `Admin`'s render
 body runs for every path beneath it, `/admin/marketplace` and `/admin/setup` included — the two paths
@@ -1585,6 +1594,15 @@ chooser) and could never reach Setup to break out. Found by the §39 peer-gate, 
 because nothing in the repository rendered `Admin` at all; `Admin.entryGate.test.tsx` is its first,
 and three of its nine cases go red against the unscoped gate.
 
+**`/admin` IS ALSO A DESTINATION, and every producer of it had to be inventoried (§37).** Two shipped
+controls drill an agency operator into an authorized sub-account — `AccountSwitcher`'s row and
+`AgencyBoard`'s card — and both call `agency_enter_subaccount(child)` and then
+`window.location.assign("/admin")`. An agency owner is ALWAYS multi-context, because provisioning
+gives them an active owner membership in every child they create, so the door would have intercepted
+a drill-down that had already happened and sent them to the chooser instead of the child. Both
+producers now record the entry before handing off: an act-as IS an explicit choice of operating
+context. `actAsLanding.test.ts` guards the wiring at both, and fails if either loses it.
+
 **The settlement record survives navigation, and its predecessor did not.** `hasEnteredWorkspace`
 reads a session key written by the chooser before it leaves. It replaced a `?picked=1` URL marker
 that survived exactly one navigation — any in-app link pushes a history entry with no query string,
@@ -1592,7 +1610,17 @@ so the first click anywhere re-armed the gate. The key is the TENANT ID, not a b
 person did not choose re-arms the question by itself, which is the situation this whole repair exists
 for. It carries no claim about what may be read — scope stays `active_tenant_id` behind its
 membership trigger plus `current_user_tenant_id()` on every read — so it is a loop breaker, never a
-grant.
+grant. A `?picked=1` marker survives alongside it as a strictly SECONDARY signal covering the one
+case the record cannot: storage that throws, where a canary-off tenant would otherwise bounce one hop
+per click forever. The door is also compared case-insensitively, because React Router matches routes
+that way and `/Admin` would otherwise walk straight past the question.
+
+**The chooser leaves only when it has actually learned something.** A failed membership read is not
+zero choices: it renders the error card and its Retry rather than navigating, which is what makes
+that card reachable at all — an earlier revision navigated away on error and turned any transient
+failure on one query into a redirect storm. And when there is genuinely nothing to offer, it settles
+the door against the active context before leaving, because the zero-choice branch is exactly where
+this page's membership query and the door's tenant-context count disagree.
 
 **The chooser respects the per-tenant shell canaries (§57/§58).** `workspaceRootForTenant` returns a
 root only when that tenant's own `solo_shell_enabled` / `agency_shell_enabled` is set, and only for a
