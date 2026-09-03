@@ -828,6 +828,86 @@ applying it. This entry was open in the same session, quoted in a commit message
 next decision violated it — because the decision *felt* thorough (423 branches!) and thoroughness
 in the wrong dimension reads exactly like rigour.
 
+### 2026-09-03, a FIFTH collision — and the one that is not anybody's mistake
+
+Slice 2B chose `20261107000000` against BOTH conditions this entry demands: free across every
+remote branch, and greater than prod's `max(version)`. Both were true when checked. #850's
+follow-up then merged carrying that exact version, and `database-contract` failed on the replay.
+
+**This one had no available prevention, and saying so matters more than adding another rule.**
+The check was correct when it ran and stale by the time the branch pushed. Five collisions across
+two slices, five different owners, all inside the same choose-to-push window. That is a property
+of a contended range, not a lapse — and treating it as a lapse produces exactly the wrong
+response, which is more careful checking at a moment that is already too early.
+
+What actually works:
+- **Pick the version LAST**, immediately before the push that will merge, not when writing the SQL.
+- **Expect to renumber at merge time** on a contended range, and budget for it rather than treating
+  each instance as a surprise.
+- **Let CI be the authority.** It evaluates against the real merge base, which is the only base
+  that matters. Every one of the five was caught there or by the replay; none by a local run.
+
+`20261110000000` was then chosen against prod's ledger max (`20261108030000`) AND the highest
+version on any branch (`20261109040000`), and confirmed persisted after merge.
+
+---
+
+## Marking ready and merging in the same beat waives the peer-gate
+
+**2026-09-03, PR #800, twenty seconds.** Marked ready at 14:09:21. Codex began reviewing that head
+at 14:09:25. Merged at 14:09:45. The review had no window, and every previous round of it on this
+program found something real — five findings on 2A, two of them cross-tenant exposure.
+
+**This is #856's lesson, repeated by the person who had just read it.** That PR exists because #850
+did the same thing, and its message says it outright: *"They landed after the merge because #850 was
+marked ready for review and merged in the same beat, so the review had no window to run. §39 says a
+green CI never waives the peer-gate — sequencing waived it just as effectively."* I read that text
+while listing workflow runs, ten minutes before doing it again.
+
+**The rule, stated as a sequence rather than a principle**, because the principle was already known
+and did not help:
+
+1. CI green on the exact head.
+2. Mark ready.
+3. **WAIT for the review to return.** Not "check whether one is running" — wait for the verdict.
+4. Then merge.
+
+**Why it is easy to miss:** the MVP cadence removes *approval pauses*, and "don't add pauses" reads
+like "don't wait". It does not. An owner approval is a pause; an independent review is a gate. A
+cadence that tells you to stop asking permission is not telling you to stop being reviewed.
+
+**Second-order, and the reason both of today's entries share a shape:** two separate lessons were
+open in front of me and violated within the hour — the version rule while quoting it, and the
+sequencing rule while reading it. Familiarity with a lesson is not a defence against it, and may be
+the opposite: the recognition feels like compliance.
+
+## Waiting correctly still needs an exit — a dead reviewer is not a silent gate
+
+**2026-09-03, PR #863, same session as both entries above.** Applied the sequencing rule from the
+entry directly above it, immediately: CI green on the exact head, marked ready, then watched for
+the verdict rather than merging. Codex's review ran and failed with an unknown error. Retriggered
+with `@codex review` — ran and failed again, same error, ninety seconds later. Two failures on a
+service the PR's own code never touches is a service outage, not a PR defect, and the general
+pattern here is the same one §32's flake rule already states for CI: confirm with one retry, then
+stop hammering a dead endpoint.
+
+The difference from #800: nobody decided unilaterally to stop waiting. The owner was told plainly —
+"Codex is down, both retries failed the same way" — and gave an explicit instruction to merge on
+green CI alone. That instruction is what changed the state, not a judgment call that waiting had
+gone on long enough. A peer-gate that cannot be satisfied because its reviewer is unreachable is
+still a gate that was asked to open; the difference between this and #800 is which party decided it
+could stay closed.
+
+**The distinction worth keeping:** "the review didn't have time to run" (a sequencing choice, #800,
+a violation) is a different failure than "the review could not run at all" (a service state, this
+entry, reported and handed to the one person who can authorize proceeding without it). Merging
+without a returned verdict is identical code in both cases — `merge_pull_request` doesn't know why
+Codex is silent — so the thing that makes one a violation and the other correct is entirely outside
+the diff: who decided, and on what evidence. That evidence should be preserved here rather than
+assumed obvious in the moment, because "I checked and it seemed down" is not the same claim as "two
+independent runs failed with the same error, ninety seconds apart, against code Codex had not yet
+seen."
+
 **And a second-order lesson, since this is the third time this branch wrote about the same event.**
 Two of the three write-ups were wrong before they were right: the first blamed the guard, and an
 earlier one blamed review. Diagnose from the log, not from the shape of the story you are already
