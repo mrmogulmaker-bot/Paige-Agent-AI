@@ -60,9 +60,14 @@ INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, j
   ('b1000000-0000-0000-0000-000000001111', 'b1000000-0000-0000-0000-000000000002', 'member', 'active', false, now()),
   ('b2000000-0000-0000-0000-000000002222', 'b2000000-0000-0000-0000-000000000001', 'owner', 'active', true, now());
 
--- The coaches hold a staff role; the client deliberately holds NONE.
+-- The client is deliberately given a GLOBAL staff role while being only a 'member' of this
+-- workspace. That is the §59 global-role trap in fixture form: a gate written against
+-- has_any_role() would ADMIT this caller, because user_roles carries no tenant_id. The
+-- tenant-scoped gate must still refuse them. Without this row the refusal assertions below would
+-- pass for the wrong reason (no role at all) and could never catch a regression to a global check.
 INSERT INTO public.user_roles (user_id, role) VALUES
   ('b1000000-0000-0000-0000-000000000001', 'admin'),
+  ('b1000000-0000-0000-0000-000000000002', 'coach'),
   ('b2000000-0000-0000-0000-000000000001', 'admin')
 ON CONFLICT DO NOTHING;
 
@@ -126,7 +131,8 @@ CREATE TEMP TABLE bcr_client AS SELECT * FROM public.get_business_context_readin
 SELECT is((SELECT count(*)::integer FROM bcr_client), 4, 'a refused caller still receives four rows, not an empty set');
 SELECT ok(
   (SELECT bool_and(status = 'unavailable') FROM bcr_client),
-  'a non-staff caller in the same workspace is refused every field (audience: owner_internal)'
+  'a non-staff caller in the same workspace is refused every field, EVEN holding a global staff '
+  'role — the gate is tenant-scoped, not global (§59 global-role trap)'
 );
 SELECT ok(
   (SELECT bool_and(reason = 'not permitted for this account') FROM bcr_client),

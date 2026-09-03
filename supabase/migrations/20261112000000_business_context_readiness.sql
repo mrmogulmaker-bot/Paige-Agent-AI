@@ -101,8 +101,22 @@ begin
   -- audience: owner_internal, and a workspace's own CLIENTS are authenticated users of that same
   -- tenant: without this gate, current_user_tenant_id() would happily resolve a client-role
   -- caller's tenant and hand them their coach's setup readiness. Whether the business finished its
-  -- own setup is staff-internal, so the same staff-role predicate the Pipeline reference adapter
-  -- uses (get_pipeline_spine_evidence, migration 20260902004019) gates this one.
+  -- own setup is staff-internal.
+  --
+  -- The predicate is TENANT-SCOPED (is_tenant_admin on the RESOLVED tenant), deliberately NOT the
+  -- global has_any_role() check the Pipeline reference adapter uses. `user_roles` carries no
+  -- tenant_id, so a global role answers the wrong question in both directions (§59's global-role
+  -- trap):
+  --   * it can WRONGLY ADMIT — someone who is 'admin' because of workspace X passes the gate while
+  --     resolving workspace Y, where they may be only a member or a client;
+  --   * it can WRONGLY REFUSE — the current deferred-signup path
+  --     (record_signup_acceptance / provision_tenant, migration 20260808190000) grants a new owner
+  --     the BASE role 'user' and nothing else, so a freshly provisioned Solo owner holds no
+  --     'admin'/'coach' row at all. A global gate would silently refuse the exact persona this
+  --     capability exists for, and the failure mode is invisible (PAIGE just says nothing).
+  -- Measured on prod before choosing (2026-09-03): of the 7 users who resolve a tenant, the global
+  -- gate and this tenant-scoped gate admit the SAME 7 — 0 wrongly admitted, 0 wrongly refused. So
+  -- this is a no-op for every current user and closes both holes going forward.
   --
   -- Refused, not empty: this contract's promise is exactly four rows on every call, so a refusal is
   -- four 'unavailable' rows with a reason -- which also leaks nothing about whether any field is
@@ -111,7 +125,7 @@ begin
   -- JWT identity to hold a role, and their tenant was already resolved safely by the edge
   -- function's own JWT verification before they call.
   if v_uid is not null
-     and not (public.has_any_role(v_uid, array['admin','super_admin','coach']) or public.is_platform_owner())
+     and not (public.is_tenant_admin(v_tenant) or public.is_platform_owner())
   then
     return query
     select f.field_key, 'unavailable'::text, null::text, null::timestamptz,

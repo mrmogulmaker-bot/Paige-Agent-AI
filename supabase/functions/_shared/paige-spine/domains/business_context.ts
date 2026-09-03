@@ -9,7 +9,7 @@ import type { SpineCapability } from "../contracts.ts";
  * evidence adapter: a JWT-authenticated caller (PAIGE/Mind) is derived via current_user_tenant_id()
  * and can never pass a tenant; the service-role path (Systems Check's runners) is the only caller
  * allowed to supply one, honored only because auth.uid() is null there (§59). See the migration
- * (20261111000000_business_context_readiness.sql) for the full trace this capability was built from.
+ * (20261112000000_business_context_readiness.sql) for the full trace this capability was built from.
  */
 export const BUSINESS_CONTEXT_READINESS = {
   key: "business_context.readiness",

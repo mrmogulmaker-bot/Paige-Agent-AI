@@ -35,7 +35,7 @@ export type BusinessContextReadinessEvidence =
   | { readonly status: "available"; readonly rows: readonly ReadinessRow[] }
   | { readonly status: "unavailable"; readonly reason: string }
   /** The contract deliberately refused this caller (a non-staff role — see the role gate in
-   *  20261111000000_business_context_readiness.sql). Distinct from "unavailable" on purpose: a
+   *  20261112000000_business_context_readiness.sql). Distinct from "unavailable" on purpose: a
    *  refusal renders NOTHING, because a client chatting with their coach's PAIGE should not be
    *  told the coach's setup status is unreadable — that is not their conversation. A genuine read
    *  failure still renders the honest block, so PAIGE says "I can't check" instead of guessing. */
