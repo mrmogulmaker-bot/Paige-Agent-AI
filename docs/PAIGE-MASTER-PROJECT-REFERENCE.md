@@ -1228,6 +1228,10 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Solo Notifications menu retirement — 2026-09-03
+
+The standalone Solo Notifications destination is retired with a same-account replace redirect to Setup and a one-arrival acknowledgement. Billing retains its source-owned designations and no-sender disclosure; its badge now says “Designated for billing notices.” All other source controls remain unchanged. See `docs/delivery/solo-contextual-notifications-retirement.md` for collision scope, source mapping, tests and Proof Owed. Backend containment #896 is already deployed and catalog/source-verified; no production notification records were used as proof.
+
 ### Platform notification permission repair — 2026-09-03
 
 Owner-scoped follow-up to released #883: operator-only SELECT and read_at UPDATE on the legacy platform notification store; remove excessive anonymous/authenticated privileges and all four legacy permissive policies. A restrictive operator boundary prevents permissive-policy reintroduction from admitting tenants. The table remains outside realtime publication (confirmed current production metadata); source producers and service-role privileges remain unchanged. No production notification records are read, seeded, updated or deleted for proof.

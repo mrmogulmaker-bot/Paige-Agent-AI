@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SoloSettings } from "./settings";
 
@@ -41,6 +41,9 @@ vi.mock("@/hooks/useTenantContext", () => ({
 }));
 vi.mock("@/lib/routing/useSubtabRoute", () => ({
   useSubtabRoute: () => [testState.tab, vi.fn()],
+}));
+vi.mock("./data/useSoloPeople", () => ({
+  useSoloPeople: () => ({ people: [], loading: false, error: null }),
 }));
 vi.mock("./data/useSoloBusiness", () => ({
   useSoloBusiness: () => ({
@@ -115,7 +118,6 @@ const destinations = [
   "team",
   "connections",
   "integrations",
-  "notifications",
   "security-data",
   "vault",
   "billing",
@@ -137,6 +139,29 @@ function renderedText(html: string) {
 }
 
 describe("Solo Settings rendered customer copy", () => {
+  it("redirects the real legacy Settings mount before rendering its retired content", async () => {
+    testState.tab = "setup";
+    const router = createMemoryRouter([{ path: "/solo/:account/*", element: <SoloSettings/> }], {
+      initialEntries: ["/solo/41/settings/notifications?origin=calendar"],
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(<RouterProvider router={router}/>));
+      expect(router.state.location.pathname).toBe("/solo/41/settings/setup/business-profile");
+      expect(router.state.location.state?.notificationMoveNotice).not.toBe(true);
+      expect(host.querySelector("h1")?.textContent).toBe("Setup");
+      expect(host.textContent).toContain("Notifications now appear in the area where the work happens.");
+      expect(host.textContent).not.toContain("Customer notifications");
+      expect(host.textContent).not.toContain("Delivery failures");
+    } finally {
+      await act(async () => root.unmount());
+      router.dispose();
+      host.remove();
+    }
+  });
+
   it("renders the approved Workspace permissions title and body", () => {
     const text = renderedText(renderDestination("team"));
     expect(text).toContain("Workspace permissions");
@@ -388,10 +413,10 @@ describe("Solo Settings rendered customer copy", () => {
     expect(shellMain.classList.contains("tcs-main--settings-scrollbar-hidden")).toBe(false);
 
     screenHost.scrollTop = 900;
-    testState.tab = "notifications";
+    testState.tab = "security-data";
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={["/solo/1971670/settings/notifications"]}>
+        <MemoryRouter initialEntries={["/solo/1971670/settings/security-data"]}>
           <Routes><Route path="/solo/:account/settings/:tab" element={<SoloSettings />} /></Routes>
         </MemoryRouter>,
       );
