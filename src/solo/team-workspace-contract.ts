@@ -105,6 +105,16 @@ export function removalRefusal(raw: string | null | undefined, personName: strin
   // the server decided and nothing was written. Retrying is still safe and still offered: a second
   // call against an already-removed person answers "not on this workspace's team", which maps to the
   // reconciled branch and tells the truth either way.
+  // A statement timeout is the SERVER deciding, not the network failing: Postgres cancels the
+  // statement and the whole function's transaction rolls back, so nothing was written and we can say
+  // so. It has to be told apart from a lost response BEFORE the transport test below, whose
+  // `timeout|timed out` would otherwise swallow it and assert a network fact that is simply untrue —
+  // the same lie this branch was just repaired to stop telling, one case over. Reachable here rather
+  // than theoretical: the RPC takes `FOR UPDATE` on the membership row, which blocks behind a
+  // concurrent co-owner grant, which is exactly what that lock is for.
+  if (/canceling statement due to statement timeout/i.test(text)) {
+    return { message: `That took too long and was cancelled, so nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
+  }
   if (/failed to fetch|networkerror|network request|network error|timeout|timed out|aborted|econnreset|load failed/i.test(text)) {
     return { message: `We could not reach the server, so we can't say whether ${personName} was removed. Try again, or reopen Team to see the current roster.`, retryable: true, reconciled: false };
   }

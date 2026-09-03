@@ -1062,23 +1062,29 @@ describe("the seventh read — an outcome nobody has seen must keep its dialog a
   const rosterB = () => workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
 
   /** Arms and confirms in Example Team, then runs `excursion` before the call settles. */
-  async function removalInFlight(excursion: (root: ReturnType<typeof mount>["root"]) => Promise<void>) {
+  async function removalInFlight(excursion: (root: ReturnType<typeof mount>["root"], hangTheRoster: () => void) => Promise<void>) {
     let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    // A roster refetch that has NOT come back yet. This is the whole window the defect lives in, and
+    // resolving it synchronously — which is what the first version of these tests did — steps over
+    // the defect rather than into it. `hangTheRoster()` is what makes them able to fail.
+    let hanging = false;
     const a = rosterA(); const b = rosterB();
     mocks.rpc.mockImplementation((name: string) => {
       if (name === "get_solo_team_workspace") {
+        if (hanging) return new Promise(() => {});
         return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? a : b, error: null });
       }
       if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
       return new Promise(() => {});
     });
+    const hangTheRoster = () => { hanging = true; };
     const { host, root, render } = mount(<SoloTeamWorkspace />);
     await render();
     await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
     await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
     await arm(host);
     await act(async () => confirmButton(host)!.click());
-    await excursion(root);
+    await excursion(root, hangTheRoster);
     return { host, root, settle: (v: { data: unknown; error: unknown }) => settle(v) };
   }
 
@@ -1090,11 +1096,17 @@ describe("the seventh read — an outcome nobody has seen must keep its dialog a
     // and the roster is mid-refetch and does not carry this member, so the dialog unmounts before a
     // single word is painted. The previous, blinder guard happened to survive this by sending the
     // refusal to the durable toast; mine did not. Every test I wrote switched away and never back.
-    const { host, root, settle } = await removalInFlight(async (root) => {
+    const { host, root, settle } = await removalInFlight(async (root, hangTheRoster) => {
       mocks.tenant.activeTenantId = "tenant-2";
       await act(async () => { root.render(<SoloTeamWorkspace />); });
+      // Back — and the roster refetch for the return trip has NOT landed. Without this the mock
+      // hands back a roster that still lists Dana, `selectedLive` is true, and the dialog survives
+      // on its own: the assertion below then passes with the defect fully reinstated, which is
+      // exactly what the read of my previous commit demonstrated about the first version of it.
+      hangTheRoster();
       mocks.tenant.activeTenantId = "tenant-1";
       await act(async () => { root.render(<SoloTeamWorkspace />); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
     });
     await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
     await act(async () => { root.render(<SoloTeamWorkspace />); });
@@ -1115,6 +1127,7 @@ describe("the seventh read — an outcome nobody has seen must keep its dialog a
     const { host, root, settle } = await removalInFlight(async (root) => {
       mocks.tenant.activeTenantId = null as unknown as string;
       await act(async () => { root.render(<SoloTeamWorkspace />); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
     });
     await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
     await act(async () => { root.render(<SoloTeamWorkspace />); });
@@ -1192,5 +1205,98 @@ describe("the seventh read — an outcome nobody has seen must keep its dialog a
     expect(alert, `the failure was reported: ${JSON.stringify(alert)}`).toMatch(/could not reach the server/i);
     expect(confirmButton(host)?.textContent?.trim(), "and a retry is offered, because this one is transient").toBe("Try again");
     expect(confirmButton(host)?.disabled, "and the retry is actually pressable").toBe(false);
+  });
+});
+
+describe("the eighth read — an unread refusal must not become a pin", () => {
+  it("lets the roster clear a member who left while a refusal was still on screen", async () => {
+    // THE REGRESSION MY PREVIOUS COMMIT INTRODUCED. I widened the parent's hold to cover
+    // `removal.error` so a refusal could not be unmounted underneath the operator. But an error
+    // state has NO time bound: an operator who reads the refusal and does not dismiss it held the
+    // editor open indefinitely — and if the member left the roster meanwhile (a co-owner removed
+    // them, a filter changed), the dialog sat over a roster without them, work fields live and
+    // "Save work details" pressable, because that button gates on `pending` and not on the error.
+    // That is the shipped-save-flow defect this file says was repaired, reached through another door.
+    const a = workspace();
+    const without = workspace({ members: [], total_members: 0 });
+    let gone = false;
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: gone ? without : a, error: null });
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+
+    // The refusal IS shown, because the member is still on the roster at this instant.
+    expect(host.querySelector('[role="alert"]')?.textContent ?? "", "the refusal is readable while they are still here").toMatch(/owner/i);
+
+    // Now they leave, and the operator has not dismissed anything.
+    gone = true;
+    await act(async () => {
+      const field = host.querySelector<HTMLInputElement>(".stw-filters input")!;
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(field, "dana");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+
+    expect(host.querySelector('[role="dialog"]'), "an unread refusal does not pin a member who is gone").toBeFalsy();
+    const save = buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""));
+    expect(save, "and no live Save survives over a roster that no longer lists them").toBeFalsy();
+  });
+
+  it("sends the refusal to the durable channel after Exit tenant, rather than offering a retry that cannot work", async () => {
+    // The dialog surviving a null tenant was the right instinct and the wrong mechanism. It kept a
+    // LIVE "Try again" on screen — `canRemove` is computed from the last known roster, so it stays
+    // true — which re-sent the old workspace id, hit the RPC's own null-tenant guard, and told a
+    // platform-staff owner who had just pressed Exit tenant that their SESSION had ended and they
+    // should sign in again. It had not, and signing in again is not what fixes it.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = workspace();
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? a : null, error: null });
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = null as unknown as string;
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const toasts = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(toasts, `the refusal still reaches the operator: ${JSON.stringify(toasts)}`).toMatch(/owner/i);
+    expect(confirmButton(host), "and no retry is left standing that the server would only refuse again").toBeFalsy();
+    expect(mocks.rpc.mock.calls.filter((c) => c[0] === "remove_solo_team_member").length, "exactly one attempt was sent").toBe(1);
+  });
+
+  it("does not call a server-decided statement timeout an unreachable server", async () => {
+    // Postgres cancels the statement and rolls the whole transaction back, so nothing was written
+    // and we can say so. The transport branch's `timeout|timed out` would otherwise swallow it and
+    // assert a network fact that is simply untrue — the same lie the transport copy was just
+    // repaired to stop telling, one case over.
+    const timedOut = removalRefusal("canceling statement due to statement timeout", "Dana Reyes", "Example Team");
+    expect(timedOut.message, "it must not claim the server was unreachable").not.toMatch(/could not reach the server/i);
+    expect(timedOut.message, "it says what is actually known: nothing changed").toMatch(/nothing changed/i);
+    expect(timedOut.retryable, "and it is worth trying again").toBe(true);
+
+    // ...while a genuinely lost response still refuses to claim the database outcome.
+    const lost = removalRefusal("TypeError: Failed to fetch", "Dana Reyes", "Example Team");
+    expect(lost.message).toMatch(/could not reach the server/i);
+    expect(lost.message, "and still does not assert what the database did").not.toMatch(/nothing changed/i);
   });
 });
