@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { tenantAccountLabel } from "@/lib/auth/accountSelection";
+import { allowAccountSwitch } from "@/lib/auth/accountSwitchGuard";
 import { toast } from "sonner";
 
 export function MemberAccountSwitcher() {
@@ -35,6 +36,12 @@ export function MemberAccountSwitcher() {
 
   const choose = async (tenantId: string, tenantName: string) => {
     if (tenantId === activeTenantId || switchingTo) return;
+    const allowed = await allowAccountSwitch({
+      fromTenantId: activeTenantId,
+      toTenantId: tenantId,
+      toTenantName: tenantName,
+    });
+    if (!allowed) return;
     setSwitchingTo(tenantId);
     const switched = await switchTenant(tenantId);
     if (!switched) {

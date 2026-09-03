@@ -3,25 +3,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
 import {
+  cleanSoloBusinessOwners,
   cleanSoloSetupBrief,
+  type SetupAccessScope,
+  type SoloBusinessOwner,
   type SoloSetupBrief,
   type SoloSetupProposal,
 } from "../settings-setup-contract";
 import { useSoloPeople, type SoloPerson } from "./useSoloPeople";
 
-type SetupRow = {
-  tenant_id?: string;
-  tenant_name?: string;
-  business_brief?: unknown;
-  pending_proposal?: unknown;
-  primary_business_email?: string | null;
-  can_edit?: boolean;
-  business_registration_number_last_4?: string | null;
-};
-
-type SaveRow = {
-  business_brief?: unknown;
-  businessRegistrationNumberLast4?: string | null;
+type ContextRow = {
+  tenantId?: string;
+  tenantName?: string;
+  brief?: unknown;
+  pendingProposal?: unknown;
+  primaryBusinessEmail?: string | null;
+  accessScope?: SetupAccessScope;
+  businessOwners?: unknown;
 };
 
 type IdentityRow = { default_email_sender?: string | null };
@@ -34,27 +32,39 @@ function proposalOf(value: unknown): SoloSetupProposal | null {
   return { id: raw.id, reason: raw.reason, proposedAt: raw.proposedAt, patch: raw.patch as Partial<SoloSetupBrief> };
 }
 
-function withRegistrationLast4(value: unknown, last4: unknown): unknown {
-  const source = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-  return {
-    ...source,
-    businessRegistrationNumberLast4: typeof last4 === "string" ? last4 : "",
-  };
+function errorMessage(value: unknown, fallback: string): string {
+  if (value && typeof value === "object" && "message" in value && typeof value.message === "string") return value.message;
+  return value instanceof Error ? value.message : fallback;
 }
+
+function isConflict(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as { code?: unknown; hint?: unknown; message?: unknown };
+  return raw.code === "40001" || raw.hint === "SETUP_CONFLICT" || String(raw.message ?? "").includes("changed in another session");
+}
+
+export type SoloSetupSaveResult =
+  | { ok: true; kind: "saved"; brief: SoloSetupBrief; businessOwners: SoloBusinessOwner[] }
+  | { ok: false; kind: "failed" | "conflict" | "stale"; error: string };
 
 export type SoloSetupBriefData = {
   loading: boolean;
   error: string | null;
   saving: boolean;
+  accessScope: SetupAccessScope;
   canEdit: boolean;
+  canEditLegal: boolean;
+  activeTenantId: string | null;
+  resolvedTenantId: string | null;
   brief: SoloSetupBrief;
+  businessOwners: SoloBusinessOwner[];
   representatives: SoloPerson[];
+  representativesLoading: boolean;
+  representativesError: string | null;
   managedSendingEmail: string | null;
   primaryBusinessEmail: string | null;
   pendingProposal: SoloSetupProposal | null;
-  save: (brief: SoloSetupBrief, proposalId: string | null) => Promise<{ ok: boolean; error?: string }>;
+  save: (brief: SoloSetupBrief, businessOwners: SoloBusinessOwner[], proposalId: string | null) => Promise<SoloSetupSaveResult>;
   dismissProposal: (proposalId: string) => Promise<{ ok: boolean; error?: string }>;
   refresh: () => void;
 };
@@ -63,23 +73,42 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
   const { activeTenantId } = useTenantContext();
   const people = useSoloPeople();
   const gate = useRef(createSettingsRequestGate());
+  const saveEpoch = useRef(0);
+  const activeTenantRef = useRef(activeTenantId);
+  activeTenantRef.current = activeTenantId;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
+  const [accessScope, setAccessScope] = useState<SetupAccessScope>("read_only");
   const [resolvedTenantId, setResolvedTenantId] = useState<string | null>(null);
   const [brief, setBrief] = useState(() => cleanSoloSetupBrief(null));
+  const [businessOwners, setBusinessOwners] = useState<SoloBusinessOwner[]>([]);
   const [managedSendingEmail, setManagedSendingEmail] = useState<string | null>(null);
   const [primaryBusinessEmail, setPrimaryBusinessEmail] = useState<string | null>(null);
   const [pendingProposal, setPendingProposal] = useState<SoloSetupProposal | null>(null);
 
+  const acceptContext = useCallback((row: ContextRow, expectedTenantId: string) => {
+    if (row.tenantId !== expectedTenantId) throw new Error("The active workspace could not be resolved safely.");
+    setBrief(cleanSoloSetupBrief(row.brief, row.tenantName ?? ""));
+    setBusinessOwners(cleanSoloBusinessOwners(row.businessOwners));
+    setPendingProposal(proposalOf(row.pendingProposal));
+    setResolvedTenantId(row.tenantId ?? null);
+    setAccessScope(["owner_full", "admin_operational", "read_only"].includes(String(row.accessScope))
+      ? row.accessScope as SetupAccessScope
+      : "read_only");
+    setPrimaryBusinessEmail(row.primaryBusinessEmail?.trim() || null);
+  }, []);
+
   const load = useCallback(async () => {
     const token = gate.current.begin();
+    saveEpoch.current += 1;
+    setSaving(false);
     setLoading(true);
     setError(null);
-    setCanEdit(false);
+    setAccessScope("read_only");
     setResolvedTenantId(null);
     setBrief(cleanSoloSetupBrief(null));
+    setBusinessOwners([]);
     setPendingProposal(null);
     setManagedSendingEmail(null);
     setPrimaryBusinessEmail(null);
@@ -88,34 +117,27 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
       return;
     }
     try {
-      const [briefResult, identityResult] = await Promise.all([
-        // Migration-backed canonical Setup + legal-sender read. Generated types refresh after apply.
+      const [contextResult, identityResult] = await Promise.all([
+        // Migration-backed canonical Setup read. Generated types refresh after apply.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).rpc("get_solo_setup_identity"),
+        (supabase as any).rpc("get_solo_setup_context"),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).rpc("resolve_tenant_domain_identity"),
       ]);
       if (!gate.current.isCurrent(token)) return;
-      if (briefResult.error) throw briefResult.error;
-      const row = (Array.isArray(briefResult.data) ? briefResult.data[0] : briefResult.data) as SetupRow | null;
+      if (contextResult.error) throw contextResult.error;
+      const row = (Array.isArray(contextResult.data) ? contextResult.data[0] : contextResult.data) as ContextRow | null;
       const identity = (Array.isArray(identityResult.data) ? identityResult.data[0] : identityResult.data) as IdentityRow | null;
-      if (!row || row.tenant_id !== activeTenantId) throw new Error("The active workspace could not be resolved safely.");
-      setBrief(cleanSoloSetupBrief(
-        withRegistrationLast4(row.business_brief, row.business_registration_number_last_4),
-        row.tenant_name ?? "",
-      ));
-      setPendingProposal(proposalOf(row.pending_proposal));
-      setResolvedTenantId(row.tenant_id ?? null);
-      setCanEdit(row.can_edit === true);
-      setPrimaryBusinessEmail(row.primary_business_email?.trim() || null);
+      if (!row) throw new Error("The active workspace could not be resolved safely.");
+      acceptContext(row, activeTenantId);
       setManagedSendingEmail(identityResult.error ? null : identity?.default_email_sender?.trim() || null);
     } catch (caught) {
       if (!gate.current.isCurrent(token)) return;
-      setError(caught instanceof Error ? caught.message : "Couldn't load this business brief.");
+      setError(errorMessage(caught, "Couldn't load this business brief."));
     } finally {
       if (gate.current.isCurrent(token)) setLoading(false);
     }
-  }, [activeTenantId]);
+  }, [acceptContext, activeTenantId]);
 
   useEffect(() => {
     const activeGate = gate.current;
@@ -123,34 +145,56 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
     return () => activeGate.clear();
   }, [load]);
 
-  const canEditCurrentTenant = canEdit && Boolean(activeTenantId) && resolvedTenantId === activeTenantId;
+  const canEditCurrentTenant = accessScope !== "read_only"
+    && Boolean(activeTenantId)
+    && resolvedTenantId === activeTenantId;
+  const tenantResolved = Boolean(activeTenantId) && resolvedTenantId === activeTenantId;
 
-  const save = useCallback(async (next: SoloSetupBrief, proposalId: string | null) => {
-    if (!activeTenantId) return { ok: false, error: "No active workspace." };
-    if (!canEditCurrentTenant) return { ok: false, error: "This workspace has not resolved safely for editing." };
+  const save = useCallback(async (
+    next: SoloSetupBrief,
+    nextOwners: SoloBusinessOwner[],
+    proposalId: string | null,
+  ): Promise<SoloSetupSaveResult> => {
+    const tenantAtStart = activeTenantId;
+    if (!tenantAtStart) return { ok: false, kind: "failed", error: "No active workspace." };
+    if (!canEditCurrentTenant) {
+      return { ok: false, kind: "failed", error: "This workspace has not resolved safely for editing." };
+    }
+    const epoch = ++saveEpoch.current;
     setSaving(true);
     try {
-      // Atomic seam: general business brief + legal profile + vaulted registration number.
+      // One transaction writes the general brief, protected legal overlay, and
+      // business ownership records, then returns the canonical stored readback.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: saveError } = await (supabase as any).rpc("save_solo_setup_identity", {
+      const { data, error: saveError } = await (supabase as any).rpc("save_solo_setup_context", {
         _brief: next,
+        _business_owners: nextOwners,
         _expected_updated_at: brief.updatedAt ?? null,
         _proposal_id: proposalId,
       });
       if (saveError) throw saveError;
-      const row = (data ?? {}) as SaveRow;
-      setBrief(cleanSoloSetupBrief(withRegistrationLast4(
-        row.business_brief,
-        row.businessRegistrationNumberLast4,
-      )));
-      if (proposalId) setPendingProposal(null);
-      return { ok: true };
+      if (epoch !== saveEpoch.current || activeTenantRef.current !== tenantAtStart) {
+        return { ok: false, kind: "stale", error: "The account changed before this save response returned. Its result was not shown here." };
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as ContextRow | null;
+      if (!row) throw new Error("The save completed without a readable workspace record.");
+      acceptContext(row, tenantAtStart);
+      const storedBrief = cleanSoloSetupBrief(row.brief, row.tenantName ?? "");
+      const storedOwners = cleanSoloBusinessOwners(row.businessOwners);
+      return { ok: true, kind: "saved", brief: storedBrief, businessOwners: storedOwners };
     } catch (caught) {
-      return { ok: false, error: caught instanceof Error ? caught.message : "Couldn't save your business brief." };
+      if (epoch !== saveEpoch.current || activeTenantRef.current !== tenantAtStart) {
+        return { ok: false, kind: "stale", error: "The account changed before this save response returned. Its result was not shown here." };
+      }
+      return {
+        ok: false,
+        kind: isConflict(caught) ? "conflict" : "failed",
+        error: errorMessage(caught, "Couldn't save your business brief."),
+      };
     } finally {
-      setSaving(false);
+      if (epoch === saveEpoch.current) setSaving(false);
     }
-  }, [activeTenantId, brief.updatedAt, canEditCurrentTenant]);
+  }, [acceptContext, activeTenantId, brief.updatedAt, canEditCurrentTenant]);
 
   const dismissProposal = useCallback(async (proposalId: string) => {
     if (!canEditCurrentTenant) return { ok: false, error: "This workspace has not resolved safely for editing." };
@@ -161,17 +205,24 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
       setPendingProposal(null);
       return { ok: true };
     } catch (caught) {
-      return { ok: false, error: caught instanceof Error ? caught.message : "Couldn't dismiss this suggestion." };
+      return { ok: false, error: errorMessage(caught, "Couldn't dismiss this suggestion.") };
     }
   }, [canEditCurrentTenant]);
 
   return {
-    loading: loading || people.loading,
-    error: error || people.error,
+    loading: loading || people.loading || !tenantResolved,
+    error: tenantResolved ? error : null,
     saving,
+    accessScope,
     canEdit: canEditCurrentTenant,
-    brief,
-    representatives: people.people,
+    canEditLegal: accessScope === "owner_full" && canEditCurrentTenant,
+    activeTenantId,
+    resolvedTenantId,
+    brief: tenantResolved ? brief : cleanSoloSetupBrief(null),
+    businessOwners: tenantResolved ? businessOwners : [],
+    representatives: tenantResolved ? people.people.filter((person) => person.status === "Active") : [],
+    representativesLoading: people.loading,
+    representativesError: people.error,
     managedSendingEmail,
     primaryBusinessEmail,
     pendingProposal,

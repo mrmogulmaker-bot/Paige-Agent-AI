@@ -1589,6 +1589,31 @@ metadata, explicitly labelled, never promoted to a billing column, and **null on
 228 rows** because those calls were never priced upstream. The key is always present so the absence
 is stated. See the decision log entry for MET1.
 
+### Platform Billing — Foundation A seams (branch `claude/billing-foundation-a`, PR #816) — **NOT LIVE**
+
+**§66, same commit as the ship — recorded as PENDING, not as shipped.** Nothing owner-visible
+ships in A (the Solo Billing screen is Foundation C). What changes per tier is the set of
+Paige-callable billing seams (§10) and who they refuse; the rows below say what the migration
+`20261045000000` will enforce once it is merged under Gate B and persisted on prod. Until that
+confirmation lands (deploy-migrations `db-live` tag, objects queried on prod), every cell is a
+design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants) — never "live".
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| `get_workspace_billing_authority()` (the one read; never a Stripe id) | `scope=none` (act-as pointer with no seat resolves to nothing) | `scope=agency`, everything `not_applicable` | `scope=enterprise`, `not_applicable` | `can_manage_billing` / `can_view_billing` = true; mapping state absent / ambiguous / mapped | false / false; state still truthful | `scope=sub_account`, `not_applicable` | non-owner path (false) or `scope=none` | EXECUTE revoked |
+| `platform-billing-portal` (hosted Stripe portal, flag default OFF) | `no_active_workspace` | `not_applicable_scope` | `not_applicable_scope` | the only allowed caller (and only when `mapped`, flag on, keys named) | `owner_only` | `not_applicable_scope` | `owner_only` / `no_active_workspace` | 401 |
+| `platform_billing_contact_designate` / `_revoke` (primary billing contact = verified current Owner; billing delegate = verified current Admin) | `no_active_workspace` | `billing_not_applicable` | `billing_not_applicable` | ✓ (Owner-only, audited) | `billing_workspace_owner_only` | `billing_not_applicable` | `billing_workspace_owner_only` | EXECUTE revoked |
+| `get_workspace_billing_contacts()` (Owner-only view; no email column) | `no_active_workspace` | `billing_not_applicable` | `billing_not_applicable` | ✓ | `billing_workspace_owner_only` (never an empty set) | `billing_not_applicable` | `billing_workspace_owner_only` | EXECUTE revoked |
+| `platform_billing_paid_activation_ready(tenant)` (R19 gate; **no caller yet**) | ✓ (operator) | 42501 | 42501 | 42501 | 42501 | 42501 | 42501 | EXECUTE revoked |
+| `platform_billing_account_reconcile()` (backfill; ambiguous/shared RETURNED, never inserted) | ✓ (operator / service) | 42501 | 42501 | 42501 | 42501 | 42501 | 42501 | EXECUTE revoked |
+| Tables `platform_billing_accounts` / `_contacts` / `_notification_log` (direct SELECT) | operator read (RLS) | 0 rows | 0 rows | 0 rows | 0 rows | 0 rows | 0 rows | no grant |
+
+**Receive / view / manage are three permissions, enforced separately.** A billing delegate reads
+`receives_billing_notices=true` and nothing else; `can_view_billing` / `can_manage_billing` stay
+Owner-only. **No delivery exists:** "receives" means designated, not delivered to. **Neither
+designation creates, changes, transfers, implies, or records legal ownership, equity, corporate or
+trust ownership, trustee or co-owner status** (owner ruling R27, 2026-09-02).
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

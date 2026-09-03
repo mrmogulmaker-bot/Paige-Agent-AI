@@ -1,0 +1,23 @@
+# Team Ownership & Authority Lifecycle handoff
+
+**Status: UNAVAILABLE / future Team workstream.**
+
+Solo Setup now records owner-provided business ownership facts and may designate an existing active
+Team person as a human representative. Those facts never create a Team member, invite anyone, grant
+Admin, grant workspace Owner, change an existing role, or transfer platform authority.
+
+An owner who needs to grant or transfer actual workspace authority must be routed to this future
+Team-owned lifecycle. That workstream must define, at minimum:
+
+- Current-owner authentication and reauthentication requirements
+- Recipient eligibility and active membership requirements
+- Acceptance, cancellation, expiry, retry, and recovery states
+- Single-owner versus multi-owner rules
+- Server-enforced role transition and rollback behavior
+- Notification and attributable outcome contracts
+- Billing, legal, and provider dependencies without letting any one of them silently imply access
+- Tenant-switch and stale-request protection
+- Owner-visible audit/Rail treatment through the established shared contracts
+
+Setup must not implement any of those transitions. Business ownership percentages are optional
+owner-provided facts, are not legal validation, and never imply that stored interests total 100%.

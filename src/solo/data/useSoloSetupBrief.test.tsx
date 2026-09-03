@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { useSoloSetupBrief } from "./useSoloSetupBrief";
@@ -8,6 +8,7 @@ import { useSoloSetupBrief } from "./useSoloSetupBrief";
 const testState = vi.hoisted(() => ({
   tenantId: "tenant-a",
   pending: [] as Array<{ tenantId: string; resolve: (value: unknown) => void }>,
+  saves: [] as Array<{ tenantId: string; resolve: (value: unknown) => void }>,
 }));
 
 vi.mock("@/hooks/useTenantContext", () => ({
@@ -22,9 +23,13 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: vi.fn((name: string) => {
       if (name === "resolve_tenant_domain_identity") return Promise.resolve({ data: null, error: null });
-      if (name === "get_solo_setup_identity") {
+      if (name === "get_solo_setup_context") {
         const tenantId = testState.tenantId;
         return new Promise((resolve) => testState.pending.push({ tenantId, resolve }));
+      }
+      if (name === "save_solo_setup_context") {
+        const tenantId = testState.tenantId;
+        return new Promise((resolve) => testState.saves.push({ tenantId, resolve }));
       }
       return Promise.resolve({ data: null, error: null });
     }),
@@ -33,7 +38,16 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 function Probe() {
   const data = useSoloSetupBrief();
-  return <button type="button" disabled={!data.canEdit}>{data.brief.publicName || "Unresolved"}</button>;
+  return <button type="button" data-loading={data.loading} disabled={!data.canEdit}>{data.brief.publicName || "Unresolved"}</button>;
+}
+
+function SaveProbe() {
+  const data = useSoloSetupBrief();
+  const [result, setResult] = useState("Ready");
+  return <button type="button" data-saving={data.saving} disabled={!data.canEdit} onClick={async () => {
+    const saved = await data.save(data.brief, data.businessOwners, null);
+    setResult(saved.kind);
+  }}>{data.loading ? "Loading" : result}</button>;
 }
 
 describe("useSoloSetupBrief tenant gate", () => {
@@ -54,7 +68,7 @@ describe("useSoloSetupBrief tenant gate", () => {
 
     await act(async () => {
       testState.pending[0].resolve({
-        data: { tenant_id: "tenant-a", tenant_name: "Business A", business_brief: { publicName: "Business A" }, can_edit: true },
+        data: { tenantId: "tenant-a", tenantName: "Business A", brief: { publicName: "Business A" }, accessScope: "owner_full", businessOwners: [] },
         error: null,
       });
       await Promise.resolve();
@@ -64,7 +78,7 @@ describe("useSoloSetupBrief tenant gate", () => {
 
     await act(async () => {
       testState.pending[1].resolve({
-        data: { tenant_id: "tenant-b", tenant_name: "Business B", business_brief: { publicName: "Business B" }, can_edit: true },
+        data: { tenantId: "tenant-b", tenantName: "Business B", brief: { publicName: "Business B" }, accessScope: "owner_full", businessOwners: [] },
         error: null,
       });
       await Promise.resolve();
@@ -72,6 +86,63 @@ describe("useSoloSetupBrief tenant gate", () => {
     expect(host.textContent).toBe("Business B");
     expect(host.querySelector("button")?.disabled).toBe(false);
 
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("classifies a durable-write conflict without claiming success", async () => {
+    testState.tenantId = "tenant-a";
+    testState.pending.length = 0;
+    testState.saves.length = 0;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<SaveProbe />));
+    await act(async () => {
+      testState.pending[0].resolve({
+        data: { tenantId: "tenant-a", tenantName: "Business A", brief: { publicName: "Business A", updatedAt: "v1" }, accessScope: "owner_full", businessOwners: [] },
+        error: null,
+      });
+      await Promise.resolve();
+    });
+    await act(async () => host.querySelector("button")?.click());
+    await act(async () => {
+      testState.saves[0].resolve({ data: null, error: { code: "40001", hint: "SETUP_CONFLICT", message: "This brief changed in another session." } });
+      await Promise.resolve();
+    });
+    expect(host.textContent).toBe("conflict");
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("drops a save response that returns after the active account changes", async () => {
+    testState.tenantId = "tenant-a";
+    testState.pending.length = 0;
+    testState.saves.length = 0;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<SaveProbe />));
+    await act(async () => {
+      testState.pending[0].resolve({
+        data: { tenantId: "tenant-a", tenantName: "Business A", brief: { publicName: "Business A", updatedAt: "v1" }, accessScope: "owner_full", businessOwners: [] },
+        error: null,
+      });
+      await Promise.resolve();
+    });
+    await act(async () => host.querySelector("button")?.click());
+    testState.tenantId = "tenant-b";
+    await act(async () => root.render(<SaveProbe />));
+    expect(host.querySelector("button")?.getAttribute("data-saving")).toBe("false");
+    await act(async () => {
+      testState.saves[0].resolve({
+        data: { tenantId: "tenant-a", tenantName: "Business A", brief: { publicName: "Old response", updatedAt: "v2" }, accessScope: "owner_full", businessOwners: [] },
+        error: null,
+      });
+      await Promise.resolve();
+    });
+    expect(host.textContent).not.toContain("saved");
+    expect(host.textContent).not.toContain("Old response");
     await act(async () => root.unmount());
     host.remove();
   });

@@ -6,6 +6,42 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0c. A migration numbered at "the next free slot" collides the moment `main` moves (2026-09-03)
+
+- **Symptom:** Billing Foundation A's migration was `20261044000000`; while the branch was under review
+  `main` merged an unrelated `20261044000000_rail_authority_…`. CI's `database-contract` job
+  (`supabase db reset` on the PR's MERGE ref) failed with a duplicate `schema_migrations` key — after
+  the migration itself had applied cleanly. Had it merged, `deploy-migrations.yml` would have hit the
+  same key on prod.
+- **Root cause:** a version chosen from the branch's view of `main` at branch time; the two-dot diff
+  against a moved `main` also hides the collision (the other file looks like "main added a file").
+- **Rule:** before every push of a migration branch, `git fetch origin main` and compare the version
+  against `git ls-tree origin/main supabase/migrations`; renumber to a free version (content unchanged,
+  `\i` lines / parity-test paths / registry rows follow). Treat the `database-contract` job as the
+  canary it is — it applies the merge ref, which is the only place the collision is visible.
+
+## 0d. Proof-authoring traps in a `BEGIN … ROLLBACK` role-impersonating SQL proof (2026-09-02)
+
+Each cost one failed run on prod (rollback, nothing persisted) before it was written down:
+- `INSERT INTO auth.users` already creates the `profiles` shell (`handle_new_user`) — seed the pointer
+  with `UPDATE`, not `INSERT`.
+- `trg_guard_active_tenant` refuses `profiles.active_tenant_id` pointed at a workspace where the user
+  holds no seat — to fixture an "act-as with no seat" shape, seed the seat, set the pointer, delete the seat.
+- `set_config('request.jwt.claims', …, true)` OUTLIVES `SET LOCAL ROLE`/`RESET ROLE` — clear it
+  explicitly (`'{}'`) or the next block runs as the previous user.
+- Temp tables need `GRANT` to the impersonated roles (`authenticated`, `anon`) or every property
+  written under them fails on the report table, not on the thing under test.
+- `ROLLBACK TO SAVEPOINT` discards the result rows a mutant wrote — un-mutate explicitly
+  (`CREATE OR REPLACE` the original) instead of rolling the savepoint back.
+- A property that is "0 rows visible" is vacuous unless a sibling proves the row EXISTS to the owning
+  role (P52 needed P55).
+- **The batch you RAN is not the file you COMMITTED unless you re-derive it.** The MCP runner takes a
+  derived batch (`\i` expanded, `RAISE NOTICE` swapped for a report row). A fix applied to the derived
+  copy in `/tmp` and not to the committed mutants file left the repo carrying a subquery that fails
+  `42P01` — caught by the compliance reviewer's parity check, not by the green prod run. Rule: fix the
+  committed file first, re-derive the batch from it, and diff the two (non-comment lines) before
+  quoting the run as proof of the file.
+
 ## 0a. Ruling-conversion discipline — don't re-open a ruling as options (D7, 2026-08-11)
 
 - **Symptom:** the owner ruled D7 (Option A, direct C-Corp conversion, standalone, no holdco). CC's §37

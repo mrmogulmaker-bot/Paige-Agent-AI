@@ -360,6 +360,9 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.platform-subscription-checkout]
     verify_jwt = true
 
+  [functions.platform-billing-portal]
+    verify_jwt = true
+
   # #131 — paige-tts: per-message chat voice PLAYBACK. JWT-gated (default posture, but declared
   # explicitly so it reads clearly next to the verify_jwt=false voice pipes voice-twiml / paige-stt).
   # A normal authenticated fetch from the chat UI carries the caller's session; the tenant is derived

@@ -1,5 +1,21 @@
 export type SetupFactSource = "owner_confirmed" | "connection_sourced" | "needs_confirmation";
 export type SetupFactConfidence = "confirmed" | "observed" | "unknown";
+export type SetupAccessScope = "owner_full" | "admin_operational" | "read_only";
+export type SetupSourceDecision = "adopt" | "override";
+
+export type SoloBusinessOwner = {
+  id: string;
+  ownerKind: "individual" | "company" | "trust" | "other_legal_person";
+  legalName: string;
+  displayName: string;
+  ownershipInterest: string;
+  effectiveDate: string;
+  status: "active" | "former" | "pending" | "other";
+  representativeUserId: string;
+  provenance?: Partial<Record<"ownerKind" | "legalName" | "displayName" | "ownershipInterest" | "effectiveDate" | "status" | "representativeUserId", SetupFactProvenance>>;
+  sourceDecision?: SetupSourceDecision;
+  deleteRequested?: boolean;
+};
 
 export type SetupFactProvenance = {
   source: SetupFactSource;
@@ -76,16 +92,16 @@ export const EMPTY_SOLO_SETUP_BRIEF: SoloSetupBrief = {
   sicCode: "",
   entityType: "",
   stateOfFormation: "",
-  businessRegistrationIdentifier: "EIN",
+  businessRegistrationIdentifier: "",
   businessRegistrationNumber: "",
   businessRegistrationNumberLast4: "",
-  regionsOfOperation: "USA_AND_CANADA",
+  regionsOfOperation: "",
   registeredStreet: "",
   registeredStreetSecondary: "",
   registeredCity: "",
   registeredRegion: "",
   registeredPostalCode: "",
-  registeredIsoCountry: "US",
+  registeredIsoCountry: "",
   authorizedRepresentativePhone: "",
   authorizedRepresentativeJobPosition: "",
   offers: "",
@@ -153,10 +169,24 @@ export function cleanSoloSetupBrief(value: unknown, fallbackName = ""): SoloSetu
   return brief;
 }
 
-export function validateSoloSetupBrief(brief: SoloSetupBrief): Partial<Record<SoloSetupTextField | "businessRegistrationNumber" | "authorizedRepresentativeUserId", string>> {
+export function validateSoloSetupBrief(
+  brief: SoloSetupBrief,
+  legalSenderExists = false,
+): Partial<Record<SoloSetupTextField | "businessRegistrationNumber" | "authorizedRepresentativeUserId", string>> {
   const errors: Partial<Record<SoloSetupTextField | "businessRegistrationNumber" | "authorizedRepresentativeUserId", string>> = {};
   if (![brief.legalName, brief.publicName, brief.dbaName].some((value) => value.trim())) {
     errors.publicName = "Add at least one legal, public, or doing-business-as business name.";
+  }
+  const hasLegalSenderContext = Boolean(
+    brief.businessRegistrationNumberLast4 || brief.businessRegistrationNumber ||
+    ["entityType", "stateOfFormation", "businessRegistrationIdentifier", "regionsOfOperation",
+      "registeredStreet", "registeredStreetSecondary", "registeredCity", "registeredRegion",
+      "registeredPostalCode", "registeredIsoCountry", "authorizedRepresentativePhone",
+      "authorizedRepresentativeJobPosition", "authorizedRepresentativeUserId"]
+      .some((field) => String(brief[field as keyof SoloSetupBrief] ?? "").trim()),
+  );
+  if ((hasLegalSenderContext || legalSenderExists) && !brief.legalName.trim()) {
+    errors.legalName = "Add the legal business name before saving legal sender details.";
   }
   if (brief.website.trim()) {
     try {
@@ -179,8 +209,8 @@ export function validateSoloSetupBrief(brief: SoloSetupBrief): Partial<Record<So
   if ((brief.authorizedRepresentativePhone ?? "").trim() && !/^\+[1-9]\d{7,14}$/.test((brief.authorizedRepresentativePhone ?? "").trim())) {
     errors.authorizedRepresentativePhone = "Use a complete E.164 phone number, including + and country code.";
   }
-  if ((brief.registeredRegion ?? "").trim() && (brief.registeredRegion ?? "").trim().length !== 2) {
-    errors.registeredRegion = "Use the two-letter state or province abbreviation.";
+  if ((brief.registeredRegion ?? "").trim() && (brief.registeredRegion ?? "").trim().length > 120) {
+    errors.registeredRegion = "Use a state, province, territory, or region no longer than 120 characters.";
   }
   if ((brief.registeredIsoCountry ?? "").trim() && !/^[A-Za-z]{2}$/.test((brief.registeredIsoCountry ?? "").trim())) {
     errors.registeredIsoCountry = "Use a two-letter ISO country code.";
@@ -191,12 +221,24 @@ export function validateSoloSetupBrief(brief: SoloSetupBrief): Partial<Record<So
   return errors;
 }
 
-export function prepareOwnerConfirmedBrief(brief: SoloSetupBrief, confirmedAt = new Date().toISOString()): SoloSetupBrief {
+export function prepareOwnerConfirmedBrief(
+  brief: SoloSetupBrief,
+  confirmedAt = new Date().toISOString(),
+  original?: SoloSetupBrief,
+  sourceDecisions: Partial<Record<SoloSetupTextField, SetupSourceDecision>> = {},
+): SoloSetupBrief & { sourceDecisions?: Partial<Record<SoloSetupTextField, SetupSourceDecision>> } {
   const cleaned = cleanSoloSetupBrief(brief);
   cleaned.businessRegistrationNumber = (brief.businessRegistrationNumber ?? "").trim();
   const provenance: SoloSetupBrief["provenance"] = {};
   for (const field of SOLO_SETUP_TEXT_FIELDS) {
-    if (cleaned[field]) provenance[field] = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
+    if (!cleaned[field]) continue;
+    const prior = original?.provenance[field];
+    const unchanged = original ? cleaned[field] === original[field] : false;
+    if (unchanged && prior && sourceDecisions[field] !== "adopt") {
+      provenance[field] = prior;
+    } else {
+      provenance[field] = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
+    }
   }
   if (cleaned.representativeUserIds.length) {
     provenance.representatives = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
@@ -204,7 +246,50 @@ export function prepareOwnerConfirmedBrief(brief: SoloSetupBrief, confirmedAt = 
   if (cleaned.authorizedRepresentativeUserId) {
     provenance.authorizedRepresentative = { source: "owner_confirmed", confidence: "confirmed", confirmedAt };
   }
-  return { ...cleaned, provenance };
+  return {
+    ...cleaned,
+    provenance,
+    ...(Object.keys(sourceDecisions).length ? { sourceDecisions } : {}),
+  };
+}
+
+export function cleanSoloBusinessOwners(value: unknown): SoloBusinessOwner[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): SoloBusinessOwner[] => {
+    if (!isRecord(item)) return [];
+    const ownerKind = String(item.ownerKind ?? "");
+    const status = String(item.status ?? "active");
+    if (!["individual", "company", "trust", "other_legal_person"].includes(ownerKind)) return [];
+    if (!["active", "former", "pending", "other"].includes(status)) return [];
+    return [{
+      id: typeof item.id === "string" ? item.id : "",
+      ownerKind: ownerKind as SoloBusinessOwner["ownerKind"],
+      legalName: typeof item.legalName === "string" ? item.legalName.trim() : "",
+      displayName: typeof item.displayName === "string" ? item.displayName.trim() : "",
+      ownershipInterest: item.ownershipInterest == null ? "" : String(item.ownershipInterest),
+      effectiveDate: typeof item.effectiveDate === "string" ? item.effectiveDate : "",
+      status: status as SoloBusinessOwner["status"],
+      representativeUserId: typeof item.representativeUserId === "string" ? item.representativeUserId : "",
+      provenance: isRecord(item.provenance) ? item.provenance as SoloBusinessOwner["provenance"] : {},
+      ...((item.sourceDecision === "adopt" || item.sourceDecision === "override") ? { sourceDecision: item.sourceDecision } : {}),
+      ...(item.deleteRequested === true ? { deleteRequested: true } : {}),
+    }];
+  });
+}
+
+export function validateSoloBusinessOwners(owners: SoloBusinessOwner[]): Record<string, string> {
+  const errors: Record<string, string> = {};
+  owners.forEach((owner, index) => {
+    if (owner.deleteRequested) return;
+    if (!owner.legalName.trim()) errors[`${index}.legalName`] = "Add the legal name for this business owner.";
+    if (owner.ownershipInterest.trim()) {
+      const value = Number(owner.ownershipInterest);
+      if (!Number.isFinite(value) || value < 0 || value > 100) {
+        errors[`${index}.ownershipInterest`] = "Enter a percentage from 0 to 100, or leave it blank.";
+      }
+    }
+  });
+  return errors;
 }
 
 export function applySetupProposal(current: SoloSetupBrief, proposal: SoloSetupProposal): SoloSetupBrief {
