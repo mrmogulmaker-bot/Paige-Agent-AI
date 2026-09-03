@@ -501,6 +501,31 @@ if (process.argv.includes("--self-test")) {
   check("R4 destructuring ASSIGNMENT of from", claimTouches("let table; ({ from: table } = client); table(\"x\");").length, 1);
   check("R4 still ignores a record that merely NAMES rpc", claimTouches("const doc = { rpc: \"documented\" };").length, 0);
   check("R1 ignores an unrelated destructured key", doorBranches("const { tenantId } = caller; return tenantId;").length, 0);
+
+  // R2 AND R3 SWEPT FOR THE SAME BLIND SPOT, after it was found in R1 and then in R4.
+  //
+  // It is NOT there — neither rule reads a destructurable expression: R2 reads module specifiers
+  // and R3 reads type members. That is a negative result, and it is asserted rather than merely
+  // concluded, because "I checked once" and "CI checks forever" are different guarantees and this
+  // stack has already lost a helper to a silent deletion no test noticed.
+  for (const [label, decl] of [
+    ["a plain boolean", `export type GovernedApproval = { confirm: boolean };`],
+    ["a QUOTED key", `export type GovernedApproval = { "confirm": boolean };`],
+    ["an OPTIONAL boolean", `export type GovernedApproval = { confirm?: boolean };`],
+    ["a COMPUTED key", `export type GovernedApproval = { ["confirm"]: boolean };`],
+    ["a UNION containing boolean", `export type GovernedApproval = { confirm: string | boolean };`],
+    ["an INTERFACE declaration", `export interface GovernedApproval { confirm: boolean }`],
+  ]) {
+    check(`R3 sees a boolean through ${label}`,
+      Number(booleanApprovalFields(decl, "t.ts").fields.some((f) => f.startsWith("confirm"))), 1);
+  }
+  for (const [label, src] of [
+    ["an import", `import { x } from "../toolConfirmation.ts";`],
+    ["an export-from", `export { x } from "../toolConfirmation.ts";`],
+    ["a DYNAMIC import", `const g = await import("../toolConfirmation.ts");`],
+    ["a require", `const g = require("../toolConfirmation.ts");`],
+  ]) check(`R2 sees the superseded gate through ${label}`, Number(importsGate(src, "t.ts")), 1);
+  check("R2 ignores an unrelated module", Number(importsGate(`import { x } from "./other.ts";`, "t.ts")), 0);
   check("R1 allows the audit assignment", doorBranches("const audit = { door: caller.door, decision };").length, 0);
   check("R1 allows a type declaration", doorBranches("export type C = { door: GovernedDoor };").length, 0);
   check("R1 ignores the word in prose", doorBranches('// a different door === ever\nconst a = 1;').length, 0);
