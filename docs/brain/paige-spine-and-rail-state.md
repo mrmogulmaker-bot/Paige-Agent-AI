@@ -133,8 +133,43 @@ Remediated by `20261043000000` (#795): the role is read from an active `tenant_m
 **same** `v_tenant` the rows come from, so the two clauses now agree about which workspace they mean.
 Verified on production — the deployed body no longer contains `has_any_role`.
 
+**Scope that claim to the READER it was written about. It is not a Rail-wide all-clear, and reading
+it as one is how this record would start asserting something the platform has not earned.** Verified
+against the deployed bodies on 2026-09-03:
+
+| Rail function | Kind | Carries `has_any_role`? | Refuses explicitly? |
+|---|---|---|---|
+| `get_solo_rail_activity` | reader | no | yes — `42501`, since `20261042000000` |
+| `get_client_rail` | reader | no — removed by `20261044000000` | yes — `42501` |
+| `get_client_rail_for_chat` | reader | no — added correct in `20261044000000` | yes — `42501` |
+| `get_platform_rail` | reader | **never did** — it gates on `is_platform_owner()` | yes — `42501`, since `20261049000000` |
+| `record_rail_event` | **writer** | **YES, still** | yes, but see below |
+
+So the accurate statement, and the one to quote instead of line 134 alone: **no Rail READER carries
+`has_any_role`, and no Rail reader answers a denial with an empty set.** The WRITER is the exception
+on the first count, and it is tracked as **#824** — parked, unassigned.
+
+**`get_platform_rail` was a different defect from #794 and must not be filed under it.** It never had
+the global-role trap; its gate was always correct and no unauthorized caller ever received a row from
+it. What it did wrong was answer a denial with `RETURN;`, so a refused caller could not tell *"you may
+not see this"* from *"the platform Rail is empty."* Repaired by `20261049000000` (#834), which changed
+only the shape of the refusal — the authority stays `is_platform_owner()` (super_admin only, §53) and
+was deliberately **not** widened to `is_platform_operator()`.
+
+**The writer's severity is NOT the reader's, and copying it across would overstate #824.**
+`record_rail_event` confines every write with `PERFORM 1 FROM public.clients c WHERE c.id =
+p_contact_id AND c.tenant_id = v_tenant`, raising `contact not in tenant`, so the **cross-tenant**
+version is blocked. What survives is the **member→staff escalation inside one workspace** — the same
+shape as #794, on the write path, and an integrity/attribution exposure rather than a disclosure one.
+Its sharpest form is `p_narrow_to_owner = true`, which yields `audience='owner'` /
+`visibility='owner_internal'`: a plain member could file into the owner's private feed.
+
 **Measured exposure, stated honestly:** 3 users hold a global staff role across multiple tenants;
-**0** currently sit at a non-staff seat. Structurally live, never reached. That was not a reason to
+**0** currently sit at a non-staff seat. Structurally live, never reached. **Re-measured 2026-09-03
+for the writer's population** — 9 users hold a global staff role *at all*, and **0** of them sit at a
+non-staff seat in any workspace, so the escalation population is empty on both paths. The 9 and the 3
+answer different questions (held-at-all vs. held-across-multiple-tenants) and are not in conflict; the
+figure that governs is the zero, which agrees. That was not a reason to
 downgrade the repair — the path opens the moment any global-role holder is invited as a plain member
 elsewhere, which is ordinary.
 
