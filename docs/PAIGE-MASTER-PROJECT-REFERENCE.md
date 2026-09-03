@@ -3141,3 +3141,52 @@ of 13; deal activity `PARTIAL` with no derivable aggregate; revenue / velocity /
 The packet also names **what would reopen the decision** — a deal population where movement is
 measurable, or tenant commerce actually configured — so this is a decision with a trigger rather
 than a permanent no.
+
+### PAIGE's CRM tools now bind to the conversation's own workspace (2026-09-03, #892)
+
+**LIVE on prod.** `main` = `edge-live` = `d7ecc4a7`, zero edge drift; `deploy-edge-functions`
+green; the deployed `paige-ai-chat` carries the guard at L9029 calling
+`supabaseClient.rpc("current_user_tenant_id")`, with no service-role call to that RPC anywhere in
+the file.
+
+**The defect.** Two mechanisms, neither a defect alone. (1) `crmTenantId` comes from
+`get_paige_persona_context()`, which resolves the `clients.linked_user_id` branch FIRST. (2) The
+tool role gate reads `public.user_roles`, which carries no `tenant_id` (§59). So a user who is
+admin/coach because of workspace A and a linked client of workspace B passed the gate via A and ran
+the nine `CRM_SERVICE_TOOLS` handlers against B — service-role client, RLS bypassed, four of the
+nine being writes. Proven on prod in a rolled-back transaction; exposure on the one target used was
+2 contact records and a $5,000 deal. Latent only because `clients.linked_user_id` is non-null on
+zero prod rows, which stops being true the moment a customer-portal user is linked (§7).
+
+**The fix.** The conversation's workspace must equal the caller's own `current_user_tenant_id()` —
+the canonical resolver, which already encodes a `tenant_members` seat, `agency_can_manage_child`,
+`agency_team_role` and `is_platform_admin`, so it needs no operator special-case. Resolved per tool,
+deliberately not memoised. Independently re-derived across all 10 gate-passing prod users: 9
+allowed, 1 already refused on `main`, **zero newly refused**.
+
+**THE SIBLING THIS DOES NOT CLOSE.** `propose_action` pairs the same global `user_roles` gate
+(~L10989) with a **service-role insert** into `paige_pending_approvals` stamped
+`tenant_id: personaCtx.tenant_id` (~L11023). It is outside `CRM_SERVICE_TOOLS`, so #892 does not
+cover it, and it is arguably worse than a read: it files an outbound draft into another workspace's
+approval queue. Deliberately not folded in — widening a security PR mid-review is how this PR's
+third draft went wrong. **Two instances means the PATTERN is the bug, not the site:** a global role
+gate paired with a service-role write stamped from the conversation's tenant. The follow-up sweeps
+for the rest.
+
+**§13 — three drafts, wrong three different ways, and only one caught by review.**
+1. A hand-rolled `tenant_members` check, narrower than the canonical resolver; would have locked out
+   an agency manager holding no seat in a child tenant they manage. Caught pre-push.
+2. The right predicate called on the **service-role** client, where `auth.uid()` is NULL — the guard
+   would have refused **all nine tools for all nine active operators**, converting a latent leak
+   into a total outage (§58). Caught by the §39 peer-gate, on the pushed diff. Nothing shipped.
+3. The check memoised across the tool batch, which made both sides equally stale and reopened the
+   mid-batch scope window the loop's own dispatch-boundary comment exists to close. Caught by
+   reading the code the change sat inside.
+
+A second peer-gate cleared the final guard and found the PR body still asserting the reverted
+memoisation — corrected before merge, because the record of a security change must match the change.
+
+**Owed:** authenticated runtime proof. The edge function is not drivable from a headless session,
+so the guard is proven at the database and unproven where it runs. Three drafts, two broken in ways
+no typecheck, no SQL proof and no green CI could detect, is the concrete argument for the
+least-privilege test tenant specified in #888.
