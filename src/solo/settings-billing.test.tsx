@@ -54,6 +54,28 @@ function authorityRow(over: Partial<AuthorityRow> = {}): AuthorityRow {
   };
 }
 
+type StatusRow = Record<string, unknown>;
+
+/** The Billing Experience status row, as `get_workspace_billing_status()` actually returns it —
+ * a real promotional workspace with $0 due, no provider mapping, no payment method, and no
+ * historical duplicate primary. */
+function statusRow(over: Partial<StatusRow> = {}): StatusRow {
+  return {
+    tenant_id: "tenant-a", workspace_name: "A workspace", scope: "top_level",
+    can_view: true, can_manage: true, access_state: "promotional", revenue_class: "promotional",
+    plan_slug: "solo", plan_name: "Solo", amount_due_cents: 0, payment_method_required: false,
+    billed_by: "PAIGE Platform", provider_state: "not_created",
+    payment_method_connected: false, payment_method_brand: null, payment_method_last4: null,
+    payment_method_exp_month: null, payment_method_exp_year: null,
+    seats_included: 1, seats_used: 1, contacts_included: 250, contacts_used: 0,
+    sms_included: null, sms_used: null,
+    ai_tokens_included: 5000000, ai_credit_token_ratio: 1000, paid_addons_count: 0,
+    primary_contact_count: 0, delegate_count: 0, primary_selection_needed: false,
+    notice_delivery_state: "no_sender", trial_ends_at: null,
+    ...over,
+  };
+}
+
 function contactRow(over: Record<string, unknown> = {}) {
   return {
     id: "contact-1", user_id: "user-owner", designation: "primary_contact", role: "owner",
@@ -103,6 +125,8 @@ function usageRow(over: Partial<Record<string, unknown>> = {}): Record<string, u
 function world(over: {
   authority?: Partial<AuthorityRow>;
   authorityError?: { message: string } | null;
+  status?: Partial<StatusRow> | null;
+  statusError?: { message: string } | null;
   contacts?: Array<Record<string, unknown>>;
   contactsError?: { message: string } | null;
   writeError?: { message: string } | null;
@@ -115,6 +139,11 @@ function world(over: {
   rpc.mockImplementation((name: string, args?: Record<string, unknown>) => {
     if (name === "get_workspace_billing_authority") {
       return Promise.resolve(over.authorityError ? { data: null, error: over.authorityError } : { data: [authorityRow(over.authority)], error: null });
+    }
+    if (name === "get_workspace_billing_status") {
+      if (over.statusError) return Promise.resolve({ data: null, error: over.statusError });
+      if (over.status === null) return Promise.resolve({ data: [], error: null });
+      return Promise.resolve({ data: [statusRow(over.status)], error: null });
     }
     if (name === "get_workspace_billing_contacts") {
       return Promise.resolve(over.contactsError ? { data: null, error: over.contactsError } : { data: state.contacts, error: null });
@@ -191,11 +220,23 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ""; });
 
 describe("what the screen refuses to claim", () => {
-  it("never prints a money figure anywhere, from any server answer this slice can produce", async () => {
-    for (const state of ["absent", "ambiguous", "mapped", "not_applicable"]) {
-      world({ authority: { billing_account_state: state } });
+  /**
+   * Owner brief 2026-09-03 (R13): a promotional workspace with $0 due IS a truthful money figure
+   * and must be shown — "$0 due today" is the whole point of the rebuild, not a claim to suppress.
+   * What must NEVER appear is a NONZERO figure the platform did not actually charge.
+   */
+  it("shows $0 due for a promotional workspace, and never a nonzero figure it did not prove", async () => {
+    world();
+    const { host } = await render();
+    expect(text(host)).toContain("$0");
+    expect(text(host)).not.toMatch(/\$[1-9]/);
+  });
+
+  it("never prints a nonzero money figure for any provider readiness state this slice can produce", async () => {
+    for (const providerState of ["not_created", "mapped", "ambiguous"]) {
+      world({ status: { provider_state: providerState } });
       const { host, root } = await render();
-      expect(text(host), `state ${state}`).not.toMatch(/\$\s?\d/);
+      expect(text(host), `provider_state ${providerState}`).not.toMatch(/\$[1-9]/);
       await act(async () => root.unmount());
     }
   });
@@ -216,37 +257,47 @@ describe("what the screen refuses to claim", () => {
 
   /** R22: a Solo member who may not VIEW billing is refused the plan, not shown it. */
   it("refuses the plan to someone the server says may not view billing", async () => {
-    world({ authority: { can_manage_billing: false, can_view_billing: false, role: "member" } });
+    world({ status: { can_view: false, can_manage: false } });
     const { host } = await render();
-    expect(planState(host)).toBe("role-refusal");
+    expect(planState(host)).toBe("status-role-refusal");
     expect(text(host)).toContain("visible to its owner");
   });
 
-  it("never says the workspace has no subscription when nothing proved it", async () => {
-    world();
+  it("says a workspace with no active plan has none, only when the server actually proved it", async () => {
+    world({ status: { access_state: "no_plan", plan_slug: null, plan_name: null, amount_due_cents: null, billed_by: null, payment_method_required: false } });
     const { host } = await render();
     const rendered = text(host).toLowerCase();
     expect(rendered).not.toContain("no current solo subscription");
-    expect(rendered).not.toContain("no subscription");
-    expect(rendered).not.toContain("no plan yet");
-    expect(planState(host)).toBe("billing-unavailable");
-    // and it says WHY, rather than leaving "unavailable" bare
-    expect(text(host)).toContain("could not find a billing account linked to this workspace");
-    expect(text(host)).toContain("nothing is being charged");
+    expect(planState(host)).toBe("status-no-plan");
+    expect(text(host)).toContain("no active plan");
   });
 
-  it("reports a failed authority read as a failed read, with a retry, not as an account state", async () => {
-    world({ authorityError: { message: "boom" } });
+  it("never claims 'no plan' or 'billing unavailable' for a real promotional workspace", async () => {
+    world();
     const { host } = await render();
-    expect(planState(host)).toBe("plan-error");
+    const rendered = text(host).toLowerCase();
+    expect(rendered).not.toContain("no subscription");
+    expect(rendered).not.toContain("no plan yet");
+    expect(planState(host)).toBe("status-promotional");
+    expect(text(host)).toContain("Billed by");
+    expect(text(host)).toContain("PAIGE Platform");
+  });
+
+  it("reports a failed status read as a failed read, with a retry, not as an account state", async () => {
+    world({ statusError: { message: "boom" } });
+    const { host } = await render();
+    expect(planState(host)).toBe("status-error");
     expect(text(host)).toContain("Nothing about your plan has changed");
     expect(byText(host, "Retry")).toBeTruthy();
   });
 
   it("keeps 'not applicable' distinct from 'nothing here' for a sub-account", async () => {
-    world({ authority: { scope: "sub_account", can_manage_billing: false, billing_account_state: "not_applicable" } });
+    world({
+      authority: { scope: "sub_account", can_manage_billing: false, billing_account_state: "not_applicable" },
+      status: { scope: "sub_account", can_view: false, can_manage: false, access_state: "unknown" },
+    });
     const { host } = await render();
-    expect(planState(host)).toBe("plan-subaccount");
+    expect(planState(host)).toBe("status-subaccount");
     expect(text(host)).toContain("not because there is no plan");
     expect(portalState(host)).toBe("portal-not-applicable");
   });
@@ -276,16 +327,25 @@ describe("what the screen refuses to claim", () => {
   /**
    * `asState()` coerces any unrecognised server value to `not_applicable`. At Solo scope that used
    * to fall THROUGH the mapping guards into "this workspace has a billing account" plus a live
-   * "Manage billing" button — a positive claim and a money act produced by a default.
+   * "Manage billing" button — a positive claim and a money act produced by a default. That guard
+   * still binds the portal (still authority-driven, still correctly mapping-gated).
    */
   it("fails closed on a mapping state it does not recognise, rather than into a claim", async () => {
     world({ authority: { billing_account_state: "pending_review" } });
     const { host } = await render();
-    expect(planState(host)).toBe("billing-unavailable");
     expect(text(host)).not.toContain("has a billing account");
     expect(portalState(host)).toBe("portal-unavailable");
     expect(byText(host, "Manage billing")).toBeUndefined();
-    expect(text(host)).not.toMatch(/\$\s?\d/);
+  });
+
+  /** The status hook's own coercion: an access_state/scope/provider_state this page does not
+   * recognise fails closed into an honest "not described", never a default positive claim. */
+  it("fails closed on a status the hook does not recognise, rather than a fabricated default", async () => {
+    world({ status: { access_state: "some_future_state", provider_state: "some_future_state" } });
+    const { host } = await render();
+    expect(planState(host)).toBe("status-unknown");
+    expect(text(host)).not.toMatch(/\$[1-9]/);
+    expect(text(host)).toContain("has not been given approved wording");
   });
 
   /**
@@ -470,6 +530,82 @@ describe("billing contacts — the flow a person can finish", () => {
     const { host } = await render();
     expect(text(host)).toContain("No longer a current owner — not counted");
   });
+
+  /**
+   * Owner brief 2026-09-03, item 2: "For Mogul Maker Academy specifically, the current two-primary
+   * state must render as a fixable selection-needed state, not as two people both being called
+   * primary." `primary_selection_needed` comes from `get_workspace_billing_status()` — historical
+   * data can leave two live primaries even though the DB trigger (Slice A) blocks any NEW second one.
+   */
+  it("renders a Selection needed banner when the server reports two live primaries, distinct from the per-row badges", async () => {
+    world({
+      status: { primary_selection_needed: true },
+      contacts: [contactRow(), contactRow({ id: "contact-2", user_id: "user-owner-2", display_name: "Second Owner" })],
+    });
+    const { host } = await render();
+    const banner = host.querySelector("[data-selection-needed='true']");
+    expect(banner).toBeTruthy();
+    expect(banner?.textContent).toContain("Selection needed");
+    expect(banner?.textContent).toContain("must remove all but one");
+    // still the ordinary designated list underneath — the banner names the problem, it does not replace the rows.
+    expect(contactsState(host)).toBe("designated");
+  });
+
+  it("does not render the Selection needed banner when the server reports only one primary", async () => {
+    world({ status: { primary_selection_needed: false }, contacts: [contactRow()] });
+    const { host } = await render();
+    expect(host.querySelector("[data-selection-needed='true']")).toBeNull();
+  });
+});
+
+describe("plan & usage — access state is independent of provider readiness (R13)", () => {
+  it("reports an internal/platform workspace distinctly, never dressed up as promotional", async () => {
+    world({ status: { access_state: "internal", revenue_class: "internal_test", plan_slug: null, plan_name: null, amount_due_cents: null, billed_by: null } });
+    const { host } = await render();
+    expect(planState(host)).toBe("status-internal");
+    expect(text(host)).toContain("Internal / platform workspace");
+    // Scoped to the plan card's own state element — the page's UNRELATED AI usage card (a
+    // different read, `get_workspace_ai_usage`) legitimately says "Promotional" for its own
+    // fixture and must not make this assertion a false negative.
+    const planNode = host.querySelector("[data-billing-state]");
+    expect(planNode?.textContent ?? "").not.toContain("Promotional");
+  });
+
+  it("reports Agency and Enterprise as unsupported account types, never as a Solo plan", async () => {
+    for (const scope of ["agency", "enterprise"]) {
+      world({ status: { scope, can_view: false, can_manage: false, access_state: "unknown" } });
+      const { host, root } = await render();
+      expect(planState(host), scope).toBe("status-unsupported");
+      expect(text(host)).toContain("not available for this account type yet");
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("shows the provider readiness fact SEPARATELY from access — not_created never reads as no plan", async () => {
+    world({ status: { provider_state: "not_created" } });
+    const { host } = await render();
+    expect(planState(host)).toBe("status-promotional");
+    expect(text(host)).toContain("Not set up yet");
+  });
+
+  it("shows a connected payment method's brand and last 4 when one is real", async () => {
+    world({ status: {
+      provider_state: "mapped", payment_method_connected: true,
+      payment_method_brand: "Visa", payment_method_last4: "4242",
+      payment_method_exp_month: 12, payment_method_exp_year: 2031,
+    } });
+    const { host } = await render();
+    expect(text(host)).toContain("Visa •••• 4242");
+    expect(text(host)).toContain("exp 12/2031");
+  });
+
+  it("shows real seats/contacts usage, and omits SMS when no meter exists", async () => {
+    world({ status: { seats_included: 1, seats_used: 1, contacts_included: 250, contacts_used: 3, sms_included: null, sms_used: null } });
+    const { host } = await render();
+    expect(text(host)).toContain("1 of 1 included");
+    expect(text(host)).toContain("3 of 250 included");
+    expect(text(host)).not.toContain("SMS");
+  });
 });
 
 describe("authority boundaries", () => {
@@ -577,8 +713,8 @@ describe("workspace switching", () => {
     context.tenantId = "";
     world();
     const { host } = await render();
-    expect(planState(host)).toBe("plan-no-workspace");
-    expect(text(host)).toContain("There is no billing account to show until a workspace is open");
+    expect(planState(host)).toBe("status-no-workspace");
+    expect(text(host)).toContain("There is no billing status to show until a workspace is open");
   });
 
   it("never paints the previous workspace's contacts under the next one", async () => {
@@ -659,8 +795,9 @@ describe("AI usage card", () => {
     world();
     const { host } = await render();
     expect(text(host)).not.toMatch(/overage|projected|forecast|on track to|will run out/i);
-    // The one "$" the surface is allowed is none: no price is proven for any current workspace.
-    expect(text(host)).not.toMatch(/\$\d/);
+    // The plan card is now allowed to show a REAL "$0 due today" (owner brief 2026-09-03); what
+    // the AI usage card itself must never show is a cost/price figure of its own — nonzero or not.
+    expect(text(host)).not.toMatch(/AI usage[\s\S]*\$\d/);
   });
 
   it("reports a failed read as unreadable and offers a retry — never as zero usage", async () => {
