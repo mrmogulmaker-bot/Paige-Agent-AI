@@ -168,8 +168,8 @@ function Sales({ data, setDetail, onOpenCatalog }) {
   return <section className="campaigns-surface">
     <SalesOps setDetail={setDetail} deals={(data.pipelineWorkspace&&data.pipelineWorkspace.deals)||[]} dealsPhase={data.phase} onOpenCatalog={onOpenCatalog} truth={TRUTH.sales}/>
     <ClientBillingBoundary/>
-    <div className="so-band"><div className="so-band-head"><h3>Routed capture activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div></div>
-    <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></section>;
+    <div className="so-band"><div className="so-band-head"><h3>Routed capture activity</h3><small>Recorded contact and deal references only — never estimated revenue or campaign attribution.</small></div>
+    <StateFrame phase={data.phase} retry={data.retry} noun="routed capture activity">{routed.length===0?<Empty title="No routed capture activity" detail="A submission is not treated as a sale. Contact or deal references appear only when the recorded processing result supplies them."/>:<div className="campaigns-list">{routed.map((row)=><button className="campaigns-list-row" key={row.id} onClick={()=>setDetail({title:"Captured activity",rows:[["Source",row.source],["Recorded",formatDate(row.createdAt)],["Contact reference",row.contactId?"Recorded":"Not recorded"],["Deal reference",row.dealId?"Recorded":"Not recorded"]],note:"No monetary value or campaign attribution is inferred."})}><span><strong>{row.source}</strong><small>{formatDate(row.createdAt)}</small></span><span className="campaigns-row-end">Recorded <Ic.chev size={14}/></span></button>)}</div>}</StateFrame></div></section>;
 }
 
 function PipelineStageRow({ stage, index, stages, pipeline, canManage, busy, save }) {
@@ -317,9 +317,20 @@ function CompatibilityLanding({ legacy, returnToAssets }) {
 }
 
 function CampaignTabs({ tabs, current, setCurrent }) {
+  // The Solo shell gives this surface `viewport - 216px rail - max(340px, 26vw) PAIGE`, so the
+  // strip has ~468px at a 1024 viewport and ~344px at 900 — six tabs cannot fit at any spacing and
+  // the strip scrolls by design. Scrolling is only acceptable if the SELECTED tab is on screen, so
+  // bring it into view however it was chosen: click, keyboard, deep link, or a route restore.
+  // `block:"nearest"` keeps the vertical position still; only the strip's own axis moves.
+  React.useLayoutEffect(()=>{
+    document.getElementById(`campaigns-tab-${current}`)?.scrollIntoView?.({block:"nearest",inline:"nearest"});
+  },[current]);
   React.useLayoutEffect(()=>{
     if(pendingCampaignTabFocus!==current)return;
-    document.getElementById(`campaigns-tab-${current}`)?.focus({preventScroll:true});
+    const focused=document.getElementById(`campaigns-tab-${current}`);
+    // preventScroll stops the tabPANEL from jumping. The effect above has already brought this
+    // tab into the strip's own view, so focus lands on something visible.
+    focused?.focus({preventScroll:true});
     pendingCampaignTabFocus=null;
   },[current]);
   const onKeyDown = (event, index) => {
@@ -384,5 +395,5 @@ export const GrowthHub=()=>{
   else if(tab==="pipeline") body=<PipelineSurface data={data} setDetail={setDetail}/>;
   else if(tab==="social") body=<Social/>;
   else if(tab==="performance") body=<Performance data={data}/>;
-  return <div className="solo-campaigns" data-campaigns-view={tab}><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label} sub={LEGACY[legacy].note}/>:null}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
+  return <div className="solo-campaigns" data-campaigns-view={tab}><h1 className="campaigns-sr-only">Campaigns</h1><CampaignTabs tabs={tabs} current={tab} setCurrent={setTab}/><div id="campaigns-tabpanel" role="tabpanel" aria-labelledby={`campaigns-tab-${tab}`} className="campaigns-scroll">{legacy?<PageHead eyebrow="Campaigns" title={LEGACY[legacy].label}/>:null}{body}</div><DetailDrawer detail={detail} onClose={closeDetail}/></div>;
 };

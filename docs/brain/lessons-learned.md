@@ -1504,3 +1504,53 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+---
+
+## 0i. A gate that mounts the component alone cannot see the layout it lives in
+
+**2026-09-03, Campaigns → Sales round 2 (shipped, then repaired the same day).**
+
+The Sales surface had a render gate with **344 passing checks** across four widths and two palettes.
+It shipped a regression that took **three of the six Campaigns tabs off the screen** at ordinary
+laptop widths, and the gate could not have caught it: `sales-mount` mounts `SalesOps` **by itself**.
+The tab strip is not in it. Neither is the Solo shell, which is where the actual constraint lives —
+`viewport − 216px rail − max(340px, 26vw) PAIGE`, so a 1366px window gives this surface a **795px**
+content column and a 1024px window gives it **468px**.
+
+The bug itself is one line of reasoning: a legend was hidden by `@media(max-width:1050px)` while the
+space it consumed belonged to a container ~500px narrower than the viewport the query was reading.
+Every responsive rule on a surface that does not span the window has this hazard, and three of the
+nav's rules had it.
+
+*Rule:* **a responsive rule inside a shell must key on the container, not the viewport** — that is
+what `container-type: inline-size` and `@container` are for. And more generally: **a harness that
+mounts a component in isolation proves the component, never its place.** When a surface lives inside
+a shell that takes space away from it, at least one gate has to render it *in* that shell, at the
+real column width, or the number of green checks is measuring the wrong thing. 344 of them did.
+
+*Corollary, also earned here:* the new gate was run **red first** (138/152, naming the exact tabs
+that were clipped) before it was run green (146/146). A gate written after a fix, never seen to fail,
+is a hypothesis — the one that shipped this regression had 344 checks and no arm that could fail on it.
+
+---
+
+## 0j. The resting state is not the only state — measure the one the pointer creates
+
+**2026-09-03, same round.**
+
+The contrast sweep read every text pair on the surface and found nothing new. The primary action —
+the button that records how a business takes money — dropped to **2.79:1 in dark mode on hover**,
+because the hover rule moved the ground to `--violet-2`, which is *lighter* than `--violet` in both
+palettes, against a label fixed at white. The sweep never saw it: it runs on the resting DOM.
+
+A second variant of the same blindness sat two rules away. A decorative sheen was drawn with
+`::after { inset: 0 }` and no `z-index`, so it painted **over** the sentence it was meant to draw the
+eye to, taking that copy from 7.03:1 to 4.13:1 each time the sweep crossed a word. Nothing static
+measures that either — the harm only exists mid-animation.
+
+*Rule:* **a contrast gate that only measures the resting state is measuring the state nobody is
+looking at when they act.** Hover, focus, and any overlay that animates across text are all states a
+person is in at the moment they commit. Drive them and measure them. Two direction checks that cost
+nothing: a hover on a fixed-light label must **darken**, and an `::after` over text needs
+`z-index:-1` with `isolation:isolate` on the parent, not `inset:0` alone.

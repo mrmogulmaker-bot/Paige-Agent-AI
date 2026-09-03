@@ -2641,6 +2641,135 @@ uses" and had nowhere to record the answer. This seam is what makes them passabl
 changes, and both read the same columns with the same allow-lists this function validates against.
 
 
+**Round 3 — the post-release review, and the regression round 2 shipped (2026-09-03).**
+
+Round 2 merged with **no independent adversarial read**: Codex opened a review on both PRs and was
+cut off mid-run (#866 six seconds before merge, #867 nine seconds), so both summary comments still
+read "🔄 Running" and `get_review_comments` returns `totalCount: 0` on each. §39 was therefore not
+satisfied at merge, whatever the merge queue showed. The read was run afterwards against the live
+diff `7007d213..9723136e`, and it found a **user-visible regression already on production**.
+
+> **The masthead removal took three of the six Campaigns tabs off the screen.** Moving the truth-key
+> legend into `.campaigns-nav` put it in a row governed by a **viewport** media query
+> (`@media(max-width:1050px)`) while the space it consumes belongs to a container roughly 500px
+> narrower — the Solo shell gives this surface `viewport − 216px rail − max(340px, 26vw) PAIGE`.
+> Reproduced here on the real DOM before any edit: at **1536×770** the legend showed and
+> **Performance** sat outside the strip; at **1366×768** it took **Social** too. The tabs remained
+> technically scrollable, but with overlay scrollbars nothing said so. A second, latent defect fired
+> for the same reason: `focus({preventScroll:true})` on tab change had been harmless while the strip
+> never overflowed, so arrowing to a tab selected it, focused it, and left it off screen — the
+> **selected tab invisible in 7 of 16 measured configurations**, including one with PAIGE closed
+> (WCAG 2.4.11).
+
+This is the same failure class as the §70 anchor, one level up: the surface's own gate mounts
+`SalesOps` **alone** and never renders the nav inside the shell's real geometry, so 344 green checks
+could not see it. The gate that was missing now exists — `scripts/live-drive/campaigns-nav-fit-drive.mjs`
+(`npm run drive:campaigns-nav`) — and it was **proved red before it was proved green**: 138/152
+against the shipped code, naming Performance at 1536 and Social+Performance at 1366; **146/146**
+after. It renders the real `GrowthHub` at the four Solo sizes × both palettes × PAIGE open and
+closed, and asserts the six-tab lock, that nothing is clipped while the strip has room, that **every
+tab is reachable** when it does not, and that selecting a tab leaves it on screen.
+
+**The fix keeps the owner's instruction intact.** No masthead came back. The legend now yields on the
+**nav's own inline size** (`container-type: inline-size` + `@container`), and the strip's compaction
+moved onto the same signal — it had been on a 760px viewport query while the nav was actually 344px
+wide. Honest consequence, recorded rather than buried: **six tabs cannot fit a 468px column at any
+spacing**, so at 1024 and 900 the strip scrolls by necessity; what the gate guarantees there is
+reachability and that the selected tab is always visible, not that everything fits. Second honest
+consequence: with the legend keyed to a 1120px nav, it is **hidden on most PAIGE-open sessions** and
+shows when PAIGE is closed or the window is wide. That is the same show-when-there-is-room posture
+the original 1050px rule intended, but it does mean the truth-key is seen less often than in round 2;
+where it should live permanently is a placement question for Claude Design.
+
+**Also fixed, from the same read.** The primary act became unreadable *under the cursor*: hover moved
+the ground to `--violet-2`, which is **lighter** than `--violet` in both palettes (`#7A62E8` vs
+`#5B3FD6`; `#A692FF` vs `#8A72F5`) against a label fixed white — **measured 2.79:1 in dark** on
+"Change" and "Quick offer", the buttons that record a payment processor and create an offer. The
+shell ships no dark `btn-p:hover` at all, so this state was introduced in round 2 and is fixed here
+by darkening instead of lightening (8.25:1 light / 4.69:1 dark). The Sales drive now **hovers every
+act and measures it**, and that assertion was proved falsifiable the same way — red at 2.79:1 against
+the shipped rule, green after. Separately, `.so-next::after` painted the sheen **over** the sentence
+it was meant to mark, dropping that copy from 7.03:1 to 4.13:1 in dark each time the sweep crossed a
+word; the overlay now sits below the text (`isolation` + `z-index:-1`) and runs **once on arrival in
+2.1s** instead of looping forever, which meets WCAG 2.2.2 without a pause control on a decoration.
+Two smaller ones: the legend sat 14px above the row's shared baseline (`align-items` on a stretched
+flex child), and the five retired addresses printed the same sentence twice, because the head's `sub`
+was passed the note `CompatibilityLanding` already renders.
+
+**§58 — one capability was silently removed in round 2, and is restored here.** `PageHead` carried
+this surface's **only `<h1>`**, so cutting it left every Campaigns tab with a document outline
+starting at `<h2>` and no page heading at all. A visually-hidden `<h1>Campaigns</h1>` restores it for
+assistive technology; **nothing visible returns**, so the redundancy the owner objected to does not.
+
+**Not changed, and why (§00 + owner ruling 2026-09-03).** The owner ruled that the violet primary
+treatment is approved and that *"the measured global color issues remain a design-system follow-up
+owned by Claude Design."* So three measured findings are handed over rather than fixed from inside
+Sales: `--warn` as text on a `pending` amount is **3.99:1** in light (the shipped `.pill-warn` is
+already 3.54:1 platform-wide, so the token itself is the subject); the violet plate gradient takes
+`--ink-3` secondary copy from 4.15:1 to **4.00:1** and `.so-band-head small` to **3.88:1**, all of
+which were already under AA on plain white before this surface existed; and `.so-ready-row:hover`
+paints `--violet-tint` under small text at **3.53:1**. The resting dark primary button is **3.62:1**
+— inherited, since the sibling Catalog tab ships that exact pair on "New offer" — and is reported by
+the drive rather than re-coloured here.
+
+**Left alone deliberately.** `.solo-campaigns[data-campaigns-view="pipeline"] … .pg-hd h1{font-size:20px}`
+is now **dead** — `.pg-hd` renders only for legacy addresses, and all five legacy keys resolve to the
+`catalog` subtab — and the contract test guarding it asserts the literal string exists **in the CSS
+file text**, so it is vacuously green and will stay green forever. Both are untouched: the rule is
+marked `APPROVED-FROZEN (§28)` and sits on a line **PR #706 is actively editing**, so deleting it
+would both overrule a freeze on CC's own judgement and deepen an existing conflict. Reported to the
+owner instead.
+
+**Proof, separated by class (§13).** *Automated:* 92 Campaigns + Sales tests green; typecheck exit 0;
+production build green; `lint:tier-features`, `lint:skeleton`, `lint:pg-tokens` pass; eslint clean but
+for the pre-existing Fast-Refresh warning. `lint:gold` fails on `BusinessCreditDashboard.tsx:271`, a
+file this diff never touches — **verified pre-existing by re-running it on the stashed tree**.
+*Rendered:* **146/146** `drive:campaigns-nav` (red-first at 138/152), **360/360** `drive:sales-ops`
+(hover arm red-first at 2.79:1), **523/523** `catalog-offers-drive` confirming the sibling tab is
+unharmed. *Production persistence:* not applicable — this round changes no schema. *Authenticated
+runtime:* **OWED.** This session has a headless Chromium and used it, but it has no route to the
+deployed origin and no test-tenant credential, so §32.c is owed to a session that can drive the live
+app. Nothing here may be reported as having discharged it.
+
+**§13 corrections to round 2's own entry, found by the peer-gate reading it against the code.**
+
+Four claims above were wrong, and are corrected here rather than edited away:
+
+1. *"under a shell already saying Campaigns"* (the stated justification for dropping the masthead's
+   `eyebrow`) is **false**. The Solo shell's nav entry is **Growth** (`SoloApp.tsx:36`), rendered by
+   `TopBar` as `… › Growth`. Rendering all six tabs, the word "Campaigns" now appears on **1 of 6**,
+   incidentally inside a sentence on Catalog.
+2. *"§58: nothing it carried is lost"* is **false**, and §58 wants the removal named rather than
+   asserted away. Three pieces of copy went with the banner: the `eyebrow`; the sub *"Grounded
+   campaign work and published outputs, with creative ownership kept in Vibe Studio"* (a repo-wide
+   grep now returns only the test asserting its absence); and — separately, when `SurfaceHead` was
+   folded into the first band — Sales' own description, *"What this business sells, how it takes
+   payment from its own clients, and the commercial activity it has actually recorded."* The truth
+   note itself did move intact to `.so-orient`. **The banner removal was owner-instructed and stands;
+   whether the two orientation sentences should return, in a place that does not rebuild a banner,
+   is an owner call and is raised as one rather than decided here.**
+3. *"a recorded amount takes its state's colour; column headers … carry the brand"* was **false when
+   written and is true now**. `.so-tr > span` is (0,1,1) and every state rule was a bare class at
+   (0,1,0) on a direct child of `.so-tr`, so the money figures and the column headers both painted
+   `--ink-2` — the two places the owner's instruction lands hardest, dead in the stylesheet while
+   the ledger said they shipped. Fixed in round 3 by matching the child selector, and now guarded by
+   an assertion that reads the stylesheet (the previous guard asserted only that a class name was on
+   an element, and stayed green through a full revert of all 147 round-2 CSS lines).
+4. *"~7:1 in light"* for the violet primary → **6.72:1** measured. And the framing around it was
+   incomplete: the drive's `INHERITED_FLOOR = 3.5` let the dark resting pair (**3.62:1**) pass
+   `novel()` and then printed it under *"inherited … not introduced here"*. The token pair is
+   genuinely shipped on Catalog's "New offer", but **these particular controls were `.btn` before
+   this surface existed — 15.81:1 in dark — so round 2 made them worse**, and calling that
+   "inherited" was too kind to itself. The owner ruled on 2026-09-03 that the violet treatment is
+   approved and that measured global colour issues belong to Claude Design, so the resting pair
+   stands and is reported; the hover, which this surface invented, was fixed.
+
+Also carried over honestly: the claim *"the word appears exactly once"* holds in the ready phase but
+not the error phase, where "Sales operations could not load" is a second occurrence. And
+`sales-ops-drive.mjs` was **not in the round-2 diff** — its 344 checks are evidence round 2 did not
+break round 1's contract, not evidence round 2's own changes work. The checks that actually cover
+round 2 are the ones added in round 3.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |
