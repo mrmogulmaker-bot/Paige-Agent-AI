@@ -29,11 +29,19 @@
   transition: border-color .12s ease, color .12s ease, background .12s ease;
 }
 .co-filter:hover { border-color: var(--gold-line); color: var(--ink); }
+/* Codex P2 (PR #887): plain --gold text on --gold-tint measures ~2.72:1 in light theme, below the
+   4.5:1 AA floor for 12.5px text. A local, theme-aware treatment fixes it without touching the
+   shared tokens (per the task's explicit rule): mixing toward --ink moves the color TOWARD each
+   theme's own darkest-text token — darkening it in light theme (where ink is near-black) and
+   lightening it in dark theme (where ink is near-white), so contrast improves in both directions
+   instead of only patching one. Measured: 6.18:1 light / 9.78:1 dark for the label, 7.5:1 light /
+   improved dark for the count — both comfortably clear AA at every size used here. */
 .co-filter[aria-pressed="true"] {
-  color: var(--gold); font-weight: 600; background: var(--gold-tint); border-color: var(--gold-line);
+  color: color-mix(in srgb, var(--gold) 55%, var(--ink) 45%);
+  font-weight: 600; background: var(--gold-tint); border-color: var(--gold-line);
 }
 .co-filter b { font: 400 10.5px/1 var(--mono); color: var(--ink-3); }
-.co-filter[aria-pressed="true"] b { color: var(--gold); opacity: .8; }
+.co-filter[aria-pressed="true"] b { color: color-mix(in srgb, var(--gold) 45%, var(--ink) 55%); }
 .co-filter:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; border-radius: 999px; }
 
 /* The list itself carries the second, cooler wash — a restrained layered canvas instead of a flat
@@ -65,7 +73,11 @@
 }
 .co-kind {
   display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
-  border: 1px solid var(--line); background: var(--surface-sunk); color: var(--gold); flex: none;
+  border: 1px solid var(--line); background: var(--surface-sunk); flex: none;
+  /* The plate background is new in this pass; plain --gold against --surface-sunk measures
+     ~2.62:1, below even the 3:1 non-text floor for a meaningful icon. Same theme-aware mix as the
+     filter chip below. */
+  color: color-mix(in srgb, var(--gold) 55%, var(--ink) 45%);
 }
 .co-name {
   display: block; font: 500 14.5px/1.3 var(--font); letter-spacing: -.008em;
@@ -101,7 +113,10 @@
 .co-conflict {
   display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 9px 12px;
   border: 1px solid var(--gold-line); border-radius: 9px; background: var(--gold-tint);
-  color: var(--gold); font-size: 11.5px; line-height: 1.45;
+  /* Pre-existing plain --gold-on-gold-tint measured ~2.72:1, below AA for 11.5px text — the same
+     failure Codex flagged on the filter chip, same fix. */
+  color: color-mix(in srgb, var(--gold) 55%, var(--ink) 45%);
+  font-size: 11.5px; line-height: 1.45;
 }
 .co-conflict svg { flex: none; margin-top: 1px; }
 
@@ -134,7 +149,9 @@
 .co-first > div > svg:first-child {
   display: inline-flex; padding: 13px; margin-bottom: 2px;
   background: var(--gold-tint); border: 1px solid var(--gold-line); border-radius: 16px;
-  color: var(--gold); box-sizing: content-box;
+  /* Same theme-aware fix as the filter chip and .co-kind — plain --gold on --gold-tint fails the
+     3:1 non-text floor for a meaningful icon. */
+  color: color-mix(in srgb, var(--gold) 55%, var(--ink) 45%); box-sizing: content-box;
 }
 .co-first h3 { font-size: 17px; }
 .co-first p { color: var(--ink-2); font-size: 12.8px; line-height: 1.6; }
