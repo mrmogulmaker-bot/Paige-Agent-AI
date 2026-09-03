@@ -41,8 +41,15 @@
 --     highest on ANY remote branch 20261120000000   (scan of every remote head)
 --     in flight, billing branch    20261111050000   _the_workspace_can_connect_a_payment_method
 -- 20261130000000 sorts after all three WITH headroom, deliberately skipping the 2026112x band the
--- billing branch is still moving in. Re-verify both maxima immediately before merge — that is the
--- only step that has ever caught this.
+-- billing branch is still moving in.
+--
+-- AND THE PRE-MERGE RE-VERIFY EARNED ITS KEEP. Re-checked immediately before merge, prod's ledger
+-- max had MOVED to 20261120000000 — the billing branch merged and applied while this slice was
+-- open, which is exactly the window the five prior collisions fell into. 20261130000000 still sorts
+-- strictly after it, and a fresh scan of every remote head shows the only 20261130000000 anywhere
+-- is this file, so the version stands. The three numbers above are kept as the choosing-time
+-- record; this paragraph is the state at merge. Re-verify again if this sits unmerged — the base
+-- moves after you look at it, which is the whole reason the step exists.
 --
 -- ─── AUTHORITY ───────────────────────────────────────────────────────────────────────────────
 --

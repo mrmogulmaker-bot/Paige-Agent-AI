@@ -2387,13 +2387,15 @@ destination-charge posture is the live §38 violation (#458), so routing a tenan
 record through it is precisely what the Catalog seam was separated to avoid. The type decision is
 made by a plan, never by a human clicking first: there is no artifact-type picker on this surface.
 
-**Migration version — chosen against BOTH maxima, which is the part the repo alone cannot tell you.**
-Prod ledger max applied `20261111000000` (MCP query); highest on ANY remote branch `20261120000000`
-(scan of every remote head); `20261111050000` also in flight on a billing branch, which is the
-likeliest thing to move in this range while this slice is open. `20261130000000` sorts after all
-three with deliberate headroom, skipping the `2026112x` band. The header of `20261110000000` records
-five collisions in this range across two slices; re-verify both maxima immediately before merge,
-because that is the only step that has ever caught it.
+**Migration version — chosen against BOTH maxima, and the pre-merge re-verify EARNED ITS KEEP.**
+At choosing time: prod ledger max applied `20261111000000`; highest on any remote branch
+`20261120000000`; `20261111050000` in flight on a billing branch. **Re-checked immediately before
+merge, prod's ledger max had MOVED to `20261120000000`** — the billing branch merged and applied
+while this slice was open, which is exactly the window the five prior collisions in this range fell
+into. `20261130000000` still sorts strictly after it, and a fresh scan of every remote head shows
+the only `20261130000000` anywhere is this slice's own file, so the version stands. Recorded because
+the re-verify is the only step that has ever caught this, and this run is the evidence that it is
+not ceremony.
 
 **What this slice does NOT do, recorded so the next one does not assume it.** No per-client
 agreement record exists — `tenant_service_subscriptions` was examined and cannot express one (no
