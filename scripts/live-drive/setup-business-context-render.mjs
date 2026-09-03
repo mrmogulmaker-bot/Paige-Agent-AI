@@ -138,6 +138,33 @@ try {
       await page
         .getByRole("tab", { name: "Business profile", exact: true })
         .click();
+      // Entry must work without finding a page-wide Edit control above the fold.
+      await page.getByRole("tab", { name: "Paige brief", exact: true }).click();
+      await page.getByRole("button", { name: "Teach Paige", exact: true }).click();
+      const briefDialog = page.getByRole("dialog");
+      await briefDialog.locator('textarea[name="voiceCharacter"]').fill("Clear, practical, and warm");
+      await briefDialog.getByRole("button", { name: "Apply to Setup draft", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Save business context", exact: true }).click();
+      await page.getByRole("button", { name: "Add an example", exact: true }).click();
+      const exampleDialog = page.getByRole("dialog");
+      await exampleDialog.locator("textarea").first().fill("A practical next step for your business.");
+      await exampleDialog.getByRole("button", { name: "Keep in Setup draft", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Save business context", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Edit", exact: true }).click();
+      await page.getByRole("dialog").getByText("Edit this example", { exact: true }).waitFor();
+      await page.getByRole("dialog").locator("textarea").first().fill("Updated practical example.");
+      await page.getByRole("dialog").getByRole("button", { name: "Keep in Setup draft", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Save business context", exact: true }).click();
+      await page.getByRole("button", { name: "Links & documents", exact: true }).click();
+      await page.getByRole("tab", { name: "Paige brief", exact: true }).click();
+      await page.getByRole("tabpanel").getByText("Updated practical example.", { exact: true }).waitFor();
+      await page.getByRole("tabpanel").getByText("Clear, practical, and warm", { exact: true }).waitFor();
+      if (await page.getByRole("tabpanel").getByRole("button", { name: "Edit", exact: true }).count() !== 1)
+        throw new Error("Brief example edit duplicated the record");
+      results.push({ key: `${width}x${height}-${theme}-brief-direct-entry`, guidedSave: true, exampleAddEditSave: true, retainedOnReturn: true, errors: [...errors] });
+      await page.screenshot({ path: path.join(out, `${width}x${height}-${theme}-brief-saved.png`) });
+      await page.getByRole("tab", { name: "Direction", exact: true }).click();
+      await page.getByRole("tab", { name: "Business profile", exact: true }).click();
       await page
         .getByRole("button", { name: "Edit business context", exact: true })
         .click();
@@ -458,7 +485,7 @@ console.log(
   ),
 );
 if (
-  results.length !== 96 ||
+  results.length !== 104 ||
   results.some(
     (r) => r.horizontal || r.errors?.length || r.clippedInputs?.length,
   )
