@@ -79,8 +79,11 @@ accts:[
 // None of it read anything. The surface's own "Everything / Paige / People" filter was sorting
 // fiction into two piles.
 //
-// `TmActivity` now reads the Rail (`paige_client_events`) through `useSoloActivityFeed`. The
-// filter finally means something: `ai` comes from the event's `actor_type`, so "Paige" and
+// `TmActivity` reads the Rail through `useSoloActivityFeed`, which since the Slice B consumer
+// repair calls the deployed resolver `get_solo_rail_activity` rather than selecting from
+// `paige_client_events` directly — so the workspace boundary is re-enforced in the function body
+// (§59) instead of resting on `pce_staff_read`, whose `has_any_role` check is tenant-agnostic.
+// The filter finally means something: `ai` comes from the event's `actor_type`, so "Paige" and
 // "People" separate work she did from work a person did, as recorded.
 //
 // STILL FABRICATED, NOT ADDRESSED HERE — their own finding, not this slice's: `perf` below
@@ -220,8 +223,14 @@ return <div key={d.n} className="row" style={{gap:12,padding:'11px 14px',borderT
 <div style={{padding:'13px 15px',background:'var(--surface-2)',border:'1px solid var(--line)',borderRadius:'var(--r-m)',fontSize:12.9,color:'var(--ink-2)',lineHeight:1.6}}>
 <span style={{color:'var(--ink)',fontWeight:600}}>Paige's read: </span>Operations and Finance closed 134 items between them without asking you anything, which is where the 147 hours came from. The departments still at draft-only are the ones with queues. Raising Client Success one level would clear three items sitting on your desk today.</div></div></div></div>);
 
-const TmActivity=()=>{const[f,setF]=React.useState('all');
-const activity=useSoloActivityFeed();
+// `accountEpoch` is the active workspace, forwarded by TeamHub. Passing it re-keys the read on
+// a switch and invalidates anything in flight, so the previous workspace's activity can neither
+// stay on screen nor land late under the new one's heading. When this hub is mounted without
+// one, the read still cannot cross a workspace (the resolver scopes itself server-side) and the
+// request-ordering guard still holds; only the switch guard is inert, and that is why the prop
+// exists rather than being assumed.
+const TmActivity=({accountEpoch})=>{const[f,setF]=React.useState('all');
+const activity=useSoloActivityFeed(accountEpoch);
 // `who` is the desk the event names — the Rail carries a department, not a person's name, and
 // joining one in would be a second query for a label plus a way to surface a name the reader may
 // not be entitled to. `d` is the recorded summary or a stated absence, never filler.
@@ -297,7 +306,7 @@ background:l<=m.level?(m.level>2?'var(--gold)':'var(--violet)'):'var(--surface-s
 <div className="eyebrow" style={{fontSize:9.4}}>{k}</div><div style={{fontSize:14.5,fontWeight:600,marginTop:3}}>{v}</div></div>)}</div></>}
 <div className="sub" style={{marginTop:16,fontSize:11.8,lineHeight:1.55}}>Seat permissions, sealed-record access and the reporting line live in Setup. This view is about the work.</div></>}</SlideOut>};
 
-export const TeamHub=()=>{const[tab,setTab]=useSubtabRoute("solo","team","roster");const[cur,setCur]=React.useState(null);
+export const TeamHub=({accountEpoch}={})=>{const[tab,setTab]=useSubtabRoute("solo","team","roster");const[cur,setCur]=React.useState(null);
 const[dir,setDir]=React.useState(TM_DIR_SEED);const[inv,setInv]=React.useState(null);
 const openInv=r=>setInv({r:r||null,k:Date.now()});
 const tabs=[['roster','Roster',()=><Ic.users size={14}/>],['dir','Directory',()=><Ic.mail size={14}/>],
@@ -310,7 +319,7 @@ work:'What each account costs in hours, who owns it, and where the load is wrong
 perf:'Closed work, hours returned, and the honest numbers per department.',
 act:'A single timeline of what people did and what she did on her own.'};
 const body={roster:<TmRoster onOpen={setCur}/>,dir:<TmDirectory dir={dir} setDir={setDir} onInvite={openInv}/>,
-roles:<TmRoles invite={inv} setInvite={openInv}/>,work:<TmWorkload/>,perf:<TmPerf/>,act:<TmActivity/>}[tab];
+roles:<TmRoles invite={inv} setInvite={openInv}/>,work:<TmWorkload/>,perf:<TmPerf/>,act:<TmActivity accountEpoch={accountEpoch}/>}[tab];
 return <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:0,minWidth:0,alignItems:'stretch'}}>
 <SubTabs tabs={tabs} cur={tab} set={setTab} right={<>
 <span className="pill pill-n"><span className="dot" style={{background:'var(--bad)'}}/>112h of 96h booked</span>

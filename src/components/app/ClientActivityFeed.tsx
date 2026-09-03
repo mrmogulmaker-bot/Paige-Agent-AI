@@ -27,7 +27,7 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
-import { useRailEvents, type RailEvent } from "@/hooks/useRailEvents";
+import { useRailEvents, type RailEvent, type RailHistoryStatus } from "@/hooks/useRailEvents";
 import { useMyContactId } from "@/hooks/useMyContactId";
 import { usePlaybook } from "@/lib/playbook";
 import { Card, CardContent } from "@/components/ui/card";
@@ -141,7 +141,7 @@ export function ClientActivityFeed({ contactId: contactIdProp, className }: Prop
   const contactId = selfResolve ? resolved : contactIdProp;
   const loading = selfResolve ? resolving : false;
 
-  const { events, connected } = useRailEvents({ scope: "client", contactId: contactId ?? null });
+  const { events, connected, historyStatus } = useRailEvents({ scope: "client", contactId: contactId ?? null });
 
   // While self-resolving we can't yet tell a staff/impersonator apart from a
   // linked client, so we must NOT render a client-labeled "Your activity"
@@ -162,26 +162,88 @@ export function ClientActivityFeed({ contactId: contactIdProp, className }: Prop
         </h2>
       </div>
 
-      {events.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
-              <Activity className="h-4 w-4" />
-            </span>
-            <p className="text-sm font-medium text-foreground">Nothing yet</p>
-            <p className="max-w-[16rem] text-xs text-muted-foreground">
-              Your updates from {paige} will show up here as you work together.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <ul className="space-y-2">
-          {events.slice(0, MAX_ROWS).map((e) => (
-            <ActivityRow key={e.id} event={e} paige={paige} />
-          ))}
-        </ul>
-      )}
+      <Body events={events} historyStatus={historyStatus} paige={paige} />
     </section>
+  );
+}
+
+/**
+ * The FOUR answers, kept apart.
+ *
+ * This strip used to read `events.length === 0` and show "Nothing yet" — which it also showed
+ * while the history read was still in flight, when the database REFUSED it, and when it failed.
+ * Only one of those four is "nothing has happened between you and your team"; the other three
+ * said so anyway. `historyStatus` is the state now, and the error message is only ever detail —
+ * a client is never shown a SQLSTATE or a server string (§3, and no internal identifiers on a
+ * client surface).
+ *
+ * A live frame that arrives before the history settles is still shown: it is a real event, and
+ * suppressing it would be its own small lie.
+ */
+function Body({
+  events,
+  historyStatus,
+  paige,
+}: {
+  events: RailEvent[];
+  historyStatus: RailHistoryStatus;
+  paige: string;
+}) {
+  if (events.length > 0) {
+    return (
+      <ul className="space-y-2">
+        {events.slice(0, MAX_ROWS).map((e) => (
+          <ActivityRow key={e.id} event={e} paige={paige} />
+        ))}
+      </ul>
+    );
+  }
+
+  if (historyStatus === "loading") {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center" aria-live="polite">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+            <Activity className="h-4 w-4" />
+          </span>
+          <p className="text-sm font-medium text-foreground">Loading your activity…</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (historyStatus === "forbidden" || historyStatus === "unavailable") {
+    // Both are reported the same way to a CLIENT, on purpose: the difference between "you are not
+    // entitled to this" and "it did not load" is a diagnostic distinction, not something a client
+    // can act on, and naming a refusal to them would leak how access is decided. What must NOT be
+    // collapsed is this line with "Nothing yet" — that is the one that lies.
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center" role="alert">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+            <Activity className="h-4 w-4" />
+          </span>
+          <p className="text-sm font-medium text-foreground">Your activity could not be loaded</p>
+          <p className="max-w-[16rem] text-xs text-muted-foreground">
+            This is not a record of nothing happening — please try again in a moment.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+          <Activity className="h-4 w-4" />
+        </span>
+        <p className="text-sm font-medium text-foreground">Nothing yet</p>
+        <p className="max-w-[16rem] text-xs text-muted-foreground">
+          Your updates from {paige} will show up here as you work together.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
