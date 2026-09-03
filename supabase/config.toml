@@ -139,6 +139,11 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = false
   [functions.handle-email-suppression]
     verify_jwt = false
+  # Resend calls this with a Svix signature and no bearer token, so JWT verification MUST be off —
+  # the signature is the authentication. The function refuses every request when its secret is
+  # unset, so "public" here never means "unauthenticated writes are accepted".
+  [functions.handle-resend-webhook]
+    verify_jwt = false
   [functions.handle-email-unsubscribe]
     verify_jwt = false
   [functions.handle-inbound-email]

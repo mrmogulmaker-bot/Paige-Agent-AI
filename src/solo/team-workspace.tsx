@@ -6,6 +6,9 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { readFunctionErrorBody } from "@/lib/integrations/connectError";
 import {
   inviteLifecycle,
+  inviteIsFinished,
+  deliveryPresentation,
+  DELIVERY_STEPS,
   invitationRefusalMessage,
   memberVisibleIdentity,
   normalizeTeamWorkspace,
@@ -629,6 +632,70 @@ export function InviteDialog({ workspace, onClose, onInvited }: { workspace: Tea
   return <Modal title={reviewing ? "Confirm invitation" : "Invite someone"} description={reviewing ? "Review the workspace, the person, their work context, and enforced access before anything is sent." : "Choose enforced access separately from the work they will own."} onClose={onClose}>{reviewing ? <div className="stw-modal-body"><dl className="stw-invite-review"><div><dt>Workspace</dt><dd>{workspace.tenant_name}</dd></div><div><dt>Send to</dt><dd>{email.trim()}</dd></div><div><dt>Enforced permission</dt><dd>{permissionPresentation(permission, false).label}</dd></div><div><dt>Job title</dt><dd>{title.trim() || "Not set"}</dd></div><div><dt>Responsibilities</dt><dd>{responsibilities.trim() || "Not set"}</dd></div></dl><div className="stw-separation-note"><ShieldCheck/><span>This confirmation sends one invitation. The title and responsibilities inform Paige about work; they do not grant authority.</span></div></div> : <div className="stw-modal-body"><label>Email<input data-initial-focus type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="person@company.com"/>{email.length > 0 && !validEmail && <small role="alert">Enter a valid email address.</small>}</label><label>Permission<select value={permission} onChange={(e) => setPermission(e.target.value)}><option value="member">Member</option><option value="admin">Admin</option></select></label><label>Job title <span>optional</span><input maxLength={121} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Operations Lead"/>{errors.title && <small role="alert">{errors.title}</small>}</label><label>Responsibilities <span>optional</span><textarea maxLength={2001} rows={4} value={responsibilities} onChange={(e) => setResponsibilities(e.target.value)} placeholder="What they will own and where they hand work off."/>{errors.responsibilities && <small role="alert">{errors.responsibilities}</small>}</label><div className="stw-separation-note"><ShieldCheck/><span>The title and responsibilities give Paige work context. Only the permission above controls access.</span></div></div>}<footer className="stw-modal-actions">{reviewing ? <><button className="stw-btn secondary" onClick={() => setReviewing(false)}>Back</button><button data-initial-focus className="stw-btn" disabled={sending} onClick={send}>{sending ? "Sending…" : "Confirm and send invitation"}</button></> : <><button className="stw-btn secondary" onClick={onClose}>Cancel</button><button className="stw-btn" disabled={!validEmail || Object.keys(errors).length > 0} onClick={() => setReviewing(true)}>Review invitation</button></>}</footer></Modal>;
 }
 
+/**
+ * One invitation, and what actually happened to it.
+ *
+ * The delivery half is the reason this component exists. Before it, the strongest thing the screen
+ * could say was that a fresh invitation had been "sent" — which meant the POST to the provider was
+ * accepted, and was shown identically whether the address bounced, the mail server queued it, or
+ * the person read it an hour ago. Now the row says which of those happened, and says "Not sent yet"
+ * rather than inventing a status when nothing was ever recorded.
+ */
+function InviteRow({ invite, onManage }: {
+  invite: TeamInviteRecord;
+  onManage: (action: "resend" | "revoke" | "archive", invite: TeamInviteRecord) => void | Promise<void>;
+}) {
+  const state = inviteLifecycle(invite);
+  const finished = inviteIsFinished(invite);
+  const delivery = invite.delivery ?? null;
+  const presentation = deliveryPresentation(delivery);
+  // How far along the happy path this email got. No `tone === "bad"` special case here: the trail
+  // is not RENDERED at all for a terminal failure (see the guard on the <ol> below), so a second
+  // check would be unreachable — mutation confirmed it, and an unreachable guard that a comment
+  // calls load-bearing is what the next reader would reason from.
+  const reached = DELIVERY_STEPS.indexOf((delivery?.status ?? "") as (typeof DELIVERY_STEPS)[number]);
+  const recipient = invite.email || "Recipient unavailable";
+
+  return <article>
+    <div>
+      <strong>{recipient}</strong>
+      <small>{permissionPresentation(invite.permission, false).label} · {finished ? "expired" : "expires"} {new Date(invite.expires_at).toLocaleDateString()}</small>
+    </div>
+    <span className="stw-pill" data-tone={state}>{state}</span>
+
+    <div className="stw-invite-delivery" data-tone={presentation.tone}>
+      <strong>{presentation.label}</strong>
+      {presentation.detail && <small>{presentation.detail}</small>}
+      {/* The trail is only meaningful once something has been recorded. Rendering four grey steps
+          against an invitation that was never emailed would imply a journey that never started. */}
+      {delivery && presentation.tone !== "bad" && <ol className="stw-invite-steps" aria-label={`Delivery progress for ${recipient}`}>
+        {DELIVERY_STEPS.map((step, index) => {
+          const done = index <= reached;
+          const at = delivery.history.find((entry) => entry.status === step)?.at;
+          return <li key={step} data-done={done ? "true" : "false"}>
+            {/* The state is in the text, not only in the styling: a screen reader and a
+                colour-blind reader both need to know which steps happened. */}
+            <span>{step === "clicked" ? "Link clicked" : step[0].toUpperCase() + step.slice(1)}</span>
+            <small>{at ? new Date(at).toLocaleString() : done ? "" : "not yet"}</small>
+            <span className="sr-only">{done ? "completed" : "not yet"}</span>
+          </li>;
+        })}
+      </ol>}
+    </div>
+
+    <div className="stw-invite-actions">
+      {state === "pending" && <>
+        <button onClick={() => onManage("resend", invite)}>Resend</button>
+        <button onClick={() => onManage("revoke", invite)}>Revoke</button>
+      </>}
+      {state === "expired" && <button onClick={() => onManage("resend", invite)}>Send fresh invite</button>}
+      {/* Only offered where the server will accept it. `inviteIsFinished` is the same predicate the
+          archive function enforces, so this button cannot be a dead end. */}
+      {finished && <button onClick={() => onManage("archive", invite)}>Remove from list</button>}
+    </div>
+  </article>;
+}
+
 export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}) {
   const [view, setView] = useState<"team" | "roles">("team"); const [search, setSearch] = useState(""); const [permission, setPermission] = useState("all"); const [selected, setSelected] = useState<TeamMemberRecord | null>(null);
   // The workspace an in-flight invitation was opened against. Held here rather than derived
@@ -700,7 +767,32 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
   const [removalPending, setRemovalPending] = useState(false);
   useEffect(() => { if (selected && workspace && !selectedLive && !removalPending) setSelected(null); }, [selected, workspace, selectedLive, removalPending]);
   const pending = useMemo(() => workspace?.invitations.filter((item) => inviteLifecycle(item) === "pending") ?? [], [workspace]);
-  const manageInvite = async (action: "resend" | "revoke", invite: TeamInviteRecord) => { if (!workspace) { toast.error("This workspace is still loading. Try again in a moment."); return; } const { data, error } = await supabase.functions.invoke("solo-team-invitations", { body: { action, expectedTenantId: workspace.tenant_id, inviteId: invite.id } }); if (error || data?.ok === false) { toast.error(invitationRefusalMessage(await readFunctionErrorBody(error, data), "The invitation could not be updated. Please try again.")); return; } if (action === "resend") data?.emailed ? toast.success("Fresh invitation sent; the old link was revoked.") : toast.warning("Fresh invitation created, but email delivery did not complete."); else toast.success("Invitation revoked."); team.refresh(); };
+  // Split ONCE, from the same predicate the database uses to decide what may be cleared, so the
+  // screen cannot offer a "Remove from list" the server will refuse.
+  const activeInvites = useMemo(() => workspace?.invitations.filter((item) => !inviteIsFinished(item)) ?? [], [workspace]);
+  const pastInvites = useMemo(() => workspace?.invitations.filter((item) => inviteIsFinished(item)) ?? [], [workspace]);
+  const manageInvite = async (action: "resend" | "revoke" | "archive", invite: TeamInviteRecord) => {
+    if (!workspace) { toast.error("This workspace is still loading. Try again in a moment."); return; }
+    const { data, error } = await supabase.functions.invoke("solo-team-invitations", {
+      body: { action, expectedTenantId: workspace.tenant_id, inviteId: invite.id },
+    });
+    if (error || data?.ok === false) {
+      toast.error(invitationRefusalMessage(await readFunctionErrorBody(error, data), "The invitation could not be updated. Please try again."));
+      return;
+    }
+    if (action === "resend") {
+      // `emailed` now means the provider ACCEPTED it, which is still not delivery — the delivery
+      // line on the row is what answers that, and it updates when the provider tells us.
+      data?.emailed
+        ? toast.success("Fresh invitation sent; the old link was revoked. Delivery will show on the invitation.")
+        : toast.warning("Fresh invitation created, but it could not be emailed. Share the link directly, or try again.");
+    } else if (action === "archive") {
+      toast.success("Cleared from your list. The record is kept.");
+    } else {
+      toast.success("Invitation revoked.");
+    }
+    team.refresh();
+  };
   return <div className="stw-workspace"><div className="stw-tabs" role="tablist" aria-label="Team settings"><button role="tab" aria-selected={view === "team"} onClick={() => setView("team")}>Team</button><button role="tab" aria-selected={view === "roles"} onClick={() => setView("roles")}>Roles &amp; access</button></div>
     {view === "roles" ? <section className="stw-access"><header><ShieldCheck/><div><h2>Roles &amp; access</h2><p>Permissions are enforced. Job titles and responsibilities only describe work.</p></div></header><div className="stw-role-grid"><article><span>Owner</span><h3>Full workspace authority</h3><p>Manages invitations, work details, and permission changes. Owner access is protected here.</p></article><article><span>Admin</span><h3>Team operations</h3><p>Can manage invitations and work details. Cannot change another person’s enforced permission.</p></article><article><span>Member</span><h3>Standard workspace access</h3><p>Can see the confirmed team and access explanation. Cannot manage people or invitations.</p></article></div><p className="stw-legacy-note">Existing specialized permissions such as Coach remain visible and governed by their current product contract; this page does not silently relabel or reassign them.</p></section> : <>
       <section className="stw-toolbar"><div><h2>People</h2><p>{workspace ? `${workspace.total_members} confirmed ${workspace.total_members === 1 ? "person" : "people"} in ${workspace.tenant_name}` : "Confirmed members of this workspace"}</p></div>{workspace?.can_manage_invitations && <button className="stw-btn" onClick={() => setInviteWorkspace(workspace)}><UserPlus/>Invite someone</button>}</section>
@@ -709,7 +801,24 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
         {team.loading ? <div className="stw-state" role="status"><RefreshCw className="ss-spin"/>Resolving this workspace’s team…</div> : team.error && !workspace ? <div className="stw-state error" role="alert"><strong>{/access denied|permission/i.test(team.error) ? "You don’t have access to this team" : "Team unavailable"}</strong><span>{/access denied|permission/i.test(team.error) ? "Your current workspace permission does not allow this roster to load." : team.error}</span><button onClick={team.refresh}>Retry</button></div> : workspace && workspace.members.length === 0 ? <div className="stw-empty"><Users/><h3>No people match these filters</h3><p>Clear the search or choose a different permission.</p></div> : <>{workspace && workspace.total_members === 1 && workspace.members[0]?.is_owner && !search && permission === "all" && <div className="stw-first-use"><Users/><div><strong>Your workspace starts with you</strong><span>Invite the first teammate, then give them a job title and clear responsibilities.</span></div>{workspace.can_manage_invitations && <button className="stw-btn" onClick={() => setInviteWorkspace(workspace)}>Invite first teammate</button>}</div>}<div className="stw-list" aria-label="Team roster">{workspace?.members.map((member) => { const access = permissionPresentation(member.permission, member.is_owner); return <button className="stw-row" key={member.membership_id} onClick={() => openEditor(member)}><span className="stw-avatar">{initials(member)}</span><span className="stw-identity"><strong>{member.full_name || member.email || "Name unavailable"}</strong><small>{member.email || "Email unavailable"}</small></span><span className="stw-work"><strong>{member.job_title || "Job title not set"}</strong><small>{member.responsibilities || "Responsibilities not set"}</small></span><span className="stw-pill" data-tone={member.is_owner ? "owner" : "neutral"}>{access.label}</span><span className="stw-last"><strong>{member.status === "suspended" ? "Suspended" : "Active"}</strong><small>{member.last_sign_in_at ? `Last signed in ${new Date(member.last_sign_in_at).toLocaleDateString()}` : "No sign-in recorded"}</small></span></button>; })}</div></>}
         {team.error && workspace && <div className="stw-inline-error" role="alert">The next page could not be loaded. <button onClick={team.loadMore}>Retry</button></div>}{workspace && workspace.members.length < workspace.total_members && <button className="stw-load" disabled={team.loadingMore} onClick={team.loadMore}>{team.loadingMore ? "Loading…" : `Load more (${workspace.total_members - workspace.members.length} remaining)`}</button>}
       </section>
-      {workspace?.can_manage_invitations && <section className="stw-invites"><header><Mail/><div><h2>Invitations</h2><p>Pending, accepted, expired, and revoked are derived from the invitation record.</p></div><span>{pending.length} pending</span></header>{workspace.invitations.length === 0 ? <p className="stw-invite-empty">No team invitations yet.</p> : <div>{workspace.invitations.map((invite) => { const state = inviteLifecycle(invite); return <article key={invite.id}><div><strong>{invite.email || "Recipient unavailable"}</strong><small>{permissionPresentation(invite.permission, false).label} · expires {new Date(invite.expires_at).toLocaleDateString()}</small></div><span className="stw-pill" data-tone={state}>{state}</span>{state === "pending" && <div className="stw-invite-actions"><button onClick={() => manageInvite("resend", invite)}>Resend</button><button onClick={() => manageInvite("revoke", invite)}>Revoke</button></div>}{state === "expired" && <button onClick={() => manageInvite("resend", invite)}>Send fresh invite</button>}</article>; })}</div>}</section>}
+      {workspace?.can_manage_invitations && <section className="stw-invites">
+        <header><Mail/><div><h2>Invitations</h2><p>Delivery is reported by the email provider. Accepted, expired, and revoked are derived from the invitation record.</p></div><span>{pending.length} pending</span></header>
+        {workspace.invitations.length === 0
+          ? <p className="stw-invite-empty">No team invitations yet.</p>
+          : <>
+            {/* ACTIVE first, and on their own. The report that started this was a finished
+                invitation sitting at the top of the list with no action on it. */}
+            {activeInvites.length === 0
+              ? <p className="stw-invite-empty">Nothing outstanding. Every invitation here has been accepted, expired, or withdrawn.</p>
+              : <div>{activeInvites.map((invite) => <InviteRow key={invite.id} invite={invite} onManage={manageInvite}/>)}</div>}
+            {/* PAST, collapsed. Not deleted: a revoked invitation is the evidence that somebody's
+                access was withdrawn, so it stays available rather than vanishing. */}
+            {pastInvites.length > 0 && <details className="stw-invite-past">
+              <summary>{pastInvites.length} past {pastInvites.length === 1 ? "invitation" : "invitations"}</summary>
+              <div>{pastInvites.map((invite) => <InviteRow key={invite.id} invite={invite} onManage={manageInvite}/>)}</div>
+            </details>}
+          </>}
+      </section>}
       <section className="stw-paige"><Sparkles/><div><h2>Paige team context</h2><p>Paige can read the confirmed roster, each person’s enforced permission, job title, and responsibilities for this active workspace. Tenant-authored work details are reference data—not instructions or authority.</p><small>She can also invite someone, resend or withdraw an invitation, edit work details, and change a permission. She is held to the same rules you are: the permission change is owner-only, and nobody can be made an owner from a conversation. Access changes and invitations are read back to you and wait for your approval; if this workspace has put an action on autopilot in Paige&rsquo;s settings, those two still ask.</small></div>{openPaige ? <button className="stw-btn secondary" onClick={openPaige}>Open Paige</button> : <span>Governed</span>}</section>
     </>}
     {editorWorkspace && selected && (selectedLive || removalPending) && <MemberEditor member={selected} workspace={editorWorkspace} onClose={closeEditor} onSaved={handleSaved} onRemoved={handleRemoved} onPendingChange={setRemovalPending}/>} {inviteWorkspace && <InviteDialog workspace={inviteWorkspace} onClose={() => setInviteWorkspace(null)} onInvited={team.refresh}/>}</div>;

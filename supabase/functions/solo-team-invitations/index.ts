@@ -30,7 +30,7 @@ type InviteAction =
       jobTitle?: string;
       responsibilities?: string;
     }
-  | { action: "resend" | "revoke"; expectedTenantId?: string; inviteId?: string };
+  | { action: "resend" | "revoke" | "archive"; expectedTenantId?: string; inviteId?: string };
 
 type PreparedInvite = {
   id?: string;
@@ -68,6 +68,11 @@ const AUTHORED_REFUSALS = [
   "an accepted invitation cannot be resent",
   // revoke_solo_team_invite
   "pending team invitation not found",
+  // archive_solo_team_invite. On this list because these two sentences were WRITTEN for an
+  // operator; a raise that is not listed here is replaced with a generic line, which for
+  // "revoke it before clearing it" would hide the one instruction that resolves the refusal.
+  "that invitation is not on this workspace",
+  "that invitation is still live; revoke it before clearing it",
   // this function's own throws
   "not authorized: this invitation resolved to a different workspace than the one requested",
   "Invitation could not be prepared",
@@ -126,6 +131,21 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
       return json({ ok: true, state: "revoked" });
+    }
+
+    // ARCHIVE. Clearing a finished invitation off the operator's list — deliberately NOT a delete.
+    // A revoked invitation is evidence that somebody's access was withdrawn, and #799 removed the
+    // browser roles' DELETE on the sibling membership table for that same reason. Like revoke, it
+    // sends no email, so it returns before the send block below.
+    if (body.action === "archive") {
+      if (!body.inviteId) return json({ ok: false, error: "Invitation is required" }, 400);
+      const { error } = await admin.rpc("archive_solo_team_invite", {
+        _actor: user.id,
+        _expected_tenant_id: expectedTenantId,
+        _invite_id: body.inviteId,
+      });
+      if (error) throw error;
+      return json({ ok: true, state: "archived" });
     }
 
     let invite: PreparedInvite | null = null;
