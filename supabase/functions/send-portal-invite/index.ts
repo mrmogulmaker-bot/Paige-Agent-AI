@@ -176,8 +176,17 @@ Deno.serve(async (req) => {
   ) => {
     // Never allowed to break the send. A failure to RECORD an email is not a reason to fail an
     // email that already left, and this runs after the provider call precisely so it cannot.
+    //
+    // The failure must be LOUD, though, not silent. supabase-js does NOT throw on a database-level
+    // insert failure (RLS, a constraint, a transient PostgREST error) — it resolves normally with a
+    // returned `{ error }`. A bare `try/catch` around the `await` alone would never see that: it
+    // only catches a thrown exception, which this call was never going to raise for that class of
+    // failure. Swallowing it meant a genuinely-sent email could still leave zero rows against it,
+    // silently — found by an independent review tracing this exact function while verifying an
+    // unrelated documentation claim about it (§39), the same class of gap #856 closed in the
+    // webhook's discarded `originError`.
     try {
-      await admin.from("email_send_log").insert({
+      const { error } = await admin.from("email_send_log").insert({
         template_name: kind === "team" ? "team_invite" : "portal_invite",
         recipient_email: recipient,
         message_id: messageId,
@@ -188,7 +197,10 @@ Deno.serve(async (req) => {
         sender_account: "platform",
         metadata: { via: "send-portal-invite", invite_id: (tok as { id?: string }).id ?? null, kind, ...detail },
       });
-    } catch { /* the email is what matters; the log is best-effort */ }
+      if (error) console.error("[send-portal-invite] logSend insert failed", error.message);
+    } catch (e) {
+      console.error("[send-portal-invite] logSend threw", e instanceof Error ? e.message : "unknown");
+    }
   };
 
   if (!RESEND_KEY) {
