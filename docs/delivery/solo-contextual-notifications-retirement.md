@@ -10,7 +10,7 @@ The earlier #883 release removed the Solo platform bell and protected the retain
 
 | Entry / source | Result |
 | --- | --- |
-| Old Solo Settings Notifications URL | Same account Setup, history replace, no inherited query/hash, no retired child mount |
+| Old Solo Settings Notifications URL | Same account Setup at its existing canonical Business profile subpage, history replace, no inherited query/hash, no retired child mount or extra index redirect |
 | Setup after redirect | One plain status acknowledgement; consume history marker to prevent replay on reload or Back/Forward |
 | Normal Setup / workspace switch | No carried acknowledgement; no notification read |
 | Billing | Existing contact/delegate designation controls remain; badge says “Designated for billing notices.” Existing no-sender and no-ownership disclosures remain |

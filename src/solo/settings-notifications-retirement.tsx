@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { setupSubtabPath } from "./setup-subtab-route";
 
 /** Compatibility only: never mount the retired page or read notification data. */
 export function SettingsRouteBoundary({ children }: { children: ReactNode }) {
   const { account } = useParams();
   const { pathname } = useLocation();
   if (account && pathname.replace(/\/$/, "") === `/solo/${account}/settings/notifications`) {
-    return <Navigate replace to={`/solo/${account}/settings/setup`} state={{ notificationMoveNotice: true }}/>;
+    return <Navigate replace to={setupSubtabPath(account, "business-profile")} state={{ notificationMoveNotice: true }}/>;
   }
   return <>{children}</>;
 }

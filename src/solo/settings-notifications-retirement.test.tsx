@@ -17,7 +17,7 @@ async function mount(entries: string[]) {
     const location = useLocation();
     const { account } = useParams();
     reads(location.pathname);
-    return <><h1>Settings</h1>{location.pathname.endsWith("/setup") && <SettingsMoveNotice key={account}/>}</>;
+    return <><h1>Settings</h1>{location.pathname.includes("/settings/setup") && <SettingsMoveNotice key={account}/>}</>;
   }
   const router = createMemoryRouter([{ path: "/solo/:account/*", element: <SettingsRouteBoundary><Feature/></SettingsRouteBoundary> }], { initialEntries: entries });
   const host = document.createElement("div");
@@ -37,7 +37,7 @@ describe("retired Solo notification route", () => {
   });
   it.each(["", "/", "?origin=calendar&returnTo=/solo/other/settings/billing#old"])("replaces a legacy bookmark once, discarding stale state: %s", async suffix => {
     const { router, host, reads, go } = await mount(["/solo/41/settings/team", `/solo/41/settings/notifications${suffix}`]);
-    expect(router.state.location.pathname).toBe("/solo/41/settings/setup");
+    expect(router.state.location.pathname).toBe("/solo/41/settings/setup/business-profile");
     expect(router.state.location.search).toBe("");
     expect(router.state.location.hash).toBe("");
     expect(host.querySelector('[role="status"]')?.textContent).toBe(notice);
@@ -47,7 +47,7 @@ describe("retired Solo notification route", () => {
     expect(router.state.location.pathname).toBe("/solo/41/settings/team");
     expect(host.textContent).not.toContain(notice);
     await go(1);
-    expect(router.state.location.pathname).toBe("/solo/41/settings/setup");
+    expect(router.state.location.pathname).toBe("/solo/41/settings/setup/business-profile");
     expect(host.textContent).not.toContain(notice);
   });
   it("does not carry acknowledgement across workspace switches or normal Setup arrivals", async () => {
@@ -55,7 +55,7 @@ describe("retired Solo notification route", () => {
     await go("/solo/82/settings/setup");
     expect(host.textContent).not.toContain(notice);
     await go("/solo/82/settings/notifications");
-    expect(router.state.location.pathname).toBe("/solo/82/settings/setup");
+    expect(router.state.location.pathname).toBe("/solo/82/settings/setup/business-profile");
     expect(host.textContent).toContain(notice);
     await go("/solo/82/settings/billing");
     await go("/solo/82/settings/setup");
