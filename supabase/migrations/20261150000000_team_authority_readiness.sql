@@ -63,7 +63,14 @@ returns table (
   value text,
   status text,
   source text,
-  reason text
+  reason text,
+  -- The workspace these facts describe. Returned so a Chat caller can PROVE they belong to the
+  -- conversation it is in: get_paige_persona_context() resolves a linked CLIENT's workspace ahead
+  -- of current_user_tenant_id(), so a user who is a client of B and a team member of A holds a
+  -- conversation scoped to B while this read resolves A. Without this column the binding is
+  -- impossible rather than merely omitted -- which is exactly why get_paige_team_context() has
+  -- always returned its tenant, and why _shared/team-context.ts can refuse on mismatch.
+  tenant_id uuid
 )
 language plpgsql
 stable
@@ -78,7 +85,7 @@ declare
 begin
   if v_uid is null then
     return query
-    select f.fact_key, null::text, 'unavailable'::text, null::text, 'no caller identity'::text
+    select f.fact_key, null::text, 'unavailable'::text, null::text, 'no caller identity'::text, null::uuid
     from unnest(array['viewer_permission','viewer_is_legal_owner']) as f(fact_key);
     return;
   end if;
@@ -87,7 +94,7 @@ begin
 
   if v_tenant is null then
     return query
-    select f.fact_key, null::text, 'unavailable'::text, null::text, 'workspace not resolved'::text
+    select f.fact_key, null::text, 'unavailable'::text, null::text, 'workspace not resolved'::text, null::uuid
     from unnest(array['viewer_permission','viewer_is_legal_owner']) as f(fact_key);
     return;
   end if;
@@ -108,9 +115,9 @@ begin
   v_is_legal_owner := public.is_tenant_owner(v_uid, v_tenant);
 
   return query
-  select 'viewer_permission'::text, v_role, 'available'::text, 'team'::text, null::text
+  select 'viewer_permission'::text, v_role, 'available'::text, 'team'::text, null::text, v_tenant
   union all
-  select 'viewer_is_legal_owner'::text, v_is_legal_owner::text, 'available'::text, 'team'::text, null::text;
+  select 'viewer_is_legal_owner'::text, v_is_legal_owner::text, 'available'::text, 'team'::text, null::text, v_tenant;
 end;
 $$;
 
@@ -124,7 +131,9 @@ comment on function public.get_team_authority_readiness() is
   'member count or invitation count: Team''s own block already ships the last two and a rival '
   'computation would drift from it. JWT-only — both facts describe the caller, so there is no tenant '
   'argument and no service_role grant, hence no IDOR surface. Gated on an ACTIVE seat in the resolved '
-  'tenant, matching get_paige_team_context() exactly. Always returns exactly two rows. Team owns the '
+  'tenant, matching get_paige_team_context() exactly. Each row names the workspace it was resolved '
+  'for, so a Chat caller can prove the facts belong to the conversation it is in (§9). Always returns '
+  'exactly two rows. Team owns the '
   'underlying facts; this never writes.';
 
 revoke all on function public.get_team_authority_readiness() from public, anon, service_role;

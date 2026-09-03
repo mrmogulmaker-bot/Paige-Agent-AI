@@ -4130,7 +4130,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     let businessContextReadinessBlock = "";
     if (personaCtx.tenant_id) {
       try {
-        businessContextReadinessBlock = await buildBusinessContextReadinessBlock(supabaseClient);
+        businessContextReadinessBlock = await buildBusinessContextReadinessBlock(supabaseClient, personaCtx.tenant_id);
       } catch (e) {
         console.warn("[paige-ai-chat] business context readiness unavailable:", (e as Error)?.message);
       }
@@ -4145,7 +4145,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     let teamAuthorityBlock = "";
     if (personaCtx.tenant_id) {
       try {
-        teamAuthorityBlock = await buildTeamAuthorityBlock(supabaseClient);
+        teamAuthorityBlock = await buildTeamAuthorityBlock(supabaseClient, personaCtx.tenant_id);
       } catch (e) {
         console.warn("[paige-ai-chat] team authority unavailable:", (e as Error)?.message);
       }

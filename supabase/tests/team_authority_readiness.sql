@@ -18,7 +18,7 @@
 --      data would pass while the defect shipped.
 BEGIN;
 
-SELECT plan(16);
+SELECT plan(19);
 
 -- ── Grant surface (§59 — the grant is never the guard, but it is still the outer boundary) ──
 SELECT ok(
@@ -101,6 +101,17 @@ SELECT ok(
   'both facts name their source system, so PAIGE can never present one domain''s fact as another''s'
 );
 
+SELECT is(
+  (SELECT count(distinct tenant_id)::integer FROM ta_owner), 1,
+  'every row names ONE workspace — the one the read resolved'
+);
+SELECT is(
+  (SELECT distinct tenant_id FROM ta_owner), 'd1000000-0000-0000-0000-00000000aaaa'::uuid,
+  'and it is the caller''s ACTIVE workspace, which is what a Chat caller binds against: '
+  'get_paige_persona_context() resolves a linked client''s workspace ahead of '
+  'current_user_tenant_id(), so the two can differ and an unbound block would speak about the wrong one'
+);
+
 -- ── THE SPLIT CALLER: owner of B, member of A, active in A ──────────────────────
 SELECT set_config('request.jwt.claims', '{"sub":"d1000000-0000-0000-0000-000000000009","role":"authenticated"}', true);
 
@@ -142,6 +153,12 @@ SELECT is((SELECT count(*)::integer FROM ta_anon), 2, 'a caller with no identity
 SELECT ok(
   (SELECT bool_and(status = 'unavailable' AND value IS NULL AND source IS NULL AND reason IS NOT NULL) FROM ta_anon),
   'and learns nothing: no value, no provenance, but a named reason so "could not" is distinguishable from "none"'
+);
+
+SELECT ok(
+  (SELECT bool_and(tenant_id IS NULL) FROM ta_anon),
+  'a caller with no identity resolved no workspace, so the rows name none — unbindable by '
+  'construction, which is what makes the adapter suppress them rather than narrate them'
 );
 
 SELECT * FROM finish();

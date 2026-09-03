@@ -29,6 +29,7 @@ type ReadinessRow = {
   source: string | null;
   as_of: string | null;
   reason: string | null;
+  tenant_id: string | null;
 };
 
 export type BusinessContextReadinessEvidence =
@@ -39,7 +40,11 @@ export type BusinessContextReadinessEvidence =
    *  refusal renders NOTHING, because a client chatting with their coach's PAIGE should not be
    *  told the coach's setup status is unreadable — that is not their conversation. A genuine read
    *  failure still renders the honest block, so PAIGE says "I can't check" instead of guessing. */
-  | { readonly status: "not_permitted" };
+  | { readonly status: "not_permitted" }
+  /** The read resolved a DIFFERENT workspace than the conversation is scoped to. Renders nothing —
+   *  see the identical arm in teamAuthorityChatEvidence.ts for why the persona tenant and
+   *  current_user_tenant_id() can diverge (§9). */
+  | { readonly status: "wrong_workspace" };
 
 const FIELD_LABEL: Record<string, string> = {
   website: "Website",
@@ -74,6 +79,8 @@ const REFUSED_REASON = "not permitted for this account";
 
 export async function loadBusinessContextReadinessForChat(
   client: SpineEvidenceRpcClient,
+  /** The workspace THIS CONVERSATION is scoped to (personaCtx.tenant_id). See the binding below. */
+  expectedTenantId: string | null,
 ): Promise<BusinessContextReadinessEvidence> {
   try {
     const { data, error } = await client.rpc("get_business_context_readiness", {});
@@ -81,6 +88,10 @@ export async function loadBusinessContextReadinessForChat(
     const rows = (Array.isArray(data) ? data : []) as ReadinessRow[];
     if (!rows.length) return { status: "unavailable", reason: "no_rows" };
     // Every row refused ⇒ the role gate turned this caller away. Render nothing (see the type).
+    // BIND FIRST — a row naming another workspace is not evidence about this conversation.
+    if (!expectedTenantId || !rows.every((row) => row.tenant_id === expectedTenantId)) {
+      return { status: "wrong_workspace" };
+    }
     if (rows.every((row) => row.status === "unavailable" && row.reason === REFUSED_REASON)) {
       return { status: "not_permitted" };
     }
@@ -103,7 +114,7 @@ const UNAVAILABLE = [
 /** Render the evidence for the model. §13: every line states only what the row proves — never
  *  "missing" for a field the row marks confirmed, and never "confirmed" for anything else. */
 export function renderBusinessContextReadinessForChat(evidence: BusinessContextReadinessEvidence): string {
-  if (evidence.status === "not_permitted") return "";
+  if (evidence.status === "not_permitted" || evidence.status === "wrong_workspace") return "";
   if (evidence.status === "unavailable") return UNAVAILABLE;
 
   const lines = evidence.rows.map((row) => {
@@ -119,6 +130,11 @@ export function renderBusinessContextReadinessForChat(evidence: BusinessContextR
   ].join("\n");
 }
 
-export async function buildBusinessContextReadinessBlock(client: SpineEvidenceRpcClient): Promise<string> {
-  return renderBusinessContextReadinessForChat(await loadBusinessContextReadinessForChat(client));
+export async function buildBusinessContextReadinessBlock(
+  client: SpineEvidenceRpcClient,
+  expectedTenantId: string | null,
+): Promise<string> {
+  return renderBusinessContextReadinessForChat(
+    await loadBusinessContextReadinessForChat(client, expectedTenantId),
+  );
 }

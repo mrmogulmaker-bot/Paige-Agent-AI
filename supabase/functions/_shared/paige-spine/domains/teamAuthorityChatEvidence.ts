@@ -22,6 +22,7 @@ type AuthorityRow = {
   readonly status: string;
   readonly source: string | null;
   readonly reason: string | null;
+  readonly tenant_id: string | null;
 };
 
 export type TeamAuthorityEvidence =
@@ -31,7 +32,15 @@ export type TeamAuthorityEvidence =
    *  NOTHING, exactly as the readiness block does: someone with no seat here should not be told
    *  anything about this workspace's shape, including that it declined to answer. A genuine read
    *  failure still renders the honest block, so PAIGE says "I can't check" rather than guessing. */
-  | { readonly status: "not_permitted" };
+  | { readonly status: "not_permitted" }
+  /** The read resolved a DIFFERENT workspace than the conversation is scoped to. Renders nothing.
+   *  get_paige_persona_context() resolves a linked CLIENT's workspace ahead of
+   *  current_user_tenant_id(), so a user who is a client of B and a team member of A holds a
+   *  conversation scoped to B while this read resolves A. Saying "you ARE the legal owner of this
+   *  workspace" from A's seat inside B's conversation is a cross-workspace claim, so the block is
+   *  suppressed entirely rather than hedged (§9). Mirrors _shared/team-context.ts, which returns
+   *  null on the same mismatch. */
+  | { readonly status: "wrong_workspace" };
 
 const REFUSED_REASON = "not permitted for this account";
 
@@ -68,6 +77,11 @@ function ownershipSentence(value: string | null): string {
 
 export async function loadTeamAuthorityForChat(
   client: SpineEvidenceRpcClient,
+  /** The workspace THIS CONVERSATION is scoped to (personaCtx.tenant_id). Required: without it the
+   *  binding below cannot be performed, and an unbound block is the defect this parameter exists to
+   *  close. A null here means the caller could not establish a conversation workspace, which is
+   *  itself a reason to say nothing. */
+  expectedTenantId: string | null,
 ): Promise<TeamAuthorityEvidence> {
   try {
     const { data, error } = await client.rpc("get_team_authority_readiness", {});
@@ -75,6 +89,12 @@ export async function loadTeamAuthorityForChat(
     const rows = (Array.isArray(data) ? data : []) as AuthorityRow[];
     if (!rows.length) return { status: "unavailable", reason: "no_rows" };
     // Every row refused ⇒ no active seat. A PARTIAL refusal is not a refusal.
+    // BIND FIRST, before any row is read for content. A row that names a workspace other than this
+    // conversation's is not evidence about this conversation, whatever its status says. Rows whose
+    // tenant is null resolved no workspace at all and cannot be bound either.
+    if (!expectedTenantId || !rows.every((row) => row.tenant_id === expectedTenantId)) {
+      return { status: "wrong_workspace" };
+    }
     if (rows.every((row) => row.status === "unavailable" && row.reason === REFUSED_REASON)) {
       return { status: "not_permitted" };
     }
@@ -85,7 +105,7 @@ export async function loadTeamAuthorityForChat(
 }
 
 export function renderTeamAuthorityForChat(evidence: TeamAuthorityEvidence): string {
-  if (evidence.status === "not_permitted") return "";
+  if (evidence.status === "not_permitted" || evidence.status === "wrong_workspace") return "";
   if (evidence.status === "unavailable") return UNAVAILABLE;
 
   const permission = evidence.rows.find((row) => row.fact_key === "viewer_permission");
@@ -101,6 +121,9 @@ export function renderTeamAuthorityForChat(evidence: TeamAuthorityEvidence): str
   ].join("\n");
 }
 
-export async function buildTeamAuthorityBlock(client: SpineEvidenceRpcClient): Promise<string> {
-  return renderTeamAuthorityForChat(await loadTeamAuthorityForChat(client));
+export async function buildTeamAuthorityBlock(
+  client: SpineEvidenceRpcClient,
+  expectedTenantId: string | null,
+): Promise<string> {
+  return renderTeamAuthorityForChat(await loadTeamAuthorityForChat(client, expectedTenantId));
 }
