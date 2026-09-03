@@ -141,6 +141,10 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.platform_billing_account_top_level_guard() FROM PUBLIC, anon, authenticated;
+COMMENT ON FUNCTION public.platform_billing_account_top_level_guard() IS
+  'Billing Foundation A (trigger): a platform billing identity belongs to a TOP-LEVEL workspace only. '
+  'Raises 42501 platform_billing_account_top_level_only for a missing tenant, a parented tenant, or a '
+  'sub_account by type. Structural, so it binds every writer including service role.';
 DROP TRIGGER IF EXISTS trg_platform_billing_account_top_level ON public.platform_billing_accounts;
 CREATE TRIGGER trg_platform_billing_account_top_level
   BEFORE INSERT OR UPDATE ON public.platform_billing_accounts
@@ -242,6 +246,11 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.platform_billing_contact_guard() FROM PUBLIC, anon, authenticated;
+COMMENT ON FUNCTION public.platform_billing_contact_guard() IS
+  'Billing Foundation A (trigger): eligibility for a FUNCTIONAL billing designation — top-level Solo '
+  'workspace only; an active member; primary_contact must be a current workspace Owner '
+  '(is_tenant_owner); delegate must be a current Admin; verified email. A row is never re-pointed, '
+  're-typed or un-revoked. Never creates, changes or implies ownership. Binds every writer.';
 DROP TRIGGER IF EXISTS trg_platform_billing_contact_guard ON public.platform_billing_contacts;
 CREATE TRIGGER trg_platform_billing_contact_guard
   BEFORE INSERT OR UPDATE ON public.platform_billing_contacts
@@ -278,7 +287,7 @@ COMMENT ON TABLE public.platform_billing_notification_log IS
   'LAYER 1 per Doctrine §197. Billing Foundation A: the tenant-scoped ledger of every billing-notice '
   'delivery attempt and outcome (R25). Holds user ids, event, status and provider references ONLY — '
   'never an email address, subject, or body. No writer exists in Foundation A (delivery is a later '
-  'release); written by service contexts only; readable by platform operators.';
+  'release); written by service contexts or a platform owner; readable by platform operators.';
 
 ALTER TABLE public.platform_billing_notification_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billing_notification_log FORCE ROW LEVEL SECURITY;
