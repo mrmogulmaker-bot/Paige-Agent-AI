@@ -2008,11 +2008,13 @@ no_billing_account`. R13 binds: absence of a record is never inferred as a promo
 | ↳ **superseded** by the AI usage entry below (allowance slice) — the card now states a real total; §58: upgraded in place, never removed | | | | | | | | |
 | Client-billing pointer | **moved to Campaigns › Sales** (owner, 2026-09-03) — Billing is one direction of money only | moved | moved | moved | moved | moved | moved | — |
 
-### Platform Billing — AI usage allowance, slice 1+2 (branch `claude/platform-billing-clarification-l6zqr5`) — **NOT YET MERGED**
+### Platform Billing — AI usage allowance, slice 1+2 (PR #854, merged `03d85474` 2026-09-03) — **LIVE**
 
-**§66.** This entry records what the slice makes true and is written BEFORE the merge, so it states
-the branch rather than a commit. It supersedes the `Usage & limits` row in the Foundation C table
-above, which recorded that card as `UNAVAILABLE` on every tier.
+**§66 correction (2026-09-03, caught while writing the entry below):** this row said **NOT YET
+MERGED** and named a branch rather than a commit — stale from before PR #854 merged. Corrected here
+rather than left to mislead the next reader (§13); this is exactly the drift §66 exists to catch.
+It supersedes the `Usage & limits` row in the Foundation C table above, which recorded that card as
+`UNAVAILABLE` on every tier.
 
 **What changed.** The plan source now carries an AI allowance beside seats/contacts/SMS
 (`platform_subscription_plans.included_ai_tokens_month` + `.ai_credit_token_ratio` — solo 5,000,000
@@ -2059,6 +2061,49 @@ God, Agency, Enterprise, Sub-account — is **proven at the resolver** by the sc
 Foundation A's proven behaviour, not something this slice re-tested. **Authenticated runtime on the
 deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
 billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
+
+### Platform Billing — truthful account status, items 1–3 (PR #865) — **PENDING MERGE**
+
+**§66, same PR as the change.** Written while #865 is open; the persisted-apply confirmation
+(§32.a) is owed on merge and this entry is not final until it is checked.
+
+**What changed.** `get_workspace_billing_status()` (Slice A `20261109040000`, on `main`; Slice B
+`20261111050000` and Slice C `20261120000000`, in #865) is the new source for the Solo "Plan &
+usage" card, REPLACING the mapping-gated `resolveBillingPlanPresentation` path recorded in the
+Foundation C table above — that resolver could never show a real access state because Foundation
+B's entitlement projection did not exist. It now does: `access_state` is read from
+`tenant_revenue_classification` / `platform_subscriptions`, INDEPENDENTLY of provider mapping
+(`platform_billing_accounts`, read via the same `platform_billing_layer1_customer_ids()` ambiguity
+helper `get_workspace_billing_authority()` already uses). Slice B corrected a real bug in Slice A's
+own first version, which had read provider mapping from the wrong table
+(`platform_subscriptions.stripe_customer_id`, never populated by the real checkout flow). Slice C
+corrected a second real bug: every top-level tenant (parent_tenant_id IS NULL) was classified
+`scope='top_level'`, including Agency/Enterprise — now excluded via the same `account_type`
+discriminant `platform_billing_account_top_level_guard` already enforces.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Plan & usage card | `status-no-workspace` (act-as pointer, no seat) | `status-unsupported` (Slice C: excluded by `account_type`, never `top_level`) | `status-unsupported` (same) | real `access_state` — today `status-promotional`: `Billed by PAIGE Platform`, `$0 due today`, provider-account readiness shown SEPARATELY (`not_created` today) | `status-role-refusal` (R22 — `can_view`=false from the server) | `status-subaccount` ("not because there is no plan") | route not reachable | EXECUTE revoked |
+| Billing contacts — Selection needed | n/a (no book) | n/a | n/a | banner renders when `primary_selection_needed=true` (MMA's real state: two live primaries from before Slice A's trigger existed) | read-only, banner still shown if present | n/a | — | — |
+| Seats / contacts usage | — | — | — | shown from the same status read, real counts | refused with the rest of the card | — | — | — |
+| SMS usage | — | — | — | **omitted** — no sent-SMS source exists (`sms_used` stays NULL by design, never a fabricated zero) | — | — | — | — |
+| Paid marketplace add-ons | — | — | — | shown only when the real count is nonzero | — | — | — | — |
+
+**Not in this PR (sequenced next, per the brief's own ordering):** item 4 (live payment-method
+connection — collecting a card, creating the Stripe customer only on explicit owner click, writing
+the new `platform_billing_accounts.payment_method_*` columns from `stripe-webhook` only) and item 5
+(the Spine-safe billing summary wrapper).
+
+**Evidence.** Slice A: 29/29 production rollback proof. Slice B: 9/9, including a property (C5)
+that reproduces the exact old-table bug shape before asserting the fix. Slice C: 4/4, including
+Agency and Enterprise fixtures. Frontend: `src/solo/settings-billing.test.tsx` +
+`src/solo/billing-contract.test.ts`, 93 tests across the touched files, 1143/1143 across
+`src/solo/`. A real bug was caught by the new tests themselves before merge: the field-builder
+helpers built `[string,string]` tuples against a `{label,value}` object return type — TypeScript
+did not flag it, every field rendered as empty text, the new tests failed for the right reason, and
+the fix is in this same PR. **Authenticated runtime on the deployed surface: OWED** (§32.c) — no
+browser-driving tool in this session; owed to the next capable session, same as the AI-usage slice
+above.
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
