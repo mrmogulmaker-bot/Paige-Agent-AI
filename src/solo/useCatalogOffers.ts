@@ -35,7 +35,6 @@ export type OfferPlanKind = "one_time" | "deposit" | "recurring" | "installment"
  * lie as a price the record does not prove.
  */
 export type OfferAvailability = "draft" | "active" | "paused" | "archived" | "unrecognised";
-/** Mirrors `tenant_products.product_type`, which predates this slice. */
 /**
  * `tenant_products.product_type` is BILLING CADENCE, not product-vs-service — its CHECK is
  * ('one_time','recurring','service') but the only writer on production

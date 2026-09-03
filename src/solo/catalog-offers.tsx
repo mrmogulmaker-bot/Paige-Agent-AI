@@ -335,9 +335,14 @@ function RecordNotices({ data }) {
 
 export function CatalogOffers({ setDetail }) {
   const data = useCatalogOffers();
-  const [category, setCategory] = React.useState("all");
+  // `null` is "everything", NOT a sentinel string. `category` on tenant_products is deliberately
+  // unconstrained free text — the tenant's own words — so any string we reserved as a sentinel
+  // would be a category a tenant could legitimately name, and its chip would then filter to
+  // everything while claiming a count of its own. Unreachable until 2B ships the write seam;
+  // fixed here rather than left for the slice that makes it reachable.
+  const [category, setCategory] = React.useState(null);
 
-  React.useEffect(() => { setCategory("all"); }, [data.tenantId]);
+  React.useEffect(() => { setCategory(null); }, [data.tenantId]);
 
   if (data.phase === "resolving") {
     return (
@@ -384,7 +389,7 @@ export function CatalogOffers({ setDetail }) {
   }
 
   const categories = [...new Set(data.offers.map((offer) => offer.category).filter(Boolean))];
-  const shown = category === "all"
+  const shown = category === null
     ? data.offers
     : data.offers.filter((offer) => offer.category === category);
   const tally = shown.length === data.offers.length
@@ -436,9 +441,9 @@ export function CatalogOffers({ setDetail }) {
         <button
           type="button"
           className="co-filter"
-          aria-pressed={category === "all"}
+          aria-pressed={category === null}
           title="Every offer in every state"
-          onClick={() => setCategory("all")}
+          onClick={() => setCategory(null)}
         >
           Everything<b>{data.offers.length}</b>
         </button>

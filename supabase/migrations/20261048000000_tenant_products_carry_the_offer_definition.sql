@@ -48,7 +48,7 @@
 --   RLS `tp_public_active_read`   status = 'active'      -> a paused offer STOPS being publicly
 --                                                           readable. Correct, and the point.
 --   RLS `tpr_public_active_read`  parent status='active' -> its prices stop being public too.
---   TenantStorefront.tsx:60       status = 'active'      -> disappears from the public storefront.
+--   TenantStorefront.tsx:63       status = 'active'      -> disappears from the public storefront.
 --   ContactBillingPanel.tsx:117   status = 'active'      -> not offerable as a new subscription.
 --   tenant-checkout-session       reads the product      -> unreachable anyway; see below.
 --   useTenantOffers.ts:44         .neq('status','archived') -> a paused offer REMAINS selectable in
@@ -77,7 +77,7 @@
 -- carry 'paused': this same inventory records that `tenant-product-upsert` takes `status` with no
 -- allowlist, so a tenant-admin JWT — or PAIGE through the callable seam (§10), which doctrine
 -- treats as a first-class caller — can persist it the moment this lands. What is true is that
--- `StorefrontPanel:378` renders `{p.status}` VERBATIM into a badge, comparing only against
+-- `StorefrontPanel:389` renders `{p.status}` VERBATIM into a badge, comparing only against
 -- 'active' for the variant, with no lookup map and no switch. A paused row therefore displays
 -- correctly there; only the compile-time union is narrow.
 -- The union widening moves to Slice 2B, where pause becomes reachable and the exception can be

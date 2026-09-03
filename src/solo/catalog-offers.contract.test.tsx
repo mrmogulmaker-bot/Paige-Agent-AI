@@ -563,6 +563,28 @@ describe("Catalog Offers — rendered flows", () => {
     expect(host.textContent).not.toContain("What this business sells");
   });
 
+  it("filters to a tenant category literally named \"all\", instead of showing everything", () => {
+    // `category` on tenant_products is unconstrained free text on purpose — the tenant's own
+    // words. So any string reserved as the "everything" sentinel is a name a tenant can pick, and
+    // the collision makes that chip claim a count of its own while showing every offer, with two
+    // chips pressed at once. Unreachable until 2B ships the write seam; guarded before it is.
+    setCampaigns();
+    setOffers({ offers: [
+      offer({ id: "a", name: "Named all", category: "all" }),
+      offer({ id: "b", name: "Named Programs", category: "Programs" }),
+    ] });
+    renderAt("/solo/4471/growth/catalog");
+    const chip = [...host.querySelectorAll("button")].find((b) => b.textContent?.startsWith("all"));
+    expect(chip).toBeTruthy();
+    act(() => { chip?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(host.textContent).toContain("Named all");
+    expect(host.textContent).not.toContain("Named Programs");
+    // And exactly one chip reads as selected.
+    const pressed = [...host.querySelectorAll('button[aria-pressed="true"]')]
+      .filter((b) => b.className.includes("co-filter"));
+    expect(pressed).toHaveLength(1);
+  });
+
   it("switches between the two concepts without leaving the tab", () => {
     setCampaigns(); setOffers();
     renderAt("/solo/4471/growth/catalog");
