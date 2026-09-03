@@ -1734,3 +1734,37 @@ new column, name the write path and the read path before merge; if either is "la
 record rather than letting the schema imply otherwise. The cheap check is a query that would be
 non-zero if the feature worked — `select count(*) where <new column> is not null` — and knowing, in
 advance, which user action makes it non-zero.
+
+## A proof can be sound about the wrong artifact (2026-09-03)
+
+Two independent misses in one session, same shape. Both proofs were correct. Both proved something
+adjacent to the thing that mattered.
+
+**Miss 1 — the resting state is not the capability (#885).** The `get_tenant_people` gate repair
+was reported as a no-op for every current user, on the strength of a production measurement. The
+measurement was of the *resting state*: both operator accounts happen to sit at
+`active_tenant_id = NULL`. One click of Act-as in Fleet Console falsifies it —
+`operator_enter_tenant()` sets `active_tenant_id` and writes no `tenant_members` row by design, so
+the operator's roster read went **3 rows → 0**. A shipped capability, silently removed, because the
+population that exercises it was dormant at the moment of measurement.
+
+**Miss 2 — the predicate is not the call site (#892, caught by peer review BEFORE merge).** A
+workspace-binding guard was proven on production across three cases under a simulated JWT
+(`set_config('request.jwt.claims', …)`). The predicate was right. The *code* called it on the
+**service-role** client, where `auth.uid()` is NULL, so `current_user_tenant_id()` would have
+returned NULL for every caller and the guard would have refused **all nine CRM tools for all nine
+active operators** — a total outage, from the fix for a latent leak. Nothing shipped: the §39
+peer-gate found it on the pushed diff. A SQL proof structurally cannot fail on the client choice,
+because no client exists inside it. `deno check` cannot either — both clients are the same
+TypeScript type.
+
+*Rule:* **name the artifact your proof actually exercises, and check it is the one that ships.** A
+`set_config` proof exercises the SQL, not the caller. A count of who is affected today exercises the
+data, not the capability. Before reporting a change verified, ask what could be wrong that this
+proof is structurally incapable of detecting — and say that out loud in the record rather than
+letting a green result imply coverage it does not have.
+
+*Corollary, cheap and specific:* in `paige-ai-chat`, any RPC keyed on `auth.uid()` —
+`current_user_tenant_id`, `get_paige_persona_context` — must be called on `supabaseClient` (L577,
+carries the caller's Authorization header), never `supabase` (L589, service-role). The file states
+this at L1571 and it was still got wrong 7,400 lines later.

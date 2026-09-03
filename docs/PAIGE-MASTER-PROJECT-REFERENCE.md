@@ -3140,3 +3140,109 @@ constructed as a fixture to prove.
 
 **The lesson:** measuring who is affected *right now* is not measuring what the change can do. A
 capability that is dormant at the moment of measurement reads as absent.
+
+### Spine item 4 (Clients / Pipeline / Sales) — do NOT build (2026-09-03, #893)
+
+Grounded on production. The recommendation is **do not register a Spine capability for this
+domain**, for the same reason and by the same method as the Connections packet: it already has a
+home, and a second one would be a rival answer rather than a new one.
+
+**Two existing homes.** PAIGE already reads this domain through `crm_pipeline_summary`,
+`crm_list_deals`, `crm_search_contacts`, `crm_get_contact_summary` and `crm_list_tasks`, plus
+governed writes carrying confirm-gating. And `practice_dashboard_metrics(p_window_days)` already
+aggregates it in SQL — `SECURITY DEFINER`, granted `authenticated`, tenant server-resolved,
+raising `practice_scope_forbidden` on a null tenant. A third answer could disagree with the
+dashboard the tenant is looking at (§57).
+
+**What the stores hold** (measured, not inferred from a table existing): `pipeline_stages` 89 rows
+across 12 tenants; `pipelines` 17/12; `clients` 7 rows across 3 tenants, so **10 of 13 workspaces
+have an empty book**; `deals` 1; `tenant_products`, `tenant_prices` and
+`tenant_service_subscriptions` all **0**. Structure is real; activity is not.
+
+**`orders` is Platform Billing wearing a Sales name.** Columns `user_id`, `stripe_session_id`,
+`plan_type` — and **no `tenant_id` at all**. It is a tenant paying Paige (§38 L1), never a tenant's
+client paying the tenant. Reading it as Sales would attribute platform subscription revenue to
+tenant sales.
+
+**Honest states of record:** pipeline configured `LIVE`; client book `LIVE` and honestly `0` for 10
+of 13; deal activity `PARTIAL` with no derivable aggregate; revenue / velocity / forecast
+`UNAVAILABLE`; tenant commerce `NOT_CONNECTED`; payment completion `UNAVAILABLE` to Sales.
+
+**Two corrections inside this packet, both self-caught before they shipped.**
+1. The single deal is **not** fixture-like — real workspace, real value, staged, linked contact,
+   status `open`, updated after creation. The conclusion (no aggregates) survives; the reason
+   changes to *"one real deal is not a sample"*. The wrong reason would have justified the right
+   answer on a basis that evaporates the moment a second deal exists.
+2. I hypothesised that `practice_dashboard_metrics`' missing role gate exposed revenue aggregates
+   to a workspace's own clients. **It does not** — the deployed `current_user_tenant_id()` has no
+   `clients.linked_user_id` branch, so an unlinked client resolves `NULL` and is refused. I had
+   conflated it with `get_paige_persona_context()`, which does resolve that branch first. Withdrawn
+   rather than shipped as a finding — and the same conflation in the opposite direction turned out
+   to be a genuine defect (see the CRM binding entry).
+
+The packet also names **what would reopen the decision** — a deal population where movement is
+measurable, or tenant commerce actually configured — so this is a decision with a trigger rather
+than a permanent no.
+
+### PAIGE's CRM tools now bind to the conversation's own workspace (2026-09-03, #892)
+
+**LIVE on prod.** `main` = `edge-live` = `d7ecc4a7`, zero edge drift; `deploy-edge-functions`
+green; the deployed `paige-ai-chat` carries the guard at L9029 calling
+`supabaseClient.rpc("current_user_tenant_id")`, with no service-role call to that RPC anywhere in
+the file.
+
+**The defect.** Two mechanisms, neither a defect alone. (1) `crmTenantId` comes from
+`get_paige_persona_context()`, which resolves the `clients.linked_user_id` branch FIRST. (2) The
+tool role gate reads `public.user_roles`, which carries no `tenant_id` (§59). So a user who is
+admin/coach because of workspace A and a linked client of workspace B passed the gate via A and ran
+the nine `CRM_SERVICE_TOOLS` handlers against B — service-role client, RLS bypassed, four of the
+nine being writes. Proven on prod in a rolled-back transaction; exposure on the one target used was
+2 contact records and a $5,000 deal. Latent only because `clients.linked_user_id` is non-null on
+zero prod rows, which stops being true the moment a customer-portal user is linked (§7).
+
+**The fix.** The conversation's workspace must equal the caller's own `current_user_tenant_id()` —
+the canonical resolver, which already encodes a `tenant_members` seat, `agency_can_manage_child`,
+`agency_team_role` and `is_platform_admin`, so it needs no operator special-case. Resolved per tool,
+deliberately not memoised. Independently re-derived across all 10 gate-passing prod users: 9
+allowed, 1 already refused on `main`, **zero newly refused**.
+
+**WHAT #892 DOES NOT CLOSE — a swept, four-site PATTERN.** A sweep of `paige-ai-chat` on `main`
+after #892 found the same shape at three further tools, each pairing the global `user_roles` gate
+(§59) with an action scoped by `personaCtx.tenant_id`:
+
+| Site | What the conversation's tenant controls | Line (main @ d7ecc4a7) |
+|---|---|---|
+| `propose_action` | service-role insert filing an outbound draft (`cs_draft`, resolved `contact_id`) into that workspace's approval queue | gate L10995 |
+| `forge_subagent` | `POST /functions/v1/subagent-forge` with the **service-role key** and `tenant_id` in the body — creates a sub-agent there | gate L10928 |
+| `list_subagents` | `POST /functions/v1/paige-orchestrator` with the service-role key and `{action:"tool_invoke", slug, input, tenant_id}` — **invokes an arbitrary registered tool** in that workspace | gate L10894 |
+
+The third is the most consequential, and its own comment states the intent: *"§9: pass the tenant
+scope so the orchestrator only surfaces/invokes"* for that tenant. So `tenant_id` **is** the
+downstream authority boundary — supplied by a client-link-first resolver behind a tenant-agnostic
+gate.
+
+Checked and cleared: `isOperator` (L4518) is a prompt-UX signal only; the adjacent comment confirms
+`callerTier` is the real authority.
+
+**Four instances means the PATTERN is the bug, not the site.** The fix therefore belongs in ONE
+shared helper (§18), not four copies — otherwise the fifth site is written wrong the same way, which
+is how this spread. Deliberately not folded into #892: widening a security PR on my own momentum is
+exactly how that PR's third draft went wrong. Tracked as its own slice, needing its own peer-gate.
+
+**§13 — three drafts, wrong three different ways, and only one caught by review.**
+1. A hand-rolled `tenant_members` check, narrower than the canonical resolver; would have locked out
+   an agency manager holding no seat in a child tenant they manage. Caught pre-push.
+2. The right predicate called on the **service-role** client, where `auth.uid()` is NULL — the guard
+   would have refused **all nine tools for all nine active operators**, converting a latent leak
+   into a total outage (§58). Caught by the §39 peer-gate, on the pushed diff. Nothing shipped.
+3. The check memoised across the tool batch, which made both sides equally stale and reopened the
+   mid-batch scope window the loop's own dispatch-boundary comment exists to close. Caught by
+   reading the code the change sat inside.
+
+A second peer-gate cleared the final guard and found the PR body still asserting the reverted
+memoisation — corrected before merge, because the record of a security change must match the change.
+
+**Owed:** authenticated runtime proof. The edge function is not drivable from a headless session,
+so the guard is proven at the database and unproven where it runs. Three drafts, two broken in ways
+no typecheck, no SQL proof and no green CI could detect, is the concrete argument for the
+least-privilege test tenant specified in #888.
