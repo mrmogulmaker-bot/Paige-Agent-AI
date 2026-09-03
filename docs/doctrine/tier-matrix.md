@@ -2093,8 +2093,9 @@ offer, so nobody publishes something by accident while renaming it.
 | Platform operator (God) | ✗ refused, unless also a tenant member | `current_user_tenant_id()` honors an operator's selected `active_tenant_id` (via `is_platform_admin()`), so the RPC gets past the tenant resolve — but `is_tenant_admin(_tenant)` checks only `tenant_members.role IN ('owner','admin')` with no operator bypass, so a bare act-as with no membership row fails `42501` at that check. An operator who *also* holds an owner/admin membership in the tenant can write (Codex finding, PR #860 — the row above previously claimed the opposite). |
 | Solo owner / admin | ✓ | `is_tenant_admin()` inside the function body, not the EXECUTE grant (§59). |
 | Solo member | ✗ refused, and the acts are OMITTED not disabled | A disabled control says "later"; the truth is "not your role". |
-| Sub-account owner / admin | ✓ own catalog only | Same session-resolved scope; a foreign offer id simply finds nothing. |
-| Agency (as a tenant) | **UI: ✗ · RPC: ✓ — an exposed gap, not a feature** | `tierFeatures.ts` excludes `CREATION_SURFACES` from `AGENCY_FEATURES` by owner ruling (§60/§61: agency manages sub-accounts, does not run its own campaigns) and `SoloEntry` redirects an agency caller away from `/solo/*` — so the surface is unreachable through the app. But neither RPC's body checks `account_type`; an agency owner/admin (a real `tenant_members` row with `role IN ('owner','admin')` on their own tenant) can call `save_solo_offer`/`set_solo_offer_status` directly and both `current_user_tenant_id()` and `is_tenant_admin()` succeed (Codex finding, PR #860, round 3). Same class as the `customer_portal_invite` UI-only lock §60 already documents — recorded honestly rather than presented as intended agency write support; not fixed here, per §31/§13 this row states what exists, it does not silently patch the server. |
+| Sub-account owner / admin | **UI: ✗ · RPC: ✓** | `workspaceEntry.ts` routes `sub_account` to `/business/*`, which mounts `BusinessEntry` → `AgencyApp mode="subaccount"` → **its own** `./growth` (`src/agency/growth.tsx`) — a different component tree from `src/solo/growth2.tsx`'s `GrowthHub`, the only place `CatalogOffers` is imported. A sub-account caller never reaches this editor through the app (Codex finding, PR #860, round 5 — the prior wording presented this as a shipped capability; confirmed by grep, `agency/growth.tsx` has zero references to `catalog-offers`). The RPC itself has no tier check, so it still accepts a sub-account's real `tenant_members` row the same as it accepts an agency's (see the Agency row). |
+| Agency (as a tenant) | **UI: ✗ · RPC: ✓ — an exposed gap, not a feature** | `tierFeatures.ts` excludes `CREATION_SURFACES` from `AGENCY_FEATURES` by owner ruling (§60/§61: agency manages sub-accounts, does not run its own campaigns), and — same reachability gap as the sub-account row above — `/agency/*` also mounts `AgencyApp`, never `CatalogOffers`. But neither RPC's body checks `account_type`; an agency owner/admin (a real `tenant_members` row with `role IN ('owner','admin')` on their own tenant) can call `save_solo_offer`/`set_solo_offer_status` directly and both `current_user_tenant_id()` and `is_tenant_admin()` succeed (Codex finding, PR #860, round 3). Same class as the `customer_portal_invite` UI-only lock §60 already documents — recorded honestly rather than presented as intended agency write support; not fixed here, per §31/§13 this row states what exists, it does not silently patch the server. |
+| Enterprise (as a tenant) | **UI: ✗ · RPC: ✓** | Routes to `/agency/*` alongside Agency (§60: Enterprise is the Agency shell + per-tenant customization) — same `AgencyApp` mount, same absence of `CatalogOffers`. `ENTERPRISE_FEATURES` DOES carry the `growth` feature bit (it is deliberately creation-capable, unlike Agency), but that bit describes eligibility for the Studio/creation surfaces generally, not deployed access to this specific editor — there is no route that mounts it for Enterprise either (Codex finding, PR #860, round 5; a missing row here is what let round 4's Owed note talk about "preserving Enterprise RPC access" with no row to attach it to). The RPC accepts an Enterprise owner/admin for the same reason it accepts Agency's: no `account_type` check. |
 | Client / Anonymous | ✗ | `REVOKE ALL … FROM PUBLIC, anon`, verified live: `anon_can_execute: false`. |
 
 **Superseded same day by #863.** `cd9d2e21`'s delayed Codex review (see lessons-learned) returned
@@ -2109,14 +2110,17 @@ is what a legitimate write is now permitted to do to an existing price.
 **What #863 added on top of the write itself.** Editing an offer now targets the exact plan shown
 (`_price_id`, not an assumed `sort_order = 0`) and refuses in-place to touch a price that already
 carries a `stripe_price_id` or belongs to a deposit/instalment plan — the person sees why as a
-`price_note`, never a silent no-op. `set_solo_offer_status` refuses to publish an offer as `active`
-on a storefront-enabled tenant with no checkout-ready price (unreachable today: 0 storefront
-tenants, fixed anyway per §31) — **except when `price_presentation = 'contact'`**, the deliberate
-"price on application" path: `_next = 'active' AND _row.price_presentation IS DISTINCT FROM
-'contact'` gates the check, so a contact-priced offer activates with no Stripe-linked price at all
-(Codex finding, PR #860 — the prior wording described the refusal as unconditional). The
-draft-tenant bug was a frontend fix: the client now sends the tenant the form was opened against,
-not whichever tenant is current when Save fires.
+`price_note`, never a silent no-op. `set_solo_offer_status`'s publish gate for `_next = 'active'`
+(skipped entirely when `price_presentation = 'contact'` — "price on application" activates with no
+price at all, by design) has TWO branches, and only one is unreachable today. On a
+storefront-enabled tenant (0 in production, unreachable today, fixed anyway per §31) it requires an
+active price with a `stripe_price_id` — checkout-ready. On every OTHER tenant, which today means
+every real tenant, it takes the `ELSIF` branch instead: any active `tenant_prices` row is enough,
+Stripe-linked or not — so a name-only draft with no price and no `contact` presentation simply
+cannot move to `active` (Codex finding, PR #860, round 5 — the prior wording described only the
+storefront branch, which is the one nobody currently hits, and omitted the one every tenant hits
+today). The draft-tenant bug was a frontend fix: the client now sends the tenant the form was
+opened against, not whichever tenant is current when Save fires.
 
 **Persisted apply — CONFIRMED on production 2026-09-03**, from real queries after `09691d1a`,
 never from the pipeline reporting success:
