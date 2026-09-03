@@ -47,9 +47,17 @@ function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
-function b64ToBytes(b64: string): Uint8Array {
+/**
+ * The `<ArrayBuffer>` is not decoration. `new Uint8Array(n)` infers the widened
+ * `Uint8Array<ArrayBufferLike>`, whose buffer could in principle be a `SharedArrayBuffer`, and
+ * `crypto.subtle.importKey` takes a `BufferSource` that cannot be one — so the widened type is
+ * refused at the call site. Allocating the `ArrayBuffer` explicitly makes the narrower type TRUE
+ * rather than asserting it with a cast. Every other HMAC call site in this tree passes
+ * `TextEncoder.encode(...)`, which is already typed this way, which is why none of them hit it.
+ */
+function b64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
@@ -63,7 +71,7 @@ function b64ToBytes(b64: string): Uint8Array {
  */
 async function verify(secret: string, id: string, timestamp: string, signature: string, body: string): Promise<boolean> {
   const raw = secret.startsWith("whsec_") ? secret.slice(6) : secret;
-  let keyBytes: Uint8Array;
+  let keyBytes: Uint8Array<ArrayBuffer>;
   try { keyBytes = b64ToBytes(raw); } catch { return false; }
 
   const key = await crypto.subtle.importKey(
