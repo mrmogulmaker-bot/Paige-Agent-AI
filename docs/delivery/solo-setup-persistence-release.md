@@ -29,7 +29,7 @@ matching tenant-bound readback before showing registration success; disabled ide
 
 ### Latest checkpoint (supersedes the earlier candidate counts below)
 
-- Current main `93a21831c1dfeef96e34760c2b0129f188830100` was reconciled in merge `3784c26a`.
+- Current main `263042a670be76987493c0342a2eff0a45894ef4` was reconciled in merge `854575fd`.
   Main's new Billing view stays intact; this branch changes only the Setup import/mount there.
 - Automated: 92 focused Setup tests across 11 files pass. Independent managed-email UI/adapter
   verification covers 37 tests, including mismatched responses, readback, retry, account switching,
@@ -40,16 +40,43 @@ matching tenant-bound readback before showing registration success; disabled ide
 - Build exits 0. Type ratchet passes (13 inherited errors, no new errors). Scoped ESLint,
   migration-version, definer-grant and three-migration lint checks pass. The migration INSERT/SELECT
   warning is reviewed: tenant id/name are guarded and name is coalesced to a non-null fallback.
-- Real isolated PostgreSQL: 14 sender/lifecycle/access cases PASS at
-  `outputs/solo-setup-db-proof/run-eLT718/proof.json`; the test cluster was stopped. The independent
+- Real isolated PostgreSQL: 22 sender/lifecycle/access and supplemental upsert cases PASS at
+  `docs/evidence/solo-setup-business-context-sql-proof.json`; the test cluster was stopped. The independent
   harness applies all three new migrations and uses real extracted authorization/resolver/helper
   functions with synthetic dependency tables, not a full production clone or authenticated browser.
+  Separate connections prove committed knowledge/profile/example create/edit/remove and reload;
+  stale and cross-tenant requests roll back, and no-op saves preserve provenance/timestamps. The
+  older legal/Vault save seam is explicitly stubbed and is not re-proven by this supplement harness.
 - Source review fixed the missing-tenant FOUND check, disabled-identity synchronization, exact
   availability matching and durable registration readback. No Team or provider activation occurs.
 - Browser connector fails before initialization with a Windows sandbox ACL error. Authenticated
-  runtime proof remains OWED. A structural fallback and additional supplemental persistence proof
-  are being attempted; neither is claimed here as completed.
+  runtime proof remains OWED. The isolated structural browser fallback renders the real shared
+  Solo Settings/Setup components and CSS, with synthetic transport and no session-store access.
+  All 88 read/edit/drawer states pass all four viewport sizes and both themes, without horizontal
+  overflow, clipped inputs or runtime errors. Read surfaces have at most one Settings scroll owner;
+  the drawer fits the viewport. This is not live owner evidence. The generated report is preserved
+  in `docs/evidence/solo-setup-business-context-render-proof.json`.
 - Nothing is yet merged or deployed. Knowledge/voice storage is not PAIGE/Mind/Spine/Rail ingestion.
+
+### Owner acceptance and post-release audit backlog
+
+Use **any top-level Solo workspace**, including Mogul Maker Academy or First Sterling Capital.
+Settings -> Setup must show Business profile, People & email, Knowledge bucket, Direction and
+Paige brief. No specific account is the canonical feature gate.
+
+1. Edit business context; save a non-sensitive business field, entity fact and representative.
+2. Reload, leave Setup and return, then switch to another Solo workspace and back; verify the
+   original records persist and the other business never displays those values.
+3. Add and edit a knowledge note and a voice example; save, reopen and confirm stable records.
+4. Register an available managed email; verify stored readback, retry and later rename retention.
+   Disabled identities and unavailable addresses must refuse; this is not an email delivery test.
+5. Confirm business-owner facts never modify Team membership or workspace roles. Protected
+   registration numbers remain masked; do not put a real identifier into a proof screenshot.
+
+Authenticated acceptance is owed until actually driven. End-to-end custom-provider delivery,
+voice conversation/extraction, uploads/imports, and new Spine/Rail/Mind/PAIGE consumption remain
+separate workstreams, not implied by saved Setup records. Documentation surface-card reconciliation
+belongs to #731's owner; independent-review and UI polish follow-ups do not add owner approval gates.
 
 ### Review repairs and evidence separation
 
