@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SoloBusinessContextSetup } from "./SoloBusinessContextSetup";
 import { cleanSoloSetupBrief } from "./settings-setup-contract";
@@ -78,19 +78,39 @@ vi.mock("./data/useSoloBusinessContext", () => ({
 vi.mock("@/hooks/useConfirm", () => ({
   useConfirm: () => ({ confirm: state.confirm, dialog: null }),
 }));
-vi.mock("next-themes", () => ({ useTheme: () => ({resolvedTheme: state.theme}) }));
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ resolvedTheme: state.theme }),
+}));
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function mount(account = "100") {
+function RouteProof() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-route-proof>
+        {location.pathname}
+        {location.search}
+      </output>
+      <button onClick={() => navigate(-1)}>History back</button>
+      <button onClick={() => navigate(1)}>History forward</button>
+    </>
+  );
+}
+async function mount(
+  account = "100",
+  entry = `/solo/${account}/settings/setup`,
+) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () =>
     root.render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>
+        <RouteProof />
         <SoloBusinessContextSetup account={account} />
       </MemoryRouter>,
     ),
@@ -98,7 +118,7 @@ async function mount(account = "100") {
   return { host, root };
 }
 const button = (host: HTMLElement, label: string) =>
-  Array.from(host.querySelectorAll("button")).find(
+  Array.from(host.querySelectorAll("button, a[role=tab]")).find(
     (node) => node.textContent?.trim() === label,
   ) as HTMLButtonElement;
 async function setValue(
@@ -117,6 +137,143 @@ async function setValue(
 }
 
 describe("canonical Solo Setup business context", () => {
+  it("opens the requested child URL and supplies real sibling links", async () => {
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/knowledge-bucket?origin=calendar",
+    );
+    expect(
+      host.querySelector("[role=tab][aria-selected=true]")?.textContent,
+    ).toBe("Knowledge bucket");
+    expect(
+      host.querySelector(
+        '[role=tab][href="/solo/100/settings/setup/direction?origin=calendar"]',
+      ),
+    ).not.toBeNull();
+    expect(host.textContent).not.toContain("Business address");
+    await act(async () => root.unmount());
+  });
+  it.each([
+    "business-profile",
+    "people-email",
+    "knowledge-bucket",
+    "direction",
+    "paige-brief",
+  ])("restores direct entry to %s", async (tab) => {
+    const { host, root } = await mount(
+      "200",
+      `/solo/200/settings/setup/${tab}`,
+    );
+    expect(host.querySelector("[role=tabpanel]")?.id).toBe(
+      `setup-panel-${tab}`,
+    );
+    expect(host.querySelectorAll("[role=tabpanel]")).toHaveLength(1);
+    await act(async () => root.unmount());
+  });
+  it("canonicalizes index with replace and keeps the entry query", async () => {
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings?origin=calendar",
+    );
+    expect(host.querySelector("[data-route-proof]")?.textContent).toBe(
+      "/solo/100/settings/setup/business-profile?origin=calendar",
+    );
+    await act(async () => button(host, "History back").click());
+    expect(host.querySelector("[data-route-proof]")?.textContent).toContain(
+      "/business-profile",
+    );
+    await act(async () => root.unmount());
+  });
+  it("shows an invalid child recovery without pretending to be Business profile", async () => {
+    const { host, root } = await mount(
+      "100",
+      "/solo/100/settings/setup/unknown",
+    );
+    expect(host.textContent).toContain("Setup area not found");
+    expect(host.querySelector("[role=tabpanel]")).toBeNull();
+    await act(async () => button(host, "Direction").click());
+    expect(host.querySelector("[data-route-proof]")?.textContent).toBe(
+      "/solo/100/settings/setup/direction",
+    );
+    await act(async () => root.unmount());
+  });
+  it("keeps drafts across sibling links and Back/Forward without asking to discard", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    await setValue(
+      host.querySelector<HTMLInputElement>("[name=publicName]")!,
+      "Unstored business draft",
+    );
+    await act(async () => button(host, "Direction").click());
+    expect(host.querySelector("[data-route-proof]")?.textContent).toContain(
+      "/direction",
+    );
+    await act(async () => button(host, "History back").click());
+    expect(
+      host.querySelector<HTMLInputElement>("[name=publicName]")?.value,
+    ).toBe("Unstored business draft");
+    await act(async () => button(host, "History forward").click());
+    expect(host.querySelector("[role=tabpanel]")?.id).toBe(
+      "setup-panel-direction",
+    );
+    expect(state.confirm).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => button(host, "Save business context").click());
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief: expect.objectContaining({
+          publicName: "Unstored business draft",
+        }),
+      }),
+    );
+    await act(async () => root.unmount());
+  });
+  it("navigates to the invalid field's child URL without dropping its draft", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Edit business context").click());
+    await setValue(
+      host.querySelector<HTMLInputElement>("[name=website]")!,
+      "invalid website",
+    );
+    await act(async () => button(host, "Direction").click());
+    await act(async () => button(host, "Save business context").click());
+    expect(host.querySelector("[data-route-proof]")?.textContent).toContain(
+      "/business-profile",
+    );
+    expect(host.querySelector<HTMLInputElement>("[name=website]")?.value).toBe(
+      "invalid website",
+    );
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
+  it("keeps a dirty drawer through sibling history and returns to its originating URL on close", async () => {
+    const { host, root } = await mount();
+    await act(async () => button(host, "Knowledge bucket").click());
+    await act(async () => button(host, "Add knowledge").click());
+    const title = document.body.querySelector<HTMLInputElement>(
+      "[role=dialog] input",
+    )!;
+    await setValue(title, "Unfinished source");
+    await act(async () => button(host, "History back").click());
+    expect(host.querySelector("[data-route-proof]")?.textContent).toContain(
+      "/business-profile",
+    );
+    expect(
+      document.body.querySelector<HTMLInputElement>("[role=dialog] input")
+        ?.value,
+    ).toBe("Unfinished source");
+    state.confirm.mockResolvedValue(false);
+    await act(async () => button(document.body, "← Back to Setup").click());
+    expect(document.body.querySelector("[role=dialog]")).not.toBeNull();
+    state.confirm.mockResolvedValue(true);
+    await act(async () => button(document.body, "← Back to Setup").click());
+    expect(document.body.querySelector("[role=dialog]")).toBeNull();
+    expect(host.querySelector("[data-route-proof]")?.textContent).toContain(
+      "/knowledge-bucket",
+    );
+    expect(state.save).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -159,19 +316,22 @@ describe("canonical Solo Setup business context", () => {
     });
   });
 
-  it.each(["light", "dark"])("gives the body-portaled managed-email drawer its own %s theme scope", async (theme) => {
-    state.theme = theme;
-    state.registrationAvailable = true;
-    const {host, root} = await mount();
-    await act(async () => button(host, "People & email").click());
-    await act(async () => button(host, "Check or change address").click());
-    const dialog = document.querySelector('[role="dialog"]')!;
-    expect(dialog.closest('[data-pg]')?.getAttribute("data-pg")).toBe(theme);
-    expect(host.contains(dialog)).toBe(false);
-    await act(async () => button(document.body, "← Back to Setup").click());
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-    await act(async () => root.unmount());
-  });
+  it.each(["light", "dark"])(
+    "gives the body-portaled managed-email drawer its own %s theme scope",
+    async (theme) => {
+      state.theme = theme;
+      state.registrationAvailable = true;
+      const { host, root } = await mount();
+      await act(async () => button(host, "People & email").click());
+      await act(async () => button(host, "Check or change address").click());
+      const dialog = document.querySelector('[role="dialog"]')!;
+      expect(dialog.closest("[data-pg]")?.getAttribute("data-pg")).toBe(theme);
+      expect(host.contains(dialog)).toBe(false);
+      await act(async () => button(document.body, "← Back to Setup").click());
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      await act(async () => root.unmount());
+    },
+  );
 
   it("renders exactly the approved five accessible subtabs in order", async () => {
     const { host, root } = await mount();
@@ -747,6 +907,7 @@ describe("canonical Solo Setup business context", () => {
     await act(async () =>
       root.render(
         <MemoryRouter>
+          <RouteProof />
           <SoloBusinessContextSetup account="100" />
         </MemoryRouter>,
       ),
@@ -755,6 +916,10 @@ describe("canonical Solo Setup business context", () => {
       "fieldset.setup-brief",
     )!;
     expect(guard.disabled).toBe(true);
+    await act(async () => button(host, "Direction").click());
+    expect(host.querySelector("[role=tabpanel]")?.id).toBe(
+      "setup-panel-people-email",
+    );
     expect(
       button(host, "Add business owner").closest("fieldset[disabled]"),
     ).toBe(guard);
