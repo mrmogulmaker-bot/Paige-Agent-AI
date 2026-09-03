@@ -296,7 +296,14 @@ function walkValues(node, visit, prune) {
 /** An identifier that merely NAMES a property, rather than standing for a value. */
 function isKeyPosition(id) {
   const p = id.parent;
-  return !!p && "name" in p && p.name === id;
+  if (!p) return false;
+  // A SHORTHAND is both at once. `{ id }` is `{ id: id }`, so its identifier is a VALUE as well as
+  // a key, and treating it as key-only let a bare name stand for a schema unread — which is the
+  // one thing `schemaIsComplete` exists to refuse. The consequence was a reason that lied: the
+  // shorthand was reported as the field `id` admitting a boolean, while the identical longhand was
+  // correctly reported as a schema this guard cannot read. Same idiom, same refusal, same message.
+  if (ts.isShorthandPropertyAssignment(p)) return false;
+  return "name" in p && p.name === id;
 }
 
 /** The leftmost identifier a call/property chain is built on: the `z` of `z.object({…}).optional()`. */
@@ -1063,6 +1070,7 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
   // happened to handle" is exactly the enumeration this file keeps losing to.
   for (const [label, schema] of [
     ["a SHORTHAND property", `z.object({ confirm })`],
+    ["a SHORTHAND naming an ordinary constant", `z.object({ id })`],
     ["a GETTER member", `z.object({ get confirm() { return z.boolean(); } })`],
     ["a SETTER member", `z.object({ set confirm(v) { } })`],
     ["a METHOD member", `z.object({ confirm() { return z.boolean(); } })`],
@@ -1071,6 +1079,20 @@ mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
 mcp.tool("t", { inputSchema: ${schema}, ${DESTRUCTIVE} });`), 1);
   // …and the false positive from the same round: a definition that is overwritten must not have its
   // SUBTREE searched either, or the nested shape inside the discarded value is still reported.
+  // Codex on 909bbee6: a shorthand was reported as the FIELD admitting a boolean, while the
+  // identical longhand was correctly reported as an unreadable schema. Same idiom, same refusal —
+  // so the reasons must match too. Fixed in `isKeyPosition`, not by resolving the name: this guard
+  // deliberately carries no name resolution, and re-adding it for shorthand would reopen the
+  // let-rebind / const-mutation / shadowing class that removing it closed.
+  {
+    const UNREADABLE = "<schema not fully readable — cannot rule out a model-settable boolean>";
+    const shorthand = findViolations(`const id = z.string();
+mcp.tool("t", { inputSchema: z.object({ id }), ${DESTRUCTIVE} });`, "t.ts");
+    const longhand = findViolations(`const id = z.string();
+mcp.tool("t", { inputSchema: z.object({ id: id }), ${DESTRUCTIVE} });`, "t.ts");
+    check("a shorthand and its longhand give the SAME reason",
+      Number(shorthand[0]?.fields?.[0] === UNREADABLE && longhand[0]?.fields?.[0] === UNREADABLE), 1);
+  }
   check("ADMITS a nested shape inside a DISCARDED definition", v(`
 mcp.tool("t", { inputSchema: z.object({ ...{ x: z.object({ confirm: z.boolean() }) }, x: z.string() }), ${DESTRUCTIVE} });`), 0);
 
