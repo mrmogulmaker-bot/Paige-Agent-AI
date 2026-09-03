@@ -203,7 +203,24 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // server actually applied was never announced, while the post-await switch guard below could not
   // run at all. Gating dismissal inside this component could not see that, because the unmount came
   // from above. Reported by the peer read of the previous head as a second, separate seam.
-  useEffect(() => { onPendingChange?.(removal.stage === "pending"); }, [removal.stage, onPendingChange]);
+  // ...and the hold must cover an UNACKNOWLEDGED OUTCOME, not merely an in-flight call. Raising it
+  // only for `pending` is a defect I introduced with the switch guard, and the read of that commit
+  // caught it: `switchedAwayFrom` answers "am I in the same workspace NOW?", but the branch it gates
+  // needs "will this dialog still be MOUNTED?" — and those diverge the moment the operator switches
+  // away and BACK during a slow call. They are back, so the guard says no switch and the refusal is
+  // routed into the dialog; but writing the error drops the stage out of `pending`, the hold falls,
+  // and the parent unmounts on a roster that is mid-refetch and so does not carry this member. No
+  // alert, no toast, roster unchanged. The operator is never told the removal failed.
+  //
+  // The same silence swallowed the null-tenant path (a platform-staff owner using Exit tenant, or a
+  // session revalidating away) — `switchedAwayFrom` fails closed there BY DESIGN, so that outcome
+  // also lands in the dialog and needs the dialog to survive.
+  //
+  // So the hold is raised while a removal is in flight OR while it is displaying an outcome nobody
+  // has dismissed yet. It is NOT raised for a merely armed confirmation: that would defeat the
+  // parent's stale-selection clear, which exists because a member who genuinely leaves the roster
+  // must not stay open on screen. Dismissal (Cancel, or a retry) clears the error and drops it.
+  useEffect(() => { onPendingChange?.(removal.stage === "pending" || Boolean(removal.error)); }, [removal.stage, removal.error, onPendingChange]);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const pendingRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -320,7 +337,11 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
         _expected_tenant_id: tenantAtArm,
       }));
     } catch (thrown) {
-      error = { message: thrown instanceof Error ? thrown.message : "request failed" };
+      // "network request failed" rather than a bare "request failed": a thrown non-Error IS a
+      // transport failure, and the refusal vocabulary classifies by message. The old string matched
+      // none of its transport patterns, so the one case that genuinely deserves a retry was being
+      // told it could not have one.
+      error = { message: thrown instanceof Error ? thrown.message : "network request failed" };
     }
 
     inFlight.current = false;
@@ -499,7 +520,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
           {removal.stage === "pending" && <p ref={pendingRef} tabIndex={-1} role="status" aria-busy="true">Removing {identity.primary} from {removalWorkspaceName}…</p>}
           {removal.error && <p ref={errorRef} tabIndex={-1} role="alert">{removal.error.message}</p>}
           <button ref={cancelRef} className="stw-btn secondary" disabled={removal.stage === "pending"} onClick={disarmRemoval}>Cancel</button>
-          <button className="stw-btn" disabled={removal.stage === "pending" || saving || removal.error?.retryable === false} onClick={confirmRemoval} aria-label={`Confirm removing ${identity.primary} from ${removalWorkspaceName}`}>{removal.stage === "pending" ? "Removing\u2026" : removal.error ? "Try again" : "Confirm removal"}</button>
+          <button className="stw-btn" disabled={removal.stage === "pending" || saving || !canRemove || removal.error?.retryable === false} onClick={confirmRemoval} aria-label={`Confirm removing ${identity.primary} from ${removalWorkspaceName}`}>{removal.stage === "pending" ? "Removing\u2026" : removal.error ? "Try again" : "Confirm removal"}</button>
         </div>}
       </div>}
     </div>

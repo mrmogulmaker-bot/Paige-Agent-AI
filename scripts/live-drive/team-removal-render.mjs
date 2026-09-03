@@ -175,7 +175,9 @@ async function main() {
     await confirmButton(page).click();
     const alert = await page.locator('[role="alert"]').first().textContent();
     const retry = await page.getByRole("button", { name: /Confirm removing/ }).textContent();
-    /Nothing changed/.test(alert ?? "") && /Try again/.test(retry ?? "")
+    // NOT "Nothing changed": a lost response is not a refused write, so the screen must not claim
+    // an outcome it cannot know. It says so and still offers the retry.
+    /could not reach the server/i.test(alert ?? "") && !/Nothing changed/.test(alert ?? "") && /Try again/.test(retry ?? "")
       ? note("OK", "network failure reads honestly and offers a retry")
       : note("FAIL", `failure state wrong: alert=${JSON.stringify(alert)} button=${JSON.stringify(retry)}`);
   });

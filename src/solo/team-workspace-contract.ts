@@ -96,8 +96,17 @@ export function removalRefusal(raw: string | null | undefined, personName: strin
   // Only a TRANSPORT failure earns a retry, because only a transport failure is plausibly
   // transient. Everything else is the server having decided something, and deciding again will
   // decide the same.
+  //
+  // ...and this branch must NOT claim that nothing changed, which is what it used to say. These are
+  // exactly the failures where the DELETE may have COMMITTED and only the reply was lost — a lost
+  // response is not a refused write. "Nothing changed" is a statement about the database that the
+  // client is in no position to make here, and it is the same class of false sentence this surface
+  // keeps having to close. The unrecognised-server-refusal branch below DOES keep it, because there
+  // the server decided and nothing was written. Retrying is still safe and still offered: a second
+  // call against an already-removed person answers "not on this workspace's team", which maps to the
+  // reconciled branch and tells the truth either way.
   if (/failed to fetch|networkerror|network request|network error|timeout|timed out|aborted|econnreset|load failed/i.test(text)) {
-    return { message: `Nothing changed — ${personName} is still on this team.`, retryable: true, reconciled: false };
+    return { message: `We could not reach the server, so we can't say whether ${personName} was removed. Try again, or reopen Team to see the current roster.`, retryable: true, reconciled: false };
   }
   return { message: `Nothing changed — ${personName} is still on this team. Reopen Team to see the current roster.`, retryable: false, reconciled: false };
 }

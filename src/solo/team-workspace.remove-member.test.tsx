@@ -183,7 +183,11 @@ describe("what happens when it fails", () => {
     await arm(host);
     const confirm = () => confirmButton(host)!;
     await act(async () => confirm().click());
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Nothing changed");
+    // NOT "Nothing changed" — a lost response is not a refused write, and the DELETE may have
+    // committed. The screen must not make a claim about the database it cannot support.
+    const alert = host.querySelector('[role="alert"]')?.textContent ?? "";
+    expect(alert).toMatch(/could not reach the server/i);
+    expect(alert, "and it must not assert an outcome it does not know").not.toContain("Nothing changed");
     expect(host.textContent).toContain("Try again");
     // Exactly one request per click — a retry must not stack.
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
@@ -1050,5 +1054,143 @@ describe("the sixth read — the switch guard was blind for the whole switch win
       .toMatch(/no longer has access to Example Team/);
     const said = [...mocks.success.mock.calls, ...mocks.error.mock.calls].map((c) => String(c[0])).join(" | ");
     expect(said, "and nobody was told they had switched workspace when they had not").not.toMatch(/switched workspace/i);
+  })
+});
+
+describe("the seventh read — an outcome nobody has seen must keep its dialog alive", () => {
+  const rosterA = () => workspace();
+  const rosterB = () => workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+
+  /** Arms and confirms in Example Team, then runs `excursion` before the call settles. */
+  async function removalInFlight(excursion: (root: ReturnType<typeof mount>["root"]) => Promise<void>) {
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = rosterA(); const b = rosterB();
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? a : b, error: null });
+      }
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await excursion(root);
+    return { host, root, settle: (v: { data: unknown; error: unknown }) => settle(v) };
+  }
+
+  it("does not swallow a refusal when the operator switches AWAY AND BACK during the call", async () => {
+    // THE REGRESSION MY OWN SWITCH-GUARD COMMIT INTRODUCED, and the reason a guard that answers the
+    // right question can still gate the wrong branch. On return the operator IS in the workspace
+    // they acted in, so `switchedAwayFrom` correctly says "no switch" and the refusal is routed into
+    // the dialog — but writing the error drops the stage out of `pending`, the parent's hold falls,
+    // and the roster is mid-refetch and does not carry this member, so the dialog unmounts before a
+    // single word is painted. The previous, blinder guard happened to survive this by sending the
+    // refusal to the durable toast; mine did not. Every test I wrote switched away and never back.
+    const { host, root, settle } = await removalInFlight(async (root) => {
+      mocks.tenant.activeTenantId = "tenant-2";
+      await act(async () => { root.render(<SoloTeamWorkspace />); });
+      mocks.tenant.activeTenantId = "tenant-1";
+      await act(async () => { root.render(<SoloTeamWorkspace />); });
+    });
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    const toasts = mocks.error.mock.calls.map((c) => String(c[0]));
+    expect([...alerts, ...toasts].join(" | "),
+      `the refusal reached nobody: alerts=${JSON.stringify(alerts)} toasts=${JSON.stringify(toasts)}`)
+      .toMatch(/owner/i);
+  });
+
+  it("does not swallow a refusal when the workspace becomes UNKNOWN during the call", async () => {
+    // The null-tenant path — a platform-staff owner using Exit tenant, or a session revalidating.
+    // `switchedAwayFrom` fails closed there deliberately, so the outcome lands in the dialog and the
+    // dialog has to survive to show it. Pre-existing rather than introduced, and inside the scope of
+    // the guard commit, so it is closed here rather than filed for later.
+    const { host, root, settle } = await removalInFlight(async (root) => {
+      mocks.tenant.activeTenantId = null as unknown as string;
+      await act(async () => { root.render(<SoloTeamWorkspace />); });
+    });
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    const toasts = mocks.error.mock.calls.map((c) => String(c[0]));
+    expect([...alerts, ...toasts].join(" | "),
+      `the refusal reached nobody: alerts=${JSON.stringify(alerts)} toasts=${JSON.stringify(toasts)}`)
+      .toMatch(/owner/i);
+  });
+
+  it("still lets the parent clear a stale selection when nothing is in flight and nothing is unread", async () => {
+    // The other side of the hold, so widening it cannot quietly reinstate the shipped-save-flow
+    // regression: a merely ARMED confirmation must NOT pin a member who has left the roster.
+    const a = rosterA();
+    const without = workspace({ members: [], total_members: 0 });
+    let phase = 0;
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: phase === 0 ? a : without, error: null });
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    expect(host.querySelector('[role="dialog"]'), "armed and open").toBeTruthy();
+
+    // Somebody else removed them; the roster refreshes without them and nothing is in flight here.
+    phase = 1;
+    // Through the NATIVE setter and with a genuinely different value — dispatching `input` without
+    // changing the text sets `search` to the string it already held, React bails out, and no refetch
+    // ever runs, so the assertion below would have passed on a dialog nothing had asked to close.
+    await act(async () => {
+      const field = host.querySelector<HTMLInputElement>(".stw-filters input")!;
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(field, "dana");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(host.querySelector('[role="dialog"]'), "an armed confirmation does not pin a member who is gone").toBeFalsy();
+  });
+
+  it("does not offer a live Confirm once the viewer may no longer remove anyone", async () => {
+    // Widening the block's render gate to `stage !== "idle"` kept it on screen after `canRemove`
+    // went false — which is what stops the operator being stranded mid-call, but on the ARMED half
+    // it left an enabled button that the database would simply refuse. Driven directly, because the
+    // only way authority drops without a tenant change is an ownership change under the operator,
+    // which the parent cannot produce.
+    const { host, root, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    expect(confirmButton(host)?.disabled, "armed, with authority: live").toBe(false);
+
+    await act(async () => { root.render(<MemberEditor member={member()} workspace={workspace({ can_change_permissions: false })} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />); });
+    expect(confirmButton(host), "the armed block is still on screen rather than vanishing").toBeTruthy();
+    expect(confirmButton(host)?.disabled, "but it no longer offers an act the server would refuse").toBe(true);
+  });
+
+  it("offers a retry when the transport throws something that is not an Error", async () => {
+    // The refusal vocabulary classifies by MESSAGE, so the catch's fallback string decides whether a
+    // genuine transport failure is called retryable. A bare "request failed" matched none of its
+    // transport patterns, which made the one failure class that deserves a retry the only one denied
+    // it — directly contradicting the branch above it.
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "remove_solo_team_member") return Promise.reject("gateway dropped the connection");
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={vi.fn()} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    const alert = host.querySelector('[role="alert"]')?.textContent ?? "";
+    expect(alert, `the failure was reported: ${JSON.stringify(alert)}`).toMatch(/could not reach the server/i);
+    expect(confirmButton(host)?.textContent?.trim(), "and a retry is offered, because this one is transient").toBe("Try again");
+    expect(confirmButton(host)?.disabled, "and the retry is actually pressable").toBe(false);
   });
 });
