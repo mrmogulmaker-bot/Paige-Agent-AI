@@ -1412,6 +1412,11 @@ master record to move in the SAME PR as the ship. Neither #813 nor #834 did that
 while reading as current. Recorded rather than quietly backfilled, because a record that silently
 catches up teaches nothing about why it fell behind.
 
+> **CORRECTED 2026-09-03 — Slice B repaired exactly this (§58: the paragraph below is kept as
+> written, not deleted, because it was true when written).** All four owner-facing Rail consumers
+> now call the deployed resolvers, and each distinguishes loading, refusal, unavailable, empty and
+> populated. See the Slice B entry below.
+
 **Still NOT repaired by any of the above, and the reason the verdict at the top of this section
 stands: no OWNER-FACING consumer calls any of these resolvers.** `useRailEvents.ts` and
 `useSoloActivityFeed.ts` still read `paige_client_events` directly, and the browser still holds no
@@ -1424,6 +1429,50 @@ SELECT on it, so the owner-visible history surfaces are exactly as broken as bef
 the **owner-facing history** consumers were not, and are Slice B — blocked on the #776/#729 ownership
 seam. `get_solo_rail_activity` and `get_platform_rail` are the two resolvers with genuinely zero
 callers today.
+
+### Rail Slice B — the owner-facing consumers call the safe readers (2026-09-03, no migration)
+
+**Shipped.** Four owner-facing consumers moved off the direct table read and onto the deployed
+resolvers. This is a **frontend-only** change: no migration, no new grant, no policy edit.
+
+| File | Was | Now |
+|---|---|---|
+| `src/hooks/useRailEvents.ts` | `.from("paige_client_events")` (tenant **and** client scope) | `get_solo_rail_activity(p_limit)` for tenant · `get_client_rail(p_contact_id, p_limit, 'client')` for client |
+| `src/solo/data/useSoloActivityFeed.ts` | `.from("paige_client_events")` | `get_solo_rail_activity(p_limit)` |
+| `src/components/paige/PaigeRailFeed.tsx` | `{ events, connected }` — error discarded | consumes `historyStatus`: loading · refused · unavailable · empty · populated |
+| `src/components/app/ClientActivityFeed.tsx` | `{ events, connected }` — error discarded | same five states, in client-facing language, with no SQLSTATE or server string on the surface |
+
+**The measurement that makes this the whole repair, verified read-only on prod `xygzykjyynhzqytbqnzu`
+2026-09-03:** `has_table_privilege('authenticated','public.paige_client_events','SELECT')` = `false`.
+Every direct read was **refused in production, for every owner, always** — and the two
+`useRailEvents` consumers rendered that refusal as *"Nothing across your clients yet"* and
+*"Nothing yet"*. The feeds were not sparse; they were denied and said the opposite. Both resolvers
+are `EXECUTE`-granted to `authenticated` and **not** to `anon`.
+
+**§9 tightening, not a widening.** The direct read was governed by `pce_staff_read`, which carries
+the §59 global-role trap (`has_any_role` is tenant-agnostic while `current_user_tenant_id()` honours
+`active_tenant_id` at any membership role), so a plain member of one workspace holding a global
+`coach`/`admin` role could read that workspace's whole tenant Rail. `get_solo_rail_activity` requires
+an active `tenant_members` row **of the resolved workspace** at owner/admin/coach. The policy itself
+is unchanged and still carries the trap; it is simply unreachable from these four consumers. The two
+Analytics readers of the same table remain tracked as **#802**, routed to Analytics.
+
+**Request safety.** Both hooks carry a monotonic request counter, bumped **during render** on a scope
+change and again per read, so a slow answer for a workspace already left is discarded rather than
+winning by arriving last, and the previous workspace's events are never painted under the new one's
+heading — not even for one frame.
+
+**Evidence, by class.** Automated: full suite `180 files / 2351 tests` green, including a new
+five-case regression suite (successful history · empty history · denied read · workspace switch ·
+stale response) driven through the **real** components, each mechanism deliberately falsified to
+prove the tests fail on the defect they name. Static: `tsc` clean, ESLint clean, `lint:views` /
+`lint:definer-fns` / `lint:tier-features` green. Production catalog: the grants above, read-only.
+**`UNVERIFIED` — authenticated owner runtime proof**: no browser drove the deployed surface as a
+signed-in owner in this session, so #746 stays open until that proof exists.
+
+**Ownership.** The #776/#729 consumer-ownership seam was resolved by owner decision on 2026-09-03.
+Nothing was adopted from either branch: all four files were read from current `main` and edited in
+place. Transfer record in task #29.
 
 **Why `UNAVAILABLE` is still the correct status.** No owner-facing consumer calls the resolver yet —
 `useRailEvents.ts` and `useSoloActivityFeed.ts` still read the denied table directly, re-measured on
@@ -1916,6 +1965,45 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+ - **2026-09-03 — I removed four fabrications from the Solo Trust Compass and introduced three more
+   in the same commit, by swapping the DATA under copy I left unchanged.** #831 replaced ten invented
+   departments carrying hardcoded trust floats with a real read of `paige_departments` and
+   `paige_action_kinds`. The totals the page renders (`tot`, `all`) then counted **catalogue entries**
+   — action *types* — while the surrounding sentences still read *"{all} actions this week · {auto}%
+   she handled alone"*, *"Today · {tot[0]} performed"*, and, on every orb, *"— auto-performed"* over a
+   tier drawn from `Math.random()`. `paige_action_kinds` records no execution and no timestamp, so the
+   period, the count of things done, and the past-tense verb were all invented from a table that
+   cannot supply any of them. **The lesson is narrower and sharper than "check the copy": replacing a
+   fixture with a real read changes what every string ON that surface means, and a caption that was
+   true about the fixture is a new fabrication the moment the data underneath it changes.** Two more
+   from the same commit: the three header percentage badges were left ungated while the page subtitle
+   was gated, so an absent read rendered `null% autopilot … 100% escalated` — a governance claim
+   manufactured out of a missing number; and the instruction *"Drag a ring to change autonomy"*
+   survived the removal of the drag write it described. **None of these were caught by my own
+   verification.** They were found by the independent review requested against the merged commit
+   (§39), which is the layer working as designed — and the reason a green proof of the thing I
+   thought to test is never a proof of the change. Corrected in the follow-up PR, with each fix
+   proven non-vacuous by reverting it and watching a test go red.
+ - **2026-09-03 — an honest sentence inside a fabricated frame is still a fabrication.** The widened
+   sweep found that #831 had ADDED the correct note — *"nothing in the platform records a day-by-day
+   history of what Paige did"* — inside a foldout still titled *"Your trust has grown 14% in 30 days"*
+   and subtitled *"Four departments moved outward. None moved back."*, reached by two buttons reading
+   `+14%`. **I wrote the disclaimer and left the claim it disclaims wrapped around it.** The frame is
+   what the reader sees first, and a note further down does not retract a title. Two more from the
+   same family: `MiniCompass` was given the label *"because you have"* by Systems and by the Vault, so
+   the rendered sentence credited the workspace for a policy the component's own next line calls "not
+   a setting this workspace chose"; and Systems promised *"She will handle this one herself"* from a
+   platform-default lane — a lane is a policy, not a commitment about what will happen in a workspace.
+ - **2026-09-03 — the same PR read tenant-authored rows into a number captioned "the platform's
+   default".** `useSoloTrust` selected `paige_action_kinds` with no `tenant_id` filter. The
+   `kind_read` policy is `USING (enabled AND (tenant_id IS NULL OR tenant_id =
+   public.current_user_tenant_id()))`, so RLS deliberately returns a workspace's OWN authored kinds
+   alongside the platform's. Every row on prod is `tenant_id IS NULL` **today**, and I treated that
+   measurement as a guarantee — which is the same mistake in a different costume: a measurement of
+   the current data is not a property of the query. The read now filters to `tenant_id IS NULL` and
+   the pure builders drop a tenant-authored row independently, so a future query edit cannot silently
+   fold a workspace's own policy into a figure that says it is the platform's.
 
  - **2026-09-02 — a tier gate I shipped as the headline fix did not fix the reported flow, and I said
    so before Gate B rather than after.** The Solo account-context repair (#811) originally led with

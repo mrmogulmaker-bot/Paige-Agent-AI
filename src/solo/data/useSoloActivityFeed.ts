@@ -12,14 +12,19 @@
  *
  * §18 — ONE SEAM, NOT A NEW QUERY FAMILY. `paige_client_events` is the Rail: the row
  * `record_rail_event` writes, server-side and as the DEFINER owner, whenever something
- * actually happens. It is already the source for `useRailEvents`, and this composes the same
- * table rather than standing up a second idea of "what Paige did". If the two ever disagree,
- * one of them is lying, and the way to prevent that is for there to be only one.
+ * actually happens. This reads it through the SAME deployed resolver `useRailEvents` now uses
+ * for a tenant-scoped feed — `get_solo_rail_activity` — rather than standing up a second idea
+ * of "what Paige did". If the two ever disagree, one of them is lying, and the way to prevent
+ * that is for there to be only one.
  *
- * §9 TENANT ISOLATION. This passes NO tenant_id. `pce_staff_read` admits a row only for the
- * caller's own active tenant plus a staff role, so a sub-account sees ITS OWN activity and
- * never the parent's aggregate. Do not add a tenant parameter to "make it work" for an
- * operator — that is the §588 shape, and the fix belongs in the policy, not the caller.
+ * §9 TENANT ISOLATION. This passes NO tenant_id, and cannot: `get_solo_rail_activity(p_limit)`
+ * takes no tenant argument at all. It is `SECURITY DEFINER` and re-enforces the caller's scope
+ * in-body (§59) — it resolves the workspace from `current_user_tenant_id()`, requires an active
+ * `tenant_members` row of THAT SAME workspace at owner/admin/coach, and otherwise raises
+ * `42501 RAIL_FORBIDDEN`. So a sub-account sees ITS OWN activity and never the parent's
+ * aggregate, and a role held in another workspace no longer satisfies the gate. The optional
+ * `workspaceId` below is used ONLY to notice a switch and to discard a stale answer; it is
+ * never sent, so it cannot be used to read another workspace's rail.
  *
  * §13 — WHAT IS LIVE AND WHAT IS DERIVED, field by field, because the file this replaces
  * made no such distinction:
@@ -39,10 +44,9 @@
  *                                     Approval state lives in `paige_actions`; a feed that
  *                                     wants it needs that seam named, not a guess.
  *
- * AN EMPTY FEED AND A FAILED READ ARE DIFFERENT ANSWERS. They render identically if you let
- * them, and the second one told an operator, with confidence, that Paige had done nothing.
- * `error` is therefore distinct from an empty `items`, and callers are expected to say which
- * they are looking at.
+ * AN EMPTY FEED, A REFUSAL AND AN OUTAGE ARE THREE DIFFERENT ANSWERS. They render identically
+ * if you let them, and the second and third both told an operator, with confidence, that Paige
+ * had done nothing. `status` names which one it is; `error` carries only the detail.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -66,12 +70,27 @@ export interface SoloActivityItem {
   occurredAt: string;
 }
 
+/**
+ * The four answers a read can give, and they are FOUR, not two.
+ *
+ * `loading`     — not settled. Say nothing about what exists yet.
+ * `ready`       — succeeded. An empty `items` here genuinely means nothing happened.
+ * `forbidden`   — the DATABASE REFUSED (`RAIL_FORBIDDEN`, SQLSTATE 42501): this caller is not
+ *                 entitled to this workspace's rail. Not an outage, and not "nothing happened".
+ * `unavailable` — failed for some other reason. Also not "nothing happened".
+ */
+export type SoloActivityStatus = "loading" | "ready" | "forbidden" | "unavailable";
+
 export interface SoloActivityFeed {
   items: SoloActivityItem[];
+  /** DERIVED from `status`, so the two can never disagree. */
   loading: boolean;
+  /** Which of the four answers the read gave. */
+  status: SoloActivityStatus;
   /**
-   * Why the feed is missing, when it is. `null` means it loaded — which may still mean
-   * zero items, and that is a DIFFERENT statement (§13).
+   * The failure detail, when there is one. `null` on `loading` and on `ready` — and `ready` may
+   * still mean zero items, which is a DIFFERENT statement (§13). A message is never the state;
+   * `status` is.
    */
   error: string | null;
   refresh: () => void;
@@ -152,40 +171,81 @@ export function toActivityItem(raw: unknown): SoloActivityItem | null {
   };
 }
 
-export function useSoloActivityFeed(): SoloActivityFeed {
+/**
+ * Refusal or outage — decided from SQLSTATE, never from prose. Mirrors `classifyRailReadError`
+ * in `useRailEvents`; the message is checked too so a transport that loses the code cannot
+ * silently downgrade a refusal into "the server is having trouble".
+ */
+export function classifySoloActivityError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+): Exclude<SoloActivityStatus, "loading" | "ready"> {
+  const code = error?.code ?? "";
+  const message = error?.message ?? "";
+  return code === "42501" || message.includes("RAIL_FORBIDDEN") ? "forbidden" : "unavailable";
+}
+
+/**
+ * @param workspaceId The active workspace, when the caller knows it. Optional, and never sent to
+ *   the server — it exists ONLY so a switch is noticed: it re-keys the read and invalidates
+ *   anything in flight, so the previous workspace's activity cannot stay on screen, or land late,
+ *   under the new one's heading. A caller that omits it still gets the request-ordering guard (a
+ *   slow earlier poll can never overwrite a newer answer) but NOT the switch guard, because
+ *   nothing tells this hook the workspace moved.
+ */
+export function useSoloActivityFeed(workspaceId?: string | null): SoloActivityFeed {
   const [items, setItems] = useState<SoloActivityItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [status, setStatus] = useState<SoloActivityStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const mounted = useRef(false);
+  // Monotonic request counter. Bumped on a workspace change (in render) and again per read; a
+  // response is honoured only while it still matches.
+  const requestSeq = useRef(0);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
+  // ── THE RENDER-TIME WORKSPACE GUARD. Deliberately not an effect: an effect is passive, so
+  // React commits the frame before it runs and the old workspace's activity is briefly painted
+  // under the new one's heading. Clearing during render means that frame never exists.
+  const scopeKey = workspaceId ?? "";
+  const [renderedScope, setRenderedScope] = useState<string>(scopeKey);
+  if (renderedScope !== scopeKey) {
+    requestSeq.current += 1; // anything in flight for the old workspace is now stale
+    setRenderedScope(scopeKey);
+    setItems([]);
+    setStatus("loading");
+    setError(null);
+  }
+
   useEffect(() => {
     mounted.current = true;
-    let cancelled = false;
 
     const read = async () => {
+      const seq = ++requestSeq.current;
       try {
-        const { data, error: readError } = await supabase
-          .from("paige_client_events")
-          .select("id,title,summary,actor_type,from_department,to_department,occurred_at")
-          .order("occurred_at", { ascending: false })
-          .limit(MAX_ITEMS);
-        if (cancelled || !mounted.current) return;
+        const { data, error: readError } = await supabase.rpc(
+          // `get_solo_rail_activity` post-dates the last `types.ts` regeneration, so its name is
+          // not yet in the generated RPC union. Cast at the call site, as the codebase already
+          // does elsewhere, rather than regenerate a shared 20k-line artifact inside this slice.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          "get_solo_rail_activity" as any,
+          { p_limit: MAX_ITEMS },
+        );
+        if (!mounted.current || requestSeq.current !== seq) return;
         if (readError) {
-          // Never turn a failed read into "nothing happened" (§13).
+          // Never turn a refused or failed read into "nothing happened" (§13).
+          setStatus(classifySoloActivityError(readError));
           setError(readError.message || "could not load recent activity");
-          setLoading(false);
           return;
         }
-        setItems((data ?? []).map(toActivityItem).filter((i): i is SoloActivityItem => i !== null));
+        const rows = Array.isArray(data) ? (data as unknown[]) : [];
+        setItems(rows.map(toActivityItem).filter((i): i is SoloActivityItem => i !== null));
+        setStatus("ready");
         setError(null);
-        setLoading(false);
       } catch (err) {
-        if (cancelled || !mounted.current) return;
+        if (!mounted.current || requestSeq.current !== seq) return;
+        setStatus("unavailable");
         setError(err instanceof Error ? err.message : "could not load recent activity");
-        setLoading(false);
       }
     };
 
@@ -198,12 +258,14 @@ export function useSoloActivityFeed(): SoloActivityFeed {
     window.addEventListener("focus", onFocus);
 
     return () => {
-      cancelled = true;
       mounted.current = false;
       clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
-  }, [tick]);
+  }, [tick, workspaceId]);
 
-  return useMemo(() => ({ items, loading, error, refresh }), [items, loading, error, refresh]);
+  return useMemo(
+    () => ({ items, loading: status === "loading", status, error, refresh }),
+    [items, status, error, refresh],
+  );
 }

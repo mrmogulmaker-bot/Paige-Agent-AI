@@ -34,7 +34,10 @@
  *   • A per-TENANT department posture. All 34 rows have `tenant_id IS NULL` — they are PLATFORM
  *     DEFAULTS, identical for every tenant. `defaultLane` below is named for that: it is the
  *     platform's default for the desk, never "what this workspace chose". A caller that labels it
- *     as the tenant's own setting reintroduces the fabrication in a new place.
+ *     as the tenant's own setting reintroduces the fabrication in a new place. That every row is
+ *     platform-scoped TODAY is a measurement, not a guarantee — the `kind_read` policy also admits
+ *     a workspace's own authored kinds — so the read below FILTERS to `tenant_id IS NULL` rather
+ *     than relying on the measurement holding.
  *   • A confidence percentage. `TC_DEPTS.conf` renders "% avg confidence" and a 30-day sparkline.
  *     NO column, RPC or seam anywhere supplies a confidence signal. It is not returned and must
  *     not be derived — a number invented from other numbers is still invented.
@@ -135,9 +138,15 @@ function asLane(v: string | null): AutonomyLane | null {
   return LANES.includes(v as AutonomyLane) ? (v as AutonomyLane) : null;
 }
 
+/** A tenant-authored kind is NOT the platform default and is dropped wherever it is seen. */
+function isPlatformDefault(k: KindRow): boolean {
+  return k.tenant_id === null || k.tenant_id === undefined;
+}
+
 export function buildLaneCounts(kinds: KindRow[]): Record<string, Record<AutonomyLane, number>> {
   const out: Record<string, Record<AutonomyLane, number>> = {};
   for (const k of kinds) {
+    if (!isPlatformDefault(k)) continue;
     if (k.enabled === false) continue;
     const dept = k.default_to_department;
     const lane = asLane(k.default_autonomy_lane);
@@ -153,6 +162,7 @@ export function buildActLabels(kinds: KindRow[]): Record<string, Array<{ label: 
   const out: Record<string, Array<{ label: string; lane: AutonomyLane }>> = {};
   const seen: Record<string, Set<string>> = {};
   for (const k of kinds) {
+    if (!isPlatformDefault(k)) continue;
     if (k.enabled === false) continue;
     const dept = k.default_to_department;
     const lane = asLane(k.default_autonomy_lane);
@@ -191,9 +201,17 @@ export function useSoloTrust(accountEpoch?: string | null): SoloTrust {
 
     void (async () => {
       /* eslint-disable @typescript-eslint/no-explicit-any */
+      // `tenant_id IS NULL` is the PLATFORM DEFAULT, and that is the only thing every caller of
+      // this hook labels the result as. The `kind_read` policy is
+      //   USING (enabled AND (tenant_id IS NULL OR tenant_id = public.current_user_tenant_id()))
+      // so RLS deliberately also returns a workspace's OWN authored kinds. Without this filter a
+      // tenant-authored kind would be aggregated into a number captioned "the platform's default
+      // policy, not a setting this workspace chose" — the same fabrication class as inventing the
+      // number, arriving instead by reading real rows and mislabelling them.
       const res = await supabase
         .from("paige_action_kinds" as any)
         .select("default_to_department, default_autonomy_lane, label, enabled, tenant_id")
+        .is("tenant_id", null)
         .limit(5000);
       /* eslint-enable @typescript-eslint/no-explicit-any */
       if (!active) return;
