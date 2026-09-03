@@ -229,6 +229,12 @@ describe("the dialog survives the roster reloading underneath it", () => {
     setValue(search, "ada");
     await settle();
 
+    // Prove the refetch ACTUALLY FIRED. Without this the test degrades silently: if the search
+    // selector moves or the debounce changes, `calls` stays at 1, nothing ever reloads, and every
+    // assertion below passes because there was no null window to survive.
+    expect(calls, "the refetch actually fired").toBe(2);
+    expect(host.textContent, "the roster really is null right now").toContain("Confirmed members of this workspace");
+
     // The refetch is IN FLIGHT: the roster is null right now.
     const during = host.querySelector("input[type=email]") as HTMLInputElement | null;
     expect(during, "the invitation dialog survives a roster refetch").toBeTruthy();
@@ -237,6 +243,28 @@ describe("the dialog survives the roster reloading underneath it", () => {
     await act(async () => { release(null); await pending; });
     const after = host.querySelector("input[type=email]") as HTMLInputElement | null;
     expect(after?.value, "and still survives once the roster comes back").toBe("half.typed@example.com");
+  });
+});
+
+describe("a genuine workspace switch closes the invitation", () => {
+  it("closes the dialog and says so, rather than leaving it over another workspace's roster", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const render = () => act(() => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await settle();
+    click(button(host, "Invite someone"));
+    expect(host.querySelector("input[type=email]"), "the dialog opened").toBeTruthy();
+
+    // Not a refetch — the active workspace genuinely changed.
+    mocks.tenant.activeTenantId = "tenant-2";
+    render();
+    await settle();
+
+    expect(host.querySelector("input[type=email]"), "the dialog is closed").toBeFalsy();
+    expect(String(mocks.error.mock.calls.at(-1)?.[0])).toContain("Northwind Advisory");
+    expect(mocks.invoke, "and nothing was sent").not.toHaveBeenCalled();
   });
 });
 

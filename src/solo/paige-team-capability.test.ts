@@ -293,10 +293,14 @@ describe("the handler's Team call sites (source-level proof, not runtime proof)"
     const guardAt = HANDLER.lastIndexOf("const wrongTenant = await teamSeamTenantMismatch();", branchStart);
     expect(guardAt, "the invitation branch has its own tenant guard").toBeGreaterThan(-1);
     expect(guardAt).toBeLessThan(branchStart);
-    // And it belongs to THIS branch: nothing else sits between the guard and the body.
-    const between = HANDLER.slice(guardAt, branchStart);
-    expect(between).not.toContain("tc.function.name === \"member_grant_role\"");
-    expect(between.length, "the guard is adjacent to the invitation body").toBeLessThan(2000);
+    // Anchored to the branch OPENER, not to a character budget. Round 2 of the adversarial read
+    // proved the previous backstops were decorative: with the invitation branch's own guard
+    // deleted, `guardAt` fell back to the `team_set_permission` guard 1820 chars earlier — under
+    // the 2000 budget — and `member_grant_role` opens AFTER the invite branch, so that check could
+    // never match. All four assertions passed against the regression they were written to catch.
+    const inviteBranchOpen = HANDLER.lastIndexOf("} else if (", branchStart);
+    expect(guardAt, "the guard is inside the invitation branch, not the one before it")
+      .toBeGreaterThan(inviteBranchOpen);
   });
 
   it("carries the email-delivery outcome into the result instead of assuming it", () => {

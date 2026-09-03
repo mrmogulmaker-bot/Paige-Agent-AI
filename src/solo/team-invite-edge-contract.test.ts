@@ -56,7 +56,36 @@ describe("solo-team-invitations passes the named workspace to the one authority"
     for (const phrase of ["only an owner", "not authorized", "was not named"]) {
       expect(denied, `${phrase} is treated as a refusal`).toContain(phrase);
     }
-    expect(HANDLER).toContain("denied ? 403 : 400");
+    // Three-way now: an authority refusal is 403, an authored validation refusal 400, and an
+    // unrecognised failure 500 — which is honest, because an unrecognised failure IS a server fault.
+    expect(HANDLER).toContain("denied ? 403 : authored ? 400 : 500");
+  });
+
+  it("shows only the sentences this seam authored, never raw database text", () => {
+    // The Team screen now renders this string verbatim, so whatever is thrown reaches a person.
+    // A PostgrestError's message is raw PostgREST/Postgres text: during a deploy window PGRST202
+    // would have put a backend function signature in product copy (§11). Caught by the second
+    // round of adversarial review, on a fix from the first.
+    expect(HANDLER).toContain("const AUTHORED_REFUSALS = [");
+    const list = HANDLER.slice(HANDLER.indexOf("const AUTHORED_REFUSALS = ["), HANDLER.indexOf("];", HANDLER.indexOf("const AUTHORED_REFUSALS = [")));
+    // Every sentence the migrations raise on purpose is listed, so the repair's precision survives.
+    for (const phrase of [
+      "not authorized to manage team invitations",
+      "the workspace for this invitation was not named",
+      "only an owner or admin may manage team invitations in that workspace",
+      "team invitations may grant only Admin or Member",
+      "a valid email address is required",
+      "this person already belongs to the workspace",
+      "team invitation not found",
+      "an accepted invitation cannot be resent",
+      "pending team invitation not found",
+    ]) {
+      expect(list, `${phrase} reaches the operator`).toContain(phrase);
+    }
+    // And anything else is logged and replaced rather than shown.
+    expect(HANDLER).toContain("if (!authored) console.error");
+    expect(HANDLER).toMatch(/error: authored\s*\?\s*message/);
+    expect(HANDLER).toContain("The invitation could not be completed just now.");
   });
 
   it("still reports email delivery separately from invitation creation", () => {

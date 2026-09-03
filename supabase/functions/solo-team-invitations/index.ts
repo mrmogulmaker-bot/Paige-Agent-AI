@@ -40,6 +40,31 @@ type PreparedInvite = {
   tenant_id?: string;
 };
 
+/**
+ * Every refusal this seam RAISES on purpose, as substrings. Sourced from the migrations that
+ * define them — `20261045000000` (the authority resolver and the three invitation functions) and
+ * `20260901001520` (the validation raises those functions kept). A sentence not on this list did
+ * not come from us, so it is not shown to anyone.
+ */
+const AUTHORED_REFUSALS = [
+  // solo_team_invite_authority
+  "not authorized to manage team invitations",
+  "the workspace for this invitation was not named",
+  "only an owner or admin may manage team invitations in that workspace",
+  // create_solo_team_invite
+  "team invitations may grant only Admin or Member",
+  "a valid email address is required",
+  "work profile is too long",
+  "this person already belongs to the workspace",
+  // resend_solo_team_invite
+  "team invitation not found",
+  "an accepted invitation cannot be resent",
+  // revoke_solo_team_invite
+  "pending team invitation not found",
+  // this function's own redirect check
+  "resolved to a different workspace than the one requested",
+];
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
@@ -144,6 +169,27 @@ Deno.serve(async (req) => {
     // an authorization refusal from the same resolver, but its wording contains none of the older
     // phrases, and a §37 response-consumer miss here would silently downgrade it to a 400.
     const denied = /only an owner|only an owner or admin|not authorized|was not named/i.test(message);
-    return json({ ok: false, error: message }, denied ? 403 : 400);
+    // ONLY THE SENTENCES THIS SEAM AUTHORED TRAVEL TO A PERSON.
+    //
+    // The Team screen now shows this string verbatim — which is the point, because these sentences
+    // were written for an operator. But `message` is whatever was thrown, and a PostgrestError's
+    // message is raw Postgres/PostgREST text. During this very PR's deploy window (migrations,
+    // edge functions and the frontend are three independent pipelines off one merge) PostgREST
+    // answers PGRST202 and the operator would have read
+    //   "Could not find the function public.create_solo_team_invite(_actor, _email, …) in the
+    //    schema cache"
+    // — a backend function signature in product copy (§11), and useless to the person reading it.
+    // Same class for an invalid-uuid cast or any unhandled raise inside the RPC.
+    //
+    // So the honest sentences pass through and everything else is logged and replaced. Caught by
+    // the second round of adversarial review, on a fix from the first.
+    const authored = message === "Invitation could not be prepared" || AUTHORED_REFUSALS.some((phrase) => message.includes(phrase));
+    if (!authored) console.error("[solo-team-invitations] unrecognised failure:", message);
+    return json({
+      ok: false,
+      error: authored
+        ? message
+        : "The invitation could not be completed just now. Reload Team and try again — if it keeps happening, tell us.",
+    }, denied ? 403 : authored ? 400 : 500);
   }
 });

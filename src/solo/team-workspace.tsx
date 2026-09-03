@@ -193,7 +193,20 @@ export function SoloTeamWorkspace({ openPaige }: { openPaige?: () => void } = {}
   const [view, setView] = useState<"team" | "roles">("team"); const [search, setSearch] = useState(""); const [permission, setPermission] = useState("all"); const [selected, setSelected] = useState<TeamMemberRecord | null>(null);
   // The workspace an in-flight invitation was opened against. Held here rather than derived
   // from `team.value`, which is nulled by every roster refetch (see InviteDialog).
+  // A REFETCH must not close the dialog (that was the §58 regression); a genuine WORKSPACE SWITCH
+  // must. Otherwise the dialog sits there naming workspace A over workspace B's roster, inviting
+  // the operator to keep composing something the send-time guard will then refuse. `activeTenantId`
+  // distinguishes the two: it changes only on a real switch, and never flashes through null on a
+  // reload. The send-time abort stays as the backstop for the same-tick race.
+  const { activeTenantId } = useTenantContext();
   const [inviteWorkspace, setInviteWorkspace] = useState<TeamWorkspaceRecord | null>(null);
+  useEffect(() => {
+    setInviteWorkspace((current) => {
+      if (!current || !activeTenantId || current.tenant_id === activeTenantId) return current;
+      toast.error(`You switched workspace, so the invitation for ${current.tenant_name} was closed. Nothing was sent.`);
+      return null;
+    });
+  }, [activeTenantId]);
   const team = useTeamWorkspace(search, permission); const workspace = team.value;
   const pending = useMemo(() => workspace?.invitations.filter((item) => inviteLifecycle(item) === "pending") ?? [], [workspace]);
   const manageInvite = async (action: "resend" | "revoke", invite: TeamInviteRecord) => { if (!workspace) { toast.error("This workspace is still loading. Try again in a moment."); return; } const { data, error } = await supabase.functions.invoke("solo-team-invitations", { body: { action, expectedTenantId: workspace.tenant_id, inviteId: invite.id } }); if (error || data?.ok === false) { toast.error(invitationRefusalMessage(await readFunctionErrorBody(error, data), "The invitation could not be updated. Please try again.")); return; } if (action === "resend") data?.emailed ? toast.success("Fresh invitation sent; the old link was revoked.") : toast.warning("Fresh invitation created, but email delivery did not complete."); else toast.success("Invitation revoked."); team.refresh(); };

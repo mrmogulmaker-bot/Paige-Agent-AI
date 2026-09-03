@@ -95,6 +95,20 @@ prod** — `20261039000000` and `20261040000000` in `schema_migrations`; `job_ti
 **Still UNVERIFIED:** email delivery and authenticated tenant behaviour — no leg driven on the live
 authenticated platform.
 
+**Invitation workspace authority — PR #827, migration `20261045000000` (NOT YET MERGED; update this
+line to SHIPPED, or delete it, when it lands).** The three invitation RPCs used to read
+`profiles.active_tenant_id` **raw** while the roster read used `current_user_tenant_id()`, so a sole
+owner with a null pointer was told they were not an owner of their own workspace. Authority is now
+proved by `solo_team_invite_authority(_actor, _expected_tenant_id)` against a workspace the caller
+NAMES — the Team screen sends the `tenant_id` it rendered the roster from, PAIGE sends the tenant the
+conversation is reconciled to, and the parameter is refusal-only. The signatures changed:
+`create_solo_team_invite(uuid, uuid, text, text, text, text)`,
+`resend_/revoke_solo_team_invite(uuid, uuid, uuid)`; the old arities are DROPPED. `solo-team-invitations`
+now sends `expectedTenantId` and shows only the sentences the seam authored. PAIGE's `inviteSeamBlocked`
+workaround is deleted, not moved. Behavioural proof: 42 pgTAP assertions in `database-contract`
+against a `supabase db reset` schema. **Still UNVERIFIED:** authenticated runtime — no signed-in
+owner has driven it.
+
 ---
 
 ## Stripe (§38 — Paige holds its OWN rails only)
