@@ -110,7 +110,7 @@ COMMENT ON TABLE public.platform_billing_accounts IS
 ALTER TABLE public.platform_billing_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billing_accounts FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.platform_billing_accounts FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_accounts TO authenticated;   -- RLS narrows: operators read, platform owner writes   -- RLS narrows to operators
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_accounts TO authenticated;   -- RLS narrows: operators read, platform owner writes
 GRANT ALL    ON TABLE public.platform_billing_accounts TO service_role;
 
 DROP POLICY IF EXISTS pba_operator_read ON public.platform_billing_accounts;
@@ -182,7 +182,7 @@ COMMENT ON TABLE public.platform_billing_contacts IS
 ALTER TABLE public.platform_billing_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billing_contacts FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.platform_billing_contacts FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_contacts TO authenticated;   -- RLS narrows: operators read, platform owner writes   -- RLS narrows to operators
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_contacts TO authenticated;   -- RLS narrows: operators read, platform owner writes
 GRANT ALL    ON TABLE public.platform_billing_contacts TO service_role;
 
 DROP POLICY IF EXISTS pbc_operator_read ON public.platform_billing_contacts;
@@ -292,7 +292,7 @@ COMMENT ON TABLE public.platform_billing_notification_log IS
 ALTER TABLE public.platform_billing_notification_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billing_notification_log FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.platform_billing_notification_log FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_notification_log TO authenticated;   -- RLS narrows: operators read, platform owner writes   -- RLS narrows to operators
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.platform_billing_notification_log TO authenticated;   -- RLS narrows: operators read, platform owner writes
 GRANT ALL    ON TABLE public.platform_billing_notification_log TO service_role;
 
 DROP POLICY IF EXISTS pbnl_operator_read ON public.platform_billing_notification_log;
@@ -517,8 +517,11 @@ BEGIN
     SELECT u.cid FROM _pba_agg a, unnest(a.cids) AS u(cid)
     GROUP BY u.cid HAVING count(DISTINCT a.tenant_id) > 1
     UNION
-    SELECT u.cid FROM _pba_agg a, unnest(a.cids) AS u(cid)
-    JOIN public.platform_billing_accounts m ON m.stripe_customer_id = u.cid AND m.tenant_id <> a.tenant_id
+    SELECT u.cid
+    FROM _pba_agg a
+    CROSS JOIN LATERAL unnest(a.cids) AS u(cid)
+    JOIN public.platform_billing_accounts m
+      ON m.stripe_customer_id = u.cid AND m.tenant_id <> a.tenant_id
   ) d;
 
   INSERT INTO public.platform_billing_accounts (tenant_id, stripe_customer_id, stripe_account, source)
