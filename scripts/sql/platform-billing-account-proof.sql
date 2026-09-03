@@ -529,6 +529,53 @@ BEGIN
   INSERT INTO _p SELECT 60, CASE WHEN ok THEN 'ok' ELSE 'FAIL' END, 'P60 the guard refuses un-revoking a designation (billing_contact_immutable), even for the owning role';
 END $$;
 
+-- P61 a COMPED subscription row (status active, NO customer) does not lock the only primary contact (R26 —
+-- promotional/trial is non-chargeable; the guard is about Stripe-backed subscriptions)
+INSERT INTO public.platform_subscriptions (tenant_id, plan_id, status, billing_period, stripe_subscription_id, stripe_customer_id)
+SELECT solo_c, plan_id, 'active', 'monthly', 'sub_pbaproof_c_comped', NULL FROM _f;
+SELECT pg_temp.as_user((SELECT u_actas FROM _f));
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE msg text := 'no error'; _id uuid;
+BEGIN
+  SELECT (public.platform_billing_contact_designate((SELECT u_actas FROM _f), 'primary_contact')->>'id')::uuid INTO _id;
+  BEGIN PERFORM public.platform_billing_contact_revoke(_id); EXCEPTION WHEN others THEN msg := SQLERRM; END;
+  INSERT INTO _p SELECT 61, CASE WHEN msg = 'no error' THEN 'ok' ELSE 'FAIL: ' || msg END,
+    'P61 a comped subscription (active, no customer) never locks the only primary contact — non-chargeable stays non-chargeable (R26)';
+END $$;
+RESET ROLE; SELECT pg_temp.as_nobody();
+
+-- P62 reconcile REPORTS a mapped tenant whose only LAYER-1 id disagrees with its mapping (never hidden by ON CONFLICT)
+INSERT INTO public.platform_billing_accounts (tenant_id, stripe_customer_id, stripe_account, source)
+SELECT solo_c, 'cus_pbaproof_C_old', 'legacy', 'operator' FROM _f;
+INSERT INTO public.platform_subscriptions (tenant_id, plan_id, status, billing_period, stripe_subscription_id, stripe_customer_id)
+SELECT solo_c, plan_id, 'canceled', 'monthly', 'sub_pbaproof_c_new', 'cus_pbaproof_C_new' FROM _f;
+INSERT INTO _p SELECT 62, CASE WHEN (r->'mapped_disagrees') @> to_jsonb(ARRAY[f.solo_c]) AND (r->>'inserted')::int = 0
+                                    AND EXISTS (SELECT 1 FROM public.platform_billing_accounts a WHERE a.tenant_id = f.solo_c AND a.stripe_customer_id = 'cus_pbaproof_C_old')
+                               THEN 'ok' ELSE 'FAIL: ' || r::text END,
+  'P62 reconcile returns mapped_disagrees for a tenant whose single LAYER-1 id differs from its mapping; the mapping is left alone'
+  FROM _f f, public.platform_billing_account_reconcile() r;
+
+-- P63 a customer id recorded on a NON-candidate top-level tenant (tenants.stripe_customer_id, no subscription row)
+-- and on a candidate is SHARED: reported, and the candidate is not mapped on it
+UPDATE public.tenants SET stripe_customer_id = 'cus_pbaproof_SHARED' WHERE id = (SELECT solo_old FROM _f);
+INSERT INTO public.platform_subscriptions (tenant_id, plan_id, status, billing_period, stripe_subscription_id, stripe_customer_id)
+SELECT solo_b, plan_id, 'canceled', 'monthly', 'sub_pbaproof_b3', 'cus_pbaproof_SHARED' FROM _f;
+INSERT INTO _p SELECT 63, CASE WHEN (r->'customer_shared_by_multiple_tenants') @> '["cus_pbaproof_SHARED"]'::jsonb
+                                    AND NOT EXISTS (SELECT 1 FROM public.platform_billing_accounts a WHERE a.stripe_customer_id = 'cus_pbaproof_SHARED')
+                               THEN 'ok' ELSE 'FAIL: ' || r::text END,
+  'P63 a customer shared with a non-candidate top-level tenant is reported as shared and never mapped'
+  FROM public.platform_billing_account_reconcile() r;
+
+-- P64 a candidate whose only id is ALREADY MAPPED to a different workspace is reported as shared, not mapped
+INSERT INTO public.platform_subscriptions (tenant_id, plan_id, status, billing_period, stripe_subscription_id, stripe_customer_id)
+SELECT agency_p, plan_id, 'active', 'monthly', 'sub_pbaproof_ag1', 'cus_pbaproof_C_old' FROM _f;
+INSERT INTO _p SELECT 64, CASE WHEN (r->'customer_shared_by_multiple_tenants') @> '["cus_pbaproof_C_old"]'::jsonb
+                                    AND NOT EXISTS (SELECT 1 FROM public.platform_billing_accounts a, _f f WHERE a.tenant_id = f.agency_p)
+                               THEN 'ok' ELSE 'FAIL: ' || r::text END,
+  'P64 a customer already mapped to a different workspace is reported as shared; the second workspace is not mapped'
+  FROM public.platform_billing_account_reconcile() r;
+
 -- P54 anon cannot execute any designation seam
 SET LOCAL ROLE anon;
 DO $$

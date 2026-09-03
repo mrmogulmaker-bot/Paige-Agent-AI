@@ -1126,8 +1126,8 @@ a designated primary billing contact — wiring the gate is the activation relea
 **Evidence classes (kept separate).** Automated: vitest 1913/1913 (25 new), Deno 31/31. Static: tsc ratchet
 13/13, eslint, `lint:definer-fns`, `lint:views`, `lint:managed-schema`, `lint:tier-features`, migration lint
 (1 answered warning), `deno lint`; `deno check` only via CI's Deno ratchet (local esm.sh 404). Runtime,
-rollback-proven on prod on the final head: 60/60 properties (C1–C2, P3–P60) + 5/5 mutants caught, nothing
-persisted (re-probed). Independent review of the head: two FIX-THEN-SHIP reports, all findings integrated.
+rollback-proven on prod on the final migration text: 64/64 properties (C1–C2, P3–P64) + 5/5 mutants caught,
+nothing persisted (re-probed). Independent review of the head: two FIX-THEN-SHIP reports, all findings integrated.
 **No email was sent; no sender exists.** **UNVERIFIED:** authenticated owner drive of the deployed portal
 (flag stays off); local `deno check` on supabase-js-importing functions (esm.sh 404 through the proxy).
 

@@ -78,20 +78,25 @@ gate. Nothing owner-facing may be built on top of that.
 
 `security definer`; callable only when `auth.uid() IS NULL` (migration, cron, service) or
 `is_platform_operator()`. Idempotent. Returns jsonb
-`{ candidates, inserted, ambiguous_tenants: [tenant_id…], customer_shared_by_multiple_tenants: [cid…] }`.
+`{ candidates, inserted, ambiguous_tenants: [tenant_id…], customer_shared_by_multiple_tenants: [cid…], mapped_disagrees: [tenant_id…] }`.
 
 ```
-candidates  := top-level tenants (parent_tenant_id IS NULL AND account_type <> 'sub_account')
-               with ≥1 platform_subscriptions row carrying a non-null stripe_customer_id
+seen        := every top-level tenant (parent_tenant_id IS NULL AND account_type <> 'sub_account')
+               carrying ≥1 LAYER-1 id — candidate or not
 ids(t)      := platform_billing_layer1_customer_ids(t)  — the ONE definition (§18): distinct non-null
                platform_subscriptions.stripe_customer_id ∪ tenants.stripe_customer_id
+candidates  := seen tenants with ≥1 platform_subscriptions row carrying a non-null stripe_customer_id
 ambiguous   := candidates with >1 id — returned, never inserted
-shared      := any id recorded against MORE THAN ONE candidate (in any arity), or already mapped to a
-               DIFFERENT workspace — returned, never inserted (review finding)
+shared      := any id recorded against MORE THAN ONE seen tenant (candidate or not, any arity — P63),
+               or already mapped to a DIFFERENT workspace (P64) — returned, never inserted
+disagrees   := seen tenants whose EXISTING mapping names a customer not among their ids — returned,
+               the mapping left alone (the read reports them `ambiguous`; P62) — never hidden by ON CONFLICT
 INSERT candidates with exactly ONE id, not in shared
        → (tenant_id, id, 'legacy', 'backfill_subscription') ON CONFLICT DO NOTHING
          (either unique — tenant, or customer-per-account — an existing row wins, never an abort)
 ```
+(The adversarial review of the implementation head found the earlier "candidates only" scope and the
+`ON CONFLICT` silence; both are closed here and fixtured.)
 
 `stripe_account = 'legacy'` **by construction**, not by a marker: the only producer of platform
 customers is `platform-subscription-checkout`, which uses `STRIPE_SECRET_KEY` only
@@ -296,8 +301,13 @@ every act (P53).
   missing tenant, a parent, or `account_type IN ('agency','enterprise','sub_account')` (`billing_contact_top_level_solo_only`) ·
   active membership (`billing_contact_not_member`) · `primary_contact` ⇒ `is_tenant_owner()`
   (`billing_contact_primary_requires_owner`) · `delegate` ⇒ role `admin` (`billing_contact_delegate_requires_admin`) ·
-  verified email (`billing_contact_email_unverified`) · a row is never re-pointed, re-typed or
-  un-revoked (`billing_contact_immutable`). Structural, so it binds every writer (§51/§59).
+  verified email (`billing_contact_email_unverified`) · a row is never re-pointed, re-typed,
+  re-attributed (`designated_by`/`designated_at`) or un-revoked (`billing_contact_immutable`) · a
+  revocation must name its actor (`billing_contact_revoke_requires_actor`). Structural, so it binds
+  every writer (§51/§59). **Stated gap (adversarial m4):** the R25 audit row is written by the Owner
+  RPCs, not by the trigger — a platform owner or service context revoking by direct UPDATE leaves
+  `revoked_by` but no `paige_audit_log` row. Tenants cannot reach that path (0 rows under RLS, P37);
+  moving the audit into an AFTER trigger is a follow-up, recorded here rather than implied.
 - **Grants + RLS (FORCE):** as §3.1 — explicit `authenticated` grant, SELECT policy
   `is_platform_operator()`, ALL policy `is_platform_owner()`; service_role bypasses. The Owner never
   reads the table — only `get_workspace_billing_contacts()` (P37).
@@ -317,8 +327,8 @@ read; service contexts or a platform owner (`is_platform_owner()`) write. A skip
 | Seam | Who | Does |
 |---|---|---|
 | `platform_billing_workspace_owner_scope()` (internal, no app-role EXECUTE) | — | the caller's active top-level Solo workspace iff they are its Owner; raises `no_active_workspace` / `billing_not_applicable` / `billing_workspace_owner_only` — never a fallback |
-| `platform_billing_contact_designate(p_user_id, p_designation)` | Owner | takes a per-workspace advisory lock (`pg_advisory_xact_lock(hashtext('platform_billing_contacts:'‖tenant))`, review finding: two concurrent designations could both pass the pre-check); `billing_contact_bad_designation` / `billing_contact_bad_user` (`22023`); inserts (trigger validates) + audit `platform_billing_contact_designated` in the same transaction; `billing_contact_already_designated` (`23505`) on a live duplicate, from the pre-check **or** the partial unique index |
-| `platform_billing_contact_revoke(p_contact_id)` | Owner | same lock; `billing_contact_not_found` (`P0002`) for an unknown, foreign, or already-revoked id; sets `revoked_at/by` + audit `platform_billing_contact_revoked`; refuses to remove the **last** `primary_contact` while a platform subscription is `active`/`trialing`/`past_due` (`billing_primary_contact_required_while_subscribed`, `42501`) — an unsubscribed workspace may revoke its only primary contact (P58) |
+| `platform_billing_contact_designate(p_user_id, p_designation)` | Owner | takes a per-workspace advisory lock (`pg_advisory_xact_lock(hashtextextended('platform_billing_contacts:'‖tenant, 0))` — the repo's 64-bit key convention; review finding: two concurrent designations could both pass the pre-check); `billing_contact_bad_designation` / `billing_contact_bad_user` (`22023`); inserts (trigger validates) + audit `platform_billing_contact_designated` in the same transaction; `billing_contact_already_designated` (`23505`) on a live duplicate, from the pre-check **or** the partial unique index |
+| `platform_billing_contact_revoke(p_contact_id)` | Owner | same lock; `billing_contact_not_found` (`P0002`) for an unknown, foreign, or already-revoked id; sets `revoked_at/by` + audit `platform_billing_contact_revoked`; refuses to remove the **last** `primary_contact` while a **Stripe-backed** (customer-bearing) platform subscription is `active`/`trialing`/`past_due` (`billing_primary_contact_required_while_subscribed`, `42501`) — an unsubscribed workspace may revoke its only primary contact (P58), and so may a workspace whose only subscription row is comped (status active, NULL customer — the 4 live prod rows; P61), because R26 says a non-chargeable workspace is never locked by a rule about paid activation (adversarial finding M1) |
 | `get_workspace_billing_contacts()` | Owner (view is Owner-only in A, R22) | live recipients with `role`, `display_name`, `email_verified`, `still_eligible`; **no email column**; raises for anyone else (never an empty set, R8) |
 | `platform_billing_paid_activation_ready(p_tenant_id)` | service / operator | R19 gate for the later activation release: ≥1 live `primary_contact` who is still a verified, current Owner of a top-level Solo workspace. Computed live, never cached |
 | `platform_billing_verified_primary_contact_count(p_tenant_id)` (internal) | — | the shared predicate behind the gate and the authority read |
@@ -378,13 +388,14 @@ Consolidated in §9.
 | Edge (pure) | `platform-billing-portal/decide.test.ts` | every §6 row + flag off + null authority |
 | Edge (pure) | `_shared/platform-billing.test.ts` | legacy guard decision: platform customer refused; legacy customer allowed; upsert conflict detection |
 | Edge (pure) | `_shared/billing-notifications.test.ts` | event/status parity with the ledger CHECK · promotional never gets a payment notice · trial gets no invoice/payment event · paid gets all but promotional · unknown gets nothing · unverified recipient skipped · no sender in the module |
-| SQL (mutants) | `scripts/sql/platform-billing-account-mutants.sql` | five mutants, each restored or run last so nothing after it depends on the broken object; M0 control proves the restore: M1 resolver → `current_user_tenant_id()` (P15 red) · M2 owner predicate → `role='owner'` (P48 red) · M3 ambiguity collapsed (P12 red) · M4 top-level trigger dropped (P7 red) · M5 contact guard dropped (P26 red). **Result on prod 2026-09-02 (rollback): 60/60 properties ok, 0 failed; 5/5 mutants caught, restore control ok; re-probe after both runs: 0 fixture tenants/users/plans/subscriptions/audit rows, 0 billing tables, 0 billing functions.** |
+| SQL (adversarial additions) | same proof file, P61–P64 | P61 a comped subscription row (active, NULL customer) never locks the only primary contact (R26) · P62 reconcile returns `mapped_disagrees` and leaves the mapping alone · P63 a customer shared with a NON-candidate top-level tenant (`tenants.stripe_customer_id`) is reported and never mapped · P64 a customer already mapped to a different workspace is reported as shared and the second workspace is not mapped |
+| SQL (mutants) | `scripts/sql/platform-billing-account-mutants.sql` (installs the migration through the same `\i` line as the proof; the hand-kept inline copy that drifted once is gone) | five mutants, each restored or run last so nothing after it depends on the broken object; M0 control proves the restore: M1 resolver → `current_user_tenant_id()` (P15 red) · M2 owner predicate → `role='owner'` (P48 red) · M3 ambiguity collapsed (P12 red) · M4 top-level trigger dropped (P7 red) · M5 contact guard dropped (P26 red). **Result on prod (rollback), re-run on the final migration text 2026-09-03: 64/64 properties (C1–C2, P3–P64) ok, 0 failed; 5/5 mutants caught, restore control ok; re-probe after both runs: 0 fixture tenants/users/plans/subscriptions/audit rows, 0 billing tables, 0 billing functions.** |
 | Frontend | `src/solo/data/useWorkspaceBillingContacts.test.tsx` | read with eligibility flags · owner-only refusal is a state, not an empty list · switch drops the stale read · designate/revoke call the seams and re-read · refusal codes carried verbatim · an act landing after a switch is `workspace_changed` and reloads nothing |
 | Frontend | `src/solo/data/useWorkspaceBillingAuthority.test.tsx` | loading → state; switch mid-flight drops the stale read and never paints the previous workspace; `openPortal` discards a response whose `tenant_id` differs from the captured one; refusal copy per code; retry after error; URL never stored |
 | Static | typecheck ratchet, eslint, `lint:definer-fns`, `lint:views`, `lint:managed-schema`, `lint:tier-features`, migration-lint (its one INSERT…SELECT warning is answered inline in the migration), `deno lint`; **`deno check` runs only in CI** (the "Deno ratchet" job, base vs head — it caught 8 real diagnostics on the first head) because the container's proxy returns 404 for `esm.sh` and the local check cannot resolve `@supabase/supabase-js@2.57.2` — stated, not worked around |
 | Runtime | authenticated owner drive on preview **owed to a capable session**; stated UNVERIFIED; the flag stays off until it lands |
 
-## 6. Decision table (pinned by tests)
+## 6. Decision table (rows 1–11 pinned by `decide.test.ts`; rows 12–17 live in `index.ts`, UNVERIFIED until the authenticated owner drive)
 
 | flag | active_tenant_id | membership | scope | owner | mapping | Result |
 |---|---|---|---|---|---|---|
@@ -437,6 +448,10 @@ Consolidated in §9.
   designation, refusal codes; never an email or a Stripe id). That is metadata about billing acts
   reaching a non-Owner. Left as is: narrowing a shared audit policy is a §37 change of its own,
   filed for Foundation B / the delivery release to rule on.
+- **`platform_billing_account_reconcile()` will also map a top-level Agency/Enterprise tenant** that
+  carries exactly one LAYER-1 customer id (its candidate filter is "top-level, not sub_account"); the
+  read and the portal still refuse those scopes (`not_applicable`), so a mapping row there is inert.
+  On prod today no such row exists (0 candidates). Recorded, not changed.
 - **Legacy `SubscriptionContext` (app-wide) does not know A's new codes:** on
   `platform_customer_use_workspace_billing` (409) or `platform_customer_check_failed` (503) it shows
   its generic "Failed to open customer portal" toast with the client's message. Correct behaviour

@@ -59,7 +59,9 @@ serve(async (req) => {
     );
     const legacy = decideLegacyPortal(await isPlatformCustomer(admin, customerId));
     if (!legacy.allow) {
-      await admin.from("paige_audit_log").insert({
+      // supabase-js resolves `{ error }` on a failed insert; it does not reject — so the failure is
+      // read from the result, never from a rejection that would not come.
+      const { error: auditErr } = await admin.from("paige_audit_log").insert({
         tenant_id: null,
         actor_user_id: user.id,
         actor_role: null,
@@ -67,10 +69,8 @@ serve(async (req) => {
         target_type: "stripe_customer",
         target_id: null,
         payload: { reason: legacy.code },
-      }).then(
-        () => {},
-        (e: unknown) => console.error(`[CUSTOMER-PORTAL] refusal audit insert failed: ${(e as { code?: string })?.code ?? "unknown"}`),
-      );
+      });
+      if (auditErr) console.error(`[CUSTOMER-PORTAL] refusal audit insert failed: ${auditErr.code ?? "unknown"}`);
       logStep("Refused", { reason: legacy.code });
       return new Response(JSON.stringify({ error: legacy.code }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

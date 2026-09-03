@@ -1544,7 +1544,7 @@ ships in A (the Solo Billing screen is Foundation C). What changes per tier is t
 Paige-callable billing seams (§10) and who they refuse; the rows below say what the migration
 `20261045000000` will enforce once it is merged under Gate B and persisted on prod. Until that
 confirmation lands (deploy-migrations `db-live` tag, objects queried on prod), every cell is a
-design claim proven only inside `BEGIN … ROLLBACK` (60/60 properties, 5/5 mutants) — never "live".
+design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants) — never "live".
 
 | Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|---|

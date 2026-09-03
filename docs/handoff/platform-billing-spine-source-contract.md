@@ -19,15 +19,16 @@ R27 (terminology and non-ownership, 2026-09-02). Design: `docs/delivery/billing-
 ## 1. Functional roles and eligibility (final for Foundation A)
 
 Two **functional billing designations** exist. They are records in `platform_billing_contacts`,
-made by a workspace Owner, and they confer exactly one thing: the right to **receive** billing
-notices for that workspace once delivery exists.
+made by a workspace Owner. Both confer the right to **receive** billing notices for that workspace
+once delivery exists; a live primary billing contact additionally satisfies the paid-activation gate
+(`paid_activation_ready`). Nothing else.
 
 | Designation | Stored value | Who may hold it | Who may grant / revoke it |
 |---|---|---|---|
 | **Primary billing contact** | `designation = 'primary_contact'` | a **verified, current, active workspace Owner** (`is_tenant_owner()` true, active seat, `auth.users.email_confirmed_at` set) of a **top-level Solo** workspace | an Owner of that workspace |
 | **Billing delegate** | `designation = 'delegate'` | a **verified, current, active Admin** (`tenant_members.role = 'admin'`, active seat, verified email) of the same workspace | an Owner of that workspace |
 
-Rules that hold structurally (trigger + Owner-only RPCs, proven P23–P60):
+Rules that hold structurally (trigger + Owner-only RPCs, proven P23–P64):
 
 - **Neither designation creates, changes, transfers, implies, or records legal ownership, equity,
   corporate or trust ownership, trustee status, or co-owner status.** "Owner" in eligibility means

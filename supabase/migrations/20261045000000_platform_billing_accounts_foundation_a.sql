@@ -175,12 +175,19 @@ DECLARE
   _verified boolean;
 BEGIN
   IF TG_OP = 'UPDATE' THEN
-    -- A designation is never re-pointed or re-typed; it is only revoked (or its timestamp touched).
+    -- A designation is never re-pointed, re-typed or re-attributed; it is only revoked (or its
+    -- timestamp touched).
     IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
        OR NEW.user_id IS DISTINCT FROM OLD.user_id
        OR NEW.designation IS DISTINCT FROM OLD.designation
+       OR NEW.designated_by IS DISTINCT FROM OLD.designated_by
+       OR NEW.designated_at IS DISTINCT FROM OLD.designated_at
        OR (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NULL) THEN
       RAISE EXCEPTION 'billing_contact_immutable' USING ERRCODE = '42501';
+    END IF;
+    -- A revocation names who did it, on every path (the Owner RPC, a platform owner, service).
+    IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL AND NEW.revoked_by IS NULL THEN
+      RAISE EXCEPTION 'billing_contact_revoke_requires_actor' USING ERRCODE = '42501';
     END IF;
     RETURN NEW;
   END IF;
@@ -218,7 +225,8 @@ COMMENT ON FUNCTION public.platform_billing_contact_guard() IS
   'Billing Foundation A (trigger): eligibility for a FUNCTIONAL billing designation — top-level Solo '
   'workspace only; an active member; primary_contact must be a current workspace Owner '
   '(is_tenant_owner); delegate must be a current Admin; verified email. A row is never re-pointed, '
-  're-typed or un-revoked. Never creates, changes or implies ownership. Binds every writer.';
+  're-typed, re-attributed or un-revoked, and a revocation must name its actor. Never creates, '
+  'changes or implies ownership. Binds every writer.';
 DROP TRIGGER IF EXISTS trg_platform_billing_contact_guard ON public.platform_billing_contacts;
 CREATE TRIGGER trg_platform_billing_contact_guard
   BEFORE INSERT OR UPDATE ON public.platform_billing_contacts
@@ -480,29 +488,34 @@ DECLARE
   _candidates int := 0;
   _ambiguous  uuid[] := '{}';
   _shared     text[] := '{}';
+  _disagrees  uuid[] := '{}';
 BEGIN
-  -- A tenant must never write its own mapping. NULL auth.uid() = migration / cron / service role.
   IF auth.uid() IS NOT NULL AND NOT public.is_platform_operator() THEN
     RAISE EXCEPTION 'platform_billing_account_reconcile_forbidden' USING ERRCODE = '42501';
   END IF;
 
+  -- Every TOP-LEVEL tenant that carries any LAYER-1 customer id at all (so a customer shared with a
+  -- workspace that has no subscription row is still seen); a CANDIDATE for insertion is one with at
+  -- least one platform_subscriptions row naming a customer.
   CREATE TEMP TABLE _pba_agg ON COMMIT DROP AS
-  SELECT t.id AS tenant_id, public.platform_billing_layer1_customer_ids(t.id) AS cids
+  SELECT t.id AS tenant_id,
+         public.platform_billing_layer1_customer_ids(t.id) AS cids,
+         EXISTS (
+           SELECT 1 FROM public.platform_subscriptions ps2
+           WHERE ps2.tenant_id = t.id AND ps2.stripe_customer_id IS NOT NULL
+         ) AS is_candidate
   FROM public.tenants t
   WHERE t.parent_tenant_id IS NULL
-    AND t.account_type IS DISTINCT FROM 'sub_account'
-    AND EXISTS (
-      SELECT 1 FROM public.platform_subscriptions ps2
-      WHERE ps2.tenant_id = t.id AND ps2.stripe_customer_id IS NOT NULL
-    );
+    AND t.account_type IS DISTINCT FROM 'sub_account';
+  DELETE FROM _pba_agg WHERE cardinality(cids) = 0;
 
-  SELECT count(*),
-         COALESCE(array_agg(tenant_id) FILTER (WHERE cardinality(cids) > 1), '{}')
+  SELECT count(*) FILTER (WHERE is_candidate),
+         COALESCE(array_agg(tenant_id) FILTER (WHERE is_candidate AND cardinality(cids) > 1), '{}')
     INTO _candidates, _ambiguous
   FROM _pba_agg;
 
-  -- A customer id recorded against MORE THAN ONE workspace (in ANY arity), or already mapped to a
-  -- DIFFERENT workspace, is never mapped silently either — it is returned for a person to resolve.
+  -- A customer id recorded against MORE THAN ONE top-level workspace (in ANY arity, candidate or not),
+  -- or already mapped to a DIFFERENT workspace, is never mapped silently — it is returned for a person.
   SELECT COALESCE(array_agg(DISTINCT cid), '{}') INTO _shared
   FROM (
     SELECT u.cid FROM _pba_agg a, unnest(a.cids) AS u(cid)
@@ -515,11 +528,19 @@ BEGIN
       ON m.stripe_customer_id = u.cid AND m.tenant_id <> a.tenant_id
   ) d;
 
+  -- An EXISTING mapping whose customer is not among the tenant's LAYER-1 ids is a disagreement: the
+  -- row is left alone (the read reports it `ambiguous`) and the tenant is returned here, never hidden
+  -- behind ON CONFLICT.
+  SELECT COALESCE(array_agg(a.tenant_id), '{}') INTO _disagrees
+  FROM _pba_agg a
+  JOIN public.platform_billing_accounts m ON m.tenant_id = a.tenant_id
+  WHERE NOT (m.stripe_customer_id = ANY (a.cids));
+
   -- ON THE lint_migrations.py PATTERN-2 WARNING (INSERT … SELECT), answered here rather than
   -- re-derived on every CI run: every NOT NULL target maps from a non-null source —
   --   tenant_id          ← tenants.id (PK, NOT NULL)
   --   stripe_customer_id ← cids[1], and cids aggregates ONLY non-null ids (both branches of the
-  --                         lateral filter IS NOT NULL), and array_length(cids,1) = 1 is required
+  --                         layer-1 read filter IS NOT NULL), and cardinality(cids) = 1 is required
   --   stripe_account     ← the literal 'legacy';  source ← the literal 'backfill_subscription'
   -- stripe_account = 'legacy' BY CONSTRUCTION: the only producer of platform customers is
   -- platform-subscription-checkout, which uses STRIPE_SECRET_KEY only. From this migration on
@@ -527,7 +548,8 @@ BEGIN
   INSERT INTO public.platform_billing_accounts (tenant_id, stripe_customer_id, stripe_account, source)
   SELECT a.tenant_id, a.cids[1], 'legacy', 'backfill_subscription'
   FROM _pba_agg a
-  WHERE cardinality(a.cids) = 1
+  WHERE a.is_candidate
+    AND cardinality(a.cids) = 1
     AND NOT (a.cids[1] = ANY (_shared))
   ON CONFLICT DO NOTHING;   -- either unique (tenant, or customer-per-account): an existing row wins, never an abort
   GET DIAGNOSTICS _inserted = ROW_COUNT;
@@ -538,7 +560,8 @@ BEGIN
     'candidates', _candidates,
     'inserted', _inserted,
     'ambiguous_tenants', to_jsonb(_ambiguous),
-    'customer_shared_by_multiple_tenants', to_jsonb(_shared)
+    'customer_shared_by_multiple_tenants', to_jsonb(_shared),
+    'mapped_disagrees', to_jsonb(_disagrees)
   );
 END;
 $$;
@@ -547,7 +570,7 @@ GRANT EXECUTE ON FUNCTION public.platform_billing_account_reconcile() TO authent
 COMMENT ON FUNCTION public.platform_billing_account_reconcile() IS
   'Billing Foundation A: idempotent backfill of platform_billing_accounts from unambiguous LAYER-1 '
   'records (exactly one distinct customer id per top-level tenant, not shared with another tenant). '
-  'Ambiguous and shared cases are RETURNED, never inserted (R13/R14). Callable by the migration, a '
+  'Ambiguous, shared and mapped-but-disagreeing cases are RETURNED, never inserted (R13/R14). Callable by the migration, a '
   'service context, or a platform operator; a tenant is refused (42501).';
 
 -- ── 4b. Designation seams (§10 Paige-callable): the Owner names who receives billing notices ─
@@ -597,7 +620,7 @@ BEGIN
   _t := public.platform_billing_workspace_owner_scope();
   -- One designation act at a time per workspace: the duplicate pre-check and the last-contact rule
   -- in revoke are read-then-write, so both serialize on the workspace for the transaction.
-  PERFORM pg_advisory_xact_lock(hashtext('platform_billing_contacts:' || _t::text));
+  PERFORM pg_advisory_xact_lock(hashtextextended('platform_billing_contacts:' || _t::text, 0));
   IF p_designation NOT IN ('primary_contact', 'delegate') THEN
     RAISE EXCEPTION 'billing_contact_bad_designation' USING ERRCODE = '22023';
   END IF;
@@ -644,7 +667,7 @@ DECLARE
   _uid uuid;
 BEGIN
   _t := public.platform_billing_workspace_owner_scope();
-  PERFORM pg_advisory_xact_lock(hashtext('platform_billing_contacts:' || _t::text));
+  PERFORM pg_advisory_xact_lock(hashtextextended('platform_billing_contacts:' || _t::text, 0));
   SELECT r.designation, r.user_id INTO _des, _uid
   FROM public.platform_billing_contacts r
   WHERE r.id = p_contact_id AND r.tenant_id = _t AND r.revoked_at IS NULL;
@@ -657,7 +680,9 @@ BEGIN
                      WHERE o.tenant_id = _t AND o.designation = 'primary_contact'
                        AND o.revoked_at IS NULL AND o.id <> p_contact_id)
      AND EXISTS (SELECT 1 FROM public.platform_subscriptions ps
-                 WHERE ps.tenant_id = _t AND ps.status IN ('active', 'trialing', 'past_due')) THEN
+                 WHERE ps.tenant_id = _t
+                   AND ps.status IN ('active', 'trialing', 'past_due')
+                   AND ps.stripe_customer_id IS NOT NULL) THEN   -- a comped/promotional row has no customer and is not "subscribed" for R19
     RAISE EXCEPTION 'billing_primary_contact_required_while_subscribed' USING ERRCODE = '42501';
   END IF;
   UPDATE public.platform_billing_contacts
@@ -673,8 +698,9 @@ REVOKE ALL ON FUNCTION public.platform_billing_contact_revoke(uuid) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.platform_billing_contact_revoke(uuid) TO authenticated;
 COMMENT ON FUNCTION public.platform_billing_contact_revoke(uuid) IS
   'Billing Foundation A (§10): the Owner revokes a live designation in their own top-level Solo '
-  'workspace. Refuses to remove the last primary_contact while a platform subscription is active / '
-  'trialing / past_due (R19). Audited in the same transaction.';
+  'workspace. Refuses to remove the last primary_contact while a Stripe-backed (customer-bearing) '
+  'platform subscription is active / trialing / past_due (R19); a comped or promotional row with no '
+  'customer never locks the designation (R26). Audited in the same transaction.';
 
 CREATE OR REPLACE FUNCTION public.get_workspace_billing_contacts()
 RETURNS TABLE(
