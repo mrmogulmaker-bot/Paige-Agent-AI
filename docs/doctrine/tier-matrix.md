@@ -1650,7 +1650,7 @@ The platform operator's master-account Primary Customer Profile is distinct from
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
 **§66, same commit as the change — and this row is NOT a ship.** Slice 2A is a DRAFT pull request.
-Nothing here is merged, nothing is deployed, and migration `20261045000000` is **not applied to
+Nothing here is merged, nothing is deployed, and migration `20261048000000` is **not applied to
 production**: it has a `BEGIN..ROLLBACK` proof against prod ref `xygzykjyynhzqytbqnzu` and the
 rollback was confirmed clean (0 rows, original `tenant_products_status_check` intact, 0 new columns).
 The row exists so the matrix records what is in flight rather than going quiet until merge; read

@@ -1,12 +1,19 @@
 -- Offer Catalog Slice 2A — `tenant_products` becomes the tenant's canonical OFFER record.
 --
--- VERSION NOTE. This was 20261044000000 until the Rail work landed
--- `20261044000000_rail_authority_is_decided_in_this_workspace.sql` on main with the SAME version.
+-- VERSION NOTE — renumbered TWICE, and the second time is the instructive one.
+--
+-- 20261044000000 collided with the Rail work; renumbered to 20261045000000. Then, while this sat
+-- in review, Billing Foundation A landed 20261045000000_platform_billing_accounts_foundation_a.sql
+-- and took that one too, along with 46 and 47. Now 20261048000000.
+--
 -- Two migrations sharing a version is not a naming annoyance: the second one is SILENTLY SKIPPED.
--- Had this merged, none of the columns below would exist on prod, every tenant would have read
--- "not available on this deployment yet" forever, and nothing would have failed loudly enough for
--- anyone to notice. `lint:migration-versions` and the local `db reset` both caught it. Renumbered
--- to 20261045000000 rather than renumbering theirs, because theirs is already on main.
+-- Neither time would anything have gone red on merge — the columns below simply would not exist on
+-- prod, every tenant would have read "not available on this deployment yet" forever, and the deploy
+-- would have looked entirely successful. Both times it was caught only by re-grounding against main
+-- and re-running `lint:migration-versions` BEFORE merging, not by any review of the branch.
+--
+-- The lesson for anyone reading this: a long-lived branch is reviewed against a base that moves.
+-- Re-ground at the END of the work, not only at the start. This range is contended.
 --
 -- WHY THIS TABLE AND NOT A NEW ONE (§18, one home per capability). `tenant_products` already IS
 -- the tenant's commercial record: it is read by the storefront (anon), the admin storefront panel,
