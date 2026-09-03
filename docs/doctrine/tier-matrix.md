@@ -2179,10 +2179,34 @@ and was fixed anyway, with a regression test proven red against the prior behavi
   touches the real query. The adapter suite closes that gap against a fake client, which proves the
   query SHAPE and the resolved authority, not that PostgREST answers it as expected. No evidence in
   this slice is a real round-trip to the database.
-- **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
-  running.** At the time of writing the migration is not yet applied to production. §32.a requires
-  `schema_migrations` to carry `20261106000000` AND the six columns to exist on `tenant_products`
-  AND the status CHECK to permit `paused`, each shown by a query result pasted here.
+- **Persisted apply — CONFIRMED on production 2026-09-03**, from real queries against ref
+  `xygzykjyynhzqytbqnzu` after PR #810 merged as `44d1249f`, never from the pipeline reporting
+  success. The three things §32.a requires, each shown by its own result:
+
+  ```
+  select version, name from supabase_migrations.schema_migrations
+   where version = '20261106000000';
+  → 20261106000000  tenant_products_carry_the_offer_definition
+
+  select column_name, data_type, is_nullable, column_default from information_schema.columns
+   where table_schema='public' and table_name='tenant_products' and column_name in (...);
+  → category · customer_action · delivery_shape · offer_kind · price_presentation · summary
+    all text, all is_nullable = YES, all column_default = null
+
+  select pg_get_constraintdef(oid) from pg_constraint
+   where conrelid='public.tenant_products'::regclass and conname='tenant_products_status_check';
+  → CHECK ((status = ANY (ARRAY['draft', 'active', 'paused', 'archived'])))
+  ```
+
+  Every column is nullable with NO default, so an unwritten row states nothing rather than
+  asserting a fact nobody recorded. The status CHECK gained `paused` and nothing else.
+
+- **Existing consumers unchanged, measured rather than assumed.** After the apply:
+  `tenant_products` 0 rows, `tenant_prices` 0 rows, 0 tenants with a storefront enabled, 0 rows
+  carrying `paused`, and RLS policy counts intact (3 on `tenant_products`, 3 on `tenant_prices`).
+  There was nothing for the anon storefront read, `StorefrontPanel`, `ContactBillingPanel`, the
+  agency billing roll-up or `useTenantOffers` to read differently, because the change is additive
+  and no existing value was rewritten.
 
 **Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
 yet define an offer on this screen — `tenant_products` is empty on production (0 rows, 0 tenants

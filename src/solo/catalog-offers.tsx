@@ -293,7 +293,7 @@ function OfferRow({ offer, onOpen }) {
   );
 }
 
-function FirstUse({ canManage }) {
+function FirstUse({ canManage, authorityUnknown, onNew }) {
   return (
     <div className="co-first">
       <div>
@@ -311,13 +311,182 @@ function FirstUse({ canManage }) {
           <span>a monthly retainer</span>
           <span>a discovery call</span>
         </div>
-        <p style={{ fontSize: "11.5px", color: "var(--ink-3)" }}>
-          {canManage
-            ? "Adding and editing offers arrives on this screen in the next release. Nothing is missing from your account — this list is simply empty."
-            : "An owner or admin defines what this business sells."}
-        </p>
+        {canManage ? (
+          <>
+            <button className="btn btn-s btn-g" onClick={onNew}>Add your first offer</button>
+            <p style={{ fontSize: "11.5px", color: "var(--ink-3)" }}>
+              A name is all it needs to start. Nothing is public until you publish it.
+            </p>
+          </>
+        ) : (
+          <p style={{ fontSize: "11.5px", color: "var(--ink-3)" }}>
+            {authorityUnknown
+              ? "Whether you can define offers could not be read, so nothing is offered here rather than a control that may refuse."
+              : "An owner or admin defines what this business sells."}
+          </p>
+        )}
       </div>
     </div>
+  );
+}
+
+const EMPTY_DRAFT = {
+  id: null, name: "", summary: "", description: "", kind: "", deliveryShape: "",
+  pricePresentation: "", customerAction: "", category: "",
+  priceAmount: null, priceCurrency: "usd", priceInterval: "", expectedUpdatedAt: null,
+};
+
+/** An existing offer, opened for editing. Its lead price is the one the editor manages. */
+function draftFrom(offer) {
+  const lead = leadPrice(offer);
+  return {
+    id: offer.id,
+    name: offer.name || "",
+    summary: offer.summary || "",
+    description: offer.description || "",
+    kind: offer.kind || "",
+    deliveryShape: offer.deliveryShape || "",
+    pricePresentation: offer.pricePresentation || "",
+    customerAction: offer.customerAction || "",
+    category: offer.category || "",
+    priceAmount: lead && typeof lead.unitAmount === "number" ? lead.unitAmount : null,
+    priceCurrency: (lead && lead.currency) || "usd",
+    priceInterval: (lead && lead.billingInterval) || "",
+    // The version this form was opened against. The server refuses the save if the row moved.
+    expectedUpdatedAt: offer.updatedAt || null,
+  };
+}
+
+function Pick({ label, value, options, onPick }) {
+  return (
+    <label className="co-field">
+      <span>{label}</span>
+      <div className="co-pick">
+        {options.map(([key, text]) => (
+          <button
+            key={key} type="button"
+            aria-pressed={value === key}
+            // Choosing the selected option again clears it. "Not stated" has to stay reachable
+            // after a first save, or the tenant can never take back a classification they guessed.
+            onClick={() => onPick(value === key ? "" : key)}
+          >{text}</button>
+        ))}
+      </div>
+    </label>
+  );
+}
+
+/**
+ * The editor. Ported from the pack's "New offering": a slide-over, an 84px label/control grid, and
+ * its rule that SAVE REQUIRES A NAME ONLY — every other field may stay unstated, and unstated is
+ * written as null so the list keeps rendering the honest em-dash rather than an invented value.
+ *
+ * There is deliberately NO status control here. Status is the lifecycle, and it lives on the
+ * detail drawer beside the offer it describes; mixing "what this offer is" with "whether it is
+ * live" in one form is how a person publishes something by accident while renaming it.
+ */
+function OfferEditor({ draft, onChange, onSave, onClose, busy, notice }) {
+  const nameRef = React.useRef(null);
+  React.useEffect(() => { nameRef.current?.focus(); }, []);
+  React.useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, busy]);
+
+  const set = (key) => (event) => onChange({ ...draft, [key]: event.target.value });
+  const named = draft.name.trim().length > 0;
+
+  return (
+    <>
+      <button className="co-editor-scrim" tabIndex={-1} aria-label="Close the editor" onClick={() => !busy && onClose()} />
+      <aside className="co-editor" role="dialog" aria-modal="true" aria-labelledby="co-editor-title">
+        <header className="co-editor-head">
+          <div style={{ flex: 1 }}>
+            <h2 id="co-editor-title">{draft.id ? "Edit offer" : "New offer"}</h2>
+            <p>{draft.id ? "Changes are saved to this offer only." : "A new offer starts as a draft. Nothing is public until you publish it."}</p>
+          </div>
+          <button className="btn btn-s" onClick={onClose} disabled={busy} aria-label="Close">
+            <Ic.x size={14} />
+          </button>
+        </header>
+
+        <div className="co-editor-body">
+          <label className="co-field">
+            <span>Name</span>
+            <input ref={nameRef} value={draft.name} onChange={set("name")} placeholder="What do you call it?" />
+          </label>
+          <label className="co-field">
+            <span>One line</span>
+            <input value={draft.summary} onChange={set("summary")} placeholder="How you would describe it in a sentence" />
+          </label>
+          <Pick label="Kind" value={draft.kind} onPick={(v) => onChange({ ...draft, kind: v })}
+                options={[["product", "Product"], ["service", "Service"]]} />
+          <Pick label="Delivery" value={draft.deliveryShape} onPick={(v) => onChange({ ...draft, deliveryShape: v })}
+                options={Object.entries(SHAPES)} />
+          <label className="co-field">
+            <span>Category</span>
+            <input value={draft.category} onChange={set("category")} placeholder="Your own grouping" />
+          </label>
+          <label className="co-field">
+            <span>Price</span>
+            <div className="co-money">
+              <input
+                inputMode="decimal"
+                // The SAME currency exponent the list renders with, not a hardcoded 100. The first
+                // version of this field divided and multiplied by 100 — reintroducing, in the
+                // editor, the exact defect an independent review had just found in `money()`: a
+                // recorded ¥500 read back as "5", and typing 500 would have saved ¥50,000. A fix
+                // in the read path is worth nothing if the write path re-creates it.
+                value={draft.priceAmount === null
+                  ? ""
+                  : String(draft.priceAmount / 10 ** minorUnitDigits(draft.priceCurrency))}
+                placeholder="Not stated"
+                onChange={(event) => {
+                  const raw = event.target.value.trim();
+                  if (!raw) return onChange({ ...draft, priceAmount: null });
+                  const major = Number(raw);
+                  // Anything unreadable leaves the record untouched rather than writing a number
+                  // nobody typed.
+                  if (!Number.isFinite(major) || major < 0) return;
+                  onChange({
+                    ...draft,
+                    priceAmount: Math.round(major * 10 ** minorUnitDigits(draft.priceCurrency)),
+                  });
+                }}
+              />
+              <input
+                value={draft.priceCurrency} onChange={set("priceCurrency")}
+                aria-label="Currency" style={{ maxWidth: "70px" }} placeholder="usd"
+              />
+            </div>
+          </label>
+          <Pick label="Charged" value={draft.priceInterval} onPick={(v) => onChange({ ...draft, priceInterval: v })}
+                options={[["one_time", "Once"], ["week", "Weekly"], ["month", "Monthly"], ["year", "Yearly"]]} />
+          <Pick label="Shown as" value={draft.pricePresentation} onPick={(v) => onChange({ ...draft, pricePresentation: v })}
+                options={Object.entries(PRESENTATION)} />
+          <Pick label="Invite to" value={draft.customerAction} onPick={(v) => onChange({ ...draft, customerAction: v })}
+                options={Object.entries(ACTIONS)} />
+          <label className="co-field">
+            <span>Detail</span>
+            <textarea rows={4} value={draft.description} onChange={set("description")}
+                      placeholder="Anything a customer should know. Optional." />
+          </label>
+        </div>
+
+        <footer className="co-editor-foot">
+          <span className="co-editor-note" data-tone={notice?.tone || "plain"}>
+            {notice?.text
+              || (named ? "Anything left blank stays unstated." : "A name is all this needs to save.")}
+          </span>
+          <span className="co-spacer" />
+          <button className="btn btn-s" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-s btn-g" onClick={onSave} disabled={busy || !named}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </footer>
+      </aside>
+    </>
   );
 }
 
@@ -362,6 +531,53 @@ export function CatalogOffers({ setDetail }) {
   // everything while claiming a count of its own. Unreachable until 2B ships the write seam;
   // fixed here rather than left for the slice that makes it reachable.
   const [category, setCategory] = React.useState(null);
+  // The editor's own state. `draft === null` is closed; a draft with a null id is a create.
+  const [draft, setDraft] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [notice, setNotice] = React.useState(null);
+
+  const openNew = () => { setNotice(null); setDraft(EMPTY_DRAFT); };
+  const openEdit = (offer) => { setNotice(null); setDraft(draftFrom(offer)); };
+
+  const save = async () => {
+    setBusy(true);
+    setNotice(null);
+    const outcome = await data.saveOffer(draft);
+    setBusy(false);
+    if (outcome.ok) { setDraft(null); return; }
+    // The form STAYS OPEN on a refusal. Closing it would discard what the person typed on top of
+    // telling them it did not save, and a stale-row refusal specifically needs their words kept so
+    // they can decide what to carry over after reloading.
+    setNotice({
+      tone: "bad",
+      text: outcome.stale
+        ? "Someone else changed this offer while you had it open. Nothing was saved — close and reopen it to see their version."
+        : outcome.message || "That could not be saved. Nothing was changed.",
+    });
+  };
+
+  // Lifecycle acts from the detail drawer. Archive asks first, because it is the one act that
+  // removes an offer from every list a person is looking at.
+  const move = async (offer, next) => {
+    if (next === "archived"
+        && !window.confirm(`Archive "${offer.name}"? It stops being listed and stops being public. You can restore it.`)) {
+      return;
+    }
+    const outcome = await data.setOfferStatus(offer.id, next, offer.updatedAt || null);
+    if (!outcome.ok) {
+      window.alert(outcome.stale
+        ? "Someone else changed this offer first. Nothing was changed — reopen it to see their version."
+        : outcome.message || "That could not be changed. Nothing was changed.");
+    }
+  };
+
+  const editor = draft ? (
+    <OfferEditor
+      draft={draft} onChange={setDraft} onSave={save} busy={busy} notice={notice}
+      onClose={() => { setDraft(null); setNotice(null); }}
+    />
+  ) : null;
+
 
   React.useEffect(() => { setCategory(null); }, [data.tenantId]);
 
@@ -403,8 +619,9 @@ export function CatalogOffers({ setDetail }) {
   if (data.offers.length === 0) {
     return (
       <>
+        {editor}
         <RecordNotices data={data} />
-        <FirstUse canManage={data.canManage || data.authorityUnknown} />
+        <FirstUse canManage={data.canManage} authorityUnknown={data.authorityUnknown} onNew={openNew} />
       </>
     );
   }
@@ -457,6 +674,24 @@ export function CatalogOffers({ setDetail }) {
         ["Customer action", offer.customerAction ? ACTIONS[offer.customerAction] : "Not stated"],
         ["Description", offer.description || "Not recorded"],
       ],
+      // The acts live beside the record they change, on the drawer the row already opens (§18 — no
+      // second surface). They are omitted entirely, not disabled, for a caller who may not manage.
+      actions: data.canManage ? (
+        <div className="co-acts">
+          <button className="btn btn-s" onClick={() => { setDetail(null); openEdit(offer); }}>Edit</button>
+          {offer.availability !== "active" && offer.availability !== "archived" ? (
+            <button className="btn btn-s btn-g" onClick={() => move(offer, "active")}>Publish</button>
+          ) : null}
+          {offer.availability === "active" ? (
+            <button className="btn btn-s" onClick={() => move(offer, "paused")}>Pause</button>
+          ) : null}
+          {offer.availability === "archived" ? (
+            <button className="btn btn-s" onClick={() => move(offer, "draft")}>Restore</button>
+          ) : (
+            <button className="btn btn-s" onClick={() => move(offer, "archived")}>Archive</button>
+          )}
+        </div>
+      ) : undefined,
       note: conflict
         ? `${conflict} Nothing on this surface charges anybody, and no page or form is changed by what is recorded here.`
         : "Offer facts are recorded here and nowhere else, so a page or form never carries its own price. Nothing on this surface charges anybody.",
@@ -465,6 +700,7 @@ export function CatalogOffers({ setDetail }) {
 
   return (
     <>
+      {editor}
       <div className="co-filters">
         <button
           type="button"
@@ -487,6 +723,19 @@ export function CatalogOffers({ setDetail }) {
             {name}<b>{data.offers.filter((offer) => offer.category === name).length}</b>
           </button>
         ))}
+        <span style={{ flex: 1 }} />
+        {data.canManage ? (
+          <button type="button" className="btn btn-s btn-g" onClick={openNew}>New offer</button>
+        ) : (
+          // Not a disabled control. A disabled button says "you could do this, but not now"; the
+          // truth is that this person's role does not define what the business sells, and the
+          // authority read may itself have failed, which is a different sentence again.
+          <span className="co-editor-note">
+            {data.authorityUnknown
+              ? "Whether you can change these could not be read."
+              : "An owner or admin defines what this business sells."}
+          </span>
+        )}
       </div>
 
       <RecordNotices data={data} />

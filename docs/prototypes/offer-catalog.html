@@ -1,0 +1,1118 @@
+<title>Offer Catalog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   FLOW PROTOTYPE — Campaigns › Catalog becomes the Offer Catalog (Solo tier)
+   Throwaway · read-only · zero production mutation · every write is a local mock.
+
+   GROUNDED AT origin/main b5b664da83cdba038730c45e9f2e29de6b0a0fdf
+
+   PALETTE PROVENANCE — nothing here is authored:
+     .paige-solo tokens .......... src/solo/solo-tokens.css L2-L25 (Mineral / Obsidian), verbatim
+     --pg-canvas ................. src/index.css L245 (dark) / L291 (light), verbatim
+     .campaigns-* geometry ....... src/solo/solo-campaigns.css, verbatim
+     offer card anatomy .......... PAIGE Super Admin Shell v3.dc.html L447-L530
+                                   + src/operator/surfaces/campaigns/CatalogSurface.tsx L98-L330
+     offer vocabulary ............ src/operator/surfaces/campaigns/campaignContract.ts L96-L152
+     existing Catalog copy ....... src/solo/growth2.tsx L19-L34, L105-L112
+
+   The review harness uses its own --rv-* slate, deliberately OUTSIDE the product palette, so
+   developer chrome can never be mistaken for product surface. Same rule the previous house
+   prototype (docs/prototypes/solo-automations-recovery.html) established.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+*,*::before,*::after{box-sizing:border-box}
+
+/* ── REVIEW HARNESS SLATE — not product ──────────────────────────────────────────────────── */
+:root{
+  --rv-bg:#eceef1;--rv-panel:#f7f8fa;--rv-edge:#ccd2da;--rv-edge-2:#aab4c0;
+  --rv-ink:#1b2027;--rv-ink-2:#48525f;--rv-faint:#6d7885;
+  --rv-live:#1f6f4a;--rv-mock:#8a5a12;--rv-dead:#9a3b30;--rv-focus:#2f6fd0;--rv-new:#5a3f9e;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-rv="light"]){
+  --rv-bg:#14171c;--rv-panel:#1b1f26;--rv-edge:#2e353f;--rv-edge-2:#434c58;
+  --rv-ink:#eef1f5;--rv-ink-2:#b3bcc7;--rv-faint:#8b95a2;
+  --rv-live:#6fc79b;--rv-mock:#e0b268;--rv-dead:#e59287;--rv-focus:#7aa9ee;--rv-new:#b09ae8;
+  color-scheme:dark;
+}}
+body{margin:0;background:var(--rv-bg);color:var(--rv-ink);
+  font:400 13px/1.55 "Geist","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+
+/* ── PRODUCT TOKENS — verbatim from src/solo/solo-tokens.css ─────────────────────────────── */
+.paige-solo{
+  --font:'Geist','Söhne',-apple-system,'Segoe UI',sans-serif;--mono:'Geist Mono',ui-monospace,monospace;
+  --canvas:#F6F5F1;--surface:#FFFFFF;--surface-2:#FBFAF7;--surface-sunk:#F0EEE8;
+  --line:#E5E1D8;--line-soft:#EFECE4;
+  --ink:#171331;--ink-2:#4A4566;--ink-3:#7E7995;--ink-inv:#FBFAF7;
+  --rail:#171331;--rail-2:#221C46;--rail-line:#332C5E;--rail-text:#C9C4E0;
+  --gold:#C9860C;--gold-bright:#E9A83A;--gold-tint:#FBF1DE;--gold-line:#EFDCB4;
+  --violet:#5B3FD6;--violet-2:#7A62E8;--violet-tint:#EEEAFD;--violet-line:#DAD1FA;
+  --ok:#1B7A52;--ok-tint:#E4F2EB;--warn:#B4700A;--warn-tint:#FBF0DD;--bad:#B93E37;--bad-tint:#FAE9E7;
+  --r-s:8px;--r-m:12px;--r-l:18px;--r-xl:26px;
+  --sh-1:0 1px 2px rgba(23,19,49,.05);
+  --sh-2:0 2px 4px rgba(23,19,49,.04),0 12px 28px -12px rgba(23,19,49,.14);
+  --sh-3:0 24px 60px -18px rgba(23,19,49,.28);
+  --pg-canvas:#fbf9f5;              /* src/index.css L291 */
+  color-scheme:light;
+}
+.paige-solo[data-theme="dark"]{
+  --canvas:#0C0A1B;--surface:#141129;--surface-2:#191637;--surface-sunk:#100D24;
+  --line:#282348;--line-soft:#221D3E;
+  --ink:#EFECFA;--ink-2:#B0AACB;--ink-3:#7D779A;--ink-inv:#141129;
+  --rail:#100D24;--rail-2:#1B1738;--rail-line:#282348;--rail-text:#B0AACB;
+  --gold:#E9A83A;--gold-bright:#F5C266;--gold-tint:#2C2211;--gold-line:#4A3A17;
+  --violet:#8A72F5;--violet-2:#A692FF;--violet-tint:#221C4A;--violet-line:#352C68;
+  --ok:#4CC48C;--ok-tint:#12301F;--warn:#E3A63C;--warn-tint:#2E2311;--bad:#EE7A72;--bad-tint:#331817;
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 2px 4px rgba(0,0,0,.25),0 12px 28px -12px rgba(0,0,0,.5);
+  --sh-3:0 24px 60px -18px rgba(0,0,0,.6);
+  --pg-canvas:#100e14;              /* src/index.css L245 */
+  color-scheme:dark;
+}
+
+/* ── SHELL PRIMITIVES — src/solo/solo-tokens.css ─────────────────────────────────────────── */
+.paige-solo{background:var(--canvas);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5}
+.paige-solo h1,.paige-solo h2,.paige-solo h3{margin:0;font-weight:600;letter-spacing:-.02em;color:var(--ink)}
+.paige-solo p{margin:0}
+.paige-solo button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer;border:0;background:none}
+.paige-solo input,.paige-solo select,.paige-solo textarea{font-family:inherit;font-size:inherit}
+.paige-solo .eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.paige-solo .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.paige-solo .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--sh-1)}
+.paige-solo .sub{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.paige-solo .btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:9px;
+  font-size:13px;font-weight:500;border:1px solid var(--line);background:var(--surface);transition:.15s;white-space:nowrap;flex:none}
+.paige-solo .btn:hover{background:var(--surface-sunk)}
+.paige-solo .btn:disabled{opacity:.5;cursor:not-allowed}
+.paige-solo .btn-p{background:var(--ink);color:var(--ink-inv);border-color:var(--ink)}
+.paige-solo[data-theme="dark"] .btn-p{background:var(--violet);border-color:var(--violet);color:#fff}
+.paige-solo .btn-g{background:var(--gold-tint);border-color:var(--gold-line);color:var(--gold)}
+.paige-solo .btn-g:hover{background:var(--gold-line)}
+.paige-solo .btn-s{height:28px;padding:0 10px;font-size:12px;border-radius:8px}
+.paige-solo .pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:99px;
+  font-size:11px;font-weight:600;white-space:nowrap;flex:none}
+.paige-solo .pill-n{background:var(--surface-sunk);color:var(--ink-3)}
+.paige-solo .row{display:flex;align-items:center;gap:12px}
+.paige-solo .grow{flex:1;min-width:0}
+.paige-solo .trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paige-solo .tile{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none}
+.paige-solo ::-webkit-scrollbar{width:10px;height:10px}
+.paige-solo ::-webkit-scrollbar-thumb{background:var(--line);border-radius:20px;border:3px solid transparent;background-clip:content-box}
+
+/* ── SOLO SHELL CHROME — rail + topbar, matching the shipped surface ─────────────────────── */
+.sh{display:grid;grid-template-columns:var(--rail-w,236px) minmax(0,1fr);height:100%;min-height:0;background:var(--canvas)}
+.sh-rail{background:var(--rail);border-right:1px solid var(--rail-line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.sh-brand{display:flex;align-items:center;gap:10px;padding:16px 18px 14px}
+.sh-brand b{color:#fff;font:600 13px/1 var(--font);letter-spacing:.22em}
+.sh-brand small{display:block;color:var(--rail-text);font-size:10px;letter-spacing:.14em;margin-top:4px}
+.sh-nav{display:grid;gap:2px;padding:8px 12px;flex:1;min-height:0;align-content:start}
+.sh-nav button{display:flex;align-items:center;gap:12px;height:42px;padding:0 14px;border-radius:11px;
+  color:var(--rail-text);font-size:13.5px;text-align:left;width:100%}
+.sh-nav button[aria-current="page"]{background:var(--rail-2);color:#fff;font-weight:600;box-shadow:inset 0 0 0 1px var(--rail-line)}
+.sh-foot{padding:10px 12px 14px;border-top:1px solid var(--rail-line);display:grid;gap:2px}
+.sh-foot button{display:flex;align-items:center;gap:12px;height:38px;padding:0 14px;border-radius:10px;color:var(--rail-text);font-size:13px;width:100%;text-align:left}
+.sh-who{display:flex;align-items:center;gap:10px;padding:12px 14px 4px;color:var(--rail-text)}
+.sh-who i{width:28px;height:28px;border-radius:50%;background:var(--violet);color:#fff;display:grid;place-items:center;
+  font:600 10.5px/1 var(--font);font-style:normal;flex:none}
+.sh-main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:var(--canvas)}
+.sh-top{display:flex;align-items:center;gap:16px;padding:12px 22px;border-bottom:1px solid var(--line);background:var(--surface);flex:none}
+.sh-top .eyebrow{font-size:9.5px}
+.sh-cmd{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;height:38px;
+  border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--ink-3);font-size:12.5px}
+.sh-tenant{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid var(--line);
+  border-radius:11px;background:var(--surface);font-size:12.5px;flex:none;max-width:210px}
+
+/* ── CAMPAIGNS SURFACE — verbatim from src/solo/solo-campaigns.css ───────────────────────── */
+.solo-campaigns{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--pg-canvas);color:var(--ink);overflow-x:clip}
+.campaigns-nav{min-height:48px;display:flex;align-items:stretch;gap:14px;padding:0 22px;
+  border-bottom:1px solid var(--line);background:var(--pg-canvas);flex:none;min-width:0}
+.campaigns-tabs{display:flex;align-items:stretch;gap:20px;overflow-x:auto;overflow-y:hidden;flex:1 1 auto;min-width:0}
+.campaigns-tabs button{display:flex;align-items:center;gap:7px;flex:none;padding:0;border-bottom:2px solid transparent;
+  margin-bottom:-1px;color:var(--ink-3);font-size:13px;font-weight:500;white-space:nowrap}
+.campaigns-tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold);font-weight:650}
+.campaigns-tabs button[aria-selected="true"] svg{color:var(--gold)}
+.campaigns-tabs button:focus-visible,.campaigns-segmented button:focus-visible,.offer-row:focus-visible,
+.campaigns-artifact a:focus-visible,.offer-chip:focus-visible{outline:2px solid var(--violet);outline-offset:-2px;border-radius:4px}
+.campaigns-studio{align-self:center;flex:none}
+.campaigns-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:18px 22px 32px}
+.campaigns-scroll>.pg-hd{max-width:1240px;margin:0 auto 16px;padding:0;background:transparent;
+  display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.campaigns-scroll>.pg-hd h1{font-size:20px;letter-spacing:-.03em}
+.campaigns-truth-key{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;max-width:330px;margin-left:auto}
+.campaigns-surface{max-width:1240px;margin:0 auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-l);box-shadow:var(--sh-1);overflow:hidden}
+.campaigns-surface-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:17px 19px;
+  border-bottom:1px solid var(--line-soft);background:linear-gradient(120deg,var(--surface),var(--surface-2))}
+.campaigns-heading-line{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.campaigns-surface-head h2,.campaigns-state h2{font-size:16px;letter-spacing:-.02em}
+.campaigns-surface-head p,.campaigns-state p{font-size:12.8px;line-height:1.55;color:var(--ink-2);margin-top:3px}
+.campaigns-surface-head small{display:block;font-size:11.5px;color:var(--ink-3);margin-top:6px;max-width:760px;line-height:1.45}
+.campaigns-truth{display:inline-flex;align-items:center;height:20px;padding:0 7px;border:1px solid var(--line);
+  border-radius:999px;font:650 9px/1 var(--mono);letter-spacing:.09em;background:var(--surface-sunk);color:var(--ink-3)}
+.campaigns-truth--live{color:var(--ok)}.campaigns-truth--partial{color:var(--violet)}
+.campaigns-truth--proposed{color:var(--warn)}.campaigns-truth--unavailable{color:var(--ink-3)}
+.campaigns-state{min-height:230px;display:grid;place-items:center;align-content:center;text-align:center;gap:9px;padding:34px 20px}
+.campaigns-state p{max-width:570px}
+.campaigns-spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;
+  animation:campaigns-spin .8s linear infinite}
+@keyframes campaigns-spin{to{transform:rotate(360deg)}}
+.campaigns-skeleton{padding:18px;display:grid;gap:9px}
+.campaigns-skeleton span{height:58px;border-radius:10px;
+  background:linear-gradient(90deg,var(--surface-sunk),var(--surface-2),var(--surface-sunk));
+  background-size:200% 100%;animation:campaigns-shimmer 1.2s linear infinite}
+@keyframes campaigns-shimmer{to{background-position:-200% 0}}
+.campaigns-segmented{display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--surface-sunk)}
+.campaigns-segmented button{padding:5px 9px;border-radius:6px;font-size:11.5px;color:var(--ink-3);white-space:nowrap}
+.campaigns-segmented button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+.campaigns-catalog-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px}
+.campaigns-artifact{min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:18px;padding:15px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.campaigns-artifact h3{font-size:13.5px;margin-top:8px;overflow-wrap:anywhere}
+.campaigns-artifact p{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.campaigns-type{font:650 9.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--violet)}
+.campaigns-artifact-actions{display:flex;gap:7px;flex-wrap:wrap}
+.campaigns-drawer-scrim{position:fixed;inset:0;z-index:86;background:rgba(18,14,40,.36);backdrop-filter:blur(2px);border:0}
+.campaigns-drawer{position:fixed;z-index:87;top:0;right:0;bottom:0;width:min(460px,94vw);display:flex;flex-direction:column;
+  background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--sh-3);animation:drw .2s cubic-bezier(.22,1,.36,1)}
+@keyframes drw{from{transform:translateX(16px);opacity:.4}}
+.campaigns-drawer header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.campaigns-drawer header h2{font-size:16px;margin-top:3px}
+.campaigns-drawer-body{flex:1;overflow:auto;padding:10px 18px 28px}
+.campaigns-detail-row{display:flex;justify-content:space-between;gap:20px;padding:13px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.campaigns-detail-row span{color:var(--ink-3)}
+.campaigns-detail-row strong{text-align:right;overflow-wrap:anywhere;white-space:pre-line}
+.campaigns-detail-note{margin-top:16px;padding:12px;border-radius:9px;background:var(--surface-2);color:var(--ink-2);font-size:12px;line-height:1.55}
+
+/* ── OFFER ROW — anatomy ported from v3.dc.html L458-L523 / CatalogSurface.tsx L98-L330,
+      expressed in the Solo shell's own tokens rather than the operator console's. ────────── */
+.offer-filters{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;padding:12px 19px;
+  border-bottom:1px solid var(--line-soft)}
+.offer-filter{display:inline-flex;align-items:center;gap:7px;min-height:28px;padding:0 2px;font-size:12.5px;color:var(--ink-3)}
+.offer-filter[aria-pressed="true"]{color:var(--ink);font-weight:600;box-shadow:inset 0 -1px 0 var(--gold)}
+.offer-filter b{font:400 10.5px/1 var(--mono);color:var(--ink-3)}
+.offer-list{display:grid;padding:0 19px}
+.offer-row{width:100%;text-align:left;padding:17px 0 16px;border-bottom:1px solid var(--line-soft);display:block;color:var(--ink)}
+.offer-row:last-child{border-bottom:0}
+.offer-row:hover .offer-name{color:var(--violet)}
+.offer-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center}
+.offer-kind{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);color:var(--gold);flex:none}
+.offer-name{display:block;font:500 15px/1.3 var(--font);letter-spacing:-.008em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offer-pitch{display:block;margin-top:3px;color:var(--ink-3);font-size:11.5px;text-wrap:pretty}
+.offer-state{display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:0 9px;border:1px solid var(--line);
+  border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;flex:none}
+.offer-state i{width:5px;height:5px;rotate:45deg;background:currentColor;display:block;flex:none}
+.offer-row--compact{padding:11px 0}
+.offer-row--compact .offer-head{grid-template-columns:auto minmax(0,1fr) auto auto auto;gap:14px}
+.offer-row--compact .offer-pitch{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offer-compact-price{display:flex;flex-direction:column;align-items:flex-end;flex:none;min-width:96px}
+.offer-compact-price b{font:500 13.5px/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.offer-compact-price b.is-none{color:var(--ink-3);font-size:11.5px}
+.offer-compact-price small{color:var(--ink-3);font-size:10.5px;margin-top:2px}
+.offer-compact-used{flex:none;color:var(--ink-3);font-size:11px;min-width:104px;text-align:right}
+@media(max-width:1020px){.offer-row--compact .offer-compact-used{display:none}}
+@media(max-width:820px){.offer-row--compact .offer-head{grid-template-columns:auto minmax(0,1fr) auto}
+  .offer-row--compact .offer-compact-price{display:none}}
+.offer-price{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 14px;margin-top:13px}
+.offer-price b{font:500 17px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.offer-price b.is-none{color:var(--ink-3)}
+.offer-price small{color:var(--ink-3);font-size:11px}
+.offer-meta{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 22px;margin-top:14px;
+  padding-top:11px;border-top:1px solid var(--line-soft)}
+.offer-meta>span{display:flex;flex-direction:column;min-width:0;gap:5px}
+.offer-meta small.k{color:var(--ink-3);font-size:10.5px}
+.offer-chips{display:flex;flex-wrap:wrap;gap:5px}
+.offer-chip{display:inline-flex;align-items:center;gap:5px;min-height:24px;padding:0 9px;border:1px solid var(--line);
+  border-radius:999px;background:var(--surface);color:var(--ink-3);font-size:10.5px;white-space:nowrap;transition:.15s}
+.offer-chip:hover{border-color:var(--gold);color:var(--gold)}
+.offer-nowhere{color:var(--warn);font-size:10.5px}
+.offer-fulfil{display:flex;align-items:baseline;gap:7px;min-width:0}
+.offer-fulfil small:first-child{flex:none;width:62px;color:var(--ink-3);font-size:10px}
+.offer-fulfil small:last-child{min-width:0;color:var(--ink-2);font-size:11px;text-wrap:pretty}
+.offer-facts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;margin-top:13px;padding-top:11px;border-top:1px solid var(--line-soft)}
+.offer-facts>span{display:flex;align-items:baseline;gap:6px}
+.offer-facts small{color:var(--ink-3);font-size:10.5px}
+.offer-facts b{font:500 11.5px/1 var(--mono);color:var(--ink-2)}
+.offer-facts b.is-none{color:var(--ink-3)}
+.offer-foot{display:flex;align-items:center;gap:14px;min-height:34px;padding:0 19px;border-top:1px solid var(--line)}
+.offer-foot small:first-child{flex:1;min-width:0;color:var(--ink-3);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offer-foot small:last-child{flex:none;color:var(--ink-3);font:10.5px var(--mono);white-space:nowrap}
+.offer-note{margin:14px 19px 16px;max-width:74ch;color:var(--ink-3);font-size:11px;line-height:1.6;text-wrap:pretty}
+.offer-drift{display:flex;align-items:flex-start;gap:8px;margin-top:11px;padding:9px 11px;border:1px solid var(--gold-line);
+  border-radius:9px;background:var(--gold-tint);color:var(--gold);font-size:11.5px;line-height:1.45}
+
+/* ── CREATE / EDIT — the shipped Pipeline modal pattern (solo-campaigns.css .pipeline-create) ─ */
+.of-scrim{position:fixed;inset:0;z-index:90;background:rgba(18,14,40,.38);backdrop-filter:blur(2px);border:0}
+.of-modal{position:fixed;z-index:91;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:min(680px,calc(100vw - 32px));max-height:min(760px,calc(100dvh - 40px));display:flex;flex-direction:column;
+  border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--sh-3);overflow:hidden}
+.of-modal>header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px 13px;border-bottom:1px solid var(--line)}
+.of-modal>header h3{font-size:16px;margin-top:3px}
+.of-body{flex:1;min-height:0;overflow:auto;padding:4px 18px 14px}
+.of-body label{display:grid;gap:5px;font-size:12px;color:var(--ink-3);min-width:0}
+.of-body input,.of-body select,.of-body textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface);color:var(--ink);padding:8px 10px;font:inherit}
+.of-body textarea{min-height:70px;resize:vertical}
+.of-body input:focus-visible,.of-body select:focus-visible,.of-body textarea:focus-visible{outline:2px solid var(--violet);outline-offset:1px}
+.of-grid{display:grid;grid-template-columns:minmax(180px,.9fr) minmax(220px,1.1fr);gap:12px;padding-top:12px}
+.of-grid>.wide{grid-column:1/-1}
+.of-hint{color:var(--ink-3);font-size:11px;margin-top:-1px}
+.of-err{color:var(--bad);font-size:11px;display:flex;align-items:center;gap:5px}
+.of-body input[aria-invalid="true"],.of-body select[aria-invalid="true"]{border-color:var(--bad)}
+.of-derived{display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid var(--line);
+  border-radius:9px;background:var(--surface-2);color:var(--ink-2);font-size:11.5px;line-height:1.5}
+.of-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--line);flex:none}
+.of-foot .grow{flex:1;min-width:0;color:var(--ink-3);font-size:11px}
+.of-danger{display:grid;gap:10px;padding:12px;border:1px solid var(--bad);border-radius:10px;background:var(--surface);margin-top:12px}
+.of-danger p{color:var(--ink-2);font-size:12px}
+.of-danger>div{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.of-picklist{display:grid;gap:7px;margin-top:4px}
+.of-pick{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+  background:var(--surface-2);width:100%;text-align:left;color:var(--ink)}
+.of-pick[aria-pressed="true"]{border-color:var(--violet);background:var(--violet-tint)}
+.of-pick strong{display:block;font-size:12.5px}
+.of-pick small{display:block;color:var(--ink-3);font-size:10.5px;margin-top:2px}
+.of-toast{position:fixed;z-index:95;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;
+  padding:10px 15px;border:1px solid var(--line);border-radius:11px;background:var(--surface);box-shadow:var(--sh-3);
+  font-size:12.5px;color:var(--ink);animation:tst .22s cubic-bezier(.22,1,.36,1)}
+@keyframes tst{from{transform:translate(-50%,10px);opacity:0}}
+.of-readonly{display:flex;align-items:center;gap:8px;margin:0 19px 14px;padding:9px 11px;border:1px solid var(--line);
+  border-radius:9px;background:var(--surface-sunk);color:var(--ink-2);font-size:12px}
+.of-first{display:grid;place-items:center;text-align:center;gap:10px;padding:44px 24px;max-width:620px;margin:0 auto}
+.of-first h3{font-size:17px}
+.of-first p{color:var(--ink-2);font-size:12.8px;line-height:1.6}
+.of-first .of-examples{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:2px}
+.of-first .of-examples span{border:1px dashed var(--line);border-radius:999px;padding:4px 10px;color:var(--ink-3);font-size:11px}
+
+@media(max-width:1050px){.campaigns-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .campaigns-nav,.campaigns-scroll{padding-inline:16px}.campaigns-truth-key{display:none}}
+@media(max-width:820px){.offer-meta{grid-template-columns:minmax(0,1fr)}.of-grid{grid-template-columns:1fr}}
+@media(max-width:760px){.campaigns-catalog-grid{grid-template-columns:1fr}.campaigns-surface-head{display:grid}}
+@media(prefers-reduced-motion:reduce){.solo-campaigns *,.of-modal,.of-toast,.campaigns-drawer{
+  animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+.rm-off .solo-campaigns *,.rm-off .of-modal,.rm-off .of-toast,.rm-off .campaigns-drawer{
+  animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+@media(forced-colors:active){.campaigns-truth,.campaigns-surface,.campaigns-artifact,.offer-chip,.offer-state{border:1px solid CanvasText}
+  .campaigns-tabs button[aria-selected="true"]{border-bottom:3px solid Highlight}}
+
+/* ── REVIEW HARNESS — developer chrome, deliberately outside the product palette ─────────── */
+.rv{display:grid;grid-template-rows:auto minmax(0,1fr);height:100vh;min-height:0}
+.rv-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:9px 14px;background:var(--rv-panel);
+  border-bottom:1px solid var(--rv-edge)}
+.rv-bar h1{margin:0;font-size:13px;font-weight:600;letter-spacing:-.01em}
+.rv-bar h1 em{font-style:normal;color:var(--rv-faint);font-weight:400}
+.rv-ctl{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--rv-ink-2)}
+.rv-ctl label{color:var(--rv-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em}
+.rv-ctl select,.rv-ctl button.rv-tog{border:1px solid var(--rv-edge-2);border-radius:7px;background:var(--rv-bg);
+  color:var(--rv-ink);font:inherit;font-size:11px;padding:4px 7px;cursor:pointer}
+.rv-ctl button.rv-tog[aria-pressed="true"]{background:var(--rv-focus);border-color:var(--rv-focus);color:#fff}
+.rv-body{display:grid;grid-template-columns:314px minmax(0,1fr);min-height:0}
+.rv-side{background:var(--rv-panel);border-right:1px solid var(--rv-edge);overflow:auto;padding:12px 13px 30px}
+.rv-side h2{margin:16px 0 7px;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--rv-faint)}
+.rv-side h2:first-child{margin-top:2px}
+.rv-steps{display:grid;gap:3px}
+.rv-steps button{display:flex;align-items:flex-start;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:7px;
+  border:1px solid transparent;background:none;color:var(--rv-ink-2);font:inherit;font-size:11.5px;cursor:pointer;line-height:1.4}
+.rv-steps button:hover{background:var(--rv-bg)}
+.rv-steps button[aria-current="true"]{background:var(--rv-bg);border-color:var(--rv-edge-2);color:var(--rv-ink);font-weight:600}
+.rv-steps button i{flex:none;width:19px;font-style:normal;font-family:"Geist Mono",monospace;font-size:10px;color:var(--rv-faint);padding-top:1px}
+.rv-note{font-size:11px;line-height:1.55;color:var(--rv-ink-2);background:var(--rv-bg);border:1px solid var(--rv-edge);
+  border-radius:8px;padding:9px 10px;margin-top:6px}
+.rv-note b{color:var(--rv-ink)}
+.rv-tag{display:inline-flex;align-items:center;gap:4px;height:17px;padding:0 6px;border-radius:5px;
+  font:600 9px/1 "Geist Mono",monospace;letter-spacing:.05em;text-transform:uppercase;border:1px solid currentColor}
+.t-live{color:var(--rv-live)}.t-mock{color:var(--rv-mock)}.t-dead{color:var(--rv-dead)}.t-new{color:var(--rv-new)}
+.rv-legend{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.rv-stage{min-height:0;overflow:auto;padding:16px;display:grid;place-items:start center;background:var(--rv-bg)}
+.rv-frame{border:1px solid var(--rv-edge-2);border-radius:10px;overflow:hidden;background:#000;box-shadow:0 10px 34px rgba(0,0,0,.16);
+  flex:none;display:flex;flex-direction:column}
+.rv-frame>.rv-cap{display:flex;align-items:center;gap:9px;padding:5px 10px;background:var(--rv-panel);
+  border-bottom:1px solid var(--rv-edge);font:10.5px "Geist Mono",monospace;color:var(--rv-faint);flex:none}
+.rv-frame>.rv-cap b{color:var(--rv-ink);font-weight:600}
+.rv-view{overflow:hidden;position:relative;
+  /* Establishes a containing block so the product's own position:fixed overlays (drawer,
+     modal, scrim, toast) are pinned to the SIMULATED viewport rather than the browser
+     window. Caught by the headless drive: without it the scrim covered the review panel
+     and swallowed its clicks. */
+  transform:translate(0)}
+.rv-approve{display:grid;gap:8px;margin-top:12px}
+.rv-approve textarea{width:100%;border:1px solid var(--rv-edge-2);border-radius:8px;background:var(--rv-bg);color:var(--rv-ink);
+  font:inherit;font-size:11.5px;padding:7px 9px;min-height:58px;resize:vertical}
+.rv-approve .rv-btns{display:flex;gap:6px;flex-wrap:wrap}
+.rv-approve .rv-btns button{flex:1;min-width:78px;border:1px solid var(--rv-edge-2);border-radius:7px;background:var(--rv-bg);
+  color:var(--rv-ink);font:inherit;font-size:11px;padding:6px 8px;cursor:pointer}
+.rv-approve .rv-btns button[aria-pressed="true"]{background:var(--rv-focus);border-color:var(--rv-focus);color:#fff}
+.rv-out{font:10.5px/1.5 "Geist Mono",monospace;color:var(--rv-faint);word-break:break-word}
+@media(max-width:980px){.rv-body{grid-template-columns:minmax(0,1fr)}.rv-side{display:none}}
+</style>
+
+<div class="rv">
+  <div class="rv-bar">
+    <h1>Offer Catalog <em>— flow prototype · Solo · Campaigns › Catalog</em></h1>
+    <span class="rv-ctl"><label for="c-vp">Viewport</label>
+      <select id="c-vp">
+        <option value="1536x770">1536 × 770</option>
+        <option value="1366x768">1366 × 768</option>
+        <option value="1024x768">1024 × 768</option>
+        <option value="900x1000">900 × 1000</option>
+      </select></span>
+    <span class="rv-ctl"><label for="c-th">Theme</label>
+      <select id="c-th"><option value="light">Mineral (light)</option><option value="dark">Obsidian (dark)</option></select></span>
+    <span class="rv-ctl"><label for="c-role">Role</label>
+      <select id="c-role"><option value="manage">Owner (can manage)</option><option value="read">Member (read-only)</option></select></span>
+    <span class="rv-ctl"><label for="c-den">Density</label>
+      <select id="c-den"><option value="full">Full</option><option value="compact">Compact</option></select></span>
+    <span class="rv-ctl"><button class="rv-tog" id="c-rm" aria-pressed="false">Reduced motion</button></span>
+    <span class="rv-ctl"><button class="rv-tog" id="c-kb" aria-pressed="false">Keyboard notes</button></span>
+    <span style="flex:1"></span>
+    <span class="rv-ctl rv-out" id="c-sha">main b5b664d · read-only · every write mocked</span>
+  </div>
+
+  <div class="rv-body">
+    <aside class="rv-side">
+      <h2>Pathway</h2>
+      <div class="rv-steps" id="c-steps"></div>
+      <h2>What this state proves</h2>
+      <div class="rv-note" id="c-why"></div>
+      <h2>Evidence class</h2>
+      <div class="rv-legend">
+        <span class="rv-tag t-live">live read today</span>
+        <span class="rv-tag t-mock">mocked here</span>
+        <span class="rv-tag t-new">net-new seam</span>
+        <span class="rv-tag t-dead">does not exist</span>
+      </div>
+      <div class="rv-note" id="c-prov"></div>
+      <h2>Decision</h2>
+      <div class="rv-approve">
+        <div class="rv-btns">
+          <button data-v="approve">Approve</button>
+          <button data-v="revise">Revise</button>
+          <button data-v="reject">Reject</button>
+        </div>
+        <textarea id="c-notes" placeholder="Notes for the implementer — what to change before Phase 2."></textarea>
+        <div class="rv-out" id="c-verdict">No decision recorded. Nothing here writes anywhere.</div>
+      </div>
+    </aside>
+
+    <div class="rv-stage">
+      <div class="rv-frame" id="c-frame">
+        <div class="rv-cap"><b id="c-capw">1536 × 770</b><span id="c-capr">/solo/&lt;account&gt;/growth/catalog</span>
+          <span style="flex:1"></span><span id="c-capt">Mineral</span></div>
+        <div class="rv-view" id="c-view"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   Deterministic, local, throwaway. No fetch, no storage, no mutation of anything real.
+   Fixture tenant is a neutral placeholder ("Riverbend Studio", account 4471) — never one of
+   the owner's real production accounts (doctrine §63).
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+const ICON = {
+  bolt:'M13.5 3L6 13.5h4.5L10 21l7.5-10.5H13z',
+  grid:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  chart:'M4 20V6M9 20v-7M14 20V9M19 20v-4',
+  trend:'M4 16.5l4.5-5 3.5 3 6-7.5M14.5 7h4v4',
+  users:'M16 19v-1.5a3.5 3.5 0 00-3.5-3.5h-5A3.5 3.5 0 004 17.5V19M13.2 7.5a3.2 3.2 0 11-6.4 0 3.2 3.2 0 016.4 0',
+  pulse:'M3 12h3.5l2-4.5 3 9 2.5-6 1.6 3H21',
+  spark:'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z',
+  home:'M4 11l8-6 8 6v8a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1z',
+  store:'M4 9.5V19a1 1 0 001 1h14a1 1 0 001-1V9.5M3 9.5l1.6-4A1 1 0 015.5 5h13a1 1 0 01.9.5L21 9.5z',
+  gear:'M12 15a3 3 0 100-6 3 3 0 000 6zM12 3v2.2M12 18.8V21M4.9 7.5l1.9 1.1M17.2 15.4l1.9 1.1M4.9 16.5l1.9-1.1M17.2 8.6l1.9-1.1',
+  moon:'M20 14.5A8.2 8.2 0 019.5 4 8.5 8.5 0 1020 14.5z',
+  out:'M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h5',
+  x:'M6 6l12 12M18 6L6 18',
+  arrow:'M5 12h13M13 6.5l5.5 5.5-5.5 5.5',
+  chev:'M9 6l6 6-6 6',
+  plus:'M12 5.5v13M5.5 12h13',
+  warn:'M12 4.5l8.5 15h-17zM12 10v4M12 16.6v.4',
+  info:'M12 20a8 8 0 100-16 8 8 0 000 16zM12 11v5M12 8v.4',
+  link:'M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1',
+  phone:'M6.5 3.5h3l1.5 4-2 1.4a12 12 0 006 6l1.4-2 4 1.5v3a1.6 1.6 0 01-1.8 1.6C10.9 18.4 5.6 13.1 4.9 5.3A1.6 1.6 0 016.5 3.5z',
+  bell:'M18 15.5V11a6 6 0 10-12 0v4.5L4.5 18h15zM10 21h4'
+};
+/* Offer-kind glyphs are the pack's own, 16-box — paige-ia.js L789-L793, verbatim. */
+const KIND_GLYPH = {
+  product:'M2.8 5.4 8 2.8l5.2 2.6v5.2L8 13.2l-5.2-2.6z M2.8 5.4 8 8l5.2-2.6 M8 8v5.2',
+  service:'M5.2 4.6a2.8 2.8 0 1 0 5.6 0a2.8 2.8 0 1 0-5.6 0 M2.8 13.2c0-2.5 2.3-4 5.2-4s5.2 1.5 5.2 4'
+};
+const svg=(d,s)=>`<svg viewBox="0 0 24 24" width="${s||15}" height="${s||15}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+const svg16=(d,s)=>`<svg viewBox="0 0 16 16" width="${s||13}" height="${s||13}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ── VOCABULARY ───────────────────────────────────────────────────────────────────────────
+   TYPE + AVAILABILITY follow the owner's brief. The pack's own vocabulary is recorded beside
+   each so the divergence is visible rather than silently resolved (Decision 2 and 3).       */
+const TYPES = {
+  product:{label:'Product', note:'Shipped or delivered as a thing'},   // pack: 'Shipped as a thing'
+  service:{label:'Service', note:'Delivered by people, or by time'}    // pack: 'Delivered by people'
+};
+const AVAIL = {
+  draft:   {label:'Draft',    tone:'var(--violet)', note:'Internal only. Nothing customer-facing may present it.'},
+  active:  {label:'Active',   tone:'var(--ok)',     note:'Offered to customers right now.'},
+  paused:  {label:'Paused',   tone:'var(--warn)',   note:'Temporarily not offered. Everything stays as it is.'},
+  archived:{label:'Archived', tone:'var(--ink-3)',  note:'Retired. Existing references stand and are never rewritten.'}
+};
+const SHAPES = {physical:'Physical',digital:'Digital','one-to-one':'One-to-one',group:'Group program',
+  package:'Package',membership:'Membership',appointment:'Appointment-based'};
+const INTENT = {buy:'Buy',book:'Book',apply:'Apply',info:'Request information',learn:'Learn more'};
+const PRICING = {fixed:'Fixed amount',from:'Starting at',contact:'Contact for pricing',none:'No price shown'};
+
+const money = n => (n==null||isNaN(n)) ? '—' : '$'+Math.round(n).toLocaleString('en-US');
+function priceLine(o){
+  if(o.pricing==='contact') return {v:'Contact for pricing', none:true};
+  if(o.pricing==='none')    return {v:'No price shown',      none:true};
+  if(o.amount==null)        return {v:'—',                   none:true};
+  return {v:(o.pricing==='from'?'From ':'')+money(o.amount), none:false};
+}
+
+/* ── FIXTURES — neutral placeholder tenant (§63). Illustration only; nothing is a real read. */
+const ASSETS = [
+  {id:'p1',type:'page',   name:'Foundations — enrolment page',  updated:'Aug 28, 2026, 4:12 PM', offer:'o1'},
+  {id:'f1',type:'form',   name:'Foundations — application',     updated:'Aug 28, 2026, 4:20 PM', offer:'o1'},
+  {id:'n1',type:'funnel', name:'Playbook download funnel',      updated:'Aug 22, 2026, 9:03 AM', offer:'o3'},
+  {id:'p2',type:'page',   name:'Barber kit — product page',     updated:'Jul 30, 2026, 1:44 PM', offer:'o4'},
+  {id:'p3',type:'page',   name:'Advisory retainer — overview',  updated:'Aug 12, 2026, 11:20 AM',offer:'o6'},
+  {id:'p4',type:'page',   name:'Bootcamp 2025 — recap',         updated:'Dec 02, 2025, 6:15 PM', offer:'o7'}
+];
+const OFFERS = [
+  {id:'o1',name:'Foundations Coaching Program',type:'service',shape:'group',avail:'active',
+   pricing:'fixed',amount:2400,cadence:'per cohort',intent:'apply',cat:'Programs',
+   summary:'A twelve-week group program that takes a new operator from scattered to running a real week.',
+   detail:'Twelve weekly live sessions, a private cohort channel, and the full workbook. Cohorts cap at 14 so every person gets airtime. Includes two one-to-one reviews.',
+   assets:['p1','f1'], deals:3, drift:false},
+  {id:'o2',name:'Fade & Line-Up',type:'service',shape:'appointment',avail:'active',
+   pricing:'from',amount:35,cadence:'per visit',intent:'book',cat:'Chair services',
+   summary:'Skin fade, line-up and a hot-towel finish. Forty minutes in the chair.',
+   detail:'Walk-ins taken when the chair is free; booked slots always come first. Price rises with length and beard work.',
+   assets:[], deals:0, drift:false},
+  {id:'o3',name:"The Operator's Playbook",type:'product',shape:'digital',avail:'active',
+   pricing:'fixed',amount:49,cadence:'one-time',intent:'buy',cat:'Downloads',
+   summary:'The ninety-page field guide the program is built on. Instant download.',
+   detail:'PDF plus the editable worksheet pack. Free updates for a year.',
+   assets:['n1'], deals:1, drift:true},
+  {id:'o4',name:'Signature Barber Kit',type:'product',shape:'physical',avail:'paused',
+   pricing:'fixed',amount:89,cadence:'one-time',intent:'buy',cat:'Retail',
+   summary:'Clippers, comb, cape and the shop pomade, boxed.',
+   detail:'Paused while the pomade supplier changes. Nothing is cancelled; it comes back at the same price.',
+   assets:['p2'], deals:0, drift:false},
+  {id:'o5',name:'Strategy Intensive',type:'service',shape:'one-to-one',avail:'draft',
+   pricing:'none',amount:null,cadence:'',intent:'learn',cat:'Advisory',
+   summary:'A half-day working session on one problem.',
+   detail:'',
+   assets:[], deals:0, drift:false},
+  {id:'o6',name:'Monthly Advisory Retainer',type:'service',shape:'membership',avail:'active',
+   pricing:'contact',amount:null,cadence:'monthly',intent:'info',cat:'Advisory',
+   summary:'Ongoing access, a standing call, and someone in your corner between them.',
+   detail:'Scope is agreed per engagement, which is why the price is a conversation rather than a number.',
+   assets:['p3'], deals:2, drift:false},
+  {id:'o7',name:'Bootcamp 2025',type:'service',shape:'group',avail:'archived',
+   pricing:'fixed',amount:1800,cadence:'one-time',intent:'apply',cat:'Programs',
+   summary:'The 2025 cohort. Retired — kept because past pages still name it.',
+   detail:'Everyone who bought it keeps what they bought. The recap page is untouched.',
+   assets:['p4'], deals:0, drift:false}
+];
+const byId = id => OFFERS.find(o=>o.id===id);
+const assetsFor = o => o.assets.map(a=>ASSETS.find(x=>x.id===a)).filter(Boolean);
+
+/* ── THE PATHWAY — every state the owner must be able to walk ────────────────────────────── */
+const STEPS = [
+  ['resolving','Account resolving','First paint. The shipped surface reads no tenant data until the account context is confirmed.','Existing copy, growth2.tsx:51 — reused verbatim. <span class="rv-tag t-live">live read today</span>'],
+  ['loading','Loading offers','Skeleton while the offers read runs. Same primitive the artifacts read already uses.','<span class="rv-tag t-new">net-new seam</span> A fifth tenant-scoped read is net-new and breaks a frozen assertion — see Collision 3.'],
+  ['unavailable','No resolved workspace','Fail-closed. No tenant, no read, no invented rows.','Existing copy, growth2.tsx:52. <span class="rv-tag t-live">live read today</span>'],
+  ['error','Read failed','Honest failure plus retry. Nothing was changed.','Existing copy, growth2.tsx:53. <span class="rv-tag t-live">live read today</span>'],
+  ['first','First use — nothing sold yet','The empty catalog is the moment the surface has to explain what it is FOR. No fake rows, no sample offers.','<span class="rv-tag t-new">net-new seam</span> Examples are dashed placeholders, deliberately not clickable — they teach, they do not seed.'],
+  ['list','Offers — the library','The default view. Seven offers spanning coaching, a chair service, a download, a physical product, an advisory retainer, and one archived program.','<span class="rv-tag t-mock">mocked here</span> tenant_products/tenant_prices exist and ship; the read is not wired to this surface.'],
+  ['filter','Filtered by category','Category is a filter over what exists — never a gate before the owner has described anything (§18).','Ports the pack filter bar, v3.dc.html L448-L455.'],
+  ['detail','Offer detail','The whole offer, and — the point of the screen — where it is used.','<span class="rv-tag t-mock">mocked here</span> Uses the shipped drawer with its real focus trap, growth2.tsx:67-92.'],
+  ['detail-draft','Draft offer detail','A draft is internal. Nothing customer-facing may present it.','<span class="rv-tag t-new">net-new seam</span> Draft/Active already exist on tenant_products; the rule is new.'],
+  ['create','New offer — empty','Opens on a name and a plain sentence. Type is a field with a default, not a gate.','<span class="rv-tag t-new">net-new seam</span> The modal reuses the approved Pipeline create pattern in this same surface.'],
+  ['create-invalid','Validation failure','A name is the one hard requirement. Activation needs a price presentation too.','Inline, field-level, focus moves to the first bad field.'],
+  ['create-ready','New offer — ready','Filled. Two exits: save as Draft, or save and activate.','The derived line states what will actually be true after save.'],
+  ['discard','Discard unsaved work','Cancelling with edits asks once. Cancelling clean just closes.','<span class="rv-tag t-mock">mocked here</span>'],
+  ['edit','Editing an existing offer','Same form, same rules. Editing never touches an already-published asset.','<span class="rv-tag t-new">net-new seam</span> The no-silent-rewrite rule is the load-bearing one.'],
+  ['conflict','Save conflict','Someone else changed it. The shipped Pipeline commands already carry expectedVersion — this reuses that.','<span class="rv-tag t-live">live read today</span> PipelineAction expectedVersion, useSoloCampaigns.ts:57-72.'],
+  ['pause','Paused','Temporarily not offered. Nothing is cancelled and nothing is rewritten.','<span class="rv-tag t-dead">does not exist</span> tenant_products.status CHECK is (draft, active, archived). Paused needs a migration.'],
+  ['archive-confirm','Archive — confirm','The confirm names every live asset that presents this offer before anything happens.','Reuses .pipeline-archive-confirm and the typed-reference confirm already shipped for pipelines.'],
+  ['archived','Archived, references intact','Off the shelf. The published page that names it is untouched and still says what it said.','<span class="rv-tag t-new">net-new seam</span> This is the rule the assignment asks for, stated in the UI.'],
+  ['restore','Restored as Draft','Restore never returns straight to Active — the owner re-reads the price before customers do.','<span class="rv-tag t-new">net-new seam</span>'],
+  ['use-studio','Use in Vibe Studio','Pick an existing asset, or ask Studio for a new one. Catalog defines; Studio creates.','<span class="rv-tag t-dead">does not exist</span> No offer↔asset link exists in either direction, and a frozen test currently forbids passing context to Studio.'],
+  ['blocked-draft','Draft cannot be attached','A draft offer has no customer-facing facts to hand over yet.','<span class="rv-tag t-new">net-new seam</span> The explicit owner decision the brief asks for.'],
+  ['link-pending','Linked — Studio must publish','Linking does not publish. The asset stays exactly as published until Studio republishes it.','<span class="rv-tag t-new">net-new seam</span>'],
+  ['drift','Published asset shows older facts','The offer changed; the live page still shows what it showed. Stated, never silently corrected.','<span class="rv-tag t-live">live read today</span> Pages already snapshot on publish (growth_page_publish copies draft_blocks_json). Forms do NOT — see Finding 4.'],
+  ['diff','Review what changed','Side by side. Three exits, and none of them is automatic.','<span class="rv-tag t-new">net-new seam</span>'],
+  ['proposal','Studio proposed an offer','The reverse direction. A proposal is not a record until the owner says so.','<span class="rv-tag t-new">net-new seam</span>'],
+  ['assets','Published assets','The surface that ships today, preserved and reframed — not deleted, not turned into offers.','<span class="rv-tag t-live">live read today</span> growth_pages/_funnels/_forms, growth2.tsx:105-112.'],
+  ['assets-empty','Published assets — empty','The exact empty state on the live surface today, unchanged.','Existing copy, growth2.tsx:110 — verbatim. <span class="rv-tag t-live">live read today</span>'],
+  ['legacy','Legacy address lands here','/growth/pages and four siblings say "This address moved" and return to Catalog. They must still land on assets, not offers.','<span class="rv-tag t-live">live read today</span> growth2.tsx:258-261; asserted at growth2.contract.test.tsx:60.'],
+  ['readonly','Read-only member','No manage permission. Every act is gone, not disabled-and-teasing.','<span class="rv-tag t-live">live read today</span> Mirrors workspace.canManage, already used by Pipeline.'],
+  ['switch','Account switched mid-edit','Switching accounts discards the draft and resets the view — the behaviour Pipeline already has.','<span class="rv-tag t-live">live read today</span> growth2.tsx:221 resets on data.tenantId change.'],
+  ['cross','Where one offer appears','The whole point of a single definition: five surfaces, one record, nobody re-typing the price.','Boundaries are drawn as they actually are today, including the ones that do not exist.']
+];
+
+const canManage = () => S.role==='manage' && S.step!=='readonly';
+const S = {step:'list', theme:'light', vp:'1536x770', role:'manage', rm:false, kb:false, den:'full',
+  section:'offers', cat:'all', type:'all', open:null, verdict:null, toast:null};
+
+/* ── SHELL ────────────────────────────────────────────────────────────────────────────────── */
+const NAV=[['home','Command Center',ICON.home],['users','Clients',ICON.users],['camp','Campaigns',ICON.spark],
+  ['mkt','Marketplace',ICON.store],['an','Analytics',ICON.chart],['set','Settings',ICON.gear]];
+const TABS=[['ov','Overview',ICON.bolt],['catalog','Catalog',ICON.grid],['sales','Sales',ICON.chart],
+  ['pipeline','Pipeline',ICON.trend],['social','Social',ICON.users],['performance','Performance',ICON.pulse]];
+
+function shell(inner){
+  const narrow = parseInt(S.vp)<1100;
+  return `<div class="sh" style="--rail-w:${narrow?'196px':'236px'}">
+    <div class="sh-rail">
+      <div class="sh-brand">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <ellipse cx="16" cy="16" rx="8.4" ry="8.4" stroke="var(--gold-bright)" stroke-width="2.1"/>
+          <ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" stroke-width="1.7" opacity=".8"/>
+          <circle cx="16" cy="16" r="3.1" fill="var(--gold-bright)"/></svg>
+        <span><b>PAIGE</b><small>SOLO</small></span>
+      </div>
+      <nav class="sh-nav" aria-label="Workspace">
+        ${NAV.map(n=>`<button ${n[0]==='camp'?'aria-current="page"':''} tabindex="-1">${svg(n[2],17)}<span>${n[1]}</span></button>`).join('')}
+      </nav>
+      <div class="sh-foot">
+        <button tabindex="-1">${svg(S.theme==='light'?ICON.spark:ICON.moon,16)}<span>${S.theme==='light'?'Mineral':'Obsidian'}</span></button>
+        <button tabindex="-1">${svg(ICON.out,16)}<span>Sign out</span></button>
+        <div class="sh-who"><i>RS</i><span style="min-width:0"><span style="display:block;color:#fff;font-size:12.5px;font-weight:600" class="trunc">Riverbend Studio</span>
+        <span style="display:block;font-size:10.5px">Owner workspace</span></span></div>
+      </div>
+    </div>
+    <div class="sh-main">
+      <div class="sh-top">
+        <div style="min-width:0;flex:none"><div class="eyebrow trunc" style="max-width:200px">RIVERBEND STUDIO</div>
+          <div style="display:flex;align-items:baseline;gap:8px"><b style="font-size:15px;letter-spacing:-.02em">Campaigns</b>
+          <span style="color:var(--ink-3);font-size:11px">| Solo</span></div></div>
+        <div class="sh-cmd">${svg(ICON.spark,14)}<span>Direct PAIGE, or press ⌘\\</span></div>
+        <div class="row" style="gap:8px;flex:none">${svg(ICON.phone,17)}${svg(ICON.bell,17)}</div>
+        <div class="sh-tenant"><span class="trunc">Riverbend Studio</span>${svg(ICON.chev,13)}</div>
+      </div>
+      ${inner}
+    </div></div>`;
+}
+
+function tabs(){
+  return `<div class="campaigns-nav">
+    <div class="campaigns-tabs" role="tablist" aria-label="Campaigns views">
+      ${TABS.map(t=>`<button role="tab" aria-selected="${t[0]==='catalog'}" tabindex="${t[0]==='catalog'?0:-1}">${svg(t[2],14)}${t[1]}</button>`).join('')}
+    </div>
+    <button class="btn btn-s campaigns-studio" data-act="use-studio">${svg(ICON.spark,13)}Vibe Studio</button>
+  </div>`;
+}
+
+const TRUTH = {
+  offers:['PROPOSED','Offers are not yet read from tenant records on this surface. Nothing here is saved, and nothing here charges anybody.'],
+  assets:['PARTIAL','Published pages, funnels, forms, and captured submissions come from tenant-scoped records.']
+};
+const truthTag = s => `<span class="campaigns-truth campaigns-truth--${s.toLowerCase()}">${s}</span>`;
+
+function pageHead(){
+  return `<div class="pg-hd">
+    <div style="min-width:220px;flex:1">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span class="eyebrow" style="font-size:10px">CAMPAIGNS</span><h1>Catalog</h1></div>
+      <p style="color:var(--ink-2);font-size:12.8px;margin-top:3px;max-width:760px">What this business offers, and the Vibe Studio work that presents it.</p>
+    </div>
+    <div class="campaigns-truth-key">${['LIVE','PARTIAL','PROPOSED','UNAVAILABLE'].map(t=>truthTag(t)).join('')}</div>
+  </div>`;
+}
+
+function sectionSwitch(){
+  const n = OFFERS.filter(o=>o.avail!=='archived').length;
+  return `<div class="campaigns-segmented" aria-label="What this tab shows">
+    <button data-sec="offers" aria-pressed="${S.section==='offers'}">Offers <b class="mono" style="font-size:10px;opacity:.7">${n}</b></button>
+    <button data-sec="assets" aria-pressed="${S.section==='assets'}">Published assets <b class="mono" style="font-size:10px;opacity:.7">${ASSETS.length}</b></button>
+  </div>`;
+}
+
+function surfaceHead(){
+  const isOff = S.section==='offers';
+  const [state,note] = isOff ? TRUTH.offers : TRUTH.assets;
+  return `<div class="campaigns-surface-head">
+    <div><div class="campaigns-heading-line"><h2>${isOff?'Offers':'Published assets'}</h2>${truthTag(state)}</div>
+      <p>${isOff
+        ? 'What this business sells — products, services, programs, packages and consultations.'
+        : 'Read-only published outputs owned by Vibe Studio.'}</p>
+      <small>${isOff
+        ? 'Catalog owns the offer definition. Vibe Studio owns the pages, forms and funnels that present it. Nothing on this surface charges anybody.'
+        : esc(note)}</small></div>
+    ${sectionSwitch()}</div>`;
+}
+
+/* ── OFFERS BODY ──────────────────────────────────────────────────────────────────────────── */
+function offerRow(o){
+  const av=AVAIL[o.avail], ty=TYPES[o.type], p=priceLine(o), live=assetsFor(o);
+  const facts=[['Used in', live.length?String(live.length):'—'],
+               ['Deals', o.deals?String(o.deals):'—'],
+               ['Action', INTENT[o.intent]]];
+  if(S.den==='compact') return `<div class="offer-row offer-row--compact" tabindex="0" role="button" data-open="${o.id}" aria-label="${esc(o.name)} — ${av.label}">
+    <div class="offer-head">
+      <span class="offer-kind" title="${ty.label} — ${ty.note}">${svg16(KIND_GLYPH[o.type])}</span>
+      <span style="display:flex;flex-direction:column;min-width:0">
+        <b class="offer-name">${esc(o.name)}</b><small class="offer-pitch">${esc(o.summary)}</small></span>
+      <span class="offer-compact-price"><b class="${p.none?'is-none':''}">${esc(p.v)}</b>
+        <small>${esc(SHAPES[o.shape]||o.cat||'')}</small></span>
+      <span class="offer-compact-used">${live.length?`${live.length} asset${live.length===1?'':'s'}`
+        :`<em style="color:var(--warn);font-style:normal">nothing presents it</em>`}</span>
+      <span class="offer-state" style="color:${av.tone}" title="${esc(av.note)}"><i></i>${av.label}</span>
+    </div>${o.drift?`<div class="offer-drift" style="margin-top:9px">${svg(ICON.warn,13)}<span>One published asset shows older facts.
+      <button class="offer-chip" data-act="diff" style="margin-left:6px">Review</button></span></div>`:''}</div>`;
+  return `<div class="offer-row" tabindex="0" role="button" data-open="${o.id}" aria-label="${esc(o.name)} — ${av.label}">
+    <div class="offer-head">
+      <span class="offer-kind" title="${ty.label} — ${ty.note}">${svg16(KIND_GLYPH[o.type])}</span>
+      <span style="display:flex;flex-direction:column;min-width:0">
+        <b class="offer-name">${esc(o.name)}</b><small class="offer-pitch">${esc(o.summary)}</small></span>
+      <span class="offer-state" style="color:${av.tone}" title="${esc(av.note)}"><i></i>${av.label}</span>
+    </div>
+    <div class="offer-price"><b class="${p.none?'is-none':''}">${esc(p.v)}</b>
+      <small>${esc([PRICING[o.pricing], o.cadence, SHAPES[o.shape]].filter(Boolean).join(' · '))}</small></div>
+    <div class="offer-meta">
+      <span><small class="k">Where it's used</small>
+        <span class="offer-chips">${live.map(a=>`<button class="offer-chip" data-asset="${a.id}">${svg(ICON.link,10)}${esc(a.name)}</button>`).join('')}</span>
+        ${live.length?'':`<small class="offer-nowhere">${o.avail==='draft'?'A draft is not presented anywhere yet':'Nothing presents it right now'}</small>`}</span>
+      <span><small class="k">How it's delivered</small>
+        <span class="offer-fulfil"><small>Shape</small><small>${SHAPES[o.shape]||'— not stated'}</small></span>
+        <span class="offer-fulfil"><small>Category</small><small>${esc(o.cat||'— not stated')}</small></span>
+        <span class="offer-fulfil"><small>Customer does</small><small>${INTENT[o.intent]}</small></span></span>
+    </div>
+    <div class="offer-facts">
+      ${facts.map(f=>`<span><small>${f[0]}</small><b class="${f[1]==='—'?'is-none':''}">${esc(f[1])}</b></span>`).join('')}
+      <span style="flex:1"></span>
+      ${canManage()?`<button class="offer-chip" data-open="${o.id}">Open</button>`:''}
+    </div>
+    ${o.drift?`<div class="offer-drift">${svg(ICON.warn,14)}<span><b>One published asset shows older facts.</b>
+      The download funnel was published before this offer's price changed. It still shows what it showed — nothing was rewritten.
+      <button class="offer-chip" data-act="diff" style="margin-left:6px">Review the difference</button></span></div>`:''}
+  </div>`;
+}
+
+function offersBody(){
+  const cats=[...new Set(OFFERS.map(o=>o.cat))];
+  const list = S.cat==='all' ? OFFERS : OFFERS.filter(o=>o.cat===S.cat);
+  const filters=[['all','Everything','Every offer in every state',OFFERS.length],
+    ...cats.map(c=>[c,c,'Your category',OFFERS.filter(o=>o.cat===c).length])];
+  const tally = list.length===OFFERS.length ? `${OFFERS.length} offer${OFFERS.length===1?'':'s'}`
+    : `${list.length} of ${OFFERS.length} shown`;
+  return `<div class="offer-filters">
+      ${filters.map(f=>`<button class="offer-filter" data-cat="${esc(f[0])}" aria-pressed="${S.cat===f[0]}" title="${esc(f[2])}">${esc(f[1])}<b>${f[3]}</b></button>`).join('')}
+      <span style="flex:1;min-width:8px"></span>
+      ${canManage()?`<button class="btn btn-s btn-g" data-act="create">${svg(ICON.plus,13)}New offer</button>`:''}
+    </div>
+    ${!canManage()?`<div class="of-readonly">${svg(ICON.info,15)}<span>You can see this catalog but not change it. Ask an owner for permission to add or edit offers.</span></div>`:''}
+    <div class="offer-list">${list.map(offerRow).join('')}</div>
+    <p class="offer-note">Price, availability and delivery are recorded here and nowhere else, so a page or a form never carries its own price.
+      A listed price is not a checkout and nothing on this surface charges anybody.</p>
+    <div class="offer-foot"><small>An offer is what this business sells · price presentation, availability and delivery travel together</small>
+      <small class="mono">${tally}</small></div>`;
+}
+
+function firstUse(){
+  return `<div class="of-first">
+    ${svg(ICON.grid,26)}
+    <h3>Nothing is listed yet</h3>
+    <p>Catalog is the one place this business says what it sells — a coaching program, a chair service, a download, a product on a shelf,
+      a consultation, a package. Everything else on the platform reads the offer from here instead of keeping its own copy.</p>
+    <div class="of-examples"><span>a twelve-week program</span><span>a haircut</span><span>a PDF</span>
+      <span>a monthly retainer</span><span>a discovery call</span></div>
+    ${canManage()
+      ? `<button class="btn btn-g" data-act="create" style="margin-top:8px">${svg(ICON.plus,14)}Add your first offer</button>
+         <p style="font-size:11.5px;color:var(--ink-3)">Or just tell PAIGE what you sell and she will draft it for you to check.</p>`
+      : `<p style="font-size:11.5px;color:var(--ink-3)">An owner adds the first offer.</p>`}</div>`;
+}
+
+/* ── PUBLISHED ASSETS — the surface as it ships today, preserved ─────────────────────────── */
+function assetsBody(empty){
+  const shown = S.type==='all' ? ASSETS : ASSETS.filter(a=>a.type===S.type);
+  const list = empty ? [] : shown;
+  return `<div class="offer-filters" style="justify-content:flex-end">
+      <span style="flex:1;min-width:8px"></span>
+      <div class="campaigns-segmented" aria-label="Filter published outputs">
+        ${['all','page','funnel','form'].map(t=>`<button data-type="${t}" aria-pressed="${S.type===t}">${t==='all'?'All':t[0].toUpperCase()+t.slice(1)+'s'}</button>`).join('')}
+      </div></div>
+    ${list.length===0
+      ? `<div class="campaigns-state"><h2>No published outputs in this view</h2>
+          <p>Create and publish creative work in Vibe Studio. Campaigns will list only grounded published outputs here.</p></div>`
+      : `<div class="campaigns-catalog-grid">${list.map(a=>{
+          const o = OFFERS.find(x=>x.assets.includes(a.id));
+          return `<article class="campaigns-artifact">
+            <div><span class="campaigns-type">${a.type}</span><h3>${esc(a.name)}</h3><p>Updated ${a.updated}</p>
+              ${o?`<p style="margin-top:7px;color:var(--ink-2)">Presents <b style="font-weight:600">${esc(o.name)}</b></p>`
+                 :`<p style="margin-top:7px;color:var(--ink-3)">Not linked to an offer</p>`}</div>
+            <div class="campaigns-artifact-actions">
+              <button class="btn btn-s">Details</button>
+              <a class="btn btn-s" href="#" onclick="return false">Open published ${svg(ICON.arrow,12)}</a></div>
+          </article>`}).join('')}</div>`}`;
+}
+
+/* ── DRAWER — the shipped .campaigns-drawer, with its real focus behaviour ───────────────── */
+function drawer(o,mode){
+  const av=AVAIL[o.avail], p=priceLine(o), live=assetsFor(o);
+  const rows=[['Type',TYPES[o.type].label],['Availability',av.label],['Price presentation',PRICING[o.pricing]],
+    ['Price shown',p.v],['Cadence',o.cadence||'Not recorded'],['Delivery',SHAPES[o.shape]||'Not recorded'],
+    ['Category',o.cat||'Not recorded'],['Customer action',INTENT[o.intent]],
+    ['Used in', live.length?live.map(a=>a.name).join('\n'):'Not used anywhere yet'],
+    ['Deals referencing it', o.deals?String(o.deals):'None recorded']];
+  const acts = !canManage() ? '' : (
+    o.avail==='archived'
+      ? `<button class="btn btn-s" data-act="restore">Restore as draft</button>`
+      : `<button class="btn btn-s" data-act="edit">Edit</button>
+         ${o.avail==='active'?`<button class="btn btn-s" data-act="pause">Pause</button>`:''}
+         ${o.avail==='paused'?`<button class="btn btn-s btn-g" data-act="activate">Make active</button>`:''}
+         ${o.avail==='draft'?`<button class="btn btn-s btn-g" data-act="activate">Make active</button>`:''}
+         <button class="btn btn-s" data-act="use-studio">Use in Vibe Studio</button>
+         <button class="btn btn-s" data-act="archive">Archive</button>`);
+  let body;
+  if(mode==='archive-confirm'){
+    body = `<div class="of-danger"><h3 style="font-size:14px">Archive ${esc(o.name)}?</h3>
+      <p>It comes off the shelf. ${live.length
+        ? `<b>${live.length} published ${live.length===1?'asset':'assets'}</b> already ${live.length===1?'presents':'present'} it —
+           ${live.map(a=>esc(a.name)).join(', ')}. ${live.length===1?'It':'They'} will not change, and will not be taken down.
+           Nothing is rewritten and nothing is deleted.`
+        : 'Nothing currently presents it.'}
+        ${o.deals?` <b>${o.deals} deal${o.deals===1?'':'s'}</b> still name it; that history stays readable.`:''}</p>
+      <p>You can restore it later. Restoring brings it back as a draft, never straight to active.</p>
+      <div><button class="btn btn-s" data-act="close-confirm">Keep it listed</button>
+        <button class="btn btn-s" style="border-color:var(--bad);color:var(--bad)" data-act="do-archive">Archive it</button></div></div>`;
+  } else if(mode==='blocked-draft'){
+    body = `<div class="of-danger" style="border-color:var(--gold-line)">
+      <h3 style="font-size:14px">This offer is still a draft</h3>
+      <p>A draft is internal. It has no settled price presentation or customer action yet, so there is nothing safe to hand to a
+        customer-facing page, form or funnel.</p>
+      <p>Make it active first, then attach it — or keep drafting and come back.</p>
+      <div><button class="btn btn-s" data-act="close-confirm">Keep drafting</button>
+        <button class="btn btn-s btn-g" data-act="activate">Make it active</button></div></div>`;
+  } else {
+    body = rows.map(r=>`<div class="campaigns-detail-row"><span>${r[0]}</span><strong>${esc(r[1])}</strong></div>`).join('')
+      + (o.detail?`<p class="campaigns-detail-note">${esc(o.detail)}</p>`:'')
+      + `<p class="campaigns-detail-note">Editing this offer never changes an already-published page, form or funnel on its own.
+          Studio republishes, or the published version stands.</p>`
+      + (acts?`<div class="row" style="gap:7px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--line);margin-top:14px">${acts}</div>`:'');
+  }
+  return `<button class="campaigns-drawer-scrim" aria-label="Close" data-act="close"></button>
+    <aside class="campaigns-drawer" role="dialog" aria-modal="true" aria-labelledby="ofd-title">
+      <header><div><span class="eyebrow">Offer</span><h2 id="ofd-title">${esc(o.name)}</h2>
+        <span class="offer-state" style="color:${av.tone};margin-top:8px"><i></i>${av.label}</span></div>
+        <button class="btn btn-s" data-act="close" aria-label="Close">${svg(ICON.x,14)}</button></header>
+      <div class="campaigns-drawer-body">${body}</div></aside>`;
+}
+
+/* ── CREATE / EDIT ────────────────────────────────────────────────────────────────────────── */
+function form(mode){
+  const editing = mode==='edit';
+  const o = editing ? byId('o1') : null;
+  const filled = mode==='create-ready' || editing;
+  const invalid = mode==='create-invalid';
+  const v = (k,d)=> filled ? ({name:editing?o.name:'Saturday Beard Trim', summary:editing?o.summary:'A twenty-minute shape-up and hot towel, Saturdays only.',
+    detail:editing?o.detail:'', amount:editing?'2400':'28', cat:editing?o.cat:'Chair services'}[k]) : (d||'');
+  const sel=(k,val)=>{const cur= filled&&editing?({type:o.type,avail:o.avail,pricing:o.pricing,shape:o.shape,intent:o.intent}[k])
+    : (filled?({type:'service',avail:'draft',pricing:'from',shape:'appointment',intent:'book'}[k]):({type:'service',avail:'draft',pricing:'none',shape:'',intent:'learn'}[k]));
+    return cur===val?'selected':''};
+  const willBe = invalid ? null : (filled
+    ? (editing ? 'It stays <b>Active</b>. The page and form that present it are not changed by this save.'
+               : 'It saves as a <b>Draft</b>. Drafts are internal — nothing customer-facing can present it until you make it active.')
+    : 'A name is all that is required. Without a price presentation it saves as a <b>Draft</b>.');
+  return `<button class="of-scrim" aria-label="Cancel" data-act="${filled?'try-close':'close'}"></button>
+  <div class="of-modal" role="dialog" aria-modal="true" aria-labelledby="ofm-title">
+    <header><div><span class="eyebrow">${editing?'Edit offer':'New offer'}</span>
+      <h3 id="ofm-title">${editing?esc(o.name):'What do you sell?'}</h3></div>
+      <button class="btn btn-s" data-act="${filled?'try-close':'close'}" aria-label="Cancel">${svg(ICON.x,14)}</button></header>
+    <div class="of-body">
+      <div class="of-grid">
+        <label class="wide"><span>Name</span>
+          <input value="${esc(v('name'))}" ${invalid?'aria-invalid="true"':''} placeholder="Name it the way a customer would say it">
+          ${invalid?`<span class="of-err">${svg(ICON.warn,12)}A name is required — it is the one thing every other surface shows.</span>`:''}</label>
+        <label class="wide"><span>What the customer gets, in a line</span>
+          <input value="${esc(v('summary'))}" placeholder="One sentence, in their words"></label>
+        <label class="wide"><span>Fuller description <span class="of-hint">— optional; shown where there is room</span></span>
+          <textarea placeholder="What is included, how long it takes, what happens after.">${esc(v('detail'))}</textarea></label>
+        <label><span>Type</span><select><option value="service" ${sel('type','service')}>Service — delivered by people, or by time</option>
+          <option value="product" ${sel('type','product')}>Product — shipped or delivered as a thing</option></select></label>
+        <label><span>How it's delivered <span class="of-hint">— optional</span></span><select>
+          <option value="">Not stated</option>
+          ${Object.entries(SHAPES).map(([k,l])=>`<option value="${k}" ${sel('shape',k)}>${l}</option>`).join('')}</select></label>
+        <label><span>Price presentation</span><select ${invalid?'aria-invalid="true"':''}>
+          ${Object.entries(PRICING).map(([k,l])=>`<option value="${k}" ${sel('pricing',k)}>${l}</option>`).join('')}</select>
+          <span class="of-hint">This is how the price is <em>shown</em>. It is not a checkout and it does not charge anybody.</span></label>
+        <label><span>Amount</span><input value="${esc(v('amount'))}" placeholder="e.g. 2400" inputmode="numeric">
+          <span class="of-hint">Leave it empty for “contact for pricing” or “no price shown”.</span></label>
+        <label><span>Customer action</span><select>
+          ${Object.entries(INTENT).map(([k,l])=>`<option value="${k}" ${sel('intent',k)}>${l}</option>`).join('')}</select></label>
+        <label><span>Category <span class="of-hint">— optional</span></span><input value="${esc(v('cat'))}" placeholder="Programs, Retail, Advisory…"></label>
+      </div>
+      ${willBe?`<div class="of-derived">${svg(ICON.info,15)}<span>${willBe}</span></div>`:''}
+      ${mode==='conflict'?`<div class="of-danger" style="border-color:var(--warn)">
+        <h3 style="font-size:13.5px">This offer changed somewhere else while you had it open</h3>
+        <p>Someone — or PAIGE — saved a newer version. Saving now would overwrite work you have not seen.</p>
+        <div><button class="btn btn-s" data-act="close">Discard mine</button>
+          <button class="btn btn-s btn-p" data-act="close">Load theirs and re-apply</button></div></div>`:''}
+      <p class="of-hint" style="margin-top:14px">Attaching this offer to a page, form or funnel happens after it is saved, and only when it is active.</p>
+    </div>
+    <div class="of-foot"><span class="grow">Nothing here is written. This is a prototype.</span>
+      <button class="btn btn-s" data-act="${filled?'try-close':'close'}">Cancel</button>
+      <button class="btn btn-s" data-act="saved-draft">Save as draft</button>
+      <button class="btn btn-s btn-g" data-act="${invalid?'invalid':'saved-active'}">${editing?'Save changes':'Save and make active'}</button></div>
+  </div>`;
+}
+
+/* ── SMALL MODALS ─────────────────────────────────────────────────────────────────────────── */
+function discard(){
+  return `<button class="of-scrim" aria-label="Keep editing" data-act="create-ready"></button>
+  <div class="of-modal" style="width:min(430px,calc(100vw - 32px))" role="dialog" aria-modal="true">
+    <header><div><span class="eyebrow">Unsaved</span><h3>Discard this offer?</h3></div></header>
+    <div class="of-body"><p style="font-size:12.8px;color:var(--ink-2);line-height:1.6;padding-top:8px">
+      You have written a name and a description that have not been saved. Discarding loses them.
+      Saving as a draft keeps them without showing the offer to anybody.</p></div>
+    <div class="of-foot"><span class="grow"></span>
+      <button class="btn btn-s" data-act="create-ready">Keep editing</button>
+      <button class="btn btn-s" data-act="saved-draft">Save as draft</button>
+      <button class="btn btn-s" style="border-color:var(--bad);color:var(--bad)" data-act="close">Discard</button></div></div>`;
+}
+
+function studioPick(){
+  const o=byId('o1'), linked=o.assets;
+  return `<button class="of-scrim" aria-label="Cancel" data-act="close"></button>
+  <div class="of-modal" style="width:min(560px,calc(100vw - 32px))" role="dialog" aria-modal="true">
+    <header><div><span class="eyebrow">Foundations Coaching Program</span><h3>Use this offer in Vibe Studio</h3></div>
+      <button class="btn btn-s" data-act="close" aria-label="Cancel">${svg(ICON.x,14)}</button></header>
+    <div class="of-body">
+      <p style="font-size:12.5px;color:var(--ink-2);line-height:1.6;padding-top:8px">
+        Catalog hands Studio the approved facts — name, summary, price presentation, customer action.
+        Studio still owns the creative work, and Studio still decides when it is published.</p>
+      <h4 style="margin:16px 0 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)">Already presenting it</h4>
+      <div class="of-picklist">${assetsFor(o).map(a=>`<button class="of-pick" aria-pressed="true">
+        <span class="campaigns-type">${a.type}</span><span style="min-width:0;flex:1"><strong>${esc(a.name)}</strong>
+        <small>Linked · published ${a.updated}</small></span>${svg(ICON.link,14)}</button>`).join('')}</div>
+      <h4 style="margin:16px 0 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)">Attach an existing asset</h4>
+      <div class="of-picklist">${ASSETS.filter(a=>!linked.includes(a.id)).slice(0,3).map(a=>`<button class="of-pick" data-act="link">
+        <span class="campaigns-type">${a.type}</span><span style="min-width:0;flex:1"><strong>${esc(a.name)}</strong>
+        <small>Published ${a.updated}</small></span>${svg(ICON.plus,14)}</button>`).join('')}</div>
+      <h4 style="margin:16px 0 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)">Or make something new</h4>
+      <div class="of-picklist"><button class="of-pick" data-act="link">${svg(ICON.spark,15)}
+        <span style="min-width:0;flex:1"><strong>Open Vibe Studio with this offer in hand</strong>
+        <small>Studio starts a page, form or funnel already knowing what is being sold.</small></span>${svg(ICON.arrow,14)}</button></div>
+      <p class="of-hint" style="margin-top:14px">Attaching does not publish anything, and does not change any page that is already live.</p>
+    </div></div>`;
+}
+
+function diff(){
+  return `<button class="of-scrim" aria-label="Close" data-act="close"></button>
+  <div class="of-modal" style="width:min(620px,calc(100vw - 32px))" role="dialog" aria-modal="true">
+    <header><div><span class="eyebrow">Playbook download funnel</span><h3>The published version is older</h3></div>
+      <button class="btn btn-s" data-act="close" aria-label="Close">${svg(ICON.x,14)}</button></header>
+    <div class="of-body">
+      <p style="font-size:12.5px;color:var(--ink-2);line-height:1.6;padding-top:8px">
+        This funnel was published on Aug 22. The offer changed after that. The live funnel still shows exactly what it showed then —
+        it was not quietly updated, and it will not be.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+        <div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--surface-2)">
+          <small class="k" style="color:var(--ink-3);font-size:10.5px">What the live funnel says</small>
+          <p style="margin-top:8px;font-size:12.5px"><b>The Operator's Playbook</b><br>
+            <span class="mono" style="font-size:15px">$39</span><br>
+            <span style="color:var(--ink-3);font-size:11.5px">The field guide, instant download.</span></p></div>
+        <div style="border:1px solid var(--gold-line);border-radius:10px;padding:12px;background:var(--gold-tint)">
+          <small class="k" style="color:var(--gold);font-size:10.5px">What Catalog says now</small>
+          <p style="margin-top:8px;font-size:12.5px;color:var(--ink)"><b>The Operator's Playbook</b><br>
+            <span class="mono" style="font-size:15px">$49</span><br>
+            <span style="color:var(--ink-2);font-size:11.5px">The ninety-page field guide the program is built on. Instant download.</span></p></div>
+      </div>
+      <p class="of-hint" style="margin-top:14px">Whatever you choose, a customer who already bought at the published price keeps what they bought.</p>
+    </div>
+    <div class="of-foot"><span class="grow"></span>
+      <button class="btn btn-s" data-act="close">Leave the published version alone</button>
+      <button class="btn btn-s btn-g" data-act="close">Open in Vibe Studio to republish</button></div></div>`;
+}
+
+function proposal(){
+  return `<button class="of-scrim" aria-label="Close" data-act="close"></button>
+  <div class="of-modal" style="width:min(520px,calc(100vw - 32px))" role="dialog" aria-modal="true">
+    <header><div><span class="eyebrow">From Vibe Studio</span><h3>Studio drafted a page for something you don't sell yet</h3></div>
+      <button class="btn btn-s" data-act="close" aria-label="Close">${svg(ICON.x,14)}</button></header>
+    <div class="of-body">
+      <p style="font-size:12.5px;color:var(--ink-2);line-height:1.6;padding-top:8px">
+        While building <b>“Beard care intensive — landing page”</b>, Studio wrote copy for an offer that has no Catalog record.
+        It has not created one. Nothing becomes an offer until you say so.</p>
+      <div style="border:1px solid var(--line);border-radius:10px;padding:13px;background:var(--surface-2);margin-top:14px">
+        <div style="display:flex;gap:10px;align-items:center">
+          <span class="offer-kind">${svg16(KIND_GLYPH.service)}</span>
+          <span style="min-width:0"><b style="font-size:13.5px">Beard Care Intensive</b>
+            <small style="display:block;color:var(--ink-3);font-size:11.5px;margin-top:2px">A forty-five minute shape, condition and finish.</small></span></div>
+        <div class="offer-price" style="margin-top:11px"><b>From $55</b><small>Starting at · per visit · Appointment-based</small></div>
+        <p style="margin-top:10px;font-size:11.5px;color:var(--ink-3)">Proposed by Studio from the page copy. Every field is editable before it is saved.</p></div>
+    </div>
+    <div class="of-foot"><span class="grow"></span>
+      <button class="btn btn-s" data-act="close">Not an offer</button>
+      <button class="btn btn-s" data-act="create-ready">Review and edit first</button>
+      <button class="btn btn-s btn-g" data-act="saved-draft">Add it as a draft</button></div></div>`;
+}
+
+function crossMap(){
+  const rows=[
+    ['Catalog','Owns the definition — name, type, availability, how the price is presented, delivery, customer action.','live','This surface'],
+    ['Vibe Studio','Owns pages, forms and funnels. Reads the approved offer facts; never becomes the owner of them.','new','No offer↔asset link exists in either direction today'],
+    ['Sales / Pipeline','A deal may name the offer it is for. Optional context — a deal is still valid with no offer.','live','deals.offer_type already holds a tenant_products id, as free text with no foreign key'],
+    ['Campaigns Overview','Whether an offer is active, and what presents it. No revenue, no conversion, no performance claims.','new','No campaign→order join exists — utm_campaign never reaches the order'],
+    ['Billing / Checkout','A future consumer of the offer. Not implemented, not prototyped, not implied by a shown price.','dead','Server-side checkout still refuses with tenant_payments_not_ready'],
+    ['Marketplace','A separate domain — installable capabilities, its own pricing columns and its own payouts. Never an offer source.','dead','Disjoint tables, disjoint Connect accounts'],
+    ['PAIGE / chat','May one day read the catalog to answer "what do we sell?". No write, no tool, no approval path in this assignment.','dead','Out of scope here by instruction']];
+  const tone={live:'var(--ok)',new:'var(--violet)',dead:'var(--ink-3)'};
+  const word={live:'Exists today',new:'Net-new',dead:'Not in scope'};
+  return `<div style="padding:16px 19px 6px">
+    <p style="font-size:12.8px;color:var(--ink-2);line-height:1.6;max-width:74ch">One record, read in several places. This is the map as it
+      actually is today — including the parts that do not exist, which are marked as such rather than drawn as though they do.</p></div>
+    <div class="offer-list">${rows.map(r=>`<div class="offer-row" style="cursor:default">
+      <div class="offer-head"><span class="offer-kind" style="color:${tone[r[2]]}">${svg16('M8 2.6v10.8M2.6 8h10.8',12)}</span>
+        <span style="min-width:0"><b class="offer-name">${esc(r[0])}</b><small class="offer-pitch">${esc(r[1])}</small></span>
+        <span class="offer-state" style="color:${tone[r[2]]}"><i></i>${word[r[2]]}</span></div>
+      <div class="offer-facts" style="margin-top:10px;padding-top:9px"><span><small>Evidence</small><b class="is-none" style="font-weight:400">${esc(r[3])}</b></span></div>
+    </div>`).join('')}</div>
+    <div class="offer-foot"><small>Catalog defines · everyone else refers</small><small class="mono">7 boundaries</small></div>`;
+}
+
+/* ── RENDER ───────────────────────────────────────────────────────────────────────────────── */
+function stateFrame(kind){
+  if(kind==='resolving') return `<div class="campaigns-state" role="status"><span class="campaigns-spinner"></span>Resolving this account’s Campaigns workspace…</div>`;
+  if(kind==='loading')   return `<div class="campaigns-skeleton" role="status" aria-label="Loading offers"><span></span><span></span><span></span></div>`;
+  if(kind==='unavailable')return `<div class="campaigns-state">${truthTag('UNAVAILABLE')}<h2>Campaigns needs a resolved workspace</h2>
+      <p>No tenant data is read until your account context is confirmed.</p></div>`;
+  if(kind==='error')     return `<div class="campaigns-state" role="alert">${truthTag('UNAVAILABLE')}<h2>Campaigns could not load</h2>
+      <p>Your records were not changed. Try the tenant-scoped read again.</p>
+      <button class="btn btn-s" data-act="list">${svg(ICON.arrow,13)}Retry</button></div>`;
+  return '';
+}
+
+function body(){
+  const st=S.step;
+  if(st==='legacy') return `<div class="campaigns-surface"><div class="campaigns-state">
+      ${truthTag('LIVE')}<h2>This address moved</h2>
+      <p>Pages are created, edited, and published in Vibe Studio. Published pages appear in Catalog.
+        Your workspace and account stay selected.</p>
+      <button class="btn btn-s btn-p" data-act="assets">Return to Catalog</button>
+      <p style="font-size:11.5px;color:var(--ink-3);max-width:520px">It returns to <b>Published assets</b>, not Offers —
+        the five retired addresses point at the Vibe-owned half of this tab, and that must stay true.</p></div></div>`;
+  if(st==='cross') return `<div class="campaigns-surface">
+      <div class="campaigns-surface-head"><div><div class="campaigns-heading-line"><h2>Where one offer appears</h2>${truthTag('PROPOSED')}</div>
+        <p>The same offer, read by several surfaces, defined in exactly one.</p></div></div>${crossMap()}</div>`;
+
+  const frame = stateFrame(st==='switch' ? 'resolving' : st);
+  let inner;
+  if(frame) inner = frame;
+  else if(S.section==='assets') inner = assetsBody(st==='assets-empty');
+  else if(st==='first') inner = firstUse();
+  else inner = offersBody();
+
+  let over='';
+  if(st==='create'||st==='create-invalid'||st==='create-ready') over = form(st);
+  else if(st==='edit'||st==='conflict') over = form(st);
+  else if(st==='discard') over = discard();
+  else if(st==='use-studio') over = studioPick();
+  else if(st==='diff') over = diff();
+  else if(st==='proposal') over = proposal();
+  else if(st==='detail') over = drawer(byId('o1'),'view');
+  else if(st==='detail-draft') over = drawer(byId('o5'),'view');
+  else if(st==='pause') over = drawer(byId('o4'),'view');
+  else if(st==='archive-confirm') over = drawer(byId('o1'),'archive-confirm');
+  else if(st==='archived') over = drawer(byId('o7'),'view');
+  else if(st==='restore') over = drawer(byId('o7'),'view');
+  else if(st==='blocked-draft') over = drawer(byId('o5'),'blocked-draft');
+  else if(st==='link-pending') over = drawer(byId('o1'),'view');
+
+  const toast = S.toast ? `<div class="of-toast" role="status">${svg(ICON.info,15)}<span>${S.toast}</span></div>` : '';
+  return `<div class="campaigns-surface">${surfaceHead()}${inner}</div>${over}${toast}`;
+}
+
+function render(){
+  const [w,h]=S.vp.split('x').map(Number);
+  const view=document.getElementById('c-view');
+  view.style.width=w+'px'; view.style.height=h+'px';
+  document.getElementById('c-capw').textContent=`${w} × ${h}`;
+  document.getElementById('c-capt').textContent=S.theme==='light'?'Mineral (light)':'Obsidian (dark)';
+  document.getElementById('c-capr').textContent =
+    S.step==='legacy' ? '/solo/4471/growth/pages → catalog' : '/solo/4471/growth/catalog';
+  document.body.classList.toggle('rm-off', S.rm);
+
+  view.innerHTML = `<div class="paige-solo" data-theme="${S.theme}" style="height:100%">
+    ${shell(`<div class="solo-campaigns">${tabs()}<div class="campaigns-scroll">${pageHead()}${body()}</div></div>`)}
+  </div>`;
+
+  const step=STEPS.find(s=>s[0]===S.step)||STEPS[0];
+  document.getElementById('c-why').innerHTML=`<b>${esc(step[1])}</b><br>${step[2]}`;
+  document.getElementById('c-prov').innerHTML=step[3] + (S.kb
+    ? `<hr style="border:0;border-top:1px solid var(--rv-edge);margin:8px 0">
+       <b>Keyboard</b><br>Tab order is rail → tabs → section switch → filters → New offer → each offer row.
+       An offer row is a real button and opens on Enter or Space. A drawer or modal traps focus, closes on Escape,
+       and returns focus to the control that opened it — the behaviour already shipped at growth2.tsx:67-92.`
+    : '');
+  [...document.querySelectorAll('#c-steps button')].forEach(b=>b.setAttribute('aria-current', b.dataset.s===S.step));
+}
+
+/* ── EVENTS ───────────────────────────────────────────────────────────────────────────────── */
+const GO = {
+  close:()=>{S.step = S.section==='assets'?'assets':'list'; S.toast=null;},
+  'close-confirm':()=>{S.step='detail';},
+  'try-close':()=>{S.step='discard';},
+  list:()=>{S.section='offers';S.step='list';},
+  assets:()=>{S.section='assets';S.step='assets';},
+  create:()=>{S.step='create';},
+  invalid:()=>{S.step='create-invalid';},
+  'create-ready':()=>{S.step='create-ready';},
+  'saved-draft':()=>{S.step='list';S.section='offers';S.toast='Saved as a draft. Nothing customer-facing shows it yet.';},
+  'saved-active':()=>{S.step='list';S.section='offers';S.toast='Saved and active. Attach it to a page or form when you are ready.';},
+  edit:()=>{S.step='edit';},
+  pause:()=>{S.step='pause';S.toast='Paused. Nothing is cancelled and no published page was changed.';},
+  activate:()=>{S.step='list';S.section='offers';S.toast='Now active.';},
+  archive:()=>{S.step='archive-confirm';},
+  'do-archive':()=>{S.step='archived';S.toast='Archived. Every published asset that names it is untouched.';},
+  restore:()=>{S.step='restore';S.toast='Restored as a draft. Check the price before you make it active.';},
+  'use-studio':()=>{S.step = (S.step==='detail-draft'||S.step==='blocked-draft') ? 'blocked-draft' : 'use-studio';},
+  link:()=>{S.step='link-pending';S.toast='Linked. Vibe Studio still has to publish before a customer sees it.';},
+  diff:()=>{S.step='diff';}
+};
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-act],[data-open],[data-sec],[data-cat],[data-type],[data-asset],[data-s],[data-v]');
+  if(!t) return;
+  if(t.dataset.s){S.step=t.dataset.s; S.toast=null;
+    S.section = ['assets','assets-empty','legacy'].includes(t.dataset.s) ? 'assets' : 'offers';
+    if(t.dataset.s==='switch') S.toast='Account switched. The unsaved offer was discarded and the view reset.';
+    render(); return;}
+  if(t.dataset.v){S.verdict=t.dataset.v;
+    [...document.querySelectorAll('.rv-btns button')].forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===t.dataset.v));
+    const n=document.getElementById('c-notes').value.trim();
+    document.getElementById('c-verdict').textContent =
+      `Recorded locally: ${t.dataset.v.toUpperCase()}${n?' — '+n:''}. This writes nowhere; copy it into the Gate 1 reply.`;
+    return;}
+  if(t.dataset.open){S.step = t.dataset.open==='o5'?'detail-draft':'detail'; render(); return;}
+  if(t.dataset.sec){S.section=t.dataset.sec; S.step = t.dataset.sec==='assets'?'assets':'list'; render(); return;}
+  if(t.dataset.cat!==undefined && t.dataset.cat!==''){S.cat=t.dataset.cat; S.step='filter'; render(); return;}
+  if(t.dataset.type){S.type=t.dataset.type; render(); return;}
+  if(t.dataset.asset){S.toast='Vibe Studio owns this asset. Catalog links to it; it opens there.'; render(); return;}
+  const fn=GO[t.dataset.act]; if(fn){fn(); render();}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  if(['create','create-invalid','create-ready','edit','conflict','use-studio','diff','proposal',
+      'detail','detail-draft','pause','archive-confirm','archived','restore','blocked-draft','link-pending','discard'].includes(S.step)){
+    GO.close(); render();
+  }
+});
+
+/* ── HARNESS WIRING ───────────────────────────────────────────────────────────────────────── */
+document.getElementById('c-steps').innerHTML = STEPS.map((s,i)=>
+  `<button data-s="${s[0]}" aria-current="${s[0]===S.step}"><i>${String(i+1).padStart(2,'0')}</i><span>${esc(s[1])}</span></button>`).join('');
+const bind=(id,fn)=>document.getElementById(id).addEventListener('change',e=>{fn(e.target.value);render()});
+bind('c-vp',v=>S.vp=v); bind('c-th',v=>S.theme=v); bind('c-role',v=>S.role=v); bind('c-den',v=>S.den=v);
+document.getElementById('c-vp').value=S.vp; document.getElementById('c-th').value=S.theme;
+['c-rm','c-kb'].forEach(id=>document.getElementById(id).addEventListener('click',e=>{
+  const on = e.currentTarget.getAttribute('aria-pressed')!=='true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  if(id==='c-rm') S.rm=on; else S.kb=on; render();
+}));
+render();
+</script>
