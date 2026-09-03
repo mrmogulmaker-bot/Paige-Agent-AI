@@ -2,9 +2,16 @@
 
 What the client-agreements store may and may not expose to Spine, Rail or Mind.
 
-**Status.** The source is live: migration `20261200000000`, merged `096d6c9d`, verified persisted on
-production (`xygzykjyynhzqytbqnzu`) — the ledger row is present and is the ledger head, so there is
-zero drift. **No Spine capability is registered against it.** That placement decision belongs to the
+**Audience:** whoever registers a Spine capability, Rail projection or Mind evidence block over Solo
+Sales agreements. **Author:** the session that built `tenant_client_agreements`. **Status:**
+classification only — the capability and its placement belong to Spine item 4 (issue #890).
+
+**Status.** The source is live: migration `20261200000000`, merged `096d6c9d`. Persistence was
+confirmed on production (`xygzykjyynhzqytbqnzu`) on 2026-09-03, after the `deploy-migrations` run for
+that commit, by reading `supabase_migrations.schema_migrations` directly: `20261200000000` is present
+**and is the ledger head**, so there is zero drift. The table, its four functions, three triggers, two
+policies and the grant posture were read back the same way. **Authenticated runtime remains OWED** —
+the merge commit recorded both as owed and only the persistence half has since been checked. **No Spine capability is registered against it.** That placement decision belongs to the
 Spine source-contracts workstream (item 4, Clients / Pipeline / Sales), not to this document — see
 issue #890 for why. This file supplies only the part that had to come from the session that built
 the table: what is safe to let out of it.
@@ -224,6 +231,28 @@ refuses; `is_tenant_admin` on the *resolved* tenant is the only predicate that a
 would then make the whole signal fail validation and collapse the capability to `resolver_unavailable`.
 That fails closed — an outage, not a leak — but the mapping must be explicit and unmapped values
 suppressed, rather than assuming the vocabulary never moves.
+
+---
+
+## 4a. The projection, tier by tier (§51/§56)
+
+`docs/doctrine/tier-matrix.md` (Campaigns → Sales, Slice 2) records what each tier may **read from the
+table**. This section records what each tier may receive **from a projection over it**. They are
+different questions and their answers differ — a coach may read some rows and must still be refused an
+aggregate. Where the two disagree, this section governs anything crossing into Spine, Rail or Mind.
+
+| Tier | Projection outcome | Why |
+|---|---|---|
+| Platform operator / God | Permitted, via `is_platform_owner()`, matching `get_business_context_readiness` | `is_platform_owner()` is a disjunct *inside* the restrictive policy, so a resolver omitting an explicit tenant filter inherits an ungated read of every workspace. A DEFINER resolver must resolve one tenant and scope to it. |
+| Agency (as a tenant) | Its **own** workspace only. **Never an aggregate across its sub-accounts.** | `current_user_tenant_id()` resolves exactly one workspace, and no `clients` policy grants a parent any read of a child's book — so a cross-child aggregate is not merely unbuilt, it is unreachable. Any future capability offering one is a new §9 decision and an owner ruling, not an extension of this contract. |
+| Solo tenant | Permitted for owner/admin, gated on `is_tenant_admin` of the **resolved** tenant | The same predicate both writers use, so the read can never reach anyone who could not already have written the record it summarises. |
+| Sub-account | Identical to Solo — its own workspace only, isolated from the parent | A sub-account resolves its own `tenant_id`; §51's absolute invariant keeps it a non-manager tier. |
+| Plain member / coach | **Refused** — the fixed row set with a reason, never a band | A coach genuinely has authority to read *something*, which is why "derive readability from authority" does not save you (§4). A workspace-wide aggregate needs workspace-wide authority. |
+| Client / portal user | **Refused** | Not in `tenant_members`; `current_user_tenant_id()` is NULL for them and the restrictive gate refuses first. |
+| Anonymous | **Refused** | `anon` holds nothing on the table and is revoked on both RPCs; any resolver must revoke `anon` likewise. |
+
+A refusal is the fixed row set carrying a reason, never zero rows — a busy workspace and an empty one
+must be indistinguishable to a caller who is refused.
 
 ---
 

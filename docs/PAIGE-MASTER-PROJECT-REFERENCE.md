@@ -131,6 +131,48 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Solo Sales Ops — a Solo owner can record what one client agreed to (2026-09-03)
+
+**Status: PR #889**, merged `096d6c9d`, migration `20261200000000` (verified persisted on prod; the
+ledger row is present and is the ledger head). **§0 catch-up:** that PR did not update this file —
+the tier matrix *was* updated in the same commit, so §66 was clean, but the master doc was the miss.
+Slice 1 (Solo Catalog, PR #887 `c0b71f81`) has the same omission and is recorded below with it.
+
+**What shipped.** `public.tenant_client_agreements` — the commercial agreement a Solo business has
+with **one of its own existing clients**, against one canonical Catalog offer: term kind (one-time ·
+recurring · installment · deposit · custom quote), the agreed amount and currency, cadence, start,
+optional renewal and end, and a status of `draft` · `active` · `paused` · `completed` · `cancelled`.
+The negotiated figure is stored as a labelled snapshot beside the Catalog list price at signing and
+is made immutable by trigger, so repricing the offer later cannot rewrite what it cost then; it never
+writes back to Catalog. Writes go through `save_client_agreement` and `set_client_agreement_status`,
+both `SECURITY DEFINER`, both gated on `is_tenant_admin` of the resolved tenant, both
+`authenticated`-only with `anon` revoked. The tenant surface reads it via `src/solo/useSoloAgreements.ts`.
+
+**§38 posture.** This is **not** a billing store. PAIGE is not merchant of record for tenant→client
+revenue; nothing here is collected, settled, metered or reconciled by the platform, and no row has
+touched a payment provider. The `status` vocabulary deliberately carries no `paid`, `invoiced` or
+`delivered` — owner ruling, 2026-09-03: *"Do not fabricate payment or fulfillment status."*
+
+**Visibility is inherited, not restated.** An agreement is visible iff its client is
+(`tca_visible_with_its_client`), under a restrictive tenant gate (`tca_tenant_isolation`). The
+restrictive half is load-bearing: without it, `clients_linked_self_read` would have let every portal
+client read their own terms.
+
+**Not connected to PAIGE.** **No Spine capability is registered against this source** — the registry
+still carries three. What may and may not cross is defined in
+`docs/delivery/sales-agreements-source-contract.md`; the placement decision belongs to Spine item 4
+(Clients / Pipeline / Sales), issue #890. A worked but unexecuted draft resolver sits at
+`docs/delivery/drafts/client-agreements-readiness.draft.sql` and is not applied.
+
+**Owed (§13).** Authenticated runtime live-drive. Deferred and named: no deal or campaign link
+(`useSoloCampaigns.ts:181` hardcodes `campaigns = []` on every tier); `payment_schedule` and `title`
+exist as columns and are not yet reachable from the editor.
+
+**Latent, inherited, not widened here.** `clients_admins_full` gates on `has_any_role()` against
+`user_roles`, which carries no `tenant_id` — so an admin of any tenant who is also a member of
+another can read that other tenant's client book and, through the `EXISTS`, its agreements. A
+`clients`-owned defect, not one this table introduced. Re-check per release.
+
 ### PAIGE Spine — `team.authority`, and both readiness reads bound to their workspace (2026-09-03)
 
 **Status: PR #876**, migrations `20261150000000` + `20261170000000`. The Spine registry now carries

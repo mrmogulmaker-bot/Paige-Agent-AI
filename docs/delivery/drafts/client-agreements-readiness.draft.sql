@@ -134,6 +134,13 @@
 --
 -- ─── FRESHNESS ───────────────────────────────────────────────────────────────────────────────
 --
+-- SUPERSEDED IN PART BY THE SOURCE CONTRACT (§13). After this draft was written,
+-- docs/delivery/sales-agreements-source-contract.md §3 classified `updated_at` as crossable ONLY
+-- WHEN QUANTIZED. The reasoning below is why `as_of` exists and still holds; the RAW timestamps it
+-- emits do not. In a workspace with one live agreement, max(updated_at) FILTER (WHERE status IN
+-- ('active','paused')) IS the commencement date -- a contract term. Both as_of values must be
+-- coarsened to a day or week bucket, or reduced to a boolean staleness flag, before this is used.
+--
 -- There is no cached snapshot anywhere in this contract: every value is computed live from the
 -- source tables on every call, so the projection cannot go stale relative to the record. `as_of`
 -- therefore carries the different, useful fact -- when the counted set last changed
@@ -285,6 +292,8 @@ begin
          count(*) filter (where a.status in ('active','paused')),
          count(*) filter (where a.status = 'draft'),
          max(a.updated_at),
+         -- BARRED AS WRITTEN (contract §3): in a one-live-agreement workspace this scalar IS
+         -- the commencement date. Quantize before emitting.
          max(a.updated_at) filter (where a.status in ('active','paused'))
     into v_total, v_live, v_draft, v_as_of_all, v_as_of_live
   from public.tenant_client_agreements a
