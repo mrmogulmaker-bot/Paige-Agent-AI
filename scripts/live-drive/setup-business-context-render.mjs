@@ -22,11 +22,18 @@ async function assertOpaqueDrawer(dialog, theme) {
     };
   });
   const opaque = (color) =>
-    color && color !== "transparent" &&
+    color &&
+    color !== "transparent" &&
     !/^rgba\(.*,[\s]*0(?:\.\d+)?\)$/.test(color);
-  if (actual.theme !== theme || !actual.surface ||
-      !opaque(actual.background) || !opaque(actual.footer))
-    throw new Error("Setup drawer lost its opaque theme: " + JSON.stringify(actual));
+  if (
+    actual.theme !== theme ||
+    !actual.surface ||
+    !opaque(actual.background) ||
+    !opaque(actual.footer)
+  )
+    throw new Error(
+      "Setup drawer lost its opaque theme: " + JSON.stringify(actual),
+    );
 }
 await new Promise((resolve, reject) => {
   const probe = net.createServer();
@@ -92,9 +99,109 @@ try {
         { waitUntil: "networkidle" },
       );
       await page.locator(".setup-brief").waitFor({ timeout: 20000 });
+      const initialFold = page.locator('#tenant-paige-workspace button[aria-label="Fold PAIGE conversation"]');
+      if (await initialFold.isVisible()) await initialFold.click();
+      const setupRoot = `/solo/1971670/settings/setup`;
+      const addresses = {
+        "Business profile": "business-profile",
+        "People & email": "people-email",
+        "Knowledge bucket": "knowledge-bucket",
+        Direction: "direction",
+        "Paige brief": "paige-brief",
+      };
+      // Real BrowserRouter paths, not an in-memory tab fixture. New pages simulate
+      // copied links and reloads without reading any signed-in browser state.
+      for (const [label, leaf] of Object.entries(addresses)) {
+        const direct = await context.newPage();
+        await direct.goto(
+          `http://127.0.0.1:${port}${setupRoot}/${leaf}?theme=${theme}`,
+          { waitUntil: "networkidle" },
+        );
+        await direct.getByRole("tab", { name: label, exact: true }).waitFor();
+        if (
+          (await direct
+            .getByRole("tab", { name: label, exact: true })
+            .getAttribute("aria-selected")) !== "true"
+        )
+          throw new Error("Direct entry did not select " + leaf);
+        if ((await direct.locator('[role="tabpanel"]').count()) !== 1)
+          throw new Error("More than one Setup child rendered");
+        await direct.reload({ waitUntil: "networkidle" });
+        if (
+          (await direct.locator('[role="tabpanel"]').getAttribute("id")) !==
+          `setup-panel-${leaf}`
+        )
+          throw new Error("Reload lost " + leaf);
+        await direct.close();
+      }
+      await page.getByRole("tab", { name: "Direction", exact: true }).click();
+      await page
+        .getByRole("tab", { name: "Business profile", exact: true })
+        .click();
+      // Entry must work without finding a page-wide Edit control above the fold.
+      await page.getByRole("tab", { name: "Paige brief", exact: true }).click();
+      await page.getByRole("button", { name: "Teach Paige", exact: true }).click();
+      const briefDialog = page.getByRole("dialog");
+      await briefDialog.locator('textarea[name="voiceCharacter"]').fill("Clear, practical, and warm");
+      await briefDialog.getByRole("button", { name: "Apply to Setup draft", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Save business context", exact: true }).click();
+      await page.getByRole("button", { name: "Add an example", exact: true }).click();
+      const exampleDialog = page.getByRole("dialog");
+      await exampleDialog.locator("textarea").first().fill("A practical next step for your business.");
+      await exampleDialog.getByRole("button", { name: "Keep in Setup draft", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Save business context", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Edit", exact: true }).click();
+      await page.getByRole("dialog").getByText("Edit this example", { exact: true }).waitFor();
+      await page.getByRole("dialog").locator("textarea").first().fill("Updated practical example.");
+      await page.getByRole("dialog").getByRole("button", { name: "Keep in Setup draft", exact: true }).click();
+      await page.getByRole("tabpanel").getByRole("button", { name: "Save business context", exact: true }).click();
+      await page.getByRole("button", { name: "Links & documents", exact: true }).click();
+      await page.getByRole("tab", { name: "Paige brief", exact: true }).click();
+      await page.getByRole("tabpanel").getByText("Updated practical example.", { exact: true }).waitFor();
+      await page.getByRole("tabpanel").getByText("Clear, practical, and warm", { exact: true }).waitFor();
+      if (await page.getByRole("tabpanel").getByRole("button", { name: "Edit", exact: true }).count() !== 1)
+        throw new Error("Brief example edit duplicated the record");
+      results.push({ key: `${width}x${height}-${theme}-brief-direct-entry`, guidedSave: true, exampleAddEditSave: true, retainedOnReturn: true, errors: [...errors] });
+      await page.screenshot({ path: path.join(out, `${width}x${height}-${theme}-brief-saved.png`) });
+      await page.getByRole("tab", { name: "Direction", exact: true }).click();
+      await page.getByRole("tab", { name: "Business profile", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Edit business context", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Use Harness City, NY", exact: true })
+        .waitFor();
+      // Deliberately no input/change event: browser autofill is not always React state.
+      await page.locator('[name="publicName"]').evaluate((el) => {
+        el.value = "Synthetic history autofill";
+      });
+      await page.goBack();
+      await page.waitForURL(`**${setupRoot}/direction?theme=${theme}`);
+      await page.goForward();
+      await page.waitForURL(`**${setupRoot}/business-profile?theme=${theme}`);
+      if (
+        (await page.locator('[name="publicName"]').inputValue()) !==
+        "Synthetic history autofill"
+      )
+        throw new Error("Browser history lost autofill draft");
+      await page
+        .getByRole("button", { name: "Save business context", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Edit business context", exact: true })
+        .waitFor();
+      results.push({
+        key: `${width}x${height}-${theme}-url-history`,
+        childLinks: 5,
+        reloads: 5,
+        autofillBackForward: true,
+        errors: [...errors],
+      });
       // Production themes the shell subtree, not html. A body portal must carry its
       // own theme boundary; leaving the harness's html tokens masks transparent drawers.
-      await page.evaluate(() => document.documentElement.removeAttribute("data-pg"));
+      await page.evaluate(() =>
+        document.documentElement.removeAttribute("data-pg"),
+      );
       await page.evaluate(() => {
         const label = document.createElement("div");
         label.textContent =
@@ -115,6 +222,20 @@ try {
         "Paige brief",
       ]) {
         await page.getByRole("tab", { name: tab, exact: true }).click();
+        if (new URL(page.url()).pathname !== `${setupRoot}/${addresses[tab]}`)
+          throw new Error("Tab did not navigate: " + tab);
+        // The existing shell animates text colors. Assert the settled color,
+        // not the first interpolated frame after aria-selected changes.
+        await page.waitForFunction(() => {
+          const selected = document.querySelector('.setup-tabs [aria-selected="true"]');
+          if (!selected) return false;
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--pg-ink)';
+          selected.append(probe);
+          const settled = getComputedStyle(selected).color === getComputedStyle(probe).color;
+          probe.remove();
+          return settled;
+        }, undefined, {timeout:3000});
         const geometry = await page.evaluate(() => {
           const host = document.querySelector("[data-solo-screen-host]");
           const box = document
@@ -126,6 +247,18 @@ try {
               el.scrollHeight > el.clientHeight + 1,
           );
           return {
+            tabColor: (() => {
+              const selected = document.querySelector('.setup-tabs [aria-selected="true"]');
+              const probe = document.createElement('span');
+              probe.style.color = 'var(--pg-ink)';
+              selected.append(probe);
+              const actual = getComputedStyle(selected).color;
+              const expected = getComputedStyle(probe).color;
+              const ok = actual === expected;
+              probe.remove();
+              if (!ok) throw new Error(`Generic link styling changed the selected Setup tab color: ${actual} != ${expected}`);
+              return 'canonical';
+            })(),
             horizontal:
               document.documentElement.scrollWidth > innerWidth + 1 ||
               host.scrollWidth > host.clientWidth + 1,
@@ -294,14 +427,26 @@ try {
       await page.screenshot({
         path: path.join(out, `${width}x${height}-${theme}-drawer.png`),
       });
-      await dialog.getByRole("button", {name: "← Back to Setup", exact: true}).click();
-      await page.getByRole("tab", {name: "People & email", exact: true}).click();
-      await page.getByRole("button", {name: "Check or change address", exact: true}).click();
+      await dialog
+        .getByRole("button", { name: "← Back to Setup", exact: true })
+        .click();
+      await page
+        .getByRole("tab", { name: "People & email", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Check or change address", exact: true })
+        .click();
       const emailDialog = page.getByRole("dialog");
       await assertOpaqueDrawer(emailDialog, theme);
-      await emailDialog.locator(".setup-email-composer input").fill("harness-business");
-      await emailDialog.getByRole("button", {name: "Check availability", exact: true}).click();
-      await page.screenshot({path: path.join(out, `${width}x${height}-${theme}-managed-email.png`)});
+      await emailDialog
+        .locator(".setup-email-composer input")
+        .fill("harness-business");
+      await emailDialog
+        .getByRole("button", { name: "Check availability", exact: true })
+        .click();
+      await page.screenshot({
+        path: path.join(out, `${width}x${height}-${theme}-managed-email.png`),
+      });
       await context.close();
     }
 } finally {
@@ -340,7 +485,7 @@ console.log(
   ),
 );
 if (
-  results.length !== 88 ||
+  results.length !== 104 ||
   results.some(
     (r) => r.horizontal || r.errors?.length || r.clippedInputs?.length,
   )

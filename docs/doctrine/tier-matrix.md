@@ -1615,11 +1615,22 @@ of every invitation act; it is what makes the workspace PAIGE names trustworthy.
 **§61 default: no exception.** Distribution is unchanged from the Team seam rows above; this repairs
 how an existing capability resolves its workspace and grants nobody anything new.
 
-**CORRECTED IN FLIGHT by `20261107000000` (the headline ordering), and the reason it was needed is
-the lesson.** #850 was marked ready for review and merged in the same beat, so the independent
+**§66 — `SHIPPED` (#856, merged `197a10e2`).** Corrected `20261107000000` (the headline ordering) is
+now confirmed persisted on production, not just merged. The reason the correction was needed is
+itself the lesson: #850 was marked ready for review and merged in the same beat, so the independent
 review had no window to run before the merge — its five findings, three of them real defects in
 shipped code, landed on an already-merged PR. §39 says a green CI never waives the peer-gate; this
-waived it by sequencing. The corrections:
+waived it by sequencing. #856 was driven differently on purpose: CI confirmed green first, THEN
+marked ready (not merged in the same beat), and the review was requested explicitly on the exact
+head that merged (`4a381b6a`) — reviewed clean before the merge, catching one more real defect on
+the way (the expiry-verb fix below shipped a mirror-image bug in its first attempt, caught by that
+same review, fixed, and re-reviewed clean on the corrected head).
+
+Read back from production 2026-09-03: `schema_migrations` contains `20261107000000`;
+`get_solo_team_workspace`'s delivery LATERAL orders by
+`public.email_delivery_rank(l.status) DESC, l.created_at DESC` (rank first) and the old
+`created_at DESC` first-clause is gone; `handle-resend-webhook` redeployed ACTIVE at version 7
+(up from the version 3 that shipped with #850). The corrections:
 
 | Finding | What was wrong | Fixed by |
 |---|---|---|
@@ -1629,9 +1640,12 @@ waived it by sequencing. The corrections:
 | "Not sent yet" | a false claim about every invitation emailed before this feature existed, which has no log row because the old sender never wrote one — including the owner's own revoked one | "Delivery not recorded" |
 | "expired" verb | keyed on `finished`, which is true for accepted and revoked rows that routinely still have a future expiry | keyed on the `expired` state |
 
-**Owed:** authenticated runtime proof. Authorized as immediate post-release owner acceptance
-(2026-09-02) rather than a release blocker, and the surface stays **Authenticated Runtime Proof
-Owed** until the owner confirms the live flow.
+**Owed:** authenticated runtime proof — unchanged by this correction. Authorized as immediate
+post-release owner acceptance (2026-09-02) rather than a release blocker, and the surface stays
+**Authenticated Runtime Proof Owed** until the owner confirms the live flow. The one thing that DID
+change: the owner is now unblocked to register the Resend webhook and set `RESEND_WEBHOOK_SECRET` —
+doing so against the pre-#856 code would have made every `email.sent` event fail permanently and
+retry for ever (finding #1 above).
 
 ### Solo Team — an invitation says what happened to it, `/solo/{account}/settings/team`
 
@@ -1648,7 +1662,7 @@ to work:
 - `tenant_invite_tokens.archived_at` exists; the `email_send_log` status CHECK now admits `clicked`.
 - EXECUTE on the archive function: `anon` false, `authenticated` false, **and** the control —
   `get_solo_team_workspace` to `authenticated` — true, so the two refusals measure something.
-- `handle-resend-webhook` deployed ACTIVE at version 3.
+- `handle-resend-webhook` deployed ACTIVE at version 3 (superseded by version 7 under #856, above).
 
 **The report.** A revoked invitation stayed on the operator's list for ever with no action on it, and
 no stage of any invitation could be answered — sent, delivered, opened, clicked were all unknown.
@@ -1687,12 +1701,34 @@ widened additively from `pending, sent, suppressed, failed, bounced, complained,
 constraint still refuses an invented status — both asserted in `solo_team_invite_lifecycle.sql`
 rather than inspected.
 
-**Owed, and it is a genuine external dependency, not a deferral.** The delivery trail reports
-**"Not sent yet"** until the webhook endpoint is registered with Resend and `RESEND_WEBHOOK_SECRET`
-is set. Both are owner actions — one an external production configuration change, one a credential.
-Until they are done the webhook refuses every event **by design** (it fails closed rather than
-trusting an unsigned payload), and no delivery, open or click can be observed. Archive, revoke and
-resend do not depend on it. The surface stays **Authenticated Runtime Proof Owed**.
+**Owed, and it is a genuine external dependency, not a deferral.** `send-portal-invite` attempts to
+log every send — the webhook plays no part in that — so the trail is not gated on it the way this
+paragraph first said. What IS gated: until the webhook endpoint is registered with Resend and
+`RESEND_WEBHOOK_SECRET` is set, a new invitation's delivery never progresses past **"Sent"** (or
+"Failed", for a send the provider or transport rejected), because nothing writes the
+delivered/opened/clicked rows. **"Delivery not recorded"** — corrected from "Not sent yet" by #856
+— is a *different* state: it means no send row exists at all. That is EXPECTED for every invitation
+emailed before #850 shipped logging; it is also POSSIBLE, though rare, for one sent after, because
+`logSend`'s own insert can itself fail (RLS, a constraint, a transient PostgREST error) — supabase-js
+returns that as `{error}` rather than throwing. A second Codex pass on THIS correction, on the exact
+head that fixed the first one, caught the overstatement: #857 also hardens `logSend` to log that
+failure loudly (`console.error`) rather than swallow it, so the gap is now visible when it occurs,
+never that it is closed. Both webhook actions are owner actions — one an external production
+configuration change, one a credential. Until they are done the webhook refuses every event **by
+design** (it fails closed rather than trusting an unsigned payload). Archive, revoke and resend do
+not depend on it. The surface stays **Authenticated Runtime Proof Owed**.
+
+**Owner-confirmed, 2026-09-03 — the SEND leg only, named precisely so it is not read as more.** The
+owner sent a real Solo Team invitation and confirmed the recipient received it in her actual inbox.
+This is genuine authenticated runtime proof of `create_solo_team_invite` → `send-portal-invite` →
+Resend → a real mailbox — the leg #850 was built to fix (Resend's own `res.ok` used to be reported
+as delivery). It does **not** confirm the parts it did not exercise: the recipient was already a
+platform user, so the new-account accept-invite path (a stranger with only a token creating an
+account) is still unexercised; and delivery TRACKING (Sent → Delivered/Opened/Clicked) still cannot
+be observed by anyone, including the owner, until the webhook + `RESEND_WEBHOOK_SECRET` from the
+paragraph above are configured — so this confirmation cannot and does not extend to that state
+machine at all. The surface stays **Authenticated Runtime Proof Owed** for those two legs; only the
+send leg moves to confirmed.
 
 ### PAIGE Mind — Pipeline deal-stage evidence, `/solo/{account}/growth` → deal → Ask PAIGE
 
@@ -2155,10 +2191,34 @@ and was fixed anyway, with a regression test proven red against the prior behavi
   touches the real query. The adapter suite closes that gap against a fake client, which proves the
   query SHAPE and the resolved authority, not that PostgREST answers it as expected. No evidence in
   this slice is a real round-trip to the database.
-- **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
-  running.** At the time of writing the migration is not yet applied to production. §32.a requires
-  `schema_migrations` to carry `20261106000000` AND the six columns to exist on `tenant_products`
-  AND the status CHECK to permit `paused`, each shown by a query result pasted here.
+- **Persisted apply — CONFIRMED on production 2026-09-03**, from real queries against ref
+  `xygzykjyynhzqytbqnzu` after PR #810 merged as `44d1249f`, never from the pipeline reporting
+  success. The three things §32.a requires, each shown by its own result:
+
+  ```
+  select version, name from supabase_migrations.schema_migrations
+   where version = '20261106000000';
+  → 20261106000000  tenant_products_carry_the_offer_definition
+
+  select column_name, data_type, is_nullable, column_default from information_schema.columns
+   where table_schema='public' and table_name='tenant_products' and column_name in (...);
+  → category · customer_action · delivery_shape · offer_kind · price_presentation · summary
+    all text, all is_nullable = YES, all column_default = null
+
+  select pg_get_constraintdef(oid) from pg_constraint
+   where conrelid='public.tenant_products'::regclass and conname='tenant_products_status_check';
+  → CHECK ((status = ANY (ARRAY['draft', 'active', 'paused', 'archived'])))
+  ```
+
+  Every column is nullable with NO default, so an unwritten row states nothing rather than
+  asserting a fact nobody recorded. The status CHECK gained `paused` and nothing else.
+
+- **Existing consumers unchanged, measured rather than assumed.** After the apply:
+  `tenant_products` 0 rows, `tenant_prices` 0 rows, 0 tenants with a storefront enabled, 0 rows
+  carrying `paused`, and RLS policy counts intact (3 on `tenant_products`, 3 on `tenant_prices`).
+  There was nothing for the anon storefront read, `StorefrontPanel`, `ContactBillingPanel`, the
+  agency billing roll-up or `useTenantOffers` to read differently, because the change is additive
+  and no existing value was rewritten.
 
 **Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
 yet define an offer on this screen — `tenant_products` is empty on production (0 rows, 0 tenants

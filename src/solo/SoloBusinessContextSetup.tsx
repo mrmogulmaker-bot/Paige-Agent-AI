@@ -1,6 +1,8 @@
 import {
+  Component,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -8,7 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen,
   CheckCircle2,
@@ -53,6 +55,8 @@ import {
   type SoloSetupTab,
 } from "./settings-business-context-contract";
 import "./settings-setup.css";
+import { resolveSetupSubtabRoute, setupSubtabPath } from "./setup-subtab-route";
+import { settingsScrollOwner } from "./settings-scroll-owner";
 import {
   ADDRESS_AUTOCOMPLETE,
   COUNTRY_OPTIONS,
@@ -63,6 +67,43 @@ import {
 } from "./setup-address-options";
 
 type EditableField = SoloSetupTextField | "businessRegistrationNumber";
+
+type RouteDraftSnapshot = {
+  changes: Partial<Record<EditableField, string>>;
+  email: string;
+};
+type RouteSnapshotProps = {
+  route: string;
+  tenant: string | null;
+  capture: () => RouteDraftSnapshot | null;
+  apply: (snapshot: RouteDraftSnapshot) => void;
+  children: ReactNode;
+};
+/** React's before-mutation lifecycle captures outgoing native autofill even when
+ * BrowserRouter commits synchronously before a later popstate listener can run.
+ * Only this mounted tenant draft is retained; nothing is written to browser storage. */
+class SetupRouteSnapshot extends Component<
+  RouteSnapshotProps,
+  Record<string, never>,
+  RouteDraftSnapshot | null
+> {
+  getSnapshotBeforeUpdate(previous: RouteSnapshotProps) {
+    return previous.tenant === this.props.tenant &&
+      previous.route !== this.props.route
+      ? this.props.capture()
+      : null;
+  }
+  componentDidUpdate(
+    _previous: RouteSnapshotProps,
+    _state: Record<string, never>,
+    snapshot: RouteDraftSnapshot | null,
+  ) {
+    if (snapshot) this.props.apply(snapshot);
+  }
+  render() {
+    return this.props.children;
+  }
+}
 type Field = {
   key: EditableField;
   label: string;
@@ -305,6 +346,12 @@ function Drawer({
     return () => {
       document.body.style.overflow = before;
       if (opener?.isConnected) opener.focus();
+      else
+        queueMicrotask(() =>
+          document
+            .querySelector<HTMLElement>('.setup-tabs [aria-selected="true"]')
+            ?.focus(),
+        );
     };
   }, []);
   useEffect(() => {
@@ -556,8 +603,32 @@ function Fields({
 export function SoloBusinessContextSetup({ account }: { account: string }) {
   const data = useSoloBusinessContext();
   const navigate = useNavigate();
+  const location = useLocation();
   const { confirm, dialog: confirmDialog } = useConfirm();
-  const [tab, setTab] = useState<SoloSetupTab>("business-profile");
+  const [inlineTab, setInlineTab] = useState<SoloSetupTab>("business-profile");
+  const route = resolveSetupSubtabRoute(location.pathname, account);
+  const urlDriven = route.kind !== "outside";
+  const tab =
+    route.kind === "tab"
+      ? route.tab
+      : urlDriven
+        ? "business-profile"
+        : inlineTab;
+  const tabPath = (value: SoloSetupTab) =>
+    setupSubtabPath(account, value) + location.search;
+  const setTab = (value: SoloSetupTab) => {
+    if (urlDriven) {
+      if (location.pathname !== setupSubtabPath(account, value))
+        navigate(tabPath(value), { state: location.state });
+    } else setInlineTab(value);
+  };
+  useEffect(() => {
+    if (route.kind === "index")
+      navigate(setupSubtabPath(account, "business-profile") + location.search, {
+        replace: true,
+        state: location.state,
+      });
+  }, [route.kind, account, location.search, location.state, navigate]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.brief);
   const [owners, setOwners] = useState<SoloBusinessOwner[]>([]);
@@ -589,6 +660,46 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
   const [emailEditor, setEmailEditor] = useState(false);
   const [paigeGuide, setPaigeGuide] = useState(false);
   const [exampleEditor, setExampleEditor] = useState<number | null>(null);
+  const hasDrawer =
+    knowledgeEditor !== null ||
+    emailEditor ||
+    paigeGuide ||
+    exampleEditor !== null;
+  const drawerOrigin = useRef<{
+    pathname: string;
+    search: string;
+    state: unknown;
+    tenant: string | null;
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (hasDrawer && !drawerOrigin.current) {
+      drawerOrigin.current = {
+        pathname: location.pathname,
+        search: location.search,
+        state: location.state,
+        tenant: data.activeTenantId,
+      };
+    } else if (!hasDrawer && drawerOrigin.current) {
+      const origin = drawerOrigin.current;
+      drawerOrigin.current = null;
+      // Sibling history may change the underlying area without abandoning the
+      // modal draft. Explicitly closing/applying returns to its original area.
+      if (
+        origin.tenant === data.activeTenantId &&
+        origin.pathname !== location.pathname &&
+        resolveSetupSubtabRoute(location.pathname, account).kind === "tab"
+      )
+        navigate(origin.pathname + origin.search, { state: origin.state });
+    }
+  }, [
+    hasDrawer,
+    location.pathname,
+    location.search,
+    location.state,
+    data.activeTenantId,
+    account,
+    navigate,
+  ]);
   const priorTenant = useRef(data.activeTenantId);
   const persisted = useMemo(
     () =>
@@ -645,7 +756,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
   useEffect(() => {
     if (priorTenant.current && priorTenant.current !== data.activeTenantId) {
       setEditing(false);
-      setTab("business-profile");
+      setInlineTab("business-profile");
       setKnowledgeEditor(null);
       setEmailEditor(false);
       setPaigeGuide(false);
@@ -711,6 +822,9 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
           target.search === window.location.search)
       )
         return;
+      // A sibling address keeps this exact Setup draft mounted. It is not an exit.
+      const targetSetup = resolveSetupSubtabRoute(target.pathname, account);
+      if (targetSetup.kind === "tab" || targetSetup.kind === "index") return;
       event.preventDefault();
       event.stopPropagation();
       if (data.saving) {
@@ -734,7 +848,7 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
     };
     document.addEventListener("click", leave, true);
     return () => document.removeEventListener("click", leave, true);
-  }, [dirty, drawerDirty, data.saving, confirm, navigate]);
+  }, [dirty, drawerDirty, data.saving, confirm, navigate, account]);
   const confirmDrawerDiscard = useCallback(
     () =>
       confirm({
@@ -875,6 +989,28 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
       setDraft((now) => ({ ...now, ...captured.changes }));
     if (captured.email !== email) setEmail(captured.email);
   }
+  const drawerOpen = useRef(false);
+  drawerOpen.current =
+    knowledgeEditor !== null ||
+    emailEditor ||
+    paigeGuide ||
+    exampleEditor !== null;
+  useLayoutEffect(() => {
+    const surface = formSurface.current;
+    const scrollOwner = settingsScrollOwner(surface);
+    if (scrollOwner) scrollOwner.scrollTop = 0;
+    if (!surface || drawerOpen.current) return;
+    // Keyboard tab navigation owns its own focus; history/direct entry must not
+    // leave focus on a control that disappeared with the previous area.
+    if (
+      document.activeElement === document.body ||
+      !document.activeElement?.isConnected
+    ) {
+      surface
+        .querySelector<HTMLElement>('[role="tabpanel"]')
+        ?.focus({ preventScroll: true });
+    }
+  }, [location.pathname, tab, data.loading]);
   const switchTab = (value: SoloSetupTab) => {
     if (data.saving) return;
     reconcileMountedDraft();
@@ -986,427 +1122,494 @@ export function SoloBusinessContextSetup({ account }: { account: string }) {
     !editing ||
     (data.accessScope === "admin_operational" && ownerOnlyFields.has(key));
   return (
-    <fieldset
-      ref={formSurface}
-      className="setup-brief"
-      onInput={reconcileMountedDraft}
-      onClickCapture={reconcileMountedDraft}
-      disabled={data.saving}
-      aria-busy={data.saving}
-      style={{ border: 0, padding: "0 0 32px", margin: 0, minWidth: 0 }}
+    <SetupRouteSnapshot
+      route={`${location.pathname}:${tab}`}
+      tenant={data.activeTenantId}
+      capture={() =>
+        editing && data.canEdit && !data.saving ? captureMountedDraft() : null
+      }
+      apply={(snapshot) => {
+        if (Object.keys(snapshot.changes).length)
+          setDraft((now) => ({ ...now, ...snapshot.changes }));
+        if (snapshot.email !== email) setEmail(snapshot.email);
+      }}
     >
-      <header className="setup-intro">
-        <div>
-          <span className="setup-kicker">Settings · Setup</span>
-          <h2>Business context</h2>
-          <p>
-            Keep the facts, people, direction, and trusted source material Paige
-            should understand about this business.
-          </p>
-        </div>
-        <div className="setup-intro__actions">
-          {editing && (
-            <button
-              className="setup-button"
-              disabled={data.saving}
-              onClick={() => void cancel()}
-            >
-              Cancel
-            </button>
-          )}
-          <button
-            className="setup-button setup-button--primary"
-            disabled={!data.canEdit || data.saving}
-            onClick={
-              editing
-                ? () => void save()
-                : () => {
-                    beginEdit();
-                  }
-            }
-          >
-            {data.saving
-              ? "Saving durable record…"
-              : editing
-                ? "Save business context"
-                : "Edit business context"}
-          </button>
-        </div>
-      </header>
-      {!data.canEdit && (
-        <div className="setup-notice" data-tone="bad">
-          This workspace is read-only for Setup. Owner access is required for
-          legal, ownership, email, knowledge, and Paige voice context.
-        </div>
-      )}
-      {data.accessScope === "admin_operational" && (
-        <div className="setup-notice">
-          Admin editing is limited to the non-legal operating direction
-          supported by current policy.
-        </div>
-      )}
-      {notice && (
-        <div
-          ref={errorSummary}
-          tabIndex={-1}
-          className="setup-notice"
-          data-tone={notice.tone}
-          role={notice.tone === "bad" ? "alert" : "status"}
-        >
-          <CheckCircle2 aria-hidden />
-          {notice.text}
-          {recovery === "failed" && (
-            <button className="setup-button" onClick={() => void save()}>
-              Retry save
-            </button>
-          )}
-          {recovery && recovery !== "failed" && (
-            <button
-              className="setup-button"
-              onClick={async () => {
-                if (data.saving) return;
-                if (
-                  dirty &&
-                  !(await confirm({
-                    title: "Load stored version and discard this draft?",
-                    description:
-                      "The newer durable record will replace your unsaved draft.",
-                    actionLabel: "Load stored version",
-                    cancelLabel: "Keep my draft",
-                    destructive: true,
-                  }))
-                )
-                  return;
-                setEditing(false);
-                setRecovery(null);
-                setNotice(null);
-                data.refresh();
-              }}
-            >
-              Load stored version
-            </button>
-          )}
-        </div>
-      )}
-      {data.pendingProposal && !proposalId && owner && (
-        <aside className="setup-proposal">
-          <div>
-            <span>Paige suggestion · not saved</span>
-            <h3>Review a proposed brief update</h3>
-            <p>{data.pendingProposal.reason}</p>
-          </div>
-          <div>
-            <button
-              className="setup-button"
-              onClick={async () => {
-                const result = await data.dismissProposal(
-                  data.pendingProposal!.id,
-                );
-                setNotice(
-                  result.ok
-                    ? {
-                        tone: "ok",
-                        text: "Suggestion dismissed. Business context is unchanged.",
-                      }
-                    : {
-                        tone: "bad",
-                        text:
-                          result.error ||
-                          "The suggestion could not be dismissed.",
-                      },
-                );
-              }}
-            >
-              Dismiss
-            </button>
-            <button
-              className="setup-button"
-              onClick={async () => {
-                if (
-                  dirty &&
-                  !(await confirm({
-                    title: "Replace your unsaved draft with this suggestion?",
-                    description:
-                      "Your saved record is unchanged until you review and save.",
-                    actionLabel: "Review suggestion",
-                    cancelLabel: "Keep draft",
-                  }))
-                )
-                  return;
-                reset();
-                setDraft(applySetupProposal(data.brief, data.pendingProposal!));
-                setProposalId(data.pendingProposal!.id);
-                setEditing(true);
-              }}
-            >
-              Review in draft
-            </button>
-          </div>
-        </aside>
-      )}
-      <div className="setup-source-legend">
-        <SourceBadge source="owner_confirmed" />
-        <span>saved by an authorized owner</span>
-        <SourceBadge source="connection_sourced" />
-        <span>read from a connected record</span>
-        <SourceBadge />
-        <span>missing or awaiting confirmation</span>
-      </div>
-      <div
-        className="setup-tabs"
-        role="tablist"
-        aria-label="Setup business context"
+      <fieldset
+        ref={formSurface}
+        className="setup-brief"
+        onInput={reconcileMountedDraft}
+        onClickCapture={reconcileMountedDraft}
+        disabled={data.saving}
+        aria-busy={data.saving}
+        style={{ border: 0, padding: "0 0 32px", margin: 0, minWidth: 0 }}
       >
-        {SOLO_SETUP_TABS.map((value) => (
-          <button
-            key={value}
-            role="tab"
-            aria-selected={tab === value}
-            aria-controls={`setup-panel-${value}`}
-            id={`setup-tab-${value}`}
-            tabIndex={tab === value ? 0 : -1}
-            onClick={() => switchTab(value)}
-            onKeyDown={(event) => {
-              if (
-                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
-              )
-                return;
-              event.preventDefault();
-              const index = SOLO_SETUP_TABS.indexOf(value);
-              const next =
-                event.key === "Home"
-                  ? 0
-                  : event.key === "End"
-                    ? SOLO_SETUP_TABS.length - 1
-                    : (index +
-                        (event.key === "ArrowRight" ? 1 : -1) +
-                        SOLO_SETUP_TABS.length) %
-                      SOLO_SETUP_TABS.length;
-              switchTab(SOLO_SETUP_TABS[next]);
-              queueMicrotask(() =>
-                document
-                  .getElementById(`setup-tab-${SOLO_SETUP_TABS[next]}`)
-                  ?.focus(),
-              );
-            }}
-          >
-            {SOLO_SETUP_TAB_LABELS[value]}
-          </button>
-        ))}
-      </div>
-      <div
-        role="tabpanel"
-        id={`setup-panel-${tab}`}
-        aria-labelledby={`setup-tab-${tab}`}
-      >
-        {tab === "business-profile" && (
-          <BusinessProfile
-            key={data.activeTenantId}
-            draft={draft}
-            email={email}
-            editing={editing}
-            owner={owner}
-            disabled={disabled}
-            errors={errors}
-            decisions={decisions}
-            onChange={change}
-            onDecision={decide}
-            onEmail={(value) => {
-              reconcileMountedDraft();
-              setEmail(value);
-            }}
-            emailDecision={emailDecision}
-            emailProvenance={data.primaryBusinessEmailProvenance}
-            onEmailDecision={(value) => {
-              if (value === "adopt") setEmail(data.primaryBusinessEmail);
-              setEmailDecision(value);
-            }}
-            onNaics={(value) => void chooseNaics(value)}
-            searchNaics={data.searchNaics}
-          />
-        )}{" "}
-        {tab === "people-email" && (
-          <PeopleEmail
-            account={account}
-            draft={draft}
-            owners={owners}
-            editing={editing}
-            owner={owner}
-            errors={errors}
-            representativeError={data.representativesError}
-            storedOwners={data.businessOwners}
-            fields={
-              <Fields
-                fields={representativeFields}
-                draft={draft}
-                editing={editing}
-                disabled={disabled}
-                errors={errors}
-                onChange={change}
-                sourceDecisions={decisions}
-                onDecision={decide}
-              />
-            }
-            representatives={data.representatives}
-            managedEmail={data.managedEmail?.address ?? ""}
-            registrationAvailable={
-              data.managedEmail?.registrationAvailable === true
-            }
-            onDraft={setDraft}
-            onOwners={setOwners}
-            onOpenEmail={() => setEmailEditor(true)}
-          />
-        )}{" "}
-        {tab === "knowledge-bucket" && (
-          <KnowledgeBucket
-            sources={sources}
-            owner={owner}
-            editing={editing}
-            onAdd={() => {
-              if (beginEdit()) setKnowledgeEditor(sources.length);
-            }}
-            onEdit={(index) => {
-              if (beginEdit()) setKnowledgeEditor(index);
-            }}
-            onRemove={(index) =>
-              setSources((now) => now.filter((_, i) => i !== index))
-            }
-          />
-        )}{" "}
-        {tab === "direction" && (
-          <Section
-            eyebrow="Direction and goals"
-            title="What the business is working toward"
-            description="Keep the offer model, customers, priorities, goals, success measures, and constraints as structured owner-confirmed context."
-          >
-            <Fields
-              fields={directionFields}
-              draft={draft}
-              editing={editing}
-              disabled={disabled}
-              errors={errors}
-              onChange={change}
-              sourceDecisions={decisions}
-              onDecision={decide}
-            />
-          </Section>
-        )}{" "}
-        {tab === "paige-brief" && (
-          <>
-            <PaigeContext
-              profile={profile}
-              examples={examples}
-              owner={owner}
-              editing={editing}
-              onGuide={() => setPaigeGuide(true)}
-              onExample={() => {
-                setExampleEditor(examples.length);
-              }}
-              onEditExample={setExampleEditor}
-              onRemoveExample={(index) =>
-                setExamples((now) => now.filter((_, i) => i !== index))
+        <header className="setup-intro">
+          <div>
+            <span className="setup-kicker">Settings · Setup</span>
+            <h2>Business context</h2>
+            <p>
+              Keep the facts, people, direction, and trusted source material
+              Paige should understand about this business.
+            </p>
+          </div>
+          <div className="setup-intro__actions">
+            {editing && (
+              <button
+                className="setup-button"
+                disabled={data.saving}
+                onClick={() => void cancel()}
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              className="setup-button setup-button--primary"
+              disabled={!data.canEdit || data.saving}
+              onClick={
+                editing
+                  ? () => void save()
+                  : () => {
+                      beginEdit();
+                    }
               }
-            />
-            <Section
-              eyebrow="Existing operating context"
-              title="Preserved business brief"
-              description="Your previously saved voice and operating guidance stays editable. Review it while building the richer profile above; nothing is silently replaced."
             >
-              <Fields
-                fields={legacyVoiceFields}
+              {data.saving
+                ? "Saving durable record…"
+                : editing
+                  ? "Save business context"
+                  : "Edit business context"}
+            </button>
+          </div>
+        </header>
+        {!data.canEdit && (
+          <div className="setup-notice" data-tone="bad">
+            This workspace is read-only for Setup. Owner access is required for
+            legal, ownership, email, knowledge, and Paige voice context.
+          </div>
+        )}
+        {data.accessScope === "admin_operational" && (
+          <div className="setup-notice">
+            Admin editing is limited to the non-legal operating direction
+            supported by current policy.
+          </div>
+        )}
+        {notice && (
+          <div
+            ref={errorSummary}
+            tabIndex={-1}
+            className="setup-notice"
+            data-tone={notice.tone}
+            role={notice.tone === "bad" ? "alert" : "status"}
+          >
+            <CheckCircle2 aria-hidden />
+            {notice.text}
+            {recovery === "failed" && (
+              <button className="setup-button" onClick={() => void save()}>
+                Retry save
+              </button>
+            )}
+            {recovery && recovery !== "failed" && (
+              <button
+                className="setup-button"
+                onClick={async () => {
+                  if (data.saving) return;
+                  if (
+                    dirty &&
+                    !(await confirm({
+                      title: "Load stored version and discard this draft?",
+                      description:
+                        "The newer durable record will replace your unsaved draft.",
+                      actionLabel: "Load stored version",
+                      cancelLabel: "Keep my draft",
+                      destructive: true,
+                    }))
+                  )
+                    return;
+                  setEditing(false);
+                  setRecovery(null);
+                  setNotice(null);
+                  data.refresh();
+                }}
+              >
+                Load stored version
+              </button>
+            )}
+          </div>
+        )}
+        {data.pendingProposal && !proposalId && owner && (
+          <aside className="setup-proposal">
+            <div>
+              <span>Paige suggestion · not saved</span>
+              <h3>Review a proposed brief update</h3>
+              <p>{data.pendingProposal.reason}</p>
+            </div>
+            <div>
+              <button
+                className="setup-button"
+                onClick={async () => {
+                  const result = await data.dismissProposal(
+                    data.pendingProposal!.id,
+                  );
+                  setNotice(
+                    result.ok
+                      ? {
+                          tone: "ok",
+                          text: "Suggestion dismissed. Business context is unchanged.",
+                        }
+                      : {
+                          tone: "bad",
+                          text:
+                            result.error ||
+                            "The suggestion could not be dismissed.",
+                        },
+                  );
+                }}
+              >
+                Dismiss
+              </button>
+              <button
+                className="setup-button"
+                onClick={async () => {
+                  if (
+                    dirty &&
+                    !(await confirm({
+                      title: "Replace your unsaved draft with this suggestion?",
+                      description:
+                        "Your saved record is unchanged until you review and save.",
+                      actionLabel: "Review suggestion",
+                      cancelLabel: "Keep draft",
+                    }))
+                  )
+                    return;
+                  reset();
+                  setDraft(
+                    applySetupProposal(data.brief, data.pendingProposal!),
+                  );
+                  setProposalId(data.pendingProposal!.id);
+                  setEditing(true);
+                }}
+              >
+                Review in draft
+              </button>
+            </div>
+          </aside>
+        )}
+        <div className="setup-source-legend">
+          <SourceBadge source="owner_confirmed" />
+          <span>saved by an authorized owner</span>
+          <SourceBadge source="connection_sourced" />
+          <span>read from a connected record</span>
+          <SourceBadge />
+          <span>missing or awaiting confirmation</span>
+        </div>
+        <div
+          className="setup-tabs"
+          role="tablist"
+          aria-label="Setup business context"
+        >
+          {SOLO_SETUP_TABS.map((value) => (
+            <Link
+              key={value}
+              to={
+                urlDriven ? tabPath(value) : location.pathname + location.search
+              }
+              state={location.state}
+              role="tab"
+              aria-selected={route.kind !== "invalid" && tab === value}
+              aria-current={
+                route.kind !== "invalid" && tab === value ? "page" : undefined
+              }
+              aria-disabled={data.saving}
+              aria-controls={`setup-panel-${value}`}
+              id={`setup-tab-${value}`}
+              tabIndex={tab === value ? 0 : -1}
+              onClick={(event) => {
+                if (data.saving) {
+                  event.preventDefault();
+                  return;
+                }
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                event.preventDefault();
+                switchTab(value);
+              }}
+              onAuxClick={(event) => {
+                if (data.saving) event.preventDefault();
+              }}
+              onKeyDown={(event) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const index = SOLO_SETUP_TABS.indexOf(value);
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? SOLO_SETUP_TABS.length - 1
+                      : (index +
+                          (event.key === "ArrowRight" ? 1 : -1) +
+                          SOLO_SETUP_TABS.length) %
+                        SOLO_SETUP_TABS.length;
+                switchTab(SOLO_SETUP_TABS[next]);
+                queueMicrotask(() =>
+                  document
+                    .getElementById(`setup-tab-${SOLO_SETUP_TABS[next]}`)
+                    ?.focus(),
+                );
+              }}
+            >
+              {SOLO_SETUP_TAB_LABELS[value]}
+            </Link>
+          ))}
+        </div>
+        {route.kind === "invalid" ? (
+          <section className="setup-state" role="alert">
+            <h3>Setup area not found</h3>
+            <p>
+              Choose a Setup area above to continue. Your unsaved business
+              context has not been discarded.
+            </p>
+          </section>
+        ) : (
+          <div
+            role="tabpanel"
+            tabIndex={-1}
+            id={`setup-panel-${tab}`}
+            aria-labelledby={`setup-tab-${tab}`}
+          >
+            {tab === "business-profile" && (
+              <BusinessProfile
+                key={data.activeTenantId}
                 draft={draft}
+                email={email}
                 editing={editing}
+                owner={owner}
                 disabled={disabled}
                 errors={errors}
+                decisions={decisions}
                 onChange={change}
-                sourceDecisions={decisions}
                 onDecision={decide}
+                onEmail={(value) => {
+                  reconcileMountedDraft();
+                  setEmail(value);
+                }}
+                emailDecision={emailDecision}
+                emailProvenance={data.primaryBusinessEmailProvenance}
+                onEmailDecision={(value) => {
+                  if (value === "adopt") setEmail(data.primaryBusinessEmail);
+                  setEmailDecision(value);
+                }}
+                onNaics={(value) => void chooseNaics(value)}
+                searchNaics={data.searchNaics}
               />
-            </Section>
-          </>
+            )}{" "}
+            {tab === "people-email" && (
+              <PeopleEmail
+                account={account}
+                draft={draft}
+                owners={owners}
+                editing={editing}
+                owner={owner}
+                errors={errors}
+                representativeError={data.representativesError}
+                storedOwners={data.businessOwners}
+                fields={
+                  <Fields
+                    fields={representativeFields}
+                    draft={draft}
+                    editing={editing}
+                    disabled={disabled}
+                    errors={errors}
+                    onChange={change}
+                    sourceDecisions={decisions}
+                    onDecision={decide}
+                  />
+                }
+                representatives={data.representatives}
+                managedEmail={data.managedEmail?.address ?? ""}
+                registrationAvailable={
+                  data.managedEmail?.registrationAvailable === true
+                }
+                onDraft={setDraft}
+                onOwners={setOwners}
+                onOpenEmail={() => setEmailEditor(true)}
+              />
+            )}{" "}
+            {tab === "knowledge-bucket" && (
+              <KnowledgeBucket
+                sources={sources}
+                owner={owner}
+                editing={editing}
+                onAdd={() => {
+                  if (beginEdit()) setKnowledgeEditor(sources.length);
+                }}
+                onEdit={(index) => {
+                  if (beginEdit()) setKnowledgeEditor(index);
+                }}
+                onRemove={(index) =>
+                  setSources((now) => now.filter((_, i) => i !== index))
+                }
+              />
+            )}{" "}
+            {tab === "direction" && (
+              <Section
+                eyebrow="Direction and goals"
+                title="What the business is working toward"
+                description="Keep the offer model, customers, priorities, goals, success measures, and constraints as structured owner-confirmed context."
+              >
+                <Fields
+                  fields={directionFields}
+                  draft={draft}
+                  editing={editing}
+                  disabled={disabled}
+                  errors={errors}
+                  onChange={change}
+                  sourceDecisions={decisions}
+                  onDecision={decide}
+                />
+              </Section>
+            )}{" "}
+            {tab === "paige-brief" && (
+              <>
+                <PaigeContext
+                  profile={profile}
+                  examples={examples}
+                  owner={owner}
+                  editing={editing}
+                  saving={data.saving}
+                  onSave={() => void save()}
+                  onCancel={() => void cancel()}
+                  onKnowledge={() => switchTab("knowledge-bucket")}
+                  onGuide={() => {
+                    if (owner && beginEdit()) setPaigeGuide(true);
+                  }}
+                  onExample={() => {
+                    if (owner && beginEdit()) setExampleEditor(examples.length);
+                  }}
+                  onEditExample={(index) => {
+                    if (owner && beginEdit()) setExampleEditor(index);
+                  }}
+                  onRemoveExample={(index) =>
+                    setExamples((now) => now.filter((_, i) => i !== index))
+                  }
+                />
+                <Section
+                  eyebrow="Existing operating context"
+                  title="Preserved business brief"
+                  description="Your previously saved voice and operating guidance stays editable. Review it while building the richer profile above; nothing is silently replaced."
+                >
+                  <Fields
+                    fields={legacyVoiceFields}
+                    draft={draft}
+                    editing={editing}
+                    disabled={disabled}
+                    errors={errors}
+                    onChange={change}
+                    sourceDecisions={decisions}
+                    onDecision={decide}
+                  />
+                </Section>
+              </>
+            )}
+          </div>
         )}
-      </div>
-      {knowledgeEditor !== null && (
-        <KnowledgeEditor
-          source={sources[knowledgeEditor] ?? newSource()}
-          onDirtyChange={setDrawerDirty}
-          confirmDiscard={confirmDrawerDiscard}
-          onChange={(value) => {
-            setSources((now) =>
-              knowledgeEditor === now.length
-                ? [...now, value]
-                : now.map((item, index) =>
-                    index === knowledgeEditor ? value : item,
-                  ),
-            );
-            setNotice({
-              tone: "ok",
-              text: "Knowledge added to your draft. Save business context to keep it.",
-            });
-          }}
-          onClose={() => {
-            setKnowledgeEditor(null);
-            setDrawerDirty(false);
-          }}
-        />
-      )}{" "}
-      {emailEditor && (
-        <EmailEditor
-          current={data.managedEmail?.localPart ?? ""}
-          domain={data.managedEmail?.domain ?? "mail.paigeagent.ai"}
-          check={data.checkManagedEmail}
-          register={data.registerManagedEmail}
-          onDirtyChange={setDrawerDirty}
-          confirmDiscard={confirmDrawerDiscard}
-          onClose={() => {
-            setEmailEditor(false);
-            setDrawerDirty(false);
-          }}
-        />
-      )}{" "}
-      {paigeGuide && (
-        <PaigeGuide
-          profile={profile}
-          onDirtyChange={setDrawerDirty}
-          confirmDiscard={confirmDrawerDiscard}
-          onApply={(value) => {
-            setProfile(value);
-            setEditing(true);
-            setPaigeGuide(false);
-            setDrawerDirty(false);
-            setNotice({
-              tone: "ok",
-              text: "Paige profile added to the Setup draft. Save business context to make it durable.",
-            });
-          }}
-          onClose={() => {
-            setPaigeGuide(false);
-            setDrawerDirty(false);
-          }}
-        />
-      )}{" "}
-      {exampleEditor !== null && (
-        <ExampleEditor
-          value={examples[exampleEditor] ?? newExample()}
-          onDirtyChange={setDrawerDirty}
-          confirmDiscard={confirmDrawerDiscard}
-          onChange={(value) =>
-            setExamples((now) =>
-              exampleEditor === now.length
-                ? [...now, value]
-                : now.map((item, index) =>
-                    index === exampleEditor ? value : item,
-                  ),
-            )
-          }
-          onClose={() => {
-            setExampleEditor(null);
-            setDrawerDirty(false);
-          }}
-        />
-      )}{" "}
-      {confirmDialog}
-    </fieldset>
+        {knowledgeEditor !== null && (
+          <KnowledgeEditor
+            source={sources[knowledgeEditor] ?? newSource()}
+            onDirtyChange={setDrawerDirty}
+            confirmDiscard={confirmDrawerDiscard}
+            onChange={(value) => {
+              setSources((now) =>
+                knowledgeEditor === now.length
+                  ? [...now, value]
+                  : now.map((item, index) =>
+                      index === knowledgeEditor ? value : item,
+                    ),
+              );
+              setNotice({
+                tone: "ok",
+                text: "Knowledge added to your draft. Save business context to keep it.",
+              });
+            }}
+            onClose={() => {
+              setKnowledgeEditor(null);
+              setDrawerDirty(false);
+            }}
+          />
+        )}{" "}
+        {emailEditor && (
+          <EmailEditor
+            current={data.managedEmail?.localPart ?? ""}
+            domain={data.managedEmail?.domain ?? "mail.paigeagent.ai"}
+            check={data.checkManagedEmail}
+            register={data.registerManagedEmail}
+            onDirtyChange={setDrawerDirty}
+            confirmDiscard={confirmDrawerDiscard}
+            onClose={() => {
+              setEmailEditor(false);
+              setDrawerDirty(false);
+            }}
+          />
+        )}{" "}
+        {paigeGuide && (
+          <PaigeGuide
+            profile={profile}
+            onDirtyChange={setDrawerDirty}
+            confirmDiscard={confirmDrawerDiscard}
+            onApply={(value) => {
+              setProfile(value);
+              setEditing(true);
+              setPaigeGuide(false);
+              setDrawerDirty(false);
+              setNotice({
+                tone: "ok",
+                text: "Paige profile added to the Setup draft. Save business context to make it durable.",
+              });
+            }}
+            onClose={() => {
+              setPaigeGuide(false);
+              setDrawerDirty(false);
+            }}
+          />
+        )}{" "}
+        {exampleEditor !== null && (
+          <ExampleEditor
+            value={examples[exampleEditor] ?? newExample()}
+            existing={exampleEditor < examples.length}
+            onDirtyChange={setDrawerDirty}
+            confirmDiscard={confirmDrawerDiscard}
+            onChange={(value) => {
+              setExamples((now) =>
+                exampleEditor === now.length
+                  ? [...now, value]
+                  : now.map((item, index) =>
+                      index === exampleEditor ? value : item,
+                    ),
+              );
+              setNotice({
+                tone: "ok",
+                text: "Example kept in your draft. Save business context to keep the changes.",
+              });
+            }}
+            onClose={() => {
+              setExampleEditor(null);
+              setDrawerDirty(false);
+            }}
+          />
+        )}{" "}
+        {confirmDialog}
+      </fieldset>
+    </SetupRouteSnapshot>
   );
 }
 
@@ -2482,6 +2685,10 @@ function PaigeContext({
   examples,
   owner,
   editing,
+  saving,
+  onSave,
+  onCancel,
+  onKnowledge,
   onGuide,
   onExample,
   onEditExample,
@@ -2491,6 +2698,10 @@ function PaigeContext({
   examples: SetupVoiceExample[];
   owner: boolean;
   editing: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+  onKnowledge: () => void;
   onGuide: () => void;
   onExample: () => void;
   onEditExample: (index: number) => void;
@@ -2517,7 +2728,7 @@ function PaigeContext({
       <div className="setup-paige-brief__actions">
         <button
           className="setup-button setup-button--primary"
-          disabled={!owner || !editing}
+          disabled={!owner || saving}
           onClick={onGuide}
         >
           <MessageSquareText aria-hidden />
@@ -2525,12 +2736,37 @@ function PaigeContext({
         </button>
         <button
           className="setup-button"
-          disabled={!owner || !editing}
+          disabled={!owner || saving}
           onClick={onExample}
         >
           <Plus aria-hidden />
           Add an example
         </button>
+        <button
+          className="setup-button"
+          disabled={saving}
+          onClick={onKnowledge}
+        >
+          Links &amp; documents
+        </button>
+        {editing && owner && (
+          <>
+            <button
+              className="setup-button"
+              disabled={saving}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button
+              className="setup-button setup-button--primary"
+              disabled={saving}
+              onClick={onSave}
+            >
+              {saving ? "Saving durable record…" : "Save business context"}
+            </button>
+          </>
+        )}
       </div>
       <div className="setup-paige-brief__grid">
         {SOLO_PAIGE_PROFILE_FIELDS.map((field) => (
@@ -2566,23 +2802,24 @@ function PaigeContext({
           title: `${example.kind === "sounds_like" ? "Sounds like us" : "Avoid this"} · ${example.channel}`,
           text: example.example,
           source: example.provenance.source,
-          actions:
-            editing && owner ? (
-              <>
-                <button
-                  className="setup-button"
-                  onClick={() => onEditExample(index)}
-                >
-                  Edit
-                </button>
+          actions: owner ? (
+            <>
+              <button
+                className="setup-button"
+                onClick={() => onEditExample(index)}
+              >
+                Edit
+              </button>
+              {editing && (
                 <button
                   className="setup-button"
                   onClick={() => onRemoveExample(index)}
                 >
                   Remove
                 </button>
-              </>
-            ) : null,
+              )}
+            </>
+          ) : null,
         }))}
       />
     </Section>
@@ -2919,6 +3156,9 @@ function PaigeGuide({
           </button>
           <button
             className="setup-button setup-button--primary"
+            disabled={SOLO_PAIGE_PROFILE_FIELDS.some(
+              (field) => draft[field].length > 4000,
+            )}
             onClick={() => onApply(draft)}
           >
             Apply to Setup draft
@@ -2944,8 +3184,13 @@ function PaigeGuide({
             <textarea
               name={field}
               value={draft[field]}
+              maxLength={4000}
+              aria-invalid={draft[field].length > 4000 || undefined}
               onChange={(e) => mark(field, e.target.value)}
             />
+            <small>
+              {draft[field].length.toLocaleString()} / 4,000 characters
+            </small>
           </label>
         ))}
       </div>
@@ -2954,12 +3199,14 @@ function PaigeGuide({
 }
 function ExampleEditor({
   value: initial,
+  existing,
   onChange: onCommit,
   onClose,
   onDirtyChange,
   confirmDiscard,
 }: {
   value: SetupVoiceExample;
+  existing: boolean;
   onChange: (value: SetupVoiceExample) => void;
   onClose: () => void;
 } & DrawerDraftProps) {
@@ -2970,21 +3217,30 @@ function ExampleEditor({
   } = useDrawerDraft(initial, onDirtyChange, confirmDiscard, onClose);
   return (
     <Drawer
-      label="Add a voice example"
-      title="Add a real example"
+      label={existing ? "Edit a voice example" : "Add a voice example"}
+      title={existing ? "Edit this example" : "Add a real example"}
       description="Examples remain owner-confirmed Setup records and are not indexed or sent to Paige."
       onClose={() => void close()}
       footer={
-        <button
-          className="setup-button setup-button--primary"
-          disabled={!value.example.trim()}
-          onClick={() => {
-            onCommit(value);
-            onClose();
-          }}
-        >
-          Keep in Setup draft
-        </button>
+        <>
+          <button className="setup-button" onClick={() => void close()}>
+            Cancel
+          </button>
+          <button
+            className="setup-button setup-button--primary"
+            disabled={
+              !value.example.trim() ||
+              value.example.length > 8000 ||
+              value.note.length > 1000
+            }
+            onClick={() => {
+              onCommit(value);
+              onClose();
+            }}
+          >
+            Keep in Setup draft
+          </button>
+        </>
       }
     >
       <div className="setup-paige-drawer__fields">
@@ -3025,6 +3281,8 @@ function ExampleEditor({
           <span>Example</span>
           <textarea
             value={value.example}
+            maxLength={8000}
+            aria-invalid={value.example.length > 8000 || undefined}
             onChange={(e) =>
               onChange({
                 ...value,
@@ -3037,13 +3295,19 @@ function ExampleEditor({
               })
             }
           />
+          <small>
+            {value.example.length.toLocaleString()} / 8,000 characters
+          </small>
         </label>
         <label>
           <span>Why it fits or does not fit</span>
           <textarea
             value={value.note}
+            maxLength={1000}
+            aria-invalid={value.note.length > 1000 || undefined}
             onChange={(e) => onChange({ ...value, note: e.target.value })}
           />
+          <small>{value.note.length.toLocaleString()} / 1,000 characters</small>
         </label>
       </div>
     </Drawer>

@@ -1756,3 +1756,22 @@ exact migration plus checked-in Owner/Admin/Member/anonymous/cross-tenant/privac
 production-schema transaction and rolled back completely. Status remains `PARTIAL`: exact-head
 deployment and authenticated Owner save → reload → reopen → switch away/back proof are still owed;
 PAIGE/Mind/Spine consumption is PROPOSED and Rail is UNAVAILABLE.
+
+## 2026-09-03 — Solo Team invitations: authenticated send-leg proof, and the Super Admin sequencing ruling
+
+Owner sent a real Solo Team invitation and confirmed the recipient received it in her actual inbox
+— genuine authenticated runtime proof of `create_solo_team_invite` → `send-portal-invite` → Resend
+→ a real mailbox, the leg #850/#856/#857 repaired. The recipient was already a platform user, so
+this does **not** confirm the new-account accept-invite path, and delivery tracking (Sent →
+Delivered/Opened/Clicked) still cannot be observed by anyone until the owner registers the Resend
+webhook and sets `RESEND_WEBHOOK_SECRET`. Recorded precisely in `docs/doctrine/tier-matrix.md`'s
+invitation-lifecycle row so the confirmed leg is not read as covering the other two.
+
+**Owner ruling, sequencing (§61-adjacent — not a §61 exception, a build-order decision):** other
+tenants will start inviting people to Solo accounts soon, and that will surface the same need at
+the Super Admin (operator) level — sending invitations from the platform's own account. **Do not
+build Super Admin sending yet.** The plan is for Super Admin to be built as a mimic of the Solo
+account first, with Super-Admin-specific features layered on top afterward — so Super Admin
+invitation-sending should reuse whatever Solo's pattern turns out to be, once Solo itself is done,
+rather than being built in parallel now and risking two divergent implementations. Finish Solo
+first; Super Admin sending is deliberately deferred, not forgotten.
