@@ -106,8 +106,20 @@ function Modal({ title, description, onClose, onEscape, busy, children }: { titl
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
       const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')];
-      if (!focusable.length) return;
+      // Nothing tabbable at all: Tab must not walk out of an aria-modal dialog into the roster
+      // beneath it. This is reachable — while a removal is in flight every control is disabled.
+      if (!focusable.length) { event.preventDefault(); return; }
       const first = focusable[0]; const last = focusable[focusable.length - 1];
+      // The caret is somewhere the trap's own list does not contain — a `tabIndex={-1}` target that
+      // was focused programmatically, which is exactly what the live "Removing…" line is. The
+      // first/last comparison below can never match it, so Tab left the dialog entirely: with the
+      // footer control disabled there was nothing tabbable AFTER it in document order. Found by the
+      // third adversarial read; jsdom has no native Tab, so no unit test could see it.
+      if (!focusable.includes(document.activeElement as HTMLElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
@@ -170,7 +182,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // from offering an act the database will refuse, and keeps a legacy specialised permission from
   // being quietly reassigned by a surface that promises it will not do that.
   const canRemove = workspace.can_change_permissions && !member.is_owner && permission.mutable && Boolean(onRemoved);
-  const [removal, setRemoval] = useState<{ stage: "idle" | "armed" | "pending"; error: RemovalRefusal | null; tenantAtArm: string | null }>({ stage: "idle", error: null, tenantAtArm: null });
+  const [removal, setRemoval] = useState<{ stage: "idle" | "armed" | "pending"; error: RemovalRefusal | null; tenantAtArm: string | null; /** The workspace NAME as of arming. The pending copy must name the workspace the call was SENT to, which the live one stops being the moment somebody switches. */ nameAtArm: string | null }>({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
   const removeButtonRef = useRef<HTMLButtonElement>(null);
   // The PARENT must not unmount this dialog mid-call. It renders on `selectedLive`, and a workspace
   // switch during a pending removal nulls the roster and drops the selected member from it — so the
@@ -230,10 +242,10 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // can only do that if this leaves the stage alone. Found while fixing the parent-unmount seam:
   // the hold looked correct and was being dropped from underneath by this line.
   useEffect(() => {
-    setRemoval((current) => (current.stage !== "pending" && current.tenantAtArm && current.tenantAtArm !== workspace.tenant_id ? { stage: "idle", error: null, tenantAtArm: null } : current));
+    setRemoval((current) => (current.stage !== "pending" && current.tenantAtArm && current.tenantAtArm !== workspace.tenant_id ? { stage: "idle", error: null, tenantAtArm: null, nameAtArm: null } : current));
   }, [workspace.tenant_id]);
 
-  const disarmRemoval = () => setRemoval({ stage: "idle", error: null, tenantAtArm: null });
+  const disarmRemoval = () => setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
 
   const confirmRemoval = async () => {
     // `disabled` alone is not a guard: two clicks dispatched inside one React batch both run before
@@ -243,7 +255,8 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
     if (inFlight.current) return;
     inFlight.current = true;
     const tenantAtArm = removal.tenantAtArm ?? workspace.tenant_id;
-    setRemoval({ stage: "pending", error: null, tenantAtArm });
+    const nameAtArm = removal.nameAtArm ?? workspace.tenant_name;
+    setRemoval({ stage: "pending", error: null, tenantAtArm, nameAtArm });
     // WRAPPED, because blocking dismissal turns an unhandled rejection into a TRAP. supabase-js
     // resolves a PostgREST refusal into `{ error }` rather than throwing, so this path used to be
     // unreachable in practice — but a genuine transport rejection (offline, DNS, an aborted
@@ -279,12 +292,12 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       // frame and then discarding it, which is barely better than never showing it. So the outcome
       // goes to the parent-owned channel, which outlives the dialog, and the dialog closes.
       if (workspaceRef.current.tenant_id !== tenantAtArm) {
-        setRemoval({ stage: "idle", error: null, tenantAtArm: null });
+        setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
         toast.error(refusal.message);
         onClose();
         return;
       }
-      setRemoval({ stage: "armed", error: refusal, tenantAtArm });
+      setRemoval({ stage: "armed", error: refusal, tenantAtArm, nameAtArm });
       return;
     }
 
@@ -293,11 +306,15 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
     // without this check could describe a workspace the owner is no longer looking at.
     const acted = typeof data?.tenant_id === "string" ? data.tenant_id : null;
     if (acted !== tenantAtArm || workspaceRef.current.tenant_id !== tenantAtArm) {
-      setRemoval({
-        stage: "armed",
-        error: { message: "Your active workspace changed while that ran, so nothing is being claimed here. Reopen Team to see the current roster.", retryable: false, reconciled: false },
-        tenantAtArm,
-      });
+      // SAME TREATMENT AS THE REFUSAL BRANCH ABOVE, and it was a real defect that it differed.
+      // Setting `armed` here leaves `pending`, which releases the parent's hold; the member is not
+      // in the new roster, so `selectedLive` is false and the dialog unmounts IN THE SAME FLUSH —
+      // taking this message with it. The operator was told nothing at all, about a call the server
+      // may well have APPLIED. That is precisely the outcome the hold was added to prevent, fixed on
+      // one branch and left broken on its sibling. Reported by the third adversarial read.
+      setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
+      toast.error("Your active workspace changed while that ran, so nothing is being claimed here. Reopen Team to see the current roster.");
+      onClose();
       return;
     }
 
@@ -312,7 +329,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
     const { error } = await (supabase as any).rpc("set_solo_team_member_permission", { _member_user_id: member.user_id, _new_permission: permissionDraft });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success(`Permission changed to ${permissionPresentation(permissionDraft, false).label}.`); setPermissionDraft(null); onSaved(); onClose();
+    toast.success(`Permission changed to ${permissionPresentation(permissionDraft, false).label}.`); setPermissionDraft(null); onSaved(); requestClose();
 
   };
 
@@ -348,11 +365,11 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       {canRemove && <div className="stw-permission-change">
         <div className="stw-confirm">
           {removal.stage === "idle" && <p>Removing someone ends their access to {workspace.tenant_name}. It does not delete their Paige account or the work already recorded under their name.</p>}
-          <button ref={removeButtonRef} className="stw-btn secondary" disabled={removal.stage !== "idle"} onClick={() => setRemoval({ stage: "armed", error: null, tenantAtArm: workspace.tenant_id })} aria-label={`Remove ${identity.primary} from ${workspace.tenant_name}`}>Remove from workspace</button>
+          <button ref={removeButtonRef} className="stw-btn secondary" disabled={removal.stage !== "idle"} onClick={() => setRemoval({ stage: "armed", error: null, tenantAtArm: workspace.tenant_id, nameAtArm: workspace.tenant_name })} aria-label={`Remove ${identity.primary} from ${workspace.tenant_name}`}>Remove from workspace</button>
         </div>
         {removal.stage !== "idle" && <div className="stw-confirm">
           <p>Remove {identity.primary} from {workspace.tenant_name}? They lose access to this workspace right away. Their Paige account is not deleted and their {workspace.tenant_name} history stays. To bring them back you would send a new invitation.</p>
-          {removal.stage === "pending" && <p ref={pendingRef} tabIndex={-1} role="status" aria-busy="true">Removing {identity.primary} from {workspace.tenant_name}\u2026</p>}
+          {removal.stage === "pending" && <p ref={pendingRef} tabIndex={-1} role="status" aria-busy="true">Removing {identity.primary} from {removal.nameAtArm ?? workspace.tenant_name}…</p>}
           {removal.error && <p ref={errorRef} tabIndex={-1} role="alert">{removal.error.message}</p>}
           <button ref={cancelRef} className="stw-btn secondary" disabled={removal.stage === "pending"} onClick={disarmRemoval}>Cancel</button>
           <button className="stw-btn" disabled={removal.stage === "pending" || removal.error?.retryable === false} onClick={confirmRemoval} aria-label={`Confirm removing ${identity.primary} from ${workspace.tenant_name}`}>{removal.stage === "pending" ? "Removing\u2026" : removal.error ? "Try again" : "Confirm removal"}</button>

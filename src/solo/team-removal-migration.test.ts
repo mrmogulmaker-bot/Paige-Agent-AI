@@ -259,38 +259,68 @@ describe("the table underneath — a guarded function is not a boundary on its o
     //    blunter strip, so only lines whose FIRST non-space character is `#` are dropped.
     const live = workflow.split("\n").filter((line) => !line.trimStart().startsWith("#"));
 
-    // 2. Walk the jobs block and find which job actually carries the step.
+    // 2. Walk the jobs block. Both the JOB carrying the step and the STEP itself must be live.
+    //
+    // The previous version checked a job-level `if:` at EXACTLY four spaces while checking
+    // `continue-on-error` at four-or-more — so a STEP-level `if: false`, the most direct way there
+    // is to switch one step off, was invisible. It also matched only a literal `true`, so
+    // `continue-on-error: ${{ true }}` and `continue-on-error: "true"` both walked through. Three
+    // bypasses, in a guard whose comment claimed exactly one survived. Found by the third
+    // adversarial read; all four are now covered and mutation-proven.
     const jobsAt = live.findIndex((line) => line === "jobs:");
     expect(jobsAt, "the jobs block was found").toBeGreaterThan(-1);
+
+    // The two keys are NOT the same predicate, and conflating them is a mistake I made and caught
+    // by mutation: `if: false` DISABLES, while `continue-on-error: false` is the harmless default.
+    //   · any `if:` at all makes the thing conditional — a line walk cannot evaluate the expression,
+    //     so it refuses to guess which way it resolves;
+    //   · `continue-on-error:` disables only when it is not explicitly false, which covers a bare
+    //     `true`, a quoted `"true"`, and a `${{ … }}` expression that cannot be evaluated here.
+    const disables = (line: string) => {
+      const m = /^\s*(if|continue-on-error):\s*(.*)$/.exec(line);
+      if (!m) return false;
+      if (m[1] === "if") return true;
+      return !/^(false|'false'|"false")\s*$/.test(m[2].trim());
+    };
+
     let job: string | null = null;
     let owner: string | null = null;
-    const conditional = new Set<string>();
+    let ownerStepDisabled = false;
+    const conditionalJobs = new Set<string>();
+    let inOwnerStep = false;
     for (const line of live.slice(jobsAt + 1)) {
-      if (line.trim() === "" ) continue;
+      if (line.trim() === "") continue;
       if (!line.startsWith(" ")) break; // left the jobs block entirely
-      const named = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
-      if (named) { job = named[1]; continue; }
-      // A job-level `if:` can switch the whole job off while every step still reads as present.
-      if (job && /^ {4}if:/.test(line)) conditional.add(job);
-      // `continue-on-error` is the IDIOMATIC way somebody temporarily unblocks CI, and it leaves the
-      // proof running but unable to fail the build — the same false-green as commenting it out, in
-      // more respectable clothing. Caught at BOTH levels: job (4 spaces) and step (8, under `steps:`).
-      if (job && /^ {4,}continue-on-error:\s*true/.test(line)) conditional.add(job);
-      if (job && line.trim() === RUN) owner = job;
+      const named = /^ {2}["']?([A-Za-z0-9_-]+)["']?:\s*$/.exec(line);
+      if (named) { job = named[1]; inOwnerStep = false; continue; }
+      // Job-level options sit at four spaces. A job switched off takes every step with it.
+      if (job && /^ {4}\S/.test(line) && disables(line)) conditionalJobs.add(job);
+      if (job && line.trim() === RUN) { owner = job; inOwnerStep = true; continue; }
+      if (inOwnerStep) {
+        // Still inside the step that carries the proof? A sibling `- ` at the same indent ends it.
+        if (/^ {6}- /.test(line)) { inOwnerStep = false; continue; }
+        if (/^ {4}\S/.test(line)) { inOwnerStep = false; continue; }
+        if (disables(line)) ownerStepDisabled = true;
+      }
     }
 
     expect(owner, `${proof} is run by a job, not merely written in the file`).not.toBeNull();
     expect(
-      conditional.has(owner as string),
+      conditionalJobs.has(owner as string),
       `the job running ${proof} is not switched off by an if: or continue-on-error`,
     ).toBe(false);
+    expect(
+      ownerStepDisabled,
+      `the step running ${proof} is not switched off by an if: or continue-on-error`,
+    ).toBe(false);
 
-    // HONEST LIMIT, stated rather than implied. This models the shapes this workflow actually uses:
-    // whole-line comments, two-space job keys, four-space job options, and step-level options under
-    // `steps:`. It does NOT interpret YAML, so it cannot see every conceivable way to neuter a job —
-    // an empty `strategy.matrix` producing zero job instances is the one measured bypass that
-    // survives it. That is a real gap, and naming it here is the point: the guard closes the
-    // bypasses somebody reaches for by habit, not every bypass that exists.
+    // HONEST LIMIT, corrected. The previous note claimed an empty `strategy.matrix` was "the one
+    // measured bypass that survives" — which was false, and exactly the kind of over-claim §13
+    // exists to stop: three others survived it at the time. This does NOT interpret YAML, so it
+    // cannot see every way to neuter a job; `strategy.matrix` producing zero instances, a `needs:`
+    // on a job that never succeeds, and a reusable-workflow `uses:` job are all outside what a line
+    // walk can judge. What it does cover is stated above and proven by mutation, and the claim is
+    // now bounded to that rather than to "everything".
 
     // 3. Both triggers, so main is guarded and not just the PR. The sibling PR's round 2 found
     //    exactly this fix half-applied: inserted twice into `pull_request`, never into `push`.

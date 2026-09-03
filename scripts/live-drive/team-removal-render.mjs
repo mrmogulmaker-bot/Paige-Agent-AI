@@ -184,10 +184,20 @@ async function main() {
     await openEditorOnAMember(page);
     await removeTrigger(page).first().click();
     await confirmButton(page).click();
-    const alert = await page.locator('[role="alert"]').first().textContent();
-    /workspace changed/i.test(alert ?? "")
+    // The message moved OUT of the dialog deliberately. Leaving `pending` releases the parent's
+    // hold, and when the member is not in the refreshed roster the dialog unmounts in the same
+    // flush — so an in-dialog alert here was shown for a frame and then discarded, telling the
+    // operator nothing about a call the server may have applied. It now goes to the toast layer,
+    // which outlives the dialog. Asserted where it actually lands, rather than where it used to.
+    const said = await page
+      .locator('[data-sonner-toast], [role="status"], [role="alert"]')
+      .filter({ hasText: /workspace changed/i })
+      .first()
+      .textContent()
+      .catch(() => null);
+    /workspace changed/i.test(said ?? "")
       ? note("OK", "a removal the server applied elsewhere is not reported as success here")
-      : note("FAIL", `wrong-workspace state wrong: ${JSON.stringify(alert)}`);
+      : note("FAIL", `wrong-workspace state wrong: ${JSON.stringify(said)}`);
   });
 
   await drive("success", "", async (page) => {

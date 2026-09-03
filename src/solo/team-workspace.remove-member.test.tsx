@@ -220,7 +220,13 @@ describe("what happens when it fails", () => {
     await act(async () => confirmButton(host)!.click());
     expect(onRemoved).not.toHaveBeenCalled();
     expect(mocks.success).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/workspace changed/i);
+    // Reported through the channel that OUTLIVES this dialog, not inside it. The third adversarial
+    // read showed why the in-dialog version was unsafe: leaving `pending` releases the parent's
+    // hold, and when the member is not in the new roster the dialog unmounts in the same flush and
+    // takes the message with it — telling the operator nothing about a call the server may have
+    // applied. The assertion still proves the same intent: nothing claims success.
+    const spoken = mocks.error.mock.calls.map((c) => String(c[0]));
+    expect(spoken.some((t) => /workspace changed/i.test(t)), `said: ${JSON.stringify(spoken)}`).toBe(true);
   });
 });
 
@@ -468,7 +474,7 @@ describe("what the peer read of the pushed diff found", () => {
     expect(closeX, "the header close control was found").toBeTruthy();
     await act(async () => closeX!.click());
     const footerClose = host.querySelector<HTMLButtonElement>(".stw-modal-actions button.stw-btn.secondary");
-    expect(footerClose, "the footer close control was found by its TEXT").toBeTruthy();
+    expect(footerClose, "the footer close control was found").toBeTruthy();
     await act(async () => footerClose!.click());
     expect(footerClose!.disabled, "and it is disabled, not a live-looking control that silently does nothing").toBe(true);
     expect(closeX!.disabled, "the header control is disabled too").toBe(true);
@@ -549,6 +555,106 @@ describe("what the exact-head re-read found", () => {
     expect(
       alerts.some((t) => t.trim().length > 0) || spoken.some((t) => /owner/i.test(t)),
       `the refusal was reported, not discarded. alerts=${JSON.stringify(alerts)} toasts=${JSON.stringify(spoken)}`,
+    ).toBe(true);
+  });
+});
+
+describe("what the third read found", () => {
+  it("cannot be closed mid-removal by CHANGING A PERMISSION either — the escape was not a close button", async () => {
+    // The gate covered every close CONTROL and still missed this: `changePermission` ends in a
+    // direct `onClose()`, and its block renders whenever the viewer may change access — a SUPERSET
+    // of the condition that offers Remove. So a permission change during a pending removal unmounted
+    // the dialog and the refusal was discarded exactly as before. Two rounds of "every path is
+    // gated" both meant every path that is a button labelled close.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "set_solo_team_member_permission") return Promise.resolve({ data: null, error: null });
+      return new Promise((res) => { settle = res; });
+    });
+    const onClose = vi.fn();
+    const { host, render } = mount(<MemberEditor member={member()} workspace={workspace()} onClose={onClose} onSaved={vi.fn()} onRemoved={vi.fn()} />);
+    await render();
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    const select = host.querySelector<HTMLSelectElement>(".stw-permission-change select") ?? host.querySelector<HTMLSelectElement>("select");
+    if (select) {
+      await act(async () => {
+        select.value = "admin";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      const confirmAccess = buttons(host).find((b) => /access change/i.test(b.textContent ?? ""));
+      if (confirmAccess) await act(async () => confirmAccess.click());
+    }
+    expect(onClose, "a permission change cannot close the dialog while a removal is in flight").not.toHaveBeenCalled();
+
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    expect(alerts.some((t) => /owner/i.test(t)), `the refusal survived: ${JSON.stringify(alerts)}`).toBe(true);
+  });
+
+  it("names the workspace the call was SENT to while it runs, not whichever one is on screen now", async () => {
+    // The parent hold keeps this dialog mounted across a workspace switch — which introduced a NEW
+    // false statement: the live region re-rendered as "Removing Dana Reyes from Second Workspace…"
+    // while the call was actually removing her from Example Team. An aria-live announcement
+    // asserting a destructive act against a tenant it is not happening in is the same
+    // cross-workspace claim this whole programme keeps closing.
+    const rosterA = workspace();
+    const rosterB = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? rosterA : rosterB, error: null });
+      }
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const live = Array.from(host.querySelectorAll('[role="status"]')).map((n) => n.textContent ?? "").join(" | ");
+    expect(live, "the in-flight line still names the workspace the call was sent to").toContain("Example Team");
+    expect(live, "and does not claim anything about the workspace now on screen").not.toContain("Second Workspace");
+    expect(live, "and renders a real ellipsis rather than a literal escape sequence").not.toContain("\\u2026");
+  });
+
+  it("reports a removal that SUCCEEDED after a workspace switch, instead of losing it", async () => {
+    // The refusal branch was routed to a channel that outlives the dialog; its sibling — the branch
+    // for a call the server may have APPLIED — was left rendering into the dialog, which then
+    // unmounted in the same flush. The operator was told nothing at all about a real removal.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const rosterA = workspace();
+    const rosterB = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") {
+        return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? rosterA : rosterB, error: null });
+      }
+      return new Promise((res) => { settle = res; });
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    // The server DID act, in the workspace the call named.
+    await act(async () => { settle({ data: { tenant_id: "tenant-1" }, error: null }); });
+
+    const spoken = mocks.error.mock.calls.concat(mocks.success.mock.calls, mocks.warning.mock.calls).map((c) => String(c[0]));
+    const alerts = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "");
+    expect(
+      spoken.some((t) => t.trim().length > 0) || alerts.some((t) => t.trim().length > 0),
+      `the outcome reached the operator somehow. toasts=${JSON.stringify(spoken)} alerts=${JSON.stringify(alerts)}`,
     ).toBe(true);
   });
 });
