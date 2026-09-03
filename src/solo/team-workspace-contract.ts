@@ -78,13 +78,15 @@ export function removalRefusal(raw: string | null | undefined, personName: strin
     [/only the workspace owner/, { message: "Only the workspace owner can remove people from this workspace.", retryable: false, reconciled: false }],
     [/an owner cannot be removed/, { message: `${personName} is an owner of ${workspaceName}, and an owner can't be removed here.`, retryable: false, reconciled: false }],
     [/cannot remove yourself/, { message: "You can't remove yourself from this workspace.", retryable: false, reconciled: false }],
-    [/only an admin or a member/, { message: `${personName}'s access level isn't handled on this screen, so nothing was changed.`, retryable: false, reconciled: false }],
+    // Named, not located. This sentence can outlive the dialog it was raised in, so "on this
+    // screen" stops being true the moment it does; the workspace it is about never stops being true.
+    [/only an admin or a member/, { message: `${personName}'s access level isn't one ${workspaceName}'s team settings can change, so nothing was changed.`, retryable: false, reconciled: false }],
     [/active workspace changed/, { message: `Your active workspace changed before this could run, so nothing was removed. Open ${workspaceName} again to try.`, retryable: false, reconciled: false }],
     // The seam raises this for a missing ACTOR *or* a missing active WORKSPACE, and they are not the
     // same thing: platform staff who used Exit tenant, or an owner whose membership went inactive,
     // still have a perfectly good session. Telling them to sign in again is both untrue and useless.
     // One sentence that is true of both, rather than a guess at which.
-    [/authentication required/, { message: "This needs an active workspace, and there isn't one right now, so nothing was removed. Reopen Team — or sign in again if you have been signed out.", retryable: false, reconciled: false }],
+    [/authentication required/, { message: "This did not run, and nothing was removed. Reopen Team — or sign in again if you have been signed out.", retryable: false, reconciled: false }],
     [/not on this workspace/, { message: `${personName} is no longer on this team. Nothing further was changed.`, retryable: false, reconciled: true }],
     [/cannot remove admin role from platform owner/, { message: `${personName} holds a platform role that can't be given up here, so nothing was changed.`, retryable: false, reconciled: false }],
   ];

@@ -370,11 +370,12 @@ describe("the refusal vocabulary itself", () => {
       ["only the workspace owner may remove someone from this workspace", /Only the workspace owner/, false, false],
       ["an owner cannot be removed from this workspace here", /is an owner/, false, false],
       ["you cannot remove yourself from this workspace", /can't remove yourself/, false, false],
-      ["only an Admin or a Member can be removed from this workspace", /access level isn't handled/, false, false],
+      ["only an Admin or a Member can be removed from this workspace", /access level isn't one Example Team's team settings can change/, false, false],
       ["your active workspace changed before this could run; nothing was removed", /workspace changed/, false, false],
-      // NOT /session ended/ — the seam raises this for a missing actor OR a missing active
-      // workspace, and platform staff who pressed Exit tenant have a perfectly good session.
-      ["authentication required in an active workspace", /needs an active workspace/i, false, false],
+      // Asserts NEITHER half. The seam raises this for a missing actor OR a missing active
+      // workspace: "your session ended" is false for the second, and "there is no active workspace"
+      // is a guess for the first. One sentence that is true of both, with the recovery for each.
+      ["authentication required in an active workspace", /did not run, and nothing was removed/i, false, false],
       ["that person is not on this workspace's team", /no longer on this team/, false, true],
     ];
     for (const [raw, expected, retryable, reconciled] of cases) {
@@ -1257,28 +1258,25 @@ describe("the eighth read — an unread refusal must not become a pin", () => {
     expect(toasts, `the refusal followed the operator out of the dialog: ${JSON.stringify(toasts)}`).toMatch(/owner/i);
   });
 
-  it("never loses an unread refusal when a SAVE churns the roster underneath it", async () => {
-    // The ninth read called this a second, wider reachability of the lost-refusal defect: after an
-    // in-dialog refusal the work fields and Save stay live (they gate on `pending`), so Save calls
-    // `onSaved` → `refresh()` → `load(0)`, which nulls the roster.
-    //
-    // HONEST FINDING, recorded because it contradicts the report I was acting on: driven here, it
-    // does NOT reproduce. The reload resolves and the roster returns with the member before any
-    // unmount commits, so the dialog survives and the alert stays readable. I am not claiming a
-    // defect I could not observe, and I am not deleting the case either — the invariant is what
-    // matters and it is asserted as a disjunction, so this stays a real guard: if a future change
-    // does make the dialog die here, the alert assertion fails and only the safety net can rescue it.
+  it("re-emits a refusal the SAVE destroys, with a roster slow enough for the dialog to actually die", async () => {
+    // §13 CORRECTION AGAINST MY OWN COMMIT MESSAGE. I wrote that this case "could not be
+    // reproduced" and kept it as a disjunction — still on screen OR re-emitted. Both halves were
+    // wrong. With a roster that resolves synchronously the dialog survives, which is the only
+    // reason I saw no defect; with a realistic reply the roster nulls, `selectedLive` goes false
+    // and the alert is destroyed. And the disjunction could not fail under ANY product mutation:
+    // it passed on the alert in the fast harness and on the toast in the slow one. A test that
+    // cannot fail is worse than no test, and it was carrying a claim I had put in a commit message.
     let settle: (v: { data: unknown; error: unknown }) => void = () => {};
     const a = workspace();
     mocks.rpc.mockImplementation((name: string) => {
-      if (name === "get_solo_team_workspace") return Promise.resolve({ data: a, error: null });
+      if (name === "get_solo_team_workspace") return new Promise((res) => setTimeout(() => res({ data: a, error: null }), 300));
       if (name === "set_solo_team_member_work_profile") return Promise.resolve({ data: null, error: null });
       if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
       return new Promise(() => {});
     });
     const { host, render } = mount(<SoloTeamWorkspace />);
     await render();
-    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
     await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
     await arm(host);
     await act(async () => confirmButton(host)!.click());
@@ -1291,13 +1289,80 @@ describe("the eighth read — an unread refusal must not become a pin", () => {
       field.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => buttons(host).find((b) => /save work details/i.test(b.textContent ?? ""))!.click());
-    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
-    const stillOnScreen = Array.from(host.querySelectorAll('[role="alert"]')).map((n) => n.textContent ?? "").join(" | ");
-    const reEmitted = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
-    expect(`${stillOnScreen} | ${reEmitted}`,
-      `the refusal was lost by the save: onScreen=${JSON.stringify(stillOnScreen)} toasts=${JSON.stringify(reEmitted)}`)
-      .toMatch(/owner/i);
+    expect(host.querySelector('[role="alert"]'), "the dialog's alert really is destroyed here").toBeFalsy();
+    const toasts = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(toasts, `so the net must carry it: ${JSON.stringify(toasts)}`).toMatch(/owner/i);
+  });
+
+  it("does NOT re-announce a refusal the operator has already read, once they are somewhere else", async () => {
+    // The net's own defect. It reads "not dismissed" as "unread" — but this component focuses the
+    // alert on every refusal, so it is read by construction and then recorded as unread anyway.
+    // An operator who read "Only the workspace owner can remove people from this workspace" and
+    // then switched to a workspace they DO own was told it a second time, about the wrong one,
+    // with no name in the sentence to give it away. That is the cross-workspace false statement
+    // this whole branch exists to stop, arriving through the mechanism built to prevent it.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    const a = workspace();
+    const b = workspace({ tenant_id: "tenant-2", tenant_name: "Second Workspace", members: [], total_members: 0 });
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: mocks.tenant.activeTenantId === "tenant-1" ? a : b, error: null });
+      if (name === "remove_solo_team_member") return new Promise((res) => { settle = res; });
+      return new Promise(() => {});
+    });
+    const { host, root, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    // Settles with NO switch in flight, so it is painted in the dialog and read.
+    await act(async () => { settle({ data: null, error: { message: "only the workspace owner may remove someone from this workspace" } }); });
+    expect(host.querySelector('[role="alert"]')?.textContent ?? "").toMatch(/owner/i);
+    expect(mocks.error.mock.calls.length, "nothing announced yet — it is on screen").toBe(0);
+
+    mocks.tenant.activeTenantId = "tenant-2";
+    await act(async () => { root.render(<SoloTeamWorkspace />); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+
+    const said = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(said, `a refusal about Example Team was replayed over Second Workspace: ${JSON.stringify(said)}`).not.toMatch(/owner/i);
+  });
+
+  it("does not re-announce a refusal that a successful retry has superseded", async () => {
+    // Five of the six settle paths never cleared the ref; they relied on the retry's state update
+    // having flushed its passive effect before the unmount. A reply fast enough to beat it left the
+    // roster banner saying the person was removed and a toast saying we could not say whether they
+    // were — over the same screen, about the same act.
+    let settle: (v: { data: unknown; error: unknown }) => void = () => {};
+    let attempt = 0;
+    const a = workspace();
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === "get_solo_team_workspace") return Promise.resolve({ data: a, error: null });
+      if (name === "remove_solo_team_member") {
+        attempt += 1;
+        if (attempt === 1) return new Promise((res) => { settle = res; });
+        return Promise.resolve({ data: { tenant_id: "tenant-1" }, error: null });
+      }
+      return new Promise(() => {});
+    });
+    const { host, render } = mount(<SoloTeamWorkspace />);
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    await act(async () => host.querySelector<HTMLButtonElement>("button.stw-row")!.click());
+    await arm(host);
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { settle({ data: null, error: { message: "TypeError: Failed to fetch" } }); });
+    expect(confirmButton(host)?.textContent?.trim(), "a retry is offered").toBe("Try again");
+
+    await act(async () => confirmButton(host)!.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+
+    const banners = Array.from(host.querySelectorAll(".stw-separation-note")).map((n) => n.textContent ?? "").join(" | ");
+    expect(banners, "the removal is announced").toMatch(/no longer has access/i);
+    const said = mocks.error.mock.calls.map((c) => String(c[0])).join(" | ");
+    expect(said, `the superseded failure was announced over a completed removal: ${JSON.stringify(said)}`).not.toMatch(/could not reach the server/i);
   });
 
   it("announces a refusal after a real switch EXACTLY once", async () => {

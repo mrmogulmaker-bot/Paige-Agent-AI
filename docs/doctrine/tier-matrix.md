@@ -1391,10 +1391,20 @@ inside a tenant workspace it has switched into (§51), not a cross-tenant reach.
 ### Solo Settings → Team — removing someone from a workspace, `/solo/{account}/settings/team`
 
 **§66, same commit as the ship — and the row is deliberately NOT ticked as live.** This entry
-records a capability that is **not yet released**: the migration `20261048000000` is written, its
-guards are proven against production inside a rolled-back transaction, and nothing is applied. It
-becomes live only when the migration is applied and an authenticated drive confirms it. Until then
-the honest label is `PENDING`, not `SHIPPED`.
+records a capability that is **not yet released**: the migration `20261048000000` is written and its
+guards are proven against production inside a rolled-back transaction.
+
+**How it becomes applied, stated precisely so this paragraph does not falsify itself the moment the
+PR merges.** `.github/workflows/deploy-migrations.yml` runs on every push to `main` touching
+`supabase/migrations/**` and executes `supabase db push --include-all`, so the migration applies
+AUTOMATICALLY on merge — it is not a separate manual step, and `--include-all` handles this file
+being numbered below versions already on `main`. The §32 persisted-apply confirmation (the
+`schema_migrations` row, `to_regprocedure` on the function, and the withdrawn `tenant_members`
+grants) is therefore read back from production immediately AFTER the merge and posted on the PR.
+
+The label moves to `SHIPPED` on that confirmation. Even then the authenticated owner drive remains
+`Authenticated Runtime Proof Owed` — applied is not the same as driven, and neither is the same as
+a person having completed the flow.
 
 An Owner can remove one **Admin or Member** from the workspace they are currently in, from the
 existing member editor on the Team screen. Not only an *active* one: the target lookup deliberately

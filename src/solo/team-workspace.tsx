@@ -241,9 +241,29 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // THE SAFETY NET. A refusal the operator has not dealt with, held so that losing this component
   // cannot lose the outcome of a destructive action. Cleared by every path that means "seen":
   // Cancel, Escape, a retry, and closing the dialog deliberately.
-  const unreadRefusalRef = useRef<string | null>(null);
-  useEffect(() => { unreadRefusalRef.current = removal.error?.message ?? null; }, [removal.error]);
-  useEffect(() => () => { if (unreadRefusalRef.current) toast.error(unreadRefusalRef.current); }, []);
+  const unreadRefusalRef = useRef<{ message: string; tenantId: string } | null>(null);
+  useEffect(() => {
+    unreadRefusalRef.current = removal.error
+      ? { message: removal.error.message, tenantId: removal.tenantAtArm ?? workspace.tenant_id }
+      : null;
+  }, [removal.error, removal.tenantAtArm, workspace.tenant_id]);
+  // SCOPED TO THE WORKSPACE IT IS ABOUT, because the net's first version re-fired a refusal into a
+  // context where it was false. It cannot tell "unread" from "read but not dismissed" — and this
+  // component FOCUSES the alert on every refusal (see the effect below), so it is read by
+  // construction and then recorded as unread anyway. An operator who read "Only the workspace owner
+  // can remove people from this workspace" and then switched to a workspace they DO own was told it
+  // again, about the wrong one, with no name in the sentence to give it away.
+  //
+  // So the net now only speaks where the sentence is still true. It is a backstop for an outcome
+  // destroyed before it could be read, never a replay of one that was.
+  useEffect(() => () => {
+    const unread = unreadRefusalRef.current;
+    // Silence it only where the sentence is PROVABLY about somewhere else. An unknown live tenant —
+    // Exit tenant, a session revalidating — is not evidence that the refusal is false; it is the
+    // case where the operator most needs to hear it, and treating "unknown" as "different" turned
+    // two of this file's own tests red the moment I tried it. Fail toward telling them.
+    if (unread && (!activeTenantRef.current || activeTenantRef.current === unread.tenantId)) toast.error(unread.message);
+  }, []);
   const activeTenantRef = useRef(activeTenantId);
   // Commit-assigned, matching `removalInFlightRef` and the `Modal` `latest` ref. HONEST NOTE:
   // mutation cannot tell this apart from a render-phase assignment, because jsdom runs no
@@ -359,7 +379,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
           return;
         }
         onRemoved?.(refusal.message);
-        onClose();
+        closeAfterOutcome();
         return;
       }
       // If the workspace CHANGED while the call was in flight, this dialog is no longer the right
@@ -393,14 +413,13 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       // The safety net happens to cover the same case — but only by the order two effects commit
       // in. The disarm effect above wipes `removal.error` on a tenant change, and if it commits
       // before the unmount the net has nothing left to re-emit. Routing the switch explicitly is
-      // DETERMINISTIC; the net is the backstop for everything that is not a switch. The ref-clear
-      // is what stops the two agreeing and saying it twice. Belt and braces, deliberately, on the
-      // one outcome class this branch has now lost three separate ways.
+      // DETERMINISTIC; the net is the backstop for everything that is not a switch. (The separate
+      // ref-clear this branch used to carry is gone — `closeAfterOutcome` does it for all six
+      // settle paths now, which is where it belonged.)
       if (switchedAwayFrom(tenantAtArm)) {
-        unreadRefusalRef.current = null;
         setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
         toast.error(refusal.message);
-        onClose();
+        closeAfterOutcome();
         return;
       }
       setRemoval({ stage: "armed", error: refusal, tenantAtArm, nameAtArm });
@@ -423,7 +442,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
         // It reported no workspace at all, which is not the same as reporting a different one.
         ? `This did not come back with a workspace, so nothing is being claimed here. Reopen Team to see the current roster.`
         : `The server reported acting on a different workspace, so nothing is being claimed here. Reopen Team to see the current roster.`);
-      onClose();
+      closeAfterOutcome();
       return;
     }
     if (switchedAwayFrom(tenantAtArm)) {
@@ -431,7 +450,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
       // operator with an ambiguity about a destructive act that completed.
       setRemoval({ stage: "idle", error: null, tenantAtArm: null, nameAtArm: null });
       toast.success(`${identity.primary} was removed from ${nameAtArm}. You have since switched workspace, so this roster does not show it.`);
-      onClose();
+      closeAfterOutcome();
       return;
     }
 
@@ -439,7 +458,7 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
     // the same workspace either way — but naming the one the call was SENT to is what this whole
     // sequence is about, and it stays right if that workspace is renamed mid-call.
     onRemoved?.(`${identity.primary} no longer has access to ${nameAtArm}.`);
-    onClose();
+    closeAfterOutcome();
   };
 
   const changePermission = async () => {
@@ -517,6 +536,12 @@ export function MemberEditor({ member, workspace, onClose, onSaved, onRemoved, o
   // as a toast. Written through the ref rather than through state because this unmounts in the same
   // batch: a `setRemoval` here may never commit before the component is gone.
   const requestClose = () => { if (removalInFlightRef.current) return; unreadRefusalRef.current = null; onClose(); };
+  // Every settle path leaves through here. Written to the ref SYNCHRONOUSLY rather than relying on
+  // the `[removal.error]` effect having flushed: these run in the same batch as the unmount, so a
+  // reply fast enough to beat the passive effect would let the net re-announce a refusal the retry
+  // had already superseded — a "we can't say whether this happened" toast over a roster banner
+  // saying it did. Only the switch branch carried this line; the other five inherited the hazard.
+  const closeAfterOutcome = () => { unreadRefusalRef.current = null; onClose(); };
   return <Modal title={identity.primary} description="Work details describe what this person does. Permission controls what they can access."
     busy={removalInFlight}
     onClose={requestClose}

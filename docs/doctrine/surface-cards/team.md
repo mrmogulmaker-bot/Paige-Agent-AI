@@ -106,7 +106,7 @@ access. Two entry points, one seam — the Team screen, and PAIGE in the rail be
 | Invitations | `tenant_invite_tokens` where `kind = 'team'` |
 | Identity | `profiles` (display name), `auth.users` (email, last sign-in) |
 | Read | `get_solo_team_workspace(_search,_permission,_limit,_offset)` · `get_paige_team_context()` |
-| Write | `set_solo_team_member_work_profile` · `set_solo_team_member_permission` · `create_/resend_/revoke_solo_team_invite(_actor, _expected_tenant_id, …)` (service-role only, behind the `solo-team-invitations` edge function; authority proved by `solo_team_invite_authority`) · `remove_solo_team_member` (Owner-only, **not yet released — migration `20261048000000` is not applied**) |
+| Write | `set_solo_team_member_work_profile` · `set_solo_team_member_permission` · `create_/resend_/revoke_solo_team_invite(_actor, _expected_tenant_id, …)` (service-role only, behind the `solo-team-invitations` edge function; authority proved by `solo_team_invite_authority`) · `remove_solo_team_member` (Owner-only, **not yet applied — migration `20261048000000` applies automatically on merge to `main`**) |
 
 All are `SECURITY DEFINER` with the authority check **in the body**, so the same refusal applies
 whether the request came from the screen or from a sentence.
@@ -168,7 +168,12 @@ the canonical server-verified approval card, and `team_set_work_profile` stays `
 ## Removing someone — merged-pending, not live
 
 **Truth label for this capability alone: `PENDING`.** The code and migration exist on the branch for
-PR (Team removal); nothing is applied to production and no authenticated drive has been performed.
+PR (Team removal) and are not applied to production *yet*. Precisely: `deploy-migrations.yml` applies
+`supabase/migrations/**` automatically on any push to `main`, so merging this PR applies
+`20261048000000` — including its withdrawal of the `anon`/`authenticated` write grants on
+`tenant_members` — without a further manual step. This label moves to `SHIPPED` when the
+persisted-apply proof is read back from production after that merge. The authenticated owner drive
+is separate and remains owed either way.
 
 An Owner removes one **Admin or Member** from the workspace they are in (a suspended membership
 included — see the tier matrix for why the lookup carries no status filter). A switched-in agency
