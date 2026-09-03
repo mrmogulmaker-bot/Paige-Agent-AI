@@ -210,14 +210,19 @@ as `owner_staff` through the caller's JWT) and `configure_tenant_pipeline` (file
 **every** insert or update of `internal_bookings`, but which writers carry a JWT subject decides
 whether the gate runs:
 
-| Writer of `internal_bookings` | Subject | Trigger reaches the gate? |
-|---|---|---|
-| `create_internal_booking`, `create_class_booking`, `reschedule_class_booking` (SQL RPCs) | the authenticated caller | **yes when a staff user calls them** |
-| `booking-manage`, `public-booking` (edge functions) | service role (`admin` client) | no — `auth.uid()` is NULL |
+**The deciding fact is the EXECUTE grant, not whether something is an RPC.** A function granted only
+to `service_role` cannot carry a staff caller at all, so it can never reach the gate:
 
-So a staff member booking on a client's behalf **through the RPCs** takes the `has_any_role` branch;
-the same booking made through the edge functions does not. A fix proof that exercises only the edge
-path would miss the regression entirely.
+| Writer of `internal_bookings` | EXECUTE granted to | Subject | Trigger reaches the gate? |
+|---|---|---|---|
+| **`create_internal_booking`** | `authenticated, service_role` | the authenticated caller | **yes when staff call it** |
+| **`admin_set_booking_status`** | `authenticated, service_role` — called from the **browser** at `src/pages/admin/CalendarAdmin.tsx:174` and `src/components/tenant-calendar/useSoloCalendar.ts:726` | the signed-in staff user | **yes — this is the live staff path** |
+| `create_class_booking`, `reschedule_class_booking` | **`service_role` only** | service role | no — a staff caller cannot execute them |
+| `booking-manage`, `public-booking` (edge functions) | n/a — service-role `admin` client | service role | no — `auth.uid()` is NULL |
+
+So the authenticated staff paths into the trigger are **`create_internal_booking`** and
+**`admin_set_booking_status`**. A fix proof that exercises the edge functions, or the two
+`*_class_booking` RPCs, tests paths where the gate never runs and would miss the regression entirely.
 
 **And this path files a mismatched attribution, which is worth knowing before anyone "fixes" it.**
 `v_actor := CASE WHEN p_actor_type IN ('owner_staff','client') THEN v_uid ELSE NULL END`, and the
