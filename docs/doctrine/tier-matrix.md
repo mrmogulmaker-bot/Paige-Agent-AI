@@ -2071,19 +2071,22 @@ landed same-day, this time in the same PR/commit as the row update.)
 **What a person can now do.** From an empty catalog, "Add your first offer" opens a slide-over
 editor; a name is the only requirement; any offer-definition field (summary, description, kind,
 etc.) left blank is written as NULL — never an invented value — but the on-screen wording is
-per-field, not a uniform mark: the em-dash (`—`) is reserved for an unrecorded *price*
-(`formatMoney`'s `if (!amount) return { text: "—", unstated: true }`); a blank kind reads "Kind not
-stated", a blank summary/description reads "No description written yet.", and the drawer's own
-fields read "Not stated" / "Not recorded" (Codex finding, PR #860 — the prior wording claimed every
-blank field renders as the same em-dash, which only the price column does). The price is a
-different *object* with a different rule on top of that: clearing it does not null `unit_amount`
-(non-nullable) — it sets the row `active = false` and leaves the old figures stored, so a read that
-skips inactive rows shows "unstated" for a reason distinct from a genuinely NULL offer field (the
-two look identical from the UI but are not the same fact, and a future reader of the raw table
-needs to know that). An existing offer is edited from the drawer its row already opens, and moves
-through draft / active / paused / archived from the same place. Archive asks first. The editor
-carries NO status control: lifecycle sits beside the offer, so nobody publishes something by
-accident while renaming it.
+per-field, not a uniform mark: a blank kind reads "Kind not stated", a blank summary/description
+reads "No description written yet.", and the drawer's own fields read "Not stated" / "Not recorded"
+(Codex finding, PR #860, round 2 — the prior wording claimed every blank field renders as the same
+em-dash). The price line's own wording is narrower still (round 3): `priceLine()` returns "No price
+stated" when BOTH presentation and amount are blank, "Contact for pricing" / "No price shown" for
+the `contact`/`none` presentations, and the em-dash (`—`) only in the remaining case — a
+presentation was recorded (`fixed`/`from`) but no amount was — so the em-dash is not a general
+"unrecorded price" mark, it is that one specific gap. The price is a different *object* again with
+a different clearing rule: setting it blank does not null `unit_amount` (non-nullable) — it sets
+the row `active = false` and leaves the old figures stored. That is NOT invisible in the UI the way
+the wording above might suggest (round 3 finding): the offer detail drawer lists every recorded
+plan, active or not, appending "(inactive)" to a deactivated one with its old amount still shown —
+only the *lead*-price line on the row/card filters inactive rows out. An existing offer is edited
+from the drawer its row already opens, and moves through draft / active / paused / archived from
+the same place. Archive asks first. The editor carries NO status control: lifecycle sits beside the
+offer, so nobody publishes something by accident while renaming it.
 
 | Tier | Can write an offer | Why |
 |---|---|---|
@@ -2091,7 +2094,7 @@ accident while renaming it.
 | Solo owner / admin | ✓ | `is_tenant_admin()` inside the function body, not the EXECUTE grant (§59). |
 | Solo member | ✗ refused, and the acts are OMITTED not disabled | A disabled control says "later"; the truth is "not your role". |
 | Sub-account owner / admin | ✓ own catalog only | Same session-resolved scope; a foreign offer id simply finds nothing. |
-| Agency (as a tenant) | ✓ own catalog only | Never a sub-account's — the tenant is never taken from the caller. |
+| Agency (as a tenant) | **UI: ✗ · RPC: ✓ — an exposed gap, not a feature** | `tierFeatures.ts` excludes `CREATION_SURFACES` from `AGENCY_FEATURES` by owner ruling (§60/§61: agency manages sub-accounts, does not run its own campaigns) and `SoloEntry` redirects an agency caller away from `/solo/*` — so the surface is unreachable through the app. But neither RPC's body checks `account_type`; an agency owner/admin (a real `tenant_members` row with `role IN ('owner','admin')` on their own tenant) can call `save_solo_offer`/`set_solo_offer_status` directly and both `current_user_tenant_id()` and `is_tenant_admin()` succeed (Codex finding, PR #860, round 3). Same class as the `customer_portal_invite` UI-only lock §60 already documents — recorded honestly rather than presented as intended agency write support; not fixed here, per §31/§13 this row states what exists, it does not silently patch the server. |
 | Client / Anonymous | ✗ | `REVOKE ALL … FROM PUBLIC, anon`, verified live: `anon_can_execute: false`. |
 
 **Superseded same day by #863.** `cd9d2e21`'s delayed Codex review (see lessons-learned) returned
@@ -2160,7 +2163,12 @@ allowlist, and cross-field validation of `kind` against `billing_interval`. Whet
 operator acting on a tenant's catalog *should* write without a membership row (i.e. whether
 `is_tenant_admin` should carry an operator bypass here the way other admin-facing RPCs do) is a
 product decision, not a bug this row fixes silently — flagged, not resolved, per the table above.
-A visual/colour pass on the Solo Catalog buttons is requested and explicitly deferred to Claude
+**Also owed: closing the agency RPC gap** — either `save_solo_offer`/`set_solo_offer_status` gain an
+explicit `account_type NOT IN ('agency','enterprise')` guard matching the UI's `CREATION_SURFACES`
+exclusion, or the owner rules that agency write access is intentional and the UI gate is what's
+wrong. Either resolution is a code change outside this docs-only PR's scope; recording the gap
+honestly is what this PR does. A visual/colour pass on the Solo Catalog buttons is requested and
+explicitly deferred to Claude
 Design (§00) — no design decision made here.
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
