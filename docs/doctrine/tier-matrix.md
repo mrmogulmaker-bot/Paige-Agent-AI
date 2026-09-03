@@ -1654,14 +1654,21 @@ metadata, explicitly labelled, never promoted to a billing column, and **null on
 228 rows** because those calls were never priced upstream. The key is always present so the absence
 is stated. See the decision log entry for MET1.
 
-### Platform Billing — Foundation A seams (branch `claude/billing-foundation-a`, PR #816) — **NOT LIVE**
+### Platform Billing — Foundation A seams (PR #816, merged `f455d8a5` 2026-09-03) — **LIVE**
 
-**§66, same commit as the ship — recorded as PENDING, not as shipped.** Nothing owner-visible
-ships in A (the Solo Billing screen is Foundation C). What changes per tier is the set of
-Paige-callable billing seams (§10) and who they refuse; the rows below say what the migration
-`20261047000000` will enforce once it is merged under Gate B and persisted on prod. Until that
-confirmation lands (deploy-migrations `db-live` tag, objects queried on prod), every cell is a
-design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants) — never "live".
+**§66.** Nothing owner-visible ships in A (the Solo Billing screen is Foundation C, not built). What
+changes per tier is the set of Paige-callable billing seams (§10) and who they refuse. **Migration
+`20261045000000` is APPLIED on prod** — the version is in `supabase_migrations.schema_migrations`,
+and the 3 tables, 12 functions, 6 policies and 4 triggers were queried directly on ref
+`xygzykjyynhzqytbqnzu` (2026-09-03), so the rows below are shipped truth, not a design claim. They
+were also proven pre-merge inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 mutants caught).
+
+**§13 correction, 2026-09-03:** this block said `20261047000000` — PR #827 renamed the version
+inside it to its own migration while editing the file. Foundation A's migration is `20261045000000`;
+`20261047000000` is the invitation slice. Corrected here rather than left to mislead the next reader.
+
+**Still not live, deliberately:** `PLATFORM_BILLING_PORTAL_ENABLED` is not flipped, so the portal row
+below refuses every caller `not_enabled` regardless of tier until an authenticated owner drive lands.
 
 | Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
 |---|---|---|---|---|---|---|---|---|
@@ -1678,6 +1685,43 @@ design claim proven only inside `BEGIN … ROLLBACK` (64/64 properties, 5/5 muta
 Owner-only. **No delivery exists:** "receives" means designated, not delivered to. **Neither
 designation creates, changes, transfers, implies, or records legal ownership, equity, corporate or
 trust ownership, trustee or co-owner status** (owner ruling R27, 2026-09-02).
+
+### Platform Billing — Foundation C, the Solo Billing screen (PR #833) — **BUILT, NOT MERGED**
+
+**§66.** Foundation A's seams had no renderer. Foundation C mounts them. The row below records what
+each tier SEES on `Solo Settings › Billing` once this merges; until it does, the shipped surface is
+still the pre-C tab, which rendered the plan CATALOGUE price for every workspace.
+
+**The §13 correction this slice makes.** The shipped tab joined `get_tenant_platform_subscription()`
+to `platform_subscription_plans` and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027`.
+All four live `platform_subscriptions` rows carry a NULL `stripe_customer_id` AND a NULL
+`stripe_subscription_id`; three are `test_seed: true` and the fourth is `revenue_class:
+promotional`, `provider_state: not_created` (queried on ref `xygzykjyynhzqytbqnzu`, 2026-09-03). A
+catalogue row is a price LIST. The catalogue is no longer an input to this screen.
+
+**Not yet reachable, and why.** Promotional, trial and paid states exist in the resolver but cannot
+be reached, because the entitlement projection that would prove them is **Foundation B** (Gate 1
+packet §4.3 R11). Until B lands, a top-level Solo workspace resolves to `billing-unavailable ·
+no_billing_account`. R13 binds: absence of a record is never inferred as a promotional grant.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | **`role-refusal`** — R22 makes VIEW a permission of its own, and the server publishes `can_view_billing` Owner-only in A. (**§13 correction:** this row first read "same state as the Owner — the plan is not a secret", which recorded a deviation from R22 that no owner ruling supports.) | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
+| Manage billing (portal entry) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
+| Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
+| Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
+| Usage & limits | shown (`UNAVAILABLE`) | shown | shown | shown | shown | shown | shown | — |
+| Client-billing pointer | shown | shown | shown | shown | shown | shown | shown | — |
+
+**How each row above is evidenced, so a reader can tell proof from inference (§13).** The Solo Owner
+and Solo Admin/Member columns are **rendered** (`scripts/live-drive/settings-billing-drive.mjs`,
+116/116 across 4 viewports × 2 palettes + the failed-read and read-only worlds). Every scope column —
+God, Agency, Enterprise, Sub-account — is **proven at the resolver** by the scope enumeration in
+`src/solo/billing-contract.test.ts`, not rendered. The God row's `plan-no-workspace` additionally
+**infers** that `billing_active_tenant_id()` returns null for an act-as pointer with no seat; that is
+Foundation A's proven behaviour, not something this slice re-tested. **Authenticated runtime on the
+deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
+billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
 
 ## Known ambiguities and hazards (log, don't hide — §13)
 
