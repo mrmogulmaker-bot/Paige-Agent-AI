@@ -10,6 +10,24 @@ const out = path.resolve(
   "scripts/live-drive/artifacts/setup-business-context-render",
 );
 const results = [];
+async function assertOpaqueDrawer(dialog, theme) {
+  const actual = await dialog.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const footer = el.querySelector(".setup-paige-drawer__footer");
+    return {
+      theme: el.closest("[data-pg]")?.getAttribute("data-pg"),
+      surface: style.getPropertyValue("--pg-surface").trim(),
+      background: style.backgroundColor,
+      footer: footer ? getComputedStyle(footer).backgroundColor : null,
+    };
+  });
+  const opaque = (color) =>
+    color && color !== "transparent" &&
+    !/^rgba\(.*,[\s]*0(?:\.\d+)?\)$/.test(color);
+  if (actual.theme !== theme || !actual.surface ||
+      !opaque(actual.background) || !opaque(actual.footer))
+    throw new Error("Setup drawer lost its opaque theme: " + JSON.stringify(actual));
+}
 await new Promise((resolve, reject) => {
   const probe = net.createServer();
   probe.once("error", reject);
@@ -74,6 +92,9 @@ try {
         { waitUntil: "networkidle" },
       );
       await page.locator(".setup-brief").waitFor({ timeout: 20000 });
+      // Production themes the shell subtree, not html. A body portal must carry its
+      // own theme boundary; leaving the harness's html tokens masks transparent drawers.
+      await page.evaluate(() => document.documentElement.removeAttribute("data-pg"));
       await page.evaluate(() => {
         const label = document.createElement("div");
         label.textContent =
@@ -213,6 +234,7 @@ try {
         .getByRole("button", { name: "Add knowledge", exact: true })
         .click();
       const knowledgeDialog = page.getByRole("dialog");
+      await assertOpaqueDrawer(knowledgeDialog, theme);
       await knowledgeDialog.getByLabel(/^Title/).fill("Harness knowledge link");
       await knowledgeDialog
         .getByLabel(/^HTTPS link/)
@@ -256,6 +278,7 @@ try {
         .click();
       const dialog = page.getByRole("dialog");
       await dialog.waitFor();
+      await assertOpaqueDrawer(dialog, theme);
       results.push({
         key: `${width}x${height}-${theme}-drawer`,
         ...(await dialog.evaluate((el) => {
@@ -271,6 +294,14 @@ try {
       await page.screenshot({
         path: path.join(out, `${width}x${height}-${theme}-drawer.png`),
       });
+      await dialog.getByRole("button", {name: "← Back to Setup", exact: true}).click();
+      await page.getByRole("tab", {name: "People & email", exact: true}).click();
+      await page.getByRole("button", {name: "Check or change address", exact: true}).click();
+      const emailDialog = page.getByRole("dialog");
+      await assertOpaqueDrawer(emailDialog, theme);
+      await emailDialog.locator(".setup-email-composer input").fill("harness-business");
+      await emailDialog.getByRole("button", {name: "Check availability", exact: true}).click();
+      await page.screenshot({path: path.join(out, `${width}x${height}-${theme}-managed-email.png`)});
       await context.close();
     }
 } finally {

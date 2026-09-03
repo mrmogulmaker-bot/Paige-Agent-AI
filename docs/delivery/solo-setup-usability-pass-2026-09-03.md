@@ -132,6 +132,32 @@ API denial, and role/account switches—not just hidden buttons.
 
 ## Collision-safe four-part documentation handoff
 
+### Follow-up: opaque Setup drawers
+
+The managed-email, Knowledge and Paige guide drawers portal to document.body.
+Production palette tokens live on the Solo shell's data-pg subtree, so those
+portals previously lost their background and control styling. Drawer now applies
+the same resolved theme mapping as the Solo shell to its own backdrop. No shared
+theme, shell, CSS, sender registry, access policy or provider code was changed.
+Focus restoration, Escape, discard confirmation and the existing scroll owner
+remain unchanged.
+
+Automated: the two new light/dark portal tests failed before the repair and passed
+afterward; 35 component tests pass. Independent peer review reran those tests and
+found no remaining material issue. Rendered structural: 88 existing layout samples
+pass, with additional opacity checks for all three drawers at four supported
+viewports in both themes. The harness now removes its artificial html theme scope
+before testing portals, matching the production token boundary. The managed-email
+drawer/footer are opaque with reachable controls. These are synthetic transports,
+not authenticated availability, registration, persistence or production proof.
+
+A separate live registry-versus-connector ownership conflict was confirmed by
+read-only inspection. The global uniqueness guard is behaving correctly and was
+not bypassed. Correcting it requires a specifically approved two-tenant identity
+alignment, including an Agency fallback sending identity. No production records
+were changed. Keep tenant-specific preflight/before-state in the private task
+handoff, not this repository. Authenticated Runtime Proof Owed.
+
 1. **Destination:** Setup surface-card owner (#731), `docs/brain` state ledger and master reference.
 2. **What changed:** the Solo UI/draft transitions listed above, not new durable schemas or model consumers.
 3. **Truth/evidence:** branch-local PARTIAL; 67 focused automated tests at last code edit;

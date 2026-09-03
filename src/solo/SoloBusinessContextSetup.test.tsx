@@ -7,6 +7,7 @@ import { cleanSoloSetupBrief } from "./settings-setup-contract";
 import { EMPTY_PAIGE_PROFILE } from "./settings-business-context-contract";
 
 const state = vi.hoisted(() => ({
+  theme: "light",
   accessScope: "owner_full" as "owner_full" | "admin_operational" | "read_only",
   saving: false,
   activeTenantId: "tenant-a",
@@ -77,6 +78,7 @@ vi.mock("./data/useSoloBusinessContext", () => ({
 vi.mock("@/hooks/useConfirm", () => ({
   useConfirm: () => ({ confirm: state.confirm, dialog: null }),
 }));
+vi.mock("next-themes", () => ({ useTheme: () => ({resolvedTheme: state.theme}) }));
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -120,6 +122,7 @@ describe("canonical Solo Setup business context", () => {
     vi.unstubAllGlobals();
   });
   beforeEach(() => {
+    state.theme = "light";
     document.body.innerHTML = "";
     state.accessScope = "owner_full";
     state.saving = false;
@@ -154,6 +157,20 @@ describe("canonical Solo Setup business context", () => {
       legalName: "Canonical Solo LLC",
       representativeUserIds: ["owner-1"],
     });
+  });
+
+  it.each(["light", "dark"])("gives the body-portaled managed-email drawer its own %s theme scope", async (theme) => {
+    state.theme = theme;
+    state.registrationAvailable = true;
+    const {host, root} = await mount();
+    await act(async () => button(host, "People & email").click());
+    await act(async () => button(host, "Check or change address").click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.closest('[data-pg]')?.getAttribute("data-pg")).toBe(theme);
+    expect(host.contains(dialog)).toBe(false);
+    await act(async () => button(document.body, "← Back to Setup").click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => root.unmount());
   });
 
   it("renders exactly the approved five accessible subtabs in order", async () => {

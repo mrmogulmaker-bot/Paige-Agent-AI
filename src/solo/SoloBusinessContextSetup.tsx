@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useTheme } from "next-themes";
 import { Link, useNavigate } from "react-router-dom";
 import {
   BookOpen,
@@ -293,6 +294,7 @@ function Drawer({
   footer?: ReactNode;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
   useEffect(() => {
     const before = document.body.style.overflow;
     const opener = document.activeElement as HTMLElement | null;
@@ -343,6 +345,7 @@ function Drawer({
   return createPortal(
     <div
       className="setup-paige-drawer__backdrop"
+      data-pg={resolvedTheme === "light" ? "light" : "dark"}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
