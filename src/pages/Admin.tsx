@@ -22,7 +22,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
       throw err;
     }
   });
-import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
+import { useNavigate, Routes, Route, useParams, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageSkeleton } from "@/components/ui/page";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -32,6 +32,12 @@ import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import {
+  WORKSPACE_CHOOSER_PATH,
+  WORKSPACE_CHOOSER_SETTLED_PARAM,
+  doorWouldAskAgain,
+  workspaceRecordUsable,
+} from "@/lib/auth/workspaceEntry";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 import { RequireFeature } from "@/components/tier/RequireFeature";
 import { useTierFeatures } from "@/hooks/useTierFeatures";
@@ -252,11 +258,39 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
-  const { isPlatformStaff, activeTenantId, activeTenant, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
+  const { isPlatformStaff, activeTenantId, activeTenant, tenants, accountContextLoading, accountContextStatus, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
   // §51-safe canonical tier resolver — tierKey === "solo" ONLY for a standalone,
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
   const { tierKey, soloStandalone, loading: tierLoading } = useTierFeatures();
+  // `/admin/*` is ONE route element, so this component renders for every path
+  // beneath it. The entry question belongs to the door itself — see the gate below.
+  // Lower-cased because React Router matches routes case-insensitively: `/Admin`
+  // mounts this component just as `/admin` does, and a literal compare would let
+  // any non-lowercase spelling walk straight past the entry question and resume a
+  // parked context — the exact behaviour the ruling removes.
+  // Secondary to the session record, and honoured ONLY on a browser that cannot
+  // hold one — see WORKSPACE_CHOOSER_SETTLED_PARAM for why that condition is the
+  // whole of its safety. Read from `window.location` because it must survive the
+  // chooser's full-page assign, and read PURELY: an earlier revision stripped the
+  // param here to stop it being bookmarked, which made the render mutate the value
+  // it reads. React re-invoking a mount render then saw a URL the discarded pass
+  // had already stripped and rebuilt the very loop this marker prevents.
+  const chooserSettledOnThisHop =
+    !workspaceRecordUsable() &&
+    (() => {
+      try {
+        return new URLSearchParams(window.location.search).get(WORKSPACE_CHOOSER_SETTLED_PARAM) === "1";
+      } catch {
+        return false;
+      }
+    })();
+
+  // Lower-cased because React Router matches routes case-insensitively: `/Admin`
+  // mounts this component just as `/admin` does, and a literal compare would let
+  // any non-lowercase spelling walk straight past the entry question and resume a
+  // parked context — the exact behaviour the ruling removes.
+  const atAdminDoor = useLocation().pathname.replace(/\/+$/, "").toLowerCase() === "/admin";
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +378,70 @@ const Admin = () => {
         <PageSkeleton />
       </AdminLoaderBoundary>
     );
+  }
+
+  // ENTRY ASKS; IT DOES NOT RESUME (owner ruling 2026-09-02).
+  //
+  // `/admin` is the door a RESTORED session comes through, and until now it went
+  // straight to whichever context `active_tenant_id` was parked on. That is how an
+  // owner who expected their Solo workspace was placed in a sub-account instead:
+  // a previous agency act-as had left a membership row and a parked context behind
+  // (#806), Gate B below read the child's tier, and the sub-account shell mounted
+  // with nothing in it that said "this is not where you live."
+  //
+  // A FRESH sign-in already asks — `Auth.tsx` runs `shouldOfferAccountPicker` over
+  // the caller's active memberships and routes to `/choose-account`. This applies
+  // the SAME rule to the restored-session door. It is not a new product decision;
+  // it is the shipped one, finally applied at both entrances.
+  //
+  // IT FIRES ON THE DOOR, NOT ON THE SUBTREE — and that distinction is the whole
+  // of a confirmed infinite redirect. `/admin/*` is a single route element, so an
+  // unscoped check here runs on `/admin/marketplace` and `/admin/setup` too: the
+  // two paths `RequireSetupComplete` deliberately exempts so a tenant can choose a
+  // playbook. A multi-context tenant mid-setup then cycled forever — chooser →
+  // their workspace root → setup gate → `/admin/marketplace` → chooser — and could
+  // never reach Setup to break out of it.
+  //
+  // THE COST OF THAT SCOPING, STATED RATHER THAN GLOSSED. An earlier version of
+  // this comment justified it as "anything below the door is somewhere the person
+  // has already navigated to", which is FALSE for a restored tab, a bookmark or a
+  // shared link: landing directly on `/admin/contacts` with a wrongly-parked
+  // context still drops the person into that context's shell without asking. That
+  // is a narrower version of the reported defect and it is not closed here.
+  // Widening the gate to the subtree re-opens the Setup cycle above, and the fix
+  // for THAT collides with a standing shell-ownership directive, so the ordering
+  // is #826 first. Recorded so the gap is known rather than assumed away — a
+  // comment asserting a property the code does not have is exactly what this
+  // repair keeps being caught by.
+  //
+  // THREE MORE THINGS IT DELIBERATELY WILL NOT DO:
+  //  • It never fires until the account context is genuinely settled. Asking off a
+  //    half-resolved set would itself be a fallback into a wrong account.
+  //  • It never fires for a single-context person — there is nothing to choose, and
+  //    the chooser would only send them back.
+  //  • It never fires for platform staff, who move between tenants through the
+  //    audited operator seam (§53), not this one.
+  //
+  // `hasEnteredWorkspace` is what stops it asking twice. It is keyed on the tenant
+  // id, so a context the person did NOT choose re-arms the question by itself.
+  //
+  // The question itself lives in `doorWouldAskAgain` (§18) rather than here,
+  // because the chooser must be able to ask whether THIS door would accept before
+  // it hands back — and a copy of the rule over there drifted from this one, which
+  // is round eight's finding 3. Only the two conditions this surface alone can see
+  // stay local: being at the door, and the context having resolved.
+  if (
+    atAdminDoor &&
+    !accountContextLoading &&
+    accountContextStatus === "ready" &&
+    doorWouldAskAgain({
+      tenants,
+      activeTenantId,
+      isPlatformStaff,
+      chooserSettled: chooserSettledOnThisHop,
+    })
+  ) {
+    return <Navigate to={WORKSPACE_CHOOSER_PATH} replace />;
   }
 
   // Flag-gated Solo-shell takeover (§58 byte-unchanged when the flag is unset/false).

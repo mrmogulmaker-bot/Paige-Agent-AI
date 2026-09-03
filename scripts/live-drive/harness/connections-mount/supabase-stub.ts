@@ -159,6 +159,9 @@ function seed(): Record<string, Row[]> {
         industry: "Consulting",
       },
     }],
+    // Settings › Billing designations (Foundation C). Seeded EMPTY on purpose: an empty
+    // workspace is the first-use state, and it is the one every real workspace is in today.
+    platform_billing_contacts: [],
     // Billing joins the plan to the subscription on `plan_slug`/`plan_id` and prices
     // it from `monthly_price_cents`/`annual_price_cents`. Seeding only id+name left
     // the card rendering "Not provided" for Price and Renewal — a partial stub makes
@@ -191,7 +194,11 @@ function load(): Record<string, Row[]> {
   return seed();
 }
 
-const db: Record<string, Row[]> = load();
+// SEED FIRST, then overlay what was stored. `load()` returns a store written by an EARLIER page
+// load, which may predate a table this file now reads — and the billing handlers would then
+// dereference `undefined` and throw synchronously out of `supabase.rpc`, pinning the surface at
+// "Clearing and resolving this account…". Spreading the seed underneath is the migration.
+const db: Record<string, Row[]> = { ...seed(), ...load() };
 
 function persist() {
   try {
@@ -457,6 +464,72 @@ export const supabase = {
         billing_period: "monthly",
         current_period_end: new Date(Date.now() + 20 * 86_400_000).toISOString(),
         cancel_at_period_end: false,
+      }));
+    }
+
+    // ---- Settings › Billing (Foundation C). The stub answers the SHIPPED shapes of the three
+    // billing seams so the destination renders its real content under measurement rather than a
+    // spinner. `data=issues` swaps the authority read for a failure, so a drive can show the
+    // failed-read state is reachable and is NOT rendered as a statement about the account.
+    //
+    // The mapping is deliberately `absent` in every mode: that is what PRODUCTION currently
+    // answers for every workspace, and a harness that fixtured a mapped account would be
+    // measuring a surface nobody has.
+    if (name === "get_workspace_billing_authority") {
+      if (state() === "issues") return Promise.resolve({ data: null, error: { message: "Harness: billing authority unreadable" } });
+      return Promise.resolve(ok([{
+        tenant_id: TENANT,
+        scope: "top_level_solo",
+        role: "owner",
+        can_manage_billing: state() !== "readonly",
+        billing_account_state: "absent",
+        can_view_billing: state() !== "readonly",
+        receives_billing_notices: db.platform_billing_contacts.some((c) => c.user_id === "u1" && !c.revoked_at),
+        billing_contact_state: db.platform_billing_contacts.some((c) => c.designation === "primary_contact" && !c.revoked_at) ? "designated" : "none",
+        paid_activation_ready: db.platform_billing_contacts.some((c) => c.designation === "primary_contact" && !c.revoked_at),
+      }]));
+    }
+    if (name === "get_workspace_billing_contacts") {
+      return Promise.resolve(ok(db.platform_billing_contacts.filter((c) => !c.revoked_at).map((c) => ({
+        id: c.id, user_id: c.user_id, designation: c.designation,
+        role: c.user_id === "u1" ? "owner" : "admin",
+        display_name: (TEAM.find((m) => m.user_id === c.user_id) ?? { full_name: null }).full_name,
+        email_verified: true, still_eligible: true,
+        designated_at: c.designated_at, designated_by: "u1",
+      }))));
+    }
+    // The write is modelled as the real one behaves — it INSERTS and the caller RE-READS, so a
+    // drive that designates and reloads is exercising persistence, not a local patch.
+    if (name === "platform_billing_contact_designate") {
+      db.platform_billing_contacts.push({
+        id: `pbc-${db.platform_billing_contacts.length + 1}`,
+        user_id: String(args?.p_user_id ?? ""),
+        designation: String(args?.p_designation ?? "primary_contact"),
+        designated_at: new Date().toISOString(),
+        revoked_at: null,
+      });
+      persist();
+      return Promise.resolve(ok(null));
+    }
+    if (name === "platform_billing_contact_revoke") {
+      const row = db.platform_billing_contacts.find((c) => c.id === String(args?.p_contact_id ?? ""));
+      if (row) row.revoked_at = new Date().toISOString();
+      persist();
+      return Promise.resolve(ok(null));
+    }
+    // Settings › Team, and the candidate list Billing reads through it (§18 — one roster read).
+    if (name === "get_solo_team_workspace") {
+      return Promise.resolve(ok({
+        tenant_id: TENANT, tenant_name: TENANT_NAME, viewer_permission: "owner",
+        can_manage_profiles: true, can_manage_invitations: true, can_change_permissions: true,
+        total_members: TEAM.length,
+        members: TEAM.map((m, i) => ({
+          membership_id: `mem-${i + 1}`, user_id: m.user_id, full_name: m.full_name,
+          email: `${m.user_id}@harness.example.invalid`, avatar_url: null, status: "active",
+          permission: i === 0 ? "owner" : "admin", is_owner: i === 0,
+          job_title: null, responsibilities: null, last_sign_in_at: null,
+        })),
+        invitations: [],
       }));
     }
 

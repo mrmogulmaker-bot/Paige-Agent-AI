@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from "react";
-import { MemberAccountSwitcher } from "@/components/auth/MemberAccountSwitcher";
+import { WorkspaceExitControl } from "@/components/auth/WorkspaceExitControl";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Bell, Blocks, Building2, CircleDollarSign, FileLock2, Link2, ShieldCheck, Users } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -267,7 +267,7 @@ return <TenantCommandCenterShell
 accountName={accountContext.accountName}
 accountType={accountContext.accountType}
 userRole={shellRole}
-accountControls={<MemberAccountSwitcher />}
+accountControls={<WorkspaceExitControl />}
 contextualNavigation={contextualNavigation}
 soloPaigeWorkspace={<SoloPaigeWorkspace key={accountEpochKey} full={route==='paige'} dockedTab={paigeDockedTab} onDockedTabChange={setPaigeDockedTab}/>}
 paigeFull={route==='paige'}
