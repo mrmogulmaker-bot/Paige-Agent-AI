@@ -1654,9 +1654,21 @@ mounts a component in isolation proves the component, never its place.** When a 
 a shell that takes space away from it, at least one gate has to render it *in* that shell, at the
 real column width, or the number of green checks is measuring the wrong thing. 344 of them did.
 
-*Corollary, also earned here:* the new gate was run **red first** (138/152, naming the exact tabs
-that were clipped) before it was run green (146/146). A gate written after a fix, never seen to fail,
-is a hypothesis — the one that shipped this regression had 344 checks and no arm that could fail on it.
+*Corollary, also earned here:* the new gate was run **red first** (naming the exact tabs that were
+clipped) before it was run green. A gate written after a fix, never seen to fail, is a hypothesis —
+the one that shipped this regression had 344 checks and no arm that could fail on it.
+
+*And the sting in the tail:* **the replacement gate's own model of the shell was wrong, and an
+independent reviewer caught it.** It subtracted the BASE grid (`216px | 1fr | minmax(340px,26vw)`)
+while Solo *overrides* the PAIGE column to `minmax(440px,34vw)` docked and `minmax(620px,52vw)`
+expanded, and compacts the rail under an overlay below 1080px. So it claimed 920px at 1536 where the
+real docked column is 797px, and 468px at 1024 where the real overlay leaves 952px — one case easier
+than production, one harsher — and never tested the narrowest real column at all (439px, PAIGE
+expanded on a 1366 laptop). Corrected, the regression was worse than first reported: four of six tabs
+clipped, not three. **A gate is only as good as its model of where the thing lives**, and a
+plausible-looking geometry constant is exactly the kind of thing that is never checked because it
+looks like arithmetic rather than a claim. Derive it from the component that sets it, cite the line,
+and drive every posture that component can be in — not just the one you happened to think of.
 
 ---
 
