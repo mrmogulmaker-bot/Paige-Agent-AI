@@ -308,3 +308,22 @@ describe("a workspace switch leaves nothing of the previous workspace behind", (
     expect(src).toContain("workspaceId={activeTenantId}");
   });
 });
+
+describe("the screen's own Refresh control refreshes this panel too", () => {
+  it("re-reads the rail when \"Refresh current data\" is pressed", async () => {
+    harness.result = { data: [railRow()], error: null };
+    await settle("workspace-one");
+    expect(harness.calls.length).toBe(1);
+
+    // Without `activity.refresh()` in the screen's refresh handler the panel sits on its last
+    // read until a 15s poll or a window focus — so the one control a person reaches for after
+    // watching a read fail does nothing to the panel they were watching.
+    const button = Array.from(host.querySelectorAll("button"))
+      .find((node) => node.getAttribute("aria-label") === "Refresh current data");
+    expect(button, "the screen's refresh control must exist").toBeTruthy();
+    await act(async () => { button!.dispatchEvent(new MouseEvent("click", { bubbles: true })); await tick(); });
+
+    expect(harness.calls.length).toBeGreaterThan(1);
+    expect(harness.calls.every((c) => c === "get_solo_rail_activity")).toBe(true);
+  });
+});
