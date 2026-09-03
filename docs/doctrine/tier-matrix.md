@@ -2263,10 +2263,20 @@ narrower than either option this row used to weigh: the guard refuses **every** 
 (Agency, sub-account, AND Enterprise) rather than picking one `account_type <> 'x'` exception list,
 because the owner ruling was "Solo is the only account type allowed... right now," not a
 per-tier carve-out — closing the earlier draft's Enterprise-inclusion mistake (Codex, PR #860,
-round 4) by refusing everyone uniformly instead of trying to name every tier to exclude. A visual/colour pass on
-the Solo Catalog buttons is requested and
-explicitly deferred to Claude
-Design (§00) — no design decision made here.
+round 4) by refusing everyone uniformly instead of trying to name every tier to exclude.
+
+**§13 correction (2026-09-03) — the visual-pass deferral above is superseded.** The owner explicitly
+overrode §00 for this surface only: *"Claude design is probably not going to be a good option for us,
+so can you go back in and start handling the designs for yourself... you know this area better than
+anyone at this point."* CC then designed and shipped the premium-workspace visual upgrade itself
+(layered card surfaces, tinted state pills, restrained header/canvas washes, drawer polish, hover/
+focus/motion states — Catalog-local CSS/TSX only, `src/solo/catalog-offers.css` +
+`src/solo/catalog-offers.tsx`, zero shared-token/shared-component changes, all six locked Campaigns
+tabs and PR #881's container-query nav fix untouched). No Claude Design step ran; this is CC-authored
+design under a scoped, one-time owner authorization — not the standing §00 posture, which remains the
+default everywhere else. Flow-prototype (the mandatory pre-implementation prototype) preceded the
+port; a throwaway state-switcher HTML artifact was built and reviewed against every required state
+before any production file was touched.
 
 ### Platform Billing — truthful account status, items 1–3 (PR #865, merged `5ae7a34a` 2026-09-03) — **LIVE**
 
