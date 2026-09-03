@@ -1901,6 +1901,39 @@ PGRST116. The predicate matches `is_tenant_admin()` exactly. `canManage` is `own
 words that they cannot change it. Slice 2A exposes no write, so `canManage` currently gates only
 that notice; Slice 2B's command seam is what it will really gate.
 
+**Round 9 — Codex, five findings, every one real and every one fixed.** Two were §9 exposure and
+neither was theoretical. The hook wrote its state inside `useEffect`, i.e. after paint, so on the
+render where `activeTenantId` changes IN PLACE — which is exactly what an operator's `switchTenant`
+does, without remounting, because `GrowthHub` is keyed by route rather than tenant — it still
+returned the PREVIOUS workspace's `ready` offers: another tenant's names, descriptions and prices
+under the newly selected workspace, for one paint. Fixed by adopting the synchronous `visibleState`
+guard that `useSoloCampaigns`, the sibling hook on this same tab, already had. Separately, an open
+detail drawer holds a snapshot detached from the list it came from, and its cleanup watched
+`[tab, segment]` but not the tenant — so after a switch it kept showing the previous workspace's
+record indefinitely. The remaining three: the drawer dropped a recorded instalment count so a
+bounded plan read as open-ended; the bare `/growth/catalog` kept showing Published assets after the
+type query was dropped without unmounting; and `money()` divided by 100 for every currency, so a
+recorded ¥500 rendered as "5 JPY" and KWD 500 as "5 KWD" instead of 0.500 — reachable because
+`tenant_prices.currency` carries no CHECK and its writer has no allowlist.
+
+**Two of that round's first five guards were FALSE, and the break-test is what caught them.** Both
+passed with their own defect reintroduced: the drawer guard read the whole drawer's text and was
+satisfied by the separate "Price shown" row, which already carries the arithmetic; and the
+tenant-switch guard read the hook's final value, but `act()` flushes effects before it returns, so
+it inspected the state the effect had already corrected — the single paint the fix exists for had
+closed before the assertion ran. Both were rewritten and all six of this slice's late fixes are now
+proven red against their own defect. Recorded because a guard that cannot fail is worse than no
+guard, and only running the perturbation distinguishes the two.
+
+**A THIRD migration-version collision, and this one names the guard's blind spot.** #845 took
+`20261048000000` and merged AFTER this branch re-grounded on main and ran `lint:migration-versions`
+clean at that number. The guard compares against `origin/main`; #845's migration was on an unmerged
+branch at the time, so the guard was structurally blind to the only place the collision existed.
+`database-contract` caught it, because a replay from zero is the one gate that applies both files.
+`20261050000000` was chosen by scanning ALL 423 remote branches rather than main alone — free
+against work in flight, not merely against work merged. Extending the guard to scan branches is
+recorded as a follow-up; it is shared CI tooling and this is a Solo-scoped slice.
+
 **Final independent review (round 8), applied.** Three findings, none blocking, all fixed rather
 than filed: this row was placed OUTSIDE the Surface ledger (under *Setup legal sender identity*),
 so a reader walking the ledger would not have found Catalog → Offers in it; it carried a sentence
@@ -1913,7 +1946,7 @@ once. The third is unreachable until 2B ships the write seam (no writer sets `ca
 and was fixed anyway, with a regression test proven red against the prior behaviour.
 
 **Evidence, separated.**
-- *Automated:* 48 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 17 that EXECUTE
+- *Automated:* 54 contract/render tests (`catalog-offers.contract.test.tsx`) **plus 19 that EXECUTE
   the adapter against a recording fake client** (`useCatalogOffers.adapter.test.tsx`). The second
   file exists because the first mocks the read entirely: an adversarial review of the pushed diff
   found that the membership query asked for `tenant_members.tenant_role` when the column is `role`,
@@ -1947,7 +1980,7 @@ and was fixed anyway, with a regression test proven red against the prior behavi
   this slice is a real round-trip to the database.
 - **Persisted apply — OWED, and this line is updated from a real query, never from the pipeline
   running.** At the time of writing the migration is not yet applied to production. §32.a requires
-  `schema_migrations` to carry `20261048000000` AND the six columns to exist on `tenant_products`
+  `schema_migrations` to carry `20261050000000` AND the six columns to exist on `tenant_products`
   AND the status CHECK to permit `paused`, each shown by a query result pasted here.
 
 **Truth label: `PARTIAL`, deliberately.** The read is real and tenant-scoped, but a tenant cannot
