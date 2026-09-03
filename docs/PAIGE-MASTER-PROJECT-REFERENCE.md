@@ -1226,7 +1226,13 @@ merge** (§32.a).
 activation, automatic overage, enforcement, and usage-threshold notification SENDING (records and
 readiness only; nothing is sent until a delivery system exists and is separately authorized).
 
-### Billing Experience — truthful account status, items 1–3 (PR #865, **NOT MERGED; three production rollback proofs, no production write of any kind**)
+### Billing Experience — truthful account status, items 1–3 (PR #865, **MERGED `5ae7a34a` 2026-09-03; migrations persisted-apply confirmed on production**)
+
+**§32.a, checked after merge, not assumed.** `schema_migrations` on prod carries `20261109040000`,
+`20261111050000`, `20261120000000`; `get_workspace_billing_status()`, the 7 `payment_method_*`
+columns, and `trg_platform_billing_one_primary` all confirmed to exist by direct query. Mogul Maker
+Academy's real tenant row shows 2 live primary billing contacts right now — the Selection-needed
+banner this PR ships is not a fixture scenario, it fires for the real workspace it was built for.
 
 **Owner brief 2026-09-03, continuing from the approved Slice A proof (`cb2f5b79`).** *"A promotional
 workspace with no billing-provider mapping is not 'billing unavailable.' It is a valid promotional

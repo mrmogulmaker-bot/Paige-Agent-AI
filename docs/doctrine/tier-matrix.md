@@ -2062,14 +2062,20 @@ Foundation A's proven behaviour, not something this slice re-tested. **Authentic
 deployed surface: OWED** — the harness transport is a stub (§32.c). **Also owed: a Gate-1 pass on the
 billing-contacts card**, which the approved Gate-1 prototype does not cover (§00).
 
-### Platform Billing — truthful account status, items 1–3 (PR #865) — **PENDING MERGE**
+### Platform Billing — truthful account status, items 1–3 (PR #865, merged `5ae7a34a` 2026-09-03) — **LIVE**
 
-**§66, same PR as the change.** Written while #865 is open; the persisted-apply confirmation
-(§32.a) is owed on merge and this entry is not final until it is checked.
+**§32.a persisted-apply confirmation, checked after merge, not assumed:** `supabase_migrations.schema_migrations`
+on prod (ref `xygzykjyynhzqytbqnzu`) carries all three versions (`20261109040000`, `20261111050000`,
+`20261120000000`). The created objects were queried directly and exist: `get_workspace_billing_status()`
+present in `pg_proc`, 7 `payment_method_*` columns on `platform_billing_accounts`,
+`trg_platform_billing_one_primary` present in `pg_trigger`. Also confirmed against real data: Mogul
+Maker Academy's tenant row shows **2 live primary billing contacts right now** — the exact state the
+new Selection-needed banner exists to name — so this is not a hypothetical fixture case, it is the
+real workspace this rebuild was built for.
 
 **§13 correction (independent review, PR #865):** this row said Slice A was "on `main`". It is
-not — `20261109040000` has never been merged separately; it ships as part of THIS PR's own branch
-history alongside Slices B and C. All three apply together on this PR's merge. Corrected here
+not — `20261109040000` was never merged separately; it shipped as part of PR #865's own branch
+history alongside Slices B and C. All three applied together on that PR's merge. Corrected here
 rather than left to compound the exact gap the review caught (see the finding below).
 
 **What changed.** `get_workspace_billing_status()` (Slice A `20261109040000`; Slice B
