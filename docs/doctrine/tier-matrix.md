@@ -1621,6 +1621,36 @@ Owner-only. **No delivery exists:** "receives" means designated, not delivered t
 designation creates, changes, transfers, implies, or records legal ownership, equity, corporate or
 trust ownership, trustee or co-owner status** (owner ruling R27, 2026-09-02).
 
+### Platform Billing — Foundation C, the Solo Billing screen (PR #833) — **BUILT, NOT MERGED**
+
+**§66.** Foundation A's seams had no renderer. Foundation C mounts them. The row below records what
+each tier SEES on `Solo Settings › Billing` once this merges; until it does, the shipped surface is
+still the pre-C tab, which rendered the plan CATALOGUE price for every workspace.
+
+**The §13 correction this slice makes.** The shipped tab joined `get_tenant_platform_subscription()`
+to `platform_subscription_plans` and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027`.
+All four live `platform_subscriptions` rows carry a NULL `stripe_customer_id` AND a NULL
+`stripe_subscription_id`; three are `test_seed: true` and the fourth is `revenue_class:
+promotional`, `provider_state: not_created` (queried on ref `xygzykjyynhzqytbqnzu`, 2026-09-03). A
+catalogue row is a price LIST. The catalogue is no longer an input to this screen.
+
+**Not yet reachable, and why.** Promotional, trial and paid states exist in the resolver but cannot
+be reached, because the entitlement projection that would prove them is **Foundation B** (Gate 1
+packet §4.3 R11). Until B lands, a top-level Solo workspace resolves to `billing-unavailable ·
+no_billing_account`. R13 binds: absence of a record is never inferred as a promotional grant.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Plan card | `plan-no-workspace` (act-as pointer, no seat) | `plan-unsupported` | `plan-unsupported` | `billing-unavailable · no_billing_account` today (mapped + projection ⇒ the paid/trial/promo states, Foundation B) | same state as the Owner — the plan is not a secret; only the ACTS are Owner-only | `plan-subaccount` ("not because there is no plan") | `plan-no-workspace` | route not reachable |
+| Manage billing (portal entry) | `portal-not-applicable` | `portal-not-applicable` | `portal-not-applicable` | `portal-unavailable` today (flag off AND no mapping); `portal-entry` only when `mapped` | `role-refusal` | `portal-not-applicable` | `portal-not-applicable` | — |
+| Billing contacts and notices | refusal state with its reason | `billing_not_applicable` | `billing_not_applicable` | ✓ designate / revoke, and the list | the refusal is rendered as a refusal, never as "there are none" | `billing_not_applicable` | `billing_workspace_owner_only` | — |
+| Candidate list (`get_solo_team_workspace`) | not read | not read | not read | read ONLY when `can_manage_billing` | **not read** (§9 least privilege) | not read | not read | — |
+| Client-billing pointer | shown | shown | shown | shown | shown | shown | shown | — |
+
+**Rendered proof, 4 viewports × 2 palettes + failed-read + read-only:** 108/108
+(`scripts/live-drive/settings-billing-drive.mjs`). **Authenticated runtime on the deployed surface:
+OWED** — the harness transport is a stub (§32.c).
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

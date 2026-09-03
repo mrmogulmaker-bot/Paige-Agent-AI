@@ -1105,6 +1105,37 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### Billing Foundation C — the Solo Billing screen (PR #833, **BUILT, NOT MERGED — no production write of any kind**)
+
+**What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two
+hooks and no surface called `get_workspace_billing_authority()`. Foundation C mounts them at
+`Solo Settings › Billing` and removes the claims the shipped tab was making.
+
+**The correction.** The shipped tab read `get_tenant_platform_subscription()`, joined it to the plan
+CATALOGUE and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027` for every workspace.
+Queried on prod 2026-09-03 (ref `xygzykjyynhzqytbqnzu`): all four live `platform_subscriptions` rows
+carry a NULL `stripe_customer_id` **and** a NULL `stripe_subscription_id`; three are `test_seed:
+true`, the fourth `revenue_class: promotional` / `provider_state: not_created`. **The catalogue is a
+price list, not a charge, and a seeded period end is not a renewal.** The catalogue is no longer an
+input to the screen, and a test walks every reachable state and fails on any `$` in the output.
+
+**The state machine** is `src/solo/billing-contract.ts`, over the Gate-1 approved vocabulary
+(packet §9.1). Promotional / trial / paid need an entitlement record that proves them; "Choose a
+plan" needs a successful read that returned `source: none`; every unavailable carries one of five
+distinct causes. **The entitlement projection is Foundation B** (packet §4.3 R11), so today every
+top-level Solo workspace resolves to `billing-unavailable · no_billing_account` — never a
+promotional grant (R13).
+
+**What an owner can now finish (§70.1):** designate the workspace's primary billing contact, add and
+remove a billing delegate, reload and find it held. R27 is stated on the surface (a designation is
+not ownership); so is the fact that no notice is sent, because no sender exists.
+
+**Evidence:** 58 new tests; full suite 167 files / 2052 tests; `ci:tsc` ratchet unchanged; build
+green; **108/108 rendered checks** across 4 viewports × 2 palettes plus failed-read and read-only.
+**OWED:** the authenticated owner drive on the deployed surface (§32.c) — the harness transport is a
+stub. **Untouched:** the portal flag (off), every Stripe object, `platform_subscriptions`, the
+catalogue, Foundation B, and every shared module outside `src/solo/`.
+
 ### Billing Foundation A — workspace billing identity + designated billing contacts (PR #816, **MERGED `f455d8a5` 2026-09-03 under owner Gate B; migration `20261045000000` APPLIED on prod, edge functions deployed**)
 
 **Live state, verified on prod 2026-09-03 (not inferred from a green pipeline):** `20261045000000` is in

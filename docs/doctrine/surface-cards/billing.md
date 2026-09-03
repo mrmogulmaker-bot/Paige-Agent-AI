@@ -1,10 +1,19 @@
 # Surface card — Billing (Solo Settings → Billing)
 
-**Truth label: `PARTIAL`.** The owner can read a plan name, status, price and renewal from a
-tenant-scoped seam. Nothing else on the surface is real: no invoice, no payment method, no usage,
-no allowance, no action, no Rail outcome. The label is not lifted by this card or by the Gate 1
-packet; it moves only when an owner can complete a billing act on the live platform and see the
-result hold (§70).
+**Truth label: `PARTIAL`.** It stays `PARTIAL`, and what it means CHANGED with Foundation C
+(PR #833, built not merged).
+
+*Before C (still what is deployed):* the owner read a plan name, status, **price and renewal** from
+a tenant-scoped seam — and those last two were fabricated. The price came from the plan CATALOGUE
+and the renewal from a seeded `current_period_end`; every live `platform_subscriptions` row carries
+a NULL Stripe customer and subscription id. See `docs/delivery/billing-foundation-c-design.md` §2.
+
+*After C:* no plan, price, renewal, invoice or payment method is stated at all, because no record
+proves one — every current workspace resolves to an explained `billing-unavailable`. What becomes
+real instead is **billing contacts and notices**: an owner can designate the workspace's primary
+billing contact, add and remove a billing delegate, and see it hold across a reload. That is a
+billing act an owner can complete, so the surface is no longer read-only — but the label does not
+move to `LIVE` until an authenticated owner drives it on the deployed platform (§70/§32.c).
 
 Written 2026-09-02 against `main` `1fb7928` for the Platform Billing Phase 1 packet
 (`docs/delivery/platform-billing-gate1-packet.md`). **Describes the department as it is.**
@@ -33,22 +42,27 @@ billing, §197 LAYER 2, tenant's own processor per §38).
 
 ## Solo shell placement
 
-Settings → Billing, eighth of eight Settings destinations (`src/solo/settings.tsx:1464`). Icon
-`CircleDollarSign`. Form-fitting (not on the visible-scroll list; `src/components/tenant-shell/settings-scroll-contract.ts`).
-Rendered by `BillingView` (`settings.tsx:1457-1459`), fed by `useSoloComms` (`:259-270, :333`).
+Settings → Billing, eighth of eight Settings destinations. Icon `CircleDollarSign`. Form-fitting
+(not on the visible-scroll list; `src/components/tenant-shell/settings-scroll-contract.ts`).
+
+*Deployed:* rendered by `BillingView` inside `settings.tsx`, fed by `useSoloComms`.
+*After Foundation C (PR #833):* rendered by `SoloBillingView` in `src/solo/settings-billing.tsx`,
+whose states come from the pure `src/solo/billing-contract.ts` and whose data comes from
+`useWorkspaceBillingAuthority` + `useWorkspaceBillingContacts` + `useWorkspaceBillingCandidates`.
+**Billing no longer reads `get_tenant_platform_subscription()` or the plan catalogue at all.**
 
 ## States
 
-| State | Today |
-|---|---|
-| create | N/A — a workspace does not create its subscription here; the CREATE leg is `platform-subscription-checkout` from onboarding |
-| edit | none |
-| save | none |
-| cancel | none |
-| retry | `ReadState` retry on a failed read — real |
-| empty | "No current Solo subscription record was returned." — **true for a solo with no plan, false for a sub-account** (`useSoloComms.ts:333` skips the read by design; `BillingView` never reads `isSubAccount`) |
-| loading | "Clearing and resolving this account…" — real |
-| permission | `canManage` is computed (`is_current_user_tenant_admin`) and consumed by nothing on this view |
+| State | Deployed today | After Foundation C (PR #833) |
+|---|---|---|
+| create | N/A — the CREATE leg is `platform-subscription-checkout` from onboarding | unchanged; plan selection is still not offered here |
+| edit | none | **real** — designate the primary billing contact, add a billing delegate |
+| save | none | **real** — the Owner-only RPC, then a server re-read; it holds across a reload |
+| cancel | none | **real** — revoke a designation, behind a confirm that says what is lost |
+| retry | `ReadState` retry on a failed read | real, on the authority read AND the contacts read, each with its own cause |
+| empty | "No current Solo subscription record was returned." — **true for a solo with no plan, false for a sub-account** | that sentence is gone. An unmapped workspace says *"could not find a billing account linked to this workspace … nothing is being charged"*; a sub-account says *"not because there is no plan"*; "Choose a plan" needs a successful read that found none |
+| loading | "Clearing and resolving this account…" | unchanged |
+| permission | `canManage` computed and consumed by nothing | `can_manage_billing` (Owner-only, server-derived) gates every act, the designate forms, and the roster read |
 
 ## What PAIGE can read
 
@@ -90,5 +104,9 @@ on (Team surface card, decision 2). Not a Billing slice to invent.
 - **Current-account policy (owner, 2026-09-02, R12–R15):** eligible top-level workspaces go onto Promotional Beta Access via an explicit, attributable entitlement record in a dedicated, reversible, separately Gate-B'd rollout after Foundation C — never as a fallback for a missing subscription, never counted as revenue. Not part of #803.
 - **Tier posture (R8):** sub-account, Agency and Enterprise show NOT APPLICABLE / NOT AVAILABLE, never "no subscription" and never an inherited plan.
 - **Required browser proof before any label moves:** an authenticated Solo owner on the real
-  platform reads the correct plan for the correct workspace, switches workspace and sees it change,
-  an Admin and a Member each see the refusal (R2), a sub-account owner sees the NOT APPLICABLE state and never "billed by your agency" (R8). None of this has been driven.
+  platform sees the correct state for the correct workspace, switches workspace and sees it change,
+  designates a primary billing contact and finds it held after a reload, an Admin and a Member each
+  see the refusal (R2), a sub-account owner sees the NOT APPLICABLE state and never "billed by your
+  agency" (R8). **None of this has been driven authenticated.** Foundation C drives all of it in the
+  harness (108/108, four viewports × both palettes — `scripts/live-drive/settings-billing-drive.mjs`),
+  which is a rendered proof against a stub transport, not the live one (§32.c).
