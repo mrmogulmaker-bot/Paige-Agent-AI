@@ -164,41 +164,59 @@ shape as #794, on the write path, and an integrity/attribution exposure rather t
 Its sharpest form is `p_narrow_to_owner = true`, which yields `audience='owner'` /
 `visibility='owner_internal'`: a plain member could file into the owner's private feed.
 
-### The Rail PRODUCER inventory — all eight write call sites, by client identity
+### The Rail PRODUCER inventory — every write call site, by execution context
 
-Measured against `main` at `11997dac4`. This is the half the reader tables above never covered, and
-it decides whether #824's defective gate is dormant or live.
+Measured against `main`. **Corrected twice in review; the corrections are recorded because the
+method that produced them is the thing worth remembering.**
+
+**TypeScript producers — eight call sites, seven service-role:**
 
 | # | Call site | Client | `auth.uid()` | Reaches the `has_any_role` branch? |
 |---|---|---|---|---|
-| 1 | `_shared/mcp-outcome.ts:842` | `admin` (service role) | NULL | no |
-| 2 | `_shared/railAutomation.ts:103` | `admin` | NULL | no |
-| 3 | `growth-process-submission:519` | `admin` | NULL | no |
-| 4 | `handle-inbound-sms:434` | `admin` | NULL | no |
-| 5 | `paige-mcp:5282` | `admin` | NULL | no |
-| 6 | `send-message:1374` | `admin` | NULL | no |
-| 7 | `paige-ai-chat:889` | caller JWT | set | reached, falls through to the client branch |
-| 8 | **`paige-ai-chat:11267`** | **caller JWT** | **set** | **YES — this is the branch** |
+| 1 | `_shared/mcp-outcome.ts:842` | service role | NULL | no |
+| 2 | `_shared/railAutomation.ts:103` | service role | NULL | no |
+| 3 | `growth-process-submission:519` | service role | NULL | no |
+| 4 | `handle-inbound-sms:434` | service role | NULL | no |
+| 5 | `paige-mcp:5282` | service role | NULL | no |
+| 6 | `send-message:1374` | service role | NULL | no |
+| 7 | `paige-ai-chat:889` | **service role** (`supabase`, built with `SUPABASE_SERVICE_ROLE_KEY` at `:587`) | NULL | **no** |
+| 8 | **`paige-ai-chat:11267`** | **caller JWT** (`supabaseClient`, anon key + `Authorization` at `:575`) | **set** | **YES** |
 
-**Six of eight are service-role**, so they skip the branch entirely. The two Chat sites do not, and
-#8 is the decisive one: it is the tool-result mirror that files `p_actor_type: 'owner_staff'` through
-the caller's own JWT on every successful CRM or action tool call, which can only succeed by
+**SQL producers — three live, and they were missing entirely from the first version of this table:**
+
+| # | Producer | Kind | Actor filed | Reaches the gate? |
+|---|---|---|---|---|
+| 9 | `customer_respond_to_action` (`20260712240000:282`) | `SECURITY DEFINER` fn | `'client'` | reached; a client caller fails `has_any_role` and lands in the `ELSIF` client branch |
+| 10 | `emit_booking_rail` (`20260712260000:125`) | `SECURITY DEFINER` trigger | `'client'` | as above |
+| 11 | **`configure_tenant_pipeline` (`20260831224500:251`)** | `SECURITY DEFINER` fn | `'owner_staff'` / `'paige_agent'`, with `p_narrow_to_owner = true` | **YES** |
+
+**`SECURITY DEFINER` does not null `auth.uid()`** — it changes the executing role, not the JWT claim —
+so an authenticated caller reaching any of these carries their subject into `record_rail_event`.
+
+### So there are TWO gate-exercising paths, not one
+
+**`paige-ai-chat:11267`** mirrors every successful CRM or action tool result as `owner_staff` through
+the caller's JWT. **`configure_tenant_pipeline`** files a deal move as `owner_staff` (or `paige_agent`)
+with `p_narrow_to_owner = true`, which is the `owner_internal` shape. Both can only succeed by
 satisfying `has_any_role(v_uid, ARRAY['admin','super_admin','coach'])`.
 
-**So #824's gate is exercised in production constantly — it is live, not dormant.** That does NOT
-raise its severity: it stays a member→staff escalation inside one workspace, integrity rather than
-disclosure, with an escalation population measured at zero. What changes is that "latent" was the
-wrong word; "live but currently unexploitable" is the right one.
+**#824's severity is still unchanged** — member→staff inside one workspace, integrity rather than
+disclosure, escalation population zero. What changed is the fix-impact surface: a two-direction proof
+is owed at **both** paths, not at the Chat site alone. Tightening the gate touches two live write
+paths, and breaking either stops the Rail recording silently.
 
-**The consequence for whoever fixes it.** Replacing `has_any_role` with an active `tenant_members`
-row in `('owner','admin','coach')` changes behaviour at site #8 for any Chat user whose membership
-row lacks one of those roles. That is the intended tightening — but site #8 is a live write path on
-every owner CRM action, so a mistake there stops the Rail recording what owners do, **silently**. The
-fix needs a two-direction proof at that call site specifically, not only at the function.
+### The method error, recorded because it repeated
 
-Site #7 is the client-message mirror: `auth.uid()` is set but the caller is the client themselves
-(`linked_user_id = user.id`) with `p_actor_type: 'client'`, so an ordinary client fails
-`has_any_role` and lands correctly in the `ELSIF` client branch.
+The first version of this table said "all eight" and named one gate-exercising site. It was wrong
+twice: `paige-ai-chat:889` was called caller-JWT when it is service-role (the two clients differ by
+one identifier twelve lines apart at `:575`/`:587`), and the SQL producers were absent because the
+inventory grep was scoped to `supabase/functions/**` and `src/**` — **migrations were excluded, so a
+producer written in SQL could not appear.**
+
+That is the **third** narrow-scope search error in this line of work: `src/`-only missed Chat's
+resolver consumer (#836), and this one missed an entire producer language. The rule that would have
+caught all three: **when a claim is about "everywhere", the search must be repository-wide first and
+narrowed only to explain results — never scoped first and generalised after.**
 
 **Measured exposure, stated honestly:** 3 users hold a global staff role across multiple tenants;
 **0** currently sit at a non-staff seat. Structurally live, never reached. **Re-measured 2026-09-03
