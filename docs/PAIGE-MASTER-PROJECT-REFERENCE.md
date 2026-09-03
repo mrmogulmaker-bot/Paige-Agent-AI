@@ -1106,6 +1106,55 @@ Grouped:
 ## 5. Current focus + known gaps
 
 ### Billing Foundation C — the Solo Billing screen (PR #833, **RELEASED — merged `11997dac` 2026-09-03; no production write of any kind**)
+
+**What it is.** Foundation A shipped three seams and no renderer; nothing in `src/` imported the two
+hooks and no surface called `get_workspace_billing_authority()`. Foundation C mounts them at
+`Solo Settings › Billing`.
+
+**The correction.** The pre-C tab read `get_tenant_platform_subscription()`, joined it to the plan
+CATALOGUE and rendered `Solo · Active · $149.00/month · Renews 5 Aug 2027` for every workspace.
+Queried on prod 2026-09-03 (ref `xygzykjyynhzqytbqnzu`): all four live `platform_subscriptions` rows
+carry a NULL `stripe_customer_id` **and** a NULL `stripe_subscription_id`; three are `test_seed:
+true`, the fourth `revenue_class: promotional` / `provider_state: not_created`. **The catalogue is a
+price list, not a charge, and a seeded period end is not a renewal.** The catalogue is no longer an
+input to the screen, and a test walks every state reachable **without an entitlement projection**
+(which is every state reachable today) and fails on any `$` in the output.
+
+**The state machine** is `src/solo/billing-contract.ts`, over the Gate-1 approved vocabulary
+(packet §9.1) with three additions and four disclosed deviations. Promotional / trial / paid need an
+entitlement record that proves them; "Choose a plan" needs a successful read that returned
+`source: none`; every unavailable carries one of five distinct causes. **The entitlement projection
+is Foundation B** (packet §4.3 R11), so today every top-level Solo workspace resolves to
+`billing-unavailable · no_billing_account` — never a promotional grant (R13).
+
+**What an owner can now finish (§70.1):** designate the workspace's primary billing contact, add and
+remove a billing delegate, reload and find it held. R27 is stated on the surface (a designation is
+not ownership); so is the fact that no notice is sent, because no sender exists.
+
+**Reviewed independently three times (§39/§5), and it mattered.** Eight findings, five of them
+defects live on a pushed head: a failed roster read rendered as "this workspace has nobody
+eligible"; a write outcome survived a workspace switch; an unrecognised mapping state fell
+**through** the guards into "this workspace has a billing account" plus an enabled Manage-billing
+button; the same mapping fix was left half-applied on the portal card's copy; and the shared harness
+store had no migration. Two doctrine findings: the shipped **"Usage & limits"** card had been
+deleted with no call-out (**§58 — restored**), and **R22 was half-held** — `can_view_billing` was
+consumed nowhere, harmless then and a leak the moment Foundation B supplies a price, so the plan
+card now refuses a non-viewing Solo member.
+
+**Evidence:** 71 new tests; full suite 179 files / 2334 tests; `ci:tsc` ratchet unchanged at 13;
+build green; **116/116 rendered checks** across 4 viewports × 2 palettes plus the failed-read and
+read-only worlds. **Release status: `PARTIAL` / `Authenticated Runtime Proof Owed`.**
+
+**OWED (post-release audit backlog, `docs/delivery/billing-foundation-c-design.md` §9):** the
+authenticated owner drive on the deployed surface (§32.c); a **Gate-1 pass on the billing-contacts
+card**, which the approved prototype does not cover (§00 — CC does not fill a gap in the pack); a
+§57 divergence, since Settings › Connections still renders "Solo plan · LIVE" from the catalogue
+join this slice disqualifies; the now-dead `useSoloComms().billing` fetch; `plan-beta` collapsed
+into `plan-current`; and `past_due` having no approved wording.
+
+**Untouched:** the portal flag (off), every Stripe object, `platform_subscriptions`, the catalogue,
+Foundation B, and every shared module outside `src/solo/`.
+
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 
 **What it settles.** `docs/architecture/paige-mind-integration-matrix.md` records, per Solo surface,
