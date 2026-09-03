@@ -2815,6 +2815,8 @@ four rows, so "no signal" can never be confused with a read that failed quietly.
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Read own workspace's business-context readiness | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
+| Read own seat role + legal ownership (`team.authority`, #876) | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
+| Connections reports business name/website/phone from Setup (#878, LIVE) | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
 | Systems Check reports website / phone / industry from it | ✓ | ✓ | ✓ | ✓ | ✓ | 403 | 403 |
 | PAIGE answers "what's configured right now" from it | ✓ | ✓ | ✓ | ✓ | ✓ | — | 403 |
 | Name another workspace's tenant in the call | 403 | 403 | 403 | 403 | 403 | 403 | 403 |
