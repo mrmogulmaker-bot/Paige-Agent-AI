@@ -6,6 +6,8 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      - "supabase/tests/business_context_readiness.sql"
+      - "supabase/tests/team_authority_readiness.sql"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -25,6 +27,8 @@ on:
       - "supabase/functions/_shared/paige-spine/**"
       - "supabase/migrations/**"
       - "supabase/tests/paige_spine_foundation.sql"
+      - "supabase/tests/business_context_readiness.sql"
+      - "supabase/tests/team_authority_readiness.sql"
       # The Solo Team invitation proof must re-run when the seam it proves changes,
       # not only when a migration happens to touch it.
       - "supabase/tests/solo_team_invite_workspace_authority.sql"
@@ -54,7 +58,12 @@ jobs:
       - run: npm ci
       - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs --self-test
       - run: node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs
-      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts src/__tests__/paige-spine-chat-binding.test.ts src/__tests__/paige-spine-mind-binding.test.ts src/solo/paigeClientScope.test.ts
+      # The two per-capability Chat-evidence proofs are listed explicitly. The path filter above
+      # already matches src/__tests__/paige-spine-*.test.ts, so omitting them here meant this
+      # workflow ran on their changes without running them — they were only covered by the
+      # repo-wide vitest in `verify`. A proof a workflow claims to gate and does not run is worse
+      # than one it never claimed.
+      - run: npx vitest run src/__tests__/paige-spine-registry.test.ts src/__tests__/paige-spine-sql-contract.test.ts src/__tests__/paige-spine-chat-binding.test.ts src/__tests__/paige-spine-mind-binding.test.ts src/__tests__/paige-spine-business-context-readiness.test.ts src/__tests__/paige-spine-team-authority.test.ts src/solo/paigeClientScope.test.ts
 
   database-contract:
     runs-on: ubuntu-latest
@@ -74,3 +83,14 @@ jobs:
       - run: supabase test db supabase/tests/solo_team_invite_workspace_authority.sql
       - run: supabase test db supabase/tests/solo_team_removal_authority.sql
       - run: supabase test db supabase/tests/solo_team_invite_lifecycle.sql
+      # The business_context.readiness contract: grant surface, both caller paths, and the role
+      # gate that a tenant-isolation-only proof cannot see (a workspace's own client is an
+      # authenticated user of that same tenant). Rides this job for the same reason as the two
+      # above — the expensive part is `supabase start` + `db reset` (§24).
+      - run: supabase test db supabase/tests/business_context_readiness.sql
+      # The team.authority contract. Its load-bearing fixture is a caller who is the legal owner of
+      # ANOTHER workspace while holding a plain member seat in their active one — the one shape that
+      # makes a dropped is_tenant_owner() tenant argument, and a collapsed permission field, fail
+      # loudly. Every real member on production has the two agreeing, so a proof built on
+      # real-shaped data alone would pass while either defect shipped.
+      - run: supabase test db supabase/tests/team_authority_readiness.sql

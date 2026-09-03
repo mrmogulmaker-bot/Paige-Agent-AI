@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { createSettingsRequestGate } from "../settings-contract";
+import { rescanBusinessContext } from "@/lib/systemsCheck/rescanBusinessContext";
 import {
   cleanSoloBusinessOwners,
   cleanSoloSetupBrief,
@@ -181,6 +182,9 @@ export function useSoloSetupBrief(): SoloSetupBriefData {
       acceptContext(row, tenantAtStart);
       const storedBrief = cleanSoloSetupBrief(row.brief, row.tenantName ?? "");
       const storedOwners = cleanSoloBusinessOwners(row.businessOwners);
+      // Fire-and-forget: Systems Check re-reads the fields this save just wrote (§18/§13 — see
+      // rescanBusinessContext's own header). Never awaited, never allowed to affect this result.
+      rescanBusinessContext();
       return { ok: true, kind: "saved", brief: storedBrief, businessOwners: storedOwners };
     } catch (caught) {
       if (epoch !== saveEpoch.current || activeTenantRef.current !== tenantAtStart) {

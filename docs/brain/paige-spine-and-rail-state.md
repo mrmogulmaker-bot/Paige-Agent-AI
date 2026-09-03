@@ -25,25 +25,116 @@ recorded something as working that a person could not use:
 
 Everything below states which class it belongs to. **Nothing here was driven in a browser.**
 
-## The Spine is PARTIAL — one capability, not a connected platform
+## The Spine is PARTIAL — two capabilities, not a connected platform
 
 **Do not read the Spine's existence as departments being wired to PAIGE.** Measured by running the
-repo's own guards on 2026-09-02:
+repo's own guards on 2026-09-02, with the capability count re-measured 2026-09-03:
 
 | Measure | Value | How |
 |---|---|---|
-| Registered Spine capabilities | **1** | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (1 capability)` |
+| Registered Spine capabilities | **2** | `node --experimental-strip-types scripts/ci/paige-spine-registry-lint.mjs` → `PASS (2 capability)` |
 | Inline Chat tools | **105** | `node scripts/ci/chat-tool-registry-lint.mjs` → `105 tool(s) inline, none added (baseline 105)` |
 | Classified actions | **62** — 32 `ordinary`, 28 `high`, 2 `owner_only`, 5 exempt, 0 unclassified writes | `npm run lint:action-risk` |
 
-The one capability is `pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`,
+The first capability is `pipeline.deal_stage_evidence` — read-only, `chatBinding: PARTIAL`,
 `mindBinding: PARTIAL` (raised from `UNAVAILABLE` by PR **#747** on 2026-09-02 — a `PARTIAL` binding,
-not a `LIVE` one; the capability count is unchanged at one). **PAIGE reaches departments today
+not a `LIVE` one). **PAIGE reaches departments today
 through the 105 hand-wired tools, not
-through the Spine.** The Spine is the governed path with one department crossed over.
+through the Spine.** The Spine is the governed path with two capabilities crossed over.
 
-**No department other than Pipeline is declared in the registry.** The Team and Setup surface cards
-(`../doctrine/surface-cards/`) each say the same of themselves, independently.
+The second is **`business_context.readiness`** (2026-09-03) — read-only status + provenance over four
+Setup fields (`website`, `business_phone`, `industry`, `primary_business_email`), never a raw value.
+Adapter `public.get_business_context_readiness(uuid)`. It is the **first WORKSPACE-level Spine
+capability**, and it reached that without the shared-primitive change the section below says a
+workspace-level capability needs — because **it does not use the Rail resolver at all.** Read the next
+section with that distinction in mind: those four constraints govern *Rail-signal-backed* capabilities.
+A capability whose evidence is a live read over a tenant's own current record has no signal to resolve,
+no `contact_id` to be null, and no client-scoped Chat gate to sit behind — so it sidesteps all four.
+That is not a loophole in the constraints; it is a different evidence class, and it buys none of the
+Rail's properties (no history, no citation, no attribution, no freshness boundary — the row is simply
+current as of the call). Its `chatBinding`/`mindBinding` are `PARTIAL`: `paige-ai-chat` injects the
+block into every tenant turn's system context, unit-tested, with no authenticated UI drive yet.
+
+The third is **`team.authority`** (2026-09-03, PR **#876**, migration `20261150000000`) — exactly two
+Team-owned facts about the CALLER: `viewer_permission` (the raw `tenant_members.role`) and
+`viewer_is_legal_owner` (`is_tenant_owner(caller, tenant)`, **both arguments**). Same evidence class as
+`business_context.readiness`: a live stateless read, no Rail signal, `chatBinding`/`mindBinding`
+`PARTIAL`.
+
+**Why only two facts.** PAIGE already receives member_count and the invitation list from Team's own
+hydration block, so projecting either again would be a second, separately-computed answer to a settled
+question — and a WRONG one: `get_paige_team_context()`'s `invitation_count` has no status filter, so on
+production tenant `d8a0a880` it reports 2 for a workspace whose two team tokens are one accepted and
+one revoked. That is Team's to fix; this capability declines to shadow it.
+
+**Why two facts and not one.** `get_paige_team_context()` computes permission as
+`is_owner OR role = 'owner' -> 'owner'`, which is wider than the canonical ownership predicate — so a
+single string would mean membership and ownership at once. Measured on production: all 13 active members
+have the two agreeing (7 owner/is_owner=true, 6 admin/is_owner=false, zero divergent rows), so this
+changes no answer today and stops a future divergence from becoming a wrong one.
+
+**Billing-notice eligibility is deliberately NOT in it.** That is a Platform Billing fact about a team
+member, and Billing publishes its own Spine read (`get_billing_spine_evidence`, live via
+`20261140000000`). A capability drawing from `tenant_members` AND `platform_billing_contacts` would blur
+the ownership line inside the registry entry itself.
+
+### Both readiness reads name the workspace they resolved (2026-09-03, PR #876)
+
+A cross-workspace defect found by an independent review, latent on production and structurally certain
+to fire. `get_paige_persona_context()` resolves the conversation's tenant **client-link first**
+(`clients.linked_user_id`), falling back to `current_user_tenant_id()`. So a user who is a linked CLIENT
+of workspace B and a TEAM MEMBER of workspace A holds a conversation scoped to B while both readiness
+reads resolve A — and both Chat call sites gated only on "the persona has SOME tenant".
+
+The Team hydration path never had this hole, because `get_paige_team_context()` RETURNS its tenant and
+`_shared/team-context.ts:71` refuses on mismatch. The two readiness reads did not, so **the binding was
+impossible rather than omitted** — which is why a call-site guard alone could not have fixed it.
+
+Both reads now return the workspace they resolved (`tenant_id` on every row, including refusals), and
+both Chat adapters render nothing when it is not the conversation's. A genuine read FAILURE still
+renders the honest "I can't check" block — the error paths return before the binding — so a failure and
+a mis-scoped answer stay distinct. `get_business_context_readiness` needed a drop-and-recreate to add
+the column; its body was reproduced byte-exactly from the deployed definition (md5
+`676d4c4f7c2096fd866e264f836d1d4f`).
+
+**Severity, measured before fixing:** production carries ZERO rows with `clients.linked_user_id` set, so
+the client-link branch never fires and no user could trigger it. It stops being latent the moment a
+client portal user is linked, which is the product's core purpose (§7).
+
+**RELEASED AND PROVEN ON PRODUCTION 2026-09-03** — PR #864, merge commit `7ad98cff`, migration
+`20261112000000`. This is the class of evidence the table at the top of this file calls
+*production catalog / schema* PLUS a real execution, and it is worth being exact about which
+claims it does and does not support:
+
+| Claim | Evidence | Class |
+|---|---|---|
+| The migration persisted | `schema_migrations` row for `20261112000000` went **0 → 1**; the function object went **0 → 1**. Baseline captured on prod BEFORE the merge, so this proves the deploy acted rather than confirming what was already there | production catalog |
+| The shipped gate is the tenant-scoped one | `pg_get_functiondef` on prod, comment lines stripped: executable code contains `is_tenant_admin` and does NOT contain `has_any_role`. The literal gate line is `and not (public.is_tenant_admin(v_tenant) or public.is_platform_owner())` | production catalog |
+| The grant surface is right | on prod: `anon` cannot execute; `authenticated` and `service_role` can; `SECURITY DEFINER` with `search_path` pinned | production catalog |
+| **The defect was real and is fixed** | tenant `d8a0a880` holds website, phone AND industry in `tenant_legal_profile` while `tenants.brand` held **none** of them — it was being told all three were missing. Executing the deployed function as that workspace's real owner returns `website: owner_confirmed`, `business_phone: owner_confirmed`, `industry: owner_confirmed` (source `setup`, with freshness), and `primary_business_email: connection_sourced` (source `connections`) | **authenticated runtime, server-side** |
+| The role gate refuses a non-staff caller | **NOT provable on prod today** — there are currently **zero** active `tenant_members` whose role is not owner/admin, so no such caller exists to test with. Proven instead by the CI pgTAP file (18 assertions, mutation-tested: reverting to the global predicate turns 3 of them red). On production it is a forward-looking guard protecting the first member or client ever added | automated test |
+| The consumer path is live | `deploy-edge-functions` shipped `paige-ai-chat`, `systems-check-run-change`, `systems-check-run-onboarding`, `systems-check-run-scheduled`; `edge-live..main` drift is zero | production catalog |
+| The owner's own UI flow | **STILL OWED.** Not "no browser" — see the correction below | UNVERIFIED |
+
+**§13 correction, recorded because the wrong reason was quoted repeatedly.** Through this slice I
+claimed the live drive was owed because the session had *no browser capability*, and that production
+was unreachable. Both were false, and `lessons-learned` **0h** is written about exactly this move.
+`npm run harness:selftest` launches real Chromium via Playwright and passes every falsifiability arm;
+`https://paigeagent.ai` returns 200 from the sandbox. The true limit is narrow and checkable:
+**`LIVE_DRIVE_EMAIL` / `LIVE_DRIVE_PASSWORD` are unset**, so the *authenticated* UI drive cannot run.
+Contract-level production verification needs no browser at all, which is why the table above exists.
+
+**One consequence worth an owner decision, not a defect.** Setup is now the source, so two tenants
+(`7eaf8859`, `e7f1b157`) whose values live only in the legacy `tenants.brand` — written by the older
+`update_business_profile` path, never confirmed in Setup — now read `needs_confirmation` where the
+old reader said "present". Neither has a published growth page, so `website_connected` flips
+pass → fail for both, and `comms_configured`'s phone half flips for `7eaf8859`. That is literally
+true ("the owner has not saved this in Setup") and is the direction the source-of-truth rule points,
+but it IS a visible change for those workspaces (§58: flagged, not silent).
+
+**No department other than Pipeline and Setup's business context is declared in the registry.** The
+Team and Setup surface cards (`../doctrine/surface-cards/`) each say the same of themselves,
+independently.
 
 ### Why most departments cannot simply be added
 
@@ -59,9 +150,18 @@ Four properties of the shipped code decide eligibility. They are constraints, no
    A department whose value lives in free text cannot express it under this contract.
 
 Consequence: **Team · Settings · Connections · Marketplace · Billing · Analytics · Social are
-workspace-level and cannot reach `LIVE` without a shared-primitive change.** The owner ruled
-2026-09-02 (Team card, decision 2) that a Rail event may not carry a null `contact_id`; the repair is
-a distinct tenant/workspace-level outcome projection, and it is a **Spine Change Request**, unstarted.
+workspace-level and cannot reach `LIVE` AS RAIL-BACKED CAPABILITIES without a shared-primitive
+change.** The owner ruled 2026-09-02 (Team card, decision 2) that a Rail event may not carry a null
+`contact_id`; the repair is a distinct tenant/workspace-level outcome projection, and it is a
+**Spine Change Request**, unstarted.
+
+**Corrected 2026-09-03 (§13):** as written above, that consequence read as "no workspace-level
+capability at all until the Rail is changed." `business_context.readiness` disproves the broader
+reading — a workspace-level capability CAN be declared and consumed today when its evidence is a
+**live read** rather than a Rail signal. What still stands, unchanged, is the narrower claim: a
+workspace-level capability cannot carry Rail HISTORY (an attributable, cited, dated record of an
+outcome that happened) until that Change Request lands. Choose the class deliberately: "what is true
+right now" is a live read and available; "what happened, and who did it" is Rail-backed and blocked.
 
 ### The reference implementation any new capability must copy
 
@@ -347,6 +447,70 @@ Two things follow:
 
 **Never record this as an empty feed or a healthy one.** If a future session sees no activity in Solo,
 the first hypothesis is this grant, not an idle workspace.
+
+### THE TENANT-WIDE RAIL WAS DARK FOR EVERY SOLO TENANT — measured and repaired 2026-09-03
+
+**The finding.** Slice B repaired all four owner-facing Rail consumers, and two of them were still
+unreachable by a Solo tenant. `PaigeRailFeed` ("Across your clients — live") ships inside
+`PaigeWorkspace`, which `TenantCommandCenterShell` renders **only when the Solo workspace is
+absent** (`TenantCommandCenterShell.tsx:606`) — and the Solo shell always supplies it
+(`SoloApp.tsx:272`). Confirmed by search: **no `PaigeRailFeed` or `PaigeSidebar` reference exists
+anywhere under `src/solo/` or `src/components/tenant-shell/`**, and the mobile `PaigeRailSheet` is
+mounted inside the same `PaigeWorkspace` (`PaigeWorkspace.tsx:283`). So the tenant-wide strip is an
+Agency / sub-account / admin-shell surface, and a Solo tenant had **no** surface showing the
+tenant-wide rail at all.
+
+> **§13 CORRECTION, 2026-09-03, same day — the claim above is WRONG and is kept, marked, rather
+> than rewritten (§58).** "A Solo tenant had no tenant-wide rail surface at all" is false, and it
+> contradicts the table in this same edit. `TrustCompass` IS mounted on Solo (`SoloApp.tsx:253`)
+> and its panel calls `useSoloActivityFeed` (`compass.tsx:469`); so does Team → Activity
+> (`team.tsx:233`). Both read `get_solo_rail_activity`, which is the TENANT-WIDE reader. So Solo
+> already had two tenant-wide rail surfaces before this slice.
+>
+> **What was actually true, stated precisely:** `PaigeRailFeed` — the specific strip Slice B
+> repaired — is unreachable on Solo, and the Command Center, Solo's DEFAULT LANDING route, carried
+> no Rail surface. The panel's real value is putting the rail on the surface a Solo owner lands on,
+> not making a previously-invisible capability visible.
+>
+> Caught by an independent review on #877 (P2), after merge. The overstatement had been repeated
+> into the master reference, this record, the tier matrix, the PR body, the commit message, and the
+> report to the owner — one unchecked claim propagated to six places because it was written once and
+> then copied rather than re-derived. Corrected in all of them.
+
+
+**Why this was invisible until now.** Slice B's proof was automated, static and deployed-bundle —
+all of which pass for a component that renders correctly on a surface nobody can reach. It surfaced
+only when the owner test map was written against the *actual* account topology rather than against
+the component list. **A repaired consumer on an unreachable surface is not a repaired capability.**
+
+**The repair (this slice).** A compact `Recent activity` panel in the Solo Command Center's Systems
+Check side stack (`SoloSystemsCheckWorkspace.tsx`), reading the SAME already-deployed
+`useSoloActivityFeed` → `get_solo_rail_activity` the Trust Compass and Team Activity panels use.
+**Not a second Rail source**: `useSoloActivityFeed.ts` is byte-unchanged by this slice, and no event
+is duplicated or re-derived. No CSS was added — the panel reuses the surface's own `sc-side-panel` /
+`sc-section-heading` / `sc-approval` / `sc-muted` / `sc-proof` vocabulary.
+
+**Safe fields hold by CONSTRUCTION, not by filtering at the surface.** `get_solo_rail_activity`
+returns eleven display columns; `toActivityItem` narrows those to
+`{id,title,summary,byPaige,departmentSlug,occurredAt}`. There is no `payload`, `ref_table`,
+`ref_id`, `actor_user_id`, `tenant_id` or `contact_id` in the shape at all, so none can reach the
+markup. `id` is a React key and is never rendered, and the feed's `error` string is deliberately
+NOT rendered — `status` alone drives the copy — so no SQLSTATE, server text or function name can
+surface on a tenant screen. Both properties are asserted, and both assertions were falsified.
+
+**Workspace switch has TWO layers, and the first one already existed.** `CommandHub` keys the mount
+on `activeTenantId` (`CommandCenter.tsx:104`), so a switch **unmounts and remounts** the subtree —
+no row, filter, pending read or loading state can survive it. The panel additionally forwards
+`workspaceId` into the feed's render-time guard and request counter. The remount is the primary
+mechanism; the guard is the second layer, and saying it the other way round would overstate what
+the new code does.
+
+**METHOD, carried forward from Slice B.** Every mechanism was deliberately falsified before the
+slice was called done: the five states collapsed to `items.length` (5 failures), the row's UUID
+rendered (1), the raw server error printed (1), the workspace reset moved from render into an
+effect (1), the request-sequence guard removed (1). An `act()`-based assertion structurally cannot
+observe a painted stale frame — the switch test records every committed frame from a
+`useLayoutEffect` instead.
 
 ### CORRECTED 2026-09-03 — the four owner-facing consumers now call the resolvers (Slice B)
 

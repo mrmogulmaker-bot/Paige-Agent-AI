@@ -34,6 +34,8 @@ import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 import { buildTenantTeamContextBlock } from "../_shared/team-context.ts";
 import { loadSpineEvidenceForChat } from "../_shared/paige-spine/chatEvidence.ts";
+import { buildBusinessContextReadinessBlock } from "../_shared/paige-spine/domains/businessContextChatEvidence.ts";
+import { buildTeamAuthorityBlock } from "../_shared/paige-spine/domains/teamAuthorityChatEvidence.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -4119,6 +4121,36 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       }
     }
 
+    // Business Context Readiness (Spine capability `business_context.readiness`) — a live,
+    // per-turn read of Setup's own current website/business_phone/industry/primary_business_email
+    // status, so "what's my systems status right now" answers the SAME current truth Systems
+    // Check shows, never an old cached notion of what Setup used to say. supabaseClient is the
+    // caller's own JWT-scoped client (§9/§588/§59) — the RPC derives the tenant from it and
+    // ignores any tenant argument, exactly like get_paige_persona_context above.
+    let businessContextReadinessBlock = "";
+    if (personaCtx.tenant_id) {
+      try {
+        businessContextReadinessBlock = await buildBusinessContextReadinessBlock(supabaseClient, personaCtx.tenant_id);
+      } catch (e) {
+        console.warn("[paige-ai-chat] business context readiness unavailable:", (e as Error)?.message);
+      }
+    }
+
+    // Team Authority (Spine capability `team.authority`) — the caller's OWN seat role and legal
+    // ownership, kept as two facts. The tenant team block above carries the roster, but computes
+    // each person's permission as `is_owner OR role = 'owner'`, which is wider than the canonical
+    // ownership predicate — so PAIGE would otherwise hold one string meaning membership and
+    // ownership at once. supabaseClient is the caller's own JWT-scoped client (§9/§588/§59); the
+    // RPC takes no tenant argument at all and derives everything from that identity.
+    let teamAuthorityBlock = "";
+    if (personaCtx.tenant_id) {
+      try {
+        teamAuthorityBlock = await buildTeamAuthorityBlock(supabaseClient, personaCtx.tenant_id);
+      } catch (e) {
+        console.warn("[paige-ai-chat] team authority unavailable:", (e as Error)?.message);
+      }
+    }
+
     // PAIGE VOICE — the platform-DEFAULT "how you talk" block (persona-layer-1 voice fix).
     // It sits RIGHT AFTER the tenant persona and BEFORE the operating core so the model
     // reads WHO you are → HOW you talk → (then) task/tool/context — instead of burying the
@@ -4141,6 +4173,8 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       { role: "system", content: PAIGE_VOICE_BLOCK },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       ...(tenantTeamContext ? [{ role: "system", content: tenantTeamContext }] : []),
+      ...(businessContextReadinessBlock ? [{ role: "system", content: businessContextReadinessBlock }] : []),
+      ...(teamAuthorityBlock ? [{ role: "system", content: teamAuthorityBlock }] : []),
       ...(spineEvidenceBlock ? [{ role: "system", content: spineEvidenceBlock }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first

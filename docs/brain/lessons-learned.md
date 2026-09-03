@@ -6,6 +6,48 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0b. A tenant-isolation proof cannot see a ROLE leak — the caller inside the tenant (2026-09-03)
+
+- **Symptom:** `get_business_context_readiness` passed a six-scenario local Postgres proof, including
+  an explicitly mutation-tested IDOR probe. It still leaked: a workspace's own **CLIENT** could read
+  their coach's Setup readiness, while the capability descriptor declared `audience: owner_internal`.
+- **Root cause:** every scenario in that proof varied the same axis — **which tenant** the caller
+  belongs to. A client of tenant A *is* an authenticated user of tenant A, so
+  `current_user_tenant_id()` resolved correctly and the function answered correctly for the wrong
+  person. The gate the reference adapter has
+  (`get_pipeline_spine_evidence`: `has_any_role(uid, array['admin','super_admin','coach'])`) was
+  simply absent, and no assertion asked for it. The proof was green and the audience promise was
+  false at the same time, which is exactly the §39 "what would make this GREEN proof a lie?" case.
+- **Rule:** a `SECURITY DEFINER` read has **two** access axes, and tenant isolation is only one.
+  Before calling such a proof done, write the assertion for the second: *which ROLES inside the
+  resolved tenant may see this?* If the capability declares `audience: owner_internal`, a non-staff
+  member of that same tenant must be refused, and the refusal must be **tested** — it is invisible to
+  every cross-tenant assertion you already wrote. Prefer a refusal that keeps the response shape
+  (four rows, reason `not permitted for this account`) so a consumer can tell "may not" from
+  "could not" (§13).
+- **Second rule, learned the same day by getting the FIRST fix wrong:** write that gate
+  **tenant-scoped**, not global. My first fix copied the Pipeline reference adapter's
+  `has_any_role(uid, array['admin','super_admin','coach'])`. `user_roles` carries **no `tenant_id`**,
+  so a global role answers the wrong question in both directions (§59's global-role trap):
+  it **wrongly admits** — a user who is 'admin' because of workspace X passes while resolving
+  workspace Y, where they may be a member or a client; and it **wrongly refuses** — the current
+  deferred-signup path (`record_signup_acceptance` / `provision_tenant`, `20260808190000`) grants a
+  new owner the base role `'user'` and nothing else, so a freshly provisioned Solo owner holds no
+  staff row at all and would be silently turned away from the very capability built for them.
+  Use `is_tenant_admin(<resolved tenant>) OR is_platform_owner()`. **And the copied predicate is
+  worth flagging upstream:** `get_pipeline_spine_evidence` still carries the global form, and its
+  binding is `PARTIAL` with no authenticated drive — so nobody has yet exercised the path where it
+  would matter.
+- **What made the second miss findable:** the test INSERTED the `user_roles` rows itself, so it
+  proved the gate works without ever proving real owners hold that role. The fixture now gives the
+  REFUSED caller a global staff role while leaving them a mere workspace `member` — so a regression
+  to a global predicate turns the refusal assertions red instead of passing for the wrong reason.
+  **When a gate reads a table your fixture also writes, ask what production actually puts there**;
+  the answer here came from counting roles on prod (7 of 7 owners hold `admin` today — which is
+  history, not construction, since the current signup path grants `'user'`).
+
+---
+
 ## 0f. A mocked write hides a required field, and every test still passes (2026-09-03)
 
 - **Symptom:** Campaigns → Sales shipped a "Quick offer" create with 42 green tests, a clean `tsc`
@@ -68,6 +110,17 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   against `git ls-tree origin/main supabase/migrations`; renumber to a free version (content unchanged,
   `\i` lines / parity-test paths / registry rows follow). Treat the `database-contract` job as the
   canary it is — it applies the merge ref, which is the only place the collision is visible.
+- **AMENDED 2026-09-03, after this happened again to a session that had READ this entry.** Following
+  the rule above is not enough, and the reason is worth stating exactly: I fetched `main`, compared
+  versions, renumbered `20261107000000` → `20261111000000` — and `main` merged
+  `20261111000000_the_offer_editor…` into that very slot **in the minutes between my check and my
+  push**. A manual comparison is a snapshot; on a branch that moves 188 commits in a day, the snapshot
+  is stale before the push lands. **The repo already ships the guard: `npm run lint:migration-versions`
+  (`scripts/ci/migration-version-collision-lint.mjs`), which compares against `origin/main` at the
+  moment you run it and names both colliding files.** Run it as the LAST step before every push that
+  touches `supabase/migrations/**` — not the eyeball comparison, and not only in CI. Note it reads
+  COMMITTED state, so commit the rename first, then run it. Both `verify` and `database-contract` went
+  red for this single cause; one local command would have caught both.
 
 ## 0d. Proof-authoring traps in a `BEGIN … ROLLBACK` role-impersonating SQL proof (2026-09-02)
 
@@ -84,6 +137,17 @@ Each cost one failed run on prod (rollback, nothing persisted) before it was wri
   (`CREATE OR REPLACE` the original) instead of rolling the savepoint back.
 - A property that is "0 rows visible" is vacuous unless a sibling proves the row EXISTS to the owning
   role (P52 needed P55).
+- **AMENDED 2026-09-03 — a hand-built local stand-in passes exactly the checks it models, and no
+  others.** With no Docker in the session I could not run `supabase test db`, so I shimmed pgTAP
+  against a local Postgres with hand-written stub tables. It reported **18/18 green**; CI then failed
+  the same file at the fixture, on `trg_guard_active_tenant` — a REAL trigger my stub schema simply
+  did not have. The shim was not wrong about the assertions; it was silent about everything it had
+  not been told existed, and silence read as success. Two rules: (1) when the fixture writes to a
+  table production guards, model the guard in the stand-in — after adding this one, the shim
+  reproduced CI's exact error string and the corrected ordering went green; (2) never quote a shim
+  run as proof the CI file passes — it is evidence about the assertions, not about the schema. The
+  actual fix was already written down two bullets above (seed the seat, then the pointer); the shim
+  is what let me skip reading it.
 - **The batch you RAN is not the file you COMMITTED unless you re-derive it.** The MCP runner takes a
   derived batch (`\i` expanded, `RAISE NOTICE` swapped for a report row). A fix applied to the derived
   copy in `/tmp` and not to the committed mutants file left the repo carrying a subquery that fails
@@ -1504,6 +1568,67 @@ the ruling is the owner's.
 *Rule:* **when a blocker has been inherited rather than measured, measure it before repeating it.**
 This one had been restated all session as a reason to skip a check, and one `curl` falsified half of
 it. An inherited limit is a hypothesis with a citation, not a finding.
+
+
+---
+
+## A NOT FOUND from an enumeration you never proved complete (2026-09-03, Rail #877 — SECOND occurrence)
+
+**What happened.** Verifying that the new Solo Rail panel was really on production, a two-level
+crawl of the deployed JS chunks reported the panel **absent from all 427 chunks**. Taken at face
+value that reads as "the deploy did not carry the change" — a release-blocking claim.
+
+It was wrong. A **control** — a string known to have been in the deployed bundle *before* this
+slice — came back absent from the same 427. A string that is definitely there cannot be missing
+from a complete enumeration, so the enumeration was incomplete, not the code. The real chunk sat
+deeper in the graph: closure took **five rounds and 733 chunks**.
+
+**The second trap, underneath the first.** A chunk named `SoloApp-CQ9-3o2z.js` WAS reachable at
+level two, and it did not contain the panel. It was **12,562 bytes**; the real one
+(`SoloApp-DxVYmu_L.js`) was **650,307**. Vercel keeps assets from earlier deployments, so an old
+artifact answers `200` under a plausible name indefinitely. Grepping the first plausible name and
+believing the result is how a stale chunk gets mistaken for the current one.
+
+**Why this is the second occurrence.** The same shallow-crawl false negative happened days earlier
+verifying Slice B, where `PaigeRailFeed`'s chunk was reported missing for the same reason. It was
+recorded then as "my chunk enumeration was incomplete" — and the method that produced it was used
+again anyway, because the lesson was written as a note about one incident rather than as a rule.
+
+*Rules, both of which had to fail twice to get written down:*
+
+1. **Run a control before believing a NOT FOUND.** Search for something you already know is there.
+   If the control is also missing, you have measured your search, not the artifact. This costs one
+   extra query and is the only thing that distinguishes "absent" from "not looked hard enough".
+2. **Crawl to closure, and cross-check size against a local build at the deployed commit.** A
+   fixed number of levels is a guess about the graph's depth. Byte-size equality between a locally
+   built chunk and the served one is strong, cheap evidence they are the same source — and it is
+   what exposes a stale same-named artifact.
+
+## A claim written once and copied six times is checked zero times (2026-09-03, Rail #877 → #879)
+
+**What happened.** The Solo Rail slice was justified by "the tenant-wide rail was dark for every
+Solo tenant." That is false. `TrustCompass` is mounted on Solo (`SoloApp.tsx:253`) and its panel
+calls `useSoloActivityFeed` (`compass.tsx:469`); so does Team → Activity (`team.tsx:233`). Both read
+`get_solo_rail_activity` — the tenant-wide reader. Solo already had two tenant-wide rail surfaces.
+
+The true statement is narrower: **`PaigeRailFeed` specifically is unreachable on Solo, and the
+Command Center — Solo's default landing route — carried no Rail surface.**
+
+**How it survived.** The sentence went into the master reference, this brain record, the tier
+matrix, the PR body, the commit message, and the report to the owner. Six copies, and every one was
+written by consulting the previous copy rather than the code. Worse, the tier-matrix edit that
+carried the claim **also carried a table two rows above marking Trust Compass and Team Activity as
+✓ for Solo** — the refutation and the claim shipped in the same diff, in the same file, and neither
+the author nor the pre-merge checks noticed. An independent review caught it after merge.
+
+**Why the usual defences all missed it.** Tests do not assert prose. Lint does not read English. The
+peer-gate reads the diff for defects, and this defect was *consistent with itself* everywhere it
+appeared — a lie repeated identically looks like corroboration.
+
+*Rule:* **a claim gets re-derived from the source at every place it is written, or it gets written
+once and linked.** Copying prose between records copies its errors and manufactures false
+confidence, because each copy looks independently attested. When a record and a table in the same
+change disagree, the table — which was built from the code — wins.
 
 ---
 

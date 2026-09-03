@@ -44,15 +44,17 @@
  * billing this workspace. What the workspace charges its own customers runs on the tenant's own
  * processor (§38 / §197 LAYER 2) and is stated there, not here.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
 import {
-  resolveAiUsagePresentation, resolveBillingPortalPresentation, resolveWorkspaceBillingStatusPresentation,
+  PAYMENT_SETUP_REFUSAL_COPY, resolveAiUsagePresentation, resolveBillingPortalPresentation,
+  resolveWorkspaceBillingStatusPresentation, resolveWorkspacePaymentSetupPresentation,
 } from "./billing-contract";
 import { useWorkspaceAiUsage } from "./data/useWorkspaceAiUsage";
 import { useWorkspaceBillingStatus } from "./data/useWorkspaceBillingStatus";
+import { usePlatformBillingConnect } from "./data/usePlatformBillingConnect";
 import {
   PORTAL_REFUSAL_COPY, useWorkspaceBillingAuthority,
 } from "./data/useWorkspaceBillingAuthority";
@@ -112,12 +114,60 @@ function PlanCard({ status }: { status: BillingStatusHook }) {
   </Card>;
 }
 
-function PortalCard({ authority }: { authority: Authority }) {
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<WriteState>(null);
+/**
+ * The Billing Experience payment-method connect act (owner brief 2026-09-03, item 4), added ABOVE
+ * the pre-existing hosted-portal block in the SAME "Payment method" card (§18 one home) rather than
+ * a new card. The gate mirrors the SERVER's own gate exactly (authority.scope/canManageBilling), so
+ * the button is never offered to someone the server is certain to refuse (§36). Payment-method
+ * DISPLAY facts (brand/last4/exp) come from `status` — the same read the plan card uses — never
+ * invented here. The hosted-portal block below is UNCHANGED: still gated purely on `authority`,
+ * still the pre-existing, tested, flag-gated act.
+ */
+function PortalCard({ authority, status, activeTenantId }: { authority: Authority; status: BillingStatusHook; activeTenantId: string | null }) {
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalOutcome, setPortalOutcome] = useState<WriteState>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupOutcome, setSetupOutcome] = useState<WriteState>(null);
+  const { openPaymentSetup } = usePlatformBillingConnect(activeTenantId);
+
+  const setup = resolveWorkspacePaymentSetupPresentation({
+    loading: authority.loading || status.loading,
+    readFailed: authority.error !== null || status.error !== null,
+    scope: authority.authority?.scope ?? "none",
+    canManageBilling: authority.authority?.canManageBilling === true,
+    billingAccountState: authority.authority?.billingAccountState ?? "not_applicable",
+    paymentMethodConnected: status.status?.paymentMethodConnected === true,
+    paymentMethodBrand: status.status?.paymentMethodBrand ?? null,
+    paymentMethodLast4: status.status?.paymentMethodLast4 ?? null,
+    paymentMethodExpMonth: status.status?.paymentMethodExpMonth ?? null,
+    paymentMethodExpYear: status.status?.paymentMethodExpYear ?? null,
+  });
+  const setupSection = <>
+    <div className="ss-state" data-setup-state={setup.state} role={setup.state === "setup-loading" ? "status" : setup.state === "setup-unreadable" ? "alert" : undefined}>
+      {setup.state === "setup-loading" ? <RefreshCw className="ss-spin" aria-hidden/> : setup.state === "setup-unreadable" ? <TriangleAlert aria-hidden/> : <CreditCard aria-hidden/>}
+      <span><strong>{setup.heading}</strong>{setup.body}</span>
+      {setup.canRetry && <button type="button" onClick={() => { authority.refresh(); void status.refresh(); }}>Retry</button>}
+    </div>
+    {setup.fields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
+      {setup.fields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
+    </div>}
+    {setup.canAct && <div className="ss-form-actions" style={{ marginTop: 10 }}>
+      <button type="button" className="ss-btn" disabled={setupBusy} onClick={async () => {
+        setSetupBusy(true); setSetupOutcome(null);
+        const result = await openPaymentSetup();
+        setSetupBusy(false);
+        if ("reason" in result) setSetupOutcome({ tone: "bad", message: PAYMENT_SETUP_REFUSAL_COPY[result.reason] });
+      }}>
+        {setupBusy ? <RefreshCw className="ss-spin" aria-hidden/> : <CreditCard aria-hidden/>}
+        {setupBusy ? "Opening…" : setup.actionLabel}
+      </button>
+    </div>}
+    <Outcome state={setupOutcome}/>
+  </>;
 
   if (authority.loading) {
     return <Card title="Payment method" icon={CreditCard} truth="PARTIAL">
+      {setupSection}
       <div className="ss-state" role="status"><RefreshCw className="ss-spin" aria-hidden/>Clearing and resolving this account…</div>
     </Card>;
   }
@@ -125,6 +175,7 @@ function PortalCard({ authority }: { authority: Authority }) {
   // account type" here would state something nobody checked.
   if (authority.error || !authority.authority) {
     return <Card title="Payment method" icon={CreditCard} truth="PARTIAL">
+      {setupSection}
       <div className="ss-state" data-portal-state="portal-unreadable" role="alert">
         <TriangleAlert aria-hidden/>
         <span><strong>Couldn’t read your billing permissions</strong>Nothing about your access or your billing has changed.</span>
@@ -139,27 +190,28 @@ function PortalCard({ authority }: { authority: Authority }) {
   });
 
   return <Card title="Payment method" icon={CreditCard} truth="PARTIAL">
+    {setupSection}
     <div className="ss-state" data-portal-state={portal.state}>
       <CreditCard aria-hidden/>
       <span><strong>{portal.heading}</strong>{portal.body}</span>
     </div>
     {portal.canOpen && <div className="ss-form-actions" style={{ marginTop: 10 }}>
-      <button type="button" className="ss-btn" disabled={busy} onClick={async () => {
-        setBusy(true); setOutcome(null);
+      <button type="button" className="ss-btn" disabled={portalBusy} onClick={async () => {
+        setPortalBusy(true); setPortalOutcome(null);
         const result = await authority.openPortal();
-        setBusy(false);
+        setPortalBusy(false);
         // A refusal is REPORTED, with the server's reason. It is never a silent no-op and never a
         // generic failure: the whole point of the refusal vocabulary is that the person is told
         // which thing was not true.
         // `in` rather than `!result.ok`: this project compiles with `strict: false`, where the
         // boolean discriminant of a union does NOT narrow, so the obvious form does not type-check.
-        if ("reason" in result) setOutcome({ tone: "bad", message: PORTAL_REFUSAL_COPY[result.reason] });
+        if ("reason" in result) setPortalOutcome({ tone: "bad", message: PORTAL_REFUSAL_COPY[result.reason] });
       }}>
-        {busy ? <RefreshCw className="ss-spin" aria-hidden/> : <ExternalLink aria-hidden/>}
-        {busy ? "Opening…" : "Manage billing"}
+        {portalBusy ? <RefreshCw className="ss-spin" aria-hidden/> : <ExternalLink aria-hidden/>}
+        {portalBusy ? "Opening…" : "Manage billing"}
       </button>
     </div>}
-    <Outcome state={outcome}/>
+    <Outcome state={portalOutcome}/>
   </Card>;
 }
 
@@ -443,11 +495,51 @@ export function SoloBillingView() {
   // whole answer: an outcome is a report about ONE workspace and cannot outlive it.
   const { activeTenantId } = useTenantContext();
   const workspace = activeTenantId ?? "none";
+
+  // Payment setup return (item 4): Stripe redirects back with ?payment_setup=success|cancelled.
+  // This is UX ONLY — never an authority signal. The real grant is entirely server-side (the
+  // webhook, keyed on the session's SIGNED metadata); this only tells the page "go re-read your
+  // real status" and shows an honest banner while it does. Read once on mount, then stripped from
+  // the URL so a refresh never re-announces a return that already happened.
+  const [setupReturn, setSetupReturn] = useState<"success" | "cancelled" | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get("payment_setup");
+    if (flag === "success" || flag === "cancelled") {
+      setSetupReturn(flag);
+      params.delete("payment_setup");
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+      window.history.replaceState(null, "", next);
+    }
+  }, []);
+  // On a success return, poll the real status read a few times — the webhook may not have landed
+  // yet — so the confirmation is DRIVEN BY THE REAL READ, never assumed from the redirect alone.
+  useEffect(() => {
+    if (setupReturn !== "success") return;
+    let cancelled = false;
+    let attempts = 0;
+    const poll = () => {
+      if (cancelled || attempts >= 5) return;
+      attempts += 1;
+      void status.refresh().then(() => {
+        if (!cancelled && attempts < 5) setTimeout(poll, 1500);
+      });
+    };
+    const t = setTimeout(poll, 1000);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupReturn]);
+
   return <div className="ss-grid">
+    {setupReturn && <div className="ss-state" data-setup-return={setupReturn} role="status">
+      {setupReturn === "success"
+        ? <><RefreshCw className="ss-spin" aria-hidden/><span><strong>Confirming your payment method…</strong>This updates automatically once the platform confirms it. Nothing else about your plan changed.</span></>
+        : <><TriangleAlert aria-hidden/><span><strong>Payment setup was cancelled</strong>Nothing about your billing changed.</span></>}
+    </div>}
     <PlanCard status={status}/>
     <ContactsCard key={`contacts:${workspace}`} authority={authority}
       primarySelectionNeeded={status.status?.primarySelectionNeeded === true}/>
-    <PortalCard key={`portal:${workspace}`} authority={authority}/>
+    <PortalCard key={`portal:${workspace}`} authority={authority} status={status} activeTenantId={activeTenantId ?? null}/>
     {/* NOT keyed on the workspace, unlike its two neighbours, and that is deliberate rather than
         an oversight. They are keyed because they hold LOCAL state — an outcome banner, a half-made
         selection — which is not data and survived a switch. This card holds none: everything it

@@ -123,6 +123,77 @@ async function writeConflictAudit(
   if (error) console.error(`[platform-billing] conflict audit insert failed: ${error.code ?? "unknown"}`);
 }
 
+export interface UpsertPaymentMethodInput {
+  tenantId: string;
+  /** The Stripe Customer this payment method was attached to — verified against the
+   * tenant's own mapping row before anything is written (defense against a stale/
+   * mismatched webhook event ever overwriting the wrong workspace's payment facts). */
+  stripeCustomerId: string;
+  paymentMethodId: string;
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+}
+
+export type UpsertPaymentMethodResult =
+  | { outcome: "written" }
+  | { outcome: "customer_mismatch" }
+  | { outcome: "no_mapping" }
+  | { outcome: "error"; code: string };
+
+/**
+ * The Billing Experience payment-method connect flow (owner brief 2026-09-03, item 4). The ONE
+ * writer of `platform_billing_accounts.payment_method_*` — called ONLY from stripe-webhook, on a
+ * verified `checkout.session.completed` (mode=setup) event. The connect edge function itself never
+ * calls this; it only creates the Stripe-side customer/session and redirects (§18 — same single-
+ * writer discipline as `upsertBillingAccount`, and the SAME reason: a client-echoed card summary is
+ * never a source of truth, only a verified webhook event is).
+ */
+export async function upsertPaymentMethod(
+  admin: any,
+  input: UpsertPaymentMethodInput,
+): Promise<UpsertPaymentMethodResult> {
+  try {
+    const { data: existing, error: readErr } = await admin
+      .from("platform_billing_accounts")
+      .select("stripe_customer_id")
+      .eq("tenant_id", input.tenantId)
+      .maybeSingle();
+    if (readErr) {
+      console.error(`[platform-billing] payment-method mapping read failed: ${readErr.code ?? "unknown"}`);
+      return { outcome: "error", code: `mapping_read_failed:${readErr.code ?? "unknown"}` };
+    }
+    if (!existing) return { outcome: "no_mapping" };
+    // The mapping row is the source of truth for "which customer belongs to this workspace" —
+    // never trust the webhook event's own customer id without checking it against that row first.
+    if (existing.stripe_customer_id !== input.stripeCustomerId) {
+      console.error("[platform-billing] payment-method customer mismatch; nothing written");
+      return { outcome: "customer_mismatch" };
+    }
+    const { error: updErr } = await admin
+      .from("platform_billing_accounts")
+      .update({
+        payment_method_id: input.paymentMethodId,
+        payment_method_brand: input.brand,
+        payment_method_last4: input.last4,
+        payment_method_exp_month: input.expMonth,
+        payment_method_exp_year: input.expYear,
+        payment_method_connected_at: new Date().toISOString(),
+        payment_method_updated_at: new Date().toISOString(),
+      })
+      .eq("tenant_id", input.tenantId);
+    if (updErr) {
+      console.error(`[platform-billing] payment-method update failed: ${updErr.code ?? "unknown"}`);
+      return { outcome: "error", code: `payment_method_update_failed:${updErr.code ?? "unknown"}` };
+    }
+    return { outcome: "written" };
+  } catch (e) {
+    console.error(`[platform-billing] payment-method write threw: ${e instanceof Error ? e.name : "unknown"}`);
+    return { outcome: "error", code: "payment_method_threw" };
+  }
+}
+
 export async function isPlatformCustomer(admin: any, stripeCustomerId: string): Promise<boolean | null> {
   const checks = await Promise.all([
     admin.from("platform_billing_accounts").select("tenant_id").eq("stripe_customer_id", stripeCustomerId).limit(1),

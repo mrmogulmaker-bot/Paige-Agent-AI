@@ -1,5 +1,101 @@
 # Decision Log — chronological one-liners
 
+- **RELEASED to production: `tenant_comms_readiness()` reads Setup (2026-09-03, PR #878, merge `8689df61`, migration `20261160000000`)** —
+  the FOURTH consumer of the pointer #864 fixed, found only by enumerating what functions READ rather
+  than what they are named. Solo Settings → Connections was telling Mogul Maker Academy its website
+  and business phone were missing while both sat in Setup. Function reproduced byte-exactly from the
+  deployed definition (md5 `fe1374e294534e24558161133dd2af03`) before patching, so the diff is
+  provably one declaration, one read, three booleans. **Proven live** as that workspace's real owner:
+  `{has_name: true, has_phone: true, has_website: true}`, all three previously `false`; twelve other
+  tenants byte-identical. A legacy `tenants.brand` fallback is used HERE (presence booleans) but not
+  in #864 (provenance claims), so the open owner decision on the two legacy-only workspaces stands.
+  **Deploy note:** `deploy-migrations` went red on a `schema_migrations` duplicate key because
+  Supabase branching had already applied it; prod verified correct, `db-live` left stale so the drift
+  check now under-reports. Diagnosed on incident #198.
+
+- **Spine capability 3, `team.authority`, plus a cross-workspace binding fix for BOTH readiness reads (2026-09-03, PR #876)** —
+  two facts kept apart that `get_paige_team_context()` collapses (`is_owner OR role = 'owner'` is
+  wider than `is_tenant_owner()`). Independent review then found that
+  `get_paige_persona_context()` resolves the conversation's tenant client-link first, so a user who
+  is a client of B and a member of A could have A's facts asserted inside B's conversation — a hole
+  that ALSO shipped live in #864. Both reads now name the workspace they resolved; both adapters
+  render nothing on mismatch. Latent (zero `clients.linked_user_id` rows on prod) and certain to fire
+  once client portal users are linked. Mutation-proven: removing the binding turns 6 of 23 tests red.
+
+- **RELEASED to production: `business_context.readiness`, the Spine's 2nd capability and its 1st workspace-level one (2026-09-03, PR #864, merge `7ad98cff`, migration `20261112000000`)** —
+  merged under explicit owner Gate 2 authorization, all 7 checks green. `deploy-migrations` and
+  `deploy-edge-functions` both succeeded; `paige-ai-chat`, `systems-check-run-change`,
+  `systems-check-run-onboarding` and `systems-check-run-scheduled` redeployed; `edge-live..main`
+  drift is zero. **Persisted-apply proof against a pre-merge baseline** (§32.a): `schema_migrations`
+  row and the function object both went **0 → 1**, so the deploy demonstrably acted. The deployed
+  body carries the tenant-scoped gate (`is_tenant_admin(v_tenant) or is_platform_owner()`) and, with
+  comments stripped, contains no `has_any_role`. **The defect is fixed on real data:** tenant
+  `d8a0a880` had website, phone and industry in `tenant_legal_profile` and none of them in
+  `tenants.brand` — it was being told all three were missing; executing the deployed function as that
+  workspace's real owner now returns all three `owner_confirmed` from `setup`, with
+  `primary_business_email` correctly `connection_sourced` from `connections`. **What is NOT proven:**
+  the role gate cannot be exercised on prod because zero non-staff `tenant_members` exist — it is
+  proven in CI (18 assertions, mutation-tested) and is a forward-looking guard for the first member
+  ever added; and the authenticated UI drive remains owed, blocked on unset `LIVE_DRIVE_*`
+  credentials, NOT on the "no browser" reason I wrongly gave throughout (see the correction below and
+  lessons-learned 0h). **Owner decision surfaced, not silently absorbed:** two tenants whose values
+  live only in the legacy `tenants.brand` now read `needs_confirmation`, flipping `website_connected`
+  (both) and `comms_configured`'s phone half (one) from pass to fail — true under the source-of-truth
+  rule, but a visible change (§58).
+
+- **CORRECTION to the entry below, same day: the role gate I added was global where it had to be tenant-scoped (2026-09-03, `business_context.readiness`)** —
+  an adversarial read of my own pushed diff, run while CI was still going, found the gate added to
+  close the client-leak was itself wrong. It copied the Pipeline reference adapter's
+  `has_any_role(uid, array['admin','super_admin','coach'])`; `user_roles` carries **no `tenant_id`**,
+  so it answers the wrong question in both directions (§59's global-role trap). It **wrongly admits**
+  a user who holds 'admin' from workspace X while they resolve workspace Y, and it **wrongly refuses**
+  a freshly provisioned Solo owner, because the current deferred-signup path
+  (`record_signup_acceptance` / `provision_tenant`, `20260808190000`) grants the base role `'user'`
+  and nothing else — silently turning away the exact persona the capability exists for, since a
+  refusal renders nothing in chat. **Measured on prod before changing anything** (counts only, no
+  PII): of the 7 users who resolve a tenant, the global and tenant-scoped gates admit the **same 7** —
+  0 wrongly admitted, 0 wrongly refused *today*. All 7 owners hold `admin`, which is history rather
+  than construction. So the change is a no-op for every current user and closes both holes going
+  forward. Now `is_tenant_admin(<resolved tenant>) OR is_platform_owner()`. **The test could not have
+  caught it** — it inserted the `user_roles` rows itself, proving the gate works without ever proving
+  real owners hold that role; the refused fixture now carries a GLOBAL staff role while remaining a
+  mere workspace `member`, so a regression to a global predicate turns 3 assertions red (mutation-
+  proven) instead of passing for the wrong reason. **Flagged upstream, not fixed here:**
+  `get_pipeline_spine_evidence` still carries the global predicate; its binding is `PARTIAL` with no
+  authenticated drive, so the path where it matters has never been exercised. **Also in this
+  correction:** the migration collided a SECOND time (`20261111000000` was taken by
+  `the_offer_editor…` in the minutes between my check and my push), reddening both `verify` and
+  `database-contract` for one cause — the repo's own `npm run lint:migration-versions` catches this
+  and was not run locally; it is now, and lessons-learned 0c is amended to say so.
+
+- **Systems Check and PAIGE were reading a table Setup stopped writing to — three defects, not one (2026-09-03, `business_context.readiness`)** —
+  the reported symptom was "Systems Check and PAIGE report old or separate findings after Setup is
+  updated," which sounds like staleness. A source-to-consumer trace found it is **not a staleness
+  defect for three of the four fields**. Setup's current save path
+  (`save_solo_setup_context` → `save_solo_setup_identity`, migration `20261046000000`) writes
+  `website`/`phone`/`industry` into **`tenant_legal_profile` columns**; three Systems Check runners
+  (`website_connected`, `company_info_populated`, `comms_configured`) and PAIGE's brand/brief prompt
+  section instead read **`tenants.brand->>'website'/'business_phone'/'industry'`** — a location the
+  current save path never writes. A perfectly fresh scan reported "missing" regardless of what an
+  Owner saved, because the pointer, not the data, was stale. Three independent causes, each confirmed
+  separately (the brief explicitly said not to infer one cause for all fields): **(A)** the wrong-table
+  read, at three call sites sharing one broken pointer; **(B)** "refresh" never re-scanned —
+  `useSystemsCheck.refresh()` only invalidates the React Query cache, and the one mechanism that would
+  re-run a check (`systems-check-run-change`, already deployed and correctly surface-mapped) had **zero
+  callers anywhere in `src/`**; **(C)** PAIGE could not have said it even with the right source —
+  `buildBusinessBriefSection` has no `website`/`phone` key at all, and `buildBrandSection`'s
+  `b.website`/`b.phone` lines read the same dead `brand` keys. **`primary_business_email` was NOT
+  broken** — it is correctly written to `tenants.brand->'support_email'` with provenance in
+  `tenant_setup_business_context_meta`, and already reaches PAIGE via `resolve_tenant_brand()`. **Also
+  measured:** no phone-format validation existed anywhere, client or server, before this work — so
+  "malformed" becomes a real, reportable status here for the first time rather than silently passing as
+  present. **Fix:** one narrow Spine contract, `public.get_business_context_readiness(uuid)` — status +
+  provenance only, never a raw value, always exactly four rows so "no signal" can never be confused
+  with a silent read failure. Both consumers now read it: the three runners via one shared helper (§18,
+  so the fix lands once rather than per runner), and PAIGE via a per-turn context block. Setup remains
+  the sole writer and sole source of truth; a Setup save now fires the existing change-triggered
+  re-check so the persisted finding is refreshed at save time instead of waiting for the nightly sweep.
+
 - **The governed-execution guard failed OPEN on a target it could not read, in both rules I had reported as swept (2026-09-03, follow-up to PR #792 `1a22637c`)** —
   independent review against the merged commit found the same class alive in **R2** and **R4**, and
   both reproduced. **R2** (nothing loads the superseded #711 bare-boolean gate) read a dynamic
@@ -1796,3 +1892,87 @@ render as a distinct "Selection needed" banner rather than two rows that both lo
 Codex was reported down at review time; owner explicitly authorized substituting an Agent-based
 adversarial review and resuming Codex review when it returns — recorded so a future session does
 not read this as skipping review discipline.
+
+## 2026-09-03 — Catalog write RPCs are Solo-only server-side; a real gap, not just doc drift
+
+Owner ruling: the Catalog interface (`/solo/{account}/growth/catalog`) is Solo-only in the UI
+today — no Agency, sub-account, Enterprise, Operator, or legacy Admin surface reaches it — so its
+direct write RPCs must refuse those account types too, server-side, rather than relying on the
+missing UI as the access control. This closes exactly the gap PR #860's rounds 3-5 documented as
+"UI: ✗ · RPC: ✓ — an exposed gap, not a feature": `save_solo_offer`/`set_solo_offer_status`
+enforced membership (`is_tenant_admin`) but never `account_type`, so any tenant's owner/admin could
+call them directly, including a platform operator who happened to also hold a real membership row.
+
+The fix (migration `20261131000000`) mirrors the existing STRICT client-side gate,
+`isSoloStandalone()` (`!parent_tenant_id && account_type === 'standalone'`) — never the fail-safe
+tier resolver, which defaults an unknown account_type to "solo" and would be the wrong posture for
+an authorization decision. Resolved from the caller's own `tenants` row via
+`current_user_tenant_id()`, never a client-supplied claim. Producer inventory (§37): only
+`useCatalogOffers.ts` (the Catalog editor) and `sales-ops.tsx` (Sales' quick-create-offer flow,
+PR #866) call either RPC, both inside `src/solo/`, both reachable only by a `solo`-tier session —
+neither broken by the guard. `tenant-product-upsert` (the legacy `/admin/setup` Storefront panel's
+write path, with its own pre-existing §38 Stripe-destination-charge concern) has the identical
+missing check and is a genuinely separate seam — flagged for a follow-up, not folded into this
+narrow hotfix.
+
+Proven 10/10 in a rolled-back transaction against production's real schema and real tenant/user
+rows (an Agency owner, a sub-account admin, and a temporarily-relabelled Enterprise tenant's owner
+all refused with the new message; the Solo owner's create and status-change paths, a cross-tenant
+write, a client-supplied tenant claim, and the pre-existing unauthenticated/no-membership refusals
+all proven unchanged). `docs/doctrine/tier-matrix.md`'s Slice 2B rows updated in the same commit —
+the gap they described as open is now closed, and the table records the new server-side reality
+per tier.
+
+## 2026-09-03 — Billing Experience items 4–5: owner-only payment-method connect + Spine evidence (continuation of #865)
+
+Owner brief authorized continuing directly to items 4 and 5 without a routine approval pause. Item
+4: `platform-billing-connect` edge function opens a Stripe Checkout Session in `mode: "setup"`
+(SetupIntent, never a charge) for the authorized Owner of a `top_level` workspace only — its access
+decision mirrors the existing hosted-portal gate with one deliberate difference (it also allows
+`billing_account_state: "absent"`, since connect is how a mapping first comes to exist). No
+external Stripe object is created before an explicit owner click. `stripe-webhook` gained one new
+discriminated block that resolves the Checkout return's SetupIntent → PaymentMethod and writes it
+via a new shared writer, `upsertPaymentMethod()`, refusing (never overwriting) on a customer-id
+mismatch. Payment-method removal was deliberately left out of scope — no removal seam exists yet,
+and building one safely is separate design work.
+
+Item 5: `get_billing_spine_evidence()` — built entirely on `get_workspace_billing_status()` (never a
+second computation), in the exact fixed-field contract `get_pipeline_spine_evidence()` established.
+Answers Spine's five listed questions and structurally excludes every forbidden category (no Stripe
+id, no card details, no invoice payload, no cross-workspace or sales data) because those fields do
+not exist on the function it reads from.
+
+**The proof-writing lesson worth keeping:** the first draft of the dual-primary fixture assumed it
+could seed two live primary contacts "before the trigger's migration runs" — a technique that
+worked for #865's own Slice A proof (where the trigger didn't exist yet in that isolated
+transaction) but fails once the trigger is permanently live on production, which it now is. The fix
+was `ALTER TABLE ... DISABLE TRIGGER trg_platform_billing_one_primary` for exactly the two inserts
+that reconstruct the real historical pair (MMA's own pre-trigger data), then re-enabling it before
+the migration under proof runs. Recorded so a future proof against an already-shipped guard doesn't
+re-derive this from a failed `BEGIN..ROLLBACK` run first.
+
+Production rollback proof: 14/14 (P1–P13 + P80), 0 failures, nothing persisted. §32.a
+persisted-apply confirmation and §32.c authenticated runtime are both owed post-merge, same standing
+pattern as #865.
+
+## 2026-09-03 — Billing Experience items 4-5: merged, deployed, §32.a confirmed (PR #870)
+
+PR #870 merged at `cdea70ae`; all 7 CI checks green (audit, lint, contract, database-contract,
+verify, Vercel, Supabase Preview), no Claude Approvals check configured on this repo. §32.a
+persisted-apply confirmed by direct query on prod (ref `xygzykjyynhzqytbqnzu`): `schema_migrations`
+carries `20261140000000`; `get_billing_spine_evidence()` exists in `pg_proc`, `prosecdef=true`, and
+`has_function_privilege()` confirms the declared grant shape (`authenticated=true`, `anon=false`,
+`service_role=false`). `deploy-edge-functions.yml` and `deploy-migrations.yml` both succeeded on
+the merge commit; `platform-billing-connect` (new, v1) and `stripe-webhook` (v53) are both `ACTIVE`.
+
+A sibling PR, #869 (`claude/spine-billing-packet`, a different session), merged four minutes before
+#870 landed. It audited the older `get_workspace_billing_authority()` contract and flagged
+plan/promotional state and amount-due as gaps Spine needs. Item 5's `get_billing_spine_evidence()`
+is built on the newer `get_workspace_billing_status()` instead and now supplies both fields —
+recorded so a future session knows two Spine-facing billing contracts now exist and which one
+answers #869's flagged gap. Wiring Spine's actual caller to the new function is a follow-up, not
+done by #870.
+
+Still owed: §32.c authenticated browser drive of the Checkout round-trip (no browser-driving tool
+in this session); payment-method removal (deliberately out of scope, no removal seam exists yet);
+independent adversarial review (post-release audit per the brief, not a merge blocker).
