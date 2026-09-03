@@ -1,23 +1,30 @@
 /**
- * Billing Foundation C — Solo Settings › Billing.
+ * Billing Foundation C — Solo Settings › Billing, rebuilt on the Billing Experience read
+ * (owner brief 2026-09-03) — see `resolveWorkspaceBillingStatusPresentation` in
+ * `billing-contract.ts` for the current plan-card contract.
  *
- * This is the screen Foundation A was built under and nothing rendered. It mounts the two real
- * server seams — `get_workspace_billing_authority()` and `get_workspace_billing_contacts()` — and
- * renders ONLY what they prove.
+ * It mounts THREE real server seams — `get_workspace_billing_status()` (the plan/usage card and
+ * the contacts-selection-needed banner), `get_workspace_billing_authority()` (the "Manage billing"
+ * portal act and the contacts-write gate), and `get_workspace_billing_contacts()` — and renders
+ * ONLY what they prove.
  *
  * WHAT IS ACTUALLY INTERACTIVE HERE (§70.1 — a person can finish a job):
  *   Billing contacts and notices. A workspace owner can designate the workspace's primary billing
  *   contact, designate and revoke a billing delegate, and reload to find the change held. Those are
  *   live Owner-only RPCs with structural eligibility guards behind them.
  *
- * WHAT IS DELIBERATELY NOT CLAIMED:
- *   The plan card states what the platform can prove and no more. There is no entitlement
- *   projection yet (Foundation B, packet §4.3 R11), so today it resolves to an EXPLAINED
- *   unavailable — never "no subscription", never a price, never a renewal date, and never the
- *   $149 catalogue figure, which is a price LIST and not a statement that this workspace is
- *   charged anything. `billing-contract.ts` holds that rule and is tested directly.
- *   "Manage billing" says why it cannot open rather than failing vaguely; the portal feature flag
- *   is off on the platform and every current workspace has no billing-account mapping.
+ * WHAT THE PLAN CARD NOW CLAIMS, AND ON WHAT AUTHORITY (§13 — this section replaces an earlier
+ * version that described the OLD, pre-rebuild card and had gone stale):
+ *   `get_workspace_billing_status()` is a real, Owner-only, server-authoritative read — the plan
+ *   card shows a real access state (promotional/trial/paid/past-due/no-plan/internal), a real
+ *   "Amount due today" (including a genuine "$0" for promotional access — that is a proven fact,
+ *   not a placeholder), and "Billed by PAIGE Platform". Provider-account existence and any
+ *   connected payment method are shown as a SEPARATE labelled fact, never gating the access claim
+ *   (R13 — the bug this rebuild exists to correct). The $149 catalogue price is still never shown
+ *   as a charge; a real `amount_due_cents` is what renders, when a real paid subscription exists.
+ *   "Manage billing" (the hosted Stripe portal act) is UNCHANGED and still says why it cannot open
+ *   rather than failing vaguely; the portal feature flag is off on the platform and every current
+ *   workspace has no billing-account mapping.
  *
  * TERMINOLOGY (owner ruling R27, 2026-09-02). "Primary billing contact" and "billing delegate" are
  * FUNCTIONAL designations for receiving billing notices. Neither creates, changes, transfers,
@@ -42,11 +49,12 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { Bell, CalendarClock, CircleDollarSign, CreditCard, ExternalLink, RefreshCw, TriangleAlert, Users } from "lucide-react";
 import { Card, NotYours, Outcome, Status, type WriteState } from "./settings-primitives";
 import {
-  resolveAiUsagePresentation, resolveBillingPlanPresentation, resolveBillingPortalPresentation,
+  resolveAiUsagePresentation, resolveBillingPortalPresentation, resolveWorkspaceBillingStatusPresentation,
 } from "./billing-contract";
 import { useWorkspaceAiUsage } from "./data/useWorkspaceAiUsage";
+import { useWorkspaceBillingStatus } from "./data/useWorkspaceBillingStatus";
 import {
-  NO_WORKSPACE_AUTHORITY, PORTAL_REFUSAL_COPY, useWorkspaceBillingAuthority,
+  PORTAL_REFUSAL_COPY, useWorkspaceBillingAuthority,
 } from "./data/useWorkspaceBillingAuthority";
 import {
   BILLING_CONTACT_REFUSAL_COPY, useWorkspaceBillingContacts,
@@ -64,32 +72,41 @@ const NO_DELIVERY =
   "someone records who they will go to when delivery is built; nothing reaches anyone's inbox today.";
 
 type Authority = ReturnType<typeof useWorkspaceBillingAuthority>;
+type BillingStatusHook = ReturnType<typeof useWorkspaceBillingStatus>;
 
-function PlanCard({ authority }: { authority: Authority }) {
-  // `authority.authority` is null while the read is in flight and after it fails. Reading through
-  // it would have thrown; falling back to a "none" scope SILENTLY would be worse — it reads as a
-  // statement about the account. The resolver's own precedence (loading, then failed read) is what
-  // decides here, and the fallback is only ever consumed once neither is true.
-  const resolved = authority.authority ?? NO_WORKSPACE_AUTHORITY;
-  const plan = resolveBillingPlanPresentation({
-    loading: authority.loading,
-    readFailed: authority.error !== null,
-    scope: resolved.scope,
-    canViewBilling: resolved.canViewBilling,
-    billingAccountState: resolved.billingAccountState,
-    // Foundation B owns the entitlement projection. Until it exists this is null, which this
-    // resolver reads as "no read can answer it" — never as "this workspace has no plan".
-    entitlement: null,
+/**
+ * The Billing Experience rebuild's plan/usage card (owner brief 2026-09-03). Sourced from
+ * `get_workspace_billing_status()` via `resolveWorkspaceBillingStatusPresentation` — access_state
+ * and provider readiness are read INDEPENDENTLY (R13): a promotional workspace with no provider
+ * mapping reads as a valid promotional account with $0 due, never as "billing unavailable".
+ *
+ * REPLACES the previous mapping-gated `PlanCard` (`resolveBillingPlanPresentation` with
+ * `entitlement: null`), which could never show a real access state because Foundation B's
+ * entitlement projection did not exist yet. `get_workspace_billing_status()` IS that real read.
+ */
+function PlanCard({ status }: { status: BillingStatusHook }) {
+  const plan = resolveWorkspaceBillingStatusPresentation({
+    loading: status.loading,
+    readFailed: status.error !== null,
+    status: status.status,
   });
 
-  return <Card title="Platform subscription" icon={CircleDollarSign} truth="PARTIAL">
-    <div className="ss-state" data-billing-state={plan.state} role={plan.state === "plan-loading" ? "status" : plan.state === "plan-error" ? "alert" : undefined}>
-      {plan.state === "plan-loading" ? <RefreshCw className="ss-spin" aria-hidden/> : plan.state === "plan-error" ? <TriangleAlert aria-hidden/> : <CircleDollarSign aria-hidden/>}
+  return <Card title="Plan & usage" icon={CircleDollarSign} truth="PARTIAL">
+    <div className="ss-state" data-billing-state={plan.state} role={plan.state === "status-loading" ? "status" : plan.state === "status-error" ? "alert" : undefined}>
+      {plan.state === "status-loading" ? <RefreshCw className="ss-spin" aria-hidden/> : plan.state === "status-error" ? <TriangleAlert aria-hidden/> : <CircleDollarSign aria-hidden/>}
       <span><strong>{plan.heading}</strong>{plan.body}</span>
-      {plan.canRetry && <button type="button" onClick={authority.refresh}>Retry</button>}
+      {plan.canRetry && <button type="button" onClick={status.refresh}>Retry</button>}
     </div>
-    {plan.fields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
-      {plan.fields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
+    {plan.planFields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
+      {plan.planFields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
+    </div>}
+    {/* The SEPARATE honest readiness fact (owner brief): whether a provider billing account and a
+        payment method exist. Never merged into the access-state claim above. */}
+    {plan.providerFields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
+      {plan.providerFields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
+    </div>}
+    {plan.usageFields.length > 0 && <div className="ss-fields" style={{ marginTop: 9 }}>
+      {plan.usageFields.map((f) => <div className="ss-field" key={f.label}><span>{f.label}</span><strong>{f.value}</strong></div>)}
     </div>}
     {plan.note && <p className="ss-note">{plan.note}</p>}
   </Card>;
@@ -248,7 +265,7 @@ function DesignateForm({
   </form>;
 }
 
-function ContactsCard({ authority }: { authority: Authority }) {
+function ContactsCard({ authority, primarySelectionNeeded }: { authority: Authority; primarySelectionNeeded: boolean }) {
   const contacts = useWorkspaceBillingContacts();
   // The roster is read only for someone who could actually designate from it (§9 least privilege:
   // a read-only viewer has no reason to pull the workspace's member list from this surface).
@@ -302,6 +319,18 @@ function ContactsCard({ authority }: { authority: Authority }) {
       </div>;
     }
     return <>
+      {/* THE SELECTION-NEEDED STATE (owner brief 2026-09-03, item 2). Historical data can leave a
+          workspace with TWO live primary billing contacts — the platform never silently picks one
+          (a DB trigger blocks any NEW second primary going forward, but tolerates the existing
+          pair). This banner is distinct from the per-row "Eligible" badges below: it names the
+          fact that a choice is owed, and by whom, rather than letting two "Primary billing
+          contact" rows sit there looking like an accepted state. */}
+      {primarySelectionNeeded && <div className="ss-state" data-selection-needed="true" role="alert">
+        <TriangleAlert aria-hidden/>
+        <span><strong>Selection needed</strong>This workspace has more than one primary billing contact on record.
+          The platform does not choose one for you — an owner of this workspace must remove all but one below.</span>
+      </div>}
+
       {designated.length > 0
         ? <div className="ss-list" data-contacts-state="designated">
             {designated.map((c) => <ContactRow key={c.id} contact={c} canManage={canManage} busy={busy}
@@ -401,9 +430,12 @@ function UsageCard() {
 }
 
 export function SoloBillingView() {
-  // ONE authority read for the whole surface. Three components asking the same server question
-  // three times would also be three chances for them to disagree mid-switch.
+  // ONE authority read (portal act + contacts-write gating) and ONE status read (plan, usage,
+  // provider readiness, primary-selection-needed) for the whole surface. The status read replaces
+  // authority as PlanCard's source; authority is still the real, correctly-mapped seam behind the
+  // hosted-portal "Manage billing" act, so it stays.
   const authority = useWorkspaceBillingAuthority();
+  const status = useWorkspaceBillingStatus();
   // KEYED ON THE WORKSPACE. The hooks reset their DATA on a switch, but the cards' own local state
   // — the outcome banner, the busy key, a half-made selection — is not data and survived it. That
   // put "Primary billing contact set for this workspace." under a workspace where nothing was set,
@@ -412,8 +444,9 @@ export function SoloBillingView() {
   const { activeTenantId } = useTenantContext();
   const workspace = activeTenantId ?? "none";
   return <div className="ss-grid">
-    <PlanCard authority={authority}/>
-    <ContactsCard key={`contacts:${workspace}`} authority={authority}/>
+    <PlanCard status={status}/>
+    <ContactsCard key={`contacts:${workspace}`} authority={authority}
+      primarySelectionNeeded={status.status?.primarySelectionNeeded === true}/>
     <PortalCard key={`portal:${workspace}`} authority={authority}/>
     {/* NOT keyed on the workspace, unlike its two neighbours, and that is deliberate rather than
         an oversight. They are keyed because they hold LOCAL state — an outcome banner, a half-made

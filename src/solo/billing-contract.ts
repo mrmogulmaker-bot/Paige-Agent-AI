@@ -37,6 +37,7 @@
  * makes no visual decision (§00) — the additions are state-machine holes, not a redesign.
  */
 import type { BillingAccountState, BillingScope } from "./data/useWorkspaceBillingAuthority";
+import type { WorkspaceBillingStatus } from "./data/useWorkspaceBillingStatus";
 
 /* ── The entitlement projection (Foundation B owns it; this is the shape C consumes) ────────── */
 
@@ -641,5 +642,207 @@ export function resolveAiUsagePresentation(input: AiUsageInput): AiUsagePresenta
     note: [periodSourceSentence, `One AI credit is ${formatCount(ratio)} tokens recorded by the platform.`]
       .filter(Boolean).join(" "),
     canRetry: false,
+  };
+}
+
+/* ── The Billing Experience rebuild (owner brief 2026-09-03) ────────────────────────────────────
+ *
+ * This is the presentation contract for `get_workspace_billing_status()` — the ONE read that
+ * replaces the mapping-gated `resolveBillingPlanPresentation` above for the plan/usage card. That
+ * older resolver checked the provider MAPPING before it would show any access fact, which was
+ * correct reasoning back when mapping was the only signal available, but is now the exact bug
+ * this rebuild exists to correct: "A promotional workspace with no billing-provider mapping is
+ * not 'billing unavailable.' It is a valid promotional account with $0 due today" (owner, R13).
+ *
+ * access_state and provider_state are read INDEPENDENTLY here, on purpose, matching the DB
+ * function's own doctrine: access is never inferred from a missing mapping, and a mapping's
+ * absence is its own honest readiness fact, never dressed up as "no plan" or "billing
+ * unavailable". `resolveBillingPlanPresentation` and `resolveBillingPortalPresentation` above are
+ * UNCHANGED and still back the "manage billing" (hosted-portal) act, which is a separate, still
+ * correctly-mapping-gated concern (Foundation A already reads the right table for that).
+ */
+
+export type WorkspaceBillingStatusStateId =
+  | "status-loading"
+  | "status-error"
+  | "status-no-workspace"
+  | "status-subaccount"
+  | "status-unsupported"
+  | "status-role-refusal"
+  | "status-internal"
+  | "status-no-plan"
+  | "status-promotional"
+  | "status-trial"
+  | "status-paid"
+  | "status-past-due"
+  | "status-unknown";
+
+export interface WorkspaceBillingStatusPresentation {
+  state: WorkspaceBillingStatusStateId;
+  heading: string;
+  body: string;
+  /** Plan/money facts — always independent of provider readiness. */
+  planFields: ReadonlyArray<{ label: string; value: string }>;
+  /** The SEPARATE honest readiness fact: does a provider billing account/payment method exist. */
+  providerFields: ReadonlyArray<{ label: string; value: string }>;
+  /** Included-resource facts, only for a state where a plan actually exists. */
+  usageFields: ReadonlyArray<{ label: string; value: string }>;
+  note: string;
+  canRetry: boolean;
+}
+
+function moneyFromCents(cents: number): string {
+  if (cents === 0) return "$0";
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
+function providerFieldsFrom(status: WorkspaceBillingStatus): ReadonlyArray<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [];
+  if (status.providerState === "not_created") {
+    rows.push({ label: "Provider billing account", value: "Not set up yet — no provider account exists for this workspace" });
+  } else if (status.providerState === "ambiguous") {
+    rows.push({ label: "Provider billing account", value: "Needs a platform review before it can be shown" });
+  } else if (status.providerState === "mapped") {
+    rows.push({ label: "Provider billing account", value: "Set up" });
+    rows.push(status.paymentMethodConnected
+      ? { label: "Payment method", value: `${status.paymentMethodBrand ?? "Card"} •••• ${status.paymentMethodLast4 ?? "····"}`
+          + (status.paymentMethodExpMonth && status.paymentMethodExpYear
+              ? ` (exp ${status.paymentMethodExpMonth}/${status.paymentMethodExpYear})` : "") }
+      : { label: "Payment method", value: "None connected yet" });
+  }
+  return rows;
+}
+
+function usageFieldsFrom(status: WorkspaceBillingStatus): ReadonlyArray<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [];
+  if (status.seatsIncluded !== null && status.seatsUsed !== null) {
+    rows.push({ label: "Seats", value: `${formatCount(status.seatsUsed)} of ${formatCount(status.seatsIncluded)} included` });
+  }
+  if (status.contactsIncluded !== null && status.contactsUsed !== null) {
+    rows.push({ label: "Contacts", value: `${formatCount(status.contactsUsed)} of ${formatCount(status.contactsIncluded)} included` });
+  }
+  // SMS only when a real meter exists (R13/§13 — never a fabricated zero for a meter that isn't wired).
+  if (status.smsIncluded !== null && status.smsUsed !== null) {
+    rows.push({ label: "SMS", value: `${formatCount(status.smsUsed)} of ${formatCount(status.smsIncluded)} included` });
+  }
+  if (status.paidAddonsCount !== null && status.paidAddonsCount > 0) {
+    rows.push({ label: "Paid marketplace add-ons", value: formatCount(status.paidAddonsCount) });
+  }
+  return rows;
+}
+
+const NO_STATUS_FIELDS: ReadonlyArray<{ label: string; value: string }> = [];
+
+export function resolveWorkspaceBillingStatusPresentation(input: {
+  loading: boolean;
+  readFailed: boolean;
+  status: WorkspaceBillingStatus | null;
+}): WorkspaceBillingStatusPresentation {
+  const bare = (state: WorkspaceBillingStatusStateId, heading: string, body: string, canRetry = false)
+    : WorkspaceBillingStatusPresentation =>
+    ({ state, heading, body, planFields: NO_STATUS_FIELDS, providerFields: NO_STATUS_FIELDS, usageFields: NO_STATUS_FIELDS, note: "", canRetry });
+
+  if (input.loading) return bare("status-loading", "Clearing and resolving this account…", "");
+  if (input.readFailed || !input.status) {
+    return bare("status-error", "Couldn’t load this workspace’s billing status",
+      "The plan and usage could not be read just now. Nothing about your plan has changed.", true);
+  }
+  const s = input.status;
+
+  if (s.scope === "none") {
+    return bare("status-no-workspace", "No workspace is selected",
+      "There is no billing status to show until a workspace is open. Nothing about any workspace has changed.");
+  }
+  if (s.scope === "sub_account") {
+    return bare("status-subaccount", "Platform billing is not applicable to this workspace yet.",
+      "This workspace is a sub-account. Platform billing is not inherited from the agency, and there is no " +
+      "supported sub-account billing contract yet, so nothing is shown here — not because there is no plan, " +
+      "but because this page cannot truthfully report one.");
+  }
+  if (s.scope === "agency" || s.scope === "enterprise") {
+    return bare("status-unsupported", "Platform billing is not available for this account type yet.",
+      "Agency and Enterprise workspaces do not inherit a Solo plan, and no supported billing contract exists " +
+      "for them yet. This page cannot truthfully report a plan, so it does not.");
+  }
+  if (!s.canView) {
+    return bare("status-role-refusal", "Billing for this workspace is visible to its owner",
+      "What this workspace pays the platform, and the payment method it is charged on, are the owner's to see " +
+      "and to change. Nothing about your own access is affected.");
+  }
+
+  const workspaceHeading = `${s.workspaceName?.trim() || "This workspace"}’s PAIGE Plan & Usage`;
+
+  if (s.accessState === "internal") {
+    return {
+      state: "status-internal",
+      heading: workspaceHeading,
+      body: "This is an internal platform workspace. It is not a paying or promotional customer, and no plan facts are shown for it.",
+      planFields: fieldsFrom([["Status", "Internal / platform workspace"]]),
+      providerFields: NO_STATUS_FIELDS, usageFields: NO_STATUS_FIELDS, note: "", canRetry: false,
+    };
+  }
+  if (s.accessState === "no_plan") {
+    return {
+      state: "status-no-plan",
+      heading: workspaceHeading,
+      body: "This workspace has no active plan (the platform checked and found none). Your workspace and its data are preserved.",
+      planFields: NO_STATUS_FIELDS, providerFields: providerFieldsFrom(s), usageFields: NO_STATUS_FIELDS,
+      note: "", canRetry: false,
+    };
+  }
+
+  // From here a plan exists: promotional, trial, paid, or past_due.
+  const planFields = fieldsFrom([
+    ["Billed by", s.billedBy],
+    ["Plan", s.planName],
+    ["Amount due today", s.amountDueCents === null ? null : moneyFromCents(s.amountDueCents)],
+    ["Payment setup required", s.paymentMethodRequired ? "Yes" : "No — nothing is due"],
+  ]);
+  const providerFields = providerFieldsFrom(s);
+  const usageFields = usageFieldsFrom(s);
+
+  if (s.accessState === "promotional") {
+    return {
+      state: "status-promotional", heading: workspaceHeading,
+      body: "This workspace has full platform access during the promotional beta. No payment is due.",
+      planFields, providerFields, usageFields,
+      note: "Granted by the platform. When this changes, or if a paid plan replaces it, this page will say so plainly before anything else happens.",
+      canRetry: false,
+    };
+  }
+  if (s.accessState === "trial") {
+    return {
+      state: "status-trial", heading: workspaceHeading,
+      body: s.trialEndsAt ? `This workspace is on a beta trial. $0 due while the trial is active.` : "This workspace is on a beta trial. $0 due while the trial is active.",
+      planFields: s.trialEndsAt ? fieldsFrom([...planFields.map((f): [string, string] => [f.label, f.value]), ["Trial ends", s.trialEndsAt]]) : planFields,
+      providerFields, usageFields,
+      note: "Nothing is charged when the trial ends. This workspace then moves to no active plan unless a paid plan or promotional access is already active.",
+      canRetry: false,
+    };
+  }
+  if (s.accessState === "paid") {
+    return {
+      state: "status-paid", heading: workspaceHeading,
+      body: "This workspace has an active paid platform subscription.",
+      planFields, providerFields, usageFields, note: "", canRetry: false,
+    };
+  }
+  if (s.accessState === "past_due") {
+    return {
+      state: "status-past-due", heading: workspaceHeading,
+      body: "This workspace's most recent payment did not go through. Access has not changed yet.",
+      planFields, providerFields, usageFields,
+      note: "The platform has been notified. Nothing further happens automatically from this page.",
+      canRetry: false,
+    };
+  }
+
+  // access_state === 'unknown' — a state this page has no approved wording for. Reported honestly
+  // rather than guessed, same discipline as `resolveBillingPlanPresentation`'s past_due fallback.
+  return {
+    state: "status-unknown", heading: workspaceHeading,
+    body: "This workspace's billing state is one this page has not been given approved wording for, so it is not described rather than described wrongly. Nothing about your access has changed. The platform has been notified.",
+    planFields: NO_STATUS_FIELDS, providerFields, usageFields: NO_STATUS_FIELDS, note: "", canRetry: false,
   };
 }

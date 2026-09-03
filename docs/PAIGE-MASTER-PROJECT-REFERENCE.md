@@ -1169,7 +1169,11 @@ want on their account when we're billing them."* The card's title, body and ever
 claiming invoices. `platform_invoices` remains in the schema with no writer and is now surfaced by
 nothing.
 
-### Billing — AI usage allowance (branch `claude/platform-billing-clarification-l6zqr5`, **NOT MERGED; no production write of any kind**)
+### Billing — AI usage allowance (PR #854, **MERGED `03d85474` 2026-09-03**)
+
+**§13 correction (2026-09-03):** this heading said "NOT MERGED" — stale from before #854 merged,
+caught while writing the entry below for #865. Corrected rather than left to mislead the next
+reader.
 
 **Owner ruling 2026-09-03.** Use the EXISTING `platform_usage_events` as the AI-usage source of
 truth; do not build a parallel meter and do not misuse `platform_metered_events`, which belongs to a
@@ -1221,6 +1225,96 @@ merge** (§32.a).
 **Deliberately NOT in this slice:** plan changes, plan upsert, Stripe mapping, provider portal
 activation, automatic overage, enforcement, and usage-threshold notification SENDING (records and
 readiness only; nothing is sent until a delivery system exists and is separately authorized).
+
+### Billing Experience — truthful account status, items 1–3 (PR #865, **MERGED `5ae7a34a` 2026-09-03; migrations persisted-apply confirmed on production**)
+
+**§32.a, checked after merge, not assumed.** `schema_migrations` on prod carries `20261109040000`,
+`20261111050000`, `20261120000000`; `get_workspace_billing_status()`, the 7 `payment_method_*`
+columns, and `trg_platform_billing_one_primary` all confirmed to exist by direct query. Mogul Maker
+Academy's real tenant row shows 2 live primary billing contacts right now — the Selection-needed
+banner this PR ships is not a fixture scenario, it fires for the real workspace it was built for.
+
+**Owner brief 2026-09-03, continuing from the approved Slice A proof (`cb2f5b79`).** *"A promotional
+workspace with no billing-provider mapping is not 'billing unavailable.' It is a valid promotional
+account with $0 due today."* This slice replaces the mapping-gated plan resolver — which could only
+ever show `billing-unavailable`, because Foundation B's entitlement projection did not exist — with
+`get_workspace_billing_status()`, a real, single, Owner-only read of what the workspace actually
+receives.
+
+**Three DB slices, each found-and-fixed a real defect, each proven separately on production inside
+`BEGIN..ROLLBACK` (29/29, 9/9, 4/4; nothing persisted):**
+- **Slice A** (`20261109040000`, part of THIS PR's own branch history, NOT a prior separate merge —
+  **§13 correction, independent review, PR #865**: this entry originally said "already on main",
+  which was wrong) — one live primary billing contact per workspace
+  going forward; the sole-primary revoke guard un-hitched from Stripe (it had required a
+  `stripe_customer_id`, which no workspace has, making the guard permanently inert); the first
+  `get_workspace_billing_status()`.
+- **Slice B** (`20261111050000`) — Slice A's own function read provider mapping from
+  `platform_subscriptions.stripe_customer_id`, which the real checkout flow never populates.
+  Corrected to read `platform_billing_accounts`, the same table `get_workspace_billing_authority()`
+  already reads, via the same ambiguity helper. Adds payment-method columns (brand/last4/exp),
+  written only by `stripe-webhook`, never by any future connect function.
+- **Slice C** (`20261120000000`) — every top-level tenant (parent_tenant_id IS NULL) was classified
+  `scope='top_level'`, including Agency/Enterprise. Corrected via the same `account_type`
+  discriminant `platform_billing_account_top_level_guard` already enforces. Found by re-reading the
+  sibling guard function before wiring the frontend to the read, not by a report.
+
+**Frontend, items 1–3 of the brief's build order.** The plan card now sources from the corrected
+read: heading `{workspace}'s PAIGE Plan & Usage`, `Billed by PAIGE Platform`, the real amount due
+(`$0` for promotional, never invented for anything else), whether payment setup is required — with
+provider-account existence and payment method shown as a SEPARATE labelled fact, never gating the
+access claim (the exact bug the rebuild exists to correct). Item 2: `ContactsCard` renders a
+distinct **Selection needed** banner when the server reports `primary_selection_needed` — the real
+state Mogul Maker Academy is in (two live primaries from before Slice A's trigger existed); the
+banner names that an owner must choose, the platform never chooses silently. Item 3: seats/contacts
+usage from the same real read; SMS shown only when a real meter exists (it does not, so it is
+omitted — never a fabricated zero); paid marketplace add-ons shown only when the count is real and
+nonzero.
+
+**A real bug caught by the new tests, before merge.** The field-builder helpers
+(`providerFieldsFrom`, `usageFieldsFrom`) built `[string,string]` tuples against a
+`{label,value}` object return type. TypeScript did not flag it — every field silently rendered as
+empty text. The new tests for the provider-readiness and usage fields failed for exactly this
+reason; fixed to build object literals, same PR.
+
+**PortalCard (the "Manage billing" hosted-portal act), `useWorkspaceBillingAuthority`, and
+`useWorkspaceBillingContacts` are UNCHANGED** — Foundation A already reads the correct mapping table
+for the portal, so that path stays as-is.
+
+**Not in this PR, sequenced next per the brief's own ordering** ("Build the owner-only payment setup
+flow after the status page is complete"): item 4 (live payment-method connection — a new
+`platform-billing-connect` edge function, owner-click-only, setup-mode Stripe Checkout Session that
+never charges, plus a new discriminated block in `stripe-webhook`) and item 5 (a tenant-safe,
+server-resolved billing summary for Spine).
+
+**A real deploy-blocking defect, caught twice, independently, and fixed before merge.**
+`database-contract` CI (a full sequential migration replay) failed on `CREATE OR REPLACE FUNCTION
+get_workspace_billing_status()` in Slice B: `42P13 "cannot change return type of existing
+function"`, because Slice B inserts 5 new `payment_method_*` columns into the MIDDLE of Slice A's
+column list, and Postgres refuses to REPLACE a function whose `RETURNS TABLE` row type changed —
+only a `DROP FUNCTION` first, or appending new columns strictly at the end, is legal. None of the
+`BEGIN..ROLLBACK` proofs could catch this: each slice's proof only `\i`s its own migration file, so
+`CREATE OR REPLACE` always acted as a fresh `CREATE` against a name that had never existed in that
+isolated transaction — the conflict only exists when Slice A has genuinely run first. Fixed with a
+`DROP FUNCTION IF EXISTS` immediately before Slice B's `CREATE OR REPLACE`. Independently confirmed
+by BOTH CI (which failed, then passed after the fix) AND the Agent-based adversarial review
+(substituting for Codex, see below), which reproduced the identical error against a local Postgres
+16 install before the fix was known to it, and separately named the exact same root cause. A new
+regression property (C1) was added to `scripts/sql/billing-status-payment-method-proof.sql` that
+creates Slice A's original column shape first, then `\i`s the real Slice B file, so this class of
+bug fails the proof again if it recurs.
+
+**Evidence.** Slice A 29/29, Slice B 10/10 (including C1, the sequential-apply regression above,
+and C5, which reproduces the exact old-table bug shape before asserting the fix), Slice C 4/4 — all
+production `BEGIN..ROLLBACK`, nothing persisted. Frontend: 93 tests in the two touched files,
+1143/1143 across `src/solo/`; typecheck and lint clean. **Status: `PARTIAL` / `Authenticated
+Runtime Proof Owed`** — no browser-driving tool in this session (§32.c); the migrations'
+persisted-apply confirmation is also owed on merge (§32.a). Independent review: Codex was reported
+unavailable at review time; an Agent-based adversarial review was substituted per explicit owner
+instruction, found the deploy-blocking defect above (already fixed by the time of this entry) plus
+a stale JSDoc header on `settings-billing.tsx` (fixed) and a migration comment overclaiming a
+webhook writer that does not exist yet (fixed to future tense), and Codex review is to resume when
+it returns.
 
 ### PAIGE Mind — the integration matrix (Wave 0 grounding, 2026-09-03; documentation only, NOTHING shipped)
 

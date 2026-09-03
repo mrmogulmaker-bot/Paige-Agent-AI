@@ -2008,11 +2008,13 @@ no_billing_account`. R13 binds: absence of a record is never inferred as a promo
 | ↳ **superseded** by the AI usage entry below (allowance slice) — the card now states a real total; §58: upgraded in place, never removed | | | | | | | | |
 | Client-billing pointer | **moved to Campaigns › Sales** (owner, 2026-09-03) — Billing is one direction of money only | moved | moved | moved | moved | moved | moved | — |
 
-### Platform Billing — AI usage allowance, slice 1+2 (branch `claude/platform-billing-clarification-l6zqr5`) — **NOT YET MERGED**
+### Platform Billing — AI usage allowance, slice 1+2 (PR #854, merged `03d85474` 2026-09-03) — **LIVE**
 
-**§66.** This entry records what the slice makes true and is written BEFORE the merge, so it states
-the branch rather than a commit. It supersedes the `Usage & limits` row in the Foundation C table
-above, which recorded that card as `UNAVAILABLE` on every tier.
+**§66 correction (2026-09-03, caught while writing the entry below):** this row said **NOT YET
+MERGED** and named a branch rather than a commit — stale from before PR #854 merged. Corrected here
+rather than left to mislead the next reader (§13); this is exactly the drift §66 exists to catch.
+It supersedes the `Usage & limits` row in the Foundation C table above, which recorded that card as
+`UNAVAILABLE` on every tier.
 
 **What changed.** The plan source now carries an AI allowance beside seats/contacts/SMS
 (`platform_subscription_plans.included_ai_tokens_month` + `.ai_credit_token_ratio` — solo 5,000,000
@@ -2178,6 +2180,68 @@ this docs-only PR's scope; recording the gap honestly is what this PR does. A vi
 the Solo Catalog buttons is requested and
 explicitly deferred to Claude
 Design (§00) — no design decision made here.
+
+### Platform Billing — truthful account status, items 1–3 (PR #865, merged `5ae7a34a` 2026-09-03) — **LIVE**
+
+**§32.a persisted-apply confirmation, checked after merge, not assumed:** `supabase_migrations.schema_migrations`
+on prod (ref `xygzykjyynhzqytbqnzu`) carries all three versions (`20261109040000`, `20261111050000`,
+`20261120000000`). The created objects were queried directly and exist: `get_workspace_billing_status()`
+present in `pg_proc`, 7 `payment_method_*` columns on `platform_billing_accounts`,
+`trg_platform_billing_one_primary` present in `pg_trigger`. Also confirmed against real data: Mogul
+Maker Academy's tenant row shows **2 live primary billing contacts right now** — the exact state the
+new Selection-needed banner exists to name — so this is not a hypothetical fixture case, it is the
+real workspace this rebuild was built for.
+
+**§13 correction (independent review, PR #865):** this row said Slice A was "on `main`". It is
+not — `20261109040000` was never merged separately; it shipped as part of PR #865's own branch
+history alongside Slices B and C. All three applied together on that PR's merge. Corrected here
+rather than left to compound the exact gap the review caught (see the finding below).
+
+**What changed.** `get_workspace_billing_status()` (Slice A `20261109040000`; Slice B
+`20261111050000` and Slice C `20261120000000`, in #865) is the new source for the Solo "Plan &
+usage" card, REPLACING the mapping-gated `resolveBillingPlanPresentation` path recorded in the
+Foundation C table above — that resolver could never show a real access state because Foundation
+B's entitlement projection did not exist. It now does: `access_state` is read from
+`tenant_revenue_classification` / `platform_subscriptions`, INDEPENDENTLY of provider mapping
+(`platform_billing_accounts`, read via the same `platform_billing_layer1_customer_ids()` ambiguity
+helper `get_workspace_billing_authority()` already uses). Slice B corrected a real bug in Slice A's
+own first version, which had read provider mapping from the wrong table
+(`platform_subscriptions.stripe_customer_id`, never populated by the real checkout flow). Slice C
+corrected a second real bug: every top-level tenant (parent_tenant_id IS NULL) was classified
+`scope='top_level'`, including Agency/Enterprise — now excluded via the same `account_type`
+discriminant `platform_billing_account_top_level_guard` already enforces.
+
+| Capability | God | Agency | Enterprise | Solo Owner | Solo Admin / Member | Sub-account | Client | Anon |
+|---|---|---|---|---|---|---|---|---|
+| Plan & usage card | `status-no-workspace` (act-as pointer, no seat) | `status-unsupported` (Slice C: excluded by `account_type`, never `top_level`) | `status-unsupported` (same) | real `access_state` — today `status-promotional`: `Billed by PAIGE Platform`, `$0 due today`, provider-account readiness shown SEPARATELY (`not_created` today) | `status-role-refusal` (R22 — `can_view`=false from the server) | `status-subaccount` ("not because there is no plan") | route not reachable | EXECUTE revoked |
+| Billing contacts — Selection needed | n/a (no book) | n/a | n/a | banner renders when `primary_selection_needed=true` (MMA's real state: two live primaries from before Slice A's trigger existed) | read-only, banner still shown if present | n/a | — | — |
+| Seats / contacts usage | — | — | — | shown from the same status read, real counts | refused with the rest of the card | — | — | — |
+| SMS usage | — | — | — | **omitted** — no sent-SMS source exists (`sms_used` stays NULL by design, never a fabricated zero) | — | — | — | — |
+| Paid marketplace add-ons | — | — | — | shown only when the real count is nonzero | — | — | — | — |
+
+**Not in this PR (sequenced next, per the brief's own ordering):** item 4 (live payment-method
+connection — collecting a card, creating the Stripe customer only on explicit owner click, writing
+the new `platform_billing_accounts.payment_method_*` columns from `stripe-webhook` only) and item 5
+(the Spine-safe billing summary wrapper).
+
+**A deploy-blocking sequential-apply defect, caught by `database-contract` CI and independently by
+an Agent-based adversarial review (Codex substitute), fixed before merge.** Slice B's
+`CREATE OR REPLACE FUNCTION get_workspace_billing_status()` inserted 5 new columns into the MIDDLE
+of Slice A's `RETURNS TABLE` list; Postgres refuses that shape of REPLACE (`42P13`). No standalone
+`\i`-one-file rollback proof could catch it, because the function never pre-existed in that
+isolated transaction. Fixed with `DROP FUNCTION IF EXISTS` before the REPLACE; regression property
+C1 added, which creates Slice A's real shape first, then `\i`s the real Slice B file.
+
+**Evidence.** Slice A: 29/29 production rollback proof. Slice B: 10/10 (added C1 above), including
+a property (C5) that reproduces the exact old-table bug shape before asserting the fix. Slice C:
+4/4, including Agency and Enterprise fixtures. Frontend: `src/solo/settings-billing.test.tsx` +
+`src/solo/billing-contract.test.ts`, 93 tests across the touched files, 1143/1143 across
+`src/solo/`. A real bug was caught by the new tests themselves before merge: the field-builder
+helpers built `[string,string]` tuples against a `{label,value}` object return type — TypeScript
+did not flag it, every field rendered as empty text, the new tests failed for the right reason, and
+the fix is in this same PR. **Authenticated runtime on the deployed surface: OWED** (§32.c) — no
+browser-driving tool in this session; owed to the next capable session, same as the AI-usage slice
+above.
 
 ### Campaigns → Catalog → Offers, `/solo/{account}/growth/catalog` (Offer Catalog Slice 2A)
 
